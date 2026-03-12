@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.schemas.integrations.responses import CommunityListResponse
 from app.services.integrations.community_service import (
     list_community_integrations as list_community,
@@ -21,9 +21,13 @@ async def list_community_integrations(
     search: Optional[str] = None,
 ) -> CommunityListResponse:
     try:
-        return await list_community(sort, category, limit, offset, search)
+        log.set(operation="list_community_integrations", category=category)
+        result = await list_community(sort, category, limit, offset, search)
+        log.set(result_count=len(result.integrations) if hasattr(result, "integrations") else 0)
+        log.set(outcome="success")
+        return result
     except Exception as e:
-        logger.error(f"Error fetching community integrations: {e}")
+        log.error(f"Error fetching community integrations: {e}")
         raise HTTPException(
             status_code=500, detail="Failed to fetch community integrations"
         )

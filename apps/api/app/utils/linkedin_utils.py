@@ -11,7 +11,7 @@ from typing import Any, Dict
 
 import httpx
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/v2"
 LINKEDIN_REST_BASE = "https://api.linkedin.com/rest"
@@ -43,6 +43,7 @@ def linkedin_headers(access_token: str) -> Dict[str, str]:
 
 def get_author_urn(access_token: str, organization_id: str | None = None) -> str:
     """Get the author URN (person or organization)."""
+    log.set(operation="get_author_urn", organization_id=organization_id)
     if organization_id:
         # If org ID provided, use it directly
         if organization_id.startswith("urn:li:organization:"):
@@ -61,7 +62,7 @@ def get_author_urn(access_token: str, organization_id: str | None = None) -> str
         if sub:
             return f"urn:li:person:{sub}"
     except Exception as e:
-        logger.error(f"Error getting user info: {e}")
+        log.error(f"Error getting user info: {e}")
 
     raise ValueError("Could not determine author URN")
 
@@ -72,6 +73,7 @@ def upload_image_from_url(
     author_urn: str,
 ) -> str | None:
     """Download image from URL and upload to LinkedIn, returning the asset URN."""
+    log.set(operation="upload_image", image_url=image_url, author_urn=author_urn)
     headers = linkedin_headers(access_token)
 
     try:
@@ -94,7 +96,7 @@ def upload_image_from_url(
         image_urn = init_result.get("value", {}).get("image")
 
         if not upload_url or not image_urn:
-            logger.error("Failed to get upload URL from LinkedIn")
+            log.error("Failed to get upload URL from LinkedIn")
             return None
 
         # Step 2: Download image from URL
@@ -118,7 +120,7 @@ def upload_image_from_url(
         return image_urn
 
     except Exception as e:
-        logger.error(f"Error uploading image: {e}")
+        log.error(f"Error uploading image: {e}")
         return None
 
 
@@ -128,6 +130,9 @@ def upload_document_from_url(
     author_urn: str,
 ) -> str | None:
     """Download document from URL and upload to LinkedIn, returning the asset URN."""
+    log.set(
+        operation="upload_document", document_url=document_url, author_urn=author_urn
+    )
     headers = linkedin_headers(access_token)
 
     try:
@@ -150,7 +155,7 @@ def upload_document_from_url(
         document_urn = init_result.get("value", {}).get("document")
 
         if not upload_url or not document_urn:
-            logger.error("Failed to get upload URL from LinkedIn")
+            log.error("Failed to get upload URL from LinkedIn")
             return None
 
         # Step 2: Download document from URL
@@ -174,5 +179,5 @@ def upload_document_from_url(
         return document_urn
 
     except Exception as e:
-        logger.error(f"Error uploading document: {e}")
+        log.error(f"Error uploading document: {e}")
         return None

@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import List
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.core.websocket_manager import websocket_manager
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import users_collection, workflows_collection
@@ -65,16 +65,14 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
         )
 
         if not memories.memories:
-            logger.info(
-                f"No memories found for user {user_id}, using default workflows"
-            )
+            log.info(f"No memories found for user {user_id}, using default workflows")
             return await _get_default_workflows(limit)
 
         # Create query from memories
         query_parts = [m.content for m in memories.memories]
         query_text = " ".join(query_parts)
 
-        logger.info(f"Searching workflows with RAG query for user {user_id}")
+        log.info(f"Searching workflows with RAG query for user {user_id}")
 
         # Query ChromaDB workflows collection
         chroma_client = await ChromaClient.get_langchain_client(
@@ -98,7 +96,7 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
                 if workflow and len(workflow_ids) < limit:
                     workflow_ids.append(str(wf_id))
             except Exception as e:
-                logger.warning(f"Error verifying workflow {wf_id}: {e}")
+                log.warning(f"Error verifying workflow {wf_id}: {e}")
                 continue  # nosec B112
 
         # Fill with defaults if needed
@@ -109,7 +107,7 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
         return workflow_ids[:limit]
 
     except Exception as e:
-        logger.error(f"Error in workflow RAG: {e}", exc_info=True)
+        log.error(f"Error in workflow RAG: {e}", exc_info=True)
         return await _get_default_workflows(limit)
 
 
@@ -121,7 +119,7 @@ async def _get_default_workflows(limit: int = 4) -> List[str]:
         ).to_list(length=limit)
         return [str(wf["_id"]) for wf in workflows]
     except Exception as e:
-        logger.error(f"Error fetching default workflows: {e}")
+        log.error(f"Error fetching default workflows: {e}")
         return []
 
 
@@ -171,10 +169,10 @@ async def save_personalization_data(
                 }
             },
         )
-        logger.info(f"Saved personalization data for user {user_id}")
+        log.info(f"Saved personalization data for user {user_id}")
 
     except Exception as e:
-        logger.error(f"Error saving personalization data: {e}", exc_info=True)
+        log.error(f"Error saving personalization data: {e}", exc_info=True)
 
 
 async def process_post_onboarding_personalization(user_id: str) -> None:
@@ -184,8 +182,10 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
     Args:
         user_id: User identifier
     """
+    log.set(auth={"user_id": user_id})
+
     try:
-        logger.info(f"Starting post-onboarding personalization for user {user_id}")
+        log.info(f"Starting post-onboarding personalization for user {user_id}")
 
         # Emit initial progress
         await emit_progress(
@@ -258,7 +258,7 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         # Always save personalization data
         # Even if bio is placeholder, we save it so user sees progress
         # Frontend checks if bio is placeholder via has_personalization flag
-        logger.info(
+        log.info(
             f"Saving personalization for user {user_id} with bio: {user_bio[:50]}..."
         )
 
@@ -305,7 +305,7 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
                         }
                     )
             except Exception as e:
-                logger.warning(f"Error fetching workflow {wf_id}: {e}")
+                log.warning(f"Error fetching workflow {wf_id}: {e}")
                 continue
 
         # Emit house assignment progress
@@ -348,17 +348,17 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
                 },
             )
 
-            logger.info(
+            log.info(
                 f"Post-onboarding personalization complete for user {user_id}: house={house}, phrase={personality_phrase}"
             )
         else:
-            logger.info(
+            log.info(
                 f"Personalization saved but not broadcasting completion yet - bio_status={bio_status}, "
                 f"waiting for email processing to complete"
             )
 
     except Exception as e:
-        logger.error(f"Error in post-onboarding personalization: {e}", exc_info=True)
+        log.error(f"Error in post-onboarding personalization: {e}", exc_info=True)
 
 
 async def seed_initial_user_data(user_id: str) -> None:
@@ -367,7 +367,7 @@ async def seed_initial_user_data(user_id: str) -> None:
     Runs tasks in parallel to minimize background processing time.
     """
     try:
-        logger.info(f"Starting parallel data seeding for user {user_id}")
+        log.info(f"Starting parallel data seeding for user {user_id}")
 
         # Run seeding tasks in parallel
         # Note: Goal seeding automatically creates a comprehensive linked todo
@@ -378,7 +378,7 @@ async def seed_initial_user_data(user_id: str) -> None:
             seed_initial_conversation(user_id),
         )
 
-        logger.info(f"Completed parallel data seeding for user {user_id}")
+        log.info(f"Completed parallel data seeding for user {user_id}")
 
     except Exception as e:
-        logger.error(f"Error in seed_initial_user_data for user {user_id}: {e}")
+        log.error(f"Error in seed_initial_user_data for user {user_id}: {e}")

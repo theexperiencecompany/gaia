@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional, Tuple
 
-from app.config.loggers import auth_logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
 from workos import AsyncWorkOSClient
@@ -56,7 +56,7 @@ async def authenticate_workos_session(
 
                 if not refresh_result.authenticated:
                     # Authentication failed, even after refresh
-                    auth_logger.warning(
+                    log.warning(
                         f"Authentication failed even after refresh with reason: {refresh_result.reason}"  # type: ignore[reportOptionalMemberAccess]
                     )
                     return {}, None
@@ -67,31 +67,32 @@ async def authenticate_workos_session(
                     workos_user = refresh_dict.get("user")
                     new_session = refresh_dict.get("sealed_session")
                     if not workos_user:
-                        auth_logger.error(
+                        log.error(
                             "Refresh successful but no user data in refresh result"
                         )
                         return {}, new_session
                 else:
-                    auth_logger.error("Refresh result doesn't have expected structure")
+                    log.error("Refresh result doesn't have expected structure")
                     return {}, None
 
             except Exception as e:
-                auth_logger.error(f"Session refresh error: {e}")
+                log.error(f"Session refresh error: {e}")
                 return {}, None
 
         # Make sure we have a valid user before continuing
         if not workos_user:
-            auth_logger.error("Invalid user data from WorkOS")
+            log.error("Invalid user data from WorkOS")
             return {}, new_session
 
         # Retrieve user from database
         try:
             user_email = workos_user.email
+            log.set(auth_provider="workos", user_email=user_email)
             user_data = await users_collection.find_one({"email": user_email})
 
             if not user_data:
                 # User doesn't exist in our database
-                auth_logger.warning(
+                log.warning(
                     f"User {user_email} authenticated but not found in database"
                 )
                 return {}, new_session
@@ -107,9 +108,9 @@ async def authenticate_workos_session(
             return user_info, new_session
 
         except Exception as e:
-            auth_logger.error(f"Error processing user data: {e}")
+            log.error(f"Error processing user data: {e}")
             return {}, new_session
 
     except Exception as e:
-        auth_logger.error(f"Error in authenticate_workos_session: {e}")
+        log.error(f"Error in authenticate_workos_session: {e}")
         return {}, None

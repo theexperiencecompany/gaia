@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Dict, List, Optional
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
@@ -41,6 +41,7 @@ async def get_notifications(
 ) -> Dict[str, Any]:
     """Get user notifications with filtering options."""
     try:
+        log.set(tool={"name": "get_notifications", "action": "get"})
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "notifications": []}
@@ -62,7 +63,7 @@ async def get_notifications(
         return {"notifications": notifications}
 
     except Exception as e:
-        logger.error(f"Error getting notifications: {str(e)}")
+        log.error(f"Error getting notifications: {str(e)}")
         return {"error": str(e), "notifications": []}
 
 
@@ -81,6 +82,7 @@ async def search_notifications(
 ) -> Dict[str, Any]:
     """Search notifications by content."""
     try:
+        log.set(tool={"name": "search_notifications", "action": "search"})
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "notifications": []}
@@ -118,7 +120,7 @@ async def search_notifications(
         return {"notifications": matching_notifications}
 
     except Exception as e:
-        logger.error(f"Error searching notifications: {str(e)}")
+        log.error(f"Error searching notifications: {str(e)}")
         return {"error": str(e), "notifications": []}
 
 
@@ -133,6 +135,7 @@ async def get_notification_count(
 ) -> Dict[str, Any]:
     """Get count of notifications."""
     try:
+        log.set(tool={"name": "get_notification_count", "action": "count"})
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "count": 0}
@@ -144,7 +147,7 @@ async def get_notification_count(
         return {"count": total_count}
 
     except Exception as e:
-        logger.error(f"Error getting notification count: {str(e)}")
+        log.error(f"Error getting notification count: {str(e)}")
         return {"error": str(e), "count": 0}
 
 
@@ -157,6 +160,7 @@ async def mark_notifications_read(
 ) -> Dict[str, Any]:
     """Mark one or more notifications as read."""
     try:
+        log.set(tool={"name": "mark_notifications_read", "action": "mark_read"})
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "success": False}
@@ -182,7 +186,7 @@ async def mark_notifications_read(
         return {"success": success}
 
     except Exception as e:
-        logger.error(f"Error marking notifications as read: {str(e)}")
+        log.error(f"Error marking notifications as read: {str(e)}")
         return {"error": str(e), "success": False}
 
 

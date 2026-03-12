@@ -7,7 +7,7 @@ import cloudinary.uploader
 import httpx
 from fastapi import HTTPException
 
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.config.token_repository import token_repository
 
@@ -20,6 +20,12 @@ async def build_google_oauth_url(
     integration_scopes: List[str],
     user_id: str | None = None,
 ) -> str:
+    log.set(
+        operation="build_google_oauth_url",
+        user_email=user_email,
+        requested_scopes=integration_scopes,
+        user_id=user_id,
+    )
     """
     Build a Google OAuth authorization URL with proper scope handling.
 
@@ -45,7 +51,7 @@ async def build_google_oauth_url(
             if token:
                 existing_scopes = (token.get("scope") or "").split()
         except Exception as e:
-            logger.debug(f"Could not get existing scopes for user {user_id}: {e}")
+            log.debug(f"Could not get existing scopes for user {user_id}: {e}")
 
     # Combine all scopes (base + existing + new), removing duplicates
     all_scopes = list(set(base_scopes + existing_scopes + integration_scopes))
@@ -65,6 +71,7 @@ async def build_google_oauth_url(
 
 
 async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
+    log.set(operation="upload_user_picture", cloudinary_public_id=public_id)
     """
     Uploads image bytes to Cloudinary and returns the secure URL.
 
@@ -87,19 +94,20 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
         )
         image_url = upload_result.get("secure_url")
         if not image_url:
-            logger.error("Missing secure_url in Cloudinary upload response")
+            log.error("Missing secure_url in Cloudinary upload response")
             raise HTTPException(
                 status_code=500, detail="Invalid response from image service"
             )
 
-        logger.info(f"Image uploaded successfully. URL: {image_url}")
+        log.info(f"Image uploaded successfully. URL: {image_url}")
         return image_url
     except Exception as e:
-        logger.error(f"Failed to upload image to Cloudinary: {str(e)}", exc_info=True)
+        log.error(f"Failed to upload image to Cloudinary: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Image upload failed")
 
 
 async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
+    log.set(operation="get_tokens_by_user_id", user_id=user_id, provider="google")
     """
     Get valid access and refresh tokens for the user by user ID.
     Uses the token repository to fetch and refresh tokens.
@@ -115,7 +123,7 @@ async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
         token = await token_repository.get_token(user_id, "google")
 
         if not token:
-            logger.error(f"No token found in repository for user: {user_id}")
+            log.error(f"No token found in repository for user: {user_id}")
             return "", "", False
 
         # Check if token needs refresh
@@ -123,7 +131,7 @@ async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
         refresh_token = cast(str, token.get("refresh_token", ""))
 
         if not refresh_token:
-            logger.error(f"Missing refresh token for user: {user_id}")
+            log.error(f"Missing refresh token for user: {user_id}")
             return "", "", False
 
         # Check if token needs to be refreshed
@@ -135,7 +143,7 @@ async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
         refreshed_token = await token_repository.refresh_token(user_id, "google")
 
         if not refreshed_token:
-            logger.error(f"Failed to refresh token for user: {user_id}")
+            log.error(f"Failed to refresh token for user: {user_id}")
             return "", refresh_token, False
 
         new_access_token = cast(str, refreshed_token.get("access_token", ""))
@@ -144,5 +152,5 @@ async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
         return new_access_token, new_refresh_token, True
 
     except Exception as e:
-        logger.error(f"Error getting tokens for user {user_id}: {str(e)}")
+        log.error(f"Error getting tokens for user {user_id}: {str(e)}")
         return "", "", False

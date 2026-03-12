@@ -22,8 +22,8 @@ Pattern deletion:
 from typing import Any, Optional
 
 import redis.asyncio as redis
-from app.config.loggers import redis_logger as logger
 from app.config.settings import settings
+from shared.py.wide_events import log
 from app.constants.cache import (
     DEFAULT_CACHE_TTL,
     ONE_YEAR_TTL,
@@ -100,11 +100,13 @@ class RedisCache:
         if self.redis_url:
             try:
                 self.redis = redis.from_url(self.redis_url, decode_responses=True)
-                logger.info("Redis connection initialized.")
+                log.set(db={"connection_status": "connected", "backend": "redis"})
+                log.info("Redis connection initialized.")
             except Exception as e:
-                logger.error(f"Failed to connect to Redis: {e}")
+                log.set(db={"connection_status": "error", "backend": "redis"})
+                log.error(f"Failed to connect to Redis: {e}")
         else:
-            logger.warning("REDIS_URL is not set. Caching will be disabled.")
+            log.warning("REDIS_URL is not set. Caching will be disabled.")
 
     async def get(self, key: str, model: Optional[type] = None):
         """
@@ -126,7 +128,7 @@ class RedisCache:
             user = await cache.get("user:123", model=User)
         """
         if not self.redis:
-            logger.warning("Redis is not initialized. Skipping get operation.")
+            log.warning("Redis is not initialized. Skipping get operation.")
             return None
 
         try:
@@ -136,7 +138,7 @@ class RedisCache:
                 return deserialize_any(value, model)
             return None
         except Exception as e:
-            logger.error(f"Error accessing Redis for key {key}: {e}")
+            log.error(f"Error accessing Redis for key {key}: {e}")
             return None
 
     async def set(
@@ -159,7 +161,7 @@ class RedisCache:
             await cache.set("user:123", user_obj, model=User, ttl=3600)
         """
         if not self.redis:
-            logger.warning("Redis is not initialized. Skipping set operation.")
+            log.warning("Redis is not initialized. Skipping set operation.")
             return
 
         try:
@@ -168,21 +170,21 @@ class RedisCache:
             json_str = serialize_any(value, model)
             await self.redis.setex(key, ttl, json_str)
         except Exception as e:
-            logger.error(f"Error setting Redis key {key}: {e}")
+            log.error(f"Error setting Redis key {key}: {e}")
 
     async def delete(self, key: str):
         """
         Delete a cached key.
         """
         if not self.redis:
-            logger.warning("Redis is not initialized. Skipping delete operation.")
+            log.warning("Redis is not initialized. Skipping delete operation.")
             return
 
         try:
             await self.redis.delete(key)
-            logger.info(f"Cache deleted for key: {key}")
+            log.info(f"Cache deleted for key: {key}")
         except Exception as e:
-            logger.error(f"Error deleting Redis key {key}: {e}")
+            log.error(f"Error deleting Redis key {key}: {e}")
 
     @property
     def client(self):
@@ -191,7 +193,7 @@ class RedisCache:
         """
         if not self.redis:
             self.redis = redis.from_url(self.redis_url, decode_responses=True)
-            logger.info("Re-initialized Redis connection.")
+            log.info("Re-initialized Redis connection.")
 
         return self.redis
 
@@ -262,7 +264,7 @@ async def get_and_delete_cache(key: str) -> Any | None:
         Cached value (deserialized from JSON) or None if not found
     """
     if not redis_cache.redis:
-        logger.warning("Redis is not initialized. Skipping get_and_delete operation.")
+        log.warning("Redis is not initialized. Skipping get_and_delete operation.")
         return None
 
     try:
@@ -271,7 +273,7 @@ async def get_and_delete_cache(key: str) -> Any | None:
             return deserialize_any(value)
         return None
     except Exception as e:
-        logger.error(f"Error in get_and_delete for key {key}: {e}")
+        log.error(f"Error in get_and_delete for key {key}: {e}")
         return None
 
 
@@ -294,19 +296,19 @@ async def delete_cache_by_pattern(pattern: str):
         await delete_cache_by_pattern("temp:*")  # Delete temporary data
     """
     if not redis_cache.redis:
-        logger.warning("Redis is not initialized. Skipping delete operation.")
+        log.warning("Redis is not initialized. Skipping delete operation.")
         return
 
     try:
         keys = await redis_cache.redis.keys(pattern)
         if not keys:
-            logger.info(f"No keys found for pattern: {pattern}")
+            log.info(f"No keys found for pattern: {pattern}")
             return
         for key in keys:
             await redis_cache.delete(key)
-            logger.info(f"Cache deleted for key: {key}")
+            log.info(f"Cache deleted for key: {key}")
     except Exception as e:
-        logger.error(f"Error deleting Redis keys by pattern {pattern}: {e}")
+        log.error(f"Error deleting Redis keys by pattern {pattern}: {e}")
 
 
 # Caching decorators have been moved to app.decorators.caching

@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from pydantic import BaseModel
 
 # ── Performance tuning ───────────────────────────────────────────────────────
@@ -38,6 +38,7 @@ def execute_tool(
     """
     from app.services.composio.composio_service import get_composio_service
 
+    log.set(tool_name=tool_name, user_id=user_id)
     composio_service = get_composio_service()
     result = composio_service.composio.tools.execute(
         slug=tool_name,
@@ -56,7 +57,7 @@ def execute_tool(
             validated = output_model.model_validate(data)
             return validated.model_dump()
         except Exception as e:
-            logger.warning(f"Schema validation warning for {tool_name}: {e}")
+            log.warning(f"Schema validation warning for {tool_name}: {e}")
             return data
 
     return data
@@ -78,7 +79,7 @@ def fetch_all_providers(
             data = execute_tool(tool_slug, {}, user_id)
             return provider, data
         except Exception as e:
-            logger.warning(f"Provider {provider} ({tool_slug}) failed: {e}")
+            log.warning(f"Provider {provider} ({tool_slug}) failed: {e}")
             return provider, None
 
     results: Dict[str, Any] = {}
@@ -91,10 +92,10 @@ def fetch_all_providers(
                     results[provider] = data
             except FuturesTimeout:
                 provider = futures[future]
-                logger.warning(f"Provider {provider} timed out")
+                log.warning(f"Provider {provider} timed out")
             except Exception as e:
                 provider = futures[future]
-                logger.error(f"Unexpected error for {provider}: {e}")
+                log.error(f"Unexpected error for {provider}: {e}")
     return results
 
 
@@ -115,6 +116,7 @@ async def resolve_providers(
         provider_tools: Registry mapping provider key -> tool slug.
         namespace_fn: Callable that derives a namespace from a tool slug.
     """
+    log.set(user_id=user_id, requested_providers=requested)
     if requested:
         return [p.lower() for p in requested if p.lower() in provider_tools]
 
@@ -126,17 +128,15 @@ async def resolve_providers(
     try:
         connected = await get_user_available_tool_namespaces(user_id)
     except Exception as e:
-        logger.warning(f"Could not get connected namespaces: {e}")
+        log.warning(f"Could not get connected namespaces: {e}")
 
     if connected:
         filtered = [
             p for p, slug in provider_tools.items() if namespace_fn(slug) in connected
         ]
         if filtered:
-            logger.info(
-                f"Auto-selected {len(filtered)} connected providers: {filtered}"
-            )
+            log.info(f"Auto-selected {len(filtered)} connected providers: {filtered}")
             return filtered
 
-    logger.warning("No connected providers detected — returning empty list")
+    log.warning("No connected providers detected — returning empty list")
     return []

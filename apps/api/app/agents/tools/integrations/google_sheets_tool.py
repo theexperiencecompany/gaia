@@ -9,7 +9,7 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 from typing import Any, Dict, List
 
 import httpx
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 from app.decorators import with_doc
 from app.models.google_sheets_models import (
@@ -62,6 +62,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Share a Google Spreadsheet with one or more recipients."""
+        log.set(tool={"integration": "google_sheets", "action": "share_spreadsheet"})
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
@@ -93,7 +94,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     }
                 )
             except httpx.HTTPStatusError as e:
-                logger.error(f"Error sharing with {recipient.email}: {e}")
+                log.error(f"Error sharing with {recipient.email}: {e}")
                 errors.append(
                     {
                         "email": recipient.email,
@@ -102,7 +103,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     }
                 )
             except Exception as e:
-                logger.error(f"Error sharing with {recipient.email}: {e}")
+                log.error(f"Error sharing with {recipient.email}: {e}")
                 errors.append(
                     {
                         "email": recipient.email,
@@ -133,6 +134,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Create a pivot table from spreadsheet data."""
+        log.set(tool={"integration": "google_sheets", "action": "create_pivot_table"})
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
@@ -264,6 +266,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Set data validation rules on a range."""
+        log.set(tool={"integration": "google_sheets", "action": "set_data_validation"})
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
@@ -373,7 +376,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             )
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
-            logger.error(f"Error setting data validation: {e.response.text}")
+            log.error(f"Error setting data validation: {e.response.text}")
             raise RuntimeError(
                 f"Failed to set data validation: {e.response.text}"
             ) from e
@@ -395,6 +398,9 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Add conditional formatting rules to a range."""
+        log.set(
+            tool={"integration": "google_sheets", "action": "add_conditional_format"}
+        )
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
@@ -530,6 +536,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Create a chart from spreadsheet data."""
+        log.set(tool={"integration": "google_sheets", "action": "create_chart"})
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
@@ -690,7 +697,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             )
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
-            logger.error(f"Error creating chart: {e.response.text}")
+            log.error(f"Error creating chart: {e.response.text}")
             raise RuntimeError(f"Failed to create chart: {e.response.text}") from e
 
         result = resp.json()
@@ -719,6 +726,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns user's recently accessed spreadsheets.
         """
+        log.set(tool={"integration": "google_sheets", "action": "gather_context"})
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
@@ -747,7 +755,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 for f in resp.json().get("files", [])
             ]
         except Exception as e:
-            logger.debug(f"Google Sheets fetch failed: {e}")
+            log.debug(f"Google Sheets fetch failed: {e}")
 
         return {"recent_spreadsheets": files, "spreadsheet_count": len(files)}
 

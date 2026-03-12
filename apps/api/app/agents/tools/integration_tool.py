@@ -7,7 +7,7 @@ Tools for listing, connecting, and managing user integrations.
 import re
 from typing import Annotated, List, Optional
 
-from app.config.loggers import common_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.integrations import (
     MAX_AVAILABLE_FOR_LLM,
@@ -85,6 +85,7 @@ async def list_integrations(
     to the frontend for the 'Discover More' section.
     """
     try:
+        log.set(tool={"name": "list_integrations", "action": "list"})
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
@@ -158,7 +159,7 @@ async def list_integrations(
         if search_public_query and search_public_query.strip():
             try:
                 query = search_public_query.strip()
-                logger.info(f"Searching public integrations with query: {query}")
+                log.info(f"Searching public integrations with query: {query}")
 
                 # Get IDs to exclude (user already has these)
                 existing_ids = {i["id"] for i in connected_list + available_list}
@@ -203,7 +204,7 @@ async def list_integrations(
                 async for doc in docs_cursor:
                     iid = doc.get("integration_id")
                     mcp_config = doc.get("mcp_config", {})
-                    logger.info(f"Found public integration: {iid} - {doc.get('name')}")
+                    log.info(f"Found public integration: {iid} - {doc.get('name')}")
 
                     suggested_list.append(
                         {
@@ -222,10 +223,10 @@ async def list_integrations(
                         }
                     )
 
-                logger.info(f"Found {len(suggested_list)} public integrations")
+                log.info(f"Found {len(suggested_list)} public integrations")
 
             except Exception as e:
-                logger.warning(f"Failed to search public integrations: {e}")
+                log.warning(f"Failed to search public integrations: {e}")
 
         # Stream suggested integrations to frontend (camelCase)
         suggested_for_stream = [
@@ -259,7 +260,7 @@ async def list_integrations(
         }
 
     except Exception as e:
-        logger.error(f"Error listing integrations: {e}")
+        log.error(f"Error listing integrations: {e}")
         return f"Error listing integrations: {str(e)}"
 
 
@@ -296,6 +297,7 @@ async def connect_integration(
     config: RunnableConfig,
 ) -> str:
     try:
+        log.set(tool={"name": "connect_integration", "action": "connect"})
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
@@ -369,7 +371,7 @@ async def connect_integration(
         return "\n".join(results) if results else "No integrations to connect."
 
     except Exception as e:
-        logger.error(f"Error connecting integrations {integration_names}: {e}")
+        log.error(f"Error connecting integrations {integration_names}: {e}")
         return f"Error connecting integrations: {str(e)}"
 
 
@@ -383,6 +385,7 @@ async def check_integrations_status(
     config: RunnableConfig,
 ) -> str:
     try:
+        log.set(tool={"name": "check_integrations_status", "action": "check"})
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
@@ -417,7 +420,7 @@ async def check_integrations_status(
         return "\n".join(results)
 
     except Exception as e:
-        logger.error(f"Error checking integration status: {e}")
+        log.error(f"Error checking integration status: {e}")
         return f"Error checking status: {str(e)}"
 
 

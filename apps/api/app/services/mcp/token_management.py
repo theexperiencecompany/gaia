@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.models.mcp_config import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
 
@@ -40,13 +40,13 @@ async def try_refresh_token(
     """Attempt to refresh OAuth token using stored refresh_token."""
     refresh_token = await token_store.get_refresh_token(integration_id)
     if not refresh_token:
-        logger.info(f"No refresh token stored for {integration_id}, cannot refresh")
+        log.info(f"No refresh token stored for {integration_id}, cannot refresh")
         return False
 
     try:
         token_endpoint = oauth_config.get("token_endpoint")
         if not token_endpoint:
-            logger.warning(f"No token_endpoint in OAuth config for {integration_id}")
+            log.warning(f"No token_endpoint in OAuth config for {integration_id}")
             return False
 
         client_id, client_secret = resolve_client_credentials(mcp_config)
@@ -57,7 +57,7 @@ async def try_refresh_token(
                 client_secret = dcr_data.get("client_secret")
 
         if not client_id:
-            logger.warning(
+            log.warning(
                 f"No client_id for refresh, user must re-authorize {integration_id}"
             )
             return False
@@ -100,7 +100,7 @@ async def try_refresh_token(
                     if error_code or error_description
                     else ""
                 )
-                logger.warning(
+                log.warning(
                     f"Token refresh returned {response.status_code} for {integration_id}{details}"
                 )
                 return False
@@ -109,7 +109,7 @@ async def try_refresh_token(
 
             access_token = tokens.get("access_token")
             if not access_token:
-                logger.warning(
+                log.warning(
                     f"Token refresh for {integration_id} returned empty access_token"
                 )
                 return False
@@ -127,11 +127,11 @@ async def try_refresh_token(
                 expires_at=expires_at,
             )
 
-            logger.info(f"Successfully refreshed token for {integration_id}")
+            log.info(f"Successfully refreshed token for {integration_id}")
             return True
 
     except Exception as e:
-        logger.warning(f"Token refresh failed for {integration_id}: {e}")
+        log.warning(f"Token refresh failed for {integration_id}: {e}")
         return False
 
 
@@ -180,4 +180,4 @@ async def revoke_tokens(
                     revocation_endpoint, data=data, headers=headers, timeout=10
                 )
     except Exception as e:
-        logger.warning(f"Token revocation failed for {integration_id}: {e}")
+        log.warning(f"Token revocation failed for {integration_id}: {e}")

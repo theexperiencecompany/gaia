@@ -1,7 +1,7 @@
 import json
 from typing import Any, ClassVar, Dict, Set, TypeVar, cast
 
-from app.config.loggers import common_logger as logger
+from shared.py.wide_events import log
 from app.db.rabbitmq import get_rabbitmq_publisher
 from app.utils.worker_detection import is_main_app
 from fastapi import WebSocket
@@ -19,7 +19,7 @@ class WebSocketManager:
             cls._instance = super(WebSocketManager, cls).__new__(cls)
             # Initialize the instance in __new__ for singleton pattern
             cls._instance.initialized = False
-            logger.info("Created new WebSocketManager instance")
+            log.info("Created new WebSocketManager instance")
         return cast(T, cls._instance)
 
     def __init__(self) -> None:
@@ -33,7 +33,8 @@ class WebSocketManager:
         if user_id not in self.connections:
             self.connections[user_id] = set()
         self.connections[user_id].add(websocket)
-        logger.info(f"Added WebSocket connection for user {user_id}")
+        log.set(websocket={"user_id": user_id, "connection_id": id(websocket)})
+        log.info(f"Added WebSocket connection for user {user_id}")
 
     def remove_connection(self, user_id: str, websocket: WebSocket) -> None:
         """Remove a WebSocket connection for a user"""
@@ -41,7 +42,8 @@ class WebSocketManager:
             self.connections[user_id].discard(websocket)
             if not self.connections[user_id]:
                 del self.connections[user_id]
-        logger.info(f"Removed WebSocket connection for user {user_id}")
+        log.set(websocket={"user_id": user_id, "connection_id": id(websocket)})
+        log.info(f"Removed WebSocket connection for user {user_id}")
 
     async def broadcast_to_user(self, user_id: str, message: Dict[str, Any]) -> None:
         """Broadcast message to all connections for a user"""
@@ -59,7 +61,7 @@ class WebSocketManager:
             try:
                 await websocket.send_json(message)
             except Exception as e:
-                logger.warning(f"Failed to send to WebSocket: {e}")
+                log.warning(f"Failed to send to WebSocket: {e}")
                 disconnected.add(websocket)
 
         # Remove disconnected websockets
@@ -82,10 +84,10 @@ class WebSocketManager:
             # Publisher now handles connection health automatically
             await publisher.publish("websocket-events", message_body)
 
-            logger.debug(f"Published WebSocket message for user {user_id} to RabbitMQ")
+            log.debug(f"Published WebSocket message for user {user_id} to RabbitMQ")
 
         except Exception as e:
-            logger.error(
+            log.error(
                 f"Failed to publish WebSocket message to RabbitMQ: {e}", exc_info=True
             )
 

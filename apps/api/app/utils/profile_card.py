@@ -11,7 +11,7 @@ from app.agents.prompts.onboarding_prompts import (
     PERSONALITY_PHRASE_PROMPT,
     USER_BIO_PROMPT,
 )
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.profession_bios import get_random_bio_for_profession
 from app.db.mongodb.collections import users_collection
 from app.models.memory_models import MemoryEntry
@@ -149,6 +149,12 @@ async def get_user_metadata(user_id: str) -> Dict[str, Any]:
 async def generate_personality_phrase(
     user_id: str, memories: List[MemoryEntry], profession: str = ""
 ) -> str:
+    log.set(
+        operation="generate_personality_phrase",
+        user_id=user_id,
+        profession=profession,
+        memory_count=len(memories),
+    )
     """
     Generate a unique 2-3 word personality phrase using LLM.
 
@@ -177,11 +183,11 @@ async def generate_personality_phrase(
             else str(response.content)
         )
         phrase = content.strip().strip('"').strip("'")
-        logger.info(f"Generated personality phrase for user {user_id}: {phrase}")
+        log.info(f"Generated personality phrase for user {user_id}: {phrase}")
         return phrase
 
     except Exception as e:
-        logger.error(f"Error generating personality phrase: {e}", exc_info=True)
+        log.error(f"Error generating personality phrase: {e}", exc_info=True)
         # Fallback based on profession
         profession_map = {
             "developer": "Curious Developer",
@@ -200,6 +206,11 @@ async def generate_personality_phrase(
 async def generate_user_bio(
     user_id: str, memories: List[MemoryEntry]
 ) -> Tuple[str, BioStatus]:
+    log.set(
+        operation="generate_user_bio",
+        user_id=user_id,
+        memory_count=len(memories),
+    )
     """
     Generate user bio paragraph using LLM based on memories.
 
@@ -239,7 +250,7 @@ async def generate_user_bio(
 
             if has_gmail and email_processed:
                 # Emails processed but no memories - use fallback
-                logger.warning(
+                log.warning(
                     f"Email processed but no memories for user {user_id}. Using fallback bio."
                 )
                 default_bio = get_random_bio_for_profession(name, profession or "other")
@@ -271,11 +282,11 @@ async def generate_user_bio(
             else str(response.content)
         )
         bio = content.strip()
-        logger.info(f"Generated bio for user {user_id}")
+        log.info(f"Generated bio for user {user_id}")
         return bio, BioStatus.COMPLETED
 
     except Exception as e:
-        logger.error(f"Error generating user bio: {e}", exc_info=True)
+        log.error(f"Error generating user bio: {e}", exc_info=True)
 
         # Fallback on error
         try:

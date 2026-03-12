@@ -12,7 +12,7 @@ import json
 import re
 from typing import Literal, Optional
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
@@ -178,7 +178,7 @@ def parse_subagent_response(response: str) -> ParseResult:
                     try:
                         draft = FinalizedOutput(**data)
                     except Exception as e:
-                        logger.warning(f"Failed to parse finalized output: {e}")
+                        log.warning(f"Failed to parse finalized output: {e}")
                         return ParseResult(
                             mode="parse_error",
                             parse_error=f"Invalid finalized output: {str(e)}",
@@ -200,9 +200,7 @@ def parse_subagent_response(response: str) -> ParseResult:
                             raw_response=response,
                         )
 
-                    logger.info(
-                        f"Successfully parsed finalized workflow: {draft.title}"
-                    )
+                    log.info(f"Successfully parsed finalized workflow: {draft.title}")
                     return ParseResult(
                         mode="finalized",
                         draft=draft,
@@ -212,7 +210,7 @@ def parse_subagent_response(response: str) -> ParseResult:
                 elif output_type == "clarifying":
                     try:
                         clarifying = ClarifyingOutput(**data)
-                        logger.info("Successfully parsed clarifying response")
+                        log.info("Successfully parsed clarifying response")
                         return ParseResult(
                             mode="clarifying",
                             message=clarifying.message,
@@ -231,7 +229,7 @@ def parse_subagent_response(response: str) -> ParseResult:
             continue
 
     # No structured output found - treat as conversational message
-    logger.debug("No structured JSON found in subagent response, treating as message")
+    log.debug("No structured JSON found in subagent response, treating as message")
     return ParseResult(
         mode="clarifying",
         message=response,

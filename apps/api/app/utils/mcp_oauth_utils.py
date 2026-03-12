@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 
 # MCP Protocol Version header value per MCP spec.
 #
@@ -87,7 +87,7 @@ def validate_https_url(url: str, allow_localhost: bool = True) -> None:
         hostname = parsed.hostname or ""
         hostname_lower = hostname.lower()
         if hostname_lower in ("localhost", "127.0.0.1", "::1"):
-            logger.debug(f"Allowing HTTP for localhost URL: {url}")
+            log.debug(f"Allowing HTTP for localhost URL: {url}")
             return
 
     raise OAuthSecurityError(
@@ -176,6 +176,7 @@ async def extract_auth_challenge(server_url: str) -> dict:
     """
     # Include MCP protocol version header per MCP spec
     headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
+    log.set(operation="extract_auth_challenge", server_url=server_url)
     start_time = time.perf_counter()
 
     try:
@@ -216,13 +217,13 @@ async def extract_auth_challenge(server_url: str) -> dict:
                 if error_desc_value:
                     result["error_description"] = error_desc_value
 
-                logger.info(
+                log.info(
                     f"[TIMING] Probe {server_url}: 401 OAuth required, {elapsed_ms:.0f}ms"
                 )
-                logger.debug(f"Parsed WWW-Authenticate for {server_url}: {result}")
+                log.debug(f"Parsed WWW-Authenticate for {server_url}: {result}")
                 return result
 
-            logger.info(
+            log.info(
                 f"[TIMING] Probe {server_url}: {response.status_code} (no auth), {elapsed_ms:.0f}ms"
             )
             return {}
@@ -230,21 +231,21 @@ async def extract_auth_challenge(server_url: str) -> dict:
     except httpx.ConnectError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         # Re-raise connection errors so caller can handle them appropriately
-        logger.warning(
+        log.warning(
             f"[TIMING] Probe {server_url}: ConnectError after {elapsed_ms:.0f}ms - {e}"
         )
         raise
 
     except httpx.TimeoutException as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        logger.warning(
+        log.warning(
             f"[TIMING] Probe {server_url}: Timeout after {elapsed_ms:.0f}ms - {e}"
         )
         return {}
 
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        logger.warning(
+        log.warning(
             f"[TIMING] Probe {server_url}: Error after {elapsed_ms:.0f}ms - {type(e).__name__}: {e}"
         )
         return {}
@@ -284,15 +285,13 @@ async def find_protected_resource_metadata(server_url: str) -> Optional[str]:
                     data = response.json()
                     if "authorization_servers" in data or "resource" in data:
                         elapsed_ms = (time.perf_counter() - start_time) * 1000
-                        logger.info(
-                            f"[TIMING] Found PRM at {url} in {elapsed_ms:.0f}ms"
-                        )
+                        log.info(f"[TIMING] Found PRM at {url} in {elapsed_ms:.0f}ms")
                         return url
             except Exception as e:
-                logger.debug(f"PRM not found at {url}: {e}")
+                log.debug(f"PRM not found at {url}: {e}")
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
-    logger.debug(
+    log.debug(
         f"[TIMING] PRM discovery failed for {server_url} after {elapsed_ms:.0f}ms"
     )
     return None
@@ -314,7 +313,7 @@ async def fetch_protected_resource_metadata(prm_url: str) -> dict:
         )
         response.raise_for_status()
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        logger.info(f"[TIMING] Fetched PRM from {prm_url} in {elapsed_ms:.0f}ms")
+        log.info(f"[TIMING] Fetched PRM from {prm_url} in {elapsed_ms:.0f}ms")
         return response.json()
 
 
@@ -366,12 +365,12 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
                 )
                 if response.status_code == 200:
                     elapsed_ms = (time.perf_counter() - start_time) * 1000
-                    logger.info(
+                    log.info(
                         f"[TIMING] Found auth server metadata at {url} in {elapsed_ms:.0f}ms"
                     )
                     return response.json()
             except Exception as e:
-                logger.debug(f"Auth metadata not found at {url}: {e}")
+                log.debug(f"Auth metadata not found at {url}: {e}")
 
     # MCP Spec Fallback: If metadata discovery fails, use default URL pattern
     # Per MCP Authorization spec (2025-03-26): fallback URLs use the
@@ -384,7 +383,7 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
     # under the MCP resource path (e.g., /excalidraw/token is wrong,
     # /token is correct for server.smithery.ai/excalidraw).
     elapsed_ms = (time.perf_counter() - start_time) * 1000
-    logger.info(
+    log.info(
         f"[TIMING] Metadata discovery failed for {auth_server_url} after {elapsed_ms:.0f}ms, "
         "using MCP spec fallback URLs (origin-only, per spec)"
     )
@@ -426,6 +425,12 @@ async def revoke_token(
         has been revoked or was already invalid. The server SHOULD
         respond with 200 even if the token was already revoked.
     """
+    log.set(
+        operation="revoke_token",
+        revocation_endpoint=revocation_endpoint,
+        token_type_hint=token_type_hint,
+        client_id=client_id,
+    )
     validate_https_url(revocation_endpoint)
 
     headers = {
@@ -463,20 +468,20 @@ async def revoke_token(
             # - 400: Invalid request (e.g., unsupported token_type_hint)
             # - 503: Service unavailable
             if response.status_code == 200:
-                logger.info(f"Token revoked successfully at {revocation_endpoint}")
+                log.info(f"Token revoked successfully at {revocation_endpoint}")
                 return True
 
             # Log error but don't raise - revocation is best-effort
-            logger.warning(
+            log.warning(
                 f"Token revocation returned {response.status_code}: {response.text}"
             )
             return False
 
     except httpx.TimeoutException:
-        logger.warning(f"Token revocation timed out at {revocation_endpoint}")
+        log.warning(f"Token revocation timed out at {revocation_endpoint}")
         return False
     except Exception as e:
-        logger.warning(f"Token revocation failed: {e}")
+        log.warning(f"Token revocation failed: {e}")
         return False
 
 
@@ -513,6 +518,12 @@ async def introspect_token(
             "sub": "user123"
         }
     """
+    log.set(
+        operation="introspect_token",
+        introspection_endpoint=introspection_endpoint,
+        token_type_hint=token_type_hint,
+        client_id=client_id,
+    )
     validate_https_url(introspection_endpoint)
 
     headers = {
@@ -546,21 +557,19 @@ async def introspect_token(
 
             if response.status_code == 200:
                 result = response.json()
-                logger.debug(
-                    f"Token introspection result: active={result.get('active')}"
-                )
+                log.debug(f"Token introspection result: active={result.get('active')}")
                 return result
 
-            logger.warning(
+            log.warning(
                 f"Token introspection returned {response.status_code}: {response.text}"
             )
             return None
 
     except httpx.TimeoutException:
-        logger.warning(f"Token introspection timed out at {introspection_endpoint}")
+        log.warning(f"Token introspection timed out at {introspection_endpoint}")
         return None
     except Exception as e:
-        logger.warning(f"Token introspection failed: {e}")
+        log.warning(f"Token introspection failed: {e}")
         return None
 
 
@@ -617,7 +626,7 @@ def parse_oauth_error_response(response: Any) -> dict:
                     :500
                 ]  # Truncate long errors
     except Exception as e:
-        logger.debug(f"Failed to parse OAuth error response: {e}")
+        log.debug(f"Failed to parse OAuth error response: {e}")
         result["error_description"] = str(e)
 
     return result
@@ -751,7 +760,7 @@ def validate_jwt_issuer(
             normalized_expected = expected_issuer.rstrip("/")
 
             if normalized_token != normalized_expected:
-                logger.warning(
+                log.warning(
                     f"JWT issuer mismatch for {integration_id}: "
                     f"expected '{expected_issuer}', got '{token_issuer}'"
                 )
@@ -760,7 +769,7 @@ def validate_jwt_issuer(
         return True
 
     except Exception as e:
-        logger.debug(f"Could not validate JWT issuer for {integration_id}: {e}")
+        log.debug(f"Could not validate JWT issuer for {integration_id}: {e}")
         # Don't fail on validation errors - token may be opaque
         return True
 
@@ -790,11 +799,11 @@ async def select_authorization_server(
 
     # Check for preferred server
     if preferred_server and preferred_server in servers:
-        logger.info(f"Using preferred authorization server: {preferred_server}")
+        log.info(f"Using preferred authorization server: {preferred_server}")
         return preferred_server
 
     # Default to first server
-    logger.info(
+    log.info(
         f"Multiple auth servers available ({len(servers)}), using first: {servers[0]}"
     )
     return servers[0]

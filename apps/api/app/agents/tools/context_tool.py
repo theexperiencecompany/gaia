@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from typing import Annotated, Any, Dict, List, Optional
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_doc
 from app.utils.context_utils import fetch_all_providers, resolve_providers
 from app.services.composio.custom_tools.context_tool import (
@@ -35,6 +35,7 @@ async def gather_context(
     ] = None,
 ) -> Dict[str, Any]:
     """Gather context from all connected providers in parallel."""
+    log.set(tool={"name": "gather_context", "action": "gather"})
     start_time = time.time()
     user_id = get_user_id_from_config(config)
     if not user_id:
@@ -58,7 +59,7 @@ async def gather_context(
     )
 
     total_time = time.time() - start_time
-    logger.info(
+    log.info(
         f"Context fetched from {len(resolved_providers)} providers in {total_time:.2f}s"
     )
 

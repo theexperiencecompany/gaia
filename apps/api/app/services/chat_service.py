@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import (
@@ -56,6 +56,27 @@ async def run_chat_stream_background(
         user_time: User's local time
         conversation_id: Conversation ID (may be new or existing)
     """
+    async with wide_task(
+        "chat_stream",
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+    ):
+        await _run_chat_stream(
+            stream_id=stream_id,
+            body=body,
+            user=user,
+            user_time=user_time,
+            conversation_id=conversation_id,
+        )
+
+
+async def _run_chat_stream(
+    stream_id: str,
+    body: MessageRequestWithHistory,
+    user: dict,
+    user_time: datetime,
+    conversation_id: str,
+) -> None:
     complete_message = ""
     tool_data: Dict[str, Any] = {"tool_data": []}
     tool_outputs: Dict[str, str] = {}  # Track tool_call_id -> output for merging
@@ -65,6 +86,7 @@ async def run_chat_stream_background(
     is_new_conversation = body.conversation_id is None
     usage_metadata: Dict[str, Any] = {}
     follow_up_actions: List[str] = []
+    is_cancelled = False
 
     try:
         description_task = None
@@ -85,12 +107,37 @@ async def run_chat_stream_background(
 
         # Get user model config
         user_id = user.get("user_id")
+        log.set(
+            user={"id": str(user_id)} if user_id else {},
+            chat=ChatContext(
+                conversation_id=conversation_id,
+                stream_id=stream_id,
+                is_new_conversation=is_new_conversation,
+                message_count=len(body.messages) if body.messages else None,
+                has_files=bool(body.fileIds or body.fileData),
+                file_count=len(body.fileIds or []) + len(body.fileData or []),
+                tool_category=body.toolCategory,
+                has_reply=bool(body.replyToMessage),
+                has_calendar_event=bool(body.selectedCalendarEvent),
+                selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
+            ),
+            user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+            selected_tool=body.selectedTool,
+        )
         user_model_config = None
         if user_id:
             try:
                 user_model_config = await get_user_selected_model(user_id)
             except Exception as e:
-                logger.warning(f"Could not get user's selected model: {e}")
+                log.warning(f"Could not get user's selected model: {e}")
+
+        if user_model_config:
+            log.set(
+                model=ModelContext(
+                    name=user_model_config.get("model_id"),
+                    provider=user_model_config.get("provider"),
+                )
+            )
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
 
@@ -122,7 +169,8 @@ async def run_chat_stream_background(
         ):
             # Check for cancellation
             if await stream_manager.is_cancelled(stream_id):
-                logger.info(f"Stream {stream_id} cancelled by user")
+                is_cancelled = True
+                log.info(f"Stream {stream_id} cancelled by user")
                 break
 
             # Skip [DONE] marker - we send it after description generation
@@ -137,7 +185,7 @@ async def run_chat_stream_background(
                         f"""data: {json.dumps({"conversation_description": description})}\n\n""",
                     )
                 except Exception as e:
-                    logger.error(f"Failed to get conversation description: {e}")
+                    log.error(f"Failed to get conversation description: {e}")
                 finally:
                     description_task = None  # Clear to prevent duplicate sends
 
@@ -220,13 +268,35 @@ async def run_chat_stream_background(
                             tool_data=new_data,
                         )
                 except Exception as e:
-                    logger.error(f"Error processing chunk: {e}")
+                    log.error(f"Error processing chunk: {e}")
                     await stream_manager.publish_chunk(stream_id, chunk)
             else:
                 await stream_manager.publish_chunk(stream_id, chunk)
 
         # Get usage metadata
         usage_metadata = usage_metadata_callback.usage_metadata or {}
+
+        # Aggregate token totals across all models
+        total_input = sum(
+            v.get("input_tokens", 0)
+            for v in usage_metadata.values()
+            if isinstance(v, dict)
+        )
+        total_output = sum(
+            v.get("output_tokens", 0)
+            for v in usage_metadata.values()
+            if isinstance(v, dict)
+        )
+        log.set(
+            model=ModelContext(
+                tokens_used=total_input + total_output,
+                input_tokens=total_input,
+                output_tokens=total_output,
+            ),
+            response_length=len(complete_message),
+            follow_up_actions_count=len(follow_up_actions),
+            is_cancelled=is_cancelled,
+        )
 
         # Await description task if still pending
         if description_task:
@@ -237,7 +307,7 @@ async def run_chat_stream_background(
                     f"""data: {json.dumps({"conversation_description": description})}\n\n""",
                 )
             except Exception as e:
-                logger.error(f"Failed to get conversation description: {e}")
+                log.error(f"Failed to get conversation description: {e}")
 
         # Send [DONE] marker to signal stream completion
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
@@ -246,7 +316,7 @@ async def run_chat_stream_background(
         await stream_manager.complete_stream(stream_id)
 
     except Exception as e:
-        logger.error(
+        log.error(
             "Background stream error for {}: {}", stream_id, str(e), exc_info=True
         )
         # IMPORTANT: Publish error chunk FIRST, before calling set_error()
@@ -256,6 +326,7 @@ async def run_chat_stream_background(
             stream_id, f"data: {json.dumps({'error': str(e)})}\n\n"
         )
         await stream_manager.set_error(stream_id, str(e))
+        raise
     finally:
         # On cancellation, complete_message may be empty because nostream: marker
         # never arrives. Recover from Redis progress which tracks accumulated text.
@@ -271,7 +342,7 @@ async def run_chat_stream_background(
                     and not tool_data.get("tool_data")
                 ):
                     tool_data = progress_tool_data
-                logger.debug(
+                log.debug(
                     f"Recovered {len(complete_message)} chars from Redis progress"
                 )
 
@@ -311,7 +382,14 @@ async def run_chat_stream_background(
         # Cleanup Redis
         await stream_manager.cleanup(stream_id)
 
-        logger.debug(f"Background stream {stream_id} completed and saved")
+        tool_entries = tool_data.get("tool_data", [])
+        log.set(
+            response_length=len(complete_message),
+            tool_calls_count=len(tool_entries),
+            tool_types=list({e["tool_name"] for e in tool_entries if "tool_name" in e}),
+            todo_progress_sources=list(todo_progress_accumulated.keys()),
+        )
+        log.debug(f"Background stream {stream_id} completed and saved")
 
 
 async def _initialize_new_conversation(
@@ -380,7 +458,7 @@ async def _save_conversation_async(
         try:
             await _process_token_usage_and_cost(user_id, metadata)
         except Exception as e:
-            logger.error(f"Failed to process token usage: {e}")
+            log.error(f"Failed to process token usage: {e}")
 
     # Get timestamps
     bot_timestamp = datetime.now(timezone.utc)
@@ -545,7 +623,7 @@ async def initialize_conversation(
         user_id=user.get("user_id"),
         conversation_id=conversation_id,
     )
-    logger.info(f"{uploaded_files=}")
+    log.info(f"{uploaded_files=}")
 
     return conversation_id, init_chunk, user_message_id, bot_message_id
 
@@ -644,5 +722,11 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
                 credits_used=total_credits,
             )
 
+        existing_model = log.get().get("model", {})
+        log.set(
+            model={**existing_model, "cost_usd": round(total_credits, 6)},
+            user_plan=str(user_plan),
+        )
+
     except Exception as e:
-        logger.debug(f"Token usage processing failed: {e}")
+        log.debug(f"Token usage processing failed: {e}")

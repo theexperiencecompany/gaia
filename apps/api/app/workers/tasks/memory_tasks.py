@@ -3,8 +3,8 @@
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from app.config.loggers import arq_worker_logger as logger
 from app.services.memory_service import memory_service
+from shared.py.wide_events import log, wide_task
 
 
 async def store_memories_batch(
@@ -27,11 +27,13 @@ async def store_memories_batch(
     Returns:
         Processing result message
     """
-    try:
+    async with wide_task("store_memories_batch", user_id=user_id):
+        log.set(email_batch_size=len(emails_batch))
+
         if not emails_batch:
             return f"No emails to process for user {user_id}"
 
-        logger.info(
+        log.info(
             f"Processing batch of {len(emails_batch)} emails for user {user_id} ({user_name})"
         )
 
@@ -58,10 +60,10 @@ Subject: {subject}
             messages.append({"role": "user", "content": memory_content})
 
         if not messages:
-            logger.warning(f"No valid emails to process for user {user_id}")
+            log.warning(f"No valid emails to process for user {user_id}")
             return f"No valid emails to process for user {user_id}"
 
-        logger.info(
+        log.info(
             f"Storing {len(messages)} emails in a single mem0 API call (user {user_id})..."
         )
 
@@ -117,21 +119,18 @@ Example: "User works as Software Engineer at Acme Corp", "User's email is john@e
         )
 
         if result:
-            logger.info(
+            log.set(emails_stored=len(messages), emails_filtered=0)
+            log.info(
                 f"✓ Batch completed for user {user_id}: stored {len(messages)} emails successfully"
             )
             return f"Stored {len(messages)} emails in mem0 successfully"
         else:
             # Note: result=False means Mem0 filtered all emails (returned 0 memories)
             # This is NOT an error - it's a valid outcome
-            logger.warning(
+            log.set(emails_stored=0, emails_filtered=len(messages))
+            log.warning(
                 f"Mem0 filtered all {len(messages)} emails for user {user_id} (deemed non-memorable)"
             )
             return (
                 f"Processed {len(messages)} emails - Mem0 filtered all as non-memorable"
             )
-
-    except Exception as e:
-        error_msg = f"Error in batch memory processing for user {user_id}: {str(e)}"
-        logger.error(error_msg)
-        return error_msg

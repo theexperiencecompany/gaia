@@ -5,7 +5,7 @@ Reminder scheduler for managing reminder tasks.
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import reminders_collection
 from app.models.reminder_models import (
     CreateReminderRequest,
@@ -56,6 +56,23 @@ class ReminderScheduler(BaseSchedulerService):
         Returns:
             Created reminder ID
         """
+        is_recurring = reminder_data.repeat is not None
+        now = datetime.now(timezone.utc)
+        scheduled_at = reminder_data.scheduled_at
+        seconds_until_scheduled = (
+            int((scheduled_at - now).total_seconds())
+            if scheduled_at and scheduled_at > now
+            else None
+        )
+        log.set(
+            reminder={
+                "user_id": user_id,
+                "scheduled_at": str(reminder_data.scheduled_at),
+                "is_recurring": is_recurring,
+                "repeat": reminder_data.repeat,
+                "seconds_until_scheduled": seconds_until_scheduled,
+            }
+        )
         # Create schedule config
         schedule_config = ScheduleConfig(
             repeat=reminder_data.repeat,
@@ -88,7 +105,7 @@ class ReminderScheduler(BaseSchedulerService):
         # Schedule the task using base scheduler
         await self.schedule_task(reminder_id, schedule_config)
 
-        logger.info(
+        log.info(
             f"Created and scheduled reminder {reminder_id} for {reminder.scheduled_at}"
         )
         return reminder_id
@@ -107,6 +124,7 @@ class ReminderScheduler(BaseSchedulerService):
         Returns:
             True if updated successfully
         """
+        log.set(reminder_id=reminder_id, reminder_user_id=user_id)
         # Add updated_at timestamp
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
@@ -117,7 +135,7 @@ class ReminderScheduler(BaseSchedulerService):
         result = await reminders_collection.update_one(filters, {"$set": update_data})
 
         if result.modified_count > 0:
-            logger.info(f"Updated reminder {reminder_id}")
+            log.info(f"Updated reminder {reminder_id}")
 
             # If scheduled_at was updated, reschedule the task
             if "scheduled_at" in update_data and "status" in update_data:

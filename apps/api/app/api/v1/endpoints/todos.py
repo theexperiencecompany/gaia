@@ -9,7 +9,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone_from_preferences,
 )
-from app.config.loggers import todos_logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import projects_collection, todos_collection
 from app.decorators import tiered_rate_limit
 from app.models.todo_models import (
@@ -46,6 +46,7 @@ async def get_todo_counts(user: dict = Depends(get_current_user)):
     Get all todo counts for dashboard/sidebar in a single efficient call.
     Returns inbox count, today count, upcoming count, and completed count.
     """
+    log.set(user={"id": user["user_id"]}, todo={"operation": "counts"})
     try:
         # Use the stats calculation to get counts efficiently
         stats: TodoStats = await TodoService._calculate_stats(user["user_id"])
@@ -180,6 +181,37 @@ async def list_todos(
     - Pagination with metadata
     - Optional statistics
     """
+    filters_applied = []
+    if q:
+        filters_applied.append("query")
+    if project_id:
+        filters_applied.append("project")
+    if completed is not None:
+        filters_applied.append("completed")
+    if priority:
+        filters_applied.append("priority")
+    if labels:
+        filters_applied.append("labels")
+    if due_today:
+        filters_applied.append("due_today")
+    if due_this_week:
+        filters_applied.append("due_this_week")
+    if due_after or due_before:
+        filters_applied.append("date_range")
+
+    log.set(
+        user={"id": user["user_id"]},
+        todo={
+            "operation": "list",
+            "search_mode": mode.value if hasattr(mode, "value") else str(mode),
+            "query": q,
+            "page": page,
+            "per_page": per_page,
+            "filters_applied": filters_applied,
+            "project_id": project_id,
+        },
+    )
+
     # Handle special date filters
     if due_today:
         today = datetime.now(timezone.utc).date()
@@ -211,7 +243,9 @@ async def list_todos(
     )
 
     try:
-        return await TodoService.list_todos(user["user_id"], params)
+        result = await TodoService.list_todos(user["user_id"], params)
+        log.set(todo={"operation": "list", "result_count": len(result.todos) if hasattr(result, "todos") else 0})
+        return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception:
@@ -225,6 +259,15 @@ async def list_todos(
 @tiered_rate_limit("todo_operations")
 async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)):
     """Create a new todo. If no project is specified, it will be added to Inbox."""
+    log.set(
+        user={"id": user["user_id"]},
+        todo={
+            "operation": "create",
+            "priority": todo.priority.value if todo.priority and hasattr(todo.priority, "value") else str(todo.priority) if todo.priority else None,
+            "has_due_date": todo.due_date is not None,
+            "project_id": todo.project_id if hasattr(todo, "project_id") else None,
+        },
+    )
     try:
         return await TodoService.create_todo(todo, user["user_id"])
     except ValueError as e:
@@ -239,6 +282,7 @@ async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)):
 @router.get("/todos/{todo_id}", response_model=TodoResponse)
 async def get_todo(todo_id: str, user: dict = Depends(get_current_user)):
     """Get a specific todo by ID."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "get", "id": todo_id})
     try:
         return await TodoService.get_todo(todo_id, user["user_id"])
     except ValueError as e:
@@ -256,6 +300,14 @@ async def update_todo(
     todo_id: str, updates: TodoUpdateRequest, user: dict = Depends(get_current_user)
 ):
     """Update a todo."""
+    log.set(
+        user={"id": user["user_id"]},
+        todo={
+            "operation": "update",
+            "id": todo_id,
+            "completion_toggled": updates.completed is not None if hasattr(updates, "completed") else False,
+        },
+    )
     try:
         return await TodoService.update_todo(todo_id, updates, user["user_id"])
     except ValueError as e:
@@ -271,6 +323,7 @@ async def update_todo(
 @tiered_rate_limit("todo_operations")
 async def delete_todo(todo_id: str, user: dict = Depends(get_current_user)):
     """Delete a todo."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "delete", "id": todo_id})
     try:
         await TodoService.delete_todo(todo_id, user["user_id"])
     except ValueError as e:
@@ -297,6 +350,7 @@ async def generate_workflow(
     """
     from app.services.workflow.queue_service import WorkflowQueueService
 
+    log.set(user={"id": user["user_id"]}, todo={"operation": "generate_workflow", "id": todo_id})
     try:
         todo: TodoResponse = await TodoService.get_todo(todo_id, user["user_id"])
 
@@ -352,6 +406,7 @@ async def get_workflow_status(todo_id: str, user: dict = Depends(get_current_use
     - Workflow generation is queued (Redis flag)
     - Workflow exists but has no steps yet
     """
+    log.set(user={"id": user["user_id"]}, todo={"operation": "get_workflow_status", "id": todo_id})
     try:
         from app.services.workflow.queue_service import WorkflowQueueService
         from app.services.workflow.service import WorkflowService
@@ -419,6 +474,10 @@ async def bulk_update_todos(
     }
     ```
     """
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "bulk_update", "bulk_count": len(request.todo_ids) if hasattr(request, "todo_ids") else 0},
+    )
     try:
         return await TodoService.bulk_update_todos(request, user["user_id"])
     except Exception:
@@ -434,6 +493,10 @@ async def bulk_move_todos(
     request: BulkMoveRequest, user: dict = Depends(get_current_user)
 ):
     """Move multiple todos to a different project."""
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "bulk_move", "bulk_count": len(request.todo_ids), "project_id": request.project_id},
+    )
     try:
         return await TodoService.bulk_move_todos(request, user["user_id"])
     except ValueError as e:
@@ -451,6 +514,10 @@ async def bulk_delete_todos(
     user: dict = Depends(get_current_user),
 ):
     """Delete multiple todos."""
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "bulk_delete", "bulk_count": len(todo_ids)},
+    )
     try:
         return await TodoService.bulk_delete_todos(todo_ids, user["user_id"])
     except Exception:
@@ -468,6 +535,10 @@ async def bulk_complete_todos(
     user: dict = Depends(get_current_user),
 ):
     """Mark multiple todos as completed (convenience endpoint)."""
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "bulk_complete", "bulk_count": len(todo_ids)},
+    )
     request = BulkUpdateRequest(
         todo_ids=todo_ids,
         updates=TodoUpdateRequest(completed=True),
@@ -485,6 +556,7 @@ async def bulk_complete_todos(
 @router.get("/projects", response_model=List[ProjectResponse])
 async def list_projects(user: dict = Depends(get_current_user)):
     """List all projects with todo counts."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "list_projects"})
     try:
         return await ProjectService.list_projects(user["user_id"])
     except Exception:
@@ -502,6 +574,7 @@ async def create_project(
     project: ProjectCreate, user: dict = Depends(get_current_user)
 ):
     """Create a new project."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "create_project"})
     try:
         return await ProjectService.create_project(project, user["user_id"])
     except Exception:
@@ -519,6 +592,7 @@ async def update_project(
     user: dict = Depends(get_current_user),
 ):
     """Update a project. Cannot update the default Inbox project."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "update_project", "project_id": project_id})
     try:
         return await ProjectService.update_project(project_id, updates, user["user_id"])
     except ValueError as e:
@@ -541,6 +615,7 @@ async def update_project(
 @tiered_rate_limit("todo_operations")
 async def delete_project(project_id: str, user: dict = Depends(get_current_user)):
     """Delete a project. All todos will be moved to Inbox. Cannot delete Inbox."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "delete_project", "project_id": project_id})
     try:
         await ProjectService.delete_project(project_id, user["user_id"])
     except ValueError as e:
@@ -570,6 +645,7 @@ async def create_subtask(
     todo_id: str, subtask: SubtaskCreateRequest, user: dict = Depends(get_current_user)
 ):
     """Add a new subtask to a todo."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "create_subtask", "id": todo_id})
     try:
         new_subtask = {
             "id": str(uuid.uuid4()),
@@ -617,6 +693,7 @@ async def update_subtask(
     user: dict = Depends(get_current_user),
 ):
     """Update a specific subtask."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "update_subtask", "id": todo_id})
     try:
         # Build update operations
         from typing import Any
@@ -665,7 +742,7 @@ async def update_subtask(
                     todo_id, subtask_id, updates.completed, user["user_id"]
                 )
             except Exception as e:
-                todos_logger.warning(f"Failed to sync subtask to goal: {str(e)}")
+                log.warning(f"Failed to sync subtask to goal: {str(e)}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:
@@ -683,6 +760,7 @@ async def delete_subtask(
     todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
 ):
     """Delete a specific subtask."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "delete_subtask", "id": todo_id})
     try:
         # Store original subtasks count to verify deletion
         todo_before = await todos_collection.find_one(
@@ -740,6 +818,7 @@ async def toggle_subtask_completion(
     todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
 ):
     """Toggle the completion status of a subtask (convenience endpoint)."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "toggle_subtask", "id": todo_id})
     try:
         # First, get current completion status to toggle and for goal sync
 
@@ -793,7 +872,7 @@ async def toggle_subtask_completion(
                 todo_id, subtask_id, new_completed, user["user_id"]
             )
         except Exception as e:
-            todos_logger.warning(f"Failed to sync subtask to goal: {str(e)}")
+            log.warning(f"Failed to sync subtask to goal: {str(e)}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:

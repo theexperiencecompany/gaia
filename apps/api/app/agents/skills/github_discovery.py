@@ -26,7 +26,7 @@ from app.agents.skills.utils import (
     get_github_headers,
     parse_github_url,
 )
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +78,7 @@ async def _fetch_git_tree(
             return await _fetch_git_tree(owner, repo, "master")
 
         if resp.status_code == 403:
-            logger.warning(
+            log.warning(
                 "[skills] GitHub rate limited. Set GITHUB_TOKEN for higher limits"
             )
             return [], branch
@@ -116,14 +116,14 @@ async def _fetch_single_file_content(
             resp = await client.get(url, headers=get_github_headers())
 
             if resp.status_code == 404:
-                logger.debug(f"[skills] File not found: {path}")
+                log.debug(f"[skills] File not found: {path}")
                 return None
 
             resp.raise_for_status()
             return path, resp.text
 
     except Exception as e:
-        logger.debug(f"[skills] Failed to fetch {path}: {e}")
+        log.debug(f"[skills] Failed to fetch {path}: {e}")
         return None
 
 
@@ -151,7 +151,7 @@ async def _fetch_file_contents_batch(
     contents: List[Tuple[str, str]] = []
     for result in results:
         if isinstance(result, BaseException):
-            logger.debug(f"[skills] Exception fetching file: {result}")
+            log.debug(f"[skills] Exception fetching file: {result}")
             continue
         if result is not None:
             contents.append(result)
@@ -175,7 +175,7 @@ async def _parse_skill_from_content(
             subagent_id=metadata.target,
         )
     except Exception as e:
-        logger.debug(f"[skills] Failed to parse SKILL.md in {folder_path}: {e}")
+        log.debug(f"[skills] Failed to parse SKILL.md in {folder_path}: {e}")
         return None
 
 
@@ -197,16 +197,22 @@ async def discover_skills_from_repo(
     """
     owner, repo = parse_github_url(repo_url)
     full_repo_url = f"https://github.com/{owner}/{repo}"
-    logger.info(f"[skills] Discovering skills in {owner}/{repo}")
+    log.set(
+        github_owner=owner,
+        github_repo=repo,
+        github_branch=branch,
+        skill_op="discover_skills_from_repo",
+    )
+    log.info(f"[skills] Discovering skills in {owner}/{repo}")
 
     # Step 1: Fetch entire repo tree in one API call
     tree_entries, resolved_branch = await _fetch_git_tree(owner, repo, branch)
 
     if not tree_entries:
-        logger.warning(f"[skills] No tree entries found in {owner}/{repo}")
+        log.warning(f"[skills] No tree entries found in {owner}/{repo}")
         return []
 
-    logger.info(
+    log.info(
         f"[skills] Fetched tree with {len(tree_entries)} entries from "
         f"{owner}/{repo} ({resolved_branch})"
     )
@@ -215,10 +221,10 @@ async def discover_skills_from_repo(
     skill_files = find_skill_files(tree_entries)
 
     if not skill_files:
-        logger.info(f"[skills] No SKILL.md files found in {owner}/{repo}")
+        log.info(f"[skills] No SKILL.md files found in {owner}/{repo}")
         return []
 
-    logger.info(f"[skills] Found {len(skill_files)} potential skill files")
+    log.info(f"[skills] Found {len(skill_files)} potential skill files")
 
     # Step 3: Sort by priority (standard folders first)
     skill_files.sort(key=get_folder_priority)
@@ -237,13 +243,13 @@ async def discover_skills_from_repo(
         skill = await _parse_skill_from_content(content, folder_path, full_repo_url)
         if skill:
             all_skills.append(skill)
-            logger.debug(f"[skills] Parsed skill: {skill.name} from {folder_path}")
+            log.debug(f"[skills] Parsed skill: {skill.name} from {folder_path}")
 
         if len(all_skills) >= MAX_SKILLS_PER_REPO:
-            logger.warning(f"[skills] Reached max skills limit ({MAX_SKILLS_PER_REPO})")
+            log.warning(f"[skills] Reached max skills limit ({MAX_SKILLS_PER_REPO})")
             break
 
-    logger.info(f"[skills] Found {len(all_skills)} valid skills in {owner}/{repo}")
+    log.info(f"[skills] Found {len(all_skills)} valid skills in {owner}/{repo}")
     return all_skills
 
 
@@ -266,7 +272,14 @@ async def get_skill_from_repo(
     """
     owner, repo = parse_github_url(repo_url)
     full_repo_url = f"https://github.com/{owner}/{repo}"
-    logger.info(f"[skills] Looking for skill '{skill_name}' in {owner}/{repo}")
+    log.set(
+        github_owner=owner,
+        github_repo=repo,
+        github_branch=branch,
+        skill_name=skill_name,
+        skill_op="get_skill_from_repo",
+    )
+    log.info(f"[skills] Looking for skill '{skill_name}' in {owner}/{repo}")
 
     # Fetch tree and find skill files
     tree_entries, resolved_branch = await _fetch_git_tree(owner, repo, branch)
@@ -286,8 +299,8 @@ async def get_skill_from_repo(
 
         skill = await _parse_skill_from_content(content, folder_path, full_repo_url)
         if skill and skill.name == skill_name:
-            logger.info(f"[skills] Found skill '{skill_name}' at {folder_path}")
+            log.info(f"[skills] Found skill '{skill_name}' at {folder_path}")
             return skill
 
-    logger.info(f"[skills] Skill '{skill_name}' not found in {owner}/{repo}")
+    log.info(f"[skills] Skill '{skill_name}' not found in {owner}/{repo}")
     return None

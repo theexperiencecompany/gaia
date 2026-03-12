@@ -12,7 +12,6 @@ import {
   ZapIcon,
 } from "@icons";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import {
   getNavigationShortcut,
@@ -23,6 +22,7 @@ import {
   usePricing,
   useUserSubscriptionStatus,
 } from "@/features/pricing/hooks/usePricing";
+import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";

@@ -7,7 +7,7 @@ while preserving all memory system messages in their original order.
 
 from typing import cast
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.override.langgraph_bigtool.utils import State
 from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
@@ -85,5 +85,5 @@ def manage_system_prompts_node(
         return cast(State, {**state, "messages": filtered_messages})
 
     except Exception as e:
-        logger.error(f"Error in manage system prompts node: {e}")
+        log.error(f"Error in manage system prompts node: {e}")
         return state

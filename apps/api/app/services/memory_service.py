@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
 from app.agents.memory.client import memory_client_manager
-from app.config.loggers import llm_logger as logger
+from shared.py.wide_events import log
 from app.models.memory_models import (
     MemoryEntry,
     MemoryRelation,
@@ -18,7 +18,7 @@ class MemoryService:
 
     def __init__(self):
         """Initialize the memory service."""
-        self.logger = logger
+        self.logger = log
 
     async def _get_client(self):
         """Get the configured async memory client."""
@@ -313,6 +313,16 @@ class MemoryService:
         if not user_id:
             return None
 
+        log.set(
+            memory={
+                "operation": "store",
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "message_count": 1,
+                "async_mode": async_mode,
+            },
+            service="memory_service",
+        )
         try:
             # Prepare metadata
             if metadata is None:
@@ -365,6 +375,18 @@ class MemoryService:
                 # Merge any additional metadata
                 if metadata:
                     memory_entry.metadata.update(metadata)
+                event_type = first_result.get("event", "UNKNOWN")
+                log.set(
+                    memory={
+                        "operation": "store",
+                        "user_id": user_id,
+                        "conversation_id": conversation_id,
+                        "message_count": 1,
+                        "async_mode": async_mode,
+                        "event": event_type,
+                        "is_new": event_type == "ADD",
+                    }
+                )
 
             return memory_entry
 
@@ -412,6 +434,18 @@ class MemoryService:
 
         # Start timing
         batch_start = time.time()
+
+        log.set(
+            memory={
+                "operation": "store_batch",
+                "user_id": user_id,
+                "agent_id": agent_id,
+                "conversation_id": conversation_id,
+                "message_count": len(messages),
+                "async_mode": async_mode,
+            },
+            service="memory_service",
+        )
 
         try:
             # Prepare metadata
@@ -501,6 +535,15 @@ class MemoryService:
         if not user_id:
             return MemorySearchResult()
 
+        log.set(
+            memory={
+                "operation": "search",
+                "user_id": user_id,
+                "query": query,
+                "limit": limit,
+            },
+            service="memory_service",
+        )
         try:
             client = await self._get_client()
 
@@ -536,6 +579,16 @@ class MemoryService:
             memories = self._parse_memory_list(memories_list, user_id)
             relations = self._parse_relationships(relations_list)
 
+            log.set(
+                memory={
+                    "operation": "search",
+                    "user_id": user_id,
+                    "query": query,
+                    "limit": limit,
+                    "result_count": len(memories),
+                    "relation_count": len(relations),
+                }
+            )
             self.logger.debug(
                 f"Search found {len(memories)} memories and {len(relations)} relations for user {user_id}"
             )
@@ -639,6 +692,7 @@ class MemoryService:
         if not user_id:
             return MemorySearchResult()
 
+        log.set(service="memory_service", operation="get_all_memories", user_id=user_id)
         try:
             client = await self._get_client()
 

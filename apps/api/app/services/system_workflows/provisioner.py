@@ -15,7 +15,7 @@ from typing import Optional
 
 from pymongo.errors import DuplicateKeyError
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -65,12 +65,19 @@ async def provision_system_workflows(
         integration_id: The integration that was connected (e.g. 'gmail', 'googlecalendar').
         integration_display_name: Human-readable name for notifications (e.g. 'Gmail').
     """
+    log.set(
+        service="system_workflow_provisioner",
+        operation="provision_system_workflows",
+        user_id=user_id,
+        integration_id=integration_id,
+        integration_display_name=integration_display_name,
+    )
     entries = SYSTEM_WORKFLOWS_BY_INTEGRATION.get(integration_id)
     if not entries:
-        logger.debug(f"No system workflows defined for integration '{integration_id}'")
+        log.debug(f"No system workflows defined for integration '{integration_id}'")
         return
 
-    logger.info(
+    log.info(
         f"Provisioning {len(entries)} system workflow(s) for user {user_id}, "
         f"integration {integration_id}"
     )
@@ -83,7 +90,7 @@ async def provision_system_workflows(
             {"user_id": user_id, "system_workflow_key": key, "is_system_workflow": True}
         )
         if existing:
-            logger.info(
+            log.info(
                 f"System workflow '{key}' already exists for user {user_id}, skipping"
             )
             continue
@@ -92,14 +99,14 @@ async def provision_system_workflows(
             request = factory()
             await WorkflowService.create_workflow(request, user_id)
             created.append(request)
-            logger.info(f"Provisioned system workflow '{key}' for user {user_id}")
+            log.info(f"Provisioned system workflow '{key}' for user {user_id}")
         except DuplicateKeyError:
-            logger.info(
+            log.info(
                 f"System workflow '{key}' already exists for user {user_id} "
                 "(concurrent creation), skipping"
             )
         except Exception as e:
-            logger.error(
+            log.error(
                 f"Failed to provision system workflow '{key}' for user {user_id}: {e}",
                 exc_info=True,
             )
@@ -154,12 +161,12 @@ async def _notify_workflows_provisioned(
                 metadata={"integration_display_name": integration_display_name},
             )
         )
-        logger.info(
+        log.info(
             f"Sent system workflow provisioning notification to user {user_id} "
             f"for integration '{integration_display_name}'"
         )
     except Exception as e:
-        logger.error(
+        log.error(
             f"Failed to send provisioning notification for user {user_id}: {e}",
             exc_info=True,
         )
@@ -174,6 +181,12 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     Returns:
         True if reset succeeded, False if workflow not found or not resettable.
     """
+    log.set(
+        service="system_workflow_provisioner",
+        operation="reset_system_workflow_to_default",
+        user_id=user_id,
+        workflow_id=workflow_id,
+    )
     existing = await workflows_collection.find_one(
         {"_id": workflow_id, "user_id": user_id, "is_system_workflow": True}
     )
@@ -183,7 +196,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     key: Optional[str] = existing.get("system_workflow_key")
     factory = SYSTEM_WORKFLOW_REGISTRY.get(key) if key else None
     if not factory:
-        logger.warning(
+        log.warning(
             f"No definition found for system_workflow_key '{key}' on workflow {workflow_id}"
         )
         return False
@@ -208,13 +221,13 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
                 raise_on_failure=False,
             )
         except Exception as e:
-            logger.error(
+            log.error(
                 f"Failed to re-register triggers, aborting reset of {workflow_id}: {e}"
             )
             return False
 
         if not new_trigger_ids:
-            logger.error(
+            log.error(
                 f"New trigger registration returned empty result for {workflow_id}, "
                 "aborting reset to avoid leaving workflow without triggers"
             )
@@ -230,7 +243,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
                 workflow_id=workflow_id,
             )
         except Exception as e:
-            logger.warning(
+            log.warning(
                 f"Failed to unregister old triggers during reset of {workflow_id} (non-fatal): {e}"
             )
 
@@ -250,7 +263,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
         },
     )
 
-    logger.info(
+    log.info(
         f"Reset system workflow '{key}' ({workflow_id}) to default for user {user_id}"
     )
     return True

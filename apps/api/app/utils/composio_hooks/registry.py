@@ -12,7 +12,7 @@ from typing import Any, Callable, List, Optional, Union
 
 from composio.types import Tool, ToolExecuteParams
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 
 
 class ComposioHookRegistry:
@@ -41,23 +41,24 @@ class ComposioHookRegistry:
     ) -> None:
         """Register a before_execute hook function."""
         self._before_hooks.append(hook_func)
-        logger.debug(f"Registered before_execute hook: {hook_func.__name__}")
+        log.debug(f"Registered before_execute hook: {hook_func.__name__}")
 
     def register_after_hook(self, hook_func: Callable[[str, str, Any], Any]) -> None:
         """Register an after_execute hook function."""
         self._after_hooks.append(hook_func)
-        logger.debug(f"Registered after_execute hook: {hook_func.__name__}")
+        log.debug(f"Registered after_execute hook: {hook_func.__name__}")
 
     def execute_before_hooks(
         self, tool: str, toolkit: str, params: ToolExecuteParams
     ) -> ToolExecuteParams:
         """Execute all registered before_execute hooks."""
+        log.set(composio_tool=tool, composio_toolkit=toolkit)
         modified_params = params
         for hook_func in self._before_hooks:
             try:
                 modified_params = hook_func(tool, toolkit, modified_params)
             except Exception as e:
-                logger.error(
+                log.error(
                     f"Error executing before_execute hook {hook_func.__name__} for {tool}: {e}"
                 )
                 # Continue with other hooks even if one fails
@@ -70,7 +71,7 @@ class ComposioHookRegistry:
             try:
                 modified_response = hook_func(tool, toolkit, modified_response)
             except Exception as e:
-                logger.error(
+                log.error(
                     f"Error executing after_execute hook {hook_func.__name__} for {tool}: {e}"
                 )
                 # Continue with other hooks even if one fails
@@ -81,7 +82,7 @@ class ComposioHookRegistry:
     ) -> None:
         """Register a schema modifier function."""
         self._schema_modifiers.append(modifier_func)
-        logger.debug(f"Registered schema_modifier: {modifier_func.__name__}")
+        log.debug(f"Registered schema_modifier: {modifier_func.__name__}")
 
     def execute_schema_modifiers(self, tool: str, toolkit: str, schema: Tool) -> Tool:
         """Execute all registered schema modifiers."""
@@ -90,7 +91,7 @@ class ComposioHookRegistry:
             try:
                 modified_schema = modifier_func(tool, toolkit, modified_schema)
             except Exception as e:
-                logger.error(
+                log.error(
                     f"Error executing schema_modifier {modifier_func.__name__} for {tool}: {e}"
                 )
                 # Continue with other modifiers even if one fails

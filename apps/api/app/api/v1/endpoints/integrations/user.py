@@ -1,7 +1,7 @@
 """User workspace integration routes."""
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.models.integration_models import (
     UserIntegrationsListResponse as UserIntegrationsListResponseModel,
 )
@@ -28,9 +28,13 @@ async def list_user_integrations(
     user_id: str = Depends(get_user_id),
 ) -> UserIntegrationsListResponseModel:
     try:
-        return await get_user_integrations(user_id)
+        log.set(operation="list_user_integrations", user={"id": user_id})
+        result = await get_user_integrations(user_id)
+        log.set(result_count=len(result.integrations) if hasattr(result, "integrations") else 0)
+        log.set(outcome="success")
+        return result
     except Exception as e:
-        logger.error(f"Error fetching user integrations: {e}")
+        log.error(f"Error fetching user integrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch user integrations")
 
 
@@ -40,9 +44,11 @@ async def add_integration_to_workspace(
     user_id: str = Depends(get_user_id),
 ) -> AddUserIntegrationResponse:
     try:
+        log.set(operation="add_integration_to_workspace", integration_id=request.integration_id, user={"id": user_id})
         user_integration = await add_user_integration_service(
             user_id, request.integration_id
         )
+        log.set(outcome="success")
         return AddUserIntegrationResponse(
             message="Integration added to workspace",
             integration_id=user_integration.integration_id,
@@ -51,7 +57,7 @@ async def add_integration_to_workspace(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error adding integration: {e}")
+        log.error(f"Error adding integration: {e}")
         raise HTTPException(status_code=500, detail="Failed to add integration")
 
 
@@ -61,11 +67,13 @@ async def remove_integration_from_workspace(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
     try:
+        log.set(operation="remove_integration_from_workspace", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
         removed = await remove_user_integration(user_id, integration_id)
         if not removed:
             raise HTTPException(
                 status_code=404, detail="Integration not found in workspace"
             )
+        log.set(outcome="success")
         return IntegrationSuccessResponse(
             message="Integration removed from workspace",
             integration_id=integration_id,
@@ -73,5 +81,5 @@ async def remove_integration_from_workspace(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error removing integration: {e}")
+        log.error(f"Error removing integration: {e}")
         raise HTTPException(status_code=500, detail="Failed to remove integration")

@@ -19,7 +19,7 @@ from app.agents.skills.registry import (
     get_skill_by_name,
     list_skills,
 )
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
@@ -64,6 +64,7 @@ async def install_skill_from_github(
       install_skill_from_github("https://github.com/user/repo/tree/main/my-skill")
       install_skill_from_github("owner/repo/skills/email-templates", target="gmail_agent")
     """
+    log.set(tool={"name": "install_skill_from_github", "action": "install"})
     user_id = _get_user_id(config)
 
     try:
@@ -87,7 +88,7 @@ async def install_skill_from_github(
     except ValueError as e:
         return f"Failed to install skill: {e}"
     except Exception as e:
-        logger.error(f"[skills] GitHub install error: {e}")
+        log.error(f"[skills] GitHub install error: {e}")
         return f"Error installing skill from GitHub: {e}"
 
 
@@ -129,6 +130,7 @@ async def create_skill(
       create_skill("code-review", "Review PRs following team guidelines...",
                     "# Code Review Checklist\\n...", target="github_agent")
     """
+    log.set(tool={"name": "create_skill", "action": "create"})
     user_id = _get_user_id(config)
 
     try:
@@ -149,7 +151,7 @@ async def create_skill(
     except ValueError as e:
         return f"Failed to create skill: {e}"
     except Exception as e:
-        logger.error(f"[skills] Inline create error: {e}")
+        log.error(f"[skills] Inline create error: {e}")
         return f"Error creating skill: {e}"
 
 
@@ -167,6 +169,7 @@ async def list_installed_skills(
     Shows skill name, description, target, status (enabled/disabled),
     source, and VFS location.
     """
+    log.set(tool={"name": "list_installed_skills", "action": "list"})
     user_id = _get_user_id(config)
 
     try:
@@ -194,7 +197,7 @@ async def list_installed_skills(
 
         return "\n".join(lines)
     except Exception as e:
-        logger.error(f"[skills] List error: {e}")
+        log.error(f"[skills] List error: {e}")
         return f"Error listing skills: {e}"
 
 
@@ -216,6 +219,7 @@ async def manage_skill(
     - disable: Deactivate a skill without removing it
     - uninstall: Completely remove the skill and its files
     """
+    log.set(tool={"name": "manage_skill", "action": action})
     user_id = _get_user_id(config)
 
     try:
@@ -244,7 +248,7 @@ async def manage_skill(
             )
 
     except Exception as e:
-        logger.error(f"[skills] Manage error: {e}")
+        log.error(f"[skills] Manage error: {e}")
         return f"Error managing skill: {e}"
 
 

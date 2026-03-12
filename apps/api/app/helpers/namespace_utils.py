@@ -1,7 +1,7 @@
 """Namespace utilities for ChromaDB consistency."""
 
-from app.config.loggers import app_logger as logger
 from app.helpers.mcp_helpers import get_tool_namespace_from_url
+from shared.py.wide_events import log
 
 
 def derive_integration_namespace(
@@ -22,6 +22,6 @@ def derive_integration_namespace(
     """
     if is_custom and server_url:
         namespace = get_tool_namespace_from_url(server_url, fallback=integration_id)
-        logger.debug(f"Derived namespace '{namespace}' from URL for {integration_id}")
+        log.debug(f"Derived namespace '{namespace}' from URL for {integration_id}")
         return namespace
     return integration_id

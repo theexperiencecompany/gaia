@@ -1,7 +1,7 @@
 """ChromaDB cleanup utilities for integration lifecycle management."""
 
-from app.config.loggers import app_logger as logger
 from app.constants.cache import SUBAGENT_CACHE_PREFIX
+from shared.py.wide_events import log
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import delete_tools_by_namespace
 from app.db.redis import delete_cache
@@ -39,17 +39,17 @@ async def cleanup_integration_chroma_data(
         if store:
             await store.adelete(namespace=("subagents",), key=integration_id)
             results["subagent"] = True
-            logger.debug(f"Deleted subagent entry for {integration_id}")
+            log.debug(f"Deleted subagent entry for {integration_id}")
     except Exception as e:
-        logger.warning(f"Failed to delete subagent entry for {integration_id}: {e}")
+        log.warning(f"Failed to delete subagent entry for {integration_id}: {e}")
 
     # 2. Delete indexed tools
     try:
         deleted_count = await delete_tools_by_namespace(namespace)
         results["tools"] = True
-        logger.info(f"Deleted {deleted_count} tools for namespace '{namespace}'")
+        log.info(f"Deleted {deleted_count} tools for namespace '{namespace}'")
     except Exception as e:
-        logger.warning(f"Failed to delete tools for namespace '{namespace}': {e}")
+        log.warning(f"Failed to delete tools for namespace '{namespace}': {e}")
 
     # 3. Invalidate caches
     try:
@@ -57,6 +57,6 @@ async def cleanup_integration_chroma_data(
         await delete_cache(f"{SUBAGENT_CACHE_PREFIX}:{integration_id}")
         results["cache"] = True
     except Exception as e:
-        logger.warning(f"Failed to invalidate cache for namespace '{namespace}': {e}")
+        log.warning(f"Failed to invalidate cache for namespace '{namespace}': {e}")
 
     return results

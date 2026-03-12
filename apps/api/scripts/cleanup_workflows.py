@@ -14,7 +14,7 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 
-from app.config.loggers import arq_worker_logger as logger  # noqa: E402
+from shared.py.wide_events import log as logger  # noqa: E402
 from app.db.mongodb.collections import workflows_collection  # noqa: E402
 
 

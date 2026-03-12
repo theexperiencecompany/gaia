@@ -14,7 +14,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.mongodb.collections import _get_mongodb_instance, vfs_nodes_collection
 from app.models.vfs_models import (
@@ -103,7 +103,7 @@ class MongoVFS:
 
         # Validate that the path belongs to this user
         if not validate_user_access(normalized, user_id):
-            logger.warning(
+            log.warning(
                 f"VFS ACCESS DENIED: User '{user_id}' attempted to access '{path}'"
             )
             raise VFSAccessError(normalized, user_id)
@@ -264,6 +264,7 @@ class MongoVFS:
             VFSAccessError: If user doesn't have access to the path
         """
         original_path = path
+        log.set(service="mongo_vfs", operation="write", user_id=user_id, path=path)
         # Auto-prefix and validate
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
@@ -294,7 +295,7 @@ class MongoVFS:
                 try:
                     await bucket.delete(ObjectId(existing["gridfs_id"]))
                 except Exception as e:
-                    logger.warning(
+                    log.warning(
                         f"VFS: Failed to delete GridFS object {existing['gridfs_id']} for {path} (user={user_id}): {e!s}"
                     )
 
@@ -317,7 +318,7 @@ class MongoVFS:
                     bucket = await self._get_gridfs()
                     await bucket.delete(ObjectId(existing["gridfs_id"]))
                 except Exception as e:
-                    logger.warning(
+                    log.warning(
                         f"VFS: Failed to delete GridFS object {existing['gridfs_id']} for {path} (user={user_id}): {e!s}"
                     )
 
@@ -353,7 +354,7 @@ class MongoVFS:
             upsert=True,
         )
 
-        logger.debug(f"VFS: Wrote file {path} ({size_bytes} bytes) for user {user_id}")
+        log.debug(f"VFS: Wrote file {path} ({size_bytes} bytes) for user {user_id}")
         return path
 
     async def mkdir(self, path: str, user_id: str) -> str:
@@ -371,6 +372,7 @@ class MongoVFS:
             VFSAccessError: If user doesn't have access to the path
         """
         original_path = path
+        log.set(service="mongo_vfs", operation="mkdir", user_id=user_id, path=path)
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
         self._validate_write_access(path, user_id, original_path)
@@ -413,7 +415,7 @@ class MongoVFS:
             upsert=True,
         )
 
-        logger.debug(f"VFS: Created directory {path} for user {user_id}")
+        log.debug(f"VFS: Created directory {path} for user {user_id}")
         return path
 
     async def append(self, path: str, content: str, user_id: str) -> str:
@@ -456,7 +458,7 @@ class MongoVFS:
                     content_bytes: bytes = await stream.read()
                     existing_content = content_bytes.decode("utf-8")
                 except Exception as e:
-                    logger.error(f"VFS: Error reading GridFS file {path}: {e}")
+                    log.error(f"VFS: Error reading GridFS file {path}: {e}")
 
         new_content = existing_content + content
 
@@ -505,7 +507,7 @@ class MongoVFS:
                 content_bytes: bytes = await stream.read()
                 return content_bytes.decode("utf-8")
             except Exception as e:
-                logger.error(f"VFS: Error reading GridFS file {path}: {e}")
+                log.error(f"VFS: Error reading GridFS file {path}: {e}")
                 return None
 
         return None
@@ -779,6 +781,13 @@ class MongoVFS:
             VFSAccessError: If user doesn't have access to the path
         """
         original_path = path
+        log.set(
+            service="mongo_vfs",
+            operation="delete",
+            user_id=user_id,
+            path=path,
+            recursive=recursive,
+        )
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
         self._validate_write_access(path, user_id, original_path)
@@ -811,7 +820,7 @@ class MongoVFS:
                     try:
                         await bucket.delete(ObjectId(child["gridfs_id"]))
                     except Exception as e:
-                        logger.warning(
+                        log.warning(
                             f"VFS: Failed to delete GridFS object {child['gridfs_id']} for {child.get('path')} (user={user_id}): {e!s}"
                         )
 
@@ -828,12 +837,12 @@ class MongoVFS:
                 bucket = await self._get_gridfs()
                 await bucket.delete(ObjectId(node["gridfs_id"]))
             except Exception as e:
-                logger.warning(
+                log.warning(
                     f"VFS: Failed to delete GridFS object {node['gridfs_id']} for {path} (user={user_id}): {e!s}"
                 )
 
         await vfs_nodes_collection.delete_one({"path": path, "user_id": user_id})
-        logger.debug(f"VFS: Deleted {path} for user {user_id}")
+        log.debug(f"VFS: Deleted {path} for user {user_id}")
         return True
 
     async def move(self, source: str, dest: str, user_id: str) -> str:
@@ -907,7 +916,7 @@ class MongoVFS:
             },
         )
 
-        logger.debug(f"VFS: Moved {source} -> {dest} for user {user_id}")
+        log.debug(f"VFS: Moved {source} -> {dest} for user {user_id}")
         return dest
 
     async def copy(self, source: str, dest: str, user_id: str) -> str:

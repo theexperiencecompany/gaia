@@ -8,7 +8,7 @@ import cloudinary
 import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
 
-from app.config.loggers import image_logger as logger
+from shared.py.wide_events import log
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.image_utils import convert_image_to_text, generate_image
@@ -36,6 +36,11 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
     Raises:
         HTTPException: If an error occurs during image generation or upload.
     """
+    log.set(
+        service="image_service",
+        operation="generate_image",
+        improve_prompt=improve_prompt,
+    )
     try:
         original_message = message
 
@@ -53,7 +58,7 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
             )
 
             if not refined_text:
-                logger.error("Failed to generate an improved prompt.")
+                log.error("Failed to generate an improved prompt.")
                 raise ValueError(
                     "Failed to generate an improved prompt or fallback to the original prompt."
                 )
@@ -84,7 +89,7 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
         )
 
         image_url = upload_result.get("secure_url")
-        logger.info(f"Image uploaded successfully. URL: {image_url}")
+        log.info(f"Image uploaded successfully. URL: {image_url}")
 
         # Format the response in the new structure
         return {
@@ -96,7 +101,7 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
         }
 
     except Exception as e:
-        logger.error(f"Error occurred while processing image generation: {str(e)}")
+        log.error(f"Error occurred while processing image generation: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -114,16 +119,17 @@ async def image_to_text_endpoint(message: str, file: UploadFile) -> dict:
     Raises:
         HTTPException: If an error occurs during the image-to-text conversion process.
     """
+    log.set(service="image_service", operation="image_to_text")
     try:
-        logger.info(f"Received image-to-text request with message: {message}")
+        log.info(f"Received image-to-text request with message: {message}")
 
         response = await convert_image_to_text(file, message)
 
-        logger.info("Image-to-text conversion successful.")
+        log.info("Image-to-text conversion successful.")
         return {"response": response}
 
     except Exception as e:
-        logger.error(f"Error occurred while processing image-to-text: {str(e)}")
+        log.error(f"Error occurred while processing image-to-text: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -149,6 +155,6 @@ async def generate_image_stream(query_text: str) -> AsyncGenerator[str, None]:
         yield f"data: {json.dumps({'image_data': image_result})}\n\n"
         yield "data: [DONE]\n\n"
     except Exception as e:
-        logger.error(f"Error generating image: {str(e)}")
+        log.error(f"Error generating image: {str(e)}")
         yield f"data: {json.dumps({'error': f'Failed to generate image: {str(e)}'})}\n\n"
         yield "data: [DONE]\n\n"

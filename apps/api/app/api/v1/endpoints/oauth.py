@@ -3,7 +3,7 @@ from typing import Optional
 from urllib.parse import quote
 
 import httpx
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
 from app.constants.cache import MOBILE_REDIRECT_TTL
@@ -113,7 +113,8 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
     mobile_callback = redirect_uri or "gaiamobile://auth/callback"
     await _store_mobile_redirect(state, mobile_callback)
 
-    logger.info(
+    log.set(oauth_flow_type="mobile")
+    log.info(
         f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}..."
     )
 
@@ -141,15 +142,16 @@ async def workos_mobile_callback(
 
     if not mobile_redirect:
         mobile_redirect = "gaiamobile://auth/callback"
-        logger.warning(
+        log.warning(
             f"No stored redirect URI for state, using default: {mobile_redirect}"
         )
 
-    logger.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
+    log.set(oauth_flow_type="mobile")
+    log.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
 
     try:
         if not code:
-            logger.error("No authorization code received from WorkOS (mobile)")
+            log.error("No authorization code received from WorkOS (mobile)")
             return RedirectResponse(url=f"{mobile_redirect}?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
@@ -167,6 +169,13 @@ async def workos_mobile_callback(
         name = f"{first} {last}".strip()
         picture_url = auth_response.user.profile_picture_url
 
+        fields_extracted = [
+            field
+            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            if value
+        ]
+        log.set(fields_extracted=fields_extracted)
+
         # Store user info in DB
         await store_user_info(name, email, picture_url)
 
@@ -174,11 +183,11 @@ async def workos_mobile_callback(
         return RedirectResponse(url=f"{mobile_redirect}?token={quote(token, safe='')}")
 
     except HTTPException as e:
-        logger.error(f"HTTP error during WorkOS mobile auth: {e.detail}")
+        log.error(f"HTTP error during WorkOS mobile auth: {e.detail}")
         return RedirectResponse(url=f"{mobile_redirect}?error={e.detail}")
 
     except Exception as e:
-        logger.error(f"Unexpected error during WorkOS mobile callback: {str(e)}")
+        log.error(f"Unexpected error during WorkOS mobile callback: {str(e)}")
         return RedirectResponse(
             url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error"
         )
@@ -215,10 +224,11 @@ async def workos_desktop_callback(
     Returns:
         RedirectResponse to gaia:// deep link with token
     """
+    log.set(oauth_flow_type="desktop")
     try:
         # Validate code parameter
         if not code:
-            logger.error("No authorization code received from WorkOS (desktop)")
+            log.error("No authorization code received from WorkOS (desktop)")
             return RedirectResponse(url="gaia://auth/callback?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
@@ -236,6 +246,13 @@ async def workos_desktop_callback(
         name = f"{first} {last}".strip()
         picture_url = auth_response.user.profile_picture_url
 
+        fields_extracted = [
+            field
+            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            if value
+        ]
+        log.set(fields_extracted=fields_extracted)
+
         # Store user info in our database
         await store_user_info(name, email, picture_url)
 
@@ -246,11 +263,11 @@ async def workos_desktop_callback(
         )
 
     except HTTPException as e:
-        logger.error(f"HTTP error during WorkOS desktop auth: {e.detail}")
+        log.error(f"HTTP error during WorkOS desktop auth: {e.detail}")
         return RedirectResponse(url=f"gaia://auth/callback?error={e.detail}")
 
     except Exception as e:
-        logger.error(f"Unexpected error during WorkOS desktop callback: {str(e)}")
+        log.error(f"Unexpected error during WorkOS desktop callback: {str(e)}")
         return RedirectResponse(url="gaia://auth/callback?error=server_error")
 
 
@@ -277,10 +294,11 @@ async def workos_callback(
         if return_url:
             await redis_cache.client.delete(key)
 
+    log.set(oauth_flow_type="web")
     try:
         # Validate code parameter
         if not code:
-            logger.error("No authorization code received from WorkOS")
+            log.error("No authorization code received from WorkOS")
             return RedirectResponse(
                 url=f"{settings.FRONTEND_URL}/login?error=missing_code"
             )
@@ -299,6 +317,13 @@ async def workos_callback(
         last = auth_response.user.last_name or ""
         name = f"{first} {last}".strip()
         picture_url = auth_response.user.profile_picture_url
+
+        fields_extracted = [
+            field
+            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            if value
+        ]
+        log.set(fields_extracted=fields_extracted)
 
         # Store user info in our database
         await store_user_info(name, email, picture_url)
@@ -329,11 +354,11 @@ async def workos_callback(
         return response
 
     except HTTPException as e:
-        logger.error(f"HTTP error during WorkOS : {e.detail}")
+        log.error(f"HTTP error during WorkOS : {e.detail}")
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error={e.detail}")
 
     except Exception as e:
-        logger.error(f"Unexpected error during WorkOS callback: {str(e)}")
+        log.error(f"Unexpected error during WorkOS callback: {str(e)}")
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=server_error")
 
 
@@ -361,7 +386,7 @@ async def composio_callback(
     # Validate and consume state token
     state_data = await validate_and_consume_oauth_state(state)
     if not state_data:
-        logger.error(f"Invalid OAuth state token: {state}")
+        log.error(f"Invalid OAuth state token: {state}")
         return RedirectResponse(
             url=f"{settings.FRONTEND_URL}/redirect?oauth_error=invalid_state"
         )
@@ -372,7 +397,7 @@ async def composio_callback(
     # Handle failed connection early
     if status != "success":
         error_type = "cancelled" if error == "access_denied" else "failed"
-        logger.warning(
+        log.warning(
             f"Composio connection failed: status={status}, error={error}, accountId={connectedAccountId}"
         )
         return RedirectResponse(
@@ -381,7 +406,7 @@ async def composio_callback(
 
     # Ensure we have connectedAccountId for success status
     if not connectedAccountId:
-        logger.error("Connected account ID missing for successful connection")
+        log.error("Connected account ID missing for successful connection")
         return RedirectResponse(
             url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=failed"
         )
@@ -394,7 +419,7 @@ async def composio_callback(
         )
 
         if not connected_account:
-            logger.error(f"Connected account not found: {connectedAccountId}")
+            log.error(f"Connected account not found: {connectedAccountId}")
             return RedirectResponse(
                 url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed"
             )
@@ -404,7 +429,7 @@ async def composio_callback(
         user_id = connected_account.user_id  # type: ignore
 
         if not user_id:
-            logger.error(f"User ID missing for account: {connectedAccountId}")
+            log.error(f"User ID missing for account: {connectedAccountId}")
             return RedirectResponse(
                 url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed"
             )
@@ -412,18 +437,19 @@ async def composio_callback(
         # Find integration configuration by auth config ID
         integration_config = get_integration_by_config(config_id)
         if not integration_config:
-            logger.error(
-                f"Integration config not found for auth_config_id: {config_id}"
-            )
+            log.error(f"Integration config not found for auth_config_id: {config_id}")
             return RedirectResponse(
                 url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=failed"
             )
 
+        log.set(
+            user={"id": str(user_id)},
+            integration_id=integration_config.id if integration_config else None,
+        )
+
         # Verify user_id matches the state token (security check)
         if str(user_id) != expected_user_id:
-            logger.error(
-                f"User ID mismatch: state={expected_user_id}, account={user_id}"
-            )
+            log.error(f"User ID mismatch: state={expected_user_id}, account={user_id}")
             return RedirectResponse(
                 url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=user_mismatch"
             )
@@ -436,7 +462,7 @@ async def composio_callback(
         )
 
         # Successful connection - redirect to frontend with success indicator
-        logger.info(
+        log.info(
             f"Composio connection successful: user={user_id}, "
             f"integration={integration_config.id}, account={connectedAccountId}"
         )
@@ -446,7 +472,7 @@ async def composio_callback(
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:
-        logger.error(
+        log.error(
             f"Unexpected error in Composio callback: {str(e)}, "
             f"accountId={connectedAccountId}",
             exc_info=True,

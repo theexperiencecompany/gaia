@@ -1,0 +1,95 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/promtail-positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # File-based scrape for locally-running Python services (nx dev api, nx worker api,
+  # nx dev voice-agent). configure_file_logging() writes flat NDJSON (same format as
+  # LOG_FORMAT=json Docker stdout) to each app's logs/ directory. We mount those
+  # directories into promtail so logs are shipped to Loki even outside Docker.
+  - job_name: gaia_api_local
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          service: gaia-backend
+          service_name: gaia-backend
+          container: gaia-backend
+          __path__: /var/log/gaia-api/structured-*.json
+      - targets:
+          - localhost
+        labels:
+          service: arq_worker
+          service_name: arq_worker
+          container: arq_worker
+          __path__: /var/log/gaia-worker/structured-*.json
+      - targets:
+          - localhost
+        labels:
+          service: voice-agent
+          service_name: voice-agent
+          container: voice-agent
+          __path__: /var/log/gaia-voice-agent/structured-*.json
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            logger_name: logger
+      - labels:
+          level:
+          logger_name:
+
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        # Use Docker API filters to only discover application containers.
+        # This is more reliable than relabel_configs keep/drop actions,
+        # which Promtail's docker_sd does not enforce for target filtering.
+        filters:
+          - name: label
+            values:
+              - "com.docker.compose.service=gaia-backend"
+              - "com.docker.compose.service=arq_worker"
+              - "com.docker.compose.service=discord-bot"
+              - "com.docker.compose.service=slack-bot"
+              - "com.docker.compose.service=telegram-bot"
+              - "com.docker.compose.service=voice-agent-worker"
+    relabel_configs:
+      # Strip the leading slash from container name (e.g. /gaia-backend -> gaia-backend)
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: "container"
+      # Use the compose service name as the primary service label.
+      # service_name mirrors service for OTel/Grafana Explore compatibility —
+      # without it Grafana Explore shows everything as "unknown_service".
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: "service"
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: "service_name"
+      # Track which compose project the container belongs to
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        target_label: "compose_project"
+      # stdout vs stderr
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: "stream"
+    pipeline_stages:
+      # Parse JSON log lines emitted by gaia-backend and arq_worker (LOG_FORMAT=json).
+      # Non-JSON lines (postgres, redis, rabbitmq) are passed through untouched.
+      - json:
+          expressions:
+            level: level
+            logger_name: logger
+      # Promote level and logger as indexed Loki labels for fast label-based filtering.
+      # Keep the label cardinality low — query on high-cardinality fields (user_id,
+      # request_id, path) via LogQL `| json` parser inside Grafana, not as labels.
+      - labels:
+          level:
+          logger_name:

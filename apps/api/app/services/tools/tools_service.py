@@ -4,7 +4,7 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import user_integrations_collection
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
@@ -25,6 +25,7 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
 
     Uses request coalescing for global tools to prevent thundering herd.
     """
+    log.set(service="tools_service", operation="get_available_tools", user_id=user_id)
     if user_id is None:
         return await coalesce_request("global_tools", _build_tools_response)
     return await _build_tools_response(user_id)
@@ -63,7 +64,7 @@ async def _fetch_user_mcp_integrations(user_id: Optional[str]) -> list[dict]:
         ]
         return await user_integrations_collection.aggregate(pipeline).to_list(None)
     except Exception as e:
-        logger.warning(f"Failed to fetch user MCP integrations: {e}")
+        log.warning(f"Failed to fetch user MCP integrations: {e}")
         return []
 
 
@@ -83,7 +84,7 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
             seen_integrations.add(category_obj.integration_name)
         for tool in category_obj.tools:
             if tool.name in seen_tool_names:
-                logger.debug(f"Skipping duplicate tool from registry: {tool.name}")
+                log.debug(f"Skipping duplicate tool from registry: {tool.name}")
                 continue
             seen_tool_names.add(tool.name)
 
@@ -110,7 +111,7 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
             _fetch_user_mcp_integrations(user_id),
         )
     except Exception as e:
-        logger.warning(f"Failed to fetch MCP tools: {e}")
+        log.warning(f"Failed to fetch MCP tools: {e}")
 
     # Process custom integrations first for proper metadata
     for custom in custom_integrations:
@@ -128,12 +129,12 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
         for tool_dict in custom_tools:
             tool_name = tool_dict.get("name")
             if not tool_name:
-                logger.warning(
+                log.warning(
                     f"Skipping tool with missing 'name' from custom MCP {integration_id}"
                 )
                 continue
             if tool_name in seen_tool_names:
-                logger.debug(
+                log.debug(
                     f"Skipping duplicate tool from custom MCP {integration_id}: {tool_name}"
                 )
                 continue
@@ -150,7 +151,7 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
             )
             categories.add(integration_id)
 
-        logger.info(f"Added {len(custom_tools)} tools from custom MCP {integration_id}")
+        log.info(f"Added {len(custom_tools)} tools from custom MCP {integration_id}")
         seen_integrations.add(integration_id)
 
     if global_mcp_tools:
@@ -184,6 +185,16 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
 
             seen_integrations.add(integration_id)
 
+    registry_tool_count = sum(len(cat.tools) for cat in _categories.values())
+    mcp_tool_count = len(tool_infos) - registry_tool_count
+    log.set(
+        tools={
+            "total_count": len(tool_infos),
+            "registry_tool_count": registry_tool_count,
+            "mcp_tool_count": max(mcp_tool_count, 0),
+            "category_count": len(categories),
+        }
+    )
     return ToolsListResponse(
         tools=tool_infos,
         total_count=len(tool_infos),
@@ -230,6 +241,7 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
     Returns tools from all MCP integrations the user has connected that
     have stored tools in MongoDB. This overlays on top of cached global tools.
     """
+    log.set(service="tools_service", operation="get_user_mcp_tools", user_id=user_id)
     if not user_id:
         return []
 
@@ -289,12 +301,12 @@ async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
                     )
                 )
 
-            logger.debug(
+            log.debug(
                 f"Fetched {len(integration_tools)} tools from MCP {integration_id}"
             )
 
     except Exception as e:
-        logger.warning(f"Failed to fetch user MCP tools: {e}")
+        log.warning(f"Failed to fetch user MCP tools: {e}")
 
     return tool_infos
 

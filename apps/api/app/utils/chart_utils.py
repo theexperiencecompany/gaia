@@ -9,7 +9,7 @@ from typing import Dict, List, Any
 
 import cloudinary.uploader
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 
 
 async def upload_chart_to_cloudinary(
@@ -29,6 +29,7 @@ async def upload_chart_to_cloudinary(
     Raises:
         Exception: If upload fails (logged but not re-raised)
     """
+    log.set(chart_title=chart_title, user_id=user_id)
     try:
         chart_id = str(uuid.uuid4())
         timestamp = int(time.time())
@@ -52,14 +53,14 @@ async def upload_chart_to_cloudinary(
 
         image_url = upload_result.get("secure_url")
         if image_url:
-            logger.info(f"Chart uploaded successfully. URL: {image_url}")
+            log.info(f"Chart uploaded successfully. URL: {image_url}")
             return image_url
         else:
-            logger.error("Missing secure_url in Cloudinary upload response")
+            log.error("Missing secure_url in Cloudinary upload response")
             return None
 
     except Exception as e:
-        logger.error(f"Failed to upload chart to Cloudinary: {str(e)}", exc_info=True)
+        log.error(f"Failed to upload chart to Cloudinary: {str(e)}", exc_info=True)
         return None
 
 
@@ -80,22 +81,22 @@ async def process_chart_results(
     chart_errors: List[str] = []
 
     if not execution_results:
-        logger.info("No execution results to process for charts")
+        log.info("No execution results to process for charts")
         return charts, chart_errors
 
-    logger.info(f"Processing {len(execution_results)} execution results for charts")
+    log.info(f"Processing {len(execution_results)} execution results for charts")
 
     for i, result in enumerate(execution_results):
-        logger.info(
+        log.info(
             f"Processing result {i}: type={type(result)}, attributes={dir(result)}"
         )
-        logger.info(
+        log.info(
             f"Processing result {i}: has_png={hasattr(result, 'png')}, has_chart={hasattr(result, 'chart')}"
         )
         if hasattr(result, "png"):
-            logger.info(f"Result {i} PNG value: {result.png is not None}")
+            log.info(f"Result {i} PNG value: {result.png is not None}")
         if hasattr(result, "chart"):
-            logger.info(f"Result {i} chart value: {result.chart is not None}")
+            log.info(f"Result {i} chart value: {result.chart is not None}")
 
         # Check for static chart (PNG base64) - upload as image
         if hasattr(result, "png") and result.png:
@@ -115,15 +116,15 @@ async def process_chart_results(
                             "description": "Static chart generated from code execution",
                         }
                     )
-                    logger.info(f"Successfully processed static chart {i + 1}")
+                    log.info(f"Successfully processed static chart {i + 1}")
                 else:
                     error_msg = f"Failed to upload static chart {i + 1} to Cloudinary"
                     chart_errors.append(error_msg)
-                    logger.warning(error_msg)
+                    log.warning(error_msg)
             except Exception as e:
                 error_msg = f"Failed to process static chart {i + 1}: {str(e)}"
                 chart_errors.append(error_msg)
-                logger.error(error_msg, exc_info=True)
+                log.error(error_msg, exc_info=True)
 
         # Check for interactive chart data - send structured data to frontend
         if hasattr(result, "chart") and result.chart:
@@ -158,13 +159,13 @@ async def process_chart_results(
                         },
                     }
                 )
-                logger.info(
+                log.info(
                     f"Successfully processed interactive chart {i + 1}: {chart_type}"
                 )
             except Exception as e:
                 error_msg = f"Failed to process interactive chart {i + 1}: {str(e)}"
                 chart_errors.append(error_msg)
-                logger.error(error_msg, exc_info=True)
+                log.error(error_msg, exc_info=True)
 
     return charts, chart_errors
 

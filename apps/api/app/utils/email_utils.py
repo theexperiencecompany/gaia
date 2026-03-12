@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup
 from bson import ObjectId
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.db.mongodb.collections import users_collection
@@ -55,6 +55,11 @@ async def send_support_team_notification(
     Raises:
         Exception: If email sending fails
     """
+    log.set(
+        ticket_id=notification_data.ticket_id,
+        request_type=notification_data.type.value,
+        user_email=notification_data.user_email,
+    )
     try:
         subject = f"[{notification_data.ticket_id}] New {notification_data.type.value.title()} Request: {notification_data.title}"
         html_content = generate_support_team_email_html(notification_data)
@@ -70,13 +75,11 @@ async def send_support_team_notification(
                         "reply_to": notification_data.user_email,
                     }
                 )
-                logger.info(f"Support notification sent to {support_email}")
+                log.info(f"Support notification sent to {support_email}")
             except Exception as e:
-                logger.error(
-                    f"Failed to send support email to {support_email}: {str(e)}"
-                )
+                log.error(f"Failed to send support email to {support_email}: {str(e)}")
     except Exception as e:
-        logger.error(f"Error sending support team notifications: {str(e)}")
+        log.error(f"Error sending support team notifications: {str(e)}")
         raise
 
 
@@ -104,9 +107,9 @@ async def send_support_to_user_email(
                 "html": html_content,
             }
         )
-        logger.info(f"Confirmation email sent to user {notification_data.user_email}")
+        log.info(f"Confirmation email sent to user {notification_data.user_email}")
     except Exception as e:
-        logger.error(f"Failed to send confirmation email to user: {str(e)}")
+        log.error(f"Failed to send confirmation email to user: {str(e)}")
         raise
 
 
@@ -146,7 +149,7 @@ def generate_support_team_email_html(data: SupportEmailNotification) -> str:
 
         return html_content
     except Exception as e:
-        logger.error(f"Error generating support team email HTML: {str(e)}")
+        log.error(f"Error generating support team email HTML: {str(e)}")
         raise
 
 
@@ -185,7 +188,7 @@ def generate_support_to_user_email_html(data: SupportEmailNotification) -> str:
 
         return html_content
     except Exception as e:
-        logger.error(f"Error generating support to user email HTML: {str(e)}")
+        log.error(f"Error generating support to user email HTML: {str(e)}")
         raise
 
 
@@ -215,9 +218,9 @@ async def send_pro_subscription_email(
                 "reply_to": CONTACT_EMAIL,
             }
         )
-        logger.info(f"Pro subscription welcome email sent to {user_email}")
+        log.info(f"Pro subscription welcome email sent to {user_email}")
     except Exception as e:
-        logger.error(f"Failed to send pro subscription email to {user_email}: {str(e)}")
+        log.error(f"Failed to send pro subscription email to {user_email}: {str(e)}")
         raise
 
 
@@ -239,9 +242,9 @@ async def send_welcome_email(user_email: str, user_name: Optional[str] = None) -
                 "reply_to": CONTACT_EMAIL,
             }
         )
-        logger.info(f"Welcome email sent to {user_email}")
+        log.info(f"Welcome email sent to {user_email}")
     except Exception as e:
-        logger.error(f"Failed to send welcome email to {user_email}: {str(e)}")
+        log.error(f"Failed to send welcome email to {user_email}: {str(e)}")
         raise
 
 
@@ -268,9 +271,9 @@ async def add_contact_to_resend(
         }
 
         resend.Contacts.create(params)
-        logger.info(f"Contact added to Resend audience: {user_email}")
+        log.info(f"Contact added to Resend audience: {user_email}")
     except Exception as e:
-        logger.error(
+        log.error(
             f"Failed to add contact to Resend audience for {user_email}: {str(e)}"
         )
         # Don't raise exception - user creation should still succeed even if contact addition fails
@@ -292,7 +295,7 @@ def generate_welcome_email_html(user_name: Optional[str] = None) -> str | None:
 
         return html_content
     except Exception as e:
-        logger.error(f"Error generating welcome email HTML: {str(e)}")
+        log.error(f"Error generating welcome email HTML: {str(e)}")
         raise
 
 
@@ -316,7 +319,7 @@ async def send_inactive_user_email(
         if user_id:
             user = await users_collection.find_one({"_id": ObjectId(user_id)})
             if not user:
-                logger.error(f"User {user_id} not found")
+                log.error(f"User {user_id} not found")
                 return False
 
             now = datetime.now(timezone.utc)
@@ -362,11 +365,11 @@ async def send_inactive_user_email(
                 {"$set": {"last_inactive_email_sent": datetime.now(timezone.utc)}},
             )
 
-        logger.info(f"Inactive user email sent to {user_email}")
+        log.info(f"Inactive user email sent to {user_email}")
         return True
 
     except Exception as e:
-        logger.error(f"Failed to send inactive user email to {user_email}: {str(e)}")
+        log.error(f"Failed to send inactive user email to {user_email}: {str(e)}")
         raise
 
 
@@ -384,7 +387,7 @@ def generate_pro_subscription_html(
         )
         return html_content
     except Exception as e:
-        logger.error(f"Error generating pro subscription email HTML: {str(e)}")
+        log.error(f"Error generating pro subscription email HTML: {str(e)}")
         raise
 
 
@@ -401,7 +404,7 @@ def generate_inactive_user_email_html(user_name: Optional[str] = None) -> str:
 
         return html_content
     except Exception as e:
-        logger.error(f"Error generating inactive user email HTML: {str(e)}")
+        log.error(f"Error generating inactive user email HTML: {str(e)}")
         raise
 
 

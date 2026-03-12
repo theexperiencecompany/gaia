@@ -3,6 +3,7 @@ import { devtools, persist } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
 
 import type { UploadedFilePreview } from "@/features/chat/components/files/FilePreview";
+import { stripLocalePrefix } from "@/i18n/config";
 import type { FileData, SearchMode } from "@/types/shared";
 
 interface ComposerState {
@@ -92,7 +93,8 @@ export const useComposerStore = create<ComposerStore>()(
           // Navigate to chat page if not already there
           if (
             typeof window !== "undefined" &&
-            window.location.pathname.startsWith("/c") === false
+            stripLocalePrefix(window.location.pathname).startsWith("/c") ===
+              false
           ) {
             // Use Next.js programmatic navigation
             window.location.assign("/c");

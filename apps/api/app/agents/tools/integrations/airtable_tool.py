@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from composio import Composio
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -22,6 +22,7 @@ def register_airtable_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns current workspace structure for situational awareness.
         """
+        log.set(tool={"integration": "airtable", "action": "gather_context"})
         user_id = auth_credentials.get("user_id", "")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
@@ -31,7 +32,7 @@ def register_airtable_custom_tools(composio: Composio) -> List[str]:
             data = execute_tool("AIRTABLE_LIST_BASES", {}, user_id)
             bases_raw = data.get("bases", [])
         except Exception as e:
-            logger.debug("Airtable bases fetch failed: %s", e)
+            log.debug("Airtable bases fetch failed: %s", e)
 
         bases: List[Dict[str, Any]] = []
         for base in bases_raw[:3]:
@@ -48,7 +49,7 @@ def register_airtable_custom_tools(composio: Composio) -> List[str]:
                     for t in schema_data.get("tables", [])
                 ]
             except Exception as e:
-                logger.debug("Airtable tables fetch for %s failed: %s", base_id, e)
+                log.debug("Airtable tables fetch for %s failed: %s", base_id, e)
             bases.append(
                 {"id": base_id, "name": base.get("name", ""), "tables": tables}
             )
