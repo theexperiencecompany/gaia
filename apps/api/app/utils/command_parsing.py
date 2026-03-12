@@ -75,6 +75,16 @@ def extract_output_redirect(
         if filepath.startswith(">") and len(filepath) > 1:
             return prefix.rstrip(), (">", filepath[1:])
 
+        # Handle case where > is embedded in the token, e.g. "cmd>/path"
+        dbl = filepath.find(">>")
+        if dbl != -1 and dbl + 2 < len(filepath):
+            cmd_part = (prefix + filepath[:dbl]).rstrip()
+            return cmd_part, (">>", filepath[dbl + 2 :])
+        sing = filepath.find(">")
+        if sing != -1 and sing + 1 < len(filepath):
+            cmd_part = (prefix + filepath[:sing]).rstrip()
+            return cmd_part, (">", filepath[sing + 1 :])
+
     j = len(prefix)
     while j > 0 and prefix[j - 1].isspace():
         j -= 1

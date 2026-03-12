@@ -1,0 +1,11 @@
+# Bearer token used by Prometheus to authenticate against the GAIA API /metrics endpoint.
+# This must match the METRICS_TOKEN environment variable set in apps/api/.env.
+#
+# To use:
+#   1. Copy this file: cp metrics_token.example metrics_token
+#   2. Replace the value below with your actual token
+#   3. Set the same value as METRICS_TOKEN in apps/api/.env
+#
+# The token is mounted into the Prometheus container at /etc/prometheus/metrics_token
+# and referenced by the gaia-api scrape job in prometheus.yml.
+your-token-here

@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import (
@@ -56,41 +56,296 @@ async def run_chat_stream_background(
         user_time: User's local time
         conversation_id: Conversation ID (may be new or existing)
     """
+    async with wide_task(
+        "chat_stream",
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+    ):
+        await _run_chat_stream(
+            stream_id=stream_id,
+            body=body,
+            user=user,
+            user_time=user_time,
+            conversation_id=conversation_id,
+        )
+
+
+async def _get_user_model_config(user_id: Optional[str]) -> Any:
+    """Fetch the user-selected model config, returning None on failure."""
+    if not user_id:
+        return None
+    try:
+        return await get_user_selected_model(user_id)
+    except Exception as e:
+        log.warning(f"Could not get user's selected model: {e}")
+        return None
+
+
+def _set_stream_log_context(
+    body: MessageRequestWithHistory,
+    user_id: Optional[str],
+    conversation_id: str,
+    stream_id: str,
+    is_new_conversation: bool,
+    user_model_config: Any,
+) -> None:
+    """Attach structured log context for the stream."""
+    log.set(
+        user={"id": str(user_id)} if user_id else {},
+        chat=ChatContext(
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            is_new_conversation=is_new_conversation,
+            message_count=len(body.messages) if body.messages else None,
+            has_files=bool(body.fileIds or body.fileData),
+            file_count=len(body.fileIds or []) + len(body.fileData or []),
+            tool_category=body.toolCategory,
+            has_reply=bool(body.replyToMessage),
+            has_calendar_event=bool(body.selectedCalendarEvent),
+            selected_workflow_id=body.selectedWorkflow.id
+            if body.selectedWorkflow
+            else None,
+        ),
+        user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+        selected_tool=body.selectedTool,
+    )
+    if user_model_config:
+        log.set(
+            model=ModelContext(
+                name=user_model_config.get("model_id"),
+                provider=user_model_config.get("provider"),
+            )
+        )
+
+
+def _start_description_task(
+    is_new_conversation: bool,
+    body: MessageRequestWithHistory,
+    conversation_id: str,
+    user: dict,
+) -> Optional[asyncio.Task]:
+    """Create a background task to generate a conversation description if new."""
+    if not is_new_conversation:
+        return None
+    last_message = body.messages[-1] if body.messages else None
+    return asyncio.create_task(
+        generate_and_update_description(
+            conversation_id,
+            last_message,
+            user,
+            body.selectedTool if body.selectedTool else None,
+            body.selectedWorkflow if body.selectedWorkflow else None,
+        )
+    )
+
+
+async def _publish_description_if_ready(
+    stream_id: str,
+    description_task: Optional[asyncio.Task],
+) -> Optional[asyncio.Task]:
+    """Publish conversation description chunk if the task has completed. Returns None to clear it."""
+    if not description_task or not description_task.done():
+        return description_task
+    try:
+        description = description_task.result()
+        await stream_manager.publish_chunk(
+            stream_id,
+            f"""data: {json.dumps({"conversation_description": description})}\n\n""",
+        )
+    except Exception as e:
+        log.error(f"Failed to get conversation description: {e}")
+    return None  # Clear to prevent duplicate sends
+
+
+async def _process_data_chunk(
+    stream_id: str,
+    chunk: str,
+    tool_data: Dict[str, Any],
+    tool_outputs: Dict[str, str],
+    todo_progress_accumulated: Dict[str, Any],
+    follow_up_actions: List[str],
+) -> tuple[List[str], bool]:
+    """
+    Process a 'data: ' prefixed agent chunk.
+
+    Extracts tool data, follow-up actions, todo progress, and tool outputs,
+    publishes appropriate sub-chunks to Redis, and updates stream progress.
+
+    Returns (follow_up_actions, published) where published indicates whether
+    the chunk was already sent (True) or should be sent as-is (False).
+    """
+    chunk_payload = chunk[6:]
+
+    chunk_json: Optional[Dict[str, Any]] = None
+    try:
+        chunk_json = json.loads(chunk_payload)
+    except json.JSONDecodeError:
+        chunk_json = None
+
+    if chunk_json and "todo_progress" in chunk_json:
+        snapshot = chunk_json["todo_progress"]
+        source = snapshot.get("source", "executor")
+        todo_progress_accumulated[source] = snapshot
+
+    new_data = extract_tool_data(chunk_payload)
+    if new_data:
+        if "other_data" in new_data:
+            other_data_dict = new_data["other_data"]
+            if "follow_up_actions" in other_data_dict:
+                follow_up_actions = other_data_dict["follow_up_actions"]
+                await stream_manager.publish_chunk(
+                    stream_id,
+                    f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
+                )
+
+        if "tool_data" in new_data:
+            for tool_entry in new_data["tool_data"]:
+                tool_data["tool_data"].append(tool_entry)
+                await stream_manager.publish_chunk(
+                    stream_id,
+                    f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
+                )
+
+        # Capture tool_output events for merging before save
+        # AND stream to frontend for real-time UI updates
+        if "tool_output" in new_data:
+            output_data = new_data["tool_output"]
+            tool_call_id = output_data.get("tool_call_id")
+            output = output_data.get("output")
+            if tool_call_id and output:
+                tool_outputs[tool_call_id] = output
+            await stream_manager.publish_chunk(
+                stream_id,
+                f"data: {json.dumps({'tool_output': output_data})}\n\n",
+            )
+
+        if chunk_json and "todo_progress" in chunk_json:
+            await stream_manager.publish_chunk(
+                stream_id,
+                f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
+            )
+
+        response_text = _extract_response_text(chunk)
+        if response_text or new_data:
+            await stream_manager.update_progress(
+                stream_id,
+                message_chunk=response_text,
+                tool_data=new_data,
+            )
+        return follow_up_actions, True
+
+    # No tool data — pass through as-is
+    await stream_manager.publish_chunk(stream_id, chunk)
+    response_text = _extract_response_text(chunk)
+    if response_text:
+        await stream_manager.update_progress(
+            stream_id,
+            message_chunk=response_text,
+            tool_data=None,
+        )
+    return follow_up_actions, True
+
+
+def _aggregate_usage_metadata(
+    usage_metadata: Dict[str, Any],
+) -> tuple[int, int]:
+    """Sum input and output tokens across all model entries in usage metadata."""
+    total_input = sum(
+        v.get("input_tokens", 0) for v in usage_metadata.values() if isinstance(v, dict)
+    )
+    total_output = sum(
+        v.get("output_tokens", 0)
+        for v in usage_metadata.values()
+        if isinstance(v, dict)
+    )
+    return total_input, total_output
+
+
+async def _recover_stream_state(
+    stream_id: str,
+    complete_message: str,
+    tool_data: Dict[str, Any],
+) -> tuple[str, Dict[str, Any]]:
+    """
+    Recover complete_message and tool_data from Redis progress when the nostream
+    marker was never delivered (e.g. on cancellation).
+    """
+    if complete_message:
+        return complete_message, tool_data
+
+    progress = await stream_manager.get_progress(stream_id)
+    if not progress:
+        return complete_message, tool_data
+
+    complete_message = progress.get("complete_message", "")
+    progress_tool_data = progress.get("tool_data")
+    if (
+        isinstance(progress_tool_data, dict)
+        and progress_tool_data.get("tool_data")
+        and not tool_data.get("tool_data")
+    ):
+        tool_data = progress_tool_data
+    log.debug(f"Recovered {len(complete_message)} chars from Redis progress")
+    return complete_message, tool_data
+
+
+def _merge_tool_outputs(
+    tool_data: Dict[str, Any],
+    tool_outputs: Dict[str, str],
+) -> None:
+    """Merge captured tool outputs into the tool_data entries before saving."""
+    for entry in tool_data.get("tool_data", []):
+        if entry.get("tool_name") == "tool_calls_data":
+            data = entry.get("data", {})
+            if isinstance(data, dict):
+                tool_call_id = data.get("tool_call_id")
+                if tool_call_id and tool_call_id in tool_outputs:
+                    data["output"] = tool_outputs[tool_call_id]
+
+
+def _inject_todo_progress(
+    tool_data: Dict[str, Any],
+    todo_progress_accumulated: Dict[str, Any],
+) -> None:
+    """Inject accumulated todo_progress snapshots as a single tool_data entry."""
+    if todo_progress_accumulated:
+        tool_data["tool_data"].append(
+            {
+                "tool_name": "todo_progress",
+                "data": todo_progress_accumulated,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+
+async def _run_chat_stream(
+    stream_id: str,
+    body: MessageRequestWithHistory,
+    user: dict,
+    user_time: datetime,
+    conversation_id: str,
+) -> None:
     complete_message = ""
     tool_data: Dict[str, Any] = {"tool_data": []}
-    tool_outputs: Dict[str, str] = {}  # Track tool_call_id -> output for merging
-    todo_progress_accumulated: Dict[str, Any] = {}  # Accumulate todo_progress by source
+    tool_outputs: Dict[str, str] = {}
+    todo_progress_accumulated: Dict[str, Any] = {}
     user_message_id = str(uuid4())
     bot_message_id = str(uuid4())
     is_new_conversation = body.conversation_id is None
     usage_metadata: Dict[str, Any] = {}
     follow_up_actions: List[str] = []
+    is_cancelled = False
 
     try:
-        description_task = None
-        if is_new_conversation:
-            last_message = body.messages[-1] if body.messages else None
-            selectedTool = body.selectedTool if body.selectedTool else None
-            selectedWorkflow = body.selectedWorkflow if body.selectedWorkflow else None
+        description_task = _start_description_task(
+            is_new_conversation, body, conversation_id, user
+        )
 
-            description_task = asyncio.create_task(
-                generate_and_update_description(
-                    conversation_id,
-                    last_message,
-                    user,
-                    selectedTool,
-                    selectedWorkflow,
-                )
-            )
-
-        # Get user model config
         user_id = user.get("user_id")
-        user_model_config = None
-        if user_id:
-            try:
-                user_model_config = await get_user_selected_model(user_id)
-            except Exception as e:
-                logger.warning(f"Could not get user's selected model: {e}")
+        user_model_config = await _get_user_model_config(user_id)
+        _set_stream_log_context(
+            body, user_id, conversation_id, stream_id, is_new_conversation, user_model_config
+        )
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
 
@@ -102,13 +357,11 @@ async def run_chat_stream_background(
                 conversation_id=conversation_id,
                 user_message_id=user_message_id,
                 bot_message_id=bot_message_id,
-                stream_id=stream_id,  # Include stream_id for frontend
+                stream_id=stream_id,
             )
-            await stream_manager.publish_chunk(stream_id, init_data)
         else:
-            # Send message IDs and stream_id for existing conversation
             init_data = f"data: {json.dumps({'user_message_id': user_message_id, 'bot_message_id': bot_message_id, 'stream_id': stream_id})}\n\n"
-            await stream_manager.publish_chunk(stream_id, init_data)
+        await stream_manager.publish_chunk(stream_id, init_data)
 
         # Stream response from agent
         async for chunk in await call_agent(
@@ -118,115 +371,58 @@ async def run_chat_stream_background(
             user_time=user_time,
             user_model_config=user_model_config,
             usage_metadata_callback=usage_metadata_callback,
-            stream_id=stream_id,  # For cancellation checking
+            stream_id=stream_id,
         ):
-            # Check for cancellation
             if await stream_manager.is_cancelled(stream_id):
-                logger.info(f"Stream {stream_id} cancelled by user")
+                is_cancelled = True
+                log.info(f"Stream {stream_id} cancelled by user")
                 break
 
             # Skip [DONE] marker - we send it after description generation
             if chunk == "data: [DONE]\n\n":
                 continue
 
-            if description_task and description_task.done():
-                try:
-                    description = description_task.result()
-                    await stream_manager.publish_chunk(
-                        stream_id,
-                        f"""data: {json.dumps({"conversation_description": description})}\n\n""",
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to get conversation description: {e}")
-                finally:
-                    description_task = None  # Clear to prevent duplicate sends
+            description_task = await _publish_description_if_ready(
+                stream_id, description_task
+            )
 
             # Process complete message marker (internal, not sent to client)
             if chunk.startswith("nostream: "):
                 nostream_json = json.loads(chunk.replace("nostream: ", ""))
-                if (
-                    isinstance(nostream_json, dict)
-                    and "complete_message" in nostream_json
-                ):
+                if isinstance(nostream_json, dict) and "complete_message" in nostream_json:
                     complete_message = str(nostream_json["complete_message"])
                 else:
                     complete_message = ""
                 continue
 
-            # Process and publish data chunks
             if chunk.startswith("data: "):
                 try:
-                    chunk_payload = chunk[6:]
-
-                    chunk_json: dict[str, Any] | None = None
-                    try:
-                        chunk_json = json.loads(chunk_payload)
-                    except json.JSONDecodeError:
-                        chunk_json = None
-
-                    if chunk_json and "todo_progress" in chunk_json:
-                        snapshot = chunk_json["todo_progress"]
-                        source = snapshot.get("source", "executor")
-                        todo_progress_accumulated[source] = snapshot
-
-                    new_data = extract_tool_data(chunk_payload)
-                    if new_data:
-                        if "other_data" in new_data:
-                            other_data_dict = new_data["other_data"]
-                            if "follow_up_actions" in other_data_dict:
-                                follow_up_actions = other_data_dict["follow_up_actions"]
-                                # Stream follow_up_actions to frontend
-                                await stream_manager.publish_chunk(
-                                    stream_id,
-                                    f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
-                                )
-
-                        if "tool_data" in new_data:
-                            for tool_entry in new_data["tool_data"]:
-                                tool_data["tool_data"].append(tool_entry)
-                                await stream_manager.publish_chunk(
-                                    stream_id,
-                                    f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
-                                )
-
-                        # Capture tool_output events for merging before save
-                        # AND stream to frontend for real-time UI updates
-                        if "tool_output" in new_data:
-                            output_data = new_data["tool_output"]
-                            tool_call_id = output_data.get("tool_call_id")
-                            output = output_data.get("output")
-                            if tool_call_id and output:
-                                tool_outputs[tool_call_id] = output
-                            # Stream tool_output to frontend
-                            await stream_manager.publish_chunk(
-                                stream_id,
-                                f"data: {json.dumps({'tool_output': output_data})}\n\n",
-                            )
-
-                        if chunk_json and "todo_progress" in chunk_json:
-                            await stream_manager.publish_chunk(
-                                stream_id,
-                                f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
-                            )
-                    else:
-                        await stream_manager.publish_chunk(stream_id, chunk)
-
-                    # Update progress for recovery
-                    response_text = _extract_response_text(chunk)
-                    if response_text or new_data:
-                        await stream_manager.update_progress(
-                            stream_id,
-                            message_chunk=response_text,
-                            tool_data=new_data,
-                        )
+                    follow_up_actions, _ = await _process_data_chunk(
+                        stream_id,
+                        chunk,
+                        tool_data,
+                        tool_outputs,
+                        todo_progress_accumulated,
+                        follow_up_actions,
+                    )
                 except Exception as e:
-                    logger.error(f"Error processing chunk: {e}")
+                    log.error(f"Error processing chunk: {e}")
                     await stream_manager.publish_chunk(stream_id, chunk)
             else:
                 await stream_manager.publish_chunk(stream_id, chunk)
 
-        # Get usage metadata
         usage_metadata = usage_metadata_callback.usage_metadata or {}
+        total_input, total_output = _aggregate_usage_metadata(usage_metadata)
+        log.set(
+            model=ModelContext(
+                tokens_used=total_input + total_output,
+                input_tokens=total_input,
+                output_tokens=total_output,
+            ),
+            response_length=len(complete_message),
+            follow_up_actions_count=len(follow_up_actions),
+            is_cancelled=is_cancelled,
+        )
 
         # Await description task if still pending
         if description_task:
@@ -237,18 +433,14 @@ async def run_chat_stream_background(
                     f"""data: {json.dumps({"conversation_description": description})}\n\n""",
                 )
             except Exception as e:
-                logger.error(f"Failed to get conversation description: {e}")
+                log.error(f"Failed to get conversation description: {e}")
 
         # Send [DONE] marker to signal stream completion
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
-
-        # Mark stream complete
         await stream_manager.complete_stream(stream_id)
 
     except Exception as e:
-        logger.error(
-            "Background stream error for {}: {}", stream_id, str(e), exc_info=True
-        )
+        log.error(f"Background stream error for {stream_id}: {e}")
         # IMPORTANT: Publish error chunk FIRST, before calling set_error()
         # set_error() publishes STREAM_ERROR_SIGNAL which breaks the subscriber loop
         # If we call set_error() first, the error message never reaches the client
@@ -259,42 +451,13 @@ async def run_chat_stream_background(
     finally:
         # On cancellation, complete_message may be empty because nostream: marker
         # never arrives. Recover from Redis progress which tracks accumulated text.
-        if not complete_message:
-            progress = await stream_manager.get_progress(stream_id)
-            if progress:
-                complete_message = progress.get("complete_message", "")
-                # Also recover tool_data if we have it
-                progress_tool_data = progress.get("tool_data")
-                if (
-                    isinstance(progress_tool_data, dict)
-                    and progress_tool_data.get("tool_data")
-                    and not tool_data.get("tool_data")
-                ):
-                    tool_data = progress_tool_data
-                logger.debug(
-                    f"Recovered {len(complete_message)} chars from Redis progress"
-                )
+        complete_message, tool_data = await _recover_stream_state(
+            stream_id, complete_message, tool_data
+        )
 
-        # Merge tool outputs into tool_data entries before saving
-        # This ensures outputs are persisted and available on reload
-        for entry in tool_data.get("tool_data", []):
-            if entry.get("tool_name") == "tool_calls_data":
-                data = entry.get("data", {})
-                if isinstance(data, dict):
-                    tool_call_id = data.get("tool_call_id")
-                    if tool_call_id and tool_call_id in tool_outputs:
-                        data["output"] = tool_outputs[tool_call_id]
-
-        # Inject accumulated todo_progress as a single tool_data entry
-        # Each source's latest snapshot is kept; frontend merges on render
-        if todo_progress_accumulated:
-            tool_data["tool_data"].append(
-                {
-                    "tool_name": "todo_progress",
-                    "data": todo_progress_accumulated,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
-            )
+        # Merge tool outputs into tool_data entries and inject todo_progress before saving
+        _merge_tool_outputs(tool_data, tool_outputs)
+        _inject_todo_progress(tool_data, todo_progress_accumulated)
 
         # Always save conversation to MongoDB
         await _save_conversation_async(
@@ -311,7 +474,14 @@ async def run_chat_stream_background(
         # Cleanup Redis
         await stream_manager.cleanup(stream_id)
 
-        logger.debug(f"Background stream {stream_id} completed and saved")
+        tool_entries = tool_data.get("tool_data", [])
+        log.set(
+            response_length=len(complete_message),
+            tool_calls_count=len(tool_entries),
+            tool_types=list({e["tool_name"] for e in tool_entries if "tool_name" in e}),
+            todo_progress_sources=list(todo_progress_accumulated.keys()),
+        )
+        log.debug(f"Background stream {stream_id} completed and saved")
 
 
 async def _initialize_new_conversation(
@@ -380,7 +550,7 @@ async def _save_conversation_async(
         try:
             await _process_token_usage_and_cost(user_id, metadata)
         except Exception as e:
-            logger.error(f"Failed to process token usage: {e}")
+            log.error(f"Failed to process token usage: {e}")
 
     # Get timestamps
     bot_timestamp = datetime.now(timezone.utc)
@@ -545,7 +715,7 @@ async def initialize_conversation(
         user_id=user.get("user_id"),
         conversation_id=conversation_id,
     )
-    logger.info(f"{uploaded_files=}")
+    log.info(f"{uploaded_files=}")
 
     return conversation_id, init_chunk, user_message_id, bot_message_id
 
@@ -644,5 +814,11 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
                 credits_used=total_credits,
             )
 
+        existing_model = log.get().get("model", {})
+        log.set(
+            model={**existing_model, "cost_usd": round(total_credits, 6)},
+            user_plan=str(user_plan),
+        )
+
     except Exception as e:
-        logger.debug(f"Token usage processing failed: {e}")
+        log.debug(f"Token usage processing failed: {e}")

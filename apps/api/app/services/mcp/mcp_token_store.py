@@ -10,7 +10,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import (
     OAUTH_DISCOVERY_PREFIX,
@@ -83,15 +83,15 @@ class MCPTokenStore:
         """Get decrypted OAuth access token if not expired."""
         cred = await self.get_credential(integration_id)
         if not cred:
-            logger.debug(f"[{integration_id}] No credential record found in DB")
+            log.debug(f"[{integration_id}] No credential record found in DB")
             return None
 
         if not cred.access_token:
-            logger.debug(f"[{integration_id}] Credential exists but no access_token")
+            log.debug(f"[{integration_id}] Credential exists but no access_token")
             return None
 
         if cred.status != MCPCredentialStatus.CONNECTED:
-            logger.debug(
+            log.debug(
                 f"[{integration_id}] Credential status is '{cred.status}', expected 'connected'"
             )
             return None
@@ -102,10 +102,10 @@ class MCPTokenStore:
         if cred.token_expires_at:
             now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
             if cred.token_expires_at < now_utc:
-                logger.warning(f"OAuth token expired for {integration_id}")
+                log.warning(f"OAuth token expired for {integration_id}")
                 return None
 
-        logger.debug(f"[{integration_id}] Returning decrypted OAuth token")
+        log.debug(f"[{integration_id}] Returning decrypted OAuth token")
         return self._decrypt(cred.access_token)
 
     async def get_refresh_token(self, integration_id: str) -> Optional[str]:
@@ -185,7 +185,7 @@ class MCPTokenStore:
                 )
                 session.add(cred)
             await session.commit()
-            logger.info(f"Stored bearer token for {integration_id}")
+            log.info(f"Stored bearer token for {integration_id}")
 
     async def store_oauth_tokens(
         self,
@@ -233,7 +233,7 @@ class MCPTokenStore:
                 )
                 session.add(cred)
             await session.commit()
-            logger.info(f"Stored OAuth tokens for {integration_id}")
+            log.info(f"Stored OAuth tokens for {integration_id}")
 
     async def store_unauthenticated(self, integration_id: str) -> None:
         """Store connection for unauthenticated MCP.
@@ -261,7 +261,7 @@ class MCPTokenStore:
                 )
                 session.add(cred)
                 await session.commit()
-                logger.info(
+                log.info(
                     f"Created credential record for unauthenticated {integration_id}"
                 )
 
@@ -332,7 +332,7 @@ class MCPTokenStore:
             if cred:
                 await session.delete(cred)
                 await session.commit()
-                logger.info(f"Deleted MCP credentials for {integration_id}")
+                log.info(f"Deleted MCP credentials for {integration_id}")
 
     async def update_status(
         self,
@@ -421,7 +421,7 @@ class MCPTokenStore:
                 cred.client_registration = None
                 session.add(cred)
                 await session.commit()
-                logger.info(f"Deleted DCR client for {integration_id}")
+                log.info(f"Deleted DCR client for {integration_id}")
 
     async def store_dcr_client(self, integration_id: str, dcr_data: dict) -> None:
         """Store DCR client registration from dynamic registration."""
@@ -447,7 +447,7 @@ class MCPTokenStore:
                 )
                 session.add(cred)
             await session.commit()
-            logger.info(f"Stored DCR client for {integration_id}")
+            log.info(f"Stored DCR client for {integration_id}")
 
     async def store_oauth_discovery(self, integration_id: str, discovery: dict) -> None:
         """
@@ -466,7 +466,7 @@ class MCPTokenStore:
         cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
         # Pass dict directly - set_cache handles serialization
         await set_cache(cache_key, discovery, ttl=OAUTH_DISCOVERY_TTL)
-        logger.info(f"Cached OAuth discovery for {integration_id}")
+        log.info(f"Cached OAuth discovery for {integration_id}")
 
     async def get_oauth_discovery(self, integration_id: str) -> Optional[dict]:
         """Get cached OAuth discovery data from Redis."""
@@ -488,7 +488,7 @@ class MCPTokenStore:
         """
         cache_key = f"mcp_oauth_nonce:{self.user_id}:{integration_id}"
         await set_cache(cache_key, nonce, ttl=OAUTH_STATE_TTL)
-        logger.debug(f"Stored OIDC nonce for {integration_id}")
+        log.debug(f"Stored OIDC nonce for {integration_id}")
 
     async def get_and_delete_oauth_nonce(self, integration_id: str) -> Optional[str]:
         """
@@ -542,7 +542,7 @@ class MCPTokenStore:
         cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
         result = await delete_cache(cache_key)
         if result:
-            logger.info(f"Deleted OAuth discovery cache for {integration_id}")
+            log.info(f"Deleted OAuth discovery cache for {integration_id}")
         return result or False
 
     async def cleanup_integration(self, integration_id: str) -> None:
@@ -561,4 +561,4 @@ class MCPTokenStore:
         # Delete stored credentials
         await self.delete_credentials(integration_id)
 
-        logger.info(f"Cleaned up all OAuth data for {integration_id}")
+        log.info(f"Cleaned up all OAuth data for {integration_id}")

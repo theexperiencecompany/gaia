@@ -18,7 +18,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     tiered_limiter,
 )
-from app.config.loggers import app_logger
+from shared.py.wide_events import log
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
@@ -87,7 +87,7 @@ def with_rate_limiting(
 
                 # Skip rate limiting for system operations if configured
                 if bypass_for_system and initiator == "backend":
-                    app_logger.debug(
+                    log.debug(
                         f"Bypassing rate limiting for system operation: {actual_feature_key}"
                     )
                 else:
@@ -116,13 +116,13 @@ def with_rate_limiting(
                             }
                         )
 
-                        app_logger.debug(
+                        log.debug(
                             f"Rate limit check passed for user {user_id}, feature {actual_feature_key}"
                         )
 
                     except RateLimitExceededException as e:
                         # Convert to agent-friendly exception
-                        app_logger.warning(
+                        log.warning(
                             f"Rate limit exceeded for user {user_id}, feature {actual_feature_key}"
                         )
                         detail_dict = {}
@@ -166,12 +166,12 @@ def with_rate_limiting(
                             reset_time=reset_time,
                         )
                     except Exception as e:
-                        app_logger.error(
+                        log.error(
                             f"Rate limiting failed for user {user_id}, feature {actual_feature_key}: {str(e)}"
                         )
                         raise
             else:
-                app_logger.warning(
+                log.warning(
                     f"No user context for {actual_feature_key}, skipping rate limiting"
                 )
 
@@ -206,7 +206,7 @@ def with_rate_limiting(
             if count_tokens and isinstance(result, dict):
                 tokens_used = result.get("tokens_used", 0)
                 if tokens_used > 0:
-                    app_logger.debug(
+                    log.debug(
                         f"Token usage recorded: {tokens_used} tokens for feature {actual_feature_key}"
                     )
 
@@ -315,7 +315,7 @@ async def _get_cached_subscription(user_id: str):
     try:
         cached = await redis_cache.get(cache_key)
         if cached:
-            app_logger.debug(f"Using cached subscription for user {user_id}")
+            log.debug(f"Using cached subscription for user {user_id}")
             # Parse cached subscription data
             data = json.loads(cached)
             from types import SimpleNamespace
@@ -324,7 +324,7 @@ async def _get_cached_subscription(user_id: str):
             cached_subscription.plan_type = PlanType(data.get("plan_type", "free"))
             return cached_subscription
     except Exception as e:
-        app_logger.debug(f"Cache lookup failed for user {user_id}: {str(e)}")
+        log.debug(f"Cache lookup failed for user {user_id}: {str(e)}")
 
     # Fetch and cache
     subscription = await payment_service.get_user_subscription_status(user_id)
@@ -342,9 +342,9 @@ async def _get_cached_subscription(user_id: str):
             "expires_at": None,  # This field is not available in UserSubscriptionStatus
         }
         await redis_cache.set(cache_key, cache_data, 300)
-        app_logger.debug(f"Cached subscription for user {user_id}")
+        log.debug(f"Cached subscription for user {user_id}")
     except Exception as e:
-        app_logger.debug(f"Cache write failed for user {user_id}: {str(e)}")
+        log.debug(f"Cache write failed for user {user_id}: {str(e)}")
 
     return subscription
 
@@ -353,7 +353,7 @@ def set_user_context(user_id: str, initiator: str = "frontend", **kwargs):
     """Set user context to avoid parameter pollution."""
     context = {"user_id": user_id, "initiator": initiator, **kwargs}
     user_context.set(context)
-    app_logger.debug(f"Set user context for {user_id} (initiator: {initiator})")
+    log.debug(f"Set user context for {user_id} (initiator: {initiator})")
     return context
 
 
@@ -361,7 +361,7 @@ def clear_user_context():
     """Clear user context."""
     user_context.set(None)
     rate_limit_context.set(None)
-    app_logger.debug("Cleared user context")
+    log.debug("Cleared user context")
 
 
 def get_current_rate_limit_info() -> Optional[Dict[str, Any]]:

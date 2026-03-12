@@ -8,7 +8,7 @@ from uuid_extensions import uuid7str
 from app.agents.core.state import State
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.services.conversation_service import (
     ConversationModel,
@@ -43,12 +43,12 @@ async def _generate_description_from_message(
         )
 
         if not isinstance(response, dict) or "response" not in response:
-            logger.error("Invalid response from LLM for description generation")
+            log.error("Invalid response from LLM for description generation")
             return "New Chat"
 
         return response.get("response", "New Chat").replace('"', "").strip()
     except Exception as e:
-        logger.error(f"Failed to generate description: {e}")
+        log.error(f"Failed to generate description: {e}")
         return "New Chat"
 
 
@@ -75,6 +75,7 @@ async def create_conversation(
     Returns:
         dict with conversation_id and conversation_description
     """
+    log.set(user_id=user.get("user_id"), selected_tool=selectedTool)
     # Use provided ID or generate new one
     uuid_value = conversation_id or uuid7str()
 
@@ -159,14 +160,14 @@ async def do_prompt_no_stream(
 def get_user_id_from_config(config: RunnableConfig) -> str:
     """Extract user ID from the config."""
     if not config:
-        logger.error("Tool called without config")
+        log.error("Tool called without config")
         return ""
 
     metadata = config.get("metadata", {})
     user_id = metadata.get("user_id", "")
 
     if not user_id:
-        logger.error("No user_id found in config metadata")
+        log.error("No user_id found in config metadata")
 
     return user_id
 
@@ -174,13 +175,13 @@ def get_user_id_from_config(config: RunnableConfig) -> str:
 def get_user_name_from_config(config: RunnableConfig) -> str:
     """Extract user name from the config."""
     if not config:
-        logger.error("Tool called without config")
+        log.error("Tool called without config")
         return ""
 
     metadata = config.get("metadata", {})
     user_name = metadata.get("user_name", "")
 
     if not user_name:
-        logger.error("No user_name found in config metadata")
+        log.error("No user_name found in config metadata")
 
     return user_name

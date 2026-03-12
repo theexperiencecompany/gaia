@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 from app.agents.llm.client import init_llm
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
@@ -49,9 +49,7 @@ async def create_subagent(integration_id: str):
     if integration.managed_by == "internal":
         # Internal integrations use core tools that are registered at startup
         # No additional setup needed - tools are already in the registry
-        logger.info(
-            f"Internal integration {integration_id}: using pre-registered tools"
-        )
+        log.info(f"Internal integration {integration_id}: using pre-registered tools")
 
     # Handle MCP-managed integrations (like DeepWiki)
     elif integration.managed_by == "mcp" and integration.mcp_config:
@@ -77,7 +75,7 @@ async def create_subagent(integration_id: str):
                     integration_name=integration.id,
                 )
                 await tool_registry._index_category_tools(category_name)
-                logger.info(f"Registered {len(tools)} MCP tools for {integration_id}")
+                log.info(f"Registered {len(tools)} MCP tools for {integration_id}")
 
     # Handle Composio-managed integrations
     elif integration.composio_config:
@@ -90,7 +88,8 @@ async def create_subagent(integration_id: str):
 
     llm = init_llm()
 
-    logger.info(
+    log.set(subagent={"name": config.agent_name, "provider": integration.provider})
+    log.info(
         f"Creating {config.agent_name} on-demand using tool space: {config.tool_space}"
     )
 
@@ -104,7 +103,7 @@ async def create_subagent(integration_id: str):
         auto_bind_tools=config.auto_bind_tools,
     )
 
-    logger.info(f"Subagent {config.agent_name} created successfully")
+    log.info(f"Subagent {config.agent_name} created successfully")
     return graph
 
 
@@ -134,12 +133,12 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
 
     # Platform integration validation
     if not integration.subagent_config:
-        logger.error(f"{integration_id} integration or subagent config not found")
+        log.error(f"{integration_id} integration or subagent config not found")
         return None
 
     mcp_config = integration.mcp_config
     if not (integration.managed_by == "mcp" and mcp_config):
-        logger.error(f"{integration_id} is not an MCP integration")
+        log.error(f"{integration_id} is not an MCP integration")
         return None
 
     config = integration.subagent_config
@@ -158,11 +157,11 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
             try:
                 tools = await mcp_client.connect(integration.id)
             except Exception as e:
-                logger.error(f"Failed to get MCP tools for {integration_id}: {e}")
+                log.error(f"Failed to get MCP tools for {integration_id}: {e}")
                 return None
 
         if not tools:
-            logger.error(f"No tools available for {integration_id}")
+            log.error(f"No tools available for {integration_id}")
             return None
 
         # Background: warm up other integrations for future handoffs
@@ -175,13 +174,14 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
             integration_name=integration.id,
         )
         await tool_registry._index_category_tools(category_name)
-        logger.info(
+        log.info(
             f"Registered {len(tools)} user-specific MCP tools for {integration_id}"
         )
 
     llm = init_llm()
 
-    logger.info(
+    log.set(subagent={"name": config.agent_name, "provider": integration.provider})
+    log.info(
         f"Creating {config.agent_name} for user {user_id} using tool space: {config.tool_space}"
     )
 
@@ -195,7 +195,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
         auto_bind_tools=config.auto_bind_tools,
     )
 
-    logger.info(f"User-specific subagent {config.agent_name} created successfully")
+    log.info(f"User-specific subagent {config.agent_name} created successfully")
     return graph
 
 
@@ -218,7 +218,7 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
         {"integration_id": integration_id}
     )
     if not custom_doc:
-        logger.error(f"Custom integration {integration_id} not found in MongoDB")
+        log.error(f"Custom integration {integration_id} not found in MongoDB")
         return None
 
     tool_registry = await get_tool_registry()
@@ -245,11 +245,11 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
             try:
                 tools = await mcp_client.connect(integration_id)
             except Exception as e:
-                logger.error(f"Failed to get MCP tools for {integration_id}: {e}")
+                log.error(f"Failed to get MCP tools for {integration_id}: {e}")
                 return None
 
         if not tools:
-            logger.error(f"No tools available for {integration_id}")
+            log.error(f"No tools available for {integration_id}")
             return None
 
         # Background: warm up other integrations for future handoffs
@@ -262,7 +262,7 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
             integration_name=integration_id,
         )
         await tool_registry._index_category_tools(category_name)
-        logger.info(
+        log.info(
             f"Registered {len(tools)} custom MCP tools for {integration_id} in namespace '{tool_namespace}'"
         )
     else:
@@ -282,14 +282,15 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
     llm = init_llm()
     agent_name = f"custom_mcp_{integration_id}"
 
-    logger.info(f"Creating custom MCP subagent {agent_name} for user {user_id}")
+    log.set(subagent={"name": agent_name, "provider": integration_id})
+    log.info(f"Creating custom MCP subagent {agent_name} for user {user_id}")
 
     # Dynamic tool-count override: if actual tool count is small (1-10),
     # bind all tools directly and skip retrieve_tools for lower latency.
     tool_count = len(tools) if tools else 0
     use_direct = 0 < tool_count <= 10
 
-    logger.info(
+    log.info(
         f"Custom MCP {integration_id} has {tool_count} tools - "
         f"using {'direct binding' if use_direct else 'retrieve_tools'}"
     )
@@ -303,7 +304,7 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
         disable_retrieve_tools=use_direct,
     )
 
-    logger.info(f"Custom MCP subagent {agent_name} created successfully")
+    log.info(f"Custom MCP subagent {agent_name} created successfully")
     return graph
 
 
@@ -342,7 +343,7 @@ def register_subagent_providers(integration_ids: Optional[list[str]] = None) -> 
             and integration.mcp_config
             and integration.mcp_config.requires_auth
         ):
-            logger.info(
+            log.info(
                 f"Auth-required MCP subagent {integration.subagent_config.agent_name} "
                 f"will be created on-demand via handoff"
             )
@@ -361,5 +362,5 @@ def register_subagent_providers(integration_ids: Optional[list[str]] = None) -> 
         )
         registered_count += 1
 
-    logger.info(f"Registered {registered_count} subagent lazy providers")
+    log.info(f"Registered {registered_count} subagent lazy providers")
     return registered_count

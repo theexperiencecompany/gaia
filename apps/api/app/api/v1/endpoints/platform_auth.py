@@ -2,7 +2,7 @@ from typing import Callable, Optional
 from urllib.parse import urlencode
 
 import httpx
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.services.platform_link_service import PlatformLinkService
 from fastapi import APIRouter
@@ -131,6 +131,11 @@ async def _handle_platform_oauth_callback(
 
     user_id = state_data["user_id"]
     redirect_path = state_data["redirect_path"]
+    log.set(
+        user={"id": user_id},
+        platform=config.platform,
+        operation="platform_oauth_callback",
+    )
 
     try:
         # Exchange authorization code for access token
@@ -148,7 +153,7 @@ async def _handle_platform_oauth_callback(
             )
 
             if token_response.status_code != 200:
-                logger.error(
+                log.error(
                     f"{config.platform} token exchange failed: {token_response.text}"
                 )
                 return RedirectResponse(
@@ -161,7 +166,7 @@ async def _handle_platform_oauth_callback(
 
             # Slack-specific error handling
             if config.platform == "slack" and not token_data.get("ok"):
-                logger.error(f"Slack OAuth failed: {token_data.get('error')}")
+                log.error(f"Slack OAuth failed: {token_data.get('error')}")
                 return RedirectResponse(
                     url=_redirect_url(
                         settings.FRONTEND_URL, redirect_path, oauth_error="token_failed"
@@ -179,7 +184,7 @@ async def _handle_platform_oauth_callback(
                 )
 
                 if user_response.status_code != 200:
-                    logger.error(
+                    log.error(
                         f"{config.platform} user fetch failed: {user_response.text}"
                     )
                     return RedirectResponse(
@@ -201,17 +206,20 @@ async def _handle_platform_oauth_callback(
             platform_user_id = config.extract_user_id(token_data, access_token)
             profile = {}
 
+        log.set(profile_fields_extracted=list(profile.keys()))
+
         # Link platform account to current user (using ObjectId)
         try:
             await PlatformLinkService.link_account(
                 user_id, config.platform, platform_user_id, profile=profile or None
             )
-            logger.info(
+            log.info(
                 f"{config.platform} account {platform_user_id} linked to user {user_id} via OAuth"
             )
         except ValueError as e:
             error_msg = str(e)
             if "already linked" in error_msg:
+                log.set(outcome="already_linked")
                 return RedirectResponse(
                     url=_redirect_url(
                         settings.FRONTEND_URL,
@@ -220,7 +228,7 @@ async def _handle_platform_oauth_callback(
                     )
                 )
             else:
-                logger.error(f"Failed to link account: {error_msg}")
+                log.error(f"Failed to link account: {error_msg}")
                 return RedirectResponse(
                     url=_redirect_url(
                         settings.FRONTEND_URL, redirect_path, oauth_error="failed"
@@ -228,6 +236,7 @@ async def _handle_platform_oauth_callback(
                 )
 
         # Redirect to settings with success message
+        log.set(outcome="success")
         return RedirectResponse(
             url=_redirect_url(
                 settings.FRONTEND_URL,
@@ -238,7 +247,8 @@ async def _handle_platform_oauth_callback(
         )
 
     except Exception as e:
-        logger.error(f"{config.platform} OAuth callback error: {str(e)}", exc_info=True)
+        log.set(outcome="failed")
+        log.error(f"{config.platform} OAuth callback error: {str(e)}", exc_info=True)
         return RedirectResponse(
             url=_redirect_url(
                 settings.FRONTEND_URL, redirect_path, oauth_error="failed"

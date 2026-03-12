@@ -14,7 +14,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import get_session_path
 from langchain.agents.middleware import SummarizationMiddleware
@@ -95,7 +95,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
             try:
                 archive_path = await self._archive_to_vfs(state, runtime)
             except Exception as e:
-                logger.error(f"VFS archiving failed: {e}")
+                log.error(f"VFS archiving failed: {e}")
 
         # Call parent's summarization logic
         result = await super().abefore_model(state, runtime)
@@ -195,7 +195,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
             },
         )
 
-        logger.info(
+        log.info(
             f"Archived {len(messages)} messages to {archive_path} before summarization"
         )
         return archive_path

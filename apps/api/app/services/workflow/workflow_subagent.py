@@ -20,7 +20,7 @@ from app.agents.core.subagents.subagent_helpers import create_agent_context_mess
 from app.agents.llm.client import init_llm
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.helpers.agent_helpers import build_agent_config
 from langchain_core.messages import (
     AIMessageChunk,
@@ -46,7 +46,7 @@ async def get_workflow_subagent():
     if _workflow_subagent_graph is not None:
         return _workflow_subagent_graph
 
-    logger.info("Creating workflow subagent graph")
+    log.info("Creating workflow subagent graph")
 
     # Register workflow tools in the registry under 'workflow_subagent' space
     from app.agents.tools.core.registry import get_tool_registry
@@ -72,7 +72,7 @@ async def get_workflow_subagent():
         disable_retrieve_tools=True,
     )
 
-    logger.info("Workflow subagent graph created successfully")
+    log.info("Workflow subagent graph created successfully")
     return _workflow_subagent_graph
 
 
@@ -149,7 +149,7 @@ class WorkflowSubagentRunner:
 
         initial_state = {"messages": [system_message, context_message, human_message]}
 
-        logger.info(f"[WorkflowSubagent] Executing with task: {task[:100]}...")
+        log.info(f"[WorkflowSubagent] Executing with task: {task[:100]}...")
 
         complete_message = ""
         emitted_tool_calls: set[str] = set()
@@ -207,7 +207,7 @@ class WorkflowSubagentRunner:
                 if stream_writer:
                     stream_writer(payload)
 
-        logger.info(
+        log.info(
             f"[WorkflowSubagent] Completed. Response: {len(complete_message)} chars"
         )
         return complete_message if complete_message else "Task completed"

@@ -6,7 +6,7 @@ import cloudinary.exceptions
 import cloudinary.uploader
 from fastapi import HTTPException
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 
 
 def upload_file_to_cloudinary(
@@ -28,27 +28,28 @@ def upload_file_to_cloudinary(
     Raises:
         HTTPException: If the upload fails or invalid parameters are provided.
     """
+    log.set(service="upload_service", public_id=public_id)
     # Validate input parameters
     if not file_data and not file_path:
-        logger.error("Either file_data or file_path must be provided")
+        log.error("Either file_data or file_path must be provided")
         raise HTTPException(
             status_code=400, detail="Either file_data or file_path must be provided"
         )
 
     if file_data and file_path:
-        logger.error("Cannot provide both file_data and file_path")
+        log.error("Cannot provide both file_data and file_path")
         raise HTTPException(
             status_code=400,
             detail="Cannot provide both file_data and file_path - choose one",
         )
 
     if not public_id:
-        logger.error("public_id is required")
+        log.error("public_id is required")
         raise HTTPException(status_code=400, detail="public_id is required")
 
     # Validate file path exists if provided
     if file_path and not os.path.exists(file_path):
-        logger.error(f"File not found: {file_path}")
+        log.error(f"File not found: {file_path}")
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
 
     try:
@@ -64,22 +65,22 @@ def upload_file_to_cloudinary(
 
         file_url = upload_result.get("secure_url")
         if not file_url:
-            logger.error("Missing secure_url in Cloudinary upload response")
+            log.error("Missing secure_url in Cloudinary upload response")
             raise HTTPException(
                 status_code=500, detail="Invalid response from file upload service"
             )
 
         source_type = "file_data" if file_data else "file_path"
-        logger.info(f"File uploaded successfully from {source_type}. URL: {file_url}")
+        log.info(f"File uploaded successfully from {source_type}. URL: {file_url}")
         return file_url
 
     except cloudinary.exceptions.Error as e:
-        logger.error(f"Cloudinary upload failed: {e}")
+        log.error(f"Cloudinary upload failed: {e}")
         raise HTTPException(
             status_code=500, detail="Failed to upload file to Cloudinary"
         )
     except Exception as e:
-        logger.error(f"Unexpected error during upload: {e}")
+        log.error(f"Unexpected error during upload: {e}")
         raise HTTPException(
             status_code=500, detail="An unexpected error occurred during file upload"
         )

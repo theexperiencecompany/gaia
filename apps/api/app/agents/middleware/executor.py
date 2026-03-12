@@ -22,7 +22,7 @@ from app.agents.middleware.runtime_adapter import (
     create_tool_call_request,
     to_agent_state,
 )
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.override.langgraph_bigtool.utils import State
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import (
@@ -161,7 +161,7 @@ class MiddlewareExecutor:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning(
+                log.warning(
                     f"Middleware {mw.__class__.__name__}.before_model failed: {e}"
                 )
 
@@ -210,7 +210,7 @@ class MiddlewareExecutor:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning(
+                log.warning(
                     f"Middleware {mw.__class__.__name__}.after_model failed: {e}"
                 )
 
@@ -296,7 +296,7 @@ class MiddlewareExecutor:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.error("Middleware wrap_model_call chain failed: {}", str(e))
+            log.error(f"Middleware wrap_model_call chain failed: {e}")
             # Fallback to direct invocation
             return await invoke_fn(state.get("messages", []))
 
@@ -366,11 +366,7 @@ class MiddlewareExecutor:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.error(
-                "Middleware wrap_tool_call chain failed for {}: {}",
-                tool_name,
-                str(e),
-            )
+            log.error(f"Middleware wrap_tool_call chain failed for {tool_name}: {e}")
             # Fallback to direct invocation
             return await invoke_fn(tool_call)
 

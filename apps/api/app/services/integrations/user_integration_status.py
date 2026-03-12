@@ -8,7 +8,7 @@ oauth_service.py and integration_service.py.
 from datetime import UTC, datetime
 from typing import Any, Dict, Literal
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import user_integrations_collection
 from app.decorators.caching import CacheInvalidator
 
@@ -33,6 +33,7 @@ async def update_user_integration_status(
     Returns:
         True if operation was successful (update, insert, or matched existing)
     """
+    log.set(integration={"provider": integration_id, "action": "update_status"})
     update_data: Dict[str, Any] = {
         "status": status,
         "user_id": user_id,
@@ -53,7 +54,7 @@ async def update_user_integration_status(
     # Operation is successful if document was modified, inserted, or matched
     # (matched_count > 0 means document exists with same values - still success)
     if result.modified_count > 0 or result.upserted_id or result.matched_count > 0:
-        logger.info(
+        log.info(
             f"Updated user {user_id} integration {integration_id} status to {status}"
         )
         return True

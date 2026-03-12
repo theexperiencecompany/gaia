@@ -15,7 +15,7 @@ Usage:
 import asyncio
 from typing import Any, Coroutine, Callable, Dict, TypeVar
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 
 T = TypeVar("T")
 
@@ -49,14 +49,15 @@ async def coalesce_request(
         # Multiple concurrent calls will only run _build_tools() once
         tools = await coalesce_request("tools", _build_tools)
     """
+    log.set(operation="coalesce_request", coalesce_key=key)
     async with _lock:
         if key in _pending_requests:
             # Another request is already running, wait for it
-            logger.debug(f"Request coalescing: waiting for in-flight '{key}'")
+            log.debug(f"Request coalescing: waiting for in-flight '{key}'")
             task = _pending_requests[key]
         else:
             # We're the first, create the task
-            logger.debug(f"Request coalescing: starting new request for '{key}'")
+            log.debug(f"Request coalescing: starting new request for '{key}'")
             coro = factory()
             task = asyncio.create_task(coro)
             _pending_requests[key] = task

@@ -7,6 +7,7 @@ that can be used in workflow configuration.
 
 from typing import Any, Dict, List, Union
 
+from shared.py.wide_events import log
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.services.triggers import get_handler_by_name
 from app.services.workflow.trigger_service import TriggerService
@@ -25,7 +26,11 @@ async def get_trigger_schemas(
     Returns a list of trigger configurations that can be used when creating
     or editing workflows, including their config schemas for dynamic UI generation.
     """
-    return await TriggerService.get_all_workflow_triggers()
+    log.set(operation="list_trigger_schemas")
+    triggers = await TriggerService.get_all_workflow_triggers()
+    log.set(result_count=len(triggers))
+    log.set(outcome="success")
+    return triggers
 
 
 @router.get("/options")
@@ -51,6 +56,11 @@ async def get_trigger_options(
     Returns:
         {"options": [{"value": "...", "label": "..."} | {"group": "...", "options": [...]}]}
     """
+    log.set(
+        operation="get_trigger_options",
+        trigger_type=trigger_slug,
+        integration_name=integration_id,
+    )
     handler = get_handler_by_name(trigger_slug)
     if not handler:
         raise HTTPException(status_code=404, detail="Handler not found for trigger")
@@ -86,4 +96,6 @@ async def get_trigger_options(
         **kwargs,
     )
 
+    log.set(result_count=len(options))
+    log.set(outcome="success")
     return {"options": options}

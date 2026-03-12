@@ -25,8 +25,8 @@ from app.agents.tools.vfs_constants import (
     detect_artifact_content_type,
     is_user_visible_path,
 )
-from app.config.loggers import app_logger as logger
 from app.services.vfs import MongoVFS, VFSAccessError, get_vfs
+from shared.py.wide_events import log
 from app.services.vfs.path_resolver import (
     get_agent_root,
     normalize_path,
@@ -329,7 +329,7 @@ class VFSCommandParser:
             )
             return result
         except Exception as e:
-            logger.error(f"VFS command error ({cmd}): {e}")
+            log.error(f"VFS command error ({cmd}): {e}")
             return f"Error: {e}"
 
     def _resolve_path(
@@ -356,12 +356,12 @@ class VFSCommandParser:
             if validate_user_access(normalized, user_id):
                 return normalized
             # Redirect to user's space if invalid
-            logger.warning(f"Access denied: {path} not in user {user_id} scope")
+            log.warning(f"Access denied: {path} not in user {user_id} scope")
 
         # .user-visible/ paths map to the current session
         if path.startswith(f"{USER_VISIBLE_FOLDER}/") or path == USER_VISIBLE_FOLDER:
             if not conversation_id:
-                logger.warning(
+                log.warning(
                     "No conversation_id for .user-visible path, falling back to files/"
                 )
                 agent_root = get_agent_root(user_id, agent_name)

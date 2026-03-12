@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
-from app.config.loggers import calendar_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import get_sync_collection
 from app.models.calendar_models import (
     EventCreateRequest,
@@ -187,14 +187,14 @@ def fetch_all_calendar_events(
 
         # Log if we're fetching many pages
         if page_count > 5:
-            logger.info(
+            log.info(
                 f"Calendar {calendar_id} has many events - fetched {len(all_items)} so far, page {page_count}"
             )
 
     # Check if we hit the safety limit
     truncated = page_count >= max_pages and next_page_token is not None
     if truncated:
-        logger.warning(
+        log.warning(
             f"Calendar {calendar_id} truncated at {len(all_items)} events (hit max pages limit)"
         )
 
@@ -240,7 +240,7 @@ def initialize_calendar_preferences(
         # Check if user already has calendar preferences
         existing_preferences = calendars_collection.find_one({"user_id": user_id})
         if existing_preferences and existing_preferences.get("selected_calendars"):
-            logger.info(
+            log.info(
                 f"User {user_id} already has calendar preferences, skipping initialization"
             )
             return
@@ -250,7 +250,7 @@ def initialize_calendar_preferences(
         calendars = calendar_data.get("items", [])
 
         if not calendars:
-            logger.warning(f"No calendars found for user {user_id}")
+            log.warning(f"No calendars found for user {user_id}")
             return
 
         # Select all calendars by default
@@ -263,13 +263,13 @@ def initialize_calendar_preferences(
             upsert=True,
         )
 
-        logger.info(
+        log.info(
             f"Initialized calendar preferences for user {user_id}: "
             f"selected {len(all_calendar_ids)} calendars"
         )
 
     except Exception as e:
-        logger.error(
+        log.error(
             f"Failed to initialize calendar preferences for user {user_id}: {e}",
             exc_info=True,
         )
@@ -369,7 +369,7 @@ def extract_unique_dates(calendar_options: List[Dict[str, Any]]) -> Dict[str, st
                     tz_offset = "+00:00"
                 event_dates_info[date_str] = tz_offset
             except Exception as e:
-                logger.warning(f"Could not parse start time: {start_time}, {e}")
+                log.warning(f"Could not parse start time: {start_time}, {e}")
     return event_dates_info
 
 
@@ -403,7 +403,7 @@ def fetch_same_day_events(
             if isinstance(result, dict) and "events" in result:
                 same_day_events.extend(result["events"])
         except Exception as e:
-            logger.error(f"Error fetching events for {event_date}: {e}")
+            log.error(f"Error fetching events for {event_date}: {e}")
 
     return same_day_events
 
@@ -519,7 +519,7 @@ def get_calendar_events(
 
     if fetch_all or not max_results:
         # Full fetch mode: Get ALL events in date range for each calendar
-        logger.info(
+        log.info(
             f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range"
         )
         for cal in selected_cal_objs:
@@ -532,7 +532,7 @@ def get_calendar_events(
                 # Track if this calendar was truncated
                 if result.get("truncated", False):
                     calendars_truncated.append(cal["id"])
-                    logger.warning(
+                    log.warning(
                         f"Calendar {cal['id']} ({cal.get('summary', 'Unknown')}) was truncated"
                     )
 
@@ -546,7 +546,7 @@ def get_calendar_events(
                     event["calendarTitle"] = cal.get("summary", "")
                 all_events.extend(filter_events(events))
             except Exception as e:
-                logger.error(f"Error fetching events for calendar {cal['id']}: {e}")
+                log.error(f"Error fetching events for calendar {cal['id']}: {e}")
     else:
         # Limited fetch mode: Get up to max_results per calendar
         for cal in selected_cal_objs:
@@ -566,7 +566,7 @@ def get_calendar_events(
                     event["calendarTitle"] = cal.get("summary", "")
                 all_events.extend(filter_events(events))
             except Exception as e:
-                logger.error(f"Error fetching events for calendar {cal['id']}: {e}")
+                log.error(f"Error fetching events for calendar {cal['id']}: {e}")
 
     # Sort all events by start time for consistent ordering
     all_events.sort(
@@ -575,7 +575,15 @@ def get_calendar_events(
         )
     )
 
-    logger.info(
+    log.set(
+        calendar={
+            "user_id": user_id,
+            "calendars_queried": len(selected_cal_objs),
+            "events_fetched": len(all_events),
+            "calendars_truncated": len(calendars_truncated),
+        }
+    )
+    log.info(
         f"Fetched {len(all_events)} total events from {len(selected_cal_objs)} calendars"
     )
 
@@ -805,6 +813,14 @@ def create_calendar_event(
         # Handle response
         if response.status_code in (200, 201):
             response_data = response.json()
+            log.set(
+                calendar={
+                    "action": "create_event",
+                    "calendar_id": calendar_id,
+                    "summary": event.summary,
+                    "event_id": response_data.get("id"),
+                }
+            )
             return response_data
         elif response.status_code == 403:
             raise HTTPException(
@@ -911,11 +927,11 @@ def search_calendar_events_native(
     preferences = calendars_collection.find_one({"user_id": user_id})
     if preferences and preferences.get("selected_calendars"):
         user_selected_calendars = preferences["selected_calendars"]
-        logger.info(f"User has calendar preferences: {user_selected_calendars}")
+        log.info(f"User has calendar preferences: {user_selected_calendars}")
     else:
         # Default: select all available calendars
         user_selected_calendars = [cal["id"] for cal in calendars]
-        logger.info(
+        log.info(
             f"No preferences found, defaulting to all calendars: {len(user_selected_calendars)} calendars"
         )
 
@@ -924,13 +940,13 @@ def search_calendar_events_native(
         cal for cal in calendars if cal["id"] in user_selected_calendars
     ]
 
-    logger.info(
+    log.info(
         f"Searching in {len(selected_cal_objs)} calendars: {[cal['summary'] for cal in selected_cal_objs]}"
     )
 
     # If no calendars are selected, search all available calendars
     if not selected_cal_objs:
-        logger.info("No selected calendars found, searching all available calendars")
+        log.info("No selected calendars found, searching all available calendars")
         selected_cal_objs = calendars
 
     all_matching_events = []
@@ -943,7 +959,7 @@ def search_calendar_events_native(
                 cal["id"], query, valid_token, time_min, time_max
             )
             events = result.get("items", [])
-            logger.info(
+            log.info(
                 f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'"
             )
 
@@ -952,22 +968,20 @@ def search_calendar_events_native(
                 event["calendarTitle"] = cal.get("summary", "")
 
             filtered_events = filter_events(events)
-            logger.info(
+            log.info(
                 f"After filtering: {len(filtered_events)} events in calendar '{cal.get('summary', cal['id'])}'"
             )
 
             all_matching_events.extend(filtered_events)
             total_events_searched += len(filtered_events)
         except Exception as e:
-            logger.error(f"Error searching events in calendar {cal['id']}: {e}")
+            log.error(f"Error searching events in calendar {cal['id']}: {e}")
 
-    logger.info(
-        f"Total matching events across all calendars: {len(all_matching_events)}"
-    )
+    log.info(f"Total matching events across all calendars: {len(all_matching_events)}")
 
     # If no events found in selected calendars, try searching all calendars
     if not all_matching_events and selected_cal_objs != calendars:
-        logger.info("No events found in selected calendars, searching all calendars...")
+        log.info("No events found in selected calendars, searching all calendars...")
 
         for cal in calendars:
             try:
@@ -977,7 +991,7 @@ def search_calendar_events_native(
                 events = result.get("items", [])
 
                 if events:
-                    logger.info(
+                    log.info(
                         f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'"
                     )
 
@@ -989,7 +1003,7 @@ def search_calendar_events_native(
                     all_matching_events.extend(filtered_events)
                     total_events_searched += len(filtered_events)
             except Exception as e:
-                logger.error(f"Error searching events in calendar {cal['id']}: {e}")
+                log.error(f"Error searching events in calendar {cal['id']}: {e}")
 
     return {
         "query": query,
@@ -1037,25 +1051,25 @@ def search_events_in_calendar(
         params["timeMax"] = time_max
 
     try:
-        logger.info(
+        log.info(
             f"Searching calendar {calendar_id} with query '{query}' and params: {params}"
         )
         response = http_client.get(url, headers=headers, params=params)
         if response.status_code == 200:
             result = response.json()
             event_count = len(result.get("items", []))
-            logger.info(f"Calendar {calendar_id} search returned {event_count} events")
+            log.info(f"Calendar {calendar_id} search returned {event_count} events")
             return result
         else:
             error_detail = (
                 response.json().get("error", {}).get("message", "Unknown error")
             )
-            logger.error(
+            log.error(
                 f"Calendar {calendar_id} search failed: {response.status_code} - {error_detail}"
             )
             raise HTTPException(status_code=response.status_code, detail=error_detail)
     except httpx.RequestError as e:
-        logger.error(f"HTTP search request failed for calendar {calendar_id}: {e}")
+        log.error(f"HTTP search request failed for calendar {calendar_id}: {e}")
         raise HTTPException(status_code=500, detail=f"HTTP search request failed: {e}")
 
 
@@ -1105,7 +1119,7 @@ def delete_calendar_event(
                             "message", error_msg
                         )
                 except Exception as json_error:
-                    logger.warning(
+                    log.warning(
                         f"Failed to parse error response JSON: {str(json_error)}"
                     )
             raise HTTPException(status_code=response.status_code, detail=error_msg)
@@ -1179,7 +1193,7 @@ def update_calendar_event(
             recurrence_rules = event.recurrence.to_google_calendar_format()
             event_payload["recurrence"] = recurrence_rules
         except Exception as e:
-            logger.error(f"Error processing recurrence rules: {e}")
+            log.error(f"Error processing recurrence rules: {e}")
             raise HTTPException(
                 status_code=400, detail=f"Invalid recurrence rule format: {str(e)}"
             )

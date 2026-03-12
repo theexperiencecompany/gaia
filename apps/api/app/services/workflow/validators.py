@@ -1,7 +1,6 @@
 """Workflow validation utilities for GAIA workflow system."""
 
 from app.models.workflow_models import Workflow
-from pydantic import ValidationError
 
 
 class WorkflowValidator:
@@ -22,4 +21,4 @@ class WorkflowValidator:
             errors.append("Missing trigger configuration")
 
         if errors:
-            raise ValidationError(f"Workflow validation failed: {'; '.join(errors)}")
+            raise ValueError(f"Workflow validation failed: {'; '.join(errors)}")

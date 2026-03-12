@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 import httpx
 from composio import Composio
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 
 
@@ -22,6 +22,7 @@ def register_hubspot_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns current CRM state for situational awareness.
         """
+        log.set(tool={"integration": "hubspot", "action": "gather_context"})
         token = auth_credentials.get("access_token")
         if not token:
             raise ValueError("Missing access_token in auth_credentials")
@@ -45,7 +46,7 @@ def register_hubspot_custom_tools(composio: Composio) -> List[str]:
             resp.raise_for_status()
             contacts = resp.json().get("results", [])
         except Exception as e:
-            logger.debug(f"HubSpot contacts fetch failed: {e}")
+            log.debug(f"HubSpot contacts fetch failed: {e}")
 
         deals: List[Dict[str, Any]] = []
         try:
@@ -62,7 +63,7 @@ def register_hubspot_custom_tools(composio: Composio) -> List[str]:
             resp.raise_for_status()
             deals = resp.json().get("results", [])
         except Exception as e:
-            logger.debug(f"HubSpot deals fetch failed: {e}")
+            log.debug(f"HubSpot deals fetch failed: {e}")
 
         recent_contacts = [
             {

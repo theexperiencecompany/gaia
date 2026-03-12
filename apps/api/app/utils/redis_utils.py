@@ -2,7 +2,7 @@
 
 import asyncio
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 
 
 class RedisPoolManager:
@@ -20,6 +20,7 @@ class RedisPoolManager:
     @classmethod
     async def get_pool(cls):
         """Get or create Redis pool."""
+        log.set(operation="redis_get_pool", component="RedisPoolManager")
         if cls._pool is None:
             async with cls._lock:
                 if cls._pool is None:
@@ -30,22 +31,23 @@ class RedisPoolManager:
                     try:
                         redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
                         cls._pool = await create_pool(redis_settings)
-                        logger.info("Redis pool created successfully")
+                        log.info("Redis pool created successfully")
                     except Exception as e:
-                        logger.error(f"Failed to create Redis pool: {e}")
+                        log.error(f"Failed to create Redis pool: {e}")
                         raise
         return cls._pool
 
     @classmethod
     async def close_pool(cls):
         """Close the Redis pool connection."""
+        log.set(operation="redis_close_pool", component="RedisPoolManager")
         if cls._pool:
             async with cls._lock:
                 if cls._pool:
                     try:
                         await cls._pool.close()
                         cls._pool = None
-                        logger.info("Redis pool closed")
+                        log.info("Redis pool closed")
                     except Exception as e:
-                        logger.error(f"Error closing Redis pool: {e}")
+                        log.error(f"Error closing Redis pool: {e}")
                         cls._pool = None

@@ -8,7 +8,7 @@ from typing import List
 from bson import ObjectId
 from fastapi import HTTPException, status
 
-from app.config.loggers import todos_logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import todos_collection
 from app.db.redis import delete_cache
 from app.db.utils import serialize_document
@@ -26,6 +26,12 @@ async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoRes
     Returns:
         List[TodoResponse]: Updated todos
     """
+    log.set(
+        service="todo_bulk_service",
+        operation="bulk_complete_todos",
+        user_id=user_id,
+        todo_count=len(todo_ids),
+    )
     try:
         # Convert string IDs to ObjectIds
         object_ids = [ObjectId(todo_id) for todo_id in todo_ids]
@@ -58,16 +64,14 @@ async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoRes
             if todo.get("project_id"):
                 await delete_cache(f"todos:{user_id}:project:{todo['project_id']}")
 
-        todos_logger.info(
-            f"Bulk completed {result.modified_count} todos for user {user_id}"
-        )
+        log.info(f"Bulk completed {result.modified_count} todos for user {user_id}")
 
         return [TodoResponse(**serialize_document(todo)) for todo in todos]
 
     except HTTPException:
         raise
     except Exception as e:
-        todos_logger.error(f"Error bulk completing todos: {str(e)}")
+        log.error(f"Error bulk completing todos: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk complete todos: {str(e)}",
@@ -88,6 +92,13 @@ async def bulk_move_todos(
     Returns:
         List[TodoResponse]: Updated todos
     """
+    log.set(
+        service="todo_bulk_service",
+        operation="bulk_move_todos",
+        user_id=user_id,
+        target_project_id=project_id,
+        todo_count=len(todo_ids),
+    )
     try:
         # Verify project exists
         from app.db.mongodb.collections import projects_collection
@@ -142,7 +153,7 @@ async def bulk_move_todos(
         for todo_id in todo_ids:
             await delete_cache(f"todo:{user_id}:{todo_id}")
 
-        todos_logger.info(
+        log.info(
             f"Bulk moved {result.modified_count} todos to project {project_id} for user {user_id}"
         )
 
@@ -151,7 +162,7 @@ async def bulk_move_todos(
     except HTTPException:
         raise
     except Exception as e:
-        todos_logger.error(f"Error bulk moving todos: {str(e)}")
+        log.error(f"Error bulk moving todos: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk move todos: {str(e)}",
@@ -166,6 +177,12 @@ async def bulk_delete_todos(todo_ids: List[str], user_id: str) -> None:
         todo_ids: List of todo IDs to delete
         user_id: ID of the user
     """
+    log.set(
+        service="todo_bulk_service",
+        operation="bulk_delete_todos",
+        user_id=user_id,
+        todo_count=len(todo_ids),
+    )
     try:
         # Convert string IDs to ObjectIds
         object_ids = [ObjectId(todo_id) for todo_id in todo_ids]
@@ -196,14 +213,12 @@ async def bulk_delete_todos(todo_ids: List[str], user_id: str) -> None:
         for todo_id in todo_ids:
             await delete_cache(f"todo:{user_id}:{todo_id}")
 
-        todos_logger.info(
-            f"Bulk deleted {result.deleted_count} todos for user {user_id}"
-        )
+        log.info(f"Bulk deleted {result.deleted_count} todos for user {user_id}")
 
     except HTTPException:
         raise
     except Exception as e:
-        todos_logger.error(f"Error bulk deleting todos: {str(e)}")
+        log.error(f"Error bulk deleting todos: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk delete todos: {str(e)}",

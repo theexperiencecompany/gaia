@@ -15,7 +15,7 @@ from typing import Any, Callable, Literal, Optional, Union
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 
 
 def generate_pkce_pair() -> tuple[str, str]:
@@ -77,7 +77,8 @@ def wrap_tool_with_null_filter(
     @wraps(original_arun)
     async def filtered_arun(**kwargs: Any) -> Any:
         filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
-        logger.debug(
+        log.set(operation="mcp_tool_call", tool_name=tool.name)
+        log.debug(
             f"MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}"
         )
         try:
@@ -85,7 +86,7 @@ def wrap_tool_with_null_filter(
             return result
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"MCP tool '{tool.name}' failed: {error_msg}")
+            log.error(f"MCP tool '{tool.name}' failed: {error_msg}")
 
             # CRITICAL: Re-raise auth errors so orchestrator can handle token refresh.
             # Previously these were swallowed, preventing automatic token refresh.
@@ -101,7 +102,7 @@ def wrap_tool_with_null_filter(
                     raise TypeError(
                         "on_connection_error must be a synchronous callable, not a coroutine function"
                     )
-                logger.warning(
+                log.warning(
                     f"MCP tool '{tool.name}' hit connection error, evicting session"
                 )
                 on_connection_error()
@@ -191,23 +192,23 @@ def extract_type_from_field(field_info: dict) -> tuple[Any, Any, bool]:
 def serialize_args_schema(tool: BaseTool) -> dict | None:
     """Serialize tool's args schema to JSON-compatible dict."""
     if not hasattr(tool, "args_schema") or not tool.args_schema:
-        logger.debug(f"Tool {tool.name} has no args_schema")
+        log.debug(f"Tool {tool.name} has no args_schema")
         return None
 
     try:
         args_schema = tool.args_schema
         if not isinstance(args_schema, type) or not issubclass(args_schema, BaseModel):
-            logger.debug(f"Tool {tool.name} args_schema is not a BaseModel")
+            log.debug(f"Tool {tool.name} args_schema is not a BaseModel")
             return None
         schema = args_schema.model_json_schema()  # type: ignore[attr-defined]
         result = {
             "properties": schema.get("properties", {}),
             "required": schema.get("required", []),
         }
-        logger.debug(
+        log.debug(
             f"Serialized schema for {tool.name}: {len(result.get('properties', {}))} properties"
         )
         return result
     except Exception as e:
-        logger.warning(f"Failed to serialize schema for {tool.name}: {e}")
+        log.warning(f"Failed to serialize schema for {tool.name}: {e}")
         return None

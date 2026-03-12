@@ -7,7 +7,7 @@ from app.utils.workflow_utils import (
     get_user_id,
     success_response,
 )
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_rate_limiting
 from app.services.workflow import WorkflowService
 from app.services.workflow.trigger_search import TriggerSearchService
@@ -29,6 +29,7 @@ async def search_triggers(
     Use this to find appropriate triggers before creating a workflow.
     """
     try:
+        log.set(tool={"name": "search_triggers", "action": "search"})
         user_id = get_user_id(config)
 
         results = await TriggerSearchService.search(
@@ -49,7 +50,7 @@ async def search_triggers(
         )
 
     except Exception as e:
-        logger.error(f"Error searching triggers: {e}")
+        log.error(f"Error searching triggers: {e}")
         return error_response("search_failed", str(e))
 
 
@@ -58,6 +59,7 @@ async def search_triggers(
 async def list_workflows(config: RunnableConfig) -> dict:
     """List all workflows for the current user."""
     try:
+        log.set(tool={"name": "list_workflows", "action": "list"})
         user_id = get_user_id(config)
         workflows = await WorkflowService.list_workflows(user_id)
 
@@ -92,7 +94,7 @@ async def list_workflows(config: RunnableConfig) -> dict:
         )
 
     except Exception as e:
-        logger.error(f"Error listing workflows: {e}")
+        log.error(f"Error listing workflows: {e}")
         return error_response("fetch_failed", str(e))
 
 

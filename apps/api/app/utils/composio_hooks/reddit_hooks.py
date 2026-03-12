@@ -7,7 +7,7 @@ minimizing token usage by extracting only critical information.
 
 from typing import Any
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from composio.types import ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
 
@@ -48,7 +48,7 @@ def process_reddit_post(post_data: dict) -> dict:
             "stickied": data.get("stickied", False),
         }
     except Exception as e:
-        logger.error(f"Error processing Reddit post: {e}")
+        log.error(f"Error processing Reddit post: {e}")
         return {}
 
 
@@ -82,7 +82,7 @@ def process_reddit_search_results(response_data: dict) -> dict:
             "result_count": len(processed_posts),
         }
     except Exception as e:
-        logger.error(f"Error processing Reddit search results: {e}")
+        log.error(f"Error processing Reddit search results: {e}")
         return response_data
 
 
@@ -115,7 +115,7 @@ def process_reddit_comment(comment_data: dict) -> dict:
             "edited": data.get("edited", False),
         }
     except Exception as e:
-        logger.error(f"Error processing Reddit comment: {e}")
+        log.error(f"Error processing Reddit comment: {e}")
         return {}
 
 
@@ -150,7 +150,7 @@ def reddit_content_before_hook(
 
             writer(payload)
     except Exception as e:
-        logger.error(f"Error in reddit_content_before_hook: {e}")
+        log.error(f"Error in reddit_content_before_hook: {e}")
 
     return params
 
@@ -169,7 +169,7 @@ def reddit_delete_before_hook(
             payload = {"progress": f"Deleting {content_type}..."}
             writer(payload)
     except Exception as e:
-        logger.error(f"Error in reddit_delete_before_hook: {e}")
+        log.error(f"Error in reddit_delete_before_hook: {e}")
 
     return params
 
@@ -193,7 +193,7 @@ def reddit_retrieve_before_hook(
 
             writer(payload)
     except Exception as e:
-        logger.error(f"Error in reddit_retrieve_before_hook: {e}")
+        log.error(f"Error in reddit_retrieve_before_hook: {e}")
 
     return params
 
@@ -206,6 +206,7 @@ def reddit_search_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
 ) -> Any:
     """Process Reddit search response to minimize raw data."""
+    log.set(reddit_tool=tool, toolkit=toolkit)
     try:
         writer = get_stream_writer()
 
@@ -248,7 +249,7 @@ def reddit_search_after_hook(
         return processed_response
 
     except Exception as e:
-        logger.error(f"Error in reddit_search_after_hook: {e}")
+        log.error(f"Error in reddit_search_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -299,7 +300,7 @@ def reddit_post_detail_after_hook(
         return processed_post
 
     except Exception as e:
-        logger.error(f"Error in reddit_post_detail_after_hook: {e}")
+        log.error(f"Error in reddit_post_detail_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -369,7 +370,7 @@ def reddit_comments_after_hook(
         }
 
     except Exception as e:
-        logger.error(f"Error in reddit_comments_after_hook: {e}")
+        log.error(f"Error in reddit_comments_after_hook: {e}")
         return response.get("data", {})
 
 
@@ -429,5 +430,5 @@ def reddit_content_created_after_hook(
         }
 
     except Exception as e:
-        logger.error(f"Error in reddit_content_created_after_hook: {e}")
+        log.error(f"Error in reddit_content_created_after_hook: {e}")
         return response.get("data", {})

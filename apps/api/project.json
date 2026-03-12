@@ -107,6 +107,66 @@
         "cwd": "{projectRoot}"
       }
     },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --group backend --group dev pytest tests/unit tests/integration -v --tb=short",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/app/**/*",
+        "{projectRoot}/tests/**/*",
+        "{projectRoot}/pyproject.toml",
+        "{projectRoot}/pytest.ini"
+      ]
+    },
+    "test:unit": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --group backend --group dev pytest tests/unit -v --tb=short",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/app/**/*",
+        "{projectRoot}/tests/unit/**/*",
+        "{projectRoot}/tests/conftest.py",
+        "{projectRoot}/tests/factories.py",
+        "{projectRoot}/tests/helpers.py"
+      ]
+    },
+    "test:integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --group backend --group dev pytest tests/integration -v --tb=short",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/app/**/*",
+        "{projectRoot}/tests/integration/**/*",
+        "{projectRoot}/tests/conftest.py",
+        "{projectRoot}/tests/factories.py",
+        "{projectRoot}/tests/helpers.py"
+      ]
+    },
+    "test:e2e": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --group backend --group dev pytest tests/e2e -v --tb=short -m e2e",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "test:coverage": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --group backend --group dev pytest tests/unit tests/integration --cov=app --cov-report=html --cov-report=term-missing",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
     "clean": {
       "executor": "nx:run-commands",
       "options": {

@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Dict, Optional
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.document_tool_docs import (
     GENERATE_DOCUMENT,
@@ -55,6 +55,7 @@ async def generate_document(
     ] = None,
 ) -> str:
     try:
+        log.set(tool={"name": "generate_document", "action": "generate"})
         processor = DocumentProcessor(
             filename=filename,
             format=format,
@@ -86,11 +87,11 @@ async def generate_document(
             }
         )
 
-        logger.info("Document generated and uploaded successfully")
-        logger.info(f"Document URL: {result.get('cloudinary_url')}")
+        log.info("Document generated and uploaded successfully")
+        log.info(f"Document URL: {result.get('cloudinary_url')}")
 
         return f"SUCCESS: Document '{result['filename']}' has been generated and uploaded. The file is now available to the user through the frontend interface."
 
     except Exception as e:
-        logger.error(f"Error generating document: {str(e)}")
+        log.error(f"Error generating document: {str(e)}")
         raise Exception(f"Generation failed: {str(e)}")

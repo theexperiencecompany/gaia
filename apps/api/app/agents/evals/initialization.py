@@ -15,7 +15,7 @@ from app.agents.core.subagents.provider_subagents import register_subagent_provi
 from app.agents.llm.client import register_llm_providers
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.posthog import init_posthog
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import initialize_chroma_tools_store
@@ -40,7 +40,7 @@ async def init_eval_providers(subagent_ids: Optional[list[str]] = None) -> None:
         subagent_ids: Optional list of specific subagent IDs to load.
                      If None, registers all subagents but doesn't eagerly load them.
     """
-    logger.info("Registering eval-specific lazy providers...")
+    log.info("Registering eval-specific lazy providers...")
 
     # Register lazy providers (dormant until first access)
     init_postgresql_engine()
@@ -56,9 +56,9 @@ async def init_eval_providers(subagent_ids: Optional[list[str]] = None) -> None:
     # Register subagents - either specific ones or all
     register_subagent_providers(subagent_ids)
 
-    logger.info("All eval lazy providers registered")
+    log.info("All eval lazy providers registered")
 
     # Initialize providers that need eager loading
     await providers.initialize_auto_providers()
 
-    logger.info("Eval providers initialized successfully")
+    log.info("Eval providers initialized successfully")

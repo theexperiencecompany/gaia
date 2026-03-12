@@ -27,9 +27,10 @@ Usage:
 import functools
 import inspect
 import random
+import time
 from typing import Callable, Optional
 
-from app.config.loggers import profiler_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 
 Profiler = None
@@ -39,7 +40,7 @@ try:
     Profiler = _Profiler
     PROFILING_AVAILABLE = True
 except ImportError:
-    logger.warning("pyinstrument not available - profiling disabled")
+    log.warning("pyinstrument not available - profiling disabled")
     PROFILING_AVAILABLE = False
 
 
@@ -85,6 +86,7 @@ def profile_function(
                     return await f(*args, **kwargs)
 
                 profiler = None
+                start_time = time.time()
                 try:
                     if Profiler is not None:
                         profiler = Profiler()
@@ -95,13 +97,20 @@ def profile_function(
                     # Re-raise the original exception, profiling error logged separately
                     raise
                 finally:
+                    duration_s = time.time() - start_time
                     if profiler is not None:
                         try:
                             profiler.stop()
                             output = profiler.output_text()
-                            logger.info(f"Profile for {f.__name__}:\n{output}")
+                            log.info(f"Profile for {f.__name__}:\n{output}")
+                            if duration_s > 1.0:
+                                log.warning(
+                                    "slow function",
+                                    function=f.__name__,
+                                    duration_ms=round(duration_s * 1000, 2),
+                                )
                         except Exception as e:
-                            logger.warning(
+                            log.warning(
                                 f"Failed to generate profile for {f.__name__}: {e}"
                             )
 
@@ -119,6 +128,7 @@ def profile_function(
                     return f(*args, **kwargs)
 
                 profiler = None
+                start_time = time.time()
                 try:
                     if Profiler is not None:
                         profiler = Profiler()
@@ -129,13 +139,20 @@ def profile_function(
                     # Re-raise the original exception, profiling error logged separately
                     raise
                 finally:
+                    duration_s = time.time() - start_time
                     if profiler is not None:
                         try:
                             profiler.stop()
                             output = profiler.output_text()
-                            logger.info(f"Profile for {f.__name__}:\n{output}")
+                            log.info(f"Profile for {f.__name__}:\n{output}")
+                            if duration_s > 1.0:
+                                log.warning(
+                                    "slow function",
+                                    function=f.__name__,
+                                    duration_ms=round(duration_s * 1000, 2),
+                                )
                         except Exception as e:
-                            logger.warning(
+                            log.warning(
                                 f"Failed to generate profile for {f.__name__}: {e}"
                             )
 

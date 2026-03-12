@@ -1,6 +1,6 @@
 from typing import Annotated, Optional
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.decorators import with_doc, with_rate_limiting
@@ -25,10 +25,11 @@ async def query_file(
     config: RunnableConfig,
 ) -> str:
     try:
+        log.set(tool={"name": "query_file", "action": "query"})
         configurable = config.get("configurable")
 
         if not configurable:
-            logger.error("Configurable is not set in the config.")
+            log.error("Configurable is not set in the config.")
             raise ValueError("Configurable is not set in the config.")
 
         conversation_id = configurable["thread_id"]
@@ -40,7 +41,7 @@ async def query_file(
             user_id=configurable["user_id"],
         )
 
-        logger.info(f"Similar documents found: {similar_documents}")
+        log.info(f"Similar documents found: {similar_documents}")
 
         document_ids = list(
             set(
@@ -51,7 +52,7 @@ async def query_file(
             )
         )
 
-        logger.info(f"Document IDs: {document_ids}")
+        log.info(f"Document IDs: {document_ids}")
 
         documents = await files_collection.find(
             filter={
@@ -60,7 +61,7 @@ async def query_file(
             },
         ).to_list(length=None)
 
-        logger.info(f"Documents found: {documents}")
+        log.info(f"Documents found: {documents}")
 
         return _construct_content(
             documents=documents,
@@ -68,7 +69,7 @@ async def query_file(
         )
 
     except Exception as e:
-        logger.error(f"Error in querying document: {str(e)}")
+        log.error(f"Error in querying document: {str(e)}")
         raise e
 
 
@@ -99,7 +100,7 @@ async def _get_similar_documents(
     )
 
     if not chroma_documents_collection:
-        logger.error("ChromaDB client is not available.")
+        log.error("ChromaDB client is not available.")
         return []
 
     filters = {
@@ -147,7 +148,7 @@ def _construct_content(
         )
 
         if not document:
-            logger.error(f"Document with ID {document_id} not found.")
+            log.error(f"Document with ID {document_id} not found.")
             continue
 
         document_content = document["page_wise_summary"]
@@ -171,12 +172,12 @@ def _construct_content(
             content += f"Document ID: {document_id}\n"
             content += f"Description: {document_content.get('data', {}).get('content', 'Description not available!')}\n\n"
         else:
-            logger.error(
+            log.error(
                 f"Unexpected document description type: {type(document['description'])}"
             )
             content += f"Document ID: {document_id}\n"
             content += "Description: Invalid format\n\n"
 
-    logger.info(f"Constructed content: {content}")
+    log.info(f"Constructed content: {content}")
 
     return content

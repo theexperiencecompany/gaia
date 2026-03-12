@@ -30,9 +30,11 @@ services:
       PYTHONUNBUFFERED: 1
       WATCHFILES_FORCE_POLLING: 1
       # PYTHONPROFILEIMPORTTIME: 1
-      FORCE_COLOR: 1
+      FORCE_COLOR: 0
       WORKER_TYPE: main_app
       PYTHONPATH: /app/apps/api
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
     env_file:
       - ../../apps/api/.env
     volumes:
@@ -143,8 +145,10 @@ services:
     ports:
       - "${RABBITMQ_HOST_PORT:-5672}:5672" # AMQP protocol
       - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+      - "${RABBITMQ_PROM_PORT:-15692}:15692" # Prometheus metrics
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
     restart: always
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
@@ -165,6 +169,8 @@ services:
     environment:
       - WORKER_TYPE=arq_worker
       - PYTHONPATH=/app/apps/api
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
     command: ["uv", "run", "python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
@@ -260,13 +266,15 @@ services:
     working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: 1
-      FORCE_COLOR: 1
+      FORCE_COLOR: 0
       WORKER_TYPE: voice_agent_worker
       DEBUG: 1
       WATCHFILES_FORCE_POLLING: 1
       HF_HUB_OFFLINE: "0"
       LOCAL_FILES_ONLY: "0"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
     env_file:
       - ../../apps/api/.env
     volumes:
@@ -275,6 +283,178 @@ services:
     networks:
       - gaia_network
 
+  # ---------------------------------------------------------------------------
+  # Metrics exporters
+  # ---------------------------------------------------------------------------
+
+  # cAdvisor — Docker container CPU / memory / network / disk metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--docker_only=true"
+      - "--store_container_labels=false"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # Blackbox Exporter — HTTP probe for services without Prometheus metrics (e.g. ChromaDB)
+  blackbox_exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox_exporter
+    volumes:
+      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # Node Exporter — host CPU / memory / disk / network metrics
+  node_exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node_exporter
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # MongoDB Exporter
+  mongodb_exporter:
+    image: percona/mongodb_exporter:0.43
+    container_name: mongodb_exporter
+    command:
+      - "--mongodb.uri=mongodb://mongo:27017"
+      - "--collect-all"
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.0
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: redis_exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./observability/metrics_token:/etc/prometheus/metrics_token:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    mem_limit: 512m
+    cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Observability stack — Loki + Promtail + Grafana
+  # Always started with docker compose up (no profile needed).
+  # Access Grafana at http://localhost:4000  (admin / admin)
+  # ---------------------------------------------------------------------------
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: loki
+    ports:
+      - "${LOKI_HOST_PORT:-3100}:3100"
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 512m
+    cpus: "0.5"
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    container_name: promtail
+    volumes:
+      - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount local log files so promtail can ship them even when services
+      # run outside Docker (nx dev api, nx worker api, nx dev voice-agent).
+      - ../../apps/api/logs:/var/log/gaia-api:ro
+      - ../../apps/api/logs/worker:/var/log/gaia-worker:ro
+      - ../../apps/voice-agent/logs:/var/log/gaia-voice-agent:ro
+    command: -config.file=/etc/promtail/config.yaml
+    restart: unless-stopped
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    mem_limit: 128m
+    cpus: "0.25"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana
+    ports:
+      - "${GRAFANA_HOST_PORT:-4000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      # IMPORTANT: Set GRAFANA_ADMIN_PASSWORD in your .env file before deploying.
+      # The default "changeme" is intentionally obvious — change it for production.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
+    restart: unless-stopped
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    mem_limit: 256m
+    cpus: "0.5"
+
 volumes:
   chroma_data:
   pgdata:
@@ -282,6 +462,9 @@ volumes:
   mongo_data:
   rabbitmq_data:
   voice_agent_models:
+  loki_data:
+  grafana_data:
+  prometheus_data:
 
 networks:
   gaia_network:

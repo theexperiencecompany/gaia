@@ -5,7 +5,6 @@ import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
 import { BubbleChatAddIcon } from "@icons";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 import ChatsList from "@/components/layout/sidebar/ChatsList";
 import CalendarSidebar from "@/components/layout/sidebar/variants/CalendarSidebar";
@@ -17,6 +16,7 @@ import TodoSidebar from "@/components/layout/sidebar/variants/TodoSidebar";
 import WorkflowsSidebar from "@/components/layout/sidebar/variants/WorkflowsSidebar";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
+import { usePathname } from "@/i18n/navigation";
 
 export default function Sidebar() {
   const pathname = usePathname();

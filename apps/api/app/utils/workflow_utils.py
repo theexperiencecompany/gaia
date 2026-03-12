@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.db.utils import serialize_document
 from app.models.workflow_models import (
@@ -42,6 +42,12 @@ async def handle_workflow_error(
     deactivate: bool = False,
 ) -> None:
     """Centralized error handling for workflow operations."""
+    log.set(
+        operation="handle_workflow_error",
+        workflow_id=workflow_id,
+        user_id=user_id,
+        deactivate=deactivate,
+    )
     try:
         update_data: Dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
         if deactivate:
@@ -51,9 +57,9 @@ async def handle_workflow_error(
             {"_id": workflow_id, "user_id": user_id},
             {"$set": update_data},
         )
-        logger.error(f"Workflow {workflow_id} error: {error}")
+        log.error(f"Workflow {workflow_id} error: {error}")
     except Exception as update_error:
-        logger.error(
+        log.error(
             f"Failed to update workflow {workflow_id} error state: {update_error}"
         )
 
@@ -96,7 +102,7 @@ def transform_workflow_document(doc: dict) -> dict:
             "cancelled",
             "paused",
         ]:
-            logger.warning(
+            log.warning(
                 f"Unknown status '{old_status}' in workflow {doc.get('_id')}, defaulting to 'failed'"
             )
             transformed_doc["status"] = "failed"
@@ -179,6 +185,13 @@ async def create_workflow_directly(
     Returns success_response on success, or None if creation fails
     (caller should fall back to streaming draft).
     """
+    log.set(
+        operation="create_workflow_directly",
+        user_id=user_id,
+        workflow_title=draft.title,
+        trigger_type=draft.trigger_type,
+        user_timezone=user_timezone,
+    )
     try:
         from app.services.workflow import WorkflowService
 
@@ -229,7 +242,7 @@ async def create_workflow_directly(
 
         writer({"workflow_created": workflow_data})
 
-        logger.info(f"[create_workflow] Created workflow directly: {workflow.id}")
+        log.info(f"[create_workflow] Created workflow directly: {workflow.id}")
 
         return success_response(
             {"status": "created", "workflow_id": workflow.id},
@@ -239,7 +252,7 @@ async def create_workflow_directly(
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.warning(f"[create_workflow] Direct creation failed: {e}")
+        log.warning(f"[create_workflow] Direct creation failed: {e}")
         return None
 
 

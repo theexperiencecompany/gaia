@@ -1,6 +1,7 @@
 "use client";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { usePathname } from "@/i18n/navigation";
 import { apiauth } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { isOnLandingRoute, processAxiosError } from "@/utils/interceptorUtils";
