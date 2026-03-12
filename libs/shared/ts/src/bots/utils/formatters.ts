@@ -67,7 +67,7 @@ export function formatConversation(
   conversation: BotConversation,
   baseUrl: string,
 ): string {
-  const title = conversation.title || "Untitled BotConversation";
+  const title = conversation.title || "Untitled Conversation";
   const url = `${baseUrl}/c/${conversation.conversation_id}`;
   const messageCount = conversation.message_count
     ? ` (${conversation.message_count} messages)`
