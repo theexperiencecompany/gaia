@@ -217,7 +217,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/string-similarity": "^4.0.2",
     "@types/uuid": "^9.0.8",
-    "@vitejs/plugin-react": "^6.0.0",
+    "@vitejs/plugin-react": "^4.7.0",
     "barrelsby": "^2.8.1",
     "depcheck": "^1.4.7",
     "jsdom": "^28.1.0",
