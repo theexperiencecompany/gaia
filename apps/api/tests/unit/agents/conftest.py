@@ -8,11 +8,13 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
+HELPFUL_ASSISTANT_SYSTEM_PROMPT = "You are a helpful assistant."
+
 
 @pytest.fixture
 def sample_messages() -> list:
     return [
-        SystemMessage(content="You are a helpful assistant."),
+        SystemMessage(content=HELPFUL_ASSISTANT_SYSTEM_PROMPT),
         HumanMessage(content="What is the weather today?"),
         AIMessage(content="I can help you check the weather."),
     ]
@@ -22,7 +24,7 @@ def sample_messages() -> list:
 def messages_with_tool_calls() -> list:
     tool_call_id = "call_weather_123"
     return [
-        SystemMessage(content="You are a helpful assistant."),
+        SystemMessage(content=HELPFUL_ASSISTANT_SYSTEM_PROMPT),
         HumanMessage(content="What is the weather today?"),
         AIMessage(
             content="",
@@ -46,7 +48,7 @@ def messages_with_tool_calls() -> list:
 @pytest.fixture
 def messages_with_unanswered_tool_calls() -> list:
     return [
-        SystemMessage(content="You are a helpful assistant."),
+        SystemMessage(content=HELPFUL_ASSISTANT_SYSTEM_PROMPT),
         HumanMessage(content="What is the weather today?"),
         AIMessage(
             content="",
@@ -72,4 +74,4 @@ def memory_system_message() -> SystemMessage:
 
 @pytest.fixture
 def non_memory_system_message() -> SystemMessage:
-    return SystemMessage(content="You are a helpful assistant.")
+    return SystemMessage(content=HELPFUL_ASSISTANT_SYSTEM_PROMPT)

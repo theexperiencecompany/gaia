@@ -272,7 +272,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       replyFn,
     });
 
-    await onHandler!(ctx);
+    await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
     expect(replyFn).toHaveBeenCalledWith("How can I help you?");
     expect(handleStreamingChat).not.toHaveBeenCalled();
@@ -290,7 +290,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       replyFn,
     });
 
-    await onHandler!(ctx);
+    await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
     expect(handleStreamingChat).not.toHaveBeenCalled();
     expect(replyFn).not.toHaveBeenCalled();
@@ -692,7 +692,7 @@ describe("TelegramAdapter - markdown fallback retry (editMessage callback)", () 
     expect(capturedSendNewMessage).toBeDefined();
 
     // Simulate a new streaming segment with broken markdown
-    await capturedSendNewMessage!("*unclosed bold");
+    await capturedSendNewMessage!("*unclosed bold"); // NOSONAR — non-null assertion needed; variable typed as T | undefined
 
     // Total calls: Thinking... + markdown attempt + plain fallback = 3
     expect(replyFn).toHaveBeenCalledTimes(3);

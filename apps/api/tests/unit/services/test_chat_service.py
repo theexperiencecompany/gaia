@@ -821,7 +821,7 @@ class TestRunChatStreamBackground:
         sm.publish_chunk = AsyncMock(side_effect=track_publish)
         set_error_calls: list[str] = []
 
-        async def track_set_error(stream_id: str, err: str) -> None:
+        def track_set_error(stream_id: str, err: str) -> None:
             set_error_calls.append(err)
             # Verify no further publish_chunk called after this
 

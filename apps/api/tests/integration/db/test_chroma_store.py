@@ -106,7 +106,7 @@ class _AsyncEphemeralWrapper:
     async def delete_collection(self, name):
         return self._sync.delete_collection(name)
 
-    async def reset(self):
+    async def reset(self):  # NOSONAR — async wrapper required for consistent async interface
         return self._sync.reset()
 
 
@@ -287,7 +287,7 @@ class TestChromaStoreCRUD:
 class TestChromaStoreNamespaceHelpers:
     """Test internal namespace <-> ID conversion helpers."""
 
-    async def test_namespace_to_id_roundtrip(self, chroma_store):
+    def test_namespace_to_id_roundtrip(self, chroma_store):
         """_namespace_to_id and _id_to_namespace_key should be inverses."""
         namespace = ("tools", "gmail")
         key = "send_email"
@@ -296,21 +296,21 @@ class TestChromaStoreNamespaceHelpers:
         assert back_ns == namespace
         assert back_key == key
 
-    async def test_empty_namespace_uses_default(self, chroma_store):
+    def test_empty_namespace_uses_default(self, chroma_store):
         """Empty namespace tuple should be stored/retrieved without error."""
         doc_id = chroma_store._namespace_to_id((), "orphan_key")
-        ns, key = chroma_store._id_to_namespace_key(doc_id)
+        _, key = chroma_store._id_to_namespace_key(doc_id)
         assert key == "orphan_key"
 
-    async def test_matches_namespace_prefix_exact(self, chroma_store):
+    def test_matches_namespace_prefix_exact(self, chroma_store):
         """Exact namespace should match its own prefix."""
         assert chroma_store._matches_namespace_prefix(("a", "b"), ("a", "b"))
 
-    async def test_matches_namespace_prefix_partial(self, chroma_store):
+    def test_matches_namespace_prefix_partial(self, chroma_store):
         """A longer namespace should match a shorter prefix."""
         assert chroma_store._matches_namespace_prefix(("a", "b", "c"), ("a", "b"))
 
-    async def test_does_not_match_wrong_prefix(self, chroma_store):
+    def test_does_not_match_wrong_prefix(self, chroma_store):
         """A namespace should NOT match a prefix it does not start with."""
         assert not chroma_store._matches_namespace_prefix(("x", "y"), ("a", "b"))
 

@@ -40,7 +40,7 @@ class TestProviderRegistry:
         """Registering an async provider and aget() should await the loader."""
         registry = ProviderRegistry()
 
-        async def async_loader():
+        async def async_loader():  # NOSONAR — intentionally async to test registry awaits the loader
             return "async-value"
 
         registry.register(

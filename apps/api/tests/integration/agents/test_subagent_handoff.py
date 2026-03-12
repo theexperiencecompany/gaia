@@ -1466,7 +1466,7 @@ class TestCustomMCPPath:
                 new=AsyncMock(return_value=MagicMock()),
             ) as mock_create,
         ):
-            graph, agent_name, error_or_id, is_custom = await _resolve_subagent(
+            graph, agent_name, error_or_id, _ = await _resolve_subagent(
                 subagent_id=custom_id,
                 user_id=None,
             )
@@ -1507,7 +1507,7 @@ class TestCustomMCPPath:
                 new=AsyncMock(return_value=None),
             ),
         ):
-            graph, agent_name, error_or_id, is_custom = await _resolve_subagent(
+            graph, _, error_or_id, _ = await _resolve_subagent(
                 subagent_id=custom_id,
                 user_id="user-xyz",
             )

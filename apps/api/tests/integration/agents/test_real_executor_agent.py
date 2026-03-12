@@ -37,7 +37,7 @@ from tests.integration.conftest import SimpleState
 def _make_stub_tool(name: str):
     """Create a minimal stub tool with the given name."""
 
-    async def _stub(input: str = "") -> str:  # noqa: A002
+    def _stub(input: str = "") -> str:  # noqa: A002
         return f"stub:{name}"
 
     _stub.__name__ = name

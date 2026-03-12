@@ -541,7 +541,7 @@ class TestGetIssueFullContext:
     @pytest.mark.composio
     def test_fetch_by_identifier(self):
         """Fetches issue by human-readable identifier like 'ENG-1'."""
-        result, mock_gql = _call(
+        result, _ = _call(
             "CUSTOM_GET_ISSUE_FULL_CONTEXT",
             GetIssueFullContextInput(issue_identifier="ENG-1"),
             return_values=[{"issue": FULL_ISSUE}],
@@ -883,7 +883,7 @@ class TestCreateIssueRelation:
                 "issueRelation": {"id": "rel-1", "type": "blocks"},
             }
         }
-        result, mock_gql = _call(
+        result, _ = _call(
             "CUSTOM_CREATE_ISSUE_RELATION",
             CreateIssueRelationInput(
                 issue_id="issue-a",

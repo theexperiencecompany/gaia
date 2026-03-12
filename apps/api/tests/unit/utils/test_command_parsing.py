@@ -93,7 +93,7 @@ class TestExtractOutputRedirect:
 
     def test_only_whitespace(self):
         """Whitespace-only input yields no redirect."""
-        cmd, redirect = extract_output_redirect("   ")
+        _, redirect = extract_output_redirect("   ")
         assert redirect is None
 
     def test_malformed_no_operator(self):

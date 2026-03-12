@@ -114,8 +114,7 @@ describe("writeConfig", () => {
     const config = makeSampleConfig({ repoPath: "/custom/path" });
     writeConfig(config);
 
-    const writtenJson = (mockedFs.writeFileSync as ReturnType<typeof vi.fn>)
-      .mock.calls[0]?.[1] as string;
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0]?.[1] as string;
     const parsed = JSON.parse(writtenJson);
     expect(parsed.repoPath).toBe("/custom/path");
     expect(parsed.version).toBe("0.0.1-test");
@@ -150,8 +149,7 @@ describe("updateConfig", () => {
 
     updateConfig({ repoPath: "/new/repo" });
 
-    const writtenJson = (mockedFs.writeFileSync as ReturnType<typeof vi.fn>)
-      .mock.calls[0]?.[1] as string;
+    const writtenJson = mockedFs.writeFileSync.mock.calls[0]?.[1] as string;
     const parsed = JSON.parse(writtenJson);
     expect(parsed.repoPath).toBe("/new/repo");
     expect(parsed.version).toBe("0.0.1-test");

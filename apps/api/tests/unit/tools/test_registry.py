@@ -143,8 +143,7 @@ class TestDynamicToolDict:
         dtd = DynamicToolDict(registry)
         dtd.update({"z": _make_mock_tool("z")})
 
-        keys = list(dtd)
-        assert set(keys) == {"x", "y", "z"}
+        assert set(dtd) == {"x", "y", "z"}
 
     def test_iter_no_duplicates(self):
         registry = self._make_registry_with_tools(["a"])

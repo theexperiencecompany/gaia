@@ -197,7 +197,7 @@ class TestSendEmail:
         )
 
         assert result == {"successful": True, "messageId": "abc"}
-        args, kwargs = mock_invoke_gmail_tool.call_args
+        args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_SEND_EMAIL"
         params = args[2]
         assert params["recipient_email"] == "bob@example.com"

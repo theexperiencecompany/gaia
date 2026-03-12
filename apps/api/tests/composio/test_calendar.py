@@ -267,7 +267,7 @@ class TestCustomGetDaySummary:
         assert "date" in result
         assert "timezone" in result
         assert result["events"] == []
-        assert result["busy_hours"] == 0.0
+        assert result["busy_hours"] == pytest.approx(0.0)
         assert result["next_event"] is None
 
     def test_happy_path_specific_date(self):
@@ -326,7 +326,7 @@ class TestCustomGetDaySummary:
         with p1, p2, p3, p4:
             result = self._run(GetDaySummaryInput(date="2026-03-03"))
 
-        assert result["busy_hours"] == 0.0
+        assert result["busy_hours"] == pytest.approx(0.0)
 
     def test_metadata_failure_falls_back_to_raw_events(self):
         """If get_calendar_metadata_map raises, handler falls back to raw events."""

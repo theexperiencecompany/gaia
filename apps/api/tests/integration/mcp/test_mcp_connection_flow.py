@@ -679,7 +679,7 @@ class TestMCPConnectionFlow:
         # Simulate create_session raising 401 on the first call, succeeding on the second
         call_count = 0
 
-        async def _create_session_side_effect(*_args, **_kwargs):
+        def _create_session_side_effect(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:

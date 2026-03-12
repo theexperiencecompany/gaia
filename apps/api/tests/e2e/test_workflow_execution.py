@@ -63,7 +63,7 @@ class TestWorkflowExecution:
             "Previous todos must be fully replaced, not merged."
         )
 
-    async def test_selected_tool_ids_channel_deduplicates(self):
+    def test_selected_tool_ids_channel_deduplicates(self):
         """dedupe_str_list must remove duplicate tool IDs while preserving order.
 
         selected_tool_ids accumulates IDs across tool-retrieval turns. When the
@@ -292,7 +292,7 @@ class TestWorkflowExecution:
             responses=[AIMessage(content="Comms agent response.")]
         )
 
-        async def _noop_follow_up(state, config, store):
+        async def _noop_follow_up(state, config, store):  # NOSONAR — async required for LangGraph hook interface
             return state
 
         # Patch at the build_graph module namespace (where names are imported)
