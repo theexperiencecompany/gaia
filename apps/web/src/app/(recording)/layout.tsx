@@ -19,23 +19,25 @@ export default function RecordingLayout({ children }: { children: ReactNode }) {
             [data-nextjs-toast],
             #__NEXTJS_PORTAL__ { display: none !important; }
 
-            /* Override vw-based bubble constraints for recording viewports.
-               Production uses wide desktop viewports where 30vw/60vw look fine;
-               recording at 390px needs percentage-based widths instead. */
+            /* Remove vw-based max-width so bubbles fill the parent flex container
+               naturally. At 390px, 60vw = 234px which is far too narrow.
+               The parent (chatbubblebot_parent flex-1) already bounds the width. */
             [data-recording-phase] .imessage-bubble {
-              max-width: 82% !important;
+              max-width: none !important;
             }
+
+            /* Inner text wrapper inside user bubbles has max-w-[30vw] = 117px.
+               Remove it so text fills the bubble. */
             [data-recording-phase] .imessage-bubble > div {
               max-width: none !important;
             }
 
-            /* TodoSection cards have hard-coded min-w-[400px] / min-w-[450px]
-               which overflow the 390px recording viewport. Constrain to viewport. */
+            /* TodoSection cards have hard-coded min-w-[400/450px] that overflow
+               the 390px recording viewport. Make them fill available space. */
             [data-recording-phase] .min-w-\\[400px\\],
             [data-recording-phase] .min-w-\\[450px\\] {
               min-width: 0 !important;
-              max-width: calc(100vw - 24px) !important;
-              width: auto !important;
+              width: 100% !important;
             }
           `}</style>
           {children}

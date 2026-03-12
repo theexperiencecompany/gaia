@@ -50,7 +50,7 @@ export default function RecordingChatLayout({
   );
 
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden" style={{ backgroundColor: "#111111" }}>
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-4 space-y-4"
