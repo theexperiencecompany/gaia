@@ -72,7 +72,12 @@ async def add_public_integration(
 ) -> AddIntegrationResponse:
     """Add a public integration to user's workspace and trigger connection."""
     try:
-        log.set(operation="add_public_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
+        log.set(
+            operation="add_public_integration",
+            integration_id=integration_id,
+            user={"id": user_id},
+            integration={"id": integration_id},
+        )
         original_doc = await integrations_collection.find_one(
             {"integration_id": integration_id, "is_public": True}
         )

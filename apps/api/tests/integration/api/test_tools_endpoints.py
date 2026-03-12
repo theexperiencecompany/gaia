@@ -650,7 +650,11 @@ class TestMCPToolMerge:
     ):
         """Categories from merged MCP tools must appear in the response categories list."""
         cached_global = ToolsListResponse(
-            tools=[_make_tool_info(name="web_search", category="general", display_name="General")],
+            tools=[
+                _make_tool_info(
+                    name="web_search", category="general", display_name="General"
+                )
+            ],
             total_count=1,
             categories=["general"],
         )

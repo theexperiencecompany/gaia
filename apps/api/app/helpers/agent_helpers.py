@@ -318,9 +318,7 @@ def build_agent_config(
         user_model_config.max_tokens if user_model_config else DEFAULT_MAX_TOKENS
     )
 
-    log.set(
-        model_config_source="user_selected" if user_model_config else "default"
-    )
+    log.set(model_config_source="user_selected" if user_model_config else "default")
 
     # Cherry-pick specific keys from base_configurable if provided
     # Only inherit model config and user context, not LangChain internal state

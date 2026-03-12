@@ -498,9 +498,7 @@ class TestToolRegistryAsync:
                 raise RuntimeError("Composio unavailable for TOOLKIT_B")
             return tools_c
 
-        mock_composio_service.get_tools = AsyncMock(
-            side_effect=_get_tools_side_effect
-        )
+        mock_composio_service.get_tools = AsyncMock(side_effect=_get_tools_side_effect)
 
         registry = ToolRegistry()
 

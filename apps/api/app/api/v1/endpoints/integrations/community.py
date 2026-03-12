@@ -23,7 +23,11 @@ async def list_community_integrations(
     try:
         log.set(operation="list_community_integrations", category=category)
         result = await list_community(sort, category, limit, offset, search)
-        log.set(result_count=len(result.integrations) if hasattr(result, "integrations") else 0)
+        log.set(
+            result_count=len(result.integrations)
+            if hasattr(result, "integrations")
+            else 0
+        )
         log.set(outcome="success")
         return result
     except Exception as e:

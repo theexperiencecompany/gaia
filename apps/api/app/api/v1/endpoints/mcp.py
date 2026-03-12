@@ -39,7 +39,11 @@ async def test_mcp_connection(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
-    log.set(user={"id": user_id}, integration_id=integration_id, operation="test_mcp_connection")
+    log.set(
+        user={"id": user_id},
+        integration_id=integration_id,
+        operation="test_mcp_connection",
+    )
 
     client = await get_mcp_client(user_id=str(user_id))
 

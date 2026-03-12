@@ -131,7 +131,11 @@ async def _handle_platform_oauth_callback(
 
     user_id = state_data["user_id"]
     redirect_path = state_data["redirect_path"]
-    log.set(user={"id": user_id}, platform=config.platform, operation="platform_oauth_callback")
+    log.set(
+        user={"id": user_id},
+        platform=config.platform,
+        operation="platform_oauth_callback",
+    )
 
     try:
         # Exchange authorization code for access token

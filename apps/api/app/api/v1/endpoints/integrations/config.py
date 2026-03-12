@@ -65,7 +65,12 @@ async def disconnect_integration_endpoint(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
     try:
-        log.set(operation="disconnect_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
+        log.set(
+            operation="disconnect_integration",
+            integration_id=integration_id,
+            user={"id": user_id},
+            integration={"id": integration_id},
+        )
         result = await disconnect_integration(user_id, integration_id)
         log.set(outcome="success")
         return result
@@ -94,7 +99,12 @@ async def connect_integration_endpoint(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
-    log.set(operation="connect_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
+    log.set(
+        operation="connect_integration",
+        integration_id=integration_id,
+        user={"id": user_id},
+        integration={"id": integration_id},
+    )
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:
         raise HTTPException(
@@ -130,7 +140,7 @@ async def connect_integration_endpoint(
                 "managed_by": resolved.managed_by,
                 "auth_type": auth_type,
                 "provider": provider or integration_id,
-            }
+            },
         )
         if resolved.managed_by == "mcp":
             result = await connect_mcp_integration(

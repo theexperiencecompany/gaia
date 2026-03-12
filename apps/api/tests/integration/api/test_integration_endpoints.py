@@ -408,7 +408,9 @@ class TestIntegrationEndpointLogic:
         The endpoint maps ValueError to 400. If that mapping is removed,
         this test fails.
         """
-        mock_add.side_effect = ValueError("Integration 'gmail' already added to workspace")
+        mock_add.side_effect = ValueError(
+            "Integration 'gmail' already added to workspace"
+        )
 
         response = await test_client.post(_BASE, json={"integration_id": "gmail"})
 
@@ -459,9 +461,7 @@ class TestIntegrationEndpointLogic:
         "app.api.v1.endpoints.integrations.user.add_user_integration_service",
         new_callable=AsyncMock,
     )
-    async def test_add_integration_unknown_id_returns_400(
-        self, mock_add, test_client
-    ):
+    async def test_add_integration_unknown_id_returns_400(self, mock_add, test_client):
         """POST with unknown integration_id must return 400, not 404 or 500.
 
         The service raises ValueError for unknown IDs; the endpoint must map
@@ -469,8 +469,6 @@ class TestIntegrationEndpointLogic:
         """
         mock_add.side_effect = ValueError("Integration 'unknown-xyz' not found")
 
-        response = await test_client.post(
-            _BASE, json={"integration_id": "unknown-xyz"}
-        )
+        response = await test_client.post(_BASE, json={"integration_id": "unknown-xyz"})
 
         assert response.status_code == 400

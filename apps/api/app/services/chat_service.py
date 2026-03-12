@@ -119,9 +119,13 @@ async def _run_chat_stream(
                 tool_category=body.toolCategory,
                 has_reply=bool(body.replyToMessage),
                 has_calendar_event=bool(body.selectedCalendarEvent),
-                selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
+                selected_workflow_id=body.selectedWorkflow.id
+                if body.selectedWorkflow
+                else None,
             ),
-            user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+            user_message_length=len(body.messages[-1]["content"])
+            if body.messages
+            else 0,
             selected_tool=body.selectedTool,
         )
         user_model_config = None

@@ -158,7 +158,9 @@ async def initiate_platform_connect(
     user_id = current_user.get("user_id")
     if not isinstance(user_id, str):
         raise ValueError("user_id must be a string")
-    log.set(user={"id": user_id}, operation="initiate_platform_connect", platform=platform)
+    log.set(
+        user={"id": user_id}, operation="initiate_platform_connect", platform=platform
+    )
 
     # Discord OAuth flow
     if platform == "discord" and settings.DISCORD_OAUTH_CLIENT_ID:

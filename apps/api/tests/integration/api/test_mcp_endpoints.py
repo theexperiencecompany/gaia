@@ -669,7 +669,9 @@ class TestMCPOAuthCallbackEndpoint:
         # Simulate what happens when Redis has expired the OAuth state key:
         # verify_oauth_state returns (False, None) → handle_oauth_callback raises
         mock_client.handle_oauth_callback = AsyncMock(
-            side_effect=ValueError("Invalid state token: state has expired or does not exist")
+            side_effect=ValueError(
+                "Invalid state token: state has expired or does not exist"
+            )
         )
         mock_get_client.return_value = mock_client
 
@@ -724,7 +726,9 @@ class TestMCPOAuthCallbackEndpoint:
 
         mock_client = _make_mcp_client()
         mock_client.handle_oauth_callback = AsyncMock(
-            side_effect=ValueError("OAuth state mismatch: received token does not match stored state")
+            side_effect=ValueError(
+                "OAuth state mismatch: received token does not match stored state"
+            )
         )
         mock_get_client.return_value = mock_client
 

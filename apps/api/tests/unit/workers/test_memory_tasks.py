@@ -269,9 +269,7 @@ class TestStoreMemoriesBatch:
             for i in range(1, 6)
         ]
 
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
             result = await store_memories_batch(ctx, "user_batch", emails)
 
@@ -291,9 +289,7 @@ class TestStoreMemoriesBatch:
 
     async def test_store_memories_batch_empty(self, ctx):
         """An empty batch must return early with no DB writes at all."""
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
             result = await store_memories_batch(ctx, "user_empty", [])
 

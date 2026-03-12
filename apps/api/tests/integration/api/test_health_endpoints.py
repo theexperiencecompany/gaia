@@ -77,7 +77,11 @@ class TestHealthEndpoints:
         """
         with patch(
             "app.api.v1.endpoints.health.get_project_info",
-            return_value={"name": "GAIA API", "version": "dev", "description": "Backend for GAIA"},
+            return_value={
+                "name": "GAIA API",
+                "version": "dev",
+                "description": "Backend for GAIA",
+            },
         ):
             response = await test_client.get("/health")
 

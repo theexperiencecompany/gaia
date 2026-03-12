@@ -216,7 +216,9 @@ async def mark_as_read(
         if not updated_notification:
             raise HTTPException(status_code=404, detail="Notification not found")
 
-        log.set(operation="mark_read", notification_id=notification_id, outcome="success")
+        log.set(
+            operation="mark_read", notification_id=notification_id, outcome="success"
+        )
         return NotificationResponse(
             success=True,
             message="Notification marked as read",

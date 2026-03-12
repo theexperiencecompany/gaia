@@ -53,7 +53,11 @@ async def image_stream(
     request: MessageRequest, _user: dict = Depends(get_current_user)
 ):
     """Generate an image with streaming response."""
-    log.set(operation="generate_stream", prompt_length=len(request.message), outcome="success")
+    log.set(
+        operation="generate_stream",
+        prompt_length=len(request.message),
+        outcome="success",
+    )
     return StreamingResponse(
         generate_image_stream(request.message),
         media_type="text/event-stream",

@@ -41,7 +41,13 @@ async def create_conversation_endpoint(
         conversation={"operation": "create", "is_new": True},
     )
     response = await create_conversation_service(conversation, user)
-    log.set(conversation={"operation": "create", "is_new": True, "id": response.get("conversation_id")})
+    log.set(
+        conversation={
+            "operation": "create",
+            "is_new": True,
+            "id": response.get("conversation_id"),
+        }
+    )
     return JSONResponse(content=response)
 
 
@@ -67,7 +73,14 @@ async def get_conversations_endpoint(
         conversation={"operation": "list", "page": page, "limit": limit},
     )
     response = await get_conversations(user, page=page, limit=limit)
-    log.set(conversation={"operation": "list", "page": page, "limit": limit, "total_returned": len(response.get("conversations", []))})
+    log.set(
+        conversation={
+            "operation": "list",
+            "page": page,
+            "limit": limit,
+            "total_returned": len(response.get("conversations", [])),
+        }
+    )
 
     return JSONResponse(content=response)
 
@@ -128,7 +141,11 @@ async def star_conversation_endpoint(
     """
     log.set(
         user={"id": user["user_id"]},
-        conversation={"operation": "star", "id": conversation_id, "is_starred": body.starred},
+        conversation={
+            "operation": "star",
+            "id": conversation_id,
+            "is_starred": body.starred,
+        },
     )
     response = await star_conversation(conversation_id, body.starred, user)
     return JSONResponse(content=response)

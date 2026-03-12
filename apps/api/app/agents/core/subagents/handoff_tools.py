@@ -396,7 +396,14 @@ async def handoff(
         # Type assertion after null check - these are guaranteed to be str at this point
         agent_name: str = resolved_agent_name
         int_id: str = int_id_or_error
-        log.set(subagent={"name": agent_name, "provider": int_id, "is_custom": is_custom, "task_length": len(task)})
+        log.set(
+            subagent={
+                "name": agent_name,
+                "provider": int_id,
+                "is_custom": is_custom,
+                "task_length": len(task),
+            }
+        )
 
         # Build config
         thread_id = configurable.get("thread_id", "")

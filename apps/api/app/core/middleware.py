@@ -25,7 +25,9 @@ async def rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle rate limit exceeded exceptions."""
     wide_log.warning(
         "rate_limit_exceeded",
-        client_ip=request.client.host if request.client else request.headers.get("x-forwarded-for", "unknown"),
+        client_ip=request.client.host
+        if request.client
+        else request.headers.get("x-forwarded-for", "unknown"),
         path=request.url.path,
         method=request.method,
         retry_after=getattr(exc, "retry_after", None),

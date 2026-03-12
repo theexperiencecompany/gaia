@@ -34,7 +34,9 @@ def token_store(fernet_key):
     return store
 
 
-def _make_bearer_credential(token_store: MCPTokenStore, integration_id: str, plaintext: str) -> MCPCredential:
+def _make_bearer_credential(
+    token_store: MCPTokenStore, integration_id: str, plaintext: str
+) -> MCPCredential:
     """Build an MCPCredential as store_bearer_token would, using the same cipher."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     return MCPCredential(

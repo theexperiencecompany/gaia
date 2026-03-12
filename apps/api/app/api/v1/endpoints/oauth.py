@@ -171,7 +171,11 @@ async def workos_mobile_callback(
 
         fields_extracted = [
             field
-            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            for field, value in [
+                ("email", email),
+                ("name", name),
+                ("picture", picture_url),
+            ]
             if value
         ]
         log.set(fields_extracted=fields_extracted)
@@ -248,7 +252,11 @@ async def workos_desktop_callback(
 
         fields_extracted = [
             field
-            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            for field, value in [
+                ("email", email),
+                ("name", name),
+                ("picture", picture_url),
+            ]
             if value
         ]
         log.set(fields_extracted=fields_extracted)
@@ -320,7 +328,11 @@ async def workos_callback(
 
         fields_extracted = [
             field
-            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            for field, value in [
+                ("email", email),
+                ("name", name),
+                ("picture", picture_url),
+            ]
             if value
         ]
         log.set(fields_extracted=fields_extracted)

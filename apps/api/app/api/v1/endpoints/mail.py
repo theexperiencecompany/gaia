@@ -1072,7 +1072,9 @@ async def list_drafts_route(
 
         log.set(
             operation="list_drafts",
-            result_count=len(drafts.get("drafts", [])) if isinstance(drafts, dict) else 0,
+            result_count=len(drafts.get("drafts", []))
+            if isinstance(drafts, dict)
+            else 0,
             outcome="success",
         )
         return drafts
@@ -1324,7 +1326,9 @@ async def get_bulk_email_importance_summaries(
             raise HTTPException(status_code=401, detail="User ID not found")
 
         # Use service function to get bulk email summaries
-        result = await get_bulk_importance_summaries_service(user_id, request.message_ids)
+        result = await get_bulk_importance_summaries_service(
+            user_id, request.message_ids
+        )
         log.set(
             operation="get_bulk_importance_summaries",
             result_count=len(request.message_ids),
