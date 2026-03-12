@@ -222,7 +222,7 @@ class TestProviderRegistryExtended:
         from unittest.mock import patch
 
         registry = ProviderRegistry()
-        with patch("app.core.lazy_loader.logger") as mock_logger:
+        with patch("app.core.lazy_loader.log") as mock_logger:
             registry.register(
                 name="warn_once_provider",
                 loader_func=lambda: "value",

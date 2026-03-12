@@ -296,7 +296,7 @@ class MiddlewareExecutor:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.error("Middleware wrap_model_call chain failed: {}", str(e))
+            log.error(f"Middleware wrap_model_call chain failed: {e}")
             # Fallback to direct invocation
             return await invoke_fn(state.get("messages", []))
 
@@ -366,11 +366,7 @@ class MiddlewareExecutor:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.error(
-                "Middleware wrap_tool_call chain failed for {}: {}",
-                tool_name,
-                str(e),
-            )
+            log.error(f"Middleware wrap_tool_call chain failed for {tool_name}: {e}")
             # Fallback to direct invocation
             return await invoke_fn(tool_call)
 

@@ -390,6 +390,6 @@ async def invoke_with_fallback(
                     f"LLM {provider_name} failed, falling back to next provider: {e}"
                 )
             else:
-                log.error("All LLM providers failed. Last error: {}", str(e))
+                log.error(f"All LLM providers failed. Last error: {e}")
 
     raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")

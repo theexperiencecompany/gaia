@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from langchain_community.chat_models import FakeMessagesListChatModel
+from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 # ---------------------------------------------------------------------------
@@ -726,7 +726,7 @@ class TestRealCommsAgent:
             io_patches,
             extra_patches=[
                 patch(
-                    "app.override.langgraph_bigtool.hooks.execute_hooks",
+                    "app.override.langgraph_bigtool.create_agent.execute_hooks",
                     side_effect=sentinel,
                 ),
             ],

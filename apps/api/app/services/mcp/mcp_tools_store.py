@@ -71,7 +71,7 @@ class MCPToolsStore:
             await delete_cache(MCP_TOOLS_CACHE_KEY)
             asyncio.create_task(self._refresh_cache())
         except Exception as e:
-            logger.error(f"Error storing tools batch: {e}")
+            log.error(f"Error storing tools batch: {e}")
             raise
 
     async def get_tools(self, integration_id: str) -> Optional[list[dict]]:

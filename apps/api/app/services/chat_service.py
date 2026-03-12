@@ -316,9 +316,7 @@ async def _run_chat_stream(
         await stream_manager.complete_stream(stream_id)
 
     except Exception as e:
-        log.error(
-            "Background stream error for {}: {}", stream_id, str(e), exc_info=True
-        )
+        log.error(f"Background stream error for {stream_id}: {e}")
         # IMPORTANT: Publish error chunk FIRST, before calling set_error()
         # set_error() publishes STREAM_ERROR_SIGNAL which breaks the subscriber loop
         # If we call set_error() first, the error message never reaches the client
@@ -326,7 +324,6 @@ async def _run_chat_stream(
             stream_id, f"data: {json.dumps({'error': str(e)})}\n\n"
         )
         await stream_manager.set_error(stream_id, str(e))
-        raise
     finally:
         # On cancellation, complete_message may be empty because nostream: marker
         # never arrives. Recover from Redis progress which tracks accumulated text.
