@@ -59,7 +59,7 @@ class _AsyncCollectionWrapper:
         self._sync = sync_col
         self.name = sync_col.name
 
-    def upsert(self, *args, **kwargs):
+    async def upsert(self, *args, **kwargs):
         return self._sync.upsert(*args, **kwargs)
 
     async def get(self, *args, **kwargs):
@@ -68,10 +68,10 @@ class _AsyncCollectionWrapper:
     async def delete(self, *args, **kwargs):
         return self._sync.delete(*args, **kwargs)
 
-    def query(self, *args, **kwargs):
+    async def query(self, *args, **kwargs):
         return self._sync.query(*args, **kwargs)
 
-    def count(self, *args, **kwargs):
+    async def count(self, *args, **kwargs):
         return self._sync.count(*args, **kwargs)
 
 
@@ -85,7 +85,7 @@ class _AsyncEphemeralWrapper:
     def __init__(self):
         self._sync = chromadb.EphemeralClient()
 
-    def list_collections(self):
+    async def list_collections(self):
         return self._sync.list_collections()
 
     async def create_collection(self, name, metadata=None, **kwargs):
@@ -93,20 +93,22 @@ class _AsyncEphemeralWrapper:
         col = self._sync.create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
-    def get_collection(self, name, **kwargs):
+    async def get_collection(self, name, **kwargs):
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_collection(name, **kwargs)
         return _AsyncCollectionWrapper(col)
 
-    def get_or_create_collection(self, name, metadata=None, **kwargs):
+    async def get_or_create_collection(self, name, metadata=None, **kwargs):
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_or_create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
-    def delete_collection(self, name):
+    async def delete_collection(self, name):
         return self._sync.delete_collection(name)
 
-    async def reset(self):  # NOSONAR — async wrapper required for consistent async interface
+    async def reset(
+        self,
+    ):  # NOSONAR — async wrapper required for consistent async interface
         return self._sync.reset()
 
 
