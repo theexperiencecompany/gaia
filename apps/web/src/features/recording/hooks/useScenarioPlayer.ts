@@ -167,7 +167,8 @@ export function useScenarioPlayer(
       const speed = state.streamingSpeed ?? 15;
       const pauseAfter = state.pauseAfter ?? 300;
 
-      showLoading("", undefined);
+      // Clear any lingering loading indicator before streaming starts
+      clearLoading();
 
       const partial: MessageType = {
         type: "bot",
@@ -209,7 +210,7 @@ export function useScenarioPlayer(
       );
       cleanupRef.current = cancel;
     },
-    [showLoading, clearLoading, advanceToNext],
+    [clearLoading, advanceToNext],
   );
 
   const processLoading = useCallback(
@@ -217,13 +218,23 @@ export function useScenarioPlayer(
       const duration = state.duration ?? 1500;
       const pauseAfter = state.pauseAfter ?? 300;
       showLoading(state.text, state.toolInfo);
+
+      // Peek ahead: if the next state after pauseAfter is also a loading or
+      // tool_calls (which is followed by loading), keep the indicator mounted
+      // so the inner AnimatePresence text-swap plays smoothly.
+      const nextIdx = stateIndexRef.current + 1;
+      const nextState = scenario.states[nextIdx];
+      const keepMounted =
+        nextState?.type === "loading" ||
+        nextState?.type === "tool_calls";
+
       const id = setTimeout(() => {
-        clearLoading();
+        if (!keepMounted) clearLoading();
         advanceToNext(pauseAfter);
       }, duration);
       cleanupRef.current = () => clearTimeout(id);
     },
-    [showLoading, clearLoading, advanceToNext],
+    [showLoading, clearLoading, advanceToNext, scenario.states],
   );
 
   const processToolCalls = useCallback(

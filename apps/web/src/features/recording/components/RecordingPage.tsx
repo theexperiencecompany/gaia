@@ -112,7 +112,7 @@ function RecordingScenarioRunner({ scenario }: { scenario: Scenario }) {
 
   // Auto-play with short delay to let Playwright start recording
   useEffect(() => {
-    const id = setTimeout(() => play(), 500);
+    const id = setTimeout(() => play(), 100);
     return () => clearTimeout(id);
   }, [play]);
 
