@@ -10,6 +10,9 @@ import re
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from importlib import import_module
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from typing import Optional, Any
 
 import aiohttp
@@ -22,14 +25,12 @@ from livekit.agents import (
     JobContext,
     JobProcess,
     MetricsCollectedEvent,
-    RoomInputOptions,
     WorkerOptions,
     cli,
     metrics,
+    room_io,
 )
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
-from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero  # type: ignore[attr-defined]
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from shared.py.logging import configure_file_logging, get_contextual_logger
 
 # Write structured JSON log files for Promtail to scrape in local dev
@@ -42,6 +43,122 @@ _CLAUSE_ENDINGS = frozenset({",", ":", ";"})
 _MIN_FLUSH_CHARS: int = 15
 _COMMA_FLUSH_CHARS: int = 60
 _HARD_FLUSH_CHARS: int = 80
+_RUNTIME_MODULE_SPECS: tuple[tuple[str, str, str], ...] = (
+    ("deepgram", "livekit.plugins.deepgram", "livekit-plugins-deepgram"),
+    ("elevenlabs", "livekit.plugins.elevenlabs", "livekit-plugins-elevenlabs"),
+    (
+        "noise_cancellation",
+        "livekit.plugins.noise_cancellation",
+        "livekit-plugins-noise-cancellation",
+    ),
+    ("silero", "livekit.plugins.silero", "livekit-plugins-silero"),
+)
+_TURN_DETECTOR_MODULE = "livekit.plugins.turn_detector.multilingual"
+_TURN_DETECTOR_PACKAGE = "livekit-plugins-turn-detector"
+_RUNTIME_DEPS: Optional[dict[str, Any]] = None
+
+
+def _load_runtime_deps() -> dict[str, Any]:
+    """Load LiveKit runtime plugins with clear errors when missing."""
+    global _RUNTIME_DEPS
+
+    if _RUNTIME_DEPS is not None:
+        return _RUNTIME_DEPS
+
+    deps: dict[str, Any] = {}
+    missing_packages: list[str] = []
+
+    for alias, module_path, package_name in _RUNTIME_MODULE_SPECS:
+        try:
+            deps[alias] = import_module(module_path)
+        except ModuleNotFoundError:
+            missing_packages.append(package_name)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to import {module_path!r} ({package_name}): {exc}"
+            ) from exc
+
+    try:
+        turn_detector_mod = import_module(_TURN_DETECTOR_MODULE)
+        deps["MultilingualModel"] = getattr(turn_detector_mod, "MultilingualModel")
+    except ModuleNotFoundError:
+        missing_packages.append(_TURN_DETECTOR_PACKAGE)
+    except AttributeError as exc:
+        raise RuntimeError(
+            "Turn detector plugin is installed but MultilingualModel is missing."
+        ) from exc
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to import {_TURN_DETECTOR_MODULE!r} "
+            f"({_TURN_DETECTOR_PACKAGE}): {exc}"
+        ) from exc
+
+    if missing_packages:
+        missing = ", ".join(sorted(set(missing_packages)))
+        raise RuntimeError(
+            "Voice agent dependency check failed. Missing LiveKit plugin "
+            f"package(s): {missing}. Run `nx run voice-agent:sync` (or "
+            "`uv sync --frozen` in apps/voice-agent) and retry."
+        )
+
+    _RUNTIME_DEPS = deps
+    return deps
+
+
+def _verify_startup_dependencies() -> None:
+    """Fail fast with actionable guidance before process pool startup."""
+    _load_runtime_deps()
+
+
+def _verify_elevenlabs_credentials(settings: Any) -> None:
+    """Validate ElevenLabs credentials with a lightweight API check."""
+    api_key = settings.ELEVENLABS_API_KEY
+    voice_id = settings.ELEVENLABS_VOICE_ID
+
+    if not api_key:
+        raise RuntimeError(
+            "Voice agent startup check failed: ELEVENLABS_API_KEY is missing."
+        )
+    if not voice_id:
+        raise RuntimeError(
+            "Voice agent startup check failed: ELEVENLABS_VOICE_ID is missing."
+        )
+
+    request = Request(
+        f"https://api.elevenlabs.io/v1/voices/{voice_id}",
+        headers={"xi-api-key": api_key},
+        method="GET",
+    )
+
+    try:
+        with urlopen(request, timeout=10) as response:
+            if response.status != 200:
+                raise RuntimeError(
+                    "Voice agent startup check failed: ElevenLabs voice lookup "
+                    f"returned HTTP {response.status}."
+                )
+    except HTTPError as exc:
+        body = exc.read(300).decode("utf-8", "ignore")
+        if exc.code in {401, 403}:
+            raise RuntimeError(
+                "Voice agent startup check failed: ElevenLabs rejected "
+                "ELEVENLABS_API_KEY. Please update the key in your secrets "
+                "store."
+            ) from exc
+        if exc.code == 404:
+            raise RuntimeError(
+                "Voice agent startup check failed: ELEVENLABS_VOICE_ID was "
+                "not found for the current account."
+            ) from exc
+        raise RuntimeError(
+            "Voice agent startup check failed: ElevenLabs voice lookup "
+            f"returned HTTP {exc.code}. Body: {body}"
+        ) from exc
+    except URLError as exc:
+        raise RuntimeError(
+            "Voice agent startup check failed: could not reach ElevenLabs API. "
+            "Check network/firewall/proxy settings."
+        ) from exc
 
 
 def _extract_meta_data(md: Optional[str]) -> tuple[Optional[str], Optional[str]]:
@@ -141,9 +258,7 @@ class CustomLLM(LLM):
         task.add_done_callback(self._pending_tasks.discard)
         return task
 
-    async def _publish_event(
-        self, topic: str, payload: dict[str, object]
-    ) -> None:
+    async def _publish_event(self, topic: str, payload: dict[str, object]) -> None:
         """Serialize and broadcast a structured event to room participants."""
         if not (self.room and self.room.local_participant):
             return
@@ -238,31 +353,49 @@ class CustomLLM(LLM):
                         )
                         continue
 
-                    if "progress" in event_data and isinstance(event_data["progress"], dict):
+                    if "progress" in event_data and isinstance(
+                        event_data["progress"], dict
+                    ):
                         self._track_task(
-                            self._publish_event("stream-progress", event_data["progress"])
+                            self._publish_event(
+                                "stream-progress", event_data["progress"]
+                            )
                         )
                         continue
 
-                    if "tool_data" in event_data and isinstance(event_data["tool_data"], dict):
+                    if "tool_data" in event_data and isinstance(
+                        event_data["tool_data"], dict
+                    ):
                         self._track_task(
-                            self._publish_event("stream-tool-data", event_data["tool_data"])
+                            self._publish_event(
+                                "stream-tool-data", event_data["tool_data"]
+                            )
                         )
                         continue
 
-                    if "tool_output" in event_data and isinstance(event_data["tool_output"], dict):
+                    if "tool_output" in event_data and isinstance(
+                        event_data["tool_output"], dict
+                    ):
                         self._track_task(
-                            self._publish_event("stream-tool-output", event_data["tool_output"])
+                            self._publish_event(
+                                "stream-tool-output", event_data["tool_output"]
+                            )
                         )
                         continue
 
-                    if "todo_progress" in event_data and isinstance(event_data["todo_progress"], dict):
+                    if "todo_progress" in event_data and isinstance(
+                        event_data["todo_progress"], dict
+                    ):
                         self._track_task(
-                            self._publish_event("stream-todo-progress", event_data["todo_progress"])
+                            self._publish_event(
+                                "stream-todo-progress", event_data["todo_progress"]
+                            )
                         )
                         continue
 
-                    if "follow_up_actions" in event_data and isinstance(event_data["follow_up_actions"], list):
+                    if "follow_up_actions" in event_data and isinstance(
+                        event_data["follow_up_actions"], list
+                    ):
                         self._track_task(
                             self._publish_event(
                                 "stream-follow-up-actions",
@@ -291,9 +424,15 @@ class CustomLLM(LLM):
 
                     should_flush = False
 
-                    if joined[-1] in _SENTENCE_ENDINGS and len(joined) >= _MIN_FLUSH_CHARS:
+                    if (
+                        joined[-1] in _SENTENCE_ENDINGS
+                        and len(joined) >= _MIN_FLUSH_CHARS
+                    ):
                         should_flush = True
-                    elif joined[-1] in _CLAUSE_ENDINGS and len(joined) >= _COMMA_FLUSH_CHARS:
+                    elif (
+                        joined[-1] in _CLAUSE_ENDINGS
+                        and len(joined) >= _COMMA_FLUSH_CHARS
+                    ):
                         should_flush = True
                     elif len(joined) >= _HARD_FLUSH_CHARS:
                         should_flush = True
@@ -302,17 +441,13 @@ class CustomLLM(LLM):
                         out = joined.strip()
                         text_buffer.clear()
                         if len(out) >= 15:
-                            yield ChatChunk(
-                                id="custom", delta=ChoiceDelta(content=out)
-                            )
+                            yield ChatChunk(id="custom", delta=ChoiceDelta(content=out))
                     # NOTE: No sleep here — ElevenLabs turbo handles pacing internally.
 
                 if text_buffer:
                     tail = "".join(text_buffer).strip()
                     if len(tail) >= 1:
-                        yield ChatChunk(
-                            id="custom", delta=ChoiceDelta(content=tail)
-                        )
+                        yield ChatChunk(id="custom", delta=ChoiceDelta(content=tail))
 
         yield gen()
 
@@ -320,6 +455,9 @@ class CustomLLM(LLM):
 def prewarm(proc: JobProcess):
     """Preload VAD model to reduce first-turn latency."""
     from src.config import load_settings
+
+    runtime_deps = _load_runtime_deps()
+    silero = runtime_deps["silero"]
     s = load_settings()
     proc.userdata["vad"] = silero.VAD.load(
         min_silence_duration=s.VAD_MIN_SILENCE_DURATION,
@@ -330,6 +468,12 @@ def prewarm(proc: JobProcess):
 async def entrypoint(ctx: JobContext):
     """Initialize and run the voice agent with STT, TTS, and LLM."""
     from src.config import load_settings
+
+    runtime_deps = _load_runtime_deps()
+    deepgram = runtime_deps["deepgram"]
+    elevenlabs = runtime_deps["elevenlabs"]
+    noise_cancellation = runtime_deps["noise_cancellation"]
+    multilingual_model = runtime_deps["MultilingualModel"]
 
     settings = load_settings()
 
@@ -351,7 +495,7 @@ async def entrypoint(ctx: JobContext):
             auto_mode=settings.ELEVENLABS_AUTO_MODE,
             chunk_length_schedule=settings.ELEVENLABS_CHUNK_LENGTH_SCHEDULE,
         ),
-        turn_detection=MultilingualModel(),
+        turn_detection=multilingual_model(),
         vad=ctx.proc.userdata["vad"],
         min_endpointing_delay=settings.MIN_ENDPOINTING_DELAY,
         max_endpointing_delay=settings.MAX_ENDPOINTING_DELAY,
@@ -414,6 +558,10 @@ async def entrypoint(ctx: JobContext):
         background_tasks.add(task)
         task.add_done_callback(background_tasks.discard)
 
+    @ctx.room.on("participant_disconnected")
+    def _on_participant_disconnected(p: rtc.Participant):
+        logger.info("participant disconnected: {}", p.identity)
+
     await ctx.connect()
     for p in ctx.room.remote_participants.values():
         logger.info("participant already present, processing metadata")
@@ -424,8 +572,11 @@ async def entrypoint(ctx: JobContext):
     await session.start(
         agent=Agent(instructions="Avoid markdowns"),
         room=ctx.room,
-        room_input_options=RoomInputOptions(
-            noise_cancellation=noise_cancellation.BVC(),
+        room_options=room_io.RoomOptions(
+            close_on_disconnect=False,
+            audio_input=room_io.AudioInputOptions(
+                noise_cancellation=noise_cancellation.BVC(),
+            ),
         ),
     )
 
@@ -433,6 +584,7 @@ async def entrypoint(ctx: JobContext):
 def download_files():
     """Download required model files."""
     logger.info("Downloading model files...")
+    _verify_startup_dependencies()
     # The livekit-agents CLI handles model downloads
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
 
@@ -441,7 +593,9 @@ def start_worker():
     """Start the voice agent worker."""
     from src.config import load_settings
 
-    load_settings()
+    settings = load_settings()
+    _verify_startup_dependencies()
+    _verify_elevenlabs_credentials(settings)
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
 
 
@@ -451,6 +605,8 @@ if __name__ == "__main__":
     if not is_download_command:
         from src.config import load_settings
 
-        load_settings()
+        settings = load_settings()
+        _verify_elevenlabs_credentials(settings)
 
+    _verify_startup_dependencies()
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))

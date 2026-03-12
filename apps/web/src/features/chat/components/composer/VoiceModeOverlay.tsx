@@ -7,7 +7,7 @@ import {
 } from "@livekit/components-react";
 import { Room } from "livekit-client";
 import { m } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useConnectionDetails from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
 import { SessionView } from "@/features/chat/components/voice-agent/session-view";
 import { usePathname } from "@/i18n/navigation";
@@ -23,6 +23,7 @@ export function VoiceApp({ onEndCall }: AppProps) {
   const room = useMemo(() => new Room(), []);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
+  const onEndCallRef = useRef(onEndCall);
   const pathname = usePathname();
   let conversationId: string | undefined;
   const match = pathname.match(/^\/c(?:\/([^/?#]+))?/);
@@ -31,6 +32,10 @@ export function VoiceApp({ onEndCall }: AppProps) {
   }
   const { existingOrRefreshConnectionDetails } =
     useConnectionDetails(conversationId);
+
+  useEffect(() => {
+    onEndCallRef.current = onEndCall;
+  }, [onEndCall]);
 
   useEffect(() => {
     setSessionStarted(true);
@@ -51,6 +56,9 @@ export function VoiceApp({ onEndCall }: AppProps) {
         }),
       ])
         .then(() => {
+          void room.startAudio().catch(() => {
+            toast.info("Tap Start Audio to hear the voice response.");
+          });
           if (!aborted) setIsConnecting(false);
         })
         .catch((error) => {
@@ -58,14 +66,14 @@ export function VoiceApp({ onEndCall }: AppProps) {
           toast.error(
             `There was an error connecting to the agent ${error.name}: ${error.message}`,
           );
-          onEndCall();
+          onEndCallRef.current();
         });
     }
     return () => {
       aborted = true;
       room.disconnect();
     };
-  }, [room, sessionStarted, onEndCall]);
+  }, [room, sessionStarted]);
 
   return (
     <div className="flex h-full w-full flex-col">
