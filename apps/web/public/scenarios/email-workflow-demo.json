@@ -1,0 +1,48 @@
+{
+  "id": "email-workflow-demo",
+  "title": "Email Management Flow",
+  "viewport": { "width": 390, "height": 844 },
+  "settings": { "theme": "dark" },
+  "states": [
+    {
+      "type": "user_message",
+      "text": "Summarize my unread emails and flag anything urgent",
+      "typingSpeed": 48,
+      "pauseAfter": 600
+    },
+    {
+      "type": "loading",
+      "text": "Reading your inbox...",
+      "toolInfo": { "toolCategory": "gmail", "showCategory": true },
+      "duration": 1600,
+      "pauseAfter": 200
+    },
+    {
+      "type": "tool_calls",
+      "entries": [
+        {
+          "tool_name": "tool_calls_data",
+          "tool_category": "gmail",
+          "data": [
+            {
+              "tool_name": "fetch_emails",
+              "tool_category": "gmail",
+              "message": "Fetched 12 unread emails",
+              "inputs": { "filter": "unread", "limit": 20 },
+              "output": "12 emails found, 2 marked urgent"
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "pauseAfter": 400
+    },
+    {
+      "type": "bot_message",
+      "text": "You have **12 unread emails**. Here's the summary:\n\n🔴 **Urgent (2):**\n- Board meeting agenda from CEO — needs your input by EOD\n- Client contract renewal — deadline tomorrow\n\n📧 **Other highlights:**\n- 3 newsletter digests\n- Design team weekly update\n- 2 GitHub PR review requests",
+      "streamingSpeed": 14,
+      "follow_up_actions": ["Reply to CEO", "Open contract", "Mark all read"],
+      "pauseAfter": 2000
+    }
+  ]
+}

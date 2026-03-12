@@ -2,6 +2,10 @@
 
 GAIA is a proactive personal AI assistant — full-stack Nx monorepo with a Next.js frontend, FastAPI/LangGraph backend, React Native mobile app, Electron desktop app, and Discord/Slack/Telegram bots.
 
+## Superpowers Skills Policy
+
+**Only use superpowers skills (brainstorming, writing-plans, executing-plans, spec review, etc.) when the user explicitly asks for them.** Do not invoke these skills automatically on regular coding tasks. Normal tasks should be handled directly without the full brainstorm → spec → plan → execute workflow unless requested.
+
 ## mise
 
 `mise` is the task runner and tool version manager for this repo. It manages Node, Python, uv, and nx versions, and defines all development tasks.
@@ -36,6 +40,10 @@ nx dev voice-agent  # LiveKit voice worker
 docker compose up -d                       # infra only
 docker compose --profile backend up -d    # + API
 docker compose --profile all up -d        # everything
+
+# Recording Demo Videos
+nx dev web &
+cd scripts/record-video && pnpm record --scenario calendar-booking-demo  # requires dev server
 
 # Quality (run after changes — see After Major Changes below)
 nx run-many -t lint
