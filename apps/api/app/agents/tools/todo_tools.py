@@ -56,7 +56,7 @@ class TaskInput(TypedDict):
     content: str
 
 
-class TaskUpdate(TypedDict):
+class TaskUpdate(TypedDict, total=False):
     """Input schema for a single task update or new task addition.
 
     To update an existing task: provide task_id and status.

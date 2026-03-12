@@ -1,10 +1,10 @@
-"""E2E test: GAIA todo tools (plan_tasks, mark_task, add_task) wired into a real graph.
+"""E2E test: GAIA todo tools (plan_tasks, update_tasks) wired into a real graph.
 
 WHAT THIS TESTS (REAL GAIA CODE):
 - ``create_todo_tools`` from ``app.agents.tools.todo_tools`` — the real
-  plan_tasks, mark_task, and add_task tools used by the executor agent.
+  plan_tasks and update_tasks tools used by the executor agent.
 - The ``todos`` channel in GAIA's ``State`` (via InjectedState) is updated
-  correctly when plan_tasks / mark_task / add_task execute.
+  correctly when plan_tasks / update_tasks execute.
 - ``filter_messages_node`` and ``manage_system_prompts_node`` run as
   pre-model hooks inside the compiled GAIA graph.
 - ``create_agent`` from ``app.override.langgraph_bigtool.create_agent``
@@ -151,9 +151,9 @@ class TestCreateTodoFlow:
     async def test_add_task_tool_appends_to_todos(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """add_task must append a new todo to existing todos in state.
+        """update_tasks must append a new todo to existing todos in state.
 
-        Sequence: plan_tasks creates 1 task → add_task adds a second → verify 2 todos.
+        Sequence: plan_tasks creates 1 task → update_tasks adds a second → verify 2 todos.
         """
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
@@ -172,14 +172,18 @@ class TestCreateTodoFlow:
                         }
                     ],
                 ),
-                # Turn 2: add another task
+                # Turn 2: add another task via update_tasks
                 AIMessage(
                     content="",
                     tool_calls=[
                         {
                             "id": "call_add_001",
-                            "name": "add_task",
-                            "args": {"content": "Bonus task discovered later"},
+                            "name": "update_tasks",
+                            "args": {
+                                "updates": [
+                                    {"content": "Bonus task discovered later"}
+                                ]
+                            },
                             "type": "tool_call",
                         }
                     ],
@@ -202,7 +206,7 @@ class TestCreateTodoFlow:
 
         todos = result.get("todos", [])
         assert len(todos) == 2, (
-            f"Expected 2 todos after plan_tasks + add_task, got {len(todos)}"
+            f"Expected 2 todos after plan_tasks + update_tasks, got {len(todos)}"
         )
         todo_contents = [t["content"] for t in todos]
         assert "Initial task" in todo_contents
@@ -211,12 +215,12 @@ class TestCreateTodoFlow:
     async def test_mark_task_tool_updates_status(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """mark_task must update the status of an existing todo by ID.
+        """update_tasks must update the status of an existing todo by ID.
 
         Uses a SINGLE compiled graph with MemorySaver and the SAME thread_id for
         both turns so that real LangGraph checkpoint continuity is exercised:
           Turn 1: plan_tasks creates a task and persists it in checkpointed state.
-          Turn 2 (same graph, same thread): mark_task reads the task ID from
+          Turn 2 (same graph, same thread): update_tasks reads the task ID from
               checkpointed todos and marks it completed.
 
         This ensures the test breaks if the graph loses state between invocations.
@@ -226,8 +230,8 @@ class TestCreateTodoFlow:
 
         # The fake LLM is pre-programmed with responses for BOTH turns.
         # Turn 1 consumes the first two responses (plan_tasks call + final reply).
-        # Turn 2 consumes the next two (mark_task call + final reply) — but
-        # mark_task's task_id is a placeholder here; we patch it after Turn 1.
+        # Turn 2 consumes the next two (update_tasks call + final reply) — but
+        # update_tasks's task_id is a placeholder here; we patch it after Turn 1.
         #
         # Because BindableToolsFakeModel cycles through a fixed response list we
         # supply all four responses up-front and use a sentinel task_id that we
@@ -249,13 +253,13 @@ class TestCreateTodoFlow:
                     ],
                 ),
                 AIMessage(content="Task planned."),
-                # Turn 2 — mark task completed (task_id filled in below)
+                # Turn 2 — mark task completed via update_tasks (task_id filled in below)
                 AIMessage(
                     content="",
                     tool_calls=[
                         {
                             "id": "call_mark_001",
-                            "name": "mark_task",
+                            "name": "update_tasks",
                             "args": {
                                 "updates": [
                                     {"task_id": SENTINEL_ID, "status": "completed"}
@@ -292,7 +296,7 @@ class TestCreateTodoFlow:
         turn2_ai: AIMessage = fake_llm.responses[2]  # type: ignore[index]
         turn2_ai.tool_calls[0]["args"]["updates"][0]["task_id"] = task_id
 
-        # Turn 2: same graph, same thread — mark_task reads todos from checkpoint.
+        # Turn 2: same graph, same thread — update_tasks reads todos from checkpoint.
         result_turn2 = await graph.ainvoke(
             {"messages": [HumanMessage(content="Mark the task done")]},
             config=thread_config,
@@ -303,10 +307,10 @@ class TestCreateTodoFlow:
         )
         completed = [t for t in todos_after_mark if t["id"] == task_id]
         assert len(completed) == 1, (
-            f"Todo with id {task_id!r} must still be present after mark_task"
+            f"Todo with id {task_id!r} must still be present after update_tasks"
         )
         assert completed[0]["status"] == "completed", (
-            f"mark_task must update status to 'completed', got "
+            f"update_tasks must update status to 'completed', got "
             f"'{completed[0]['status']}'"
         )
 

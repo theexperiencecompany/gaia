@@ -45,7 +45,10 @@ _mock_subscription.plan_type = "free"
 _patches = [
     patch("app.config.secrets.inject_infisical_secrets", return_value=None),
     patch("shared.py.secrets.inject_infisical_secrets", return_value=None),
-    patch("app.db.mongodb.mongodb.MongoDB.ping", return_value=None),
+    patch(
+        "app.db.mongodb.collections._get_mongodb_instance",
+        return_value=MagicMock(),
+    ),
     # Rate limiting patches — must persist across all requests, not just app creation.
     patch(
         "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
