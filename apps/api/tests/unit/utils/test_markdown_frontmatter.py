@@ -51,7 +51,7 @@ class TestSplitYamlFrontmatter:
         result = split_yaml_frontmatter(content)
 
         assert result is not None
-        frontmatter, body = result
+        frontmatter, _ = result
         assert frontmatter == ""
 
     def test_frontmatter_with_multiline_body(self):

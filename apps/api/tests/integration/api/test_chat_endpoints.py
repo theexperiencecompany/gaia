@@ -29,7 +29,7 @@ async def _empty_subscribe_stream(*args, **kwargs):
     and fail with ConnectionError in tests.
     """
     return
-    yield  # pragma: no cover – makes this a generator function
+    yield  # pragma: no cover – makes this a generator function  # NOSONAR
 
 
 def _make_mock_task() -> MagicMock:

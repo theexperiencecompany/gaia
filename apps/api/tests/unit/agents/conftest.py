@@ -9,13 +9,14 @@ from langchain_core.messages import (
 )
 
 HELPFUL_ASSISTANT_SYSTEM_PROMPT = "You are a helpful assistant."
+WEATHER_QUERY = "What is the weather today?"
 
 
 @pytest.fixture
 def sample_messages() -> list:
     return [
         SystemMessage(content=HELPFUL_ASSISTANT_SYSTEM_PROMPT),
-        HumanMessage(content="What is the weather today?"),
+        HumanMessage(content=WEATHER_QUERY),
         AIMessage(content="I can help you check the weather."),
     ]
 
@@ -25,7 +26,7 @@ def messages_with_tool_calls() -> list:
     tool_call_id = "call_weather_123"
     return [
         SystemMessage(content=HELPFUL_ASSISTANT_SYSTEM_PROMPT),
-        HumanMessage(content="What is the weather today?"),
+        HumanMessage(content=WEATHER_QUERY),
         AIMessage(
             content="",
             tool_calls=[
@@ -49,7 +50,7 @@ def messages_with_tool_calls() -> list:
 def messages_with_unanswered_tool_calls() -> list:
     return [
         SystemMessage(content=HELPFUL_ASSISTANT_SYSTEM_PROMPT),
-        HumanMessage(content="What is the weather today?"),
+        HumanMessage(content=WEATHER_QUERY),
         AIMessage(
             content="",
             tool_calls=[

@@ -1131,7 +1131,7 @@ class TestGetActiveSprint:
         assert result["sprint_count"] == 1
         sprint = result["sprints"][0]
         assert sprint["name"] == "Sprint 5"
-        assert sprint["progress"] == 60.0
+        assert sprint["progress"] == pytest.approx(60.0)
         assert sprint["team"] == "Engineering"
         mock_gql.assert_called_once()
 
@@ -1195,7 +1195,7 @@ class TestBulkUpdateIssues:
                 ],
             }
         }
-        result, mock_gql = _call(
+        result, _ = _call(
             "CUSTOM_BULK_UPDATE_ISSUES",
             BulkUpdateIssuesInput(
                 issue_ids=["i1", "i2"],

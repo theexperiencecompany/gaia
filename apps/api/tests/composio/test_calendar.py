@@ -289,7 +289,7 @@ class TestCustomGetDaySummary:
         with p1, p2, p3, p4:
             result = self._run(GetDaySummaryInput(date="2026-03-03"))
 
-        assert result["busy_hours"] == 1.0
+        assert result["busy_hours"] == pytest.approx(1.0)
 
     def test_busy_hours_multiple_events(self):
         """30 + 90 minutes → 2.0 hours."""
@@ -307,7 +307,7 @@ class TestCustomGetDaySummary:
         with p1, p2, p3, p4:
             result = self._run(GetDaySummaryInput(date="2026-03-03"))
 
-        assert result["busy_hours"] == 2.0
+        assert result["busy_hours"] == pytest.approx(2.0)
 
     def test_invalid_date_format_raises(self):
         p1, p2, p3, p4 = self._patch_services()

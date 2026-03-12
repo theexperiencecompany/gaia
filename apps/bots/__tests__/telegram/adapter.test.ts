@@ -675,7 +675,7 @@ describe("TelegramAdapter - markdown fallback retry (editMessage callback)", () 
 
     vi.mocked(handleStreamingChat).mockImplementationOnce(
       async (_gaia, _req, _edit, sendNewMessage) => {
-        capturedSendNewMessage = sendNewMessage as typeof capturedSendNewMessage;
+        capturedSendNewMessage = sendNewMessage;
       },
     );
 
@@ -988,7 +988,7 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
 
     vi.mocked(handleStreamingChat).mockImplementationOnce(
       async (_gaia, _req, _edit, _send, onAuthError) => {
-        capturedAuthError = onAuthError as typeof capturedAuthError;
+        capturedAuthError = onAuthError;
       },
     );
 
@@ -1026,7 +1026,7 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
 
     vi.mocked(handleStreamingChat).mockImplementationOnce(
       async (_gaia, _req, _edit, _send, _auth, onGenericError) => {
-        capturedGenericError = onGenericError as typeof capturedGenericError;
+        capturedGenericError = onGenericError;
       },
     );
 

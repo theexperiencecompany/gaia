@@ -454,7 +454,7 @@ describe("SlackAdapter - ACK timing in registerCommands", () => {
       }
     ).registerCommands(commands);
 
-    // Bolt's app.command should have been called with "/todo"
+    // Bolt's app.command should have been called with the slash-prefixed command name
     expect(mockApp.command).toHaveBeenCalledWith(
       "/todo",
       expect.any(Function),

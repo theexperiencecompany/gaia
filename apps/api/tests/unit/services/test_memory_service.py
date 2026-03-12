@@ -54,7 +54,7 @@ class TestParseMemoryResult:
         assert entry.content == "User likes Python"
         assert entry.metadata == {"source": "conversation"}
         assert entry.categories == ["preferences"]
-        assert entry.relevance_score == 0.95
+        assert entry.relevance_score == pytest.approx(0.95)
 
     def test_returns_none_for_empty_memory(self, service):
         raw = {"id": "mem_001", "memory": ""}

@@ -62,8 +62,8 @@ def existing_conv_body() -> MessageRequestWithHistory:
 
 async def _empty_agent_stream() -> AsyncGenerator[str, None]:
     """Async generator that yields nothing (simulates empty agent response)."""
-    return
-    yield  # make it an async generator
+    if False:  # pragma: no cover
+        yield ""
 
 
 async def _done_only_stream() -> AsyncGenerator[str, None]:
@@ -586,9 +586,6 @@ class TestRunChatStreamBackground:
     async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):
         """When conversation_id is None, an init chunk must be published first."""
 
-        async def _agent_stub(*args, **kwargs):
-            return _done_only_stream()
-
         sm = _make_stream_manager_mock()
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -815,7 +812,7 @@ class TestRunChatStreamBackground:
         sm.get_progress = AsyncMock(return_value=None)
         publish_calls: list[str] = []
 
-        async def track_publish(stream_id: str, chunk: str) -> None:
+        def track_publish(stream_id: str, chunk: str) -> None:
             publish_calls.append(chunk)
 
         sm.publish_chunk = AsyncMock(side_effect=track_publish)
@@ -1153,7 +1150,7 @@ class TestRunChatStreamBackground:
         sm = _make_stream_manager_mock()
         published: list[str] = []
 
-        async def track(stream_id: str, chunk: str) -> None:
+        def track(stream_id: str, chunk: str) -> None:
             published.append(chunk)
 
         sm.publish_chunk = AsyncMock(side_effect=track)

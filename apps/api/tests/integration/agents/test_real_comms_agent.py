@@ -716,9 +716,6 @@ class TestRealCommsAgent:
 
         sentinel = RuntimeError("injected-filter-messages-failure")
 
-        async def raising_filter_messages_node(state, config, store):
-            raise sentinel
-
         io_patches = _follow_up_node_io_patches()
 
         with _apply_all_patches(

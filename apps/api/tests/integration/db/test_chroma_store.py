@@ -59,7 +59,7 @@ class _AsyncCollectionWrapper:
         self._sync = sync_col
         self.name = sync_col.name
 
-    async def upsert(self, *args, **kwargs):
+    def upsert(self, *args, **kwargs):
         return self._sync.upsert(*args, **kwargs)
 
     async def get(self, *args, **kwargs):
@@ -68,10 +68,10 @@ class _AsyncCollectionWrapper:
     async def delete(self, *args, **kwargs):
         return self._sync.delete(*args, **kwargs)
 
-    async def query(self, *args, **kwargs):
+    def query(self, *args, **kwargs):
         return self._sync.query(*args, **kwargs)
 
-    async def count(self, *args, **kwargs):
+    def count(self, *args, **kwargs):
         return self._sync.count(*args, **kwargs)
 
 
@@ -85,7 +85,7 @@ class _AsyncEphemeralWrapper:
     def __init__(self):
         self._sync = chromadb.EphemeralClient()
 
-    async def list_collections(self):
+    def list_collections(self):
         return self._sync.list_collections()
 
     async def create_collection(self, name, metadata=None, **kwargs):
@@ -93,17 +93,17 @@ class _AsyncEphemeralWrapper:
         col = self._sync.create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
-    async def get_collection(self, name, **kwargs):
+    def get_collection(self, name, **kwargs):
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_collection(name, **kwargs)
         return _AsyncCollectionWrapper(col)
 
-    async def get_or_create_collection(self, name, metadata=None, **kwargs):
+    def get_or_create_collection(self, name, metadata=None, **kwargs):
         kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_or_create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
-    async def delete_collection(self, name):
+    def delete_collection(self, name):
         return self._sync.delete_collection(name)
 
     async def reset(self):  # NOSONAR — async wrapper required for consistent async interface
@@ -510,13 +510,13 @@ class TestComputeToolDiff:
         current: dict = {}
         existing = {"general::old_tool": {"hash": "oldhash", "namespace": "general"}}
 
-        to_upsert, to_delete = _compute_tool_diff(current, existing)
+        _, to_delete = _compute_tool_diff(current, existing)
 
         assert len(to_delete) == 1
         assert to_delete[0][0] == "general::old_tool"
         assert to_delete[0][1] == "general"
 
-    async def test_mixed_changes(self):
+    def test_mixed_changes(self):
         """Combination of new, unchanged, modified, and deleted tools."""
         mock_new = self._make_mock_tool("new_tool")
         mock_stable = self._make_mock_tool("stable_tool")
@@ -567,7 +567,7 @@ class TestBuildPutOperations:
         tool.description = description
         return tool
 
-    async def test_upsert_op_has_correct_namespace_and_key(self):
+    def test_upsert_op_has_correct_namespace_and_key(self):
         """Upsert PutOp should use the namespace from tool_data and key from composite."""
         mock_tool = self._make_mock_tool("send_email", "Send an email")
         tools_to_upsert = [
@@ -620,7 +620,7 @@ class TestBuildPutOperations:
         put_ops = _build_put_operations([], [])
         assert put_ops == []
 
-    async def test_mixed_upserts_and_deletes(self):
+    def test_mixed_upserts_and_deletes(self):
         """Both upserts and deletes should appear in the output list."""
         mock_tool = self._make_mock_tool("web_search", "Search the web")
         tools_to_upsert = [

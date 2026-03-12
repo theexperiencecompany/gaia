@@ -65,7 +65,7 @@ class TestExtractOutputRedirect:
         assert redirect is None
 
     def test_only_redirect_operator(self):
-        cmd, redirect = extract_output_redirect(">")
+        _, redirect = extract_output_redirect(">")
         assert redirect is None
 
     def test_complex_command_with_redirect(self):

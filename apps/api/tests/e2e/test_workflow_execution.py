@@ -80,7 +80,7 @@ class TestWorkflowExecution:
         )
         assert len(result) == 3
 
-    async def test_messages_channel_accumulates(self):
+    def test_messages_channel_accumulates(self):
         """The 'messages' channel must accumulate across successive updates.
 
         add_messages is the LangGraph reducer used by the messages channel in

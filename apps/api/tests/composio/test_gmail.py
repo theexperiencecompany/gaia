@@ -685,7 +685,7 @@ class TestGetContactList:
         assert result["contacts"][0]["email"] == "alice@example.com"
 
         # Verify the service was built with the correct token
-        MockCreds.assert_called_once_with(token="test_access_token_abc123")
+        MockCreds.assert_called_once_with(token="test_access_token_abc123")  # NOSONAR
         mock_build.assert_called_once_with(
             "gmail", "v1", credentials=MockCreds.return_value, cache_discovery=False
         )

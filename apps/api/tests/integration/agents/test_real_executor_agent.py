@@ -632,6 +632,8 @@ class TestExecutorSubagentMiddlewareWiring:
                 chat_llm=fake_llm,
                 in_memory_checkpointer=True,
             ):
+                # Enter the context manager to trigger graph initialisation;
+                # assertions are made on the mocks after the block exits.
                 pass
 
         mock_subagent_mw.set_llm.assert_called_once_with(fake_llm)

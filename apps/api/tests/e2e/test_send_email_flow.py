@@ -61,7 +61,7 @@ class TestSendEmailFlow:
     #   tests/unit/agents/nodes/test_filter_messages.py
     # -------------------------------------------------------------------------
 
-    async def test_filter_messages_node_removes_dangling_tool_calls(self):
+    def test_filter_messages_node_removes_dangling_tool_calls(self):
         """filter_messages_node must strip AI tool_calls with no ToolMessage response.
 
         Scenario: an AIMessage with a tool call for which no ToolMessage exists
@@ -96,7 +96,7 @@ class TestSendEmailFlow:
             "filter_messages_node must remove tool calls with no ToolMessage response"
         )
 
-    async def test_filter_messages_node_preserves_answered_tool_calls(self):
+    def test_filter_messages_node_preserves_answered_tool_calls(self):
         """filter_messages_node must keep tool_calls that have a ToolMessage response."""
         ai = AIMessage(
             content="",
