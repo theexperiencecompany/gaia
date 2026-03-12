@@ -24,7 +24,6 @@
     "lint": "npm run check",
     "lint:fix": "npm run fix",
     "format": "biome format --write .",
-    "generate:openui-prompt": "npx @openuidev/cli generate src/config/openui/gaiaLibrary.ts --out src/config/openui/generated-prompt.txt",
     "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\"",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",

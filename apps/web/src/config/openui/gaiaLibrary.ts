@@ -1,4 +1,5 @@
 import { createLibrary, defineComponent } from "@openuidev/react-lang";
+import React from "react";
 import { z } from "zod";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
@@ -10,6 +11,7 @@ import type { WeatherData } from "@/types/features/weatherTypes";
 // Note: `as never` casts on `props` are needed because the project uses zod@3.25
 // (v3 compat bridge for v4) while @openuidev/react-lang bundles zod@4.
 // The runtime schemas are fully compatible; only the type signatures differ.
+// TODO: Remove `as never` casts once zod versions are aligned.
 
 // --- Weather ---
 
@@ -36,6 +38,7 @@ const forecastDaySchema = z.object({
 const weatherDataSchema = z.object({
   coord: z.object({ lon: z.number(), lat: z.number() }),
   weather: z.array(weatherConditionSchema),
+  base: z.string().optional(),
   main: z.object({
     temp: z.number(),
     feels_like: z.number(),
@@ -77,7 +80,8 @@ const WeatherCardComponent = defineComponent({
   description:
     "Displays current weather conditions with temperature, forecast, and details for a location.",
   component: ({ props }) => {
-    return WeatherCard({ weatherData: props as unknown as WeatherData });
+    const data = props as unknown as WeatherData;
+    return React.createElement(WeatherCard, { weatherData: data });
   },
 });
 
@@ -101,8 +105,8 @@ const CalendarListCardComponent = defineComponent({
   description:
     "Displays a list of calendar events with times, names, and calendar colors.",
   component: ({ props }) => {
-    const events = (props as unknown as { events: CalendarFetchData[] }).events;
-    return CalendarListCard({ events });
+    const { events } = props as unknown as { events: CalendarFetchData[] };
+    return React.createElement(CalendarListCard, { events });
   },
 });
 
@@ -142,9 +146,8 @@ const SearchResultsTabsComponent = defineComponent({
   description:
     "Displays search results in tabs: web results, image gallery, and news articles.",
   component: ({ props }) => {
-    return SearchResultsTabs({
-      search_results: props as unknown as SearchResults,
-    });
+    const data = props as unknown as SearchResults;
+    return React.createElement(SearchResultsTabs, { search_results: data });
   },
 });
 

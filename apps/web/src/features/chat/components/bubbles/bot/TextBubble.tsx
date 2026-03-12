@@ -37,7 +37,10 @@ import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer"
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import { parseOpenUISegments } from "@/features/chat/utils/openUIParser";
+import {
+  parseOpenUISegments,
+  splitByBreaksPreservingFences,
+} from "@/features/chat/utils/openUIParser";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations";
 import type {
@@ -606,7 +609,9 @@ export default function TextBubble({
         (() => {
           // Use cleaned text without thinking tags
           const displayText = parsedContent.cleanText || "";
-          const textParts = splitMessageByBreaks(displayText);
+          const textParts = displayText.includes(":::openui")
+            ? splitByBreaksPreservingFences(displayText)
+            : splitMessageByBreaks(displayText);
           // const hasMultipleParts = textParts.length > 1;
 
           const renderBubbleContent = (

@@ -11,7 +11,7 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
   const handleAction = React.useCallback((event: ActionEvent) => {
     if (event.type === "continue_conversation" && event.humanFriendlyMessage) {
       // TODO: integrate with chat input to send follow-up messages
-      console.error(
+      console.warn(
         "[OpenUIRenderer] continue_conversation action not yet wired:",
         event.humanFriendlyMessage,
       );
@@ -39,6 +39,16 @@ class OpenUIErrorBoundary extends React.Component<
 
   static getDerivedStateFromError() {
     return { hasError: true };
+  }
+
+  componentDidUpdate(prevProps: { fallbackText: string }) {
+    // Reset error state when content changes (e.g. during streaming)
+    if (
+      this.state.hasError &&
+      prevProps.fallbackText !== this.props.fallbackText
+    ) {
+      this.setState({ hasError: false });
+    }
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
