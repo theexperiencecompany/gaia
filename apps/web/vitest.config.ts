@@ -1,13 +1,19 @@
 import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
 import path from "node:path";
 
 export default defineConfig({
-  plugins: [react()],
   test: {
     environment: "jsdom",
     globals: true,
     setupFiles: [],
+    poolOptions: {
+      forks: {
+        execArgv: ["--max-old-space-size=8192"],
+      },
+      threads: {
+        execArgv: ["--max-old-space-size=8192"],
+      },
+    },
   },
   resolve: {
     alias: {

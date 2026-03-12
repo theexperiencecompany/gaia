@@ -110,12 +110,20 @@ postman/
 
 .agents/plans/
 
+# superpowers / brainstorming sessions
+.superpowers/
+docs/superpowers/
+
 # whatsapp-web.js
 .wwebjs_auth/
 .wwebjs_cache/
 /config.json
 
 docs/plans/
+
+# recording pipeline output
+output/videos/
+scripts/record-video/output/
 # metrics_token is tracked as an empty default file (safe for dev).
 # Populate it with your actual bearer token for production scraping.
 .opencode/plans

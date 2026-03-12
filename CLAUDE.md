@@ -41,9 +41,10 @@ docker compose up -d                       # infra only
 docker compose --profile backend up -d    # + API
 docker compose --profile all up -d        # everything
 
-# Recording Demo Videos
+# Recording Demo Videos (dev server needs apps/web/.env.local — copy from .env.example)
+cp apps/web/.env.example apps/web/.env.local  # one-time setup
 nx dev web &
-cd scripts/record-video && pnpm record --scenario calendar-booking-demo  # requires dev server
+cd scripts/record-video && pnpm record --scenario calendar-booking-demo
 
 # Quality (run after changes — see After Major Changes below)
 nx run-many -t lint
