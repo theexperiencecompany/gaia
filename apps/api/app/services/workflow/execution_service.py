@@ -64,6 +64,7 @@ async def complete_execution(
     summary: Optional[str] = None,
     error_message: Optional[str] = None,
     conversation_id: Optional[str] = None,
+    structured_output: Optional[dict] = None,
 ) -> bool:
     """
     Update an execution record on completion.
@@ -106,6 +107,8 @@ async def complete_execution(
         update_data["error_message"] = error_message
     if conversation_id:
         update_data["conversation_id"] = conversation_id
+    if structured_output is not None:
+        update_data["structured_output"] = structured_output
 
     result = await workflow_executions_collection.update_one(
         {"execution_id": execution_id}, {"$set": update_data}

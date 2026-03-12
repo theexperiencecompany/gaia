@@ -8,6 +8,10 @@ from typing import Optional
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from bson import ObjectId
+from langchain_core.callbacks import UsageMetadataCallbackHandler
+from shared.py.wide_events import WorkflowContext, log, wide_task
+
 from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
@@ -17,7 +21,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_rate_limit,
 )
 from app.core.websocket_manager import get_websocket_manager
-from shared.py.wide_events import WorkflowContext, log, wide_task
 from app.db.mongodb.collections import todos_collection
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
@@ -41,6 +44,7 @@ from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
 )
+from app.schemas.workflow.structured_output import WorkflowStructuredOutput
 from app.services.model_service import get_user_selected_model
 from app.services.notification_service import notification_service
 from app.services.todos.todo_service import TodoService
@@ -51,8 +55,7 @@ from app.services.workflow.conversation_service import (
 )
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
-from bson import ObjectId
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from app.services.workflow.structured_output import extract_workflow_structured_output
 
 
 async def process_workflow_generation_task(
@@ -248,13 +251,35 @@ async def execute_workflow_by_id(
                 workflow_id, workflow.user_id, is_successful=True
             )
 
+            # Extract structured output from bot response for dynamic notifications
+            structured_output = None
+            bot_msgs = [m for m in execution_messages if m.type == "bot"]
+            bot_response = bot_msgs[-1].response if bot_msgs else ""
+            try:
+                structured_output = await extract_workflow_structured_output(
+                    complete_message=bot_response,
+                    workflow_title=workflow.title,
+                    workflow_description=workflow.description or "",
+                )
+            except Exception as extract_err:
+                log.warning(
+                    f"Structured output extraction failed, using defaults: {extract_err}"
+                )
+
             # Store messages and send notification
             conversation = await create_workflow_completion_notification(
-                workflow, execution_messages, workflow.user_id
+                workflow,
+                execution_messages,
+                workflow.user_id,
+                structured_output=structured_output,
             )
 
             # Complete execution record with success
-            summary = f"Executed {len(execution_messages)} steps successfully"
+            summary = (
+                structured_output.notification_body
+                if structured_output
+                else f"Executed {len(execution_messages)} steps successfully"
+            )
             conversation_id = (
                 conversation.get("conversation_id") if conversation else None
             )
@@ -263,6 +288,9 @@ async def execute_workflow_by_id(
                 status="success",
                 summary=summary,
                 conversation_id=conversation_id,
+                structured_output=(
+                    structured_output.model_dump() if structured_output else None
+                ),
             )
 
             return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
@@ -633,7 +661,10 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
 
 
 async def create_workflow_completion_notification(
-    workflow, execution_messages, user_id: str
+    workflow,
+    execution_messages,
+    user_id: str,
+    structured_output: WorkflowStructuredOutput | None = None,
 ):
     """Store workflow execution messages and send completion notification."""
 
@@ -682,18 +713,57 @@ async def create_workflow_completion_notification(
             p.strip() for p in bot_response.split("<NEW_MESSAGE_BREAK>") if p.strip()
         ]
 
-        # Format completion timestamp
-        completed_at = datetime.now(timezone.utc)
-        formatted_time = completed_at.strftime("%I:%M %p UTC, %b %d")
+        # Build notification content from structured output or fallback to defaults
+        if structured_output:
+            notification_title = structured_output.notification_title
+            notification_body = structured_output.notification_body
+
+            type_mapping = {
+                "success": NotificationType.SUCCESS,
+                "info": NotificationType.INFO,
+                "warning": NotificationType.WARNING,
+            }
+            notification_type = type_mapping.get(
+                structured_output.notification_type, NotificationType.SUCCESS
+            )
+
+            channels = [
+                ChannelConfig(channel_type=ch, enabled=True, priority=i + 1)
+                for i, ch in enumerate(structured_output.notification_channels or ["inapp"])
+            ]
+
+            rich_content = {
+                "type": "workflow_execution",
+                "messages": message_parts,
+                "workflow_id": workflow.id,
+                "conversation_id": conversation["conversation_id"],
+                "requires_user_action": structured_output.requires_user_action,
+                "action_items": structured_output.action_items,
+            }
+        else:
+            completed_at = datetime.now(timezone.utc)
+            formatted_time = completed_at.strftime("%I:%M %p UTC, %b %d")
+            notification_title = f"Workflow Completed: {workflow.title}"
+            notification_body = f"Completed at {formatted_time}"
+            notification_type = NotificationType.SUCCESS
+            channels = [
+                ChannelConfig(channel_type="inapp", enabled=True, priority=1)
+            ]
+            rich_content = {
+                "type": "workflow_execution",
+                "messages": message_parts,
+                "workflow_id": workflow.id,
+                "conversation_id": conversation["conversation_id"],
+            }
 
         await notification_service.create_notification(
             NotificationRequest(
                 user_id=user_id,
                 source=NotificationSourceEnum.WORKFLOW_COMPLETED,
-                type=NotificationType.SUCCESS,
+                type=notification_type,
                 content=NotificationContent(
-                    title=f"Workflow Completed: {workflow.title}",
-                    body=f"Completed at {formatted_time}",
+                    title=notification_title,
+                    body=notification_body,
                     actions=[
                         NotificationAction(
                             type=ActionType.REDIRECT,
@@ -708,16 +778,9 @@ async def create_workflow_completion_notification(
                             ),
                         )
                     ],
-                    rich_content={
-                        "type": "workflow_execution",
-                        "messages": message_parts,
-                        "workflow_id": workflow.id,
-                        "conversation_id": conversation["conversation_id"],
-                    },
+                    rich_content=rich_content,
                 ),
-                channels=[
-                    ChannelConfig(channel_type="inapp", enabled=True, priority=1)
-                ],
+                channels=channels,
                 metadata={
                     "workflow_id": workflow.id,
                     "conversation_id": conversation["conversation_id"],

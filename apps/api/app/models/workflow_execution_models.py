@@ -39,6 +39,10 @@ class WorkflowExecution(BaseModel):
         default="manual",
         description="What triggered the execution: manual, schedule, or integration name",
     )
+    structured_output: Optional[dict] = Field(
+        default=None,
+        description="Structured output extracted from execution results for notifications",
+    )
 
 
 class WorkflowExecutionsResponse(BaseModel):

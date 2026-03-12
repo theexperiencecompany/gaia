@@ -413,6 +413,25 @@ WORKFLOW_PROMPT_GENERATION_TEMPLATE = """{title_section}{description_section}
 {format_instructions}"""
 
 
+WORKFLOW_OUTPUT_EXTRACTION_PROMPT = """Extract structured notification data from this workflow execution output.
+
+**Workflow:** {workflow_title}
+**Description:** {workflow_description}
+
+**Execution Output:**
+{execution_output}
+
+**Instructions:**
+- Write an action-oriented `notification_title` that summarizes what was accomplished (e.g. "3 emails drafted for Project X", "Meeting scheduled with design team", "Weekly report generated"). Do NOT use generic titles like "Workflow Completed: ..." — be specific about outcomes.
+- Write a concise `notification_body` (1-2 sentences) summarizing the key results or outcomes.
+- Set `notification_type` to "success" for full completion, "warning" if there were partial failures or issues, "info" for neutral informational outcomes.
+- Set `notification_channels` to ["inapp"] by default. Add "telegram" or "discord" ONLY if the results are urgent or require immediate user action.
+- Set `requires_user_action` to true only if the user explicitly needs to do something (e.g. approve a draft, review a document, respond to a message).
+- Include up to 3 `action_items` if the user needs to take specific next steps. Leave empty if no action is needed.
+
+{format_instructions}"""
+
+
 EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You are executing a workflow that was automatically triggered by an incoming email.
 
 **INTELLIGENT EXECUTION WITH EMAIL CONTEXT:**
