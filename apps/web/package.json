@@ -25,6 +25,7 @@
     "lint:fix": "npm run fix",
     "format": "biome format --write .",
     "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\"",
+    "test": "vitest",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
@@ -208,16 +209,21 @@
   "devDependencies": {
     "@biomejs/biome": "2.3.7",
     "@next/bundle-analyzer": "^16.1.6",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/dagre": "^0.7.53",
     "@types/node": "^24.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/string-similarity": "^4.0.2",
     "@types/uuid": "^9.0.8",
+    "@vitejs/plugin-react": "^6.0.0",
     "barrelsby": "^2.8.1",
     "depcheck": "^1.4.7",
+    "jsdom": "^28.1.0",
     "schema-dts": "^1.1.5",
     "typescript": "^5.9.3",
+    "vitest": "^4.0.15",
     "wrangler": "^4.68.0"
   },
   "packageManager": "pnpm@10.18.3"
