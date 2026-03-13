@@ -33,21 +33,27 @@ router = APIRouter()
 async def get_public_integration(
     identifier: str,
 ) -> PublicIntegrationDetailResponse:
-    """Get public integration details by slug."""
+    """Get public integration details by slug.
+
+    Supports both new format (no hash) and legacy format (with 6-char hash suffix).
+    Lookup order: stored slug field -> legacy hash-based regex on integration_id.
+    """
     try:
         log.set(operation="get_public_integration", integration_id=identifier)
-        slug_parts = parse_integration_slug(identifier)
-        short_id = slug_parts.get("shortid")
 
-        if not short_id:
-            raise HTTPException(
-                status_code=404,
-                detail="Invalid slug format. Expected: {name}-mcp-{category}-{id}",
-            )
-
-        pipeline = build_public_integration_pipeline(short_id)
+        # Try direct slug match first (new format without hash)
+        pipeline = _build_slug_lookup_pipeline(identifier)
         cursor = integrations_collection.aggregate(pipeline)
         docs = await cursor.to_list(length=1)
+
+        # Fallback: legacy hash-based lookup
+        if not docs:
+            slug_parts = parse_integration_slug(identifier)
+            short_id = slug_parts.get("shortid")
+            if short_id:
+                pipeline = build_public_integration_pipeline(short_id)
+                cursor = integrations_collection.aggregate(pipeline)
+                docs = await cursor.to_list(length=1)
 
         if not docs:
             raise HTTPException(status_code=404, detail="Integration not found")
@@ -62,6 +68,45 @@ async def get_public_integration(
     except Exception as e:
         log.error(f"Error fetching public integration {identifier}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch integration")
+
+
+def _build_slug_lookup_pipeline(slug: str) -> list:
+    """Build MongoDB pipeline for slug-based integration lookup."""
+    return [
+        {"$match": {"slug": slug, "is_public": True}},
+        {
+            "$lookup": {
+                "from": "users",
+                "let": {
+                    "creator_id": {
+                        "$convert": {
+                            "input": "$created_by",
+                            "to": "objectId",
+                            "onError": None,
+                            "onNull": None,
+                        }
+                    }
+                },
+                "pipeline": [
+                    {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
+                    {"$project": {"name": 1, "picture": 1}},
+                ],
+                "as": "creator_info",
+            }
+        },
+        {
+            "$addFields": {
+                "creator": {
+                    "$cond": {
+                        "if": {"$gt": [{"$size": "$creator_info"}, 0]},
+                        "then": {"$arrayElemAt": ["$creator_info", 0]},
+                        "else": None,
+                    }
+                }
+            }
+        },
+        {"$project": {"creator_info": 0}},
+    ]
 
 
 @router.post("/public/{integration_id}/add", response_model=AddIntegrationResponse)

@@ -74,6 +74,7 @@ export type { ExecutionConfig, WorkflowMetadata };
  */
 export interface CommunityWorkflow {
   id: string;
+  slug?: string;
   title: string;
   description: string;
   prompt?: string;

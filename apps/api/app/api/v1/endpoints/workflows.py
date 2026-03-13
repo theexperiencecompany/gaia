@@ -36,6 +36,7 @@ from app.services.workflow.generation_service import WorkflowGenerationService
 from app.services.workflow.execution_service import (
     get_workflow_executions as get_executions,
 )
+from app.helpers.slug_helpers import generate_workflow_slug, parse_workflow_slug
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import transform_workflow_document
@@ -448,6 +449,12 @@ async def publish_workflow(
                 detail="Workflow not found or access denied",
             )
 
+        # Generate slug for public URL
+        slug = generate_workflow_slug(
+            title=workflow.get("title", ""),
+            workflow_id=workflow_id,
+        )
+
         # Update workflow to be public
         await workflows_collection.update_one(
             {"_id": workflow_id},
@@ -455,6 +462,7 @@ async def publish_workflow(
                 "$set": {
                     "is_public": True,
                     "created_by": user["user_id"],
+                    "slug": slug,
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
@@ -563,15 +571,31 @@ async def get_public_workflows(
         )
 
 
-@router.get("/workflows/public/{workflow_id}", response_model=WorkflowResponse)
+@router.get("/workflows/public/{identifier}", response_model=WorkflowResponse)
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
-async def get_public_workflow(request: Request, workflow_id: str):
-    """Get a public workflow by ID without authentication."""
+async def get_public_workflow(request: Request, identifier: str):
+    """Get a public workflow by ID or slug without authentication.
+
+    Supports both raw workflow IDs (wf_...) and human-readable slugs.
+    Lookup order: exact _id match -> slug-based prefix match on _id.
+    """
     try:
+        # Try exact ID match first
         workflow_doc = await workflows_collection.find_one(
-            {"_id": workflow_id, "is_public": True}
+            {"_id": identifier, "is_public": True}
         )
+
+        # Fallback: parse slug to extract 8-char ID prefix
+        if not workflow_doc:
+            short_id = parse_workflow_slug(identifier)
+            if short_id:
+                workflow_doc = await workflows_collection.find_one(
+                    {
+                        "_id": {"$regex": f"^wf_{short_id}"},
+                        "is_public": True,
+                    }
+                )
 
         if not workflow_doc:
             raise HTTPException(
@@ -589,7 +613,7 @@ async def get_public_workflow(request: Request, workflow_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error getting public workflow {workflow_id}: {str(e)}")
+        log.error(f"Error getting public workflow {identifier}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",

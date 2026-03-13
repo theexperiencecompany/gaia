@@ -12,6 +12,7 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
 )
 from app.db.redis import delete_cache_by_pattern
+from app.helpers.integration_helpers import generate_integration_slug
 from app.services.integrations.category_inference_service import (
     infer_integration_category,
 )
@@ -74,6 +75,12 @@ async def publish_custom_integration(
         server_url=integration.get("mcp_config", {}).get("server_url", ""),
     )
 
+    slug = generate_integration_slug(
+        name=integration.get("name", ""),
+        category=category,
+        integration_id=integration_id,
+    )
+
     now = datetime.now(timezone.utc)
     update_result = await integrations_collection.update_one(
         {
@@ -88,6 +95,7 @@ async def publish_custom_integration(
                 "published_at": now,
                 "category": category,
                 "clone_count": integration.get("clone_count", 0),
+                "slug": slug,
             }
         },
     )
@@ -112,7 +120,7 @@ async def publish_custom_integration(
 
     return {
         "integration_id": integration_id,
-        "public_url": f"/marketplace/{integration_id}",
+        "public_url": f"/marketplace/{slug}",
     }
 
 

@@ -24,6 +24,7 @@ from app.models.workflow_models import (
 )
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.exceptions import TriggerRegistrationError
+from app.helpers.slug_helpers import generate_workflow_slug
 from app.utils.workflow_utils import (
     ensure_trigger_config_object,
     handle_workflow_error,
@@ -958,8 +959,10 @@ class WorkflowService:
                     }
                     normalized_steps.append(normalized_step)
 
+                wf_id = workflow["_id"]
                 formatted_workflow = {
-                    "id": workflow["_id"],
+                    "id": wf_id,
+                    "slug": generate_workflow_slug(workflow["title"], wf_id),
                     "title": workflow["title"],
                     "description": workflow.get("description"),
                     "prompt": workflow.get("prompt"),
@@ -1034,8 +1037,10 @@ class WorkflowService:
                     }
                     normalized_steps.append(normalized_step)
 
+                wf_id = workflow["_id"]
                 formatted_workflow = {
-                    "id": workflow["_id"],
+                    "id": wf_id,
+                    "slug": generate_workflow_slug(workflow["title"], wf_id),
                     "title": workflow["title"],
                     "description": workflow.get("description", ""),
                     "prompt": workflow.get("prompt") or workflow.get("description", ""),

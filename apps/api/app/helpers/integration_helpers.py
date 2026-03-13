@@ -1,21 +1,6 @@
 """Integration-specific helper functions."""
 
-import re
-
-
-def _slugify(text: str, max_length: int = 50) -> str:
-    """Convert text to URL-safe slug."""
-    slug = text.lower()
-    slug = re.sub(r"[^\w\s-]", "", slug)
-    slug = re.sub(r"[\s_]+", "-", slug)
-    slug = slug.strip("-")
-    slug = re.sub(r"-+", "-", slug)
-
-    if len(slug) > max_length:
-        parts = slug[:max_length].rsplit("-", 1)
-        slug = parts[0] if parts else slug[:max_length]
-
-    return slug
+from app.helpers.slug_helpers import slugify
 
 
 def generate_integration_slug(
@@ -24,41 +9,54 @@ def generate_integration_slug(
     integration_id: str,
     max_length: int = 80,
 ) -> str:
-    """Generate canonical slug: {name}-mcp-{category}-{shortid}."""
-    name_slug = _slugify(name, max_length=40)
-    category_slug = _slugify(category, max_length=20)
-    shortid = integration_id[:6].lower() if integration_id else "000000"
+    """Generate canonical slug: {name}-mcp-{category}.
 
-    slug = f"{name_slug}-mcp-{category_slug}-{shortid}"
+    No longer appends a hash suffix — the slug is human-readable and
+    stored/indexed in MongoDB for direct lookup.
+    """
+    name_slug = slugify(name, max_length=40)
+    category_slug = slugify(category, max_length=20)
+
+    slug = f"{name_slug}-mcp-{category_slug}"
 
     if len(slug) > max_length:
-        suffix_len = 7
-        available_len = max_length - suffix_len
+        truncated = slug[:max_length]
+        last_hyphen = truncated.rfind("-")
+        if last_hyphen > 0:
+            slug = truncated[:last_hyphen]
+        else:
+            slug = truncated
 
-        base_slug = slug[:-(suffix_len)]
-        if len(base_slug) > available_len:
-            truncated = base_slug[:available_len]
-            last_hyphen = truncated.rfind("-")
-            if last_hyphen > 0:
-                base_slug = truncated[:last_hyphen]
-            else:
-                base_slug = truncated
+    return slug.rstrip("-")
 
-        slug = f"{base_slug}-{shortid}"
 
-    slug = slug.rstrip("-")
+def generate_integration_slug_with_hash(
+    name: str,
+    category: str,
+    integration_id: str,
+    max_length: int = 80,
+) -> str:
+    """Legacy slug format with hash suffix for backward compatibility.
 
-    return slug
+    Format: {name}-mcp-{category}-{shortid}
+    """
+    base_slug = generate_integration_slug(name, category, integration_id, max_length - 7)
+    shortid = integration_id[:6].lower() if integration_id else "000000"
+    return f"{base_slug}-{shortid}"
 
 
 def parse_integration_slug(slug: str) -> dict:
-    """Parse slug to extract: name_part, category, shortid."""
+    """Parse slug to extract: name_part, category, shortid.
+
+    Handles both new format (no hash) and legacy format (with 6-char hash).
+    """
     result: dict = {
         "name_part": slug,
         "category": None,
         "shortid": None,
     }
 
+    # Check for legacy 6-char hash suffix
     parts = slug.rsplit("-", 1)
     if len(parts) == 2 and len(parts[1]) == 6 and parts[1].isalnum():
         result["shortid"] = parts[1]

@@ -25,15 +25,14 @@ export async function generateStaticParams() {
 
     if (isDev) {
       const resp = await workflowApi.getExploreWorkflows(50, 0);
-      console.log(
-        `[SSG Use Cases] Generating ${resp.workflows.length} pages (dev mode)`,
-      );
-      return resp.workflows.map((w) => ({ slug: w.id }));
+      return resp.workflows.map((w) => ({ slug: w.slug || w.id }));
     }
 
     const exploreLimit = 1000;
     const exploreResp = await workflowApi.getExploreWorkflows(exploreLimit, 0);
-    const exploreParams = exploreResp.workflows.map((w) => ({ slug: w.id }));
+    const exploreParams = exploreResp.workflows.map((w) => ({
+      slug: w.slug || w.id,
+    }));
 
     const { fetchAllPaginated } = await import("@/lib/fetchAll");
     const communityWorkflows = await fetchAllPaginated(
@@ -47,13 +46,11 @@ export async function generateStaticParams() {
       },
       100,
     );
-    const communityParams = communityWorkflows.map((w) => ({ slug: w.id }));
+    const communityParams = communityWorkflows.map((w) => ({
+      slug: w.slug || w.id,
+    }));
 
     const allParams = [...exploreParams, ...communityParams];
-    console.log(
-      `[SSG Use Cases] Generating ${allParams.length} pages (${exploreParams.length} explore + ${communityParams.length} community)`,
-    );
-
     return allParams;
   } catch (error) {
     console.error("Error generating static params for use-cases:", error);
@@ -71,7 +68,9 @@ export async function generateMetadata({
   // First, attempt to find the use-case in explore workflows (API)
   try {
     const resp = await workflowApi.getExploreWorkflows(200, 0);
-    const found = resp.workflows.find((w) => w.id === slug);
+    const found = resp.workflows.find(
+        (w) => w.slug === slug || w.id === slug,
+      );
     if (found) {
       const workflowAsUseCase: UseCase = {
         title: found.title,
@@ -137,7 +136,9 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   // First, try to find the use-case in explore workflows
   try {
     const resp = await workflowApi.getExploreWorkflows(200, 0);
-    const found = resp.workflows.find((w) => w.id === slug);
+    const found = resp.workflows.find(
+        (w) => w.slug === slug || w.id === slug,
+      );
     if (found) {
       useCase = {
         title: found.title,

@@ -156,8 +156,8 @@ async function getExploreWorkflowPages(
       }
       const data = await response.json();
       return (data.workflows || []).map(
-        (wc: { id: string; created_at: string; categories?: string[] }) => ({
-          url: `${baseUrl}/use-cases/${wc.id}`,
+        (wc: { id: string; slug?: string; created_at: string; categories?: string[] }) => ({
+          url: `${baseUrl}/use-cases/${wc.slug || wc.id}`,
           lastModified: new Date(wc.created_at),
           changeFrequency: "weekly" as const,
           priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
@@ -167,6 +167,7 @@ async function getExploreWorkflowPages(
 
     type ExploreWorkflow = {
       id: string;
+      slug?: string;
       created_at: string;
       categories?: string[];
     };
@@ -190,7 +191,7 @@ async function getExploreWorkflowPages(
     );
 
     return allWorkflows.map((wc) => ({
-      url: `${baseUrl}/use-cases/${wc.id}`,
+      url: `${baseUrl}/use-cases/${wc.slug || wc.id}`,
       lastModified: new Date(wc.created_at),
       changeFrequency: "weekly" as const,
       priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
@@ -231,8 +232,8 @@ async function getCommunityWorkflowPages(
       }
       const data = await response.json();
       return (data.workflows || []).map(
-        (workflow: { id: string; created_at: string }) => ({
-          url: `${baseUrl}/use-cases/${workflow.id}`,
+        (workflow: { id: string; slug?: string; created_at: string }) => ({
+          url: `${baseUrl}/use-cases/${workflow.slug || workflow.id}`,
           lastModified: new Date(workflow.created_at),
           changeFrequency: "weekly" as const,
           priority: 0.6,
@@ -240,7 +241,7 @@ async function getCommunityWorkflowPages(
       );
     }
 
-    type CommunityWorkflow = { id: string; created_at: string };
+    type CommunityWorkflow = { id: string; slug?: string; created_at: string };
 
     const allWorkflows = await fetchAllPaginated<CommunityWorkflow>(
       async (limit, offset) => {
@@ -261,7 +262,7 @@ async function getCommunityWorkflowPages(
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.slug || workflow.id}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,
