@@ -423,6 +423,7 @@ export const integrationsApi = {
         })),
         publishedAt: null,
         creator: null,
+        source: "platform" as const,
       }));
   },
 

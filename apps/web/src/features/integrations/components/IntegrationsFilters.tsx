@@ -31,13 +31,11 @@ interface IntegrationsFiltersProps {
     search?: string;
     category?: string;
     sort?: string;
-    source?: "community" | "native";
   }) => void;
   initialFilters?: {
     search?: string;
     category?: string;
     sort?: string;
-    source?: "community" | "native";
   };
 }
 
@@ -85,9 +83,6 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
   const [search, setSearch] = useState(initialFilters.search || "");
   const [category, setCategory] = useState(initialFilters.category || "all");
   const [sort, setSort] = useState(initialFilters.sort || "popular");
-  const [source, setSource] = useState<"community" | "native">(
-    initialFilters.source ?? "community",
-  );
   const hasSyncedParams = useRef(false);
 
   useEffect(() => {
@@ -123,67 +118,42 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
 
   const handleSortChange = (key: string) => {
     setSort(key);
-    onFilterChange({ search, category, sort: key, source });
-  };
-
-  const handleSourceChange = (newSource: "community" | "native") => {
-    setSource(newSource);
-    onFilterChange({ search, category, sort, source: newSource });
+    onFilterChange({ search, category, sort: key });
   };
 
   return (
     <div className="mb-8 space-y-4">
-      {/* Source type selector */}
-      <div className="flex gap-2">
-        {(["community", "native"] as const).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => handleSourceChange(s)}
-            className={[
-              "px-4 py-1.5 rounded-full text-sm font-medium transition-colors",
-              source === s
-                ? "bg-zinc-100 text-zinc-900"
-                : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200",
-            ].join(" ")}
+      <div className="flex items-center gap-5">
+        <div className="flex-1 min-w-0 overflow-x-auto">
+          <Tabs
+            selectedKey={category}
+            onSelectionChange={(key) => handleCategoryChange(key as string)}
+            variant="light"
           >
-            {s === "community" ? "Community" : "Native"}
-          </button>
-        ))}
-      </div>
+            {CATEGORIES.map((cat) => (
+              <Tab key={cat.key} title={cat.label} />
+            ))}
+          </Tabs>
+        </div>
 
-      <div className="flex items-center justify-between gap-5">
-        <Tabs
-          className="flex-1"
-          selectedKey={category}
-          onSelectionChange={(key) => handleCategoryChange(key as string)}
-          variant="light"
-        >
-          {CATEGORIES.map((cat) => (
-            <Tab key={cat.key} title={cat.label} />
-          ))}
-        </Tabs>
-
-        {source === "community" && (
-          <div className="flex justify-center pl-3">
-            <Select
-              selectedKeys={[sort]}
-              onSelectionChange={(keys) => {
-                const selected = Array.from(keys)[0] as string;
-                if (selected) handleSortChange(selected);
-              }}
-              className="w-40"
-              aria-label="Sort by"
-            >
-              {SORT_OPTIONS.map((option) => (
-                <SelectItem key={option.key}>{option.label}</SelectItem>
-              ))}
-            </Select>
-          </div>
-        )}
+        <div className="flex shrink-0 justify-center">
+          <Select
+            selectedKeys={[sort]}
+            onSelectionChange={(keys) => {
+              const selected = Array.from(keys)[0] as string;
+              if (selected) handleSortChange(selected);
+            }}
+            className="w-40"
+            aria-label="Sort by"
+          >
+            {SORT_OPTIONS.map((option) => (
+              <SelectItem key={option.key}>{option.label}</SelectItem>
+            ))}
+          </Select>
+        </div>
 
         <Input
-          className="w-72"
+          className="shrink-0 w-72 min-w-64"
           type="search"
           placeholder="Search integrations..."
           value={search}

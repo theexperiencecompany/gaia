@@ -7,6 +7,7 @@ import { Spinner } from "@heroui/spinner";
 import {
   DateTimeIcon,
   GitForkIcon,
+  Home12Icon,
   LayersIcon,
   PackageOpenIcon,
   UserCircle02Icon,
@@ -278,9 +279,7 @@ export function IntegrationDetailClient({
 
             {isNative ? (
               <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500/20 text-blue-400 text-xs font-bold">
-                  ✓
-                </div>
+                <Home12Icon width={24} height={24} className="text-zinc-400" />
                 <div>
                   <div className="text-xs text-zinc-500">Type</div>
                   <div className="text-sm text-zinc-300">Native</div>

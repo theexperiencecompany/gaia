@@ -72,6 +72,7 @@ async def get_public_integration(
                 published_at=None,
                 source="platform",
                 auth_type=auth_type,
+                content=native.content,
             )
 
         # 2. Fall back to MongoDB (community/published integrations)
