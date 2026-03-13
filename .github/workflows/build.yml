@@ -101,7 +101,7 @@ jobs:
           api=false
           bots=false
 
-          if echo "$AFFECTED" | grep -qx "api" || echo "$AFFECTED" | grep -qx "voice-agent"; then
+          if echo "$AFFECTED" | grep -qx "api"; then # || echo "$AFFECTED" | grep -qx "voice-agent"; then
             api=true
           fi
 
@@ -117,9 +117,8 @@ jobs:
             }
 
             if [ "$api" = "false" ]; then
-              if image_missing "ghcr.io/theexperiencecompany/gaia:latest" || \
-                 image_missing "ghcr.io/theexperiencecompany/gaia-voice-agent:latest"; then
-                echo "⚠️ API/voice-agent image missing from GHCR — forcing build"
+              if image_missing "ghcr.io/theexperiencecompany/gaia:latest"; then # || image_missing "ghcr.io/theexperiencecompany/gaia-voice-agent:latest"; then
+                echo "⚠️ API image missing from GHCR — forcing build"
                 api=true
               fi
             fi

@@ -13,7 +13,7 @@ rather than fire on every single incoming email.
 
 from typing import Any, Dict, List, Set
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
@@ -92,6 +92,7 @@ class GmailPollTriggerHandler(TriggerHandler):
 
         Matches by composio trigger_id, same pattern as CalendarTriggerHandler.
         """
+        log.set(trigger={"provider": "gmail", "event": event_type})
         try:
             query = {
                 "activated": True,
@@ -105,7 +106,7 @@ class GmailPollTriggerHandler(TriggerHandler):
             )
 
         except Exception as e:
-            logger.error(
+            log.error(
                 f"Error finding workflows for gmail_poll trigger {trigger_id}: {e}"
             )
             return []

@@ -11,7 +11,7 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 from typing import Any, Dict, List
 
 import httpx
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 from app.decorators import with_doc
 from app.models.notion_models import (
@@ -43,6 +43,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "notion", "action": "move_page"})
         # Build parent object based on type
         if request.parent_type == "page_id":
             parent = {"type": "page_id", "page_id": request.parent_id}
@@ -69,6 +70,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "notion", "action": "fetch_page_as_markdown"})
         # Get page title using NOTION_GET_PAGE_PROPERTY_ACTION
         title = ""
         try:
@@ -84,7 +86,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             )
             # Composio tools return ToolExecutionResponse format
             if not title_response["successful"]:
-                logger.warning(f"Failed to fetch title: {title_response.get('error')}")
+                log.warning(f"Failed to fetch title: {title_response.get('error')}")
             else:
                 title_data = title_response["data"]
                 # Extract title from results array
@@ -98,7 +100,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
                             title = item["title"].get("plain_text", "")
                             break
         except Exception as e:
-            logger.warning(f"Could not fetch title: {e}")
+            log.warning(f"Could not fetch title: {e}")
 
         # Call NOTION_FETCH_ALL_BLOCK_CONTENTS via composio
         blocks_response: ToolExecutionResponse = composio.tools.execute(
@@ -150,6 +152,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "notion", "action": "insert_markdown"})
         # Convert markdown to Notion blocks
         all_blocks = markdown_to_notion_blocks(request.markdown)
 
@@ -224,6 +227,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Fetch databases or pages from Notion workspace."""
+        log.set(tool={"integration": "notion", "action": "fetch_data"})
         headers = {
             "Authorization": f"Bearer {auth_credentials.get('access_token')}",
             "Notion-Version": "2022-06-28",
@@ -290,12 +294,12 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             }
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"Notion API error: {e.response.text}")
+            log.error(f"Notion API error: {e.response.text}")
             raise RuntimeError(
                 f"Failed to fetch {request.fetch_type}: {e.response.text}"
             )
         except Exception as e:
-            logger.error(f"Error fetching Notion {request.fetch_type}: {e}")
+            log.error(f"Error fetching Notion {request.fetch_type}: {e}")
             raise RuntimeError(f"Failed to fetch {request.fetch_type}: {str(e)}")
 
     @composio.tools.custom_tool(toolkit="NOTION")
@@ -306,6 +310,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Create a new page in Notion."""
+        log.set(tool={"integration": "notion", "action": "create_test_page"})
         # This is a wrapper around NOTION_CREATE_PAGE but simplified
 
         # We need to construct the payload as expected by Notion API
@@ -370,6 +375,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns recently modified content for situational awareness.
         """
+        log.set(tool={"integration": "notion", "action": "gather_context"})
         user_id = auth_credentials.get("user_id", "")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")

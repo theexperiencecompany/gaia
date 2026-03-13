@@ -5,7 +5,7 @@ Linear trigger handler.
 import asyncio
 from typing import Any, Dict, List, Optional, Set
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     LinearCommentAddedPayload,
@@ -70,7 +70,7 @@ class LinearTriggerHandler(TriggerHandler):
                 "LINEAR_GET_ALL_LINEAR_TEAMS", user_id=user_id
             )
             if not tool:
-                logger.error("Linear get all teams tool not found")
+                log.error("Linear get all teams tool not found")
                 return []
 
             # Invoke the tool
@@ -78,7 +78,7 @@ class LinearTriggerHandler(TriggerHandler):
 
             # Check response status
             if not result["successful"]:
-                logger.error(f"Linear API error: {result['error']}")
+                log.error(f"Linear API error: {result['error']}")
                 return []
 
             # Extract and parse data
@@ -94,7 +94,7 @@ class LinearTriggerHandler(TriggerHandler):
                     continue
                 options.append({"value": team.id, "label": team.name})
 
-            logger.info(f"Returning {len(options)} Linear team options")
+            log.info(f"Returning {len(options)} Linear team options")
             return options
 
         return []
@@ -161,6 +161,7 @@ class LinearTriggerHandler(TriggerHandler):
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:
         """Find workflows matching a Linear trigger event."""
+        log.set(trigger={"provider": "linear", "event": event_type})
         try:
             query = {
                 "activated": True,
@@ -176,7 +177,7 @@ class LinearTriggerHandler(TriggerHandler):
                 elif "comment_added" in event_type.lower():
                     LinearCommentAddedPayload.model_validate(data)
             except Exception as e:
-                logger.debug(f"Linear payload validation failed: {e}")
+                log.debug(f"Linear payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
             workflows: List[Workflow] = []
@@ -189,13 +190,13 @@ class LinearTriggerHandler(TriggerHandler):
                     workflow = Workflow(**workflow_doc)
                     workflows.append(workflow)
                 except Exception as e:
-                    logger.error(f"Error processing workflow document: {e}")
+                    log.error(f"Error processing workflow document: {e}")
                     continue
 
             return workflows
 
         except Exception as e:
-            logger.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
 

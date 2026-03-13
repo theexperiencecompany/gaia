@@ -5,6 +5,7 @@ Usage tracking API endpoints.
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from shared.py.wide_events import log
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.rate_limits import (
     FEATURE_LIMITS,
@@ -26,6 +27,7 @@ usage_service = UsageService()
 @router.get("/summary")
 async def get_usage_summary(user: dict = Depends(get_current_user)) -> Dict[str, Any]:
     """Get real-time usage summary for the current user."""
+    log.set(operation="get_usage_summary")
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
@@ -37,6 +39,8 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> Dict[str,
     # Get real-time usage data directly from Redis
     features_formatted = await _get_realtime_usage(user_id, user_plan)
 
+    log.set(period="realtime", result_count=len(features_formatted))
+    log.set(outcome="success")
     return {
         "user_id": user_id,
         "plan_type": user_plan.value if hasattr(user_plan, "value") else str(user_plan),
@@ -54,6 +58,7 @@ async def get_usage_history(
     user: dict = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     """Get usage history for the current user."""
+    log.set(operation="get_usage_history", period=f"{days}d")
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
@@ -92,6 +97,8 @@ async def get_usage_history(
             }
         )
 
+    log.set(result_count=len(formatted_history))
+    log.set(outcome="success")
     return formatted_history
 
 

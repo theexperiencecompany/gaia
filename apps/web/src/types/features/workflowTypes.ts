@@ -10,6 +10,7 @@
  * DO NOT create duplicate type definitions elsewhere!
  */
 
+import type { ExecutionConfig, WorkflowMetadata } from "@shared/types";
 import type {
   TriggerConfig,
   TriggerFieldSchema,
@@ -60,36 +61,8 @@ export interface PublicWorkflowStep {
 // Re-export trigger types for convenience
 export type { TriggerConfig, TriggerFieldSchema, TriggerSchema };
 
-/**
- * Execution configuration for workflows
- */
-export interface ExecutionConfig {
-  method: "chat" | "background" | "hybrid";
-  timeout_seconds: number;
-  max_retries: number;
-  retry_delay_seconds: number;
-  notify_on_completion: boolean;
-  notify_on_failure: boolean;
-}
-
-/**
- * Workflow metadata tracking
- */
-export interface WorkflowMetadata {
-  created_from: "chat" | "modal" | "todo" | "template" | "api";
-  template_id?: string;
-  related_todo_id?: string;
-  related_conversation_id?: string;
-  tags: string[];
-  category?: string;
-  total_executions: number;
-  successful_executions: number;
-  last_execution_at?: string;
-  average_execution_time?: number;
-}
-
-// Note: TriggerSchema and TriggerFieldSchema are now defined in
-// @/features/workflows/triggers/types and re-exported above
+// Re-export shared types that are identical between web and mobile
+export type { ExecutionConfig, WorkflowMetadata };
 
 // ============================================================================
 // COMMUNITY & EXPLORE WORKFLOW TYPES

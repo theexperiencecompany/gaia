@@ -8,7 +8,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
@@ -75,6 +75,12 @@ class TriggerHandler(ABC):
         Returns:
             True if all triggers were unregistered successfully
         """
+        log.set(
+            service="trigger_handler",
+            operation="unregister",
+            user_id=user_id,
+            trigger_count=len(trigger_ids),
+        )
         if not trigger_ids:
             return True
 
@@ -87,9 +93,9 @@ class TriggerHandler(ABC):
                     composio.composio.triggers.delete,
                     trigger_id=trigger_id,
                 )
-                logger.debug(f"Deleted trigger: {trigger_id}")
+                log.debug(f"Deleted trigger: {trigger_id}")
             except Exception as e:
-                logger.error(f"Failed to delete trigger {trigger_id}: {e}")
+                log.error(f"Failed to delete trigger {trigger_id}: {e}")
                 success = False
 
         return success
@@ -158,19 +164,19 @@ class TriggerHandler(ABC):
                     if config_description_fn
                     else str(configs[i])
                 )
-                logger.error(f"Trigger registration failed for {config_desc}: {result}")
+                log.error(f"Trigger registration failed for {config_desc}: {result}")
             elif result is not None:
                 successful_ids.append(result)
 
         # If any failed, rollback all successful ones
         if has_failure:
             if successful_ids:
-                logger.warning(
+                log.warning(
                     f"Rolling back {len(successful_ids)} triggers due to partial failure"
                 )
                 rollback_ok = await self.unregister(user_id, successful_ids)
                 if not rollback_ok:
-                    logger.error(
+                    log.error(
                         f"Rollback FAILED — orphaned Composio triggers: {successful_ids}. "
                         "Manual cleanup may be required."
                     )
@@ -196,7 +202,7 @@ class TriggerHandler(ABC):
                     del workflow_doc["_id"]
                 workflows.append(Workflow(**workflow_doc))
             except Exception as e:
-                logger.error(f"Error processing workflow document ({log_context}): {e}")
+                log.error(f"Error processing workflow document ({log_context}): {e}")
 
         return workflows
 
@@ -272,12 +278,19 @@ class TriggerHandler(ABC):
         Returns:
             Dict with 'status' and 'message' keys
         """
+        log.set(
+            service="trigger_handler",
+            operation="process_event",
+            event_type=event_type,
+            trigger_id=trigger_id,
+            user_id=user_id,
+        )
         # Find matching workflows using handler's find_workflows method
         # Each handler decides what identifiers it needs (trigger_id, user_id, etc.)
         workflows = await self.find_workflows(event_type, trigger_id or "", data)
 
         if not workflows:
-            logger.info(f"No matching workflows for event: {event_type}")
+            log.info(f"No matching workflows for event: {event_type}")
             return {"status": "success", "message": "No matching workflows"}
 
         # Queue execution for each matching workflow
@@ -285,7 +298,7 @@ class TriggerHandler(ABC):
         for workflow in workflows:
             try:
                 if workflow.id is None:
-                    logger.error("Workflow has no id, skipping")
+                    log.error("Workflow has no id, skipping")
                     continue
                 await WorkflowQueueService.queue_workflow_execution(
                     workflow.id,
@@ -293,9 +306,9 @@ class TriggerHandler(ABC):
                     context={"trigger_data": data},
                 )
                 queued_count += 1
-                logger.info(f"Queued workflow {workflow.id} for event {event_type}")
+                log.info(f"Queued workflow {workflow.id} for event {event_type}")
             except Exception as e:
-                logger.error(f"Failed to queue workflow {workflow.id}: {e}")
+                log.error(f"Failed to queue workflow {workflow.id}: {e}")
 
         return {
             "status": "success",

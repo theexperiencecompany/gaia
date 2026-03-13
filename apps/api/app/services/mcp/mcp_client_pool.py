@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 
 if TYPE_CHECKING:
@@ -63,7 +63,7 @@ class MCPClientPool:
                 pooled.touch()
                 # Move to end (most recently used)
                 self._clients.move_to_end(user_id)
-                logger.debug(f"Reusing pooled MCPClient for {user_id}")
+                log.debug(f"Reusing pooled MCPClient for {user_id}")
                 return pooled.client
 
             # Pop oldest if at capacity (close outside lock)
@@ -76,14 +76,14 @@ class MCPClientPool:
 
             client = MCPClient(user_id=user_id)
             self._clients[user_id] = PooledClient(client=client)
-            logger.debug(f"Created new pooled MCPClient for {user_id}")
+            log.debug(f"Created new pooled MCPClient for {user_id}")
 
         # Close evicted sessions outside the lock to avoid blocking
         if evicted:
             try:
                 await evicted.client.close_all_client_sessions()
             except Exception as e:
-                logger.warning(f"Error closing evicted MCP sessions: {e}")
+                log.warning(f"Error closing evicted MCP sessions: {e}")
 
         return client
 
@@ -97,8 +97,8 @@ class MCPClientPool:
         try:
             await pooled.client.close_all_client_sessions()
         except Exception as e:
-            logger.warning(f"Error closing MCP sessions for user {user_id}: {e}")
-        logger.debug(f"Evicted MCPClient for {user_id}")
+            log.warning(f"Error closing MCP sessions for user {user_id}: {e}")
+        log.debug(f"Evicted MCPClient for {user_id}")
 
     async def cleanup_stale(self) -> None:
         """Remove clients that haven't been used within TTL."""
@@ -115,14 +115,14 @@ class MCPClientPool:
                 if pooled:
                     to_close.append(pooled)
             if stale:
-                logger.info(f"Cleaned up {len(stale)} stale MCP clients")
+                log.info(f"Cleaned up {len(stale)} stale MCP clients")
 
         # Close sessions outside the lock to avoid blocking concurrent get() calls
         for pooled in to_close:
             try:
                 await pooled.client.close_all_client_sessions()
             except Exception as e:
-                logger.warning(f"Error closing stale MCP sessions: {e}")
+                log.warning(f"Error closing stale MCP sessions: {e}")
 
     async def start_cleanup_loop(self, interval: int = 60):
         """Start background cleanup task."""
@@ -132,17 +132,17 @@ class MCPClientPool:
                 try:
                     await asyncio.sleep(interval)
                 except asyncio.CancelledError:
-                    logger.info("MCPClientPool cleanup loop cancelled")
+                    log.info("MCPClientPool cleanup loop cancelled")
                     raise
                 try:
                     await self.cleanup_stale()
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
-                    logger.warning(f"Error in MCP cleanup loop: {e}")
+                    log.warning(f"Error in MCP cleanup loop: {e}")
 
         self._cleanup_task = asyncio.create_task(_loop())
-        logger.info("MCPClientPool cleanup loop started")
+        log.info("MCPClientPool cleanup loop started")
 
     async def shutdown(self):
         """Graceful shutdown of all clients."""
@@ -157,7 +157,7 @@ class MCPClientPool:
             for user_id in list(self._clients.keys()):
                 await self._evict(user_id)
 
-        logger.info("MCPClientPool shutdown complete")
+        log.info("MCPClientPool shutdown complete")
 
     @property
     def size(self) -> int:

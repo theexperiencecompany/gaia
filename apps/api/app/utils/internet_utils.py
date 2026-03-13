@@ -2,7 +2,7 @@ import re
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from app.config.loggers import search_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import search_urls_collection
 from app.db.redis import get_cache, set_cache
 from app.db.utils import serialize_document
@@ -31,7 +31,7 @@ def is_valid_url(url: str) -> bool:
             return False
         # Reject IP addresses (basic check)
         if re.match(r"^\d+\.\d+\.\d+\.\d+$", parsed.netloc):
-            logger.warning(f"IP address URL rejected: {url}")
+            log.warning(f"IP address URL rejected: {url}")
             return False
         return True
     except Exception:
@@ -40,6 +40,7 @@ def is_valid_url(url: str) -> bool:
 
 async def fetch_url_metadata(url: str) -> URLResponse:
     """Fetch metadata for a URL, with caching and database fallback."""
+    log.set(url=url, operation="fetch_url_metadata")
     if not is_valid_url(url):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -139,9 +140,9 @@ async def scrape_url_metadata(url: str) -> dict:
         }
 
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-        logger.debug(f"Error fetching URL metadata: {exc}")
+        log.debug(f"Error fetching URL metadata: {exc}")
     except Exception as exc:
-        logger.debug(f"Unexpected error: {exc}")
+        log.debug(f"Unexpected error: {exc}")
 
     return {
         "title": None,

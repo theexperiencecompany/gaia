@@ -3,8 +3,8 @@ from datetime import timezone
 from functools import lru_cache
 
 import pymongo
-from app.config.loggers import mongo_logger as logger
 from app.config.settings import settings
+from shared.py.wide_events import log
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo.server_api import ServerApi
 
@@ -26,7 +26,7 @@ class MongoDB:
             db_name (str): Name of the database.
         """
         if not uri:
-            logger.error("MongoDB URI is not found in the environment variables.")
+            log.error("MongoDB URI is not found in the environment variables.")
             sys.exit(1)
 
         try:
@@ -34,9 +34,11 @@ class MongoDB:
                 uri, server_api=ServerApi("1"), tz_aware=True, tzinfo=timezone.utc
             )
             self.database = self.client.get_database(db_name)
+            log.set(db={"connection_status": "connected", "backend": "mongodb"})
 
         except Exception as e:
-            logger.error(f"An error occurred while connecting to MongoDB: {e}")
+            log.set(db={"connection_status": "error", "backend": "mongodb"})
+            log.error(f"An error occurred while connecting to MongoDB: {e}")
             sys.exit(1)
 
     def ping(self):
@@ -46,18 +48,18 @@ class MongoDB:
             sync_client.admin.command("ping")
             sync_client.close()
         except Exception as e:
-            logger.error(f"Ping failed: {e}")
+            log.error(f"Ping failed: {e}")
 
     async def _initialize_indexes(self):
         try:
-            logger.info("Initializing all indexes in MongoDB...")
+            log.info("Initializing all indexes in MongoDB...")
             # Import here to avoid circular import
             from app.db.mongodb.indexes import create_all_indexes
 
             await create_all_indexes()
             # await log_index_summary()
         except Exception as e:
-            logger.error(f"Error while initializing indexes: {e}")
+            log.error(f"Error while initializing indexes: {e}")
 
     def get_collection(self, collection_name: str):
         return self.database.get_collection(collection_name)
@@ -71,9 +73,9 @@ def init_mongodb():
     Args:
         app (FastAPI): The FastAPI application instance.
     """
-    logger.info("Initializing MongoDB...")
+    log.info("Initializing MongoDB...")
     mongodb_instance = MongoDB(uri=settings.MONGO_DB, db_name="GAIA")
-    logger.info("Created MongoDB instance")
+    log.info("Created MongoDB instance")
     mongodb_instance.ping()
-    logger.info("Successfully connected to MongoDB.")
+    log.info("Successfully connected to MongoDB.")
     return mongodb_instance

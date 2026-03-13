@@ -3,7 +3,7 @@ from typing import Optional
 
 import pytz
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import UserUpdateResponse
@@ -42,6 +42,16 @@ async def get_me(
     # Get onboarding status
     onboarding_status = await get_user_onboarding_status(user["user_id"])
 
+    log.set(
+        user={
+            "id": user["user_id"],
+            "email": user.get("email"),
+            "plan": user.get("plan") or user.get("subscription_plan"),
+        },
+        operation="get_me",
+    )
+
+    log.set(outcome="success")
     return {
         "message": "User retrieved successfully",
         **user,
@@ -60,6 +70,15 @@ async def update_me(
     Supports updating name and profile picture.
     """
     user_id = user.get("user_id")
+    log.set(
+        user={
+            "id": user_id,
+            "email": user.get("email"),
+            "plan": user.get("plan") or user.get("subscription_plan"),
+        },
+        operation="update_me",
+        has_picture_upload=bool(picture and picture.size and picture.size > 0),
+    )
 
     if not user_id or not isinstance(user_id, str):
         raise HTTPException(status_code=400, detail="Invalid user ID")
@@ -83,12 +102,14 @@ async def update_me(
             )
 
         picture_data = await picture.read()
+        log.set(picture_size_bytes=picture.size)
 
     # Update user profile
     updated_user = await update_user_profile(
         user_id=user_id, name=name, picture_data=picture_data
     )
 
+    log.set(outcome="success")
     return UserUpdateResponse(**updated_user)
 
 
@@ -102,16 +123,18 @@ async def update_user_name(
     """
     try:
         user_id = user.get("user_id")
+        log.set(user={"id": user_id}, operation="update_user_name")
 
         if not user_id or not isinstance(user_id, str):
             raise HTTPException(status_code=400, detail="Invalid user ID")
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
+        log.set(outcome="success")
         return UserUpdateResponse(**updated_user)
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error updating user name: {str(e)}", exc_info=True)
+        log.error(f"Error updating user name: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update name")
 
 
@@ -129,6 +152,11 @@ async def update_user_timezone(
     This updates the root-level timezone field for the user.
     """
     try:
+        log.set(
+            user={"id": user["user_id"]},
+            operation="update_user_timezone",
+            timezone=user_timezone.strip(),
+        )
         try:
             pytz.timezone(user_timezone.strip())
         except pytz.UnknownTimeZoneError:
@@ -151,6 +179,7 @@ async def update_user_timezone(
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.set(outcome="success")
         return {
             "success": True,
             "message": "Timezone updated successfully",
@@ -159,7 +188,7 @@ async def update_user_timezone(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error updating timezone: {str(e)}", exc_info=True)
+        log.error(f"Error updating timezone: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update timezone")
 
 
@@ -171,6 +200,8 @@ async def get_public_holo_card(card_id: str):
     Returns basic profile info without sensitive data like workflows.
     """
     try:
+        log.set(operation="get_public_holo_card", card_id=card_id)
+
         if not ObjectId.is_valid(card_id):
             raise HTTPException(status_code=400, detail="Invalid card ID")
 
@@ -203,6 +234,7 @@ async def get_public_holo_card(card_id: str):
                 created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
             )
 
+        log.set(outcome="success")
         return {
             "house": onboarding.get("house"),
             "personality_phrase": onboarding.get("personality_phrase"),
@@ -217,7 +249,7 @@ async def get_public_holo_card(card_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching holo card: {str(e)}", exc_info=True)
+        log.error(f"Error fetching holo card: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch holo card data")
 
 
@@ -232,6 +264,12 @@ async def update_holo_card_colors(
     """
     try:
         user_id = user.get("user_id")
+        log.set(
+            user={"id": user_id},
+            operation="update_holo_card_colors",
+            overlay_color=overlay_color,
+            overlay_opacity=overlay_opacity,
+        )
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
@@ -256,6 +294,7 @@ async def update_holo_card_colors(
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.set(outcome="success")
         return {
             "success": True,
             "message": "Holo card colors updated successfully",
@@ -266,7 +305,7 @@ async def update_holo_card_colors(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating holo card colors: {str(e)}", exc_info=True)
+        log.error(f"Error updating holo card colors: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update holo card colors")
 
 
@@ -283,6 +322,8 @@ async def logout(
         raise HTTPException(status_code=401, detail="No active session")
 
     try:
+        log.set(operation="logout")
+
         session = workos.user_management.load_sealed_session(
             sealed_session=wos_session,
             cookie_password=settings.WORKOS_COOKIE_PASSWORD,
@@ -305,8 +346,9 @@ async def logout(
             samesite="lax",
         )
 
+        log.set(outcome="success")
         return response
 
     except Exception as e:
-        logger.error(f"Logout error: {e}")
+        log.error(f"Logout error: {e}")
         raise HTTPException(status_code=500, detail="Logout failed")

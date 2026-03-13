@@ -94,6 +94,8 @@ export interface PageMetadataOptions {
   title: string;
   description?: string;
   path: string;
+  /** Override the canonical URL — use for near-duplicate pages that should consolidate PageRank to a primary. */
+  canonicalPath?: string;
   keywords?: string[];
   image?: string;
   type?: "website" | "article" | "profile";
@@ -108,6 +110,7 @@ export function generatePageMetadata({
   title,
   description = siteConfig.description,
   path,
+  canonicalPath,
   keywords = [],
   image = siteConfig.ogImage,
   type = "website",
@@ -117,7 +120,7 @@ export function generatePageMetadata({
   noIndex = false,
   section,
 }: PageMetadataOptions): Metadata {
-  const url = getCanonicalUrl(path);
+  const url = getCanonicalUrl(canonicalPath ?? path);
 
   // For homepage, use absolute title to prevent template from adding suffix
   // For other pages, use simple title string to let template add "| GAIA"
@@ -211,6 +214,7 @@ export function generateOrganizationSchema(): WithContext<Organization> {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `${siteConfig.url}/#organization`,
     name: siteConfig.short_name,
     alternateName: [
       "GAIA AI",
@@ -244,6 +248,7 @@ export function generateOrganizationSchema(): WithContext<Organization> {
       siteConfig.links.youtube,
       siteConfig.links.discord,
       siteConfig.url,
+      "https://docs.heygaia.io",
     ],
     contactPoint: {
       "@type": "ContactPoint",
@@ -316,7 +321,9 @@ export function generateWebPageSchema(
           "@type": "ListItem",
           position: index + 1,
           name: crumb.name,
-          item: crumb.url,
+          item: crumb.url.startsWith("http")
+            ? crumb.url
+            : `${siteConfig.url}${getCanonicalUrl(crumb.url)}`,
         }),
       ),
     };
@@ -376,15 +383,35 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
   return {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
+    "@id": `${siteConfig.url}/#product`,
     name: siteConfig.short_name,
     applicationCategory: "ProductivityApplication",
+    applicationSubCategory: "AI Assistant",
     operatingSystem: "Web, Windows, macOS, Linux",
     description: siteConfig.description,
+    url: siteConfig.url,
+    image: siteConfig.url + "/og-image.webp",
+    downloadUrl: "https://heygaia.io/download",
+    featureList:
+      "Email management, Calendar automation, Task management, AI workflows, 50+ integrations, Open source, Self-hostable",
+    isAccessibleForFree: true,
+    sameAs: [
+      siteConfig.url,
+      "https://docs.heygaia.io",
+      siteConfig.links.twitter,
+      siteConfig.links.github,
+      siteConfig.links.discord,
+      siteConfig.links.linkedin,
+      siteConfig.links.youtube,
+      siteConfig.links.whatsapp,
+    ],
     offers: {
       "@type": "Offer",
       price: "0",
       priceCurrency: "USD",
       availability: "https://schema.org/InStock",
+      name: "Free Plan",
+      description: "GAIA is free to use with open-source self-hosting option",
     } as Offer,
     author: {
       "@type": "Organization",

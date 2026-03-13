@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   createContext,
   type ReactNode,
@@ -12,8 +12,8 @@ import {
   useState,
 } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
+import { usePathname } from "@/i18n/navigation";
 
 const KeyboardShortcutsModal = dynamic(
   () => import("../shared/KeyboardShortcutsModal"),

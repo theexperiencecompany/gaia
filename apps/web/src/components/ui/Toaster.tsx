@@ -16,7 +16,7 @@ export function Toaster({ position = "top-right" }: ToasterProps) {
       options={{
         fill: "#262626",
         styles: {
-          title: "text-white! max-w-[280px] truncate",
+          title: "text-white! truncate max-w-2xl",
           description: "text-white/75!",
           badge: "bg-white/10!",
           button: "bg-white/10! hover:bg-white/15!",

@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
 from app.db.mongodb.collections import (
@@ -38,6 +38,9 @@ async def create_custom_integration(
     icon_url: str | None = None,
 ) -> Integration:
     """Create a custom MCP integration."""
+    log.set(
+        integration={"provider": request.name, "action": "create_custom_integration"}
+    )
     # uuid4 collision probability is negligible (~10^-36); no orphan check needed.
     integration_id = str(uuid.uuid4())
 
@@ -68,7 +71,7 @@ async def create_custom_integration(
     try:
         await add_user_integration(user_id, integration_id, initial_status="created")
     except Exception as e:
-        logger.error(f"Failed to add user_integration, rolling back: {e}")
+        log.error(f"Failed to add user_integration, rolling back: {e}")
         await integrations_collection.delete_one({"integration_id": integration_id})
         raise
 
@@ -81,6 +84,9 @@ async def update_custom_integration(
     request: UpdateCustomIntegrationRequest,
 ) -> Optional[Integration]:
     """Update a custom integration (creator only)."""
+    log.set(
+        integration={"provider": integration_id, "action": "update_custom_integration"}
+    )
     doc = await integrations_collection.find_one(
         {
             "integration_id": integration_id,
@@ -113,7 +119,7 @@ async def update_custom_integration(
                         integration_id, old_server_url
                     )
                 except Exception as e:
-                    logger.warning(
+                    log.warning(
                         f"Failed to clean old namespace for {integration_id}: {e}"
                     )
 
@@ -138,6 +144,9 @@ async def update_custom_integration(
 
 async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     """Delete or remove a custom integration based on ownership."""
+    log.set(
+        integration={"provider": integration_id, "action": "delete_custom_integration"}
+    )
     doc = await integrations_collection.find_one(
         {"integration_id": integration_id, "source": "custom"}
     )
@@ -161,7 +170,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
             try:
                 await remove_public_integration(integration_id)
             except Exception as e:
-                logger.warning(f"Failed to remove from public integrations: {e}")
+                log.warning(f"Failed to remove from public integrations: {e}")
 
         result = await integrations_collection.delete_one(
             {
@@ -185,9 +194,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
                 try:
                     await delete_cache_by_pattern(f"tools:user:{affected_user_id}:*")
                 except Exception as e:
-                    logger.debug(
-                        f"Cache deletion failed for user {affected_user_id}: {e}"
-                    )
+                    log.debug(f"Cache deletion failed for user {affected_user_id}: {e}")
 
             try:
                 async with get_db_session() as session:
@@ -198,19 +205,19 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
                     )
                     await session.commit()
             except Exception as e:
-                logger.warning(f"Failed to delete MCP credentials: {e}")
+                log.warning(f"Failed to delete MCP credentials: {e}")
 
             try:
                 await delete_cache("mcp:tools:all")
             except Exception as e:
-                logger.debug(f"Cache deletion for mcp:tools:all failed: {e}")
+                log.debug(f"Cache deletion for mcp:tools:all failed: {e}")
 
             try:
                 mcp_config = doc.get("mcp_config", {})
                 server_url = mcp_config.get("server_url", "")
                 await cleanup_integration_chroma_data(integration_id, server_url)
             except Exception as e:
-                logger.debug(f"Chroma store deletion failed for {integration_id}: {e}")
+                log.debug(f"Chroma store deletion failed for {integration_id}: {e}")
 
             return True
         return False
@@ -232,9 +239,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
                     )
                     await session.commit()
             except Exception as e:
-                logger.debug(
-                    f"MCP credential deletion failed for {integration_id}: {e}"
-                )
+                log.debug(f"MCP credential deletion failed for {integration_id}: {e}")
 
             return True
         return False
@@ -246,6 +251,12 @@ async def create_and_connect_custom_integration(
     mcp_client: Any,
 ) -> Tuple[Integration, dict]:
     """Create a custom integration and attempt connection."""
+    log.set(
+        integration={
+            "provider": request.name,
+            "action": "create_and_connect_custom_integration",
+        }
+    )
     icon_url = await _fetch_icon_safely(request.server_url)
     integration = await create_custom_integration(user_id, request, icon_url)
     integration_id = integration.integration_id
@@ -347,7 +358,7 @@ async def _build_oauth_result(mcp_client: Any, integration_id: str) -> dict:
         )
         return {"status": "requires_oauth", "oauth_url": auth_url}
     except Exception as e:
-        logger.error(f"OAuth discovery failed: {e}")
+        log.error(f"OAuth discovery failed: {e}")
         return {
             "status": "failed",
             "error": f"OAuth required but discovery failed: {e}",

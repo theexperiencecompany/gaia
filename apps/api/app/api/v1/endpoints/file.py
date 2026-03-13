@@ -2,6 +2,7 @@
 Router module for file upload functionality with RAG integration.
 """
 
+from shared.py.wide_events import log
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators import tiered_rate_limit
 from app.models.message_models import FileData
@@ -46,6 +47,14 @@ async def upload_file_endpoint(
         conversation_id=conversation_id,
     )
 
+    log.set(
+        user={"id": user_id},
+        operation="upload",
+        file_id=result["file_id"],
+        file_name=result["filename"],
+        mime_type=result.get("type", "file"),
+        outcome="success",
+    )
     return FileData(
         fileId=result["file_id"],
         url=result["url"],
@@ -85,6 +94,9 @@ async def update_file_endpoint(
         update_data=update_data,
     )
 
+    log.set(
+        user={"id": user_id}, operation="update", file_id=file_id, outcome="success"
+    )
     return result
 
 
@@ -110,4 +122,10 @@ async def delete_file_endpoint(
         user_id=user.get("user_id", None),
     )
 
+    log.set(
+        user={"id": user.get("user_id")},
+        operation="delete",
+        file_id=file_id,
+        outcome="success",
+    )
     return result

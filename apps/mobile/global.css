@@ -7,6 +7,56 @@
 @theme {
   --radius: 0.5rem;
   --opacity-disabled: 0.5;
+
+  /* Brand color — matches web --color-primary */
+  --color-brand: #00bbff;
+  --color-brand-foreground: #000000;
+
+  /* Semantic dark-mode tokens — matches web globals.css .dark */
+  --color-background: #030711;
+  --color-foreground: #e1e7ef;
+
+  --color-card: #030711;
+  --color-card-foreground: #e1e7ef;
+
+  --color-muted: #0f1629;
+  --color-muted-foreground: #7f8ea3;
+
+  --color-accent: #1d283a;
+  --color-accent-foreground: #f8fafc;
+
+  --color-primary: #00bbff;
+  --color-primary-foreground: #000000;
+
+  --color-secondary: #0f172a;
+  --color-secondary-foreground: #f8fafc;
+
+  --color-border: #1d283a;
+  --color-input: #1d283a;
+  --color-ring: #1d283a;
+
+  --color-destructive: #811d1d;
+  --color-destructive-foreground: #f8fafc;
+
+  /* Status colors */
+  --color-success: #22c55e;
+  --color-success-foreground: #000000;
+  --color-warning: #eab308;
+  --color-warning-foreground: #000000;
+  --color-error: #ef4444;
+  --color-error-foreground: #ffffff;
+  --color-info: #3b82f6;
+  --color-info-foreground: #ffffff;
+
+  /* Priority colors */
+  --color-priority-high: #ef4444;
+  --color-priority-medium: #eab308;
+  --color-priority-low: #3b82f6;
+  --color-priority-none: #71717a;
+
+  /* App-specific surface colors — matches web --color-primary-bg / --color-secondary-bg */
+  --color-primary-bg: #111111;
+  --color-secondary-bg: #1a1a1a;
 }
 
 @layer theme {

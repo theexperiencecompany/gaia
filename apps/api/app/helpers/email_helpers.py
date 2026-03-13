@@ -9,8 +9,8 @@ from bson import ObjectId
 
 from app.agents.memory.profile_extractor import PLATFORM_CONFIG
 from app.agents.prompts.email_filter_prompts import EMAIL_MEMORY_EXTRACTION_PROMPT
-from app.config.loggers import memory_logger as logger
 from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
+from shared.py.wide_events import log
 from app.db.mongodb.collections import users_collection
 from app.services.memory_service import memory_service
 
@@ -170,16 +170,16 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
 
         mode_str = "async queue" if async_mode else "synchronously"
         if success:
-            logger.info(
+            log.info(
                 f"Stored batch of {len(messages)} emails to Mem0 {mode_str} for user {user_id}"
             )
         else:
-            logger.warning(
+            log.warning(
                 f"Failed to store batch of {len(messages)} emails to Mem0 for user {user_id}"
             )
 
     except Exception as e:
-        logger.error(f"Error storing batch to Mem0: {e}")
+        log.error(f"Error storing batch to Mem0: {e}")
         # Don't re-raise - we want to continue processing other batches
 
 
@@ -238,6 +238,6 @@ async def store_single_profile(
             },
             async_mode=async_mode,
         )
-        logger.info(f"Stored {platform} profile to memory: {profile_url}")
+        log.info(f"Stored {platform} profile to memory: {profile_url}")
     except Exception as e:
-        logger.error(f"Failed to store {platform} profile: {e}")
+        log.error(f"Failed to store {platform} profile: {e}")

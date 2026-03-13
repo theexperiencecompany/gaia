@@ -41,7 +41,7 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.config.loggers import general_logger as logger  # noqa: E402
+from shared.py.wide_events import log as logger  # noqa: E402
 from app.db.mongodb.collections import (  # noqa: E402
     plans_collection,
     subscriptions_collection,

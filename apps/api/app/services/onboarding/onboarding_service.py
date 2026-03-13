@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import (
     BioStatus,
@@ -24,14 +24,14 @@ async def queue_personalization(user_id: str) -> None:
         job = await pool.enqueue_job("process_personalization_task", user_id)
 
         if job:
-            logger.info(
+            log.info(
                 f"Queued personalization for user {user_id} with job ID {job.job_id}"
             )
         else:
-            logger.error(f"Failed to queue personalization for user {user_id}")
+            log.error(f"Failed to queue personalization for user {user_id}")
 
     except Exception as e:
-        logger.error(f"Error queuing personalization for user {user_id}: {e}")
+        log.error(f"Error queuing personalization for user {user_id}: {e}")
 
 
 async def complete_onboarding(
@@ -54,6 +54,8 @@ async def complete_onboarding(
     Raises:
         HTTPException: If user not found, already onboarded, or update fails
     """
+    log.set(auth={"user_id": user_id})
+
     try:
         # Convert string ID to ObjectId
         user_object_id = ObjectId(user_id)
@@ -116,14 +118,14 @@ async def complete_onboarding(
         # Schedule background tasks
         background_tasks.add_task(seed_initial_user_data, user_id)
 
-        logger.info(f"Onboarding completed successfully for user {user_id}")
+        log.info(f"Onboarding completed successfully for user {user_id}")
 
         return updated_user
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
+        log.error(
             f"Error completing onboarding for user {user_id}: {str(e)}", exc_info=True
         )
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
@@ -155,7 +157,7 @@ async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(
+        log.error(
             f"Error getting onboarding status for user {user_id}: {str(e)}",
             exc_info=True,
         )
@@ -214,14 +216,14 @@ async def update_onboarding_preferences(
         updated_user["_id"] = str(updated_user["_id"])
         updated_user["user_id"] = updated_user["_id"]
 
-        logger.info(f"Onboarding preferences updated successfully for user {user_id}")
+        log.info(f"Onboarding preferences updated successfully for user {user_id}")
 
         return updated_user
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
+        log.error(
             f"Error updating onboarding preferences for user {user_id}: {str(e)}",
             exc_info=True,
         )
@@ -254,7 +256,5 @@ async def get_user_preferences_for_agent(user_id: str) -> Optional[str]:
         return format_user_preferences_for_agent(prefs)
 
     except Exception as e:
-        logger.error(
-            f"Error getting user preferences for agent: {str(e)}", exc_info=True
-        )
+        log.error(f"Error getting user preferences for agent: {str(e)}", exc_info=True)
         return None

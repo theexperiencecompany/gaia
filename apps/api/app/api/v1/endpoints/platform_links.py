@@ -2,6 +2,7 @@ from typing import Optional
 from urllib.parse import quote
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
 from app.db.redis import redis_cache
@@ -30,7 +31,9 @@ async def get_platform_links(
     user_id = current_user.get("user_id")
     if not isinstance(user_id, str):
         raise ValueError("user_id must be a string")
+    log.set(user={"id": user_id}, operation="get_platform_links")
     platform_links = await PlatformLinkService.get_linked_platforms(user_id)
+    log.set(outcome="success", result_count=len(platform_links))
 
     return GetPlatformLinksResponse(platform_links=platform_links)
 
@@ -82,6 +85,7 @@ async def link_platform(
     user_id = current_user.get("user_id")
     if not isinstance(user_id, str):
         raise ValueError("user_id must be a string")
+    log.set(user={"id": user_id}, operation="link_platform", platform=platform)
 
     profile: dict = {}
     if token_data.get("username"):
@@ -93,6 +97,7 @@ async def link_platform(
         result = await PlatformLinkService.link_account(
             user_id, platform, platform_user_id, profile=profile or None
         )
+        log.set(outcome="success")
         return LinkPlatformResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -113,6 +118,7 @@ async def disconnect_platform(
     user_id = current_user.get("user_id")
     if not isinstance(user_id, str):
         raise ValueError("user_id must be a string")
+    log.set(user={"id": user_id}, operation="disconnect_platform", platform=platform)
 
     # Read platform_user_id before unlinking so we can clear the bot auth cache
     existing = await PlatformLinkService.get_linked_platforms(user_id)
@@ -123,6 +129,7 @@ async def disconnect_platform(
         result = await PlatformLinkService.unlink_account(user_id, platform)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    log.set(outcome="success")
 
     if platform_user_id:
         cache_key = f"bot_user:{platform}:{platform_user_id}"
@@ -151,6 +158,9 @@ async def initiate_platform_connect(
     user_id = current_user.get("user_id")
     if not isinstance(user_id, str):
         raise ValueError("user_id must be a string")
+    log.set(
+        user={"id": user_id}, operation="initiate_platform_connect", platform=platform
+    )
 
     # Discord OAuth flow
     if platform == "discord" and settings.DISCORD_OAUTH_CLIENT_ID:
@@ -168,6 +178,7 @@ async def initiate_platform_connect(
             f"&scope=identify"
             f"&state={state}"
         )
+        log.set(outcome="success", auth_type="oauth")
         return InitiatePlatformConnectResponse(
             auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
         )
@@ -187,6 +198,7 @@ async def initiate_platform_connect(
             f"&user_scope=identity.basic"
             f"&state={state}"
         )
+        log.set(outcome="success", auth_type="oauth")
         return InitiatePlatformConnectResponse(
             auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
         )
@@ -194,6 +206,7 @@ async def initiate_platform_connect(
     # Telegram manual flow (no OAuth)
     if platform == "telegram":
         bot_username = settings.TELEGRAM_BOT_USERNAME or "gaia_bot"
+        log.set(outcome="success", auth_type="manual")
         return InitiatePlatformConnectResponse(
             auth_url=None,
             auth_type="manual",

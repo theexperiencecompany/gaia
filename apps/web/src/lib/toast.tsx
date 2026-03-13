@@ -22,10 +22,25 @@ export interface ToastOptions {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function translate(message: string, opts?: ToastOptions): SileoOptions {
-  const out: SileoOptions = { title: message };
+// Sileo's pill title uses white-space: nowrap with a JS-rendered SVG background —
+// title cannot wrap. For long messages with no description we promote to description
+// so the text wraps properly; sileo falls back to the state name as the pill label.
+// When a description is already provided, the title is truncated in the pill.
+const TITLE_MAX_CHARS = 50;
 
-  if (opts?.description !== undefined) out.description = opts.description;
+function translate(message: string, opts?: ToastOptions): SileoOptions {
+  const out: SileoOptions = {};
+
+  if (message.length > TITLE_MAX_CHARS && opts?.description === undefined) {
+    // Long title, no description: move full message to description so it wraps
+    out.description = message;
+    out.autopilot = true;
+    // title intentionally omitted — sileo defaults to state name ("error", "success", etc.)
+  } else {
+    out.title = message;
+    if (opts?.description !== undefined) out.description = opts.description;
+  }
+
   if (opts?.icon !== undefined) out.icon = opts.icon;
 
   if (opts?.duration === Infinity) {

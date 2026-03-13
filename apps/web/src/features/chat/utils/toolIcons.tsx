@@ -34,6 +34,7 @@ import {
 import { m } from "motion/react";
 import Image from "next/image";
 import {
+  getIconPath,
   iconAliases,
   normalizeCategoryName,
   toolIconConfigs,
@@ -56,6 +57,18 @@ interface IconConfig {
   iconColor: string;
   isImage?: boolean;
 }
+
+const isRenderableIconSrc = (src: string): boolean => {
+  if (!src) return false;
+  const normalizedSrc = src.trim().toLowerCase();
+  return (
+    normalizedSrc.startsWith("/") ||
+    normalizedSrc.startsWith("http://") ||
+    normalizedSrc.startsWith("https://") ||
+    normalizedSrc.startsWith("data:image/") ||
+    normalizedSrc.startsWith("blob:")
+  );
+};
 
 /** Map icon component names to actual React components */
 const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
@@ -83,17 +96,33 @@ const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
 
 /** Build runtime icon configs from shared config */
 const iconConfigs: Record<string, IconConfig> = Object.fromEntries(
-  Object.entries(toolIconConfigs).map(([key, config]) => [
-    key,
-    {
-      icon: config.isImage
-        ? config.icon
-        : iconComponentMap[config.icon] || ToolsIcon,
-      bgColor: config.bgColor,
-      iconColor: config.iconColor,
-      isImage: config.isImage,
-    },
-  ]),
+  Object.entries(toolIconConfigs).map(([key, config]) => {
+    if (config.isImage) {
+      const resolvedImagePath = getIconPath(key);
+      const hasValidImagePath =
+        !!resolvedImagePath && isRenderableIconSrc(resolvedImagePath);
+
+      return [
+        key,
+        {
+          icon: hasValidImagePath ? resolvedImagePath : ToolsIcon,
+          bgColor: config.bgColor,
+          iconColor: config.iconColor,
+          isImage: hasValidImagePath,
+        },
+      ];
+    }
+
+    return [
+      key,
+      {
+        icon: iconComponentMap[config.icon] || ToolsIcon,
+        bgColor: config.bgColor,
+        iconColor: config.iconColor,
+        isImage: false,
+      },
+    ];
+  }),
 );
 
 // Component that auto-detects and inverts dark icons
@@ -185,7 +214,7 @@ export const getToolCategoryIcon = (
 
   // If no predefined config found, try iconUrl fallback for custom integrations
   if (!config) {
-    if (iconUrl) {
+    if (iconUrl && isRenderableIconSrc(iconUrl)) {
       const iconElement = (
         <AutoInvertIcon
           alt={`${category} Icon`}

@@ -9,7 +9,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import ReminderContext, log
 from app.decorators import tiered_rate_limit
 from app.models.reminder_models import (
     CreateReminderRequest,
@@ -54,6 +54,11 @@ async def create_reminder_endpoint(
                 detail="User not authenticated",
             )
 
+        log.set(
+            user={"id": user_id},
+            reminder=ReminderContext(operation="create"),
+        )
+
         # Prepare reminder data
         reminder_data.base_time = tz_info[1]  # Use user's current time
 
@@ -70,10 +75,24 @@ async def create_reminder_endpoint(
                 detail="Failed to retrieve created reminder",
             )
 
+        log.set(
+            reminder=ReminderContext(
+                operation="create",
+                id=str(reminder.id),
+                recurrence=reminder.recurrence
+                if hasattr(reminder, "recurrence")
+                else None,
+                next_run_time=str(reminder.next_run_time)
+                if hasattr(reminder, "next_run_time") and reminder.next_run_time
+                else None,
+            )
+        )
+        log.set(outcome="success")
+
         return ReminderResponse(**reminder.model_dump())
 
     except Exception as e:
-        logger.error(f"Error creating reminder: {e}")
+        log.error(f"Error creating reminder: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create reminder",
@@ -104,6 +123,11 @@ async def get_reminder_endpoint(
                 detail="User not authenticated",
             )
 
+        log.set(
+            user={"id": user_id},
+            reminder=ReminderContext(operation="get", id=reminder_id),
+        )
+
         reminder = await reminder_scheduler.get_reminder(reminder_id, user_id=user_id)
 
         if not reminder:
@@ -112,10 +136,21 @@ async def get_reminder_endpoint(
                 detail=f"Reminder {reminder_id} not found",
             )
 
+        log.set(
+            reminder=ReminderContext(
+                operation="get",
+                id=str(reminder.id),
+                recurrence=reminder.recurrence
+                if hasattr(reminder, "recurrence")
+                else None,
+            )
+        )
+        log.set(outcome="success")
+
         return ReminderResponse(**reminder.model_dump())
 
     except Exception as e:
-        logger.error(f"Error getting reminder {reminder_id}: {e}")
+        log.error(f"Error getting reminder {reminder_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve reminder",
@@ -149,6 +184,11 @@ async def update_reminder_endpoint(
                 detail="User not authenticated",
             )
 
+        log.set(
+            user={"id": user_id},
+            reminder=ReminderContext(operation="update", id=reminder_id),
+        )
+
         # Prepare update data
         update_data = request.model_dump(exclude_none=True)
 
@@ -173,10 +213,21 @@ async def update_reminder_endpoint(
                 detail="Failed to retrieve updated reminder",
             )
 
+        log.set(
+            reminder=ReminderContext(
+                operation="update",
+                id=str(updated_reminder.id),
+                recurrence=updated_reminder.recurrence
+                if hasattr(updated_reminder, "recurrence")
+                else None,
+            )
+        )
+        log.set(outcome="success")
+
         return ReminderResponse(**updated_reminder.model_dump())
 
     except Exception as e:
-        logger.error(f"Error updating reminder {reminder_id}: {e}")
+        log.error(f"Error updating reminder {reminder_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update reminder",
@@ -204,6 +255,11 @@ async def cancel_reminder_endpoint(
                 detail="User not authenticated",
             )
 
+        log.set(
+            user={"id": user_id},
+            reminder=ReminderContext(operation="delete", id=reminder_id),
+        )
+
         success = await reminder_scheduler.cancel_task(reminder_id, user_id=user_id)
 
         if not success:
@@ -212,8 +268,10 @@ async def cancel_reminder_endpoint(
                 detail="Failed to cancel reminder",
             )
 
+        log.set(outcome="success")
+
     except Exception as e:
-        logger.error(f"Error cancelling reminder {reminder_id}: {e}")
+        log.error(f"Error cancelling reminder {reminder_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to cancel reminder",
@@ -247,6 +305,11 @@ async def list_reminders_endpoint(
                 detail="User not authenticated",
             )
 
+        log.set(
+            user={"id": user_id},
+            reminder=ReminderContext(operation="list"),
+        )
+
         reminders = await reminder_scheduler.list_user_reminders(
             user_id=user_id,
             status=status,
@@ -254,10 +317,18 @@ async def list_reminders_endpoint(
             skip=skip,
         )
 
+        log.set(
+            reminder=ReminderContext(
+                operation="list",
+                result_count=len(reminders),
+            )
+        )
+        log.set(outcome="success")
+
         return [ReminderResponse(**reminder.model_dump()) for reminder in reminders]
 
     except Exception as e:
-        logger.error(f"Error listing reminders for user {user_id}: {e}")
+        log.error(f"Error listing reminders for user {user_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list reminders",
@@ -288,6 +359,8 @@ async def pause_reminder_endpoint(
                 detail="User not authenticated",
             )
 
+        log.set(user={"id": user_id}, reminder={"id": reminder_id})
+
         # Update status to paused
         success = await reminder_scheduler.update_reminder(
             reminder_id, {"status": ReminderStatus.PAUSED}, user_id=user_id
@@ -312,7 +385,7 @@ async def pause_reminder_endpoint(
         return ReminderResponse(**updated_reminder.model_dump())
 
     except Exception as e:
-        logger.error(f"Error pausing reminder {reminder_id}: {e}")
+        log.error(f"Error pausing reminder {reminder_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to pause reminder",
@@ -342,6 +415,8 @@ async def resume_reminder_endpoint(
                 status_code=http_status.HTTP_401_UNAUTHORIZED,
                 detail="User not authenticated",
             )
+
+        log.set(user={"id": user_id}, reminder={"id": reminder_id})
 
         # Check if reminder exists and user owns it
         existing_reminder = await reminder_scheduler.get_reminder(
@@ -392,7 +467,7 @@ async def resume_reminder_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error resuming reminder {reminder_id}: {e}")
+        log.error(f"Error resuming reminder {reminder_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to resume reminder",
@@ -427,5 +502,5 @@ async def validate_cron_endpoint(
         return result
 
     except Exception as e:
-        logger.error(f"Error validating cron expression {expression}: {e}")
+        log.error(f"Error validating cron expression {expression}: {e}")
         return {"expression": expression, "valid": False, "error": str(e)}

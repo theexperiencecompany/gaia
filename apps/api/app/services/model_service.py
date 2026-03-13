@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import ai_models_collection, users_collection
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.models_models import ModelConfig, ModelResponse, PlanType
@@ -24,6 +24,9 @@ async def get_available_models(user_plan: str = "all") -> List[ModelResponse]:
     Returns:
         List of available models
     """
+    log.set(
+        service="model_service", operation="get_available_models", user_plan=user_plan
+    )
     try:
         if user_plan == "all":
             # If no plan specified, return all active models
@@ -58,10 +61,10 @@ async def get_available_models(user_plan: str = "all") -> List[ModelResponse]:
         return models
 
     except ValueError as e:
-        logger.error(f"Invalid plan type: {user_plan}: {e}")
+        log.error(f"Invalid plan type: {user_plan}: {e}")
         raise HTTPException(status_code=400, detail="Invalid plan type")
     except Exception as e:
-        logger.error(f"Error fetching available models: {e}")
+        log.error(f"Error fetching available models: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch models")
 
 
@@ -92,7 +95,7 @@ async def get_model_by_id(model_id: str) -> Optional[ModelConfig]:
         return ModelConfig(**model_doc)
 
     except Exception as e:
-        logger.error(f"Error fetching model {model_id}: {e}")
+        log.error(f"Error fetching model {model_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch model")
 
 
@@ -111,6 +114,13 @@ async def update_user_selected_model(
     Returns:
         Selected model data
     """
+    log.set(
+        service="model_service",
+        operation="update_user_selected_model",
+        user_id=user_id,
+        model_id=model_id,
+        user_plan=user_plan,
+    )
     try:
         # Verify model exists and is available for user's plan
         model = await get_model_by_id(model_id)
@@ -161,12 +171,12 @@ async def update_user_selected_model(
         )
 
     except ValueError:
-        logger.error(f"Invalid plan type: {user_plan}")
+        log.error(f"Invalid plan type: {user_plan}")
         raise HTTPException(status_code=400, detail="Invalid plan type")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating user model selection: {e}")
+        log.error(f"Error updating user model selection: {e}")
         raise HTTPException(status_code=500, detail="Failed to update model selection")
 
 
@@ -200,7 +210,7 @@ async def get_user_selected_model(user_id: str) -> Optional[ModelConfig]:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching user selected model: {e}")
+        log.error(f"Error fetching user selected model: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch user model")
 
 
@@ -233,5 +243,5 @@ async def get_default_model() -> Optional[ModelConfig]:
         return ModelConfig(**model_doc)
 
     except Exception as e:
-        logger.error(f"Error fetching default model: {e}")
+        log.error(f"Error fetching default model: {e}")
         return None

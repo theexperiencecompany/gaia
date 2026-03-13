@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 import httpx
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.google_docs_models import CreateTOCInput, DeleteDocInput, ShareDocInput
@@ -62,6 +62,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Share a Google Doc with one or more recipients."""
+        log.set(tool={"integration": "google_docs", "action": "share_doc"})
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
         headers["Content-Type"] = "application/json"
@@ -94,7 +95,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
                     }
                 )
             except httpx.HTTPStatusError as e:
-                logger.error(f"Error sharing with {recipient.email}: {e}")
+                log.error(f"Error sharing with {recipient.email}: {e}")
                 errors.append(
                     {
                         "email": recipient.email,
@@ -124,6 +125,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_docs", "action": "create_toc"})
         try:
             get_doc_result: ToolExecutionResponse = composio.tools.execute(
                 slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
@@ -133,7 +135,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
                 user_id=auth_credentials.get("user_id"),
             )
         except TypeError as e:
-            logger.debug(f"TypeError in execute: {e}")
+            log.debug(f"TypeError in execute: {e}")
             raise
 
         # Unwrap response (ToolExecutionResponse format)
@@ -146,7 +148,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
             try:
                 doc_data = json.loads(doc_data)
             except json.JSONDecodeError as e:
-                logger.debug(f"JSON parsing skipped for doc_data: {e}")
+                log.debug(f"JSON parsing skipped for doc_data: {e}")
 
         if not doc_data or "body" not in doc_data:
             raise ValueError("Failed to get document or document has no body content")
@@ -200,6 +202,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Delete a file permanently using Drive API."""
+        log.set(tool={"integration": "google_docs", "action": "delete_doc"})
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
 
@@ -209,7 +212,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
             resp = _http_client.delete(url, headers=headers)
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
-            logger.error(f"Error deleting doc {request.document_id}: {e}")
+            log.error(f"Error deleting doc {request.document_id}: {e}")
             raise RuntimeError(
                 f"Failed to delete document: {e.response.status_code} - {e.response.text}"
             )
@@ -229,6 +232,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns user's recently accessed Google Docs.
         """
+        log.set(tool={"integration": "google_docs", "action": "gather_context"})
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
 
@@ -257,7 +261,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
                 for f in resp.json().get("files", [])
             ]
         except Exception as e:
-            logger.debug(f"Google Docs fetch failed: {e}")
+            log.debug(f"Google Docs fetch failed: {e}")
 
         return {"recent_docs": files, "doc_count": len(files)}
 

@@ -5,7 +5,7 @@ Device Token Service for Push Notifications
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from app.config.loggers import notification_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.mongodb import MongoDB
 from app.models.device_token_models import PlatformType
 from motor.motor_asyncio import AsyncIOMotorCollection
@@ -58,14 +58,28 @@ class DeviceTokenService:
                 upsert=True,
             )
             if result.upserted_id:
-                logger.info(f"Registered new device token for user {user_id}")
+                log.set(
+                    device_token={
+                        "user_id": user_id,
+                        "platform": platform.value,
+                        "action": "registered",
+                    }
+                )
+                log.info(f"Registered new device token for user {user_id}")
             else:
-                logger.info(f"Updated device token for user {user_id}")
+                log.set(
+                    device_token={
+                        "user_id": user_id,
+                        "platform": platform.value,
+                        "action": "updated",
+                    }
+                )
+                log.info(f"Updated device token for user {user_id}")
 
             return True
 
         except Exception as e:
-            logger.error(f"Failed to register device token: {e}")
+            log.error(f"Failed to register device token: {e}")
             return False
 
     async def get_user_device_count(self, user_id: str) -> int:
@@ -73,7 +87,7 @@ class DeviceTokenService:
         try:
             return await self.collection.count_documents({"user_id": user_id})
         except Exception as e:
-            logger.error(f"Failed to get device count: {e}")
+            log.error(f"Failed to get device count: {e}")
             return 0
 
     async def verify_token_ownership(self, token: str, user_id: str) -> bool:
@@ -82,7 +96,7 @@ class DeviceTokenService:
             doc = await self.collection.find_one({"token": token, "user_id": user_id})
             return doc is not None
         except Exception as e:
-            logger.error(f"Failed to verify token ownership: {e}")
+            log.error(f"Failed to verify token ownership: {e}")
             return False
 
     async def unregister_device_token(self, token: str, user_id: str) -> bool:
@@ -106,16 +120,17 @@ class DeviceTokenService:
             masked_token = f"{token[:20]}...{token[-4:]}" if len(token) > 24 else "***"
 
             if result.deleted_count > 0:
-                logger.info(
+                log.set(device_token={"user_id": user_id, "action": "unregistered"})
+                log.info(
                     f"Unregistered device token for user {user_id}: {masked_token}"
                 )
                 return True
             else:
-                logger.warning(f"Device token not found or not owned by user {user_id}")
+                log.warning(f"Device token not found or not owned by user {user_id}")
                 return False
 
         except Exception as e:
-            logger.error(f"Failed to unregister device token: {e}")
+            log.error(f"Failed to unregister device token: {e}")
             return False
 
     async def unregister_user_devices(self, user_id: str) -> int:
@@ -130,13 +145,11 @@ class DeviceTokenService:
         """
         try:
             result = await self.collection.delete_many({"user_id": user_id})
-            logger.info(
-                f"Unregistered {result.deleted_count} devices for user {user_id}"
-            )
+            log.info(f"Unregistered {result.deleted_count} devices for user {user_id}")
             return result.deleted_count
 
         except Exception as e:
-            logger.error(f"Failed to unregister user devices: {e}")
+            log.error(f"Failed to unregister user devices: {e}")
             return 0
 
     async def get_user_tokens(
@@ -163,7 +176,7 @@ class DeviceTokenService:
             return tokens
 
         except Exception as e:
-            logger.error(f"Failed to get user tokens: {e}")
+            log.error(f"Failed to get user tokens: {e}")
             return []
 
     async def deactivate_invalid_token(self, token: str) -> bool:
@@ -187,11 +200,11 @@ class DeviceTokenService:
                 },
             )
             masked_token = f"{token[:20]}...{token[-4:]}" if len(token) > 24 else "***"
-            logger.info(f"Deactivated invalid token: {masked_token}")
+            log.info(f"Deactivated invalid token: {masked_token}")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to deactivate token: {e}")
+            log.error(f"Failed to deactivate token: {e}")
             return False
 
 

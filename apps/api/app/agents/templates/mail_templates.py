@@ -8,7 +8,7 @@ import email.policy
 from html import unescape
 from typing import Any, Dict, List, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from bs4 import BeautifulSoup
 
 # ============================================================================
@@ -40,13 +40,17 @@ class GmailMessageParser:
         Returns:
             bool: True if parsing succeeded, False otherwise
         """
+        message_id = self.gmail_message.get("id") or self.gmail_message.get(
+            "messageId", ""
+        )
+        log.set(gmail_message_id=message_id, mail_op="parse_gmail_message")
         try:
             self.email_message = self._parse_with_email_parser()
             self._parsed = True
             return self.email_message is not None
 
         except Exception as e:
-            logger.error(f"Error parsing email message: {e}")
+            log.error(f"Error parsing email message: {e}")
             self._parsed = False
             return False
 

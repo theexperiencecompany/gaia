@@ -26,11 +26,13 @@ services:
       ]
     environment:
       PYTHONUNBUFFERED: 1
-      FORCE_COLOR: 1
+      FORCE_COLOR: 0
       WORKER_TYPE: main_app
       PYTHONDONTWRITEBYTECODE: 1
       PYTHONPATH: /app/apps/api
       PYTHONIOENCODING: utf-8
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
     env_file:
       - ../../apps/api/.env
     ports:
@@ -126,8 +128,10 @@ services:
     ports:
       - "5672:5672" # AMQP protocol
       - "15672:15672" # Management UI
+      - "15692:15692" # Prometheus metrics
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
     restart: always
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
@@ -147,6 +151,8 @@ services:
     environment:
       - WORKER_TYPE=arq_worker
       - PYTHONPATH=/app/apps/api
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
     command:
       [
         "python",
@@ -237,12 +243,181 @@ services:
     networks:
       - gaia_network
 
+  # ---------------------------------------------------------------------------
+  # Metrics exporters
+  # ---------------------------------------------------------------------------
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.0
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: redis_exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  # Container metrics (CPU, memory, network, disk I/O per container)
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--docker_only=true"
+      - "--store_container_labels=false"
+      - "--housekeeping_interval=30s"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.25"
+
+  # Host machine metrics (CPU, memory, disk, network)
+  node_exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node_exporter
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # HTTP probe for services without native Prometheus metrics (e.g. ChromaDB)
+  blackbox_exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox_exporter
+    volumes:
+      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./observability/metrics_token:/etc/prometheus/metrics_token:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    mem_limit: 512m
+    cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Observability stack — Loki (log store) + Promtail (shipper) + Grafana (UI)
+  # Access Grafana at http://<server-ip>:3000  (admin / see GRAFANA_ADMIN_PASSWORD)
+  # ---------------------------------------------------------------------------
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: loki
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "127.0.0.1:${LOKI_HOST_PORT:-3100}:3100"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 512m
+    cpus: "0.5"
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    container_name: promtail
+    # Run as root so Promtail can read the Docker socket (owned by root:docker).
+    # Promtail 3.x defaults to uid 10001 which lacks socket access.
+    user: root
+    volumes:
+      - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - promtail_positions:/tmp
+    command: -config.file=/etc/promtail/config.yaml -config.expand-env=true
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}
+      LOKI_BASIC_AUTH_USER: ${LOKI_BASIC_AUTH_USER:-}
+      LOKI_BASIC_AUTH_PASSWORD: ${LOKI_BASIC_AUTH_PASSWORD:-}
+    restart: unless-stopped
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    mem_limit: 128m
+    cpus: "0.25"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana
+    ports:
+      - "${GRAFANA_HOST_PORT:-4000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      # IMPORTANT: Set GRAFANA_ADMIN_PASSWORD in your .env file before deploying.
+      # The default "changeme" is intentionally obvious — change it for production.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Set GRAFANA_ROOT_URL if Grafana is behind a reverse proxy (e.g. https://grafana.example.com)
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
+    restart: unless-stopped
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    mem_limit: 256m
+    cpus: "0.5"
+
 volumes:
   chroma_data:
   pgdata:
   redis_data:
   rabbitmq_data:
   voice_agent_models:
+  loki_data:
+  grafana_data:
+  prometheus_data:
+  promtail_positions:
 
 networks:
   gaia_network:

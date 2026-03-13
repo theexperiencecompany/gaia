@@ -12,7 +12,7 @@ repos:
       - id: check-merge-conflict
         priority: 0
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/web/public/|.*\.(png|jpg|jpeg|gif|webp|svg))$
+        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/web/public/|.*\.(png|jpg|jpeg|gif|webp|svg)|.*/i18n/.*\.json)$
         priority: 0
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
@@ -23,6 +23,15 @@ repos:
         priority: 0
       - id: detect-private-key
         priority: 0
+
+  - repo: local
+    hooks:
+      - id: biome-mobile
+        name: Biome lint/format (mobile)
+        entry: bash -c 'cd apps/mobile && pnpm lint:fix'
+        language: system
+        files: ^apps/mobile/.*\.(js|jsx|ts|tsx|json)$
+        pass_filenames: false
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.4.0

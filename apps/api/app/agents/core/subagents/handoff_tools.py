@@ -22,7 +22,7 @@ from app.agents.core.subagents.subagent_runner import (
     build_initial_messages,
     execute_subagent_stream,
 )
-from app.config.loggers import common_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
     get_integration_by_id,
@@ -78,7 +78,7 @@ async def check_integration_connection(
         )
 
     except Exception as e:
-        logger.error(f"Error checking integration status for {integration_id}: {e}")
+        log.error(f"Error checking integration status for {integration_id}: {e}")
         return None
 
 
@@ -208,7 +208,7 @@ async def index_custom_mcp_as_subagent(
     )
 
     await store.abatch([put_op])
-    logger.info(f"Indexed custom MCP {name} ({integration_id}) as subagent")
+    log.info(f"Indexed custom MCP {name} ({integration_id}) as subagent")
 
 
 async def _resolve_subagent(
@@ -396,6 +396,14 @@ async def handoff(
         # Type assertion after null check - these are guaranteed to be str at this point
         agent_name: str = resolved_agent_name
         int_id: str = int_id_or_error
+        log.set(
+            subagent={
+                "name": agent_name,
+                "provider": int_id,
+                "is_custom": is_custom,
+                "task_length": len(task),
+            }
+        )
 
         # Build config
         thread_id = configurable.get("thread_id", "")
@@ -480,5 +488,5 @@ async def handoff(
         )
 
     except Exception as e:
-        logger.error("Error in handoff to %s: %s", subagent_id, str(e), exc_info=True)
+        log.error("Error in handoff to %s: %s", subagent_id, str(e), exc_info=True)
         return f"Error executing task: {str(e)}"

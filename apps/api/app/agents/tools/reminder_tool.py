@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Optional
 
-from app.config.loggers import reminders_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.reminder_tool_docs import (
     CREATE_REMINDER,
@@ -71,6 +71,7 @@ async def create_reminder_tool(
 ) -> Any:
     """Create a new reminder tool function."""
     try:
+        log.set(tool={"name": "create_reminder_tool", "action": "create"})
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
             return {"error": "User ID is required to create a reminder"}
@@ -101,10 +102,10 @@ async def create_reminder_tool(
         return "Reminder created successfully"
 
     except ValueError as e:
-        logger.error(f"Validation error: {e}")
+        log.error(f"Validation error: {e}")
         return {"error": str(e)}
     except Exception as e:
-        logger.exception("Exception occurred while creating reminder")
+        log.exception("Exception occurred while creating reminder")
         return {"error": str(e)}
 
 
@@ -120,6 +121,7 @@ async def list_user_reminders_tool(
 ) -> Any:
     """List user reminders tool function."""
     try:
+        log.set(tool={"name": "list_user_reminders_tool", "action": "list"})
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
             return {"error": "User ID is required to list reminders"}
@@ -129,7 +131,7 @@ async def list_user_reminders_tool(
         )
         return [r.model_dump() for r in reminders]
     except Exception as e:
-        logger.exception("Exception occurred while listing reminders")
+        log.exception("Exception occurred while listing reminders")
         return {"error": str(e)}
 
 
@@ -143,6 +145,7 @@ async def get_reminder_tool(
 ) -> Any:
     """Get full details of a specific reminder by ID"""
     try:
+        log.set(tool={"name": "get_reminder_tool", "action": "get"})
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
             return {"error": "User ID is required to get reminder"}
@@ -153,7 +156,7 @@ async def get_reminder_tool(
         else:
             return {"error": "Reminder not found"}
     except Exception as e:
-        logger.exception("Exception occurred while getting reminder")
+        log.exception("Exception occurred while getting reminder")
         return {"error": str(e)}
 
 
@@ -167,9 +170,10 @@ async def delete_reminder_tool(
 ) -> Any:
     """Cancel a scheduled reminder by ID"""
     try:
+        log.set(tool={"name": "delete_reminder_tool", "action": "delete"})
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
-            logger.error("Missing user_id in config")
+            log.error("Missing user_id in config")
             return {"error": "User ID is required to delete reminder"}
 
         success = await reminder_scheduler.cancel_task(reminder_id, user_id)
@@ -178,7 +182,7 @@ async def delete_reminder_tool(
         else:
             return {"error": "Failed to cancel reminder"}
     except Exception as e:
-        logger.exception("Exception occurred while deleting reminder")
+        log.exception("Exception occurred while deleting reminder")
         return {"error": str(e)}
 
 
@@ -209,6 +213,7 @@ async def update_reminder_tool(
 ) -> Any:
     """Update attributes of an existing reminder"""
     try:
+        log.set(tool={"name": "update_reminder_tool", "action": "update"})
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
             return {"error": "User ID is required to update reminder"}
@@ -235,7 +240,7 @@ async def update_reminder_tool(
 
                 update_data["stop_after"] = processed_stop_after
             except ValueError as e:
-                logger.error(f"Invalid stop_after format: {stop_after}, error: {e}")
+                log.error(f"Invalid stop_after format: {stop_after}, error: {e}")
                 return {
                     "error": f"Invalid stop_after format: {stop_after}. Use YYYY-MM-DD HH:MM:SS format."
                 }
@@ -248,10 +253,10 @@ async def update_reminder_tool(
         if success:
             return {"status": "updated"}
         else:
-            logger.error("Failed to update reminder")
+            log.error("Failed to update reminder")
             return {"error": "Failed to update reminder"}
     except Exception as e:
-        logger.exception("Exception occurred while updating reminder")
+        log.exception("Exception occurred while updating reminder")
         return {"error": str(e)}
 
 
@@ -265,9 +270,10 @@ async def search_reminders_tool(
 ) -> Any:
     """Search reminders by keyword or content"""
     try:
+        log.set(tool={"name": "search_reminders_tool", "action": "search"})
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
-            logger.error("Missing user_id in config")
+            log.error("Missing user_id in config")
             return {"error": "User ID is required to search reminders"}
 
         reminders = await reminder_scheduler.list_user_reminders(
@@ -282,7 +288,7 @@ async def search_reminders_tool(
 
         return results
     except Exception as e:
-        logger.exception("Exception occurred while searching reminders")
+        log.exception("Exception occurred while searching reminders")
         return {"error": str(e)}
 
 

@@ -1,6 +1,6 @@
 from app.agents.core.state import State
 from app.agents.llm.client import get_free_llm_chain, init_llm, invoke_with_fallback
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from langchain_core.messages import AIMessage
 
 
@@ -27,7 +27,7 @@ async def chatbot(
 
         return {"messages": [response]}
     except Exception as e:
-        logger.error(f"Error in LLM API call: {str(e)}")
+        log.error(f"Error in LLM API call: {str(e)}")
 
         return {
             "messages": [

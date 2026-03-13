@@ -10,7 +10,7 @@ import {
   PlayIcon,
   Tick02Icon,
 } from "@icons";
-import { format } from "date-fns";
+import { formatToolDueDate } from "@shared/tool-utils";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -111,20 +111,6 @@ export default function TodoSection({
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
     }
-  };
-
-  const formatDueDate = (date: string) => {
-    const dueDate = new Date(date);
-    const now = new Date();
-    const daysDiff = Math.floor(
-      (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-    );
-
-    if (daysDiff === 0) return "Today";
-    if (daysDiff === 1) return "Tomorrow";
-    if (daysDiff === -1) return "Yesterday";
-    if (daysDiff > 0 && daysDiff < 7) return format(dueDate, "EEEE");
-    return format(dueDate, "MMM d");
   };
 
   const isOverdue = (date: string) => {
@@ -320,7 +306,7 @@ export default function TodoSection({
                           }`}
                         >
                           <CalendarIcon className="h-3 w-3" />
-                          {formatDueDate(todo.due_date)}
+                          {formatToolDueDate(todo.due_date)}
                         </span>
                       )}
 

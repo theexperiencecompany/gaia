@@ -1,12 +1,18 @@
-import { getAuthToken } from "@/features/auth/utils/auth-storage";
+import { getUserTimezone } from "@gaia/shared/api";
+import {
+  clearAuthData,
+  getAuthToken,
+} from "@/features/auth/utils/auth-storage";
 import { API_BASE_URL } from "./constants";
 
-function getUserTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "UTC";
-  }
+// Callback invoked when any request returns 401 Unauthorized.
+// Wired up by AuthProvider via setOnUnauthorized() so that the auth layer
+// can clear stored credentials and redirect to login without creating a
+// circular dependency between api.ts and the React context.
+let onUnauthorizedCallback: (() => void) | null = null;
+
+export function setOnUnauthorized(callback: () => void): void {
+  onUnauthorizedCallback = callback;
 }
 
 interface ApiOptions {
@@ -52,6 +58,12 @@ async function request<T = unknown>(config: RequestConfig): Promise<T> {
   const response = await fetch(fullUrl, fetchConfig);
 
   if (!response.ok) {
+    // Expired / revoked token — clear local credentials and notify the app.
+    if (response.status === 401) {
+      await clearAuthData();
+      onUnauthorizedCallback?.();
+    }
+
     const errorText = await response.text();
     console.error(`[API] Error ${response.status}: ${errorText}`);
     throw new Error(`API request failed: ${response.status}`);

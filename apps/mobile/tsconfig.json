@@ -5,6 +5,9 @@
     "paths": {
       "@/*": ["./src/*"],
       "@/assets/*": ["./assets/*"],
+      "@icons": ["./src/lib/gaia-icons.tsx"],
+      "@gaia/shared": ["../../libs/shared/ts/src/index.ts"],
+      "@gaia/shared/*": ["../../libs/shared/ts/src/*"],
       "@shared/*": ["../../libs/shared/*"]
     }
   },

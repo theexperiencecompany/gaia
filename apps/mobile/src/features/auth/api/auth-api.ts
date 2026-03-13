@@ -18,10 +18,10 @@ export interface UserInfoResponse {
 }
 
 export async function getLoginUrl(callbackUri: string): Promise<string> {
+  const url = `${API_BASE_URL}/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`;
+  console.log("[Auth] Fetching login URL:", url);
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`,
-    );
+    const response = await fetch(url);
 
     if (!response.ok) {
       throw new Error("Failed to get login URL");
@@ -41,8 +41,8 @@ export async function startOAuthFlow(): Promise<string> {
     const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
     if (result.type === "success" && result.url) {
-      const url = new URL(result.url);
-      const token = url.searchParams.get("token");
+      const parsed = Linking.parse(result.url);
+      const token = parsed.queryParams?.token as string | undefined;
 
       if (!token) {
         throw new Error("No token received from authentication");

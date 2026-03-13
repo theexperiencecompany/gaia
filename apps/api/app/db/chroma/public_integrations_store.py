@@ -2,8 +2,8 @@
 
 from typing import Optional
 
-from app.config.loggers import chroma_logger as logger
 from app.core.lazy_loader import providers
+from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 
 COLLECTION_NAME = "public_integrations"
@@ -34,10 +34,10 @@ async def index_public_integration(
             ids=[integration_id],
             metadatas=[{"integration_id": integration_id}],
         )
-        logger.info(f"Indexed public integration {integration_id} in ChromaDB")
+        log.info(f"Indexed public integration {integration_id} in ChromaDB")
 
     except Exception as e:
-        logger.error(f"Failed to index public integration {integration_id}: {e}")
+        log.error(f"Failed to index public integration {integration_id}: {e}")
         raise
 
 
@@ -51,10 +51,10 @@ async def remove_public_integration(integration_id: str) -> None:
             create_if_not_exists=True,
         )
         await chroma.adelete(ids=[integration_id])
-        logger.info(f"Removed public integration {integration_id} from ChromaDB")
+        log.info(f"Removed public integration {integration_id} from ChromaDB")
 
     except Exception as e:
-        logger.error(f"Failed to remove public integration {integration_id}: {e}")
+        log.error(f"Failed to remove public integration {integration_id}: {e}")
 
 
 async def search_public_integrations(
@@ -87,5 +87,5 @@ async def search_public_integrations(
         ]
 
     except Exception as e:
-        logger.error(f"Failed to search public integrations: {e}")
+        log.error(f"Failed to search public integrations: {e}")
         return []

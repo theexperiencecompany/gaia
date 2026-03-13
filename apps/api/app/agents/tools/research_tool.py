@@ -2,7 +2,7 @@ import asyncio
 import time
 from typing import Annotated, Any, Dict, List, Optional
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import ONE_HOUR_TTL
 from app.db.redis import get_cache, set_cache
 from app.decorators import with_doc, with_rate_limiting
@@ -45,6 +45,7 @@ async def deep_research(
         "Specific subtopics or aspects to prioritize (e.g. ['performance', 'cost', 'adoption'])",
     ] = None,
 ) -> Dict[str, Any]:
+    log.set(tool={"name": "deep_research", "action": "research"})
     focus_areas = focus_areas or []
     user_id = get_user_id_from_config(config)
     if not user_id:
@@ -160,7 +161,7 @@ async def deep_research(
                 fetch_counter += 1
                 snippet = url_info.get("snippet", "").strip()
                 if snippet:
-                    logger.warning(
+                    log.warning(
                         f"All fetchers failed for {url[:60]}, using search snippet"
                     )
                     return {
@@ -214,5 +215,5 @@ async def deep_research(
         }
 
     except Exception as e:
-        logger.error(f"Deep research error: {e}", exc_info=True)
+        log.error(f"Deep research error: {e}", exc_info=True)
         return {"error": str(e), "query": query, "data": None}

@@ -5,6 +5,7 @@ from typing import Optional
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
 )
+from shared.py.wide_events import log
 from app.api.v1.middleware.agent_auth import create_agent_token
 from app.config.settings import settings
 from fastapi import APIRouter, Depends
@@ -23,6 +24,11 @@ def get_token(
     user_email: str = user.get("email", "")
     if not user_id or not isinstance(user_id, str):
         raise HTTPException(status_code=401, detail="Invalid or missing user_id")
+    log.set(
+        user={"id": user_id},
+        operation="get_voice_token",
+        has_conversation_id=bool(conversationId),
+    )
 
     room_name = f"voice_session_{user_id}_{uuid.uuid4().hex}"
 
@@ -59,6 +65,7 @@ def get_token(
             status_code=500, detail=f"Failed to generate voice token: {str(e)}"
         )
 
+    log.set(outcome="success")
     return {
         "serverUrl": settings.LIVEKIT_URL,
         "roomName": room_name,

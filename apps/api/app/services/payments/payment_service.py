@@ -5,7 +5,7 @@ Clean, simple, and maintainable.
 
 from typing import Any, Dict, List, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.db.mongodb.collections import (
     plans_collection,
@@ -38,7 +38,7 @@ class DodoPaymentService:
                 environment=environment,
             )
         except Exception as e:
-            logger.error(f"Failed to instantiate dodo payments: {e}")
+            log.error(f"Failed to instantiate dodo payments: {e}")
 
     async def get_plans(self, active_only: bool = True) -> List[PlanResponse]:
         """Get subscription plans with caching."""
@@ -94,6 +94,8 @@ class DodoPaymentService:
         discount_code: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create subscription via Checkout Sessions; show promo code field and get hosted checkout url."""
+        log.set(payment={"event_type": "create_subscription", "status": "initiated"})
+
         # Get user
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:
@@ -138,8 +140,29 @@ class DodoPaymentService:
 
             checkout_session = self.client.checkout_sessions.create(**params)
         except Exception as e:
-            logger.error(f"Error creating Dodo checkout session: {e}")
+            log.error(f"Error creating Dodo checkout session: {e}")
             raise HTTPException(502, f"Payment service error: {str(e)}")
+
+        # Look up plan name for richer logging
+        plan_name: Optional[str] = None
+        try:
+            plans = await self.get_plans(active_only=False)
+            matched_plan = next(
+                (p for p in plans if p.dodo_product_id == product_id), None
+            )
+            if matched_plan:
+                plan_name = matched_plan.name
+        except Exception as e:  # nosec B110
+            log.warning("Failed to resolve plan name for logging", error=str(e))
+
+        log.set(
+            payment={
+                "subscription_id": checkout_session.session_id,
+                "plan_name": plan_name,
+                "status": "created",
+                "provider": "dodo",
+            }
+        )
 
         return {
             "subscription_id": checkout_session.session_id,
@@ -168,7 +191,7 @@ class DodoPaymentService:
                     user_email=user["email"],
                 )
         except Exception as e:
-            logger.debug(f"Failed to send welcome email: {e}")
+            log.debug(f"Failed to send welcome email: {e}")
 
         return {
             "payment_completed": True,

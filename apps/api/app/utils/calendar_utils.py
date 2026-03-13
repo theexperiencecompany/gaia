@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Set
 import pendulum
 from fastapi import HTTPException
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 
 
 def resolve_timezone(timezone: str) -> str:
@@ -32,9 +32,10 @@ def fetch_calendar_color(calendar_id: str, user_id: str) -> tuple[str, str]:
     """
     from app.services.calendar_service import list_calendars
 
+    log.set(calendar_id=calendar_id, user_id=user_id)
     try:
         calendar_list = list_calendars(user_id)
-        if calendar_list:
+        if isinstance(calendar_list, dict):
             for cal in calendar_list.get("items", []):
                 if cal.get("id") == calendar_id:
                     return (
@@ -42,7 +43,7 @@ def fetch_calendar_color(calendar_id: str, user_id: str) -> tuple[str, str]:
                         cal.get("backgroundColor", "#00bbff"),
                     )
     except Exception as e:
-        logger.warning(f"Could not fetch calendar color: {e}")
+        log.warning(f"Could not fetch calendar color: {e}")
 
     return "Calendar", "#00bbff"
 
@@ -104,6 +105,6 @@ def fetch_same_day_events(
             if events_response:
                 all_events.extend(events_response.get("events", []))
         except Exception as e:
-            logger.warning(f"Error fetching events for {event_date}: {str(e)}")
+            log.warning(f"Error fetching events for {event_date}: {str(e)}")
 
     return all_events

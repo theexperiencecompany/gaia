@@ -7,8 +7,8 @@ This module provides SQLAlchemy setup for PostgreSQL database connection.
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from app.config.loggers import app_logger as logger
 from app.config.settings import settings
+from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
@@ -30,7 +30,7 @@ async def init_postgresql_engine() -> AsyncEngine:
     Returns:
         AsyncEngine: The SQLAlchemy async engine
     """
-    logger.debug("Initializing PostgreSQL async engine")
+    log.debug("Initializing PostgreSQL async engine")
 
     postgres_url: str = settings.POSTGRES_URL  # type: ignore
     url = postgres_url.replace("postgresql://", "postgresql+asyncpg://")
@@ -46,7 +46,8 @@ async def init_postgresql_engine() -> AsyncEngine:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    logger.info("PostgreSQL engine initialized for database")
+    log.set(db={"connection_status": "connected", "backend": "postgresql"})
+    log.info("PostgreSQL engine initialized for database")
     return engine
 
 
@@ -91,6 +92,6 @@ async def close_postgresql_db() -> None:
         if providers.is_initialized("postgresql_engine"):
             engine = await get_postgresql_engine()
             await engine.dispose()
-            logger.info("PostgreSQL connections closed")
+            log.info("PostgreSQL connections closed")
     except Exception as e:
-        logger.error(f"Error closing PostgreSQL connections: {e}")
+        log.error(f"Error closing PostgreSQL connections: {e}")

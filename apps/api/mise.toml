@@ -133,6 +133,26 @@ run = "uv run --group backend python scripts/seed_models.py --force"
 description = "Seed workflows"
 run = "uv run --group backend python scripts/seed_workflows.py"
 
+[tasks.test]
+description = "Run all tests (unit + integration)"
+run = "nx test api"
+
+[tasks."test:unit"]
+description = "Run unit tests only"
+run = "nx test:unit api"
+
+[tasks."test:integration"]
+description = "Run integration tests only"
+run = "nx test:integration api"
+
+[tasks."test:e2e"]
+description = "Run end-to-end tests"
+run = "nx test:e2e api"
+
+[tasks."test:coverage"]
+description = "Run tests with coverage report"
+run = "nx test:coverage api"
+
 [tasks.clean]
 description = "Clean up __pycache__ and build artifacts"
 run = "find . -type d -name '__pycache__' -exec rm -rf {} + && find . -type f -name '*.pyc' -delete"

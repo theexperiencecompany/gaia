@@ -1,5 +1,6 @@
 from typing import List
 
+from shared.py.wide_events import log
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators.caching import Cacheable
 from app.models.models_models import (
@@ -26,7 +27,11 @@ async def list_available_models(
     """
     Get all available AI models for the current user.
     """
-    return await get_available_models()
+    log.set(operation="list_models")
+    models = await get_available_models()
+    log.set(result_count=len(models))
+    log.set(outcome="success")
+    return models
 
 
 @router.put("/select", response_model=ModelSelectionResponse)
@@ -37,6 +42,7 @@ async def select_model(
     """
     Select an AI model for the current user.
     """
+    log.set(operation="select_model", model_name=request.model_id)
 
     user_id = current_user.get("user_id")
     if not user_id:
@@ -50,6 +56,7 @@ async def select_model(
         model_id=request.model_id,
         user_plan=subscription_plan.plan_type or PlanType.FREE,
     )
+    log.set(outcome="success")
 
     return ModelSelectionResponse(
         success=True,

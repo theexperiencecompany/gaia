@@ -7,7 +7,7 @@ based on their name, description, tools, and server URL domain.
 
 from urllib.parse import urlparse
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from openai import AsyncOpenAI
 
 # Fixed list of valid integration categories
@@ -71,6 +71,7 @@ async def infer_integration_category(
         One of the INTEGRATION_CATEGORIES strings. Falls back to "other"
         on any error or if the LLM returns an invalid category.
     """
+    log.set(integration={"provider": name, "action": "infer_category"})
     try:
         client = AsyncOpenAI()
 
@@ -103,7 +104,7 @@ async def infer_integration_category(
 
         content = response.choices[0].message.content
         if content is None:
-            logger.warning(
+            log.warning(
                 f"LLM returned empty content for integration '{name}', falling back to 'other'"
             )
             return "other"
@@ -112,17 +113,17 @@ async def infer_integration_category(
 
         # Validate response is a known category
         if category not in INTEGRATION_CATEGORIES:
-            logger.warning(
+            log.warning(
                 f"LLM returned invalid category '{category}' for integration '{name}', "
                 f"falling back to 'other'"
             )
             return "other"
 
-        logger.info(f"Inferred category '{category}' for integration '{name}'")
+        log.info(f"Inferred category '{category}' for integration '{name}'")
         return category
 
     except Exception as e:
-        logger.error(
+        log.error(
             f"Failed to infer category for integration '{name}': {e}",
             exc_info=True,
         )

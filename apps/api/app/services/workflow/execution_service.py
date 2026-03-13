@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflow_executions_collection
 from app.models.workflow_execution_models import (
     WorkflowExecution,
@@ -45,9 +45,15 @@ async def create_execution(
     )
 
     await workflow_executions_collection.insert_one(execution.model_dump())
-    logger.info(
-        f"Created execution {execution.execution_id} for workflow {workflow_id}"
+    log.set(
+        workflow={
+            "id": workflow_id,
+            "status": "running",
+            "execution_id": execution.execution_id,
+            "trigger_type": trigger_type,
+        }
     )
+    log.info(f"Created execution {execution.execution_id} for workflow {workflow_id}")
 
     return execution
 
@@ -79,7 +85,7 @@ async def complete_execution(
         {"execution_id": execution_id}
     )
     if not execution:
-        logger.warning(f"Execution {execution_id} not found for completion")
+        log.warning(f"Execution {execution_id} not found for completion")
         return False
 
     started_at = execution.get("started_at")
@@ -105,7 +111,16 @@ async def complete_execution(
         {"execution_id": execution_id}, {"$set": update_data}
     )
 
-    logger.info(
+    duration_ms = int(duration_seconds * 1000) if duration_seconds is not None else None
+    log.set(
+        workflow={
+            "id": execution.get("workflow_id"),
+            "status": status,
+            "execution_id": execution_id,
+            "duration_ms": duration_ms,
+        }
+    )
+    log.info(
         f"Completed execution {execution_id} with status {status}, duration {duration_seconds}s"
     )
 

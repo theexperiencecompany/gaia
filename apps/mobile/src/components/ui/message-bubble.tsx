@@ -1,28 +1,29 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import * as Clipboard from "expo-clipboard";
-import { Avatar } from "heroui-native";
+import { Avatar, PressableFeedback } from "heroui-native";
 import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Pressable, View } from "react-native";
+import { Animated, View } from "react-native";
 import {
+  AppIcon,
   Copy01Icon,
-  HugeiconsIcon,
   Message01Icon,
   Pin02Icon,
   ThumbsDownIcon,
   ThumbsUpIcon,
   Tick02Icon,
 } from "@/components/icons";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";
 
 const GaiaLogo = require("@shared/assets/logo/gaia.png");
 
-const messageBubbleVariants = cva("px-4 py-2.5 max-w-[100%]", {
+const messageBubbleVariants = cva("px-4 py-3 max-w-[100%]", {
   variants: {
     variant: {
-      sent: "bg-accent self-end rounded-2xl rounded-br-md",
+      sent: "self-end rounded-2xl rounded-br-md",
       received: "bg-surface self-start rounded-2xl rounded-bl-md",
       loading: "bg-transparent self-start",
     },
@@ -178,15 +179,15 @@ function CopyButton({ text, iconSize, padding }: CopyButtonProps) {
   }, [copied, text, fadeAnim]);
 
   return (
-    <Pressable onPress={handleCopy} style={{ padding }}>
+    <PressableFeedback onPress={handleCopy} style={{ padding }}>
       <Animated.View style={{ opacity: fadeAnim }}>
-        <HugeiconsIcon
+        <AppIcon
           icon={copied ? Tick02Icon : Copy01Icon}
           size={iconSize}
           color={copied ? "#34c759" : "#8e8e93"}
         />
       </Animated.View>
-    </Pressable>
+    </PressableFeedback>
   );
 }
 
@@ -237,6 +238,11 @@ function MessageBubble({
       <View className={cn("flex-col", variant !== "sent" && "flex-1")}>
         <View
           {...rest}
+          style={
+            variant === "sent"
+              ? { backgroundColor: "rgba(255,255,255,0.1)" }
+              : undefined
+          }
           className={cn(
             isLoading
               ? "px-0 py-2.5"
@@ -252,17 +258,10 @@ function MessageBubble({
                 </Text>
                 <PulsingDots />
               </View>
+            ) : variant === "received" ? (
+              <MarkdownRenderer content={message ?? ""} />
             ) : (
-              <Text
-                className={cn(
-                  "text-base",
-                  variant === "sent"
-                    ? "text-accent-foreground"
-                    : "text-foreground",
-                )}
-              >
-                {message}
-              </Text>
+              <Text className={cn("text-base", "text-white")}>{message}</Text>
             ))}
         </View>
 
@@ -283,34 +282,30 @@ function MessageBubble({
                 iconSize={iconSize.sm}
                 padding={spacing.xs}
               />
-              <Pressable style={{ padding: spacing.xs }}>
-                <HugeiconsIcon
+              <PressableFeedback style={{ padding: spacing.xs }}>
+                <AppIcon
                   icon={ThumbsUpIcon}
                   size={iconSize.sm}
                   color="#8e8e93"
                 />
-              </Pressable>
-              <Pressable style={{ padding: spacing.xs }}>
-                <HugeiconsIcon
+              </PressableFeedback>
+              <PressableFeedback style={{ padding: spacing.xs }}>
+                <AppIcon
                   icon={ThumbsDownIcon}
                   size={iconSize.sm}
                   color="#8e8e93"
                 />
-              </Pressable>
-              <Pressable style={{ padding: spacing.xs }}>
-                <HugeiconsIcon
-                  icon={Pin02Icon}
-                  size={iconSize.sm}
-                  color="#8e8e93"
-                />
-              </Pressable>
-              <Pressable style={{ padding: spacing.xs }}>
-                <HugeiconsIcon
+              </PressableFeedback>
+              <PressableFeedback style={{ padding: spacing.xs }}>
+                <AppIcon icon={Pin02Icon} size={iconSize.sm} color="#8e8e93" />
+              </PressableFeedback>
+              <PressableFeedback style={{ padding: spacing.xs }}>
+                <AppIcon
                   icon={Message01Icon}
                   size={iconSize.sm}
                   color="#8e8e93"
                 />
-              </Pressable>
+              </PressableFeedback>
             </View>
           )}
       </View>

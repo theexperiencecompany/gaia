@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.models.calendar_models import EventCreateRequest
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -44,6 +44,11 @@ class AIProactiveNotificationSource:
                 notification service.  Set to False to return the requests without
                 sending (useful for testing or batch handling).
         """
+        log.set(
+            user_id=user_id,
+            event_count=len(notification_data),
+            operation="create_calendar_event_notification",
+        )
         try:
             requests = [
                 NotificationRequest(
@@ -92,7 +97,7 @@ class AIProactiveNotificationSource:
 
             return requests
         except Exception as e:
-            logger.error(f"Failed to create calendar event notification: {e}")
+            log.error(f"Failed to create calendar event notification: {e}")
             return []
 
     @staticmethod

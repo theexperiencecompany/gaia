@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.models.scheduler_models import (
     BaseScheduledTask,
@@ -47,13 +47,13 @@ class BaseSchedulerService(ABC):
     async def initialize(self):
         """Initialize ARQ pool connection."""
         self.arq_pool = await create_pool(self.redis_settings)
-        logger.info(f"{self.__class__.__name__} initialized")
+        log.info(f"{self.__class__.__name__} initialized")
 
     async def close(self):
         """Close ARQ pool connection."""
         if self.arq_pool:
             await self.arq_pool.aclose()
-        logger.info(f"{self.__class__.__name__} closed")
+        log.info(f"{self.__class__.__name__} closed")
 
     async def schedule_task(
         self, task_id: str, schedule_config: ScheduleConfig
@@ -112,21 +112,22 @@ class BaseSchedulerService(ABC):
         Returns:
             Task execution result
         """
+        log.set(scheduler_task_id=task_id, scheduler_class=self.__class__.__name__)
         # Get the task
         task = await self.get_task(task_id)
         if not task:
-            logger.error(f"Task {task_id} not found")
+            log.error(f"Task {task_id} not found")
             return TaskExecutionResult(
                 success=False, message=f"Task {task_id} not found"
             )
 
         if task.status != ScheduledTaskStatus.SCHEDULED:
-            logger.warning(f"Task {task_id} is not scheduled (status: {task.status})")
+            log.warning(f"Task {task_id} is not scheduled (status: {task.status})")
             return TaskExecutionResult(
                 success=False, message=f"Task {task_id} is not in scheduled status"
             )
 
-        logger.info(f"Processing task {task_id}")
+        log.info(f"Processing task {task_id}")
 
         try:
             # Mark task as executing
@@ -152,12 +153,12 @@ class BaseSchedulerService(ABC):
                     ScheduledTaskStatus.COMPLETED,
                     {"occurrence_count": occurrence_count},
                 )
-                logger.info(f"Completed one-time task {task_id}")
+                log.info(f"Completed one-time task {task_id}")
 
             return execution_result
 
         except Exception as e:
-            logger.error(f"Failed to process task {task_id}: {str(e)}")
+            log.error(f"Failed to process task {task_id}: {str(e)}")
             await self.update_task_status(
                 task_id,
                 ScheduledTaskStatus.FAILED,
@@ -190,7 +191,7 @@ class BaseSchedulerService(ABC):
         )
 
         if success:
-            logger.info(f"Cancelled task {task_id}")
+            log.info(f"Cancelled task {task_id}")
 
         return success
 
@@ -208,7 +209,7 @@ class BaseSchedulerService(ABC):
                 await self._enqueue_task(task.id, task.scheduled_at)
                 scheduled_count += 1
 
-        logger.info(f"Scheduled {scheduled_count} pending tasks")
+        log.info(f"Scheduled {scheduled_count} pending tasks")
 
     async def _handle_recurring_task(
         self, task: BaseScheduledTask, occurrence_count: int
@@ -220,12 +221,18 @@ class BaseSchedulerService(ABC):
             task: The task to handle
             occurrence_count: Current occurrence count
         """
+        log.set(
+            scheduler_task_id=task.id,
+            scheduler_occurrence_count=occurrence_count,
+            scheduler_repeat=task.repeat,
+            scheduler_max_occurrences=task.max_occurrences,
+        )
         if not task.repeat:
-            logger.warning(f"Task {task.id} has no repeat schedule")
+            log.warning(f"Task {task.id} has no repeat schedule")
             return
 
         if not task.id:
-            logger.error("Task ID is None, cannot handle recurring task")
+            log.error("Task ID is None, cannot handle recurring task")
             return
 
         # Calculate next run time with user timezone context
@@ -235,7 +242,7 @@ class BaseSchedulerService(ABC):
         trigger_config = getattr(task, "trigger_config", None)
         if trigger_config and hasattr(trigger_config, "timezone"):
             user_timezone = trigger_config.timezone
-            logger.debug(f"Using workflow timezone: {user_timezone}")
+            log.debug(f"Using workflow timezone: {user_timezone}")
 
         next_run = get_next_run_time(task.repeat, task.scheduled_at, user_timezone)
 
@@ -245,22 +252,18 @@ class BaseSchedulerService(ABC):
         # Check max occurrences
         if task.max_occurrences and occurrence_count >= task.max_occurrences:
             should_continue = False
-            logger.info(
-                f"Task {task.id} reached max occurrences ({task.max_occurrences})"
-            )
+            log.info(f"Task {task.id} reached max occurrences ({task.max_occurrences})")
 
         # Check stop_after date
         if task.stop_after:
             stop_after = task.stop_after
             if stop_after.tzinfo is None:
                 stop_after = stop_after.replace(tzinfo=timezone.utc)
-                logger.warning(
-                    f"Task {task.id} stop_after was offset-naive, assuming UTC"
-                )
+                log.warning(f"Task {task.id} stop_after was offset-naive, assuming UTC")
 
             if next_run >= stop_after:
                 should_continue = False
-                logger.info(f"Task {task.id} reached stop_after date ({stop_after})")
+                log.info(f"Task {task.id} reached stop_after date ({stop_after})")
 
         if should_continue:
             # Update and reschedule
@@ -273,7 +276,7 @@ class BaseSchedulerService(ABC):
                 },
             )
             await self.reschedule_task(task.id, next_run)
-            logger.info(f"Rescheduled recurring task {task.id} for {next_run}")
+            log.info(f"Rescheduled recurring task {task.id} for {next_run}")
         else:
             # Mark as completed
             await self.update_task_status(
@@ -281,7 +284,7 @@ class BaseSchedulerService(ABC):
                 ScheduledTaskStatus.COMPLETED,
                 {"occurrence_count": occurrence_count},
             )
-            logger.info(f"Completed recurring task {task.id}")
+            log.info(f"Completed recurring task {task.id}")
 
     async def _enqueue_task(self, task_id: str, scheduled_at: datetime) -> bool:
         """
@@ -294,8 +297,9 @@ class BaseSchedulerService(ABC):
         Returns:
             True if enqueued successfully
         """
+        log.set(scheduler_task_id=task_id, scheduler_scheduled_at=str(scheduled_at))
         if not self.arq_pool:
-            logger.error("ARQ pool not initialized")
+            log.error("ARQ pool not initialized")
             return False
 
         # Ensure scheduled_at is timezone-aware
@@ -306,7 +310,7 @@ class BaseSchedulerService(ABC):
         # This prevents Redis PSETEX errors from negative expire times
         now = datetime.now(timezone.utc)
         if scheduled_at <= now:
-            logger.warning(
+            log.warning(
                 f"Task {task_id} scheduled_at ({scheduled_at}) is in the past, "
                 f"rescheduling to execute in 120 seconds"
             )
@@ -318,10 +322,10 @@ class BaseSchedulerService(ABC):
         )
 
         if not job:
-            logger.error(f"Failed to enqueue task {task_id}")
+            log.error(f"Failed to enqueue task {task_id}")
             return False
 
-        logger.debug(f"Enqueued task {task_id} with job ID {job.job_id}")
+        log.debug(f"Enqueued task {task_id} with job ID {job.job_id}")
         return True
 
     # Abstract methods that subclasses must implement

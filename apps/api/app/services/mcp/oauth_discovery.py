@@ -8,7 +8,7 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 
 from typing import Optional
 
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.models.mcp_config import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.mcp_oauth_utils import (
@@ -44,7 +44,7 @@ async def discover_oauth_config(
     try:
         validate_https_url(server_url)
     except OAuthSecurityError as e:
-        logger.warning(f"Server URL security warning for {integration_id}: {e}")
+        log.warning(f"Server URL security warning for {integration_id}: {e}")
 
     challenge = challenge_data or await extract_auth_challenge(server_url)
     initial_scope = challenge.get("scope")
@@ -99,7 +99,7 @@ async def discover_oauth_config(
         try:
             validate_oauth_endpoints(discovery)
         except OAuthSecurityError as e:
-            logger.warning(f"OAuth endpoint security warning: {e}")
+            log.warning(f"OAuth endpoint security warning: {e}")
 
         await token_store.store_oauth_discovery(integration_id, discovery)
         return discovery
@@ -130,7 +130,7 @@ async def discover_oauth_config(
         try:
             validate_oauth_endpoints(discovery)
         except OAuthSecurityError as e:
-            logger.warning(f"OAuth endpoint security warning: {e}")
+            log.warning(f"OAuth endpoint security warning: {e}")
 
         await token_store.store_oauth_discovery(integration_id, discovery)
         return discovery

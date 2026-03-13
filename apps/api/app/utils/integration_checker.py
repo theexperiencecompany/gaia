@@ -10,7 +10,7 @@ from typing import Optional
 import httpx
 from langgraph.config import get_stream_writer
 
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_id, get_integration_scopes
 from app.config.token_repository import token_repository
 
@@ -37,6 +37,7 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
     Returns:
         bool: True if user has required permissions, False otherwise
     """
+    log.set(integration_id=integration_id)
     if not access_token:
         return False
 
@@ -44,7 +45,7 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
         # Get required scopes for this integration from oauth_config
         required_scopes = get_integration_scopes(integration_id)
         if not required_scopes:
-            logger.warning(f"No scopes defined for integration: {integration_id}")
+            log.warning(f"No scopes defined for integration: {integration_id}")
             return False
 
         token = await token_repository.get_token_by_auth_token(
@@ -52,7 +53,7 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
         )
 
         if not token:
-            logger.warning(f"No token found for access token: {access_token}")
+            log.warning(f"No token found for access token: {access_token}")
             return False
 
         authorized_scopes = str(token.get("scope", "")).split()
@@ -64,7 +65,7 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
         return len(missing_scopes) == 0
 
     except Exception as e:
-        logger.error(f"Error checking integration permissions: {e}")
+        log.error(f"Error checking integration permissions: {e}")
         return False
 
 
@@ -83,13 +84,18 @@ async def stream_integration_connection_prompt(
         tool_category: Optional tool category
         message: Optional custom message to display
     """
+    log.set(
+        integration_id=integration_id,
+        tool_name=tool_name,
+        tool_category=tool_category,
+    )
     try:
         writer = get_stream_writer()
 
         # Get integration details
         integration = get_integration_by_id(integration_id)
         if not integration:
-            logger.error(f"Integration not found: {integration_id}")
+            log.error(f"Integration not found: {integration_id}")
             return
 
         # Prepare the integration connection data
@@ -103,10 +109,10 @@ async def stream_integration_connection_prompt(
 
         # Stream the data to frontend
         writer(connection_data)
-        logger.info(f"Streamed integration connection prompt for: {integration_id}")
+        log.info(f"Streamed integration connection prompt for: {integration_id}")
 
     except Exception as e:
-        logger.error(f"Error streaming integration connection prompt: {e}")
+        log.error(f"Error streaming integration connection prompt: {e}")
 
 
 def get_required_integration_for_tool_category(tool_category: str) -> Optional[str]:

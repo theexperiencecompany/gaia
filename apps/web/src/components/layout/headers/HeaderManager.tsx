@@ -1,12 +1,12 @@
 "use client";
 
 import { Tooltip } from "@heroui/react";
-import { usePathname } from "next/navigation";
 import { type ReactNode, Suspense, useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { useHeader } from "@/hooks/layout/useHeader";
+import { usePathname } from "@/i18n/navigation";
 
 import CalendarHeader from "./CalendarHeader";
 import ChatHeader from "./ChatHeader";

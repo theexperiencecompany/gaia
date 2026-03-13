@@ -6,7 +6,7 @@ Provides type-safe event tracking with consistent naming conventions.
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.core.lazy_loader import providers
 
 
@@ -49,7 +49,7 @@ def identify_user(
     """
     client = _get_posthog_client()
     if client is None:
-        logger.debug("PostHog client not available, skipping identify")
+        log.debug("PostHog client not available, skipping identify")
         return
 
     try:
@@ -61,7 +61,7 @@ def identify_user(
         }
         client.identify(user_id, user_properties)
     except Exception as e:
-        logger.error(f"Failed to identify user in PostHog: {e}")
+        log.error(f"Failed to identify user in PostHog: {e}")
 
 
 def capture_event(
@@ -79,9 +79,10 @@ def capture_event(
     """
     client = _get_posthog_client()
     if client is None:
-        logger.debug(f"PostHog client not available, skipping event: {event}")
+        log.debug(f"PostHog client not available, skipping event: {event}")
         return
 
+    log.set(analytics={"user_id": user_id, "event": event})
     try:
         event_properties = {
             **(properties or {}),
@@ -89,7 +90,7 @@ def capture_event(
         }
         client.capture(user_id, event, event_properties)
     except Exception as e:
-        logger.error(f"Failed to capture event {event} in PostHog: {e}")
+        log.error(f"Failed to capture event {event} in PostHog: {e}")
 
 
 def track_signup(
@@ -154,6 +155,14 @@ def track_subscription_event(
         currency: Currency code
         properties: Additional properties
     """
+    log.set(
+        subscription={
+            "user_id": user_id,
+            "event_type": event_type,
+            "plan_name": plan_name,
+            "subscription_id": subscription_id,
+        }
+    )
     event_properties = {
         "subscription_id": subscription_id,
         "plan_name": plan_name,
@@ -182,7 +191,7 @@ def track_subscription_event(
                     },
                 )
             except Exception as e:
-                logger.error(f"Failed to update user subscription properties: {e}")
+                log.error(f"Failed to update user subscription properties: {e}")
 
 
 def track_payment_event(
@@ -223,4 +232,4 @@ def flush_events() -> None:
         try:
             client.flush()
         except Exception as e:
-            logger.error(f"Failed to flush PostHog events: {e}")
+            log.error(f"Failed to flush PostHog events: {e}")

@@ -3,7 +3,7 @@ from collections import defaultdict
 from collections.abc import KeysView, Mapping
 from typing import Dict, Iterator, List, Optional
 
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.services.integrations.integration_resolver import IntegrationResolver
@@ -271,9 +271,7 @@ class ToolRegistry:
 
         from app.services.composio.composio_service import get_composio_service
 
-        logger.info(
-            f"Registering provider tools for {toolkit_name} (space: {space_name})"
-        )
+        log.info(f"Registering provider tools for {toolkit_name} (space: {space_name})")
 
         composio_service = get_composio_service()
 
@@ -293,7 +291,7 @@ class ToolRegistry:
 
         await self._index_category_tools(toolkit_name)
 
-        logger.info(f"Registered {len(tools)} tools for {toolkit_name}")
+        log.info(f"Registered {len(tools)} tools for {toolkit_name}")
         return self._categories[toolkit_name]
 
     async def load_all_provider_tools(self):
@@ -321,7 +319,7 @@ class ToolRegistry:
                     specific_tools=specific_tools,
                 )
             except Exception as e:
-                logger.error(f"Failed to load provider tools for {toolkit_name}: {e}")
+                log.error(f"Failed to load provider tools for {toolkit_name}: {e}")
 
         # Collect all integrations that need loading
         integrations_to_load = [
@@ -440,7 +438,7 @@ class ToolRegistry:
             )
             await self._index_category_tools(category_name)
             loaded[integration_id] = tools
-            logger.info(
+            log.info(
                 f"Loaded {len(tools)} MCP tools from {integration_id} for user {user_id}"
             )
 

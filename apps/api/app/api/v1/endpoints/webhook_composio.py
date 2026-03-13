@@ -9,7 +9,7 @@ Each handler implements its own `process_event()` method which handles:
 - Queuing workflow execution via WorkflowQueueService
 """
 
-from app.config.loggers import mail_webhook_logger as logger
+from shared.py.wide_events import log
 from app.db.redis import redis_cache
 from app.models.webhook_models import ComposioWebhookEvent
 from app.services.triggers import get_handler_by_event
@@ -35,7 +35,7 @@ async def webhook_composio(request: Request):
             f"webhook:composio:{webhook_id}", "1", nx=True, ex=3600
         )
         if already_processed:
-            logger.info(f"Duplicate webhook ignored: {webhook_id}")
+            log.info(f"Duplicate webhook ignored: {webhook_id}")
             return {"status": "success", "message": "Duplicate webhook ignored"}
 
     body = await request.json()
@@ -51,20 +51,26 @@ async def webhook_composio(request: Request):
         timestamp=body.get("timestamp"),
         type=body.get("type"),
     )
+    log.set(
+        user={"id": event_data.user_id},
+        webhook={"event_type": event_data.type, "trigger_id": event_data.trigger_id},
+    )
 
     # Find handler for this event type
     handler = get_handler_by_event(event_data.type)
     if not handler:
-        logger.debug(f"Unhandled webhook type: {event_data.type}")
+        log.debug(f"Unhandled webhook type: {event_data.type}")
         return {"status": "success", "message": "Webhook received"}
 
     # Delegate all processing to the handler
     # Each handler decides how to find workflows and execute them:
     # - Default: find_workflows by trigger_id + WorkflowQueueService
     # - Gmail: queries by user_id instead of trigger_id
-    return await handler.process_event(
+    result = await handler.process_event(
         event_type=event_data.type,
         trigger_id=event_data.trigger_id,
         user_id=event_data.user_id,
         data=event_data.data,
     )
+    log.set(operation="webhook_received", outcome="success")
+    return result

@@ -10,12 +10,12 @@
  * falls back to axios-style errors, then generic Error messages.
  */
 import { GaiaApiError } from "../api";
-import type { Conversation, Todo, Workflow } from "../types";
+import type { BotConversation, BotTodo, BotWorkflow } from "../types";
 
 /**
  * Formats a workflow for display in a bot message.
  */
-export function formatWorkflow(workflow: Workflow): string {
+export function formatWorkflow(workflow: BotWorkflow): string {
   const status =
     workflow.status === "active"
       ? "✅"
@@ -28,7 +28,7 @@ export function formatWorkflow(workflow: Workflow): string {
 /**
  * Formats a list of workflows for display.
  */
-export function formatWorkflowList(workflows: Workflow[]): string {
+export function formatWorkflowList(workflows: BotWorkflow[]): string {
   if (workflows.length === 0) {
     return "No workflows found. Create one with `/workflow create`";
   }
@@ -39,7 +39,7 @@ export function formatWorkflowList(workflows: Workflow[]): string {
 /**
  * Formats a todo for display in a bot message.
  */
-export function formatTodo(todo: Todo): string {
+export function formatTodo(todo: BotTodo): string {
   const checkbox = todo.completed ? "☑️" : "⬜";
   const priority = todo.priority ? ` [${todo.priority.toUpperCase()}]` : "";
   const dueDate = todo.due_date
@@ -52,7 +52,7 @@ export function formatTodo(todo: Todo): string {
 /**
  * Formats a list of todos for display.
  */
-export function formatTodoList(todos: Todo[]): string {
+export function formatTodoList(todos: BotTodo[]): string {
   if (todos.length === 0) {
     return "No todos found. Create one with `/todo add`";
   }
@@ -64,7 +64,7 @@ export function formatTodoList(todos: Todo[]): string {
  * Formats a conversation for display.
  */
 export function formatConversation(
-  conversation: Conversation,
+  conversation: BotConversation,
   baseUrl: string,
 ): string {
   const title = conversation.title || "Untitled Conversation";
@@ -80,7 +80,7 @@ export function formatConversation(
  * Formats a list of conversations for display.
  */
 export function formatConversationList(
-  conversations: Conversation[],
+  conversations: BotConversation[],
   baseUrl: string,
 ): string {
   if (conversations.length === 0) {

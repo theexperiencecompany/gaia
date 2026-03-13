@@ -5,7 +5,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import users_collection, workflows_collection
 from app.models.user_models import (
     BioStatus,
@@ -42,6 +42,15 @@ async def complete_user_onboarding(
     - If user has Gmail connected: Email processor will trigger personalization after parsing
     - If no Gmail: Queue personalization ARQ job directly
     """
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={
+            "operation": "complete",
+            "is_complete": True,
+            "timezone": tz_info[0],
+        },
+    )
+
     try:
         updated_user = await complete_onboarding(
             user["user_id"],
@@ -65,7 +74,7 @@ async def complete_user_onboarding(
         if has_gmail and not email_already_processed:
             # Gmail connected but not yet processed - queue email processing
             # Email processor will trigger personalization when done
-            logger.info(
+            log.info(
                 f"User {user['user_id']} has Gmail (not processed) - queueing email processing"
             )
             from app.utils.redis_utils import RedisPoolManager
@@ -75,15 +84,15 @@ async def complete_user_onboarding(
                 await pool.enqueue_job(
                     "process_gmail_emails_to_memory", user["user_id"]
                 )
-                logger.info(f"Queued Gmail processing for user {user['user_id']}")
+                log.info(f"Queued Gmail processing for user {user['user_id']}")
             except Exception as e:
-                logger.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
+                log.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
                 # Fallback: queue personalization directly
                 background_tasks.add_task(queue_personalization, user["user_id"])
         else:
             # No Gmail OR already processed - queue personalization directly
             reason = "already processed" if email_already_processed else "no Gmail"
-            logger.info(
+            log.info(
                 f"User {user['user_id']} ({reason}) - queueing personalization directly"
             )
             background_tasks.add_task(queue_personalization, user["user_id"])
@@ -94,7 +103,7 @@ async def complete_user_onboarding(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error completing onboarding: {str(e)}", exc_info=True)
+        log.error(f"Error completing onboarding: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
@@ -103,7 +112,15 @@ async def get_onboarding_status(user: dict = Depends(get_current_user)):
     """
     Get the current user's onboarding status and preferences.
     """
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={"operation": "get_status"},
+    )
     status = await get_user_onboarding_status(user["user_id"])
+    is_complete = (
+        status.get("is_complete", False) if isinstance(status, dict) else False
+    )
+    log.set(onboarding={"operation": "get_status", "is_complete": is_complete})
     return status
 
 
@@ -119,11 +136,16 @@ async def update_onboarding_phase(
         user_id = user.get("user_id")
         phase = request.phase.value
 
+        log.set(
+            user={"id": user_id},
+            onboarding={"operation": "update_step", "step": phase},
+        )
+
         if not user_id or not isinstance(user_id, str):
-            logger.error("[update_onboarding_phase] user_id is missing or not a string")
+            log.error("[update_onboarding_phase] user_id is missing or not a string")
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
-        logger.info(
+        log.info(
             f"[update_onboarding_phase] Updating phase to {phase} for user {user_id}"
         )
 
@@ -139,12 +161,12 @@ async def update_onboarding_phase(
         )
 
         if result.modified_count == 0:
-            logger.warning(
+            log.warning(
                 f"[update_onboarding_phase] No document modified for user {user_id}"
             )
             raise HTTPException(status_code=404, detail="User not found")
 
-        logger.info(
+        log.info(
             f"[update_onboarding_phase] Successfully updated phase to {phase} for user {user_id}, modified_count={result.modified_count}"
         )
 
@@ -157,11 +179,11 @@ async def update_onboarding_phase(
                     "data": {"phase": phase},
                 },
             )
-            logger.info(
+            log.info(
                 f"[update_onboarding_phase] Sent WebSocket notification for phase update to {phase}"
             )
         except Exception as ws_error:
-            logger.warning(
+            log.warning(
                 f"[update_onboarding_phase] Failed to send WebSocket update: {ws_error}"
             )
 
@@ -174,7 +196,7 @@ async def update_onboarding_phase(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating onboarding phase: {str(e)}", exc_info=True)
+        log.error(f"Error updating onboarding phase: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update onboarding phase")
 
 
@@ -186,6 +208,11 @@ async def update_user_preferences(
     Update user's onboarding preferences.
     This can be used from the settings page to update preferences after onboarding.
     """
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={"operation": "update_personality"},
+    )
+
     try:
         updated_user = await update_onboarding_preferences(user["user_id"], preferences)
 
@@ -197,7 +224,7 @@ async def update_user_preferences(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error updating preferences: {str(e)}", exc_info=True)
+        log.error(f"Error updating preferences: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
 
@@ -210,7 +237,11 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
     """
     try:
         user_id = user.get("user_id")
-        logger.info(
+        log.set(
+            user={"id": user_id},
+            onboarding={"operation": "get_personalization"},
+        )
+        log.info(
             f"[get_onboarding_personalization] Fetching personalization for user {user_id}"
         )
         user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
@@ -222,7 +253,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
         user_bio = onboarding.get("user_bio", "")
         # Check the phase to determine if personalization is complete
         phase = onboarding.get("phase", "initial")
-        logger.info(
+        log.info(
             f"[get_onboarding_personalization] User {user_id} has phase: {phase}, bio_status: {onboarding.get('bio_status')}"
         )
         has_personalization = phase in [
@@ -266,9 +297,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                         }
                     )
             except Exception as e:
-                logger.error(
-                    f"Error fetching workflow {wf_id}: {str(e)}", exc_info=True
-                )
+                log.error(f"Error fetching workflow {wf_id}: {str(e)}", exc_info=True)
 
         # Determine what bio to show based on bio_status
         bio_status = onboarding.get("bio_status", "pending")
@@ -314,7 +343,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching personalization: {str(e)}", exc_info=True)
+        log.error(f"Error fetching personalization: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail="Failed to fetch personalization data"
         )

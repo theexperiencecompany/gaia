@@ -19,7 +19,7 @@ import favicon
 import tldextract
 from bs4 import BeautifulSoup
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import FAVICON_CACHE_TTL
 from app.db.redis import get_cache, set_cache
 
@@ -64,7 +64,7 @@ def _try_favicon_library_sync(url: str) -> str | None:
         start = time.perf_counter()
         icons = favicon.get(url, timeout=FAVICON_LIB_TIMEOUT)
         elapsed = (time.perf_counter() - start) * 1000
-        logger.debug(f"favicon.get() took {elapsed:.1f}ms for {url}")
+        log.debug(f"favicon.get() took {elapsed:.1f}ms for {url}")
 
         if not icons:
             return None
@@ -94,7 +94,7 @@ def _try_favicon_library_sync(url: str) -> str | None:
         return valid_icons[0].url
 
     except Exception as e:
-        logger.debug(f"favicon library failed for {url}: {e}")
+        log.debug(f"favicon library failed for {url}: {e}")
     return None
 
 
@@ -179,7 +179,7 @@ async def _validate_favicon_url(url: str) -> bool:
             content_type = response.headers.get("content-type", "").lower()
             return "image" in content_type
     except Exception as e:
-        logger.debug(f"Favicon validation failed for {url}: {e}")
+        log.debug(f"Favicon validation failed for {url}: {e}")
         return False
 
 
@@ -205,7 +205,7 @@ async def _try_html_link_parsing(url: str) -> str | None:
             return _select_best_icon(icons)
 
     except Exception as e:
-        logger.debug(f"HTML link parsing failed for {url}: {e}")
+        log.debug(f"HTML link parsing failed for {url}: {e}")
     return None
 
 
@@ -233,13 +233,13 @@ async def _try_google_favicon_service(domain: str) -> str | None:
             # Real favicons are typically larger. Skip if too small.
             content_length = response.headers.get("content-length", "")
             if content_length and int(content_length) < 400:
-                logger.debug(f"Google favicon too small for {domain}, likely default")
+                log.debug(f"Google favicon too small for {domain}, likely default")
                 return None
 
             return favicon_url
 
     except Exception as e:
-        logger.debug(f"Google favicon service failed for {domain}: {e}")
+        log.debug(f"Google favicon service failed for {domain}: {e}")
     return None
 
 
@@ -256,7 +256,7 @@ async def _fetch_favicon_impl(server_url: str) -> str | None:
     url = _get_root_domain_url(server_url)
     extracted = tldextract.extract(server_url)
     domain = extracted.top_domain_under_public_suffix
-    logger.debug(f"Fetching favicon for domain: {domain}")
+    log.debug(f"Fetching favicon for domain: {domain}")
 
     # For non-Smithery domains, just return Google S2 URL directly - no need to fetch
     if domain != "smithery.ai":
@@ -275,7 +275,7 @@ async def _fetch_favicon_impl(server_url: str) -> str | None:
             return result
         if await _validate_favicon_url(result):
             return result
-        logger.debug(f"Favicon library result failed validation: {result}")
+        log.debug(f"Favicon library result failed validation: {result}")
 
     # Try standard /favicon.ico path
     result = await _try_standard_favicon(url)
@@ -291,7 +291,7 @@ async def _fetch_favicon_impl(server_url: str) -> str | None:
         # Only validate unknown extensions
         if await _validate_favicon_url(result):
             return result
-        logger.debug(f"HTML parsing result failed validation: {result}")
+        log.debug(f"HTML parsing result failed validation: {result}")
 
     return None
 
@@ -304,6 +304,7 @@ async def fetch_favicon_from_url(server_url: str) -> str | None:
         Favicon URL string or None if not found
     """
     cache_key = _get_domain_cache_key(server_url)
+    log.set(server_url=server_url, favicon_cache_key=cache_key)
 
     try:
         # Check Redis cache first
@@ -320,5 +321,5 @@ async def fetch_favicon_from_url(server_url: str) -> str | None:
         return result
 
     except Exception as e:
-        logger.warning(f"Failed to fetch favicon for {server_url}: {e}")
+        log.warning(f"Failed to fetch favicon for {server_url}: {e}")
         return None

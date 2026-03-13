@@ -1,3 +1,4 @@
+import { buildQueryString, normalizeListResponse } from "@shared/api";
 import { apiService } from "@/lib/api";
 import type {
   BulkMoveRequest,
@@ -29,36 +30,10 @@ export const todoApi = {
 
   getAllTodos: async (filters?: TodoFilters): Promise<Todo[]> => {
     try {
-      const params = new URLSearchParams();
-      if (filters) {
-        Object.entries(filters).forEach(([key, value]) => {
-          if (value != null && value !== "") {
-            // Convert skip/limit to page/per_page for new API
-            if (key === "skip" && filters.limit) {
-              const page = Math.floor(Number(value) / filters.limit) + 1;
-              params.append("page", String(page));
-            } else if (key === "limit") {
-              params.append("per_page", String(value));
-            } else if (key !== "skip") {
-              params.append(key, String(value));
-            }
-          }
-        });
-      }
       const response = await apiService.get<TodoListResponse | Todo[]>(
-        `/todos?${params.toString()}`,
+        `/todos${buildQueryString(filters as Record<string, string | number | boolean | null | undefined>)}`,
       );
-      // Handle new API response format
-      if (
-        typeof response === "object" &&
-        response !== null &&
-        "data" in response &&
-        Array.isArray(response.data)
-      ) {
-        return response.data;
-      }
-      // Fallback for old format
-      return response as Todo[];
+      return normalizeListResponse(response);
     } catch (error) {
       console.error("Error fetching todos:", error);
       throw error;
@@ -176,16 +151,7 @@ export const todoApi = {
         silent: true, // Search operations are usually silent
       },
     );
-    // Handle new API response format
-    if (
-      typeof response === "object" &&
-      response !== null &&
-      "data" in response &&
-      Array.isArray(response.data)
-    ) {
-      return response.data;
-    }
-    return response as Todo[];
+    return normalizeListResponse(response);
   },
 
   // New optimized counts endpoint
@@ -209,17 +175,7 @@ export const todoApi = {
         { silent: true },
       );
 
-      let todos: Todo[] = [];
-      if (
-        typeof response === "object" &&
-        response !== null &&
-        "data" in response &&
-        Array.isArray(response.data)
-      ) {
-        todos = response.data;
-      } else {
-        todos = response as Todo[];
-      }
+      const todos: Todo[] = normalizeListResponse(response);
 
       const labelCounts: Record<string, number> = {};
 
@@ -261,16 +217,7 @@ export const todoApi = {
       const response = await apiService.get<TodoListResponse | Todo[]>(
         `/todos?${params.toString()}`,
       );
-      // Handle new API response format
-      if (
-        typeof response === "object" &&
-        response !== null &&
-        "data" in response &&
-        Array.isArray(response.data)
-      ) {
-        return response.data;
-      }
-      return response as Todo[];
+      return normalizeListResponse(response);
     } catch (error) {
       console.error("Error fetching todos by label:", error);
       throw error;
@@ -300,16 +247,7 @@ export const todoApi = {
       const response = await apiService.get<TodoListResponse | Todo[]>(
         `/todos?${params.toString()}`,
       );
-      // Handle new API response format
-      if (
-        typeof response === "object" &&
-        response !== null &&
-        "data" in response &&
-        Array.isArray(response.data)
-      ) {
-        return response.data;
-      }
-      return response as Todo[];
+      return normalizeListResponse(response);
     } catch (error) {
       console.error("Error in semantic search:", error);
       throw error;

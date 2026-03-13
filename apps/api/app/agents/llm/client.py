@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Sequence
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_FREE_MODEL_NAME,
@@ -138,6 +138,13 @@ def init_llm(
             raise RuntimeError(
                 "OpenRouter API key not configured. Free LLM requires OPENROUTER_API_KEY."
             )
+        log.set(
+            llm={
+                "model": DEFAULT_GEMINI_FREE_MODEL_NAME,
+                "provider": "openrouter",
+                "is_free": True,
+            }
+        )
         return ChatOpenAI(
             model=DEFAULT_GEMINI_FREE_MODEL_NAME,
             temperature=0.1,
@@ -185,6 +192,15 @@ def init_llm(
     primary_provider = ordered_providers[0]
     alternative_providers = ordered_providers[1:] if fallback_enabled else []
 
+    log.set(
+        llm={
+            "model": PROVIDER_MODELS.get(
+                primary_provider["name"], primary_provider["name"]
+            ),
+            "provider": primary_provider["name"],
+            "is_free": False,
+        }
+    )
     return _create_configurable_llm(primary_provider, alternative_providers)
 
 
@@ -370,10 +386,10 @@ async def invoke_with_fallback(
             provider_name = type(llm).__name__
             last_error = e
             if i < len(llm_chain) - 1:
-                logger.warning(
+                log.warning(
                     f"LLM {provider_name} failed, falling back to next provider: {e}"
                 )
             else:
-                logger.error("All LLM providers failed. Last error: {}", str(e))
+                log.error(f"All LLM providers failed. Last error: {e}")
 
     raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")

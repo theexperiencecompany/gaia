@@ -1,296 +1,134 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+GAIA is a proactive personal AI assistant — full-stack Nx monorepo with a Next.js frontend, FastAPI/LangGraph backend, React Native mobile app, Electron desktop app, and Discord/Slack/Telegram bots.
 
-## Overview
+## mise
 
-GAIA is a proactive personal AI assistant built as a full-stack monorepo using Nx. The system consists of:
-
-- **Frontend**: Next.js web app, Electron desktop app, React Native mobile app
-- **Backend**: FastAPI Python API with LangGraph agents
-- **Bots**: Discord, Slack, and Telegram integrations
-- **Infrastructure**: PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ
-
-## Development Commands
-
-### Setup
+`mise` is the task runner and tool version manager for this repo. It manages Node, Python, uv, and nx versions, and defines all development tasks.
 
 ```bash
-# Install dependencies (uses pnpm)
+mise tasks          # List all available tasks with descriptions
+mise run <task>     # Run a task (e.g. mise run lint, mise run dev)
+mise //apps/api:lint  # Run a task in a sub-project from the root
+```
+
+Pre-commit hooks are managed via **prek** (installed by mise). Install once with `mise run pre-commit:install`. Hooks run automatically on `git commit` — to run manually: `mise run pre-commit`.
+
+## Key Commands
+
+```bash
+# Install JS dependencies
 pnpm install
 
-# Sync Python dependencies for API
+# Sync Python dependencies
 nx run api:sync
-
-# Sync Python dependencies for voice agent
 nx run voice-agent:sync
-```
 
-### Running Applications
+# Run apps
+nx dev web          # Next.js (Turbopack)
+nx dev api          # FastAPI (hot reload, port 8000)
+nx worker api       # ARQ background worker
+nx dev desktop      # Electron + Next.js
+nx dev mobile       # React Native (Expo)
+nx dev voice-agent  # LiveKit voice worker
 
-```bash
-# Run web app (Next.js with Turbopack)
-nx dev web
+# Docker (from infra/docker/)
+docker compose up -d                       # infra only
+docker compose --profile backend up -d    # + API
+docker compose --profile all up -d        # everything
 
-# Run desktop app (Electron + Next.js)
-nx dev desktop
-
-# Run mobile app (React Native)
-nx dev mobile
-
-# Run API backend (FastAPI with hot reload)
-nx dev api
-
-# Run ARQ worker for background tasks
-nx worker api
-
-# Run voice agent
-nx dev voice-agent
-```
-
-### Docker Development
-
-```bash
-# Start all services
-cd infra/docker && docker compose up
-
-# Start specific profiles
-docker compose --profile backend up  # Backend + dependencies
-docker compose --profile worker up   # Worker + dependencies
-docker compose --profile voice up    # Voice agent
-```
-
-### Testing & Quality
-
-```bash
-# Lint all projects
+# Quality (run after changes — see After Major Changes below)
 nx run-many -t lint
-
-# Lint and fix
-nx run-many -t lint:fix
-
-# Format code
+nx run-many -t type-check
 nx run-many -t format
 
-# Check formatting
-nx run-many -t format:check
-
-# Type check
-nx run-many -t type-check
-
-# Build all projects
-nx run-many -t build
-
-# Build specific project
+# Build
 nx build web
 nx build api
-```
 
-### Python-Specific Commands
-
-```bash
-# API linting (ruff)
-nx lint api
-
-# API formatting
-nx format api
-
-# API type checking (mypy)
-nx type-check api
-
-# Run API tests
+# API tests
 cd apps/api && uv run pytest
 ```
 
-### Project Management
-
-```bash
-# Clean build artifacts
-nx clean web
-nx clean api
-
-# Run multiple targets in parallel (max 3 by default)
-nx run-many -t build lint type-check
-
-# View task graph
-nx graph
-```
-
-## Architecture
-
-### Monorepo Structure
-
-```
-apps/
-  web/          - Next.js web application
-  desktop/      - Electron desktop app
-  mobile/       - React Native mobile app
-  api/          - FastAPI backend with LangGraph agents
-  voice-agent/  - Voice processing worker
-  bots/
-    discord/    - Discord bot
-    slack/      - Slack bot
-    telegram/   - Telegram bot
-  docs/         - Documentation site
-
-libs/
-  shared/       - Shared Python utilities (gaia-shared package)
-    py/         - Python shared code
-    ts/         - TypeScript shared code
-```
-
-### Frontend (Web/Desktop)
-
-**Tech Stack**: Next.js 16, React 19, TypeScript, Zustand, TailwindCSS, Biome
-
-**Key Directories**:
-
-- `src/app/` - Next.js App Router pages (organized by route groups)
-- `src/features/` - Feature modules (chat, todo, calendar, workflows, integrations, etc.)
-- `src/stores/` - Zustand state management stores
-- `src/components/` - Reusable React components
-- `src/lib/` - Utility functions and configurations
-- `src/types/` - TypeScript type definitions
-
-**State Management**: Uses Zustand for global state. Each feature can have its own store in `src/stores/` or `src/features/{feature}/stores/`.
-
-**Styling**: TailwindCSS with custom configuration. Uses Biome for linting/formatting instead of ESLint/Prettier.
-
-**Desktop App**: The Electron app uses the Next.js standalone build output to bundle the web app for desktop.
-
-### Backend (API)
-
-**Tech Stack**: FastAPI, LangGraph, Python 3.11+, PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ
-
-**Key Directories**:
-
-- `app/main.py` - Application entry point
-- `app/core/` - Core application logic (app factory, middleware, lifespan)
-- `app/api/v1/` - API routes and endpoints
-- `app/agents/` - LangGraph agent system
-  - `core/` - Core agent logic (agent.py, state.py, graph_manager.py, nodes/, subagents/)
-  - `tools/` - Agent tools
-  - `prompts/` - Agent prompts
-  - `memory/` - Agent memory management
-  - `llm/` - LLM integrations
-- `app/models/` - Database models
-- `app/schemas/` - Pydantic schemas
-- `app/services/` - Business logic services
-- `app/db/` - Database clients (postgresql, mongodb, redis, chroma, rabbitmq)
-- `app/workers/` - Background task workers
-- `app/config/` - Configuration and settings
-- `app/utils/` - Utility functions
-
-**Database Setup**: The API depends on PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ. Use Docker Compose for local development.
-
-**Background Tasks**: Uses ARQ (Redis-based task queue) for async job processing. Run with `nx worker api`.
-
-**Dependency Management**: Uses `uv` for Python package management. Run `nx run api:sync` to install dependencies.
-
-### Mobile App
-
-**Tech Stack**: React Native, Expo, TypeScript
-
-Similar structure to web app with React Native components. Uses React Navigation for routing.
-
-### Shared Libraries
-
-**Python Shared (`libs/shared/`)**: Common utilities used across Python apps (API, voice-agent, bots). Includes logging, config, and Pydantic models.
-
-**Install**: The `gaia-shared` package is automatically available to Python apps via workspace dependencies.
-
-## Code Style Guidelines
+## Code Style
 
 ### TypeScript/JavaScript
 
-- Use Biome for linting and formatting (configured in `biome.json`)
-- **No inline imports** - all imports must be at the top of the file
-- **Never use `any` type** - always provide proper type definitions
-- Line width: 80 characters
-- Indentation: 2 spaces
-- Use strict TypeScript configuration
-- No unnecessarily verbose comments - code should be self-documenting
+- Package manager is **pnpm** — never use npm or yarn
+- **Biome** for linting/formatting — not ESLint/Prettier
+- **No inline imports** — all imports at the top of the file
+- **Never use `any`** — always provide proper type definitions
+- **Before creating a new type, search `src/types/` first** — do not duplicate existing types
+- Path alias `@/` maps to `src/` in web/desktop
 
 ### Python
 
-- Use Ruff for linting and formatting (configured in `ruff.toml` or `pyproject.toml`)
-- **No inline imports** - all imports must be at the top of the file
-- **Use strict types** - always provide type annotations for function parameters and return values
-- Follow PEP 8 style guide
-- Use type hints extensively (enforced by mypy)
-- No unnecessarily verbose comments - code should be self-documenting
+- **No inline imports** — all imports at the top of the file
+- **Full type annotations required** on all functions and methods (enforced by mypy)
+- **Ruff** for linting/formatting — not black/flake8/isort
 
-### General
+## DRY Principles
 
-- Follow feature-based organization - group related files by feature, not by type
-- Use absolute imports with path aliases (`@/` for web/desktop, configured in tsconfig)
-- Keep components small and focused on a single responsibility
+**Never duplicate logic across the monorepo.** Before writing new code, search for existing utilities, types, hooks, or services that already solve the problem.
 
-## Key Technologies
+- **Shared Python logic** belongs in `libs/shared/py/` — import it in `apps/api`, `apps/voice-agent`, and `apps/bots` via the `gaia-shared` package.
+- **Shared TypeScript logic** belongs in `libs/shared/ts/` — consumed as `@gaia/shared` workspace package.
+- **Shared React/RN components or hooks** that are used across `web`, `desktop`, and `mobile` should live in `libs/shared/ts/src/` or a dedicated lib, not duplicated in each app.
+- When extracting shared code, update all call sites — do not leave dead duplicates behind.
+- If you find duplicated logic while working, flag it and consolidate it before adding more.
 
-### Frontend
+## No Dead Code
 
-- **Next.js 16**: App Router with React Server Components
-- **React 19**: Latest React features
-- **Zustand**: Lightweight state management
-- **TailwindCSS**: Utility-first CSS
-- **Biome**: Fast linter and formatter (replaces ESLint + Prettier)
-- **TypeScript**: Strict type checking
-- **Electron**: Desktop app wrapper (electron-vite for build)
+**After every refactor or change, clean up before considering work complete.**
 
-### Backend
+- Remove unused imports, variables, functions, types, and files — do not leave them commented out or with `_` prefixes
+- When moving logic to shared libs, delete the original copies from all previous locations
+- When replacing an implementation, remove the old one entirely — do not keep it "just in case"
+- When renaming or restructuring, hunt down all references and update or remove them
+- If unsure whether something is still used, **grep for it** — do not assume it's dead or alive
 
-- **FastAPI**: Modern Python web framework
-- **LangGraph**: Agent orchestration framework
-- **PostgreSQL**: Primary relational database
-- **MongoDB**: Document storage for flexible data
-- **Redis**: Caching and task queue (ARQ)
-- **ChromaDB**: Vector database for embeddings
-- **RabbitMQ**: Message broker
-- **Pydantic**: Data validation and settings
-- **uv**: Fast Python package installer
+## Working Style
 
-## Testing
+### Subagents & Parallelism
 
-For Python tests, run pytest directly in the project directory:
+**Always spawn subagents wherever possible** — for research, exploration, or independent tasks, use the Agent tool with specialized subagents in parallel. Don't do sequentially what can be done concurrently.
 
-```bash
-cd apps/api
-uv run pytest
-```
+### Deep Exploration
 
-## Environment Variables
+When investigating a bug, feature, or unfamiliar area of the codebase:
 
-Each app has its own `.env` file:
+- **Never assume the root cause** — trace the actual code path. Read the relevant files, follow imports, and verify your hypothesis before proposing a fix.
+- **Explore deeply** — use the `Explore` subagent for broad codebase discovery. For complex multi-file investigations, spawn multiple subagents to explore different layers in parallel.
+- **Explore the intricacies** — check edge cases, related config, middleware, environment variables, and cross-app interactions. Do not stop at the surface.
+- **Use relevant skills** — before starting any significant task, check if a skill applies (`writing-plans`, `accurate-testing`, `logging-best-practices`, `copywriting`, etc.) and invoke it via the `Skill` tool.
 
-- `apps/api/.env` - Backend configuration
-- `apps/web/.env.local` - Web app configuration
+### Task Tracking
 
-Refer to `.env.example` files in each directory for required variables.
+**Always create todos for multi-step work** — use TaskCreate at the start of any non-trivial task. Update status (`in_progress` → `completed`) as you go. Never leave tasks stale.
 
-## Docker
+### Planning
 
-Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`:
+- **Plans must go in `.agents/plans/`** — never create plan files anywhere else. This directory is gitignored.
+- **Plans must be comprehensive** — include architecture decisions, step-by-step implementation, edge cases, and rollback considerations before writing any code.
+- Use the `writing-plans` skill before starting any significant implementation.
 
-- `docker-compose.yml` - Development environment
-- `docker-compose.prod.yml` - Production environment
+### Testing
 
-## Release Management
+**Do NOT create test cases unless explicitly asked.** Do not add tests when fixing bugs or adding features unless the user specifically requests it.
 
-The project uses Nx release with Docker support. Release groups are configured in `nx.json`:
+### After Major Changes
 
-- **apps group**: `api`, `voice-agent` (published to ghcr.io)
-
-Build Docker images:
+Always run type-check and lint for every affected layer before considering work complete:
 
 ```bash
-nx docker:build api
-nx docker:build voice-agent
+# Backend
+nx type-check api
+nx lint api
+
+# Frontend
+nx run-many -t type-check --projects=web,desktop
+nx run-many -t lint --projects=web,desktop
 ```
-
-## Implementation Plans
-
-When creating implementation plans, store them in `.agents/plans/` directory. This folder is gitignored and used for planning documents before execution.
 
 ## Git Conventions
 
@@ -298,7 +136,7 @@ When creating implementation plans, store them in `.agents/plans/` directory. Th
 
 ## Common Issues
 
-- If Python dependencies are not resolving, run `nx run api:sync` or `nx run voice-agent:sync`
-- If you see Nx daemon issues, the daemon is disabled (`useDaemonProcess: false` in `nx.json`)
-- The web app uses standalone output mode for Electron bundling
-- Console logs are removed in production builds except for errors
+- Python deps not resolving → `nx run api:sync` or `nx run voice-agent:sync`
+- Nx daemon issues → daemon is disabled (`useDaemonProcess: false` in `nx.json`)
+- Web app uses `output: "standalone"` — required for Electron bundling, do not remove
+- Console logs are stripped in production builds (except `console.error`)

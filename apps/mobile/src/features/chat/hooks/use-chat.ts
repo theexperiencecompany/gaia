@@ -5,6 +5,8 @@ import { useShallow } from "zustand/react/shallow";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
 import { chatKeys, useConversationQuery } from "../api/queries";
+import type { AttachmentFile } from "../components/composer/attachment-preview";
+import type { ReplyToMessageData } from "../types";
 
 const EMPTY_MESSAGES: Message[] = [];
 
@@ -14,14 +16,23 @@ interface UseChatOptions {
   onNavigate?: (conversationId: string) => void;
 }
 
+export interface SendMessageOptions {
+  replyToMessage?: ReplyToMessageData | null;
+  selectedTool?: string | null;
+  toolCategory?: string | null;
+  selectedWorkflow?: { id: string; name: string } | null;
+  attachments?: AttachmentFile[];
+}
+
 interface UseChatReturn {
   messages: Message[];
   isTyping: boolean;
   isLoading: boolean;
   progress: string | null;
+  progressToolName: string | null;
   conversationId: string | null;
   flatListRef: React.RefObject<FlashListRef<Message> | null>;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, opts?: SendMessageOptions) => Promise<void>;
   cancelStream: () => void;
   scrollToBottom: () => void;
   refetch: () => Promise<void>;
@@ -85,6 +96,11 @@ export function useChat(
       ? streamingState.progress
       : null;
 
+  const progressToolName =
+    streamingState.conversationId === currentConversationId
+      ? streamingState.progressToolName
+      : null;
+
   useEffect(() => {
     if (cachedMessages && cachedMessages.length > 0 && currentConversationId) {
       chatApi.markConversationAsRead(currentConversationId);
@@ -106,15 +122,34 @@ export function useChat(
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, opts?: SendMessageOptions) => {
       cancelStream();
       const store = useChatStore.getState();
+
+      const replyToMessage = opts?.replyToMessage ?? null;
+      const selectedTool = opts?.selectedTool ?? null;
+      const toolCategory = opts?.toolCategory ?? null;
+      const selectedWorkflow = opts?.selectedWorkflow ?? null;
+      const attachments = opts?.attachments ?? [];
+
+      const uploadedFileIds = attachments
+        .filter((a) => a.fileId)
+        .map((a) => a.fileId as string);
+      const uploadedFileData = attachments
+        .filter((a) => a.fileId)
+        .map((a) => ({
+          fileId: a.fileId as string,
+          fileName: a.name,
+          contentType: a.mimeType,
+          fileSize: a.size,
+        }));
 
       const userMessage: Message = {
         id: `temp-user-${Date.now()}`,
         text,
         isUser: true,
         timestamp: new Date(),
+        replyToMessage: replyToMessage ?? undefined,
       };
 
       const aiMessage: Message = {
@@ -160,6 +195,12 @@ export function useChat(
             message: text,
             conversationId: apiConversationId,
             messages: [...existingMessages, userMessage],
+            fileIds: uploadedFileIds,
+            fileData: uploadedFileData,
+            selectedTool,
+            toolCategory,
+            workflowId: selectedWorkflow?.id ?? null,
+            replyToMessage: replyToMessage ?? null,
           },
           {
             onConversationCreated: (
@@ -210,8 +251,11 @@ export function useChat(
                   streamingResponseRef.current,
                 );
             },
-            onProgress: (message) => {
-              useChatStore.getState().setStreamingState({ progress: message });
+            onProgress: (message, toolName) => {
+              useChatStore.getState().setStreamingState({
+                progress: message,
+                progressToolName: toolName ?? null,
+              });
             },
             onFollowUpActions: (actions) => {
               useChatStore
@@ -236,6 +280,7 @@ export function useChat(
                 isStreaming: false,
                 conversationId: null,
                 progress: null,
+                progressToolName: null,
               });
               abortControllerRef.current = null;
             },
@@ -246,6 +291,7 @@ export function useChat(
                 isStreaming: false,
                 conversationId: null,
                 progress: null,
+                progressToolName: null,
               });
               useChatStore
                 .getState()
@@ -287,6 +333,7 @@ export function useChat(
     isTyping,
     isLoading,
     progress,
+    progressToolName,
     conversationId: currentConversationId,
     flatListRef,
     sendMessage,
