@@ -94,7 +94,7 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
 
     // Sort tools within each category (unlocked first, then by name)
     Object.keys(categorized).forEach((category) => {
-      categorized[category].sort((a, b) => {
+      categorized[category] = categorized[category].toSorted((a, b) => {
         // Unlocked tools first
         if (a.isLocked !== b.isLocked) {
           return a.isLocked ? 1 : -1;

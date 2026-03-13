@@ -76,6 +76,92 @@ function AppConnectionsIcons({
   );
 }
 
+function CompanyHeader({
+  name,
+  logo,
+  description,
+  isGaia = false,
+}: {
+  name: string;
+  logo: string;
+  description: string;
+  isGaia?: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "rounded-2xl px-4 py-3 text-center transition-all",
+        isGaia ? "bg-primary/5 ring-1 ring-primary/15" : "bg-transparent",
+      ].join(" ")}
+    >
+      <div className="mb-3 flex items-center justify-center">
+        <Image
+          src={logo}
+          alt={`${name} Logo`}
+          width={40}
+          height={40}
+          className="rounded-xl"
+        />
+      </div>
+      <h3
+        className={`mb-1 text-xl font-semibold ${isGaia ? "text-white" : "text-zinc-300"}`}
+      >
+        {name}
+      </h3>
+      <p className={`text-xs ${isGaia ? "text-zinc-400" : "text-zinc-500"}`}>
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function FeatureStatusCell({
+  status,
+  highlight = false,
+}: {
+  status: FeatureStatus;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "flex flex-col items-center gap-2 rounded-lg px-2 py-1",
+        highlight ? "bg-primary/4" : "",
+      ].join(" ")}
+    >
+      <span
+        className={`max-w-48 text-center text-sm leading-snug ${
+          highlight ? "font-medium text-primary" : "text-zinc-500"
+        }`}
+      >
+        {status.description}
+      </span>
+    </div>
+  );
+}
+
+function FeatureRow({ feature }: { feature: ComparisonFeature }) {
+  return (
+    <div className="group grid grid-cols-4 items-center gap-6 rounded-xl border-b border-white/5 px-2 py-2.5 transition-colors hover:bg-zinc-800/40">
+      <div className="flex items-center gap-3">
+        {feature.icon}
+        <span className="text-base font-medium text-zinc-100">
+          {feature.title}
+        </span>
+      </div>
+      <div className="flex items-center justify-center">
+        <FeatureStatusCell status={feature.gaia} highlight />
+      </div>
+      <div className="flex items-center justify-center">
+        <FeatureStatusCell status={feature.chatgpt} />
+      </div>
+      <div className="flex items-center justify-center">
+        <FeatureStatusCell status={feature.gemini} />
+      </div>
+    </div>
+  );
+}
+
 export function ComparisonTable({
   integrations = [],
   isLoading = false,
@@ -161,92 +247,6 @@ export function ComparisonTable({
       gemini: { description: "No workflows." },
     },
   ];
-
-  function CompanyHeader({
-    name,
-    logo,
-    description,
-    isGaia = false,
-  }: {
-    name: string;
-    logo: string;
-    description: string;
-    isGaia?: boolean;
-  }) {
-    return (
-      <div
-        className={[
-          "rounded-2xl px-4 py-3 text-center transition-all",
-          isGaia ? "bg-primary/5 ring-1 ring-primary/15" : "bg-transparent",
-        ].join(" ")}
-      >
-        <div className="mb-3 flex items-center justify-center">
-          <Image
-            src={logo}
-            alt={`${name} Logo`}
-            width={40}
-            height={40}
-            className="rounded-xl"
-          />
-        </div>
-        <h3
-          className={`mb-1 text-xl font-semibold ${isGaia ? "text-white" : "text-zinc-300"}`}
-        >
-          {name}
-        </h3>
-        <p className={`text-xs ${isGaia ? "text-zinc-400" : "text-zinc-500"}`}>
-          {description}
-        </p>
-      </div>
-    );
-  }
-
-  function FeatureStatusCell({
-    status,
-    highlight = false,
-  }: {
-    status: FeatureStatus;
-    highlight?: boolean;
-  }) {
-    return (
-      <div
-        className={[
-          "flex flex-col items-center gap-2 rounded-lg px-2 py-1",
-          highlight ? "bg-primary/4" : "",
-        ].join(" ")}
-      >
-        <span
-          className={`max-w-48 text-center text-sm leading-snug ${
-            highlight ? "font-medium text-primary" : "text-zinc-500"
-          }`}
-        >
-          {status.description}
-        </span>
-      </div>
-    );
-  }
-
-  function FeatureRow({ feature }: { feature: ComparisonFeature }) {
-    return (
-      <div className="group grid grid-cols-4 items-center gap-6 rounded-xl border-b border-white/5 px-2 py-2.5 transition-colors hover:bg-zinc-800/40">
-        <div className="flex items-center gap-3">
-          {feature.icon}
-          <span className="text-base font-medium text-zinc-100">
-            {feature.title}
-          </span>
-        </div>
-        <div className="flex items-center justify-center">
-          <FeatureStatusCell status={feature.gaia} highlight />
-        </div>
-        <div className="flex items-center justify-center">
-          <FeatureStatusCell status={feature.chatgpt} />
-        </div>
-        <div className="flex items-center justify-center">
-          <FeatureStatusCell status={feature.gemini} />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="mx-auto w-full max-w-6xl py-16">

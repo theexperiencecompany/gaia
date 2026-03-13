@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { TelegramIcon } from "@/components";
+import { TelegramIcon } from "@/components/shared/icons";
 import {
   SettingsPage,
   SettingsRow,

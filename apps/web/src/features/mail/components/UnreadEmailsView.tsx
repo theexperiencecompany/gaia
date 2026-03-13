@@ -54,7 +54,9 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
     >
       {isLoading ? (
         <div className="flex h-full items-center justify-center">
-          <Loading02Icon className="h-8 w-8 animate-spin text-zinc-500" />
+          <div className="animate-spin">
+            <Loading02Icon className="h-8 w-8 text-zinc-500" />
+          </div>
         </div>
       ) : (
         <EmailListCard

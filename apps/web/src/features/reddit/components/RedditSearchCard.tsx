@@ -3,7 +3,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { ArrowUp02Icon, BubbleChatIcon } from "@icons";
 import Link from "next/link";
-import { RedditIcon } from "@/components";
+import { RedditIcon } from "@/components/shared/icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import type { RedditSearchData } from "@/types/features/redditTypes";
 

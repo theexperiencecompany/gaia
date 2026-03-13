@@ -3,7 +3,7 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
-import { GoogleCalendarIcon } from "@/components";
+import { GoogleCalendarIcon } from "@/components/shared/icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import type { CalendarFetchData } from "@/types/features/calendarTypes";
 import { groupFetchDataByDate } from "@/utils/calendar/eventGrouping";

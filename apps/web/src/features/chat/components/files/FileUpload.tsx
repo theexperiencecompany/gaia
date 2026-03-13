@@ -365,7 +365,9 @@ export default function FileUpload({
               </>
             ) : isUploading ? (
               <>
-                <Loading02Icon className="mb-4 h-10 w-10 animate-spin text-primary" />
+                <div className="mb-4 animate-spin">
+                  <Loading02Icon className="h-10 w-10 text-primary" />
+                </div>
                 <p className="mb-2 text-sm font-medium text-white">
                   Uploading files...
                 </p>

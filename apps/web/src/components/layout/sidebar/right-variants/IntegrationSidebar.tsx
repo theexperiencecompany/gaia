@@ -16,7 +16,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import React, { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { RaisedButton, SidebarHeader } from "@/components/ui";
+import { RaisedButton } from "@/components/ui/raised-button";
+import { SidebarHeader } from "@/components/ui/sidebar";
 import { SidebarContent } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -175,44 +176,51 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   };
 
   const handleDisconnect = () => {
-    if (isConnected && onDisconnect) {
-      setShowDisconnectDialog(true);
-    }
+    if (!isConnected || !onDisconnect) return;
+    setShowDisconnectDialog(true);
   };
 
   const confirmDisconnect = async () => {
-    if (onDisconnect) {
-      setIsDisconnecting(true);
-      try {
-        await onDisconnect(integration.id);
-      } finally {
-        setIsDisconnecting(false);
-        setShowDisconnectDialog(false);
-      }
+    if (!onDisconnect) return;
+    setIsDisconnecting(true);
+    try {
+      await onDisconnect(integration.id);
+    } finally {
+      setIsDisconnecting(false);
+      setShowDisconnectDialog(false);
     }
   };
 
   const handleDelete = () => {
-    if (onDelete) {
-      setShowDeleteDialog(true);
-    }
+    if (!onDelete) return;
+    setShowDeleteDialog(true);
   };
 
   const confirmDelete = async () => {
-    if (onDelete) {
-      setIsDeleting(true);
-      try {
-        await onDelete(integration.id);
-      } finally {
-        setIsDeleting(false);
-        setShowDeleteDialog(false);
-      }
+    if (!onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(integration.id);
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
     }
   };
 
   const handlePublish = () => {
     if (isPublishing) return;
     setShowPublishDialog(true);
+  };
+
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/marketplace/${integration.slug}`,
+      );
+      toast.success("Link copied to clipboard!");
+    } catch {
+      toast.error("Failed to copy link to clipboard");
+    }
   };
 
   const confirmPublish = async () => {
@@ -441,16 +449,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   isIconOnly={useIconOnly}
                   className="w-full"
                   color="default"
-                  onPress={async () => {
-                    try {
-                      await navigator.clipboard.writeText(
-                        `${window.location.origin}/marketplace/${integration.slug}`,
-                      );
-                      toast.success("Link copied to clipboard!");
-                    } catch {
-                      toast.error("Failed to copy link to clipboard");
-                    }
-                  }}
+                  onPress={handleShare}
                   aria-label="Share"
                   startContent={<Share08Icon width={18} height={18} />}
                 >

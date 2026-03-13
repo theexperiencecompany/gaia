@@ -1,6 +1,7 @@
 "use client";
 
 import { useDrag } from "@use-gesture/react";
+import nextDynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
@@ -13,10 +14,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
 import { useUser } from "@/features/auth/hooks/useUser";
 import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
-import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
 import { isOnboardingPhaseUpdateMessage } from "@/features/onboarding/types/websocket";
-import { GlobalPricingModal } from "@/features/pricing/components/GlobalPricingModal";
-import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
@@ -33,6 +31,22 @@ import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
 
 export const dynamic = "force-dynamic";
+
+const HoloCardModal = nextDynamic(
+  () => import("@/features/onboarding/components/HoloCardModal"),
+  { ssr: false },
+);
+const GlobalPricingModal = nextDynamic(
+  () =>
+    import("@/features/pricing/components/GlobalPricingModal").then((m) => ({
+      default: m.GlobalPricingModal,
+    })),
+  { ssr: false },
+);
+const CommandMenu = nextDynamic(
+  () => import("@/features/search/components/CommandMenu"),
+  { ssr: false },
+);
 
 const HeaderSidebarTrigger = () => {
   return (

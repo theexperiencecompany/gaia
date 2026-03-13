@@ -18,6 +18,8 @@ import { usePlatform } from "@/hooks/ui/usePlatform";
 import { toast } from "@/lib/toast";
 import { useIntegrations } from "../hooks/useIntegrations";
 
+const SERVER_URL_REGEX = /^https?:\/\/.+/;
+
 interface MCPIntegrationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -71,7 +73,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
           custom: (value) => {
             if (!value || typeof value !== "string")
               return "Server URL is required";
-            if (!/^https?:\/\/.+/.test(value)) {
+            if (!SERVER_URL_REGEX.test(value)) {
               return "Please enter a valid URL starting with http:// or https://";
             }
             return null;
@@ -127,26 +129,26 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
     onClose();
   }, [resetForm, onClose]);
 
-  // Keyboard shortcut handler for Cmd/Ctrl + Enter to submit
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (!isOpen || loading) return;
-
-      const modifierKey = isMac ? e.metaKey : e.ctrlKey;
-      if (modifierKey && e.key === "Enter") {
-        e.preventDefault();
-        handleSubmit();
-      }
-    },
-    [isOpen, loading, isMac, handleSubmit],
-  );
+  const keyDownStateRef = useRef({ loading, isMac, handleSubmit });
+  keyDownStateRef.current = { loading, isMac, handleSubmit };
 
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [isOpen, handleKeyDown]);
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const { loading: isLoading, isMac: mac, handleSubmit: submit } =
+        keyDownStateRef.current;
+      if (isLoading) return;
+      const modifierKey = mac ? e.metaKey : e.ctrlKey;
+      if (modifierKey && e.key === "Enter") {
+        e.preventDefault();
+        submit();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
 
   return (
     <Modal

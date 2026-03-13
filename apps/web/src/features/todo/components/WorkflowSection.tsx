@@ -159,7 +159,7 @@ export default function WorkflowSection({
           </h3>
           {isGenerating && (
             <span className="flex items-center gap-1 text-xs text-primary ml-auto">
-              <SparklesIcon className="h-3 w-3 animate-pulse" />
+              <div className="animate-pulse"><SparklesIcon className="h-3 w-3" /></div>
               Generating...
             </span>
           )}
@@ -177,9 +177,9 @@ export default function WorkflowSection({
                 isIconOnly
                 isDisabled={isGenerating}
               >
-                <UndoIcon
-                  className={`h-4 w-4 text-zinc-400 ${isGenerating ? "animate-spin" : ""}`}
-                />
+                <div className={isGenerating ? "animate-spin" : ""}>
+                  <UndoIcon className="h-4 w-4 text-zinc-400" />
+                </div>
               </Button>
             </Tooltip>
             {hasWorkflow && (

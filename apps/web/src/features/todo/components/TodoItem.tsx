@@ -74,27 +74,28 @@ export default function TodoItem({
     onUpdate(todo.id, { completed: newCompletedState });
   };
 
+  const todoProject = projects?.find((p) => p.id === todo.project_id);
+
   const isOverdue =
     todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed;
 
-  const isToday =
-    todo.due_date &&
-    !todo.completed &&
-    (() => {
-      const d = new Date(todo.due_date);
-      const now = new Date();
-      return (
-        d.getFullYear() === now.getFullYear() &&
-        d.getMonth() === now.getMonth() &&
-        d.getDate() === now.getDate()
-      );
-    })();
+  const isToday = (() => {
+    if (!todo.due_date || todo.completed) return false;
+    const d = new Date(todo.due_date);
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  })();
 
   return (
     <div
       className={`pointer-events-auto w-full cursor-pointer p-4 pl-5 mb-0 transition-all ${
         isSelected ? "bg-primary/5 ring-2 ring-primary" : "hover:bg-content2/70"
       } ${todo.completed ? "opacity-30" : ""}`}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
       onClick={() => {
         onClick?.(todo);
       }}
@@ -150,21 +151,18 @@ export default function TodoItem({
                 </Chip>
               )}
 
-              {projects?.find((project) => project?.id === todo.project_id) && (
+              {todoProject && (
                 <Chip
                   size="sm"
                   variant="flat"
                   className=" text-zinc-400 px-1"
                   radius="sm"
-                  style={{
-                    color: projects?.find((p) => p.id === todo.project_id)
-                      ?.color,
-                  }}
+                  style={{ color: todoProject.color }}
                   startContent={
                     <Folder02Icon width={15} height={15} className="mx-1" />
                   }
                 >
-                  {projects?.find((p) => p.id === todo.project_id)?.name}
+                  {todoProject.name}
                 </Chip>
               )}
 

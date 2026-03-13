@@ -4,7 +4,7 @@ import { Spinner } from "@heroui/spinner";
 import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { RaisedButton } from "@/components";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
 import type {
   PersonalizationData,
@@ -55,7 +55,7 @@ export default function ContextGatheringLoader({
     PersonalizationProgressMessage["data"] | null
   >(null);
 
-  const dismissalKey = `personalization-dismissed-${user.email || "unknown"}`;
+  const dismissalKey = `personalization-dismissed-${user.email || "unknown"}:v1`;
   const isPersonalizationComplete =
     phase === OnboardingPhase.PERSONALIZATION_COMPLETE;
   const shouldHide =
@@ -95,7 +95,12 @@ export default function ContextGatheringLoader({
 
       // Check localStorage dismissal (backup check)
       if (typeof window !== "undefined") {
-        const wasDismissed = localStorage.getItem(dismissalKey) === "true";
+        let wasDismissed = false;
+        try {
+          wasDismissed = localStorage.getItem(dismissalKey) === "true";
+        } catch {
+          // localStorage unavailable — treat as not dismissed
+        }
         if (
           wasDismissed &&
           data?.phase !== OnboardingPhase.PERSONALIZATION_PENDING
@@ -184,13 +189,21 @@ export default function ContextGatheringLoader({
       });
 
       // Update local state
-      localStorage.setItem(dismissalKey, "true");
+      try {
+        localStorage.setItem(dismissalKey, "true");
+      } catch {
+        // localStorage unavailable — state still updated in memory
+      }
       setPhase(OnboardingPhase.GETTING_STARTED);
     } catch (err) {
       console.error("Failed to transition phase:", err);
       // If it fails, we still want to update local state so user isn't stuck
       setPhase(OnboardingPhase.GETTING_STARTED);
-      localStorage.setItem(dismissalKey, "true");
+      try {
+        localStorage.setItem(dismissalKey, "true");
+      } catch {
+        // localStorage unavailable — state still updated in memory
+      }
     }
   };
 

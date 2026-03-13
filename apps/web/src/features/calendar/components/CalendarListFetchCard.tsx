@@ -1,6 +1,6 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 
-import { GoogleCalendarIcon } from "@/components";
+import { GoogleCalendarIcon } from "@/components/shared/icons";
 import type { CalendarListFetchData } from "@/types/features/calendarTypes";
 
 interface CalendarListFetchProps {
@@ -27,8 +27,7 @@ export default function CalendarListFetchCard({
         <ScrollShadow className="max-h-[200px] divide-y divide-gray-700 overflow-x-hidden">
           {calendars.length > 0 &&
             calendars
-              .slice() // Slice to copy the array because of immutability
-              .sort((a, b) => a.name.localeCompare(b.name)) // Sort alphebetically
+              .toSorted((a, b) => a.name.localeCompare(b.name)) // Sort alphabetically
               .map((calendar) => (
                 <div
                   key={calendar.id}

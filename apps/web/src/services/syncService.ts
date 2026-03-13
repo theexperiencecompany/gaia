@@ -61,7 +61,7 @@ const mergeMessageLists = (
   }
 
   // Convert back to array and sort by creation time
-  return Array.from(messageMap.values()).sort(
+  return Array.from(messageMap.values()).toSorted(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
   );
 };

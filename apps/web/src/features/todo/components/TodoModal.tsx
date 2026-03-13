@@ -12,7 +12,7 @@ import {
   useDisclosure,
 } from "@heroui/react";
 import { PlusSignIcon } from "@icons";
-import { useCallback, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
@@ -196,26 +196,26 @@ export default function TodoModal({
     }
   }, [isOpen, mode, todo, setFormData]);
 
-  // Keyboard shortcut handler for Cmd/Ctrl + Enter to submit
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (!isOpen || loading) return;
-
-      const modifierKey = isMac ? e.metaKey : e.ctrlKey;
-      if (modifierKey && e.key === "Enter") {
-        e.preventDefault();
-        handleSubmit();
-      }
-    },
-    [isOpen, loading, isMac, handleSubmit],
-  );
+  const keyDownStateRef = useRef({ loading, isMac, handleSubmit });
+  keyDownStateRef.current = { loading, isMac, handleSubmit };
 
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [isOpen, handleKeyDown]);
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const { loading: isLoading, isMac: mac, handleSubmit: submit } =
+        keyDownStateRef.current;
+      if (isLoading) return;
+      const modifierKey = mac ? e.metaKey : e.ctrlKey;
+      if (modifierKey && e.key === "Enter") {
+        e.preventDefault();
+        submit();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
 
   const handleDateChange = (date?: string, timezone?: string) => {
     setFormData((prev) => ({

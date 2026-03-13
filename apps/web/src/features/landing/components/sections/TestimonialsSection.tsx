@@ -7,7 +7,7 @@ import { testimonials as initial } from "../../data/testimonials";
 import LargeHeader from "../shared/LargeHeader";
 import SectionLayout from "../shared/SectionLayout";
 
-const testimonials = initial.sort(() => Math.random() - 0.5);
+const testimonials = initial.toSorted(() => Math.random() - 0.5);
 const firstRow = testimonials.slice(0, testimonials.length / 2);
 const secondRow = testimonials.slice(testimonials.length / 2);
 

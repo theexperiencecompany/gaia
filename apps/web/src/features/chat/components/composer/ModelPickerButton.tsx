@@ -66,7 +66,7 @@ const ModelPickerButton: React.FC = () => {
     Object.keys(grouped)
       .sort()
       .forEach((provider) => {
-        sortedGrouped[provider] = grouped[provider].sort((a, b) => {
+        sortedGrouped[provider] = grouped[provider].toSorted((a, b) => {
           // First, prioritize selected model
           if (currentModel?.model_id === a.model_id) return -1;
           if (currentModel?.model_id === b.model_id) return 1;

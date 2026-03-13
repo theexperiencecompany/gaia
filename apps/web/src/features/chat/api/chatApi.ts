@@ -276,11 +276,10 @@ export const chatApi = {
           replyToMessage, // Add replyToMessage to the request body
           messages: convoMessages
             .slice(-30)
-            .filter(({ response }) => response.trim().length > 0)
-            .map(({ type, response }, _index, _array) => ({
-              role: type === "bot" ? "assistant" : type,
-              content: response,
-            })),
+            .flatMap(({ type, response }) => {
+              if (response.trim().length === 0) return [];
+              return [{ role: type === "bot" ? "assistant" : type, content: response }];
+            }),
         }),
 
         onmessage(event) {

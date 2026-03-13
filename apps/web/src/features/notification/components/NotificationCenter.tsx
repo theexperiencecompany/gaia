@@ -44,9 +44,9 @@ export function NotificationCenter({
   };
 
   const handleMarkAllAsRead = async () => {
-    const unreadIds = notifications
-      .filter((n) => n.status === NotificationStatus.DELIVERED)
-      .map((n) => n.id);
+    const unreadIds = notifications.flatMap((n) =>
+      n.status === NotificationStatus.DELIVERED ? [n.id] : [],
+    );
 
     if (unreadIds.length > 0) {
       await bulkMarkAsRead(unreadIds);

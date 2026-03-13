@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight } from "@/components";
+import { ChevronRight } from "@/components/shared/icons";
 import { MotionContainer } from "@/layouts/MotionContainer";
 import GetStartedButton from "../shared/GetStartedButton";
 import { SplitTextBlur } from "./SplitTextBlur";

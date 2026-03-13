@@ -113,7 +113,10 @@ export default function Footer() {
                   />
                 </Link>
 
-                <div className="mt-2 text-sm font-light text-foreground-400">
+                <div
+                  className="mt-2 text-sm font-light text-foreground-400"
+                  suppressHydrationWarning
+                >
                   {randomTagline}
                 </div>
               </div>

@@ -150,7 +150,7 @@ export const useCalendarStore = create<CalendarStore>()(
 
               // Optimized deduplication using Set for O(1) lookup
               const existingEventIds = new Set(
-                state.events.map((e) => e.id).filter(Boolean),
+                state.events.flatMap((e) => (e.id ? [e.id] : [])),
               );
               const newUniqueEvents = events.filter(
                 (e) => e.id && !existingEventIds.has(e.id),
@@ -247,15 +247,14 @@ export const useCalendarStore = create<CalendarStore>()(
 
         autoSelectPrimaryCalendar: () => {
           const { calendars, selectedCalendars } = get();
-          if (selectedCalendars.length === 0 && calendars.length > 0) {
-            const primaryCalendar = calendars.find((cal) => cal.primary);
-            if (primaryCalendar) {
-              set(
-                { selectedCalendars: [primaryCalendar.id] },
-                false,
-                "autoSelectPrimaryCalendar",
-              );
-            }
+          if (selectedCalendars.length > 0 || calendars.length === 0) return;
+          const primaryCalendar = calendars.find((cal) => cal.primary);
+          if (primaryCalendar) {
+            set(
+              { selectedCalendars: [primaryCalendar.id] },
+              false,
+              "autoSelectPrimaryCalendar",
+            );
           }
         },
 

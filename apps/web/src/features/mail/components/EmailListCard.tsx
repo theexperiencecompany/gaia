@@ -1,7 +1,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tooltip } from "@heroui/tooltip";
 
-import { Gmail } from "@/components";
+import { Gmail } from "@/components/shared/icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { useAppendToInput } from "@/stores/composerStore";
 import type { EmailFetchData } from "@/types/features/mailTypes";

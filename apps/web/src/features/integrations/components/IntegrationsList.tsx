@@ -178,7 +178,7 @@ export const IntegrationsList: React.FC<{
       const items = filteredIntegrations.filter((i) => i.category === category);
       grouped[category] = searchQuery.trim()
         ? items
-        : items.sort((a, b) => {
+        : items.toSorted((a, b) => {
             // Connected first
             if (a.status === "connected" && b.status !== "connected") return -1;
             if (a.status !== "connected" && b.status === "connected") return 1;
@@ -197,7 +197,7 @@ export const IntegrationsList: React.FC<{
     );
     if (!searchQuery.trim()) return cats;
 
-    return [...cats].sort((a, b) => {
+    return cats.toSorted((a, b) => {
       const aIndex = filteredIntegrations.findIndex((i) => i.category === a);
       const bIndex = filteredIntegrations.findIndex((i) => i.category === b);
       if (aIndex !== -1 && bIndex !== -1) {

@@ -15,7 +15,7 @@ import { Comment01Icon, HelpCircleIcon, PencilEdit01Icon } from "@icons";
 import type React from "react";
 import { useState } from "react";
 import { z } from "zod";
-import { Separator } from "@/components";
+import { Separator } from "@/components/ui/separator";
 import { supportApi } from "@/features/support/api/supportApi";
 import { toast } from "@/lib/toast";
 import type { SupportTicketData } from "@/types/features/supportTypes";

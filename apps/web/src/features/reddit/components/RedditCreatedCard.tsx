@@ -4,7 +4,7 @@ import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { CheckmarkCircle02Icon, LinkSquare02Icon } from "@icons";
 import Link from "next/link";
-import { RedditIcon } from "@/components";
+import { RedditIcon } from "@/components/shared/icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import type {
   RedditCommentCreatedData,

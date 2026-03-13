@@ -20,7 +20,7 @@ import {
 } from "@/types/features/notificationTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
-import { Button } from "../../../components/ui";
+import { Button } from "@/components/ui/button";
 
 interface EnhancedNotificationCardProps {
   notification: NotificationRecord;

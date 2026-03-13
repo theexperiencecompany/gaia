@@ -100,7 +100,7 @@ export default function ChatsList() {
         {} as Record<string, IConversation[]>,
       );
 
-      const sorted = Object.entries(grouped).sort(
+      const sorted = Object.entries(grouped).toSorted(
         ([timeFrameA], [timeFrameB]) =>
           timeFramePriority(timeFrameA) - timeFramePriority(timeFrameB),
       );
@@ -234,7 +234,7 @@ export default function ChatsList() {
                 <AccordionContent className={accordionItemStyles.content}>
                   <div className={accordionItemStyles.chatContainer}>
                     {systemConversations
-                      .sort(
+                      .toSorted(
                         (a: IConversation, b: IConversation) =>
                           b.createdAt.getTime() - a.createdAt.getTime(),
                       )
@@ -306,7 +306,7 @@ export default function ChatsList() {
                 <AccordionContent className={accordionItemStyles.content}>
                   <div className={accordionItemStyles.chatContainer}>
                     {conversationsGroup
-                      .sort(
+                      .toSorted(
                         (a: IConversation, b: IConversation) =>
                           b.createdAt.getTime() - a.createdAt.getTime(),
                       )
