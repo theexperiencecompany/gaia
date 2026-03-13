@@ -137,7 +137,7 @@ async function getExploreWorkflowPages(
     const limit = isDevelopment() ? 50 : 1000;
     const exploreResp = await workflowApi.getExploreWorkflows(limit, 0);
     return exploreResp.workflows.map((wc) => ({
-      url: `${baseUrl}/use-cases/${wc.id}`,
+      url: `${baseUrl}/use-cases/${wc.slug ?? wc.id}`,
       lastModified: new Date(wc.created_at),
       changeFrequency: "weekly" as const,
       priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
@@ -158,7 +158,7 @@ async function getCommunityWorkflowPages(
     if (isDevelopment()) {
       const communityResponse = await workflowApi.getCommunityWorkflows(50, 0);
       return communityResponse.workflows.map((workflow) => ({
-        url: `${baseUrl}/use-cases/${workflow.id}`,
+        url: `${baseUrl}/use-cases/${workflow.slug ?? workflow.id}`,
         lastModified: new Date(workflow.created_at),
         changeFrequency: "weekly" as const,
         priority: 0.6,
@@ -179,7 +179,7 @@ async function getCommunityWorkflowPages(
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.slug ?? workflow.id}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,

@@ -74,6 +74,7 @@ export type { ExecutionConfig, WorkflowMetadata };
  */
 export interface CommunityWorkflow {
   id: string;
+  slug?: string; // human-readable URL slug
   title: string;
   description: string;
   prompt?: string;
@@ -152,6 +153,9 @@ export interface Workflow {
   // Execution statistics
   total_executions: number;
   successful_executions: number;
+
+  // Slug for SEO-friendly URLs
+  slug?: string;
 
   // Community features
   is_public?: boolean;

@@ -515,6 +515,12 @@ async def create_workflow_indexes():
                 unique=True,
                 partialFilterExpression={"system_workflow_key": {"$type": 2}},
             ),
+            # Compound index for slug-based public workflow lookups
+            workflows_collection.create_index(
+                [("slug", 1), ("is_public", 1)],
+                sparse=True,
+                name="slug_public_idx",
+            ),
         )
 
     except Exception as e:

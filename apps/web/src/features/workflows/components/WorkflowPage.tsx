@@ -309,7 +309,9 @@ export default function WorkflowPage() {
                 communityWorkflow={workflow}
                 variant="community"
                 showCreator={true}
-                onCardClick={() => handleCommunityWorkflowClick(workflow.id)}
+                onCardClick={() =>
+                  handleCommunityWorkflowClick(workflow.slug ?? workflow.id)
+                }
               />
             ),
           )

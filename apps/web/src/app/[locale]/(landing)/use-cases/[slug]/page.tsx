@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
 import type { UseCase } from "@/features/use-cases/types";
@@ -28,12 +28,14 @@ export async function generateStaticParams() {
       console.log(
         `[SSG Use Cases] Generating ${resp.workflows.length} pages (dev mode)`,
       );
-      return resp.workflows.map((w) => ({ slug: w.id }));
+      return resp.workflows.map((w) => ({ slug: w.slug ?? w.id }));
     }
 
     const exploreLimit = 1000;
     const exploreResp = await workflowApi.getExploreWorkflows(exploreLimit, 0);
-    const exploreParams = exploreResp.workflows.map((w) => ({ slug: w.id }));
+    const exploreParams = exploreResp.workflows.map((w) => ({
+      slug: w.slug ?? w.id,
+    }));
 
     const { fetchAllPaginated } = await import("@/lib/fetchAll");
     const communityWorkflows = await fetchAllPaginated(
@@ -47,7 +49,9 @@ export async function generateStaticParams() {
       },
       100,
     );
-    const communityParams = communityWorkflows.map((w) => ({ slug: w.id }));
+    const communityParams = communityWorkflows.map((w) => ({
+      slug: w.slug ?? w.id,
+    }));
 
     const allParams = [...exploreParams, ...communityParams];
     console.log(
@@ -71,13 +75,13 @@ export async function generateMetadata({
   // First, attempt to find the use-case in explore workflows (API)
   try {
     const resp = await workflowApi.getExploreWorkflows(200, 0);
-    const found = resp.workflows.find((w) => w.id === slug);
+    const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
     if (found) {
       const workflowAsUseCase: UseCase = {
         title: found.title,
         description: found.description || "",
         detailed_description: found.description,
-        slug: found.id,
+        slug: found.slug ?? found.id,
         action_type: "workflow",
         integrations: found.steps?.map((s) => s.category) || [],
         categories: found.categories || ["featured"],
@@ -102,7 +106,7 @@ export async function generateMetadata({
       title: workflow.title,
       description: workflow.description || "",
       detailed_description: workflow.description,
-      slug: workflow.id,
+      slug: workflow.slug ?? workflow.id,
       action_type: "workflow",
       integrations: workflow.steps?.map((s) => s.category) || [],
       categories: ["Community"],
@@ -137,8 +141,12 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   // First, try to find the use-case in explore workflows
   try {
     const resp = await workflowApi.getExploreWorkflows(200, 0);
-    const found = resp.workflows.find((w) => w.id === slug);
+    const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
     if (found) {
+      // If the URL uses the old ID but the workflow has a real slug, redirect
+      if (slug.startsWith("wf_") && found.slug && found.slug !== slug) {
+        redirect(`/use-cases/${found.slug}`);
+      }
       useCase = {
         title: found.title,
         description: found.description || "",
@@ -146,7 +154,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
         integrations: found.steps?.map((s) => s.category) || [],
         categories: found.categories || ["featured"],
         published_id: found.id,
-        slug: found.id,
+        slug: found.slug ?? found.id,
         steps: found.steps,
         creator: found.creator,
       } as UseCase;
@@ -160,6 +168,11 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
     try {
       const response = await workflowApi.getPublicWorkflow(slug);
       const workflow = response.workflow;
+
+      // If the URL uses the old ID but the workflow has a real slug, redirect
+      if (slug.startsWith("wf_") && workflow.slug && workflow.slug !== slug) {
+        redirect(`/use-cases/${workflow.slug}`);
+      }
 
       // If it's a public workflow, try to get it from community endpoint to get creator info
       if (workflow.is_public) {
