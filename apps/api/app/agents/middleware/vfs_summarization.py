@@ -74,6 +74,30 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         self.vfs_enabled = vfs_enabled
         self.excluded_tools = excluded_tools or set()
         self._vfs: MongoVFS | None = None  # Lazy loaded
+        self._summarization_model = model if isinstance(model, BaseChatModel) else None
+
+        self._use_fallback_counter = False
+        try:
+            self.token_counter([HumanMessage(content="test")])
+        except Exception:
+            log.warning(
+                "LangChain token_counter unavailable for summarization model, "
+                "using char-based estimation (4 chars/token)"
+            )
+            self._use_fallback_counter = True
+
+    def _count_tokens(self, messages: list[AnyMessage]) -> int:
+        """Count tokens with fallback to char-based estimation."""
+        if not self._use_fallback_counter:
+            try:
+                return self.token_counter(messages)
+            except Exception:
+                self._use_fallback_counter = True
+                log.warning("token_counter failed at runtime, switching to fallback")
+
+        # Fallback: ~4 chars per token
+        total_chars = sum(len(str(getattr(m, "content", ""))) for m in messages)
+        return total_chars // 4
 
     async def _get_vfs(self) -> MongoVFS:
         """Lazy load VFS."""
@@ -88,19 +112,31 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         Called before each model invocation.
 
         Archives to VFS if summarization will occur, then delegates to parent.
+        Falls back to manual summarization if the parent middleware fails.
         """
+        should_summarize = self._should_trigger_summarization(state)
         archive_path: str | None = None
-        # Check if we should archive (if parent will summarize)
-        if self.vfs_enabled and self._should_trigger_summarization(state):
+
+        # Archive to VFS before summarization
+        if should_summarize and self.vfs_enabled:
             try:
                 archive_path = await self._archive_to_vfs(state, runtime)
             except Exception as e:
                 log.error(f"VFS archiving failed: {e}")
 
-        # Call parent's summarization logic
-        result = await super().abefore_model(state, runtime)
+        # Try parent's summarization logic
+        result: dict[str, Any] | None = None
+        try:
+            result = await super().abefore_model(state, runtime)
+        except Exception as e:
+            log.warning(f"Parent SummarizationMiddleware failed: {e}")
 
-        # If summarization occurred and we have an archive path, inject it
+        # If parent didn't summarize but threshold was exceeded, fall back to manual
+        if result is None and should_summarize:
+            log.info("Parent middleware did not summarize, attempting manual summarization")
+            result = await self._manual_summarize(state)
+
+        # Inject archive path into summary if available
         if result is not None and archive_path:
             result = self._inject_archive_path(result, archive_path)
 
@@ -123,22 +159,93 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         if not filtered_messages:
             return False
 
-        try:
-            token_count = self.token_counter(filtered_messages)
-            # Check against trigger conditions
-            if isinstance(self.trigger, tuple):
-                trigger_type, trigger_value = self.trigger
-                if trigger_type == "fraction":
-                    max_tokens = getattr(self, "_max_tokens", 128000)
-                    return token_count > max_tokens * trigger_value
-                elif trigger_type == "tokens":
-                    return token_count > trigger_value
-                elif trigger_type == "messages":
-                    return len(filtered_messages) > trigger_value
-        except Exception:
-            pass  # Intentional: fallback if token counter unavailable  # nosec B110
+        token_count = self._count_tokens(filtered_messages)
+
+        if isinstance(self.trigger, tuple):
+            trigger_type, trigger_value = self.trigger
+            if trigger_type == "fraction":
+                max_tokens = getattr(self, "_max_tokens", 128000)
+                threshold = max_tokens * trigger_value
+                should_trigger = token_count > threshold
+                if should_trigger:
+                    log.info(
+                        f"Summarization threshold reached: {token_count} tokens "
+                        f"> {threshold:.0f} ({trigger_value:.0%} of {max_tokens})"
+                    )
+                return should_trigger
+            elif trigger_type == "tokens":
+                should_trigger = token_count > trigger_value
+                if should_trigger:
+                    log.info(
+                        f"Summarization threshold reached: {token_count} tokens "
+                        f"> {trigger_value} token limit"
+                    )
+                return should_trigger
+            elif trigger_type == "messages":
+                should_trigger = len(filtered_messages) > trigger_value
+                if should_trigger:
+                    log.info(
+                        f"Summarization threshold reached: {len(filtered_messages)} messages "
+                        f"> {trigger_value} message limit"
+                    )
+                return should_trigger
 
         return False
+
+    async def _manual_summarize(
+        self, state: AgentState[Any]
+    ) -> dict[str, Any] | None:
+        """Fallback summarization when parent middleware fails."""
+        if self._summarization_model is None:
+            log.warning("No BaseChatModel available for manual summarization")
+            return None
+
+        messages: list[AnyMessage] = state.get("messages", [])
+        if not messages:
+            return None
+
+        # Determine how many messages to keep
+        keep_count = 15
+        if isinstance(self.keep, tuple) and len(self.keep) == 2:
+            keep_type, keep_value = self.keep
+            if keep_type == "messages" and isinstance(keep_value, int):
+                keep_count = keep_value
+
+        if len(messages) <= keep_count:
+            return None
+
+        to_summarize = messages[:-keep_count]
+        to_keep = messages[-keep_count:]
+
+        try:
+            summary_prompt = HumanMessage(
+                content=(
+                    "Summarize the following conversation history concisely, "
+                    "preserving key decisions, facts, and context:\n\n"
+                    + "\n".join(
+                        f"{type(m).__name__}: {getattr(m, 'content', str(m))}"
+                        for m in to_summarize
+                    )
+                )
+            )
+            summary_response = await self._summarization_model.ainvoke([summary_prompt])
+            summary_content = (
+                getattr(summary_response, "content", str(summary_response))
+            )
+
+            summary_msg = HumanMessage(
+                content=f"[Summary of earlier conversation]\n{summary_content}",
+                additional_kwargs={"is_summary": True},
+            )
+
+            log.info(
+                f"Manual summarization complete: {len(to_summarize)} messages "
+                f"summarized, {len(to_keep)} kept"
+            )
+            return {"messages": [summary_msg] + to_keep}
+        except Exception as e:
+            log.error(f"Manual summarization failed: {e}")
+            return None
 
     async def _archive_to_vfs(
         self, state: AgentState[Any], runtime: Runtime[Any]
@@ -233,20 +340,29 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
     def _inject_archive_path(
         self, result: dict[str, Any], archive_path: str
     ) -> dict[str, Any]:
-        """Inject archive path reference into the summarized messages."""
+        """Inject archive path reference into the summarized messages.
+
+        Creates a new HumanMessage instead of mutating the original to
+        preserve LangGraph message immutability.
+        """
         messages = result.get("messages", [])
         if not messages:
             return result
 
-        # Find the summary message (usually a HumanMessage with is_summary=True)
-        for i, msg in enumerate(messages):
+        # Find the summary message and create a replacement (not mutate)
+        new_messages = list(messages)
+        for i, msg in enumerate(new_messages):
             if isinstance(msg, HumanMessage):
-                additional_kwargs = getattr(msg, "additional_kwargs", {})
+                additional_kwargs = dict(getattr(msg, "additional_kwargs", {}))
                 if additional_kwargs.get("is_summary"):
-                    # Add archive path to content
-                    if hasattr(msg, "content") and isinstance(msg.content, str):
-                        msg.content += f"\n\n[Full history archived at: {archive_path}]"
+                    content = getattr(msg, "content", "")
+                    if isinstance(content, str):
+                        content += f"\n\n[Full history archived at: {archive_path}]"
                     additional_kwargs["archive_path"] = archive_path
+                    new_messages[i] = HumanMessage(
+                        content=content,
+                        additional_kwargs=additional_kwargs,
+                    )
                     break
 
-        return result
+        return {**result, "messages": new_messages}

@@ -16,6 +16,8 @@ Blocked commands (for safety):
 import argparse
 import asyncio
 import contextlib
+import fnmatch
+import re
 import shlex
 from dataclasses import dataclass
 from typing import Any, NoReturn, Optional
@@ -25,6 +27,7 @@ from app.agents.tools.vfs_constants import (
     detect_artifact_content_type,
     is_user_visible_path,
 )
+from app.constants.summarization import MAX_GREP_OUTPUT_CHARS
 from app.services.vfs import MongoVFS, VFSAccessError, get_vfs
 from shared.py.wide_events import log
 from app.services.vfs.path_resolver import (
@@ -144,7 +147,9 @@ class VFSCommandParser:
         grep_parser = _VFSArgumentParser(
             prog="grep", add_help=False, exit_on_error=False
         )
-        grep_parser.add_argument("pattern", help="Search pattern")
+        grep_parser.add_argument(
+            "pattern", nargs="?", default=None, help="Search pattern"
+        )
         grep_parser.add_argument("path", nargs="?", default=".", help="Path to search")
         grep_parser.add_argument(
             "-i", "--ignore-case", action="store_true", help="Case insensitive"
@@ -167,6 +172,58 @@ class VFSCommandParser:
             "--files-with-matches",
             action="store_true",
             help="Only show filenames",
+        )
+        grep_parser.add_argument(
+            "-v", "--invert-match", action="store_true", help="Invert match"
+        )
+        grep_parser.add_argument(
+            "-w", "--word-regexp", action="store_true", help="Match whole words only"
+        )
+        grep_parser.add_argument(
+            "-o",
+            "--only-matching",
+            action="store_true",
+            help="Show only matching parts",
+        )
+        grep_parser.add_argument(
+            "-e",
+            "--regexp",
+            action="append",
+            dest="patterns",
+            help="Additional pattern (can be repeated)",
+        )
+        grep_parser.add_argument(
+            "-A",
+            "--after-context",
+            type=int,
+            default=0,
+            help="Lines after match",
+        )
+        grep_parser.add_argument(
+            "-B",
+            "--before-context",
+            type=int,
+            default=0,
+            help="Lines before match",
+        )
+        grep_parser.add_argument(
+            "-C",
+            "--context",
+            type=int,
+            default=0,
+            help="Lines before and after match",
+        )
+        grep_parser.add_argument(
+            "--include",
+            action="append",
+            dest="include_globs",
+            help="Only search files matching glob",
+        )
+        grep_parser.add_argument(
+            "--exclude",
+            action="append",
+            dest="exclude_globs",
+            help="Skip files matching glob",
         )
         parsers["grep"] = grep_parser
 
@@ -752,6 +809,47 @@ class VFSCommandParser:
 
         return output
 
+    @staticmethod
+    def _prepare_grep_pattern(args: argparse.Namespace) -> str | None:
+        """
+        Build a single regex pattern from args.pattern and args.patterns (-e).
+
+        Applies -w (whole word) wrapping. Returns None if no pattern provided.
+        """
+        all_patterns: list[str] = []
+        if args.pattern:
+            all_patterns.append(args.pattern)
+        if args.patterns:
+            all_patterns.extend(args.patterns)
+
+        if not all_patterns:
+            return None
+
+        if len(all_patterns) > 1:
+            combined = "|".join(f"(?:{p})" for p in all_patterns)
+        else:
+            combined = all_patterns[0]
+
+        if args.word_regexp:
+            combined = rf"\b(?:{combined})\b"
+
+        return combined
+
+    @staticmethod
+    def _matches_glob_filters(
+        filename: str,
+        include_globs: list[str] | None,
+        exclude_globs: list[str] | None,
+    ) -> bool:
+        """Check if a filename passes include/exclude glob filters."""
+        if include_globs:
+            if not any(fnmatch.fnmatch(filename, g) for g in include_globs):
+                return False
+        if exclude_globs:
+            if any(fnmatch.fnmatch(filename, g) for g in exclude_globs):
+                return False
+        return True
+
     async def _cmd_grep(
         self,
         args: argparse.Namespace,
@@ -763,7 +861,11 @@ class VFSCommandParser:
         agent_thread_id: str | None = None,
         vfs_session_id: str | None = None,
     ) -> str:
-        """Search file contents."""
+        """Search file contents using server-side MongoDB regex where possible."""
+        pattern = self._prepare_grep_pattern(args)
+        if pattern is None:
+            return "grep: no pattern provided (use positional arg or -e)"
+
         vfs = await self._get_vfs()
 
         resolved_path = self._resolve_path(
@@ -773,134 +875,46 @@ class VFSCommandParser:
             conversation_id,
         )
 
-        pattern = args.pattern
-        pattern_cmp = pattern.lower() if args.ignore_case else pattern
-
-        # Get list of files to search
-        files_to_search = []
-
         try:
             info = await vfs.info(resolved_path, user_id=user_id)
             if info is None:
                 return f"grep: {args.path}: No such file or directory"
 
             if info.node_type.value == "file":
-                files_to_search = [resolved_path]
+                # Apply glob filters to single file
+                filename = resolved_path.rsplit("/", 1)[-1]
+                if not self._matches_glob_filters(
+                    filename, args.include_globs, args.exclude_globs
+                ):
+                    return "(no matches — file excluded by filter)"
+
+                # Single file: client-side search (one read, no benefit from $regex)
+                content = await vfs.read(resolved_path, user_id=user_id)
+                if content is None:
+                    return f"grep: {args.path}: Could not read file"
+                if len(content) > self.MAX_GREP_FILE_CHARS:
+                    content = content[: self.MAX_GREP_FILE_CHARS]
+                output = self._search_single_file(
+                    content, pattern, resolved_path, resolved_path, args
+                )
             else:
-                # It's a directory
-                if args.recursive:
-                    search_result = await vfs.search(
-                        "*", user_id=user_id, base_path=resolved_path
-                    )
-                    files_to_search = [
-                        m.path
-                        for m in search_result.matches
-                        if m.node_type.value == "file"
-                    ]
-                else:
-                    list_result = await vfs.list_dir(resolved_path, user_id=user_id)
-                    files_to_search = [
-                        f"{resolved_path}/{item.name}"
-                        for item in list_result.items
-                        if item.node_type.value == "file"
-                    ]
+                # Directory: server-side search for inline files + GridFS fallback
+                server_results, gridfs_results, has_gridfs = await self._grep_directory(
+                    vfs, pattern, resolved_path, user_id, args
+                )
+                output = self._format_grep_output(
+                    server_results, gridfs_results, pattern, args, has_gridfs
+                )
         except Exception as e:
             return f"grep: error accessing '{args.path}': {e}"
 
-        truncated_files = False
-        if len(files_to_search) > self.MAX_GREP_FILES:
-            files_to_search = files_to_search[: self.MAX_GREP_FILES]
-            truncated_files = True
-
-        # Search files in parallel
-        async def search_file(file_path: str) -> tuple[str, list[str], int]:
-            """Search a single file and return (rel_path, matches, count)."""
-            try:
-                content = await vfs.read(file_path, user_id=user_id)
-                if content is None:
-                    return "", [], 0
-
-                if len(content) > self.MAX_GREP_FILE_CHARS:
-                    content = content[: self.MAX_GREP_FILE_CHARS]
-
-                # Make path relative for output
-                rel_path = file_path
-                if file_path.startswith(resolved_path):
-                    rel_path = file_path[len(resolved_path) :].lstrip("/")
-                if not rel_path:
-                    rel_path = file_path.rsplit("/", 1)[-1]
-
-                file_matches: list[str] = []
-                file_match_count = 0
-
-                for line_num, line in enumerate(content.split("\n"), 1):
-                    line_cmp = line.lower() if args.ignore_case else line
-                    if pattern_cmp in line_cmp:
-                        file_match_count += 1
-
-                        if not args.count and not args.files_with_matches:
-                            # Truncate long lines
-                            display_line = line[: self.MAX_LINE_LENGTH]
-                            if len(line) > self.MAX_LINE_LENGTH:
-                                display_line += "..."
-
-                            if args.line_number:
-                                file_matches.append(
-                                    f"{rel_path}:{line_num}: {display_line}"
-                                )
-                            else:
-                                file_matches.append(f"{rel_path}: {display_line}")
-
-                return rel_path, file_matches, file_match_count
-            except Exception:
-                return "", [], 0
-
-        # Run searches in parallel
-        results = await asyncio.gather(
-            *[search_file(fp) for fp in files_to_search], return_exceptions=True
-        )
-
-        # Aggregate results
-        matches: list[str] = []
-        match_counts: dict[str, int] = {}
-        files_with_matches: set[str] = set()
-
-        for res in results:
-            if isinstance(res, BaseException):
-                continue
-            rel_path, file_matches, file_match_count = res
-            if file_match_count > 0:
-                files_with_matches.add(rel_path)
-                match_counts[rel_path] = file_match_count
-                # Only add up to MAX_GREP_MATCHES
-                for m in file_matches:
-                    if len(matches) < self.MAX_GREP_MATCHES:
-                        matches.append(m)
-
-        # Format output based on flags
-        if args.files_with_matches:
-            if not files_with_matches:
-                return f"(no matches for '{args.pattern}')"
-            output = "\n".join(sorted(files_with_matches))
-        elif args.count:
-            lines = [f"{path}: {count}" for path, count in match_counts.items()]
-            total = sum(match_counts.values())
-            lines.append(f"Total: {total} matches in {len(match_counts)} files")
-            output = "\n".join(lines)
-        else:
-            if not matches:
-                return f"(no matches for '{args.pattern}')"
-
-            result_lines = matches
-            total_matches = sum(match_counts.values())
-            if total_matches > self.MAX_GREP_MATCHES:
-                result_lines.append(
-                    f"... and {total_matches - self.MAX_GREP_MATCHES} more matches"
-                )
-            output = "\n".join(result_lines)
-
-        if truncated_files:
-            output += f"\n... searched first {self.MAX_GREP_FILES} files (limit)"
+        # Truncate oversized grep output to avoid blowing up context window
+        if len(output) > MAX_GREP_OUTPUT_CHARS:
+            output = (
+                f"{output[:MAX_GREP_OUTPUT_CHARS]}\n\n"
+                f"--- TRUNCATED ({len(output) - MAX_GREP_OUTPUT_CHARS} chars remaining) ---\n"
+                f"Refine your grep pattern or target a specific file."
+            )
 
         if redirect:
             return await self._handle_redirect(
@@ -915,6 +929,336 @@ class VFSCommandParser:
             )
 
         return output
+
+    async def _grep_directory(
+        self,
+        vfs: MongoVFS,
+        pattern: str,
+        resolved_path: str,
+        user_id: str,
+        args: argparse.Namespace,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
+        """
+        Grep a directory using server-side search for inline files
+        and client-side fallback for GridFS files.
+
+        Returns (server_results, gridfs_results, has_gridfs).
+        """
+        # Run server-side grep for inline files and GridFS path listing in parallel
+        server_task = vfs.grep_content(
+            pattern,
+            user_id=user_id,
+            base_path=resolved_path,
+            case_insensitive=args.ignore_case,
+            recursive=args.recursive,
+            max_files=self.MAX_GREP_FILES,
+            max_matches_per_file=self.MAX_GREP_MATCHES,
+            max_line_length=self.MAX_LINE_LENGTH,
+            include_globs=args.include_globs,
+            exclude_globs=args.exclude_globs,
+            before_context=getattr(args, "context", 0)
+            or getattr(args, "before_context", 0),
+            after_context=getattr(args, "context", 0)
+            or getattr(args, "after_context", 0),
+            invert=getattr(args, "invert_match", False),
+            only_matching=getattr(args, "only_matching", False),
+        )
+        gridfs_task = vfs.get_gridfs_file_paths(
+            user_id=user_id,
+            base_path=resolved_path,
+            recursive=args.recursive,
+            limit=20,
+        )
+
+        gathered = await asyncio.gather(
+            server_task, gridfs_task, return_exceptions=True
+        )
+        server_results = (
+            gathered[0] if not isinstance(gathered[0], BaseException) else []
+        )
+        gridfs_paths = gathered[1] if not isinstance(gathered[1], BaseException) else []
+        for i, res in enumerate(gathered):
+            if isinstance(res, BaseException):
+                log.warning(f"grep gather task {i} failed: {res}")
+
+        # Apply glob filters to GridFS paths
+        if args.include_globs or args.exclude_globs:
+            gridfs_paths = [
+                fp
+                for fp in gridfs_paths
+                if self._matches_glob_filters(
+                    fp.rsplit("/", 1)[-1], args.include_globs, args.exclude_globs
+                )
+            ]
+
+        # Client-side search for GridFS files (they can't use $regex on content)
+        gridfs_results: list[dict[str, Any]] = []
+        if gridfs_paths:
+            gridfs_search_tasks = [
+                self._grep_gridfs_file(vfs, fp, pattern, resolved_path, user_id, args)
+                for fp in gridfs_paths
+            ]
+            raw_results = await asyncio.gather(
+                *gridfs_search_tasks, return_exceptions=True
+            )
+            for res in raw_results:
+                if isinstance(res, BaseException):
+                    continue
+                if res is not None:
+                    gridfs_results.append(res)
+
+        return server_results, gridfs_results, len(gridfs_paths) > 0
+
+    async def _grep_gridfs_file(
+        self,
+        vfs: MongoVFS,
+        file_path: str,
+        pattern: str,
+        base_path: str,
+        user_id: str,
+        args: argparse.Namespace,
+    ) -> dict[str, Any] | None:
+        """Read and search a single GridFS file client-side."""
+        content = await vfs.read(file_path, user_id=user_id)
+        if content is None:
+            return None
+        if len(content) > self.MAX_GREP_FILE_CHARS:
+            content = content[: self.MAX_GREP_FILE_CHARS]
+        return self._search_content(content, pattern, file_path, base_path, args)
+
+    def _search_content(
+        self,
+        content: str,
+        pattern: str,
+        file_path: str,
+        base_path: str,
+        args: argparse.Namespace,
+    ) -> dict[str, Any] | None:
+        """
+        Search a single file's content client-side.
+
+        Returns a match dict {"path": str, "name": str, "matches": [...]}
+        or None if no matches.
+
+        Each match entry has:
+          - line_num: int
+          - line: str (the display line)
+          - is_context: bool (True if this is a context line, not a match)
+        """
+        flags = re.IGNORECASE if args.ignore_case else 0
+        try:
+            compiled = re.compile(pattern, flags)
+        except re.error:
+            compiled = re.compile(re.escape(pattern), flags)
+
+        invert = getattr(args, "invert_match", False)
+        only_matching = getattr(args, "only_matching", False)
+        after_ctx = getattr(args, "context", 0) or getattr(args, "after_context", 0)
+        before_ctx = getattr(args, "context", 0) or getattr(args, "before_context", 0)
+        wants_context = (after_ctx > 0 or before_ctx > 0) and not invert
+
+        lines = content.split("\n")
+
+        # First pass: find matching line indices
+        match_indices: list[int] = []
+        for i, line in enumerate(lines):
+            hit = compiled.search(line) is not None
+            if hit != invert:
+                match_indices.append(i)
+                if len(match_indices) >= self.MAX_GREP_MATCHES:
+                    break
+
+        if not match_indices:
+            return None
+
+        # Build output entries (matches + optional context lines)
+        file_matches: list[dict[str, Any]] = []
+
+        if wants_context:
+            include_set: set[int] = set()
+            for idx in match_indices:
+                start = max(0, idx - before_ctx)
+                end = min(len(lines) - 1, idx + after_ctx)
+                for j in range(start, end + 1):
+                    include_set.add(j)
+            match_set = set(match_indices)
+
+            prev_idx = -2
+            for idx in sorted(include_set):
+                if prev_idx >= 0 and idx > prev_idx + 1:
+                    file_matches.append(
+                        {"line_num": 0, "line": "--", "is_context": False}
+                    )
+                prev_idx = idx
+                line = lines[idx]
+                is_match = idx in match_set
+
+                if is_match and only_matching:
+                    for m in compiled.finditer(line):
+                        file_matches.append(
+                            {
+                                "line_num": idx + 1,
+                                "line": m.group(),
+                                "is_context": False,
+                            }
+                        )
+                else:
+                    display_line = line[: self.MAX_LINE_LENGTH]
+                    if len(line) > self.MAX_LINE_LENGTH:
+                        display_line += "..."
+                    file_matches.append(
+                        {
+                            "line_num": idx + 1,
+                            "line": display_line,
+                            "is_context": not is_match,
+                        }
+                    )
+        else:
+            for idx in match_indices:
+                line = lines[idx]
+                if only_matching and not invert:
+                    for m in compiled.finditer(line):
+                        file_matches.append(
+                            {
+                                "line_num": idx + 1,
+                                "line": m.group(),
+                                "is_context": False,
+                            }
+                        )
+                else:
+                    display_line = line[: self.MAX_LINE_LENGTH]
+                    if len(line) > self.MAX_LINE_LENGTH:
+                        display_line += "..."
+                    file_matches.append(
+                        {"line_num": idx + 1, "line": display_line, "is_context": False}
+                    )
+
+        if not file_matches:
+            return None
+
+        # Compute relative path from base_path for display
+        if base_path and file_path.startswith(base_path.rstrip("/") + "/"):
+            rel_name = file_path[len(base_path.rstrip("/")) + 1 :]
+        else:
+            rel_name = file_path.rsplit("/", 1)[-1]
+        return {"path": file_path, "name": rel_name, "matches": file_matches}
+
+    def _search_single_file(
+        self,
+        content: str,
+        pattern: str,
+        file_path: str,
+        base_path: str,
+        args: argparse.Namespace,
+    ) -> str:
+        """Search a single file's content and format the output string."""
+        result = self._search_content(content, pattern, file_path, base_path, args)
+
+        # Compute relative path from base_path for display
+        if base_path and file_path.startswith(base_path.rstrip("/") + "/"):
+            rel_path = file_path[len(base_path.rstrip("/")) + 1 :]
+        else:
+            rel_path = file_path.rsplit("/", 1)[-1]
+
+        if result is None:
+            return f"(no matches for '{pattern}')"
+
+        matches = result["matches"]
+        real_matches = [m for m in matches if not m.get("is_context")]
+
+        if args.files_with_matches:
+            return rel_path
+
+        if args.count:
+            return (
+                f"{rel_path}: {len(real_matches)}\n"
+                f"Total: {len(real_matches)} matches in 1 files"
+            )
+
+        lines: list[str] = []
+        for m in matches:
+            if m["line"] == "--" and m["line_num"] == 0:
+                lines.append("--")
+                continue
+            sep = "-" if m.get("is_context") else ":"
+            if args.line_number:
+                lines.append(f"{rel_path}{sep}{m['line_num']}{sep} {m['line']}")
+            else:
+                lines.append(f"{rel_path}{sep} {m['line']}")
+
+        if len(real_matches) >= self.MAX_GREP_MATCHES:
+            lines.append(f"... truncated at {self.MAX_GREP_MATCHES} matches")
+
+        return "\n".join(lines)
+
+    def _format_grep_output(
+        self,
+        server_results: list[dict[str, Any]],
+        gridfs_results: list[dict[str, Any]],
+        pattern: str,
+        args: argparse.Namespace,
+        has_gridfs: bool,
+    ) -> str:
+        """Combine server-side and GridFS grep results into formatted output."""
+        all_results = server_results + gridfs_results
+
+        if not all_results:
+            return f"(no matches for '{pattern}')"
+
+        def rel_path(result: dict[str, Any]) -> str:
+            return result.get("name", result["path"].rsplit("/", 1)[-1])
+
+        if args.files_with_matches:
+            paths = sorted({rel_path(r) for r in all_results})
+            return "\n".join(paths)
+
+        def real_match_count(r: dict[str, Any]) -> int:
+            return sum(1 for m in r["matches"] if not m.get("is_context"))
+
+        if args.count:
+            lines: list[str] = []
+            total = 0
+            for r in all_results:
+                count = real_match_count(r)
+                total += count
+                lines.append(f"{rel_path(r)}: {count}")
+            lines.append(f"Total: {total} matches in {len(all_results)} files")
+            return "\n".join(lines)
+
+        # Standard output with matching lines and context
+        output_lines: list[str] = []
+        total_matches = 0
+        multi_file = len(all_results) > 1
+
+        for file_idx, r in enumerate(all_results):
+            rp = rel_path(r)
+            file_match_count = real_match_count(r)
+            total_matches += file_match_count
+
+            if multi_file and file_idx > 0 and output_lines:
+                output_lines.append("--")
+
+            for m in r["matches"]:
+                if total_matches > self.MAX_GREP_MATCHES and not m.get("is_context"):
+                    break
+                if m["line"] == "--" and m["line_num"] == 0:
+                    output_lines.append("--")
+                    continue
+                sep = "-" if m.get("is_context") else ":"
+                if args.line_number:
+                    output_lines.append(f"{rp}{sep}{m['line_num']}{sep} {m['line']}")
+                else:
+                    output_lines.append(f"{rp}{sep} {m['line']}")
+
+        if total_matches > self.MAX_GREP_MATCHES:
+            output_lines.append(
+                f"... and {total_matches - self.MAX_GREP_MATCHES} more matches"
+            )
+
+        if has_gridfs:
+            output_lines.append("(note: large GridFS files searched with fallback)")
+
+        return "\n".join(output_lines)
 
     async def _cmd_cat(
         self,

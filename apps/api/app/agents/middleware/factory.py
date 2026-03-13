@@ -13,6 +13,7 @@ This module consolidates middleware creation to:
 from collections.abc import Mapping
 from typing import Any
 
+from app.agents.middleware.stale_output_clearer import StaleOutputClearerMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
@@ -79,6 +80,7 @@ def create_middleware_stack(
     vfs_enabled: bool = True,
     compaction_excluded_tools: set[str] | None = None,
     summarization_excluded_tools: set[str] | None = None,
+    never_mask_tools: set[str] | None = None,
 ) -> list[Any]:
     """
     Create the standard middleware stack for agents.
@@ -104,6 +106,7 @@ def create_middleware_stack(
         vfs_enabled: Whether to archive to VFS before summarization
         compaction_excluded_tools: Tools that should never be compacted
         summarization_excluded_tools: Tools that should never trigger summarization
+        never_mask_tools: Tools whose outputs should never be masked by StaleOutputClearer
 
     Returns:
         List of AgentMiddleware instances in execution order
@@ -148,6 +151,13 @@ def create_middleware_stack(
         )
         middleware.append(compaction)
         log.debug(f"Compaction middleware enabled: threshold={compaction_threshold}")
+
+    # Stale output clearer — masks old large tool outputs with placeholders
+    clearer = StaleOutputClearerMiddleware(
+        never_mask_tools=never_mask_tools,
+    )
+    middleware.append(clearer)
+    log.debug("StaleOutputClearer middleware enabled (size-based decay)")
 
     return middleware
 

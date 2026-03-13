@@ -38,6 +38,7 @@ from app.agents.middleware.runtime_adapter import (
     create_model_request,
     create_tool_call_request,
 )
+from app.agents.middleware.stale_output_clearer import StaleOutputClearerMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
@@ -46,6 +47,7 @@ __all__ = [
     "BigtoolRuntime",
     "BigtoolToolRuntime",
     "MiddlewareExecutor",
+    "StaleOutputClearerMiddleware",
     "SubagentMiddleware",
     "VFSArchivingSummarizationMiddleware",
     "VFSCompactionMiddleware",

@@ -167,6 +167,11 @@ class VFSCompactionMiddleware(AgentMiddleware):
         if tool_name in self.excluded_tools:
             return False, ""
 
+        # Already compacted — don't double-compact
+        additional_kwargs = getattr(result, "additional_kwargs", {}) or {}
+        if additional_kwargs.get("compacted"):
+            return False, ""
+
         content = result.content if hasattr(result, "content") else str(result)
         content_str = str(content)
         content_size = len(content_str)

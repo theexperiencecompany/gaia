@@ -143,7 +143,7 @@ async def test_read_vfs_file_returns_content_for_viewer() -> None:
         patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
         patch(
             "app.api.v1.endpoints.vfs.get_vfs",
-            new=AsyncMock(return_value=_make_real_vfs_with_col(col)),
+            new=AsyncMock(return_value=_make_real_vfs()),
         ),
     ):
         response = await read_vfs_file(
@@ -213,7 +213,7 @@ async def test_get_vfs_info_returns_node_metadata() -> None:
         patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
         patch(
             "app.api.v1.endpoints.vfs.get_vfs",
-            new=AsyncMock(return_value=_make_real_vfs_with_col(col)),
+            new=AsyncMock(return_value=_make_real_vfs()),
         ),
     ):
         response = await get_vfs_info(
@@ -239,7 +239,7 @@ async def test_list_vfs_dir_honors_recursive_flag() -> None:
         patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
         patch(
             "app.api.v1.endpoints.vfs.get_vfs",
-            new=AsyncMock(return_value=_make_real_vfs_with_col(col)),
+            new=AsyncMock(return_value=_make_real_vfs()),
         ),
     ):
         response = await list_vfs_dir(
@@ -262,15 +262,10 @@ async def test_list_vfs_dir_honors_recursive_flag() -> None:
 
 
 def _make_real_vfs():
-    """Return a real MongoVFS instance (no collection mock attached)."""
+    """Return a real MongoVFS instance. Patch vfs_nodes_collection separately."""
     from app.services.vfs.mongo_vfs import MongoVFS
 
     return MongoVFS()
-
-
-def _make_real_vfs_with_col(col):
-    """Return a real MongoVFS instance; the caller should patch the collection."""
-    return _make_real_vfs()
 
 
 # ---------------------------------------------------------------------------
@@ -432,12 +427,11 @@ async def test_vfs_path_traversal_blocked() -> None:
 
 @pytest.mark.asyncio
 async def test_vfs_file_create_and_read_roundtrip() -> None:
-    """Writing then reading a file must return identical content.
+    """MongoVFS.read must return the exact content stored in the document.
 
-    Both MongoVFS.write and MongoVFS.read are exercised through the real
-    service code; only vfs_nodes_collection is mocked to avoid a live
-    database connection.  The mock simulates the upsert performed by write
-    and the subsequent find_one performed by read returning the same document.
+    vfs_nodes_collection is mocked at the collection layer; the real MongoVFS
+    access-control and path-resolution logic runs.  The mock simulates
+    find_one returning the pre-stored document so read() returns the content.
     """
     file_path = "/users/u1/global/executor/files/roundtrip.md"
     file_content = "# Hello World\n\nThis is a roundtrip test."

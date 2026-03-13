@@ -512,6 +512,80 @@ class MongoVFS:
 
         return None
 
+    async def read_range(
+        self,
+        path: str,
+        user_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 0,
+    ) -> tuple[str | None, int]:
+        """
+        Read a range of file content.
+
+        For inline files (<1MB): reads full doc, slices in Python.
+        For GridFS files (>=1MB): uses read prefix + read(size) for partial read.
+
+        Args:
+            path: Target file path
+            user_id: User ID for access control
+            offset: Character offset to start reading from
+            limit: Max characters to return (0 = unlimited)
+
+        Returns:
+            Tuple of (content_slice, total_file_size_chars).
+            content_slice is None if file not found.
+        """
+        path = self._auto_prefix_path(path, user_id)
+        path = self._validate_access(path, user_id)
+
+        query = self._build_query(path, user_id)
+        node = await vfs_nodes_collection.find_one(query)
+        if not node or node.get("node_type") != VFSNodeType.FILE.value:
+            return None, 0
+
+        await vfs_nodes_collection.update_one(
+            self._build_query(path, user_id),
+            {"$set": {"accessed_at": datetime.now(timezone.utc)}},
+        )
+
+        # Inline content — slice in Python
+        if node.get("content") is not None:
+            full = node["content"]
+            total = len(full)
+            sliced = full[offset : offset + limit] if limit else full[offset:]
+            return sliced, total
+
+        # GridFS content — true partial read via seek/read
+        if node.get("gridfs_id"):
+            try:
+                bucket = await self._get_gridfs()
+                stream = await bucket.open_download_stream(ObjectId(node["gridfs_id"]))
+                total_size_bytes = stream.length
+
+                if offset > 0:
+                    # Read and discard prefix to reach the offset.
+                    # NOTE: offset/limit are treated as byte counts here.
+                    # For ASCII/JSON (the vast majority of VFS content) this
+                    # is equivalent to character counts. Multi-byte UTF-8
+                    # may cause slight positional drift, which is acceptable
+                    # for pagination purposes.
+                    await stream.read(offset)
+
+                if limit > 0:
+                    chunk_bytes = await stream.read(limit)
+                else:
+                    chunk_bytes = await stream.read()
+
+                content = chunk_bytes.decode("utf-8")
+                # total_size_bytes ≈ total chars for ASCII/JSON content
+                return content, total_size_bytes
+            except Exception as e:
+                log.error(f"VFS: Error reading GridFS file {path}: {e}")
+                return None, 0
+
+        return None, 0
+
     async def exists(self, path: str, user_id: str) -> bool:
         """
         Check if a path (file or folder) exists.
@@ -960,6 +1034,229 @@ class MongoVFS:
         metadata["copied_from"] = source
 
         return await self.write(dest, content, user_id, metadata)
+
+    # ==================== Content Search ====================
+
+    async def grep_content(
+        self,
+        pattern: str,
+        *,
+        user_id: str,
+        base_path: str | None = None,
+        case_insensitive: bool = False,
+        recursive: bool = True,
+        max_files: int = 100,
+        max_matches_per_file: int = 20,
+        max_line_length: int = 200,
+        include_globs: list[str] | None = None,
+        exclude_globs: list[str] | None = None,
+        before_context: int = 0,
+        after_context: int = 0,
+        invert: bool = False,
+        only_matching: bool = False,
+    ) -> list[dict[str, Any]]:
+        """
+        Search file contents server-side using MongoDB $regex.
+
+        Only searches inline files (content stored directly in the document).
+        GridFS files must be searched separately via client-side read.
+
+        Args:
+            pattern: Regex pattern to search for
+            user_id: The user ID (REQUIRED for security)
+            base_path: Optional base path to scope the search
+            case_insensitive: If True, use case-insensitive matching
+            recursive: If True, search subdirectories recursively
+            max_files: Maximum number of files to return
+            max_matches_per_file: Maximum matching lines per file
+            max_line_length: Truncate matching lines to this length
+            include_globs: Only search files whose name matches one of these globs
+            exclude_globs: Skip files whose name matches any of these globs
+            before_context: Number of lines to include before each match
+            after_context: Number of lines to include after each match
+            invert: If True, return non-matching lines
+            only_matching: If True, return only the matched portion of lines
+
+        Returns:
+            List of dicts with keys: path, name, matches
+            Each match has: line_num, line, is_context
+        """
+        query: dict[str, Any] = {
+            "user_id": self._get_query_user_id(
+                base_path or f"/users/{user_id}", user_id
+            ),
+            "node_type": "file",
+            "content": {"$ne": None},
+        }
+
+        if base_path:
+            escaped_base = _escape_mongo_regex(base_path.rstrip("/"))
+            if recursive:
+                query["path"] = {"$regex": f"^{escaped_base}/"}
+            else:
+                query["parent_path"] = base_path.rstrip("/")
+
+        # Apply glob filters at the query level using fnmatch.translate()
+        if include_globs:
+            include_regexes = [fnmatch.translate(g) for g in include_globs]
+            query["name"] = {"$regex": "|".join(include_regexes)}
+        if exclude_globs:
+            exclude_regexes = [fnmatch.translate(g) for g in exclude_globs]
+            combined_exclude = re.compile("|".join(exclude_regexes))
+            if "name" in query:
+                query["name"]["$not"] = combined_exclude
+            else:
+                query["name"] = {"$not": combined_exclude}
+
+        regex_options = "i" if case_insensitive else ""
+        query["content"]["$regex"] = pattern
+        if regex_options:
+            query["content"]["$options"] = regex_options
+
+        projection = {"path": 1, "name": 1, "content": 1, "_id": 0}
+
+        cursor = vfs_nodes_collection.find(query, projection).limit(max_files)
+        docs = await cursor.to_list(length=max_files)
+
+        flags = re.IGNORECASE if case_insensitive else 0
+        try:
+            compiled = re.compile(pattern, flags)
+        except re.error:
+            compiled = re.compile(re.escape(pattern), flags)
+
+        wants_context = (before_context > 0 or after_context > 0) and not invert
+
+        results: list[dict[str, Any]] = []
+        for doc in docs:
+            content: str = doc["content"]
+            doc_lines = content.split("\n")
+
+            # First pass: find matching line indices
+            match_indices: list[int] = []
+            for i, line in enumerate(doc_lines):
+                hit = compiled.search(line) is not None
+                if hit != invert:
+                    match_indices.append(i)
+                    if len(match_indices) >= max_matches_per_file:
+                        break
+
+            if not match_indices:
+                continue
+
+            file_matches: list[dict[str, Any]] = []
+
+            if wants_context:
+                include_set: set[int] = set()
+                for idx in match_indices:
+                    start = max(0, idx - before_context)
+                    end = min(len(doc_lines) - 1, idx + after_context)
+                    for j in range(start, end + 1):
+                        include_set.add(j)
+                match_set = set(match_indices)
+                prev_idx = -2
+                for idx in sorted(include_set):
+                    if prev_idx >= 0 and idx > prev_idx + 1:
+                        file_matches.append(
+                            {"line_num": 0, "line": "--", "is_context": False}
+                        )
+                    prev_idx = idx
+                    line = doc_lines[idx]
+                    is_match = idx in match_set
+                    if is_match and only_matching:
+                        for m in compiled.finditer(line):
+                            file_matches.append(
+                                {
+                                    "line_num": idx + 1,
+                                    "line": m.group(),
+                                    "is_context": False,
+                                }
+                            )
+                    else:
+                        display_line = line[:max_line_length]
+                        if len(line) > max_line_length:
+                            display_line += "..."
+                        file_matches.append(
+                            {
+                                "line_num": idx + 1,
+                                "line": display_line,
+                                "is_context": not is_match,
+                            }
+                        )
+            else:
+                for idx in match_indices:
+                    line = doc_lines[idx]
+                    if only_matching and not invert:
+                        for m in compiled.finditer(line):
+                            file_matches.append(
+                                {
+                                    "line_num": idx + 1,
+                                    "line": m.group(),
+                                    "is_context": False,
+                                }
+                            )
+                    else:
+                        display_line = line[:max_line_length]
+                        if len(line) > max_line_length:
+                            display_line += "..."
+                        file_matches.append(
+                            {
+                                "line_num": idx + 1,
+                                "line": display_line,
+                                "is_context": False,
+                            }
+                        )
+
+            if file_matches:
+                doc_path: str = doc["path"]
+                if base_path and doc_path.startswith(base_path.rstrip("/") + "/"):
+                    rel_name = doc_path[len(base_path.rstrip("/")) + 1 :]
+                else:
+                    rel_name = doc.get("name", doc_path.rsplit("/", 1)[-1])
+                results.append(
+                    {
+                        "path": doc_path,
+                        "name": rel_name,
+                        "matches": file_matches,
+                    }
+                )
+
+        return results
+
+    async def get_gridfs_file_paths(
+        self,
+        *,
+        user_id: str,
+        base_path: str,
+        recursive: bool = True,
+        limit: int = 20,
+    ) -> list[str]:
+        """
+        Get paths of files stored in GridFS under a base path.
+
+        Args:
+            user_id: The user ID (REQUIRED for security)
+            base_path: Base path to search under
+            recursive: If True, include files in subdirectories
+            limit: Maximum number of paths to return
+
+        Returns:
+            List of file paths that are stored in GridFS
+        """
+        escaped_base = _escape_mongo_regex(base_path.rstrip("/"))
+        query: dict[str, Any] = {
+            "user_id": self._get_query_user_id(base_path, user_id),
+            "node_type": "file",
+            "gridfs_id": {"$ne": None},
+        }
+
+        if recursive:
+            query["path"] = {"$regex": f"^{escaped_base}/"}
+        else:
+            query["parent_path"] = base_path.rstrip("/")
+
+        cursor = vfs_nodes_collection.find(query, {"path": 1, "_id": 0}).limit(limit)
+        docs = await cursor.to_list(length=limit)
+        return [doc["path"] for doc in docs]
 
     # ==================== Helper Methods ====================
 

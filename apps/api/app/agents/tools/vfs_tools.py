@@ -18,6 +18,7 @@ Folder Structure (per user):
 """
 
 import contextlib
+import math
 from typing import Annotated, Any, Dict
 
 from app.agents.tools.vfs_cmd_parser import get_vfs_command_parser
@@ -26,6 +27,7 @@ from app.agents.tools.vfs_constants import (
     detect_artifact_content_type,
     is_user_visible_path,
 )
+from app.constants.summarization import MAX_VFS_READ_CHARS
 from shared.py.wide_events import log
 from app.decorators import with_rate_limiting
 from app.services.vfs import MongoVFS, get_vfs
@@ -227,9 +229,17 @@ async def vfs_read(
         str,
         "File path to read. Can be relative (notes/file.txt) or absolute.",
     ],
+    offset: Annotated[
+        int,
+        "Character offset to start reading from. Default: 0",
+    ] = 0,
 ) -> str:
     """
     Read a file from your virtual filesystem.
+
+    Large files are paginated automatically (~80K chars per page).
+    When a file is truncated, the output includes a "PAGE END" marker
+    with instructions for reading the next page via the offset parameter.
 
     Paths are relative to your workspace root (notes/, files/, sessions/).
 
@@ -237,6 +247,7 @@ async def vfs_read(
       vfs_read("notes/meeting.txt")
       vfs_read("sessions/abc123/gmail/emails.json")
       vfs_read("files/data.json")
+      vfs_read("files/large.txt", offset=80000)  # page 2
     """
     log.set(tool={"name": "vfs_read", "action": "read"})
     ctx = _get_context(config)
@@ -251,12 +262,41 @@ async def vfs_read(
             ctx["agent_name"],
             ctx["conversation_id"],
         )
-        content = await vfs.read(resolved_path, user_id=ctx["user_id"])
+        content, total_size = await vfs.read_range(
+            resolved_path,
+            user_id=ctx["user_id"],
+            offset=offset,
+            limit=MAX_VFS_READ_CHARS,
+        )
 
         if content is None:
             return f"File not found: {path}"
 
-        return content
+        end_pos = offset + len(content)
+        has_more = end_pos < total_size
+        source_tag = f"<!-- vfs_source: {resolved_path} -->"
+
+        if has_more:
+            remaining = total_size - end_pos
+            pages_left = math.ceil(remaining / MAX_VFS_READ_CHARS)
+            return (
+                f"{content}\n"
+                f"--- PAGE END (chars {offset}-{end_pos} of {total_size}) ---\n"
+                f"{remaining} chars remaining ({pages_left} more pages).\n"
+                f'Next page: vfs_read("{path}", offset={end_pos})\n'
+                f"Tip: Write key findings to a temp file before reading the "
+                f"next page — this output will be masked after 1-2 turns.\n"
+                f"{source_tag}"
+            )
+
+        if offset > 0:
+            return (
+                f"{content}\n"
+                f"--- FINAL PAGE (chars {offset}-{end_pos} of {total_size}) ---\n"
+                f"{source_tag}"
+            )
+
+        return f"{content}\n{source_tag}"
 
     except Exception as e:
         log.error(f"VFS read error: {e}")

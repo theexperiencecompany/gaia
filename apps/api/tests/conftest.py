@@ -36,6 +36,11 @@ os.environ.setdefault(
 )
 
 
+# Pre-import the collections submodule so patch() can traverse the namespace
+# package hierarchy (app.db.mongodb has no __init__.py, so submodule attributes
+# are not set until the module is explicitly imported).
+import app.db.mongodb.collections as _mongodb_collections  # noqa: E402
+
 # Patch Infisical, MongoDB ping, and rate limiting immediately so
 # module-level imports don't hang and request-time decorators don't
 # try to connect to external services.
