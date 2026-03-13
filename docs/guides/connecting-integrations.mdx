@@ -1,0 +1,137 @@
+---
+title: "Connecting Integrations"
+description: "Link your apps to GAIA so it can take action on your behalf"
+---
+
+## Why Connect Integrations?
+
+GAIA becomes more useful the more it knows about your work. When you connect an integration, two things happen:
+
+1. **GAIA gets context.** It can read your emails, calendar events, tasks, and messages — so it understands what you're working on without you having to explain.
+2. **GAIA can take action.** It can draft replies, create issues, schedule meetings, and update tasks directly in the apps you already use.
+
+No more switching between tabs to copy information from one tool into another. Tell GAIA what you need and it handles the rest.
+
+## Connect an Integration
+
+<Steps>
+  <Step title="Open the Integrations page">
+    Navigate to **Settings > Integrations** from the sidebar. You'll see all available integrations organized by category, with their connection status.
+
+    <img
+      className="rounded-lg"
+      src="/images/guides/integrations/integrations-page.png"
+      alt="Integrations page showing available apps"
+    />
+  </Step>
+
+  <Step title="Find the app you want">
+    Browse by category or use the search bar to find a specific app. Each integration card shows the app name, a short description, and whether it's currently connected.
+  </Step>
+
+  <Step title="Click Connect">
+    Click the **Connect** button on the integration you want to link. For most integrations, this opens the app's authorization page (OAuth) in your browser.
+  </Step>
+
+  <Step title="Authorize access">
+    Sign in to the app if prompted, then review the permissions GAIA is requesting. Click **Allow** or **Authorize** to grant access. You'll be redirected back to GAIA automatically.
+  </Step>
+
+  <Step title="Confirm the connection">
+    Once authorized, the integration card shows a green dot — it's connected. GAIA now has access to that app's tools and will use them when relevant in your conversations.
+  </Step>
+</Steps>
+
+<Tip>
+  You can also connect integrations directly from the chat sidebar. Expand the
+  **Integrations** section to see your connected apps and quickly link new ones.
+</Tip>
+
+## What Happens After Connecting
+
+Once an integration is connected, its tools become available in chat automatically. You don't need to configure anything else.
+
+For example, after connecting Gmail, you can say things like:
+
+- "Draft a reply to the last email from Sarah"
+- "Send a summary of today's meetings to the team"
+- "Find all unread emails from this week about the Q3 report"
+
+GAIA picks the right tool based on your request. The more integrations you connect, the more GAIA can do without you leaving the conversation.
+
+## Available Integrations
+
+GAIA supports 60+ integrations across four categories:
+
+<CardGroup cols={2}>
+  <Card title="Communication" icon="envelope">
+    Gmail, Slack, Microsoft Teams, Google Meet — read and send messages, summarize threads, schedule meetings.
+  </Card>
+
+  <Card title="Productivity & Tasks" icon="calendar">
+    Google Calendar, Google Tasks, Notion, Todoist, Asana, Trello, ClickUp, Google Docs, Google Sheets — manage your schedule, tasks, and documents.
+  </Card>
+
+  <Card title="Developer Tools" icon="code">
+    GitHub, Linear — create issues, review pull requests, track project progress.
+  </Card>
+
+  <Card title="Social & Business" icon="briefcase">
+    Twitter, LinkedIn, Reddit, Instagram, HubSpot, Airtable — post content, manage contacts, update records.
+  </Card>
+</CardGroup>
+
+<Note>
+  The full list is always visible inside the app under **Settings >
+  Integrations**. New integrations are added regularly.
+</Note>
+
+## Managing Your Connections
+
+### Disconnect an integration
+
+Open the integration's detail view and click **Disconnect**. GAIA immediately loses access to that app — no data is retained from the connection.
+
+### Reconnect after token expiry
+
+Some integrations use access tokens that expire after a set period. If a connection stops working, go to the Integrations page and click **Connect** again. You'll re-authorize through the same OAuth flow and the connection is restored.
+
+<Warning>
+  If an integration shows an error status, try disconnecting and reconnecting.
+  This resolves most issues caused by expired or revoked tokens.
+</Warning>
+
+## Community Marketplace
+
+Can't find the integration you need? Check the community marketplace — other users may have already built it.
+
+<img
+  className="rounded-lg"
+  src="/images/guides/integrations/create-custom-integration-modal.png"
+  alt="Custom integration modal for adding MCP integrations"
+/>
+
+You can also create your own custom integrations using the MCP protocol and publish them to the marketplace for others to use.
+
+<CardGroup cols={2}>
+  <Card
+    title="Browse the Marketplace"
+    icon="store"
+    href="https://heygaia.io/marketplace"
+  >
+    Find community-built integrations for niche tools and workflows.
+  </Card>
+
+  <Card
+    title="Build a Custom Integration"
+    icon="hammer"
+    href="/developers/introduction"
+  >
+    Connect any tool using the MCP protocol and the developer API.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Before building a custom integration, search the marketplace first — someone
+  may have already built what you need.
+</Tip>

@@ -1,0 +1,185 @@
+---
+title: "Publishing to the Marketplace"
+description: "Share your workflows and integrations with the GAIA community"
+---
+
+## What is the GAIA Marketplace?
+
+The marketplace is a public directory where GAIA users share workflows and custom integrations they have built. Browse it to find automations and tools for problems someone else has already solved, or publish your own to help the community.
+
+There are two types of content you can publish:
+
+<CardGroup cols={2}>
+  <Card title="Workflows" icon="bolt">
+    Step-by-step automations that run on a schedule, react to events, or execute on demand. Published workflows appear in the **Community Workflows** section of the Workflows page.
+  </Card>
+  <Card title="Custom MCP Integrations" icon="puzzle-piece">
+    MCP server connections that add new tools to GAIA. Published integrations appear in the public marketplace and can be installed by any user with a single click.
+  </Card>
+</CardGroup>
+
+---
+
+## Publishing a Workflow
+
+Before you publish, make sure your workflow runs reliably. Other users will expect it to work as described.
+
+<Steps>
+  <Step title="Create and test your workflow">
+    Navigate to the **Workflows** page and click **Create Workflow**. Give it a clear, descriptive title and write specific instructions for what it should do.
+
+    <img
+      className="rounded-lg"
+      src="/images/guides/workflows/workflows_page.webp"
+      alt="Workflows page with create button"
+    />
+
+    <img
+      className="rounded-lg"
+      src="/images/guides/workflows/create.webp"
+      alt="Create workflow form"
+    />
+
+    Run the workflow at least once to confirm it produces the results you expect. Fix any issues before moving to the next step.
+  </Step>
+
+  <Step title="Publish from the workflow menu">
+    Open your workflow from the workflows list. Click the three-dot menu in the top-right corner and select **Publish Workflow**.
+
+    <img
+      className="rounded-lg"
+      src="/images/guides/workflows/publish.webp"
+      alt="Publish workflow option in the three-dot menu"
+    />
+
+    Your workflow is now live in the community marketplace.
+  </Step>
+
+  <Step title="View your published workflow">
+    After publishing, select **View on Marketplace** from the same menu to see how your workflow appears to other users.
+
+    <img
+      className="rounded-lg"
+      src="/images/guides/workflows/view_marketplace.webp"
+      alt="View workflow on marketplace"
+    />
+  </Step>
+</Steps>
+
+<Tip>
+  Titles like "Daily Sales Report from HubSpot to Slack" perform better than
+  generic names like "Sales Report." Be specific about what the workflow does,
+  which apps it uses, and what output it produces.
+</Tip>
+
+### Unpublishing a Workflow
+
+Changed your mind? Open the workflow, click the three-dot menu, and select **Unpublish Workflow**. The workflow is removed from the community listing immediately but stays in your personal workflows.
+
+---
+
+## Publishing a Custom MCP Integration
+
+If you have connected a custom MCP server that other users would benefit from, you can publish it to the marketplace.
+
+### Requirements
+
+Your integration must meet these criteria before it can be published:
+
+- **Connected and working** -- the MCP server must be actively connected with at least one tool imported.
+- **Name** -- between 3 and 100 characters.
+- **Description** -- optional, but recommended. Maximum 500 characters.
+- **No profanity** -- names and descriptions are checked automatically.
+- **You are the creator** -- only the user who originally added the integration can publish it.
+
+<Steps>
+  <Step title="Connect your MCP server">
+    If you have not already, navigate to **Settings > Integrations**, click **New Integration** in the Custom section, and connect your MCP server. See the [Adding MCP Integrations](/guides/adding-mcp-integrations) guide for detailed instructions.
+  </Step>
+
+  <Step title="Verify the connection">
+    Confirm the integration shows a connected status and that its tools are working correctly in chat. Send a few test messages that use the tools.
+  </Step>
+
+  <Step title="Publish to the marketplace">
+    Open the integration details and select **Publish**. GAIA validates your integration, automatically assigns it a category, and adds it to the public directory.
+  </Step>
+</Steps>
+
+Once published, your integration appears in the community marketplace with your name as the creator. Other users can install it with a single click.
+
+<Warning>
+  Make sure your MCP server is stable and publicly accessible before publishing.
+  If the server goes down, users who installed your integration will lose access
+  to its tools.
+</Warning>
+
+### Unpublishing an Integration
+
+Open the integration details and select **Unpublish**. The integration is removed from the public directory immediately. Users who already installed it keep their copy, but it will no longer appear for new users.
+
+---
+
+## Discovering Community Content
+
+### Workflows
+
+The **Workflows** page has two discovery sections:
+
+- **Explore and Discover** -- curated workflow templates organized by category (Engineering, Founders, Marketing, and more). Add any of these with a single click.
+- **Community Workflows** -- workflows published by other GAIA users, sorted by popularity. Browse these for inspiration or use them directly.
+
+### Integrations
+
+Visit the [GAIA Marketplace](https://heygaia.io/marketplace) to browse community-built integrations. You can:
+
+- **Search** by name, description, or tool name. GAIA uses semantic search, so you can describe what you need in plain language.
+- **Filter by category** to narrow results.
+- **Sort** by popularity, recency, or name.
+
+To install a community integration, click **Add** on its marketplace listing. GAIA clones the integration into your account and connects it automatically.
+
+<Note>
+  Community integrations connect to MCP servers maintained by their original
+  creators. GAIA does not host or guarantee the availability of third-party
+  servers.
+</Note>
+
+---
+
+## Community Guidelines
+
+Published content represents you and the GAIA community. Follow these guidelines to keep the marketplace useful for everyone.
+
+### Your content must:
+
+- **Solve a real problem.** Publish workflows and integrations that automate a genuine task or connect a tool others actually use.
+- **Have accurate titles and descriptions.** Other users rely on these to decide whether to install your content. Describe exactly what it does.
+- **Work reliably.** Test thoroughly before publishing. If your workflow depends on specific integrations, mention them in the description.
+- **Respect privacy.** Never publish workflows or integrations that collect, expose, or misuse other users' data.
+
+### Your content must not:
+
+- Contain offensive or inappropriate language.
+- Impersonate other users or services.
+- Spam the marketplace with duplicate or low-quality listings.
+- Require users to share credentials or sensitive information outside of GAIA's built-in authentication.
+
+<Warning>
+  Content that violates these guidelines may be removed from the marketplace
+  without notice.
+</Warning>
+
+---
+
+## Quick Reference
+
+| Action | Where | How |
+|---|---|---|
+| Publish a workflow | Workflow detail > three-dot menu | Select **Publish Workflow** |
+| Unpublish a workflow | Workflow detail > three-dot menu | Select **Unpublish Workflow** |
+| Publish an integration | Integration detail page | Select **Publish** |
+| Unpublish an integration | Integration detail page | Select **Unpublish** |
+| Browse community workflows | Workflows page | Scroll to **Community Workflows** |
+| Browse community integrations | [heygaia.io/marketplace](https://heygaia.io/marketplace) | Search, filter, and sort |
+| Install a community integration | Marketplace listing | Click **Add** |

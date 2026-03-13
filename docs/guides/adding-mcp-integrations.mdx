@@ -1,0 +1,121 @@
+---
+title: "Adding MCP Integrations"
+description: "Extend GAIA with custom tools using the Model Context Protocol"
+---
+
+## Overview
+
+The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) is an open standard for connecting AI assistants to external tools and data sources. GAIA supports MCP natively, so you can connect any compatible server and immediately use its tools in chat.
+
+Once connected, GAIA indexes the tools provided by the MCP server and makes them available through semantic search. When you ask GAIA to do something, it automatically finds and uses the right tool from your connected integrations.
+
+<img
+  className="rounded-lg"
+  src="/images/guides/integrations/integrations-page.png"
+  alt="Integrations page showing custom MCP integrations in the sidebar"
+/>
+
+## Authentication Types
+
+MCP servers use one of three authentication methods. GAIA detects the correct type automatically when you connect.
+
+<CardGroup cols={3}>
+  <Card title="No Auth" icon="lock-open">
+    The server is publicly accessible. Just provide the URL and you are connected.
+  </Card>
+  <Card title="Bearer Token" icon="key">
+    The server requires an API key or token. Provide your key alongside the URL.
+  </Card>
+  <Card title="OAuth 2.1" icon="shield-check">
+    The server uses OAuth authorization. GAIA handles the full OAuth 2.1 flow including PKCE, token refresh, and dynamic client registration.
+  </Card>
+</CardGroup>
+
+## Connect an MCP Server
+
+Navigate to the **Integrations** page and click **New Integration** in the Custom section of the sidebar.
+
+<img
+  className="rounded-lg"
+  src="/images/guides/integrations/create-custom-integration-modal.png"
+  alt="New Integration modal with form fields for name, description, server URL, and API key"
+/>
+
+<Steps>
+  <Step title="Fill in the form">
+    The modal has four fields:
+
+    | Field | Required | Description |
+    |---|---|---|
+    | **Name** | Yes | A display name for the integration (e.g. "Notion MCP") |
+    | **Description** | No | A short description of what the integration does |
+    | **Server URL** | Yes | The MCP server endpoint. Must start with `http://` or `https://` |
+    | **API Key / Bearer Token** | No | If the server requires a static API key, enter it here. Leave empty for OAuth or no-auth servers |
+  </Step>
+  <Step title="Click Create">
+    GAIA probes the server to determine its authentication requirements and connects automatically.
+  </Step>
+  <Step title="Authorize (OAuth only)">
+    If the server requires OAuth, you will be redirected to the provider's authorization page. Grant access and you will be returned to GAIA with the connection established.
+  </Step>
+</Steps>
+
+### No Auth
+
+For servers that do not require authentication, provide the **Name** and **Server URL**, then click **Create**. GAIA connects immediately and imports all available tools.
+
+### Bearer Token
+
+For servers that require an API key, provide the **Name**, **Server URL**, and your **API Key / Bearer Token**, then click **Create**. GAIA sends the token as a Bearer header on every request to the server.
+
+### OAuth 2.1
+
+For servers that use OAuth, provide the **Name** and **Server URL**, then click **Create**. Leave the API Key field empty. GAIA will:
+
+1. Probe the server and discover its OAuth configuration
+2. Redirect you to the authorization page
+3. Handle the token exchange, PKCE verification, and client registration automatically
+4. Connect and import tools once authorization is complete
+
+<Tip>
+  You do not need to know which auth type a server uses ahead of time. Just provide the URL and GAIA will detect the correct method automatically.
+</Tip>
+
+## What Happens After Connecting
+
+Once connected, GAIA indexes all tools exposed by the MCP server into its vector store. When you send a message in chat, GAIA uses semantic search to find relevant tools across all your integrations and invokes them as needed.
+
+You will see a confirmation with the number of tools imported, for example: "Connected to Notion MCP with 12 tools!"
+
+<Note>
+  If a connection fails, the integration is still saved. You can retry the connection from the Integrations page at any time.
+</Note>
+
+## Publishing to the Marketplace
+
+If you have built or configured an MCP server that others would find useful, you can publish your integration to the GAIA community marketplace. Published integrations appear in the public directory and can be installed by any GAIA user with a single click.
+
+<Warning>
+  Test your integration thoroughly before publishing. Make sure all tools work reliably and the server is stable.
+</Warning>
+
+## Popular MCP Servers
+
+Looking for inspiration? Here are some widely-used MCP servers you can connect to GAIA:
+
+<CardGroup cols={2}>
+  <Card title="Notion" icon="file-lines">
+    Read and write Notion pages, databases, and blocks directly from chat.
+  </Card>
+  <Card title="Postman" icon="paper-plane">
+    Run API collections and manage your Postman workspace.
+  </Card>
+  <Card title="Context7" icon="book">
+    Pull up-to-date documentation for any library directly into your conversation.
+  </Card>
+  <Card title="GitHub" icon="github">
+    Manage repositories, issues, pull requests, and code search.
+  </Card>
+</CardGroup>
+
+Any server that implements the MCP specification will work with GAIA. Check the [MCP server directory](https://github.com/modelcontextprotocol/servers) for a full list of available servers.

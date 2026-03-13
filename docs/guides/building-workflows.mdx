@@ -1,0 +1,132 @@
+---
+title: "Building Your First Workflow"
+description: "Automate recurring tasks with scheduled, triggered, or manual workflows"
+---
+
+## Overview
+
+Workflows are natural language instructions that GAIA runs automatically on your behalf. Instead of repeating the same prompts every day, you describe what you want done, choose when it should run, and GAIA handles the rest.
+
+A workflow can send you a daily Slack summary of your analytics, convert unread emails into tasks, generate weekly standup notes from GitHub activity, or anything else you can describe in plain language.
+
+## Trigger Types
+
+Every workflow needs a trigger — the condition that tells GAIA when to run it. There are three types:
+
+<CardGroup cols={3}>
+  <Card title="Schedule" icon="clock">
+    Run on a recurring schedule. Every day at 9am, every Monday morning, the 1st of each month — you set the cadence.
+  </Card>
+  <Card title="Trigger" icon="bolt">
+    Run when something happens in a connected app. A new calendar event, an incoming email, a GitHub pull request, a Slack message — GAIA watches and reacts.
+  </Card>
+  <Card title="Manual" icon="hand-pointer">
+    Run on-demand whenever you click **Run**. Useful for workflows you want to control yourself rather than automate.
+  </Card>
+</CardGroup>
+
+## Create a Workflow
+
+<Steps>
+  <Step title="Open the Workflows page">
+    Navigate to **Workflows** from the sidebar. You will see your existing workflows and the option to create a new one.
+
+    <img
+      className="rounded-lg"
+      src="/images/guides/workflows/workflows-page.png"
+      alt="Workflows page showing existing workflows and create button"
+    />
+  </Step>
+
+  <Step title="Click Create Workflow">
+    Click the **Create Workflow** button. A modal opens where you configure your workflow.
+  </Step>
+
+  <Step title="Name and describe your workflow">
+    Enter a clear title that describes what the workflow does. Optionally add a short description for context.
+
+    <Tip>
+      Use specific, descriptive titles like "Daily PostHog Metrics Report" or
+      "Weekly Standup from GitHub Activity" — not generic names like "My
+      Workflow"
+    </Tip>
+  </Step>
+
+  <Step title="Choose a trigger type">
+    Select one of the three tabs: **Schedule**, **Trigger**, or **Manual**.
+
+    **Schedule** — Pick a frequency (every day, week, or month), choose the day and time, and GAIA converts it to a cron expression automatically. The default is daily at 9:00 AM in your local timezone.
+
+    <img
+      className="rounded-lg"
+      src="/images/guides/workflows/create-workflow-schedule.png"
+      alt="Create workflow modal with Schedule tab selected"
+    />
+
+    **Trigger** — Select an integration event to listen for. GAIA supports triggers from Google Calendar, Gmail, Google Docs, Google Sheets, GitHub, Slack, Linear, Notion, Asana, and Todoist.
+
+    <img
+      className="rounded-lg"
+      src="/images/guides/workflows/create-workflow-trigger.png"
+      alt="Create workflow modal with Trigger tab selected"
+    />
+
+    <img
+      className="rounded-lg"
+      src="/images/guides/workflows/create-workflow-trigger-suggestions.png"
+      alt="Trigger dropdown showing available integration triggers"
+    />
+
+    **Manual** — No configuration needed. The workflow runs only when you explicitly trigger it.
+  </Step>
+
+  <Step title="Write your instructions">
+    In the prompt field, describe what GAIA should do in plain language. Be specific about the inputs, actions, and outputs you expect.
+
+    For example:
+    - "Pull yesterday's key metrics from PostHog — active users, signups, and retention — and send a formatted summary to the #metrics Slack channel."
+    - "Check my unread emails, extract any action items, and create a todo for each one."
+    - "Look at all merged PRs and commits from the past week across our repos. Summarize them into standup notes grouped by project."
+  </Step>
+
+  <Step title="Create the workflow">
+    Click **Create Workflow**. GAIA generates execution steps based on your instructions and activates the workflow immediately.
+  </Step>
+</Steps>
+
+## Example Workflows
+
+Here are real workflows you can build with GAIA:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| Daily PostHog Metrics Report | Schedule (daily, 9am) | Pulls key product metrics from PostHog and posts a summary to Slack |
+| HackerNews Frontpage | Schedule (daily) | Curates the top stories from Hacker News and sends them as an email newsletter |
+| Email to Task Converter | Trigger (new email) | Watches for unread emails, extracts action items, and creates todos |
+| Weekly Standup from GitHub Activity | Schedule (weekly, Monday) | Generates standup notes from the past week's commits and pull requests |
+
+## Activate and Deactivate Workflows
+
+Every workflow has an activation toggle. When a workflow is active, GAIA runs it according to its trigger. Deactivating a workflow pauses it without deleting your configuration — you can reactivate it at any time.
+
+To toggle activation, open a workflow and use the activation switch in the footer of the workflow modal.
+
+<Note>
+  Newly created workflows are activated by default. Deactivate a workflow if
+  you want to pause it temporarily without losing your setup.
+</Note>
+
+## Explore Community Workflows
+
+The Workflows page includes an **Explore & Discover** section with community-built workflow templates organized by category — Engineering, Founders, Marketing, and more. Browse these to find automations you can add with a single click.
+
+Below that, the **Community Workflows** section showcases workflows published by other GAIA users. You can use any of these as a starting point and customize them to fit your needs.
+
+## Create Workflows from Chat
+
+You can also create workflows directly from a chat conversation. When GAIA suggests a workflow based on your conversation, it generates a draft with a pre-filled title, description, trigger type, and instructions. Click the draft card to open the Create Workflow modal with everything already configured — review, adjust if needed, and create.
+
+<Tip>
+  If you find yourself asking GAIA to do the same thing repeatedly, tell it
+  "turn this into a workflow" and it will draft one for you.
+</Tip>
