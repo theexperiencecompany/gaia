@@ -97,15 +97,9 @@ def parse_integration_slug(slug: str) -> dict:
     return result
 
 
-def build_public_integration_pipeline(short_id: str) -> list:
-    """Build MongoDB pipeline for fetching public integration with creator lookup."""
+def _creator_lookup_stages() -> list:
+    """Return the shared $lookup, $addFields, and $project stages for creator info."""
     return [
-        {
-            "$match": {
-                "integration_id": {"$regex": f"^{short_id}", "$options": "i"},
-                "is_public": True,
-            }
-        },
         {
             "$lookup": {
                 "from": "users",
@@ -138,6 +132,27 @@ def build_public_integration_pipeline(short_id: str) -> list:
             }
         },
         {"$project": {"creator_info": 0}},
+    ]
+
+
+def build_public_integration_pipeline(short_id: str) -> list:
+    """Build MongoDB pipeline for fetching public integration with creator lookup."""
+    return [
+        {
+            "$match": {
+                "integration_id": {"$regex": f"^{short_id}", "$options": "i"},
+                "is_public": True,
+            }
+        },
+        *_creator_lookup_stages(),
+    ]
+
+
+def build_slug_lookup_pipeline(slug: str) -> list:
+    """Build MongoDB pipeline for slug-based integration lookup."""
+    return [
+        {"$match": {"slug": slug, "is_public": True}},
+        *_creator_lookup_stages(),
     ]
 
 

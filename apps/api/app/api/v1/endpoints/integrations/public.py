@@ -20,6 +20,7 @@ from app.services.integrations.integration_connection_service import (
 from app.services.integrations.user_integrations import add_user_integration
 from app.helpers.integration_helpers import (
     build_public_integration_pipeline,
+    build_slug_lookup_pipeline,
     format_public_integration_response,
     generate_integration_slug,
     parse_integration_slug,
@@ -42,7 +43,7 @@ async def get_public_integration(
         log.set(operation="get_public_integration", integration_id=identifier)
 
         # Try direct slug match first (new format without hash)
-        pipeline = _build_slug_lookup_pipeline(identifier)
+        pipeline = build_slug_lookup_pipeline(identifier)
         cursor = integrations_collection.aggregate(pipeline)
         docs = await cursor.to_list(length=1)
 
@@ -68,45 +69,6 @@ async def get_public_integration(
     except Exception as e:
         log.error(f"Error fetching public integration {identifier}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch integration")
-
-
-def _build_slug_lookup_pipeline(slug: str) -> list:
-    """Build MongoDB pipeline for slug-based integration lookup."""
-    return [
-        {"$match": {"slug": slug, "is_public": True}},
-        {
-            "$lookup": {
-                "from": "users",
-                "let": {
-                    "creator_id": {
-                        "$convert": {
-                            "input": "$created_by",
-                            "to": "objectId",
-                            "onError": None,
-                            "onNull": None,
-                        }
-                    }
-                },
-                "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
-                    {"$project": {"name": 1, "picture": 1}},
-                ],
-                "as": "creator_info",
-            }
-        },
-        {
-            "$addFields": {
-                "creator": {
-                    "$cond": {
-                        "if": {"$gt": [{"$size": "$creator_info"}, 0]},
-                        "then": {"$arrayElemAt": ["$creator_info", 0]},
-                        "else": None,
-                    }
-                }
-            }
-        },
-        {"$project": {"creator_info": 0}},
-    ]
 
 
 @router.post("/public/{integration_id}/add", response_model=AddIntegrationResponse)
