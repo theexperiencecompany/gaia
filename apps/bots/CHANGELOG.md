@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.2.0...bots-v1.3.0) (2026-03-13)
+
+
+### Features
+
+* add tsup configuration for Discord, Slack, and Telegram bots ([3a5d164](https://github.com/theexperiencecompany/gaia/commit/3a5d1641742584b807b8d10b53c632d89f7b64e8))
+* add tsup configuration for Discord, Slack, and Telegram bots ([#541](https://github.com/theexperiencecompany/gaia/issues/541)) ([67d2cc2](https://github.com/theexperiencecompany/gaia/commit/67d2cc2daffe8900fb0cac6e5707adf7ccda795e))
+
+
+### Bug Fixes
+
+* Build and publish bot Docker images to GHCR ([#531](https://github.com/theexperiencecompany/gaia/issues/531)) ([bcb350f](https://github.com/theexperiencecompany/gaia/commit/bcb350f2c10a8f908ccb3bafea66537851ba2745))
+
 ## [1.2.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.1.0...bots-v1.2.0) (2026-02-27)
 
 
