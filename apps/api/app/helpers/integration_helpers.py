@@ -30,20 +30,6 @@ def generate_integration_slug(
     return slug.rstrip("-")
 
 
-def generate_integration_slug_with_hash(
-    name: str,
-    category: str,
-    integration_id: str,
-    max_length: int = 80,
-) -> str:
-    """Legacy slug format with hash suffix for backward compatibility.
-
-    Format: {name}-mcp-{category}-{shortid}
-    """
-    base_slug = generate_integration_slug(name, category, integration_id, max_length - 7)
-    shortid = integration_id[:6].lower() if integration_id else "000000"
-    return f"{base_slug}-{shortid}"
-
 
 def parse_integration_slug(slug: str) -> dict:
     """Parse slug to extract: name_part, category, shortid.
