@@ -128,8 +128,10 @@ services:
     ports:
       - "5672:5672" # AMQP protocol
       - "15672:15672" # Management UI
+      - "15692:15692" # Prometheus metrics
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
     restart: always
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
@@ -269,11 +271,59 @@ services:
     networks:
       - gaia_network
 
+  # Container metrics (CPU, memory, network, disk I/O per container)
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--docker_only=true"
+      - "--store_container_labels=false"
+      - "--housekeeping_interval=30s"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.25"
+
+  # Host machine metrics (CPU, memory, disk, network)
+  node_exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node_exporter
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # HTTP probe for services without native Prometheus metrics (e.g. ChromaDB)
+  blackbox_exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox_exporter
+    volumes:
+      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: prometheus
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./observability/metrics_token:/etc/prometheus/metrics_token:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -312,11 +362,13 @@ services:
   promtail:
     image: grafana/promtail:3.3.2
     container_name: promtail
+    # Run as root so Promtail can read the Docker socket (owned by root:docker).
+    # Promtail 3.x defaults to uid 10001 which lacks socket access.
+    user: root
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
-      # In prod the API always runs in Docker, so this mount is a no-op safety fallback
-      - ../../apps/api/logs:/var/log/gaia-api:ro
+      - promtail_positions:/tmp
     command: -config.file=/etc/promtail/config.yaml -config.expand-env=true
     environment:
       LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}
@@ -365,6 +417,7 @@ volumes:
   loki_data:
   grafana_data:
   prometheus_data:
+  promtail_positions:
 
 networks:
   gaia_network:

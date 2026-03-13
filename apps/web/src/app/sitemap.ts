@@ -25,6 +25,7 @@ const SITEMAP_IDS = {
   GLOSSARY: 7,
   ALTERNATIVES: 8,
   INTEGRATION_COMBOS: 9,
+  NATIVE_INTEGRATIONS: 10,
 } as const;
 
 /**
@@ -44,6 +45,7 @@ export async function generateSitemaps() {
     { id: SITEMAP_IDS.GLOSSARY },
     { id: SITEMAP_IDS.ALTERNATIVES },
     { id: SITEMAP_IDS.INTEGRATION_COMBOS },
+    { id: SITEMAP_IDS.NATIVE_INTEGRATIONS },
   ];
 }
 
@@ -279,6 +281,42 @@ async function getCommunityWorkflowPages(
 }
 
 /**
+ * Native/platform integration pages (Google Calendar, GitHub, Slack, etc.)
+ * Uses the public /integrations/config endpoint — no auth required.
+ */
+async function getNativeIntegrationPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  try {
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
+
+    const response = await fetch(`${apiBaseUrl}/integrations/config`, {
+      next: { revalidate: 3600 },
+    });
+    if (!response.ok) {
+      console.error(
+        `[Sitemap] Native integrations config returned ${response.status}`,
+      );
+      return [];
+    }
+
+    const data = await response.json();
+    return (data.integrations || []).map(
+      (integration: { id: string; available: boolean }) => ({
+        url: `${baseUrl}/marketplace/${integration.id}`,
+        lastModified: BUILD_DATE,
+        changeFrequency: "monthly" as const,
+        priority: 0.7,
+      }),
+    );
+  } catch (error) {
+    console.error("Error fetching native integrations for sitemap:", error);
+    return [];
+  }
+}
+
+/**
  * Marketplace integration pages
  */
 async function getIntegrationPages(
@@ -492,6 +530,8 @@ export default async function sitemap(props: {
       return withLocaleUrls(getAlternativePages(baseUrl), baseUrl);
     case SITEMAP_IDS.INTEGRATION_COMBOS:
       return withLocaleUrls(getIntegrationComboPages(baseUrl), baseUrl);
+    case SITEMAP_IDS.NATIVE_INTEGRATIONS:
+      return getNativeIntegrationPages(baseUrl);
     default:
       return [];
   }
