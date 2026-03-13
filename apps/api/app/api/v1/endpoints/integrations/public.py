@@ -10,6 +10,7 @@ from app.db.mongodb.collections import (
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     AddIntegrationResponse,
+    IntegrationTool,
     PublicIntegrationDetailResponse,
     SearchIntegrationItem,
     SearchIntegrationsResponse,
@@ -18,6 +19,7 @@ from app.services.integrations.integration_connection_service import (
     connect_mcp_integration,
 )
 from app.services.integrations.user_integrations import add_user_integration
+from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.helpers.integration_helpers import (
     build_public_integration_pipeline,
@@ -55,6 +57,13 @@ async def get_public_integration(
             elif native.managed_by in ("self", "composio"):
                 auth_type = "oauth"
 
+            tools_store = get_mcp_tools_store()
+            stored_tools = await tools_store.get_tools(native.id) or []
+            integration_tools = [
+                IntegrationTool(name=t["name"], description=t.get("description"))
+                for t in stored_tools
+            ]
+
             log.set(integration_name=native.name)
             log.set(outcome="success")
             return PublicIntegrationDetailResponse(
@@ -66,9 +75,9 @@ async def get_public_integration(
                 icon_url=None,
                 creator=None,
                 mcp_config=None,
-                tools=[],
+                tools=integration_tools,
                 clone_count=0,
-                tool_count=0,
+                tool_count=len(integration_tools),
                 published_at=None,
                 source="platform",
                 auth_type=auth_type,
