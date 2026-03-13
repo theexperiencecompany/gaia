@@ -14,7 +14,7 @@ import asyncio
 from typing import Dict, List
 
 from shared.py.wide_events import log
-from app.helpers.integration_helpers import generate_integration_slug
+from app.helpers.integration_helpers import generate_unique_integration_slug
 from app.db.mongodb.collections import (
     ai_models_collection,
     blog_collection,
@@ -781,10 +781,11 @@ async def _backfill_integration_slugs() -> None:
 
         log.info(f"Backfilling slugs for {len(docs)} public integrations")
         for doc in docs:
-            slug = generate_integration_slug(
+            slug = await generate_unique_integration_slug(
                 name=doc.get("name", ""),
                 category=doc.get("category", "custom"),
                 integration_id=doc["integration_id"],
+                collection=integrations_collection,
             )
             await integrations_collection.update_one(
                 {"integration_id": doc["integration_id"]},

@@ -77,7 +77,7 @@ export default function WorkflowPage() {
         .filter((v, i, a) => a.indexOf(v) === i) || [],
     categories: workflow.categories || ["featured"],
     published_id: workflow.id,
-    slug: workflow.id,
+    slug: workflow.slug || workflow.id,
     steps: workflow.steps,
     creator: workflow.creator,
   });

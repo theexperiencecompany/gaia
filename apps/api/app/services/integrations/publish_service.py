@@ -12,7 +12,7 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
 )
 from app.db.redis import delete_cache_by_pattern
-from app.helpers.integration_helpers import generate_integration_slug
+from app.helpers.integration_helpers import generate_unique_integration_slug
 from app.services.integrations.category_inference_service import (
     infer_integration_category,
 )
@@ -75,10 +75,11 @@ async def publish_custom_integration(
         server_url=integration.get("mcp_config", {}).get("server_url", ""),
     )
 
-    slug = generate_integration_slug(
+    slug = await generate_unique_integration_slug(
         name=integration.get("name", ""),
         category=category,
         integration_id=integration_id,
+        collection=integrations_collection,
     )
 
     now = datetime.now(timezone.utc)

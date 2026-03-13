@@ -1,5 +1,7 @@
 """Integration-specific helper functions."""
 
+from typing import Any
+
 from app.helpers.slug_helpers import slugify
 
 
@@ -28,6 +30,38 @@ def generate_integration_slug(
             slug = truncated
 
     return slug.rstrip("-")
+
+
+async def generate_unique_integration_slug(
+    name: str,
+    category: str,
+    integration_id: str,
+    collection: Any,
+) -> str:
+    """Generate a slug that is unique across published integrations.
+
+    If the base slug is already taken by a different integration,
+    appends -2, -3, etc. until a free slug is found.
+    """
+    base_slug = generate_integration_slug(name, category, integration_id)
+
+    existing = await collection.find_one(
+        {"slug": base_slug, "integration_id": {"$ne": integration_id}}
+    )
+    if not existing:
+        return base_slug
+
+    suffix = 2
+    while suffix <= 100:
+        candidate = f"{base_slug}-{suffix}"
+        existing = await collection.find_one(
+            {"slug": candidate, "integration_id": {"$ne": integration_id}}
+        )
+        if not existing:
+            return candidate
+        suffix += 1
+
+    return f"{base_slug}-{integration_id[:6]}"
 
 
 
@@ -131,7 +165,7 @@ def format_public_integration_response(doc: dict) -> dict:
         }
 
     tools = doc.get("tools", [])
-    slug = generate_integration_slug(
+    slug = doc.get("slug") or generate_integration_slug(
         name=doc.get("name", ""),
         category=doc.get("category", "custom"),
         integration_id=doc["integration_id"],
