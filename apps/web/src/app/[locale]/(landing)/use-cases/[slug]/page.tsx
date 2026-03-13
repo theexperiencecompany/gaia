@@ -68,9 +68,7 @@ export async function generateMetadata({
   // First, attempt to find the use-case in explore workflows (API)
   try {
     const resp = await workflowApi.getExploreWorkflows(200, 0);
-    const found = resp.workflows.find(
-        (w) => w.slug === slug || w.id === slug,
-      );
+    const found = resp.workflows.find((w) => w.slug === slug || w.id === slug);
     if (found) {
       const workflowAsUseCase: UseCase = {
         title: found.title,
@@ -136,9 +134,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   // First, try to find the use-case in explore workflows
   try {
     const resp = await workflowApi.getExploreWorkflows(200, 0);
-    const found = resp.workflows.find(
-        (w) => w.slug === slug || w.id === slug,
-      );
+    const found = resp.workflows.find((w) => w.slug === slug || w.id === slug);
     if (found) {
       useCase = {
         title: found.title,

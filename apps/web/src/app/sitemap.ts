@@ -156,7 +156,12 @@ async function getExploreWorkflowPages(
       }
       const data = await response.json();
       return (data.workflows || []).map(
-        (wc: { id: string; slug?: string; created_at: string; categories?: string[] }) => ({
+        (wc: {
+          id: string;
+          slug?: string;
+          created_at: string;
+          categories?: string[];
+        }) => ({
           url: `${baseUrl}/use-cases/${wc.slug || wc.id}`,
           lastModified: new Date(wc.created_at),
           changeFrequency: "weekly" as const,

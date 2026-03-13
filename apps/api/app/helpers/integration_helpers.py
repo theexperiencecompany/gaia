@@ -64,7 +64,6 @@ async def generate_unique_integration_slug(
     return f"{base_slug}-{integration_id[:6]}"
 
 
-
 def parse_integration_slug(slug: str) -> dict:
     """Parse slug to extract: name_part, category, shortid.
 
