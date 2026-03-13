@@ -5,9 +5,9 @@ description: "How GAIA's memory works and how to shape what it learns"
 
 ## Overview
 
-GAIA builds a persistent memory of who you are, what you care about, and how you work. This knowledge carries across every conversation, so GAIA gets more useful the more you interact with it.
+GAIA builds a persistent memory of who you are, what you care about, and how you work. That knowledge carries across every conversation, so GAIA gets more useful the more you interact with it.
 
-Memory is not chat history. It is distilled knowledge — the preferences, contacts, IDs, and patterns that GAIA extracts from your conversations and stores for future use.
+Memory is not chat history. It is distilled knowledge — the preferences, contacts, IDs, and patterns GAIA extracts from your conversations and stores for later.
 
 <img
   className="rounded-lg"
@@ -17,16 +17,16 @@ Memory is not chat history. It is distilled knowledge — the preferences, conta
 
 ## How GAIA Learns
 
-GAIA learns automatically. At the end of each conversation, a background process reviews what happened and extracts anything worth remembering.
+GAIA learns automatically. At the end of each conversation, a background process reviews what happened and pulls out anything worth keeping.
 
-This happens silently — you do not need to say "remember this." GAIA picks up on details naturally.
+This happens silently — you never need to say "remember this." GAIA picks up details on its own.
 
-**What gets extracted:**
+**What gets stored:**
 
 - **Identity mappings** — Names linked to emails, Slack IDs, GitHub handles, calendar IDs, and other system identifiers
-- **Preferences** — Your preferred formats, timezones, communication style, default settings
+- **Preferences** — Your preferred formats, timezones, communication style, and default settings
 - **Contacts and relationships** — Who you message, who reports to you, key collaborators
-- **Tools and workflows** — Which integrations you use, common operations, recurring patterns
+- **Tools and workflows** — Which integrations you use, common operations, and recurring patterns
 - **Context** — Projects you work on, repositories you contribute to, channels you frequent
 
 <Tip>
@@ -40,9 +40,9 @@ This happens silently — you do not need to say "remember this." GAIA picks up 
 
 When you start a conversation, GAIA searches your memories using semantic search. It pulls in whatever is relevant to your current request — automatically, without you asking.
 
-For example, if you say "schedule a meeting with James," GAIA can recall James's email and your preferred meeting duration from past interactions. No need to repeat yourself.
+Say you tell GAIA to "schedule a meeting with James." GAIA can already recall James's email and your preferred meeting duration from past interactions. No need to repeat yourself.
 
-Memory also feeds into GAIA's proactive behavior. The more it knows about your routines and preferences, the better it can anticipate what you need.
+Memory also drives GAIA's proactive behavior. The more it knows about your routines and preferences, the better it can anticipate what you need before you ask.
 
 ## Adding Memories Manually
 
@@ -53,32 +53,29 @@ You can teach GAIA directly by adding memories in Settings.
     Go to **Settings** and select **Memories** from the sidebar.
   </Step>
   <Step title="Add a memory">
-    Click **Add Memory** and type the information you want GAIA to know.
-    Write specific, meaningful details — for example, "My manager is Alex Chen,
-    alex.chen@company.com" or "I prefer meeting agendas as bullet points."
+    Click **Add Memory** and type what you want GAIA to know. Be specific — for
+    example, "My manager is Alex Chen, alex.chen@company.com" or "I prefer
+    meeting agendas as bullet points."
   </Step>
   <Step title="Save">
-    Click **Save Memory**. GAIA processes the text and extracts the key facts.
+    Click **Save Memory**. GAIA processes the text and pulls out the key facts.
   </Step>
 </Steps>
 
 <Note>
-  GAIA will not store a memory if it cannot extract meaningful information from
-  your text. Be specific — "I like coffee" is too vague, but "I take my coffee
-  orders from Blue Bottle, size large, oat milk" gives GAIA something useful to
-  work with.
+  GAIA won't store a memory if it can't extract something meaningful from your
+  text. "I like coffee" is too vague. "I order from Blue Bottle, size large,
+  oat milk" gives GAIA something it can actually use.
 </Note>
 
 ## Viewing Your Memory Graph
 
-The Memory settings page offers two ways to explore what GAIA knows about you:
+The Memory settings page gives you two ways to see what GAIA knows about you:
 
-- **Graph View** — A visual network showing entities (people, tools, projects) and the relationships between them. This is the default view.
-- **List View** — A flat list of every stored memory, showing the content, date, and category.
+- **Graph View** — A visual network of entities (people, tools, projects) and the relationships between them. This is the default view.
+- **List View** — A flat list of every stored memory, with the content, date, and category.
 
-Each memory is tagged with categories like identity mappings, preferences, or context patterns, so you can quickly scan what GAIA has learned.
-
-You can also export the graph as a PNG or SVG image from the Graph View.
+Each memory is tagged by category — identity mappings, preferences, context patterns — so you can quickly scan what GAIA has learned. You can also export the graph as a PNG or SVG from Graph View.
 
 <img
   className="rounded-lg"
@@ -100,11 +97,11 @@ You have full control over what GAIA remembers.
 
 ## How Memory Works Under the Hood
 
-GAIA's memory is powered by vector-based semantic search. When a memory is stored, it is embedded as a vector — a numerical representation of its meaning. When GAIA needs to recall information, it searches for memories whose meaning is closest to your current request.
+GAIA's memory runs on vector-based semantic search. When a memory is stored, it gets embedded as a vector — a numerical representation of its meaning. When GAIA needs to recall something, it searches for memories whose meaning is closest to your current request.
 
-This means GAIA does not rely on exact keyword matches. Asking about "my team lead" can surface a memory stored as "Alex Chen is my manager," because the concepts are semantically related.
+That means GAIA does not rely on exact keyword matches. Asking about "my team lead" can surface a memory stored as "Alex Chen is my manager," because the concepts are semantically related.
 
-Memories also include graph relationships — structured connections between entities like people, tools, and projects. This lets GAIA understand not just isolated facts, but how things relate to each other.
+Memories also include graph relationships — structured connections between entities like people, tools, and projects. This lets GAIA understand not just isolated facts, but how things connect to each other.
 
 ## Privacy and Security
 

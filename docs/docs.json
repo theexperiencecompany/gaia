@@ -125,7 +125,6 @@
             "group": "Apps & Platforms",
             "pages": [
               "guides/desktop-app",
-              "guides/mobile-app",
               "guides/slack-bot",
               "guides/discord-telegram"
             ]

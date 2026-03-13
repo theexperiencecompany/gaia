@@ -5,7 +5,7 @@ description: "Run GAIA natively on your computer with system-level integrations"
 
 ## Overview
 
-The GAIA desktop app wraps the full web experience inside a native application built on Electron. You get the same chat, workflows, calendar, and integrations you use in the browser -- plus native OS authentication, automatic updates, and a dedicated window that lives outside your browser tabs.
+The GAIA desktop app gives you everything from the web — chat, workflows, calendar, integrations — in a dedicated window that lives outside your browser tabs. It's built on Electron and uses the same UI you already know, so there's no learning curve.
 
 Available for **macOS**, **Windows**, and **Linux** (x64 and ARM64).
 
@@ -13,45 +13,45 @@ Available for **macOS**, **Windows**, and **Linux** (x64 and ARM64).
 
 <Steps>
   <Step title="Get the installer">
-    Head to [heygaia.io/download](https://heygaia.io/download) and grab the installer for your operating system:
+    Go to [heygaia.io/download](https://heygaia.io/download) and pick the installer for your OS:
 
     - **macOS** — `.dmg` (Intel or Apple Silicon)
     - **Windows** — `.exe` installer or portable `.exe`
     - **Linux** — `.AppImage`, `.deb`, or `.rpm`
   </Step>
   <Step title="Run the installer">
-    Open the downloaded file and follow the on-screen prompts. On macOS, drag GAIA into your Applications folder. On Windows, the installer lets you choose a custom install location.
+    Open the downloaded file and follow the prompts. On macOS, drag GAIA into your Applications folder. On Windows, you can pick a custom install location during setup.
   </Step>
   <Step title="Sign in">
-    When GAIA launches for the first time, it opens a login screen. Click **Sign In** to authenticate through your default system browser. Once complete, the app receives your session automatically via a secure deep link -- no need to copy tokens or passwords.
+    On first launch, GAIA opens a login screen. Click **Sign In** and your default browser handles the rest. Once you authenticate, the app picks up your session automatically via a secure deep link — no tokens to copy, no passwords to paste.
   </Step>
 </Steps>
 
 <Tip>
-  On macOS, if you see a "GAIA can't be opened because it is from an unidentified developer" warning, go to **System Settings > Privacy & Security** and click **Open Anyway**.
+  On macOS, if you see "GAIA can't be opened because it is from an unidentified developer," go to **System Settings > Privacy & Security** and click **Open Anyway**.
 </Tip>
 
 ## Key Features
 
 ### Native Authentication
 
-The desktop app uses the `gaia://` deep-link protocol for OAuth. When you sign in, the browser completes authentication and hands your session back to the app seamlessly. No manual token entry required.
+Sign-in works through the `gaia://` deep-link protocol. Your browser handles OAuth, then passes your session back to the app. You never touch a token manually.
 
 ### Automatic Updates
 
-GAIA checks for updates in the background after every launch. When a new version is available, you get a prompt to download it. Once downloaded, you can restart immediately or let GAIA install the update the next time you quit.
+Every time you launch GAIA, it checks for updates in the background. When a new version is ready, you get a prompt. You can restart right away or wait until the next time you quit — your call.
 
 <Note>
-  Updates are delivered through GitHub Releases. If you're on a company network that blocks GitHub, you may need to allowlist `github.com` for updates to work.
+  Updates come through GitHub Releases. If your company network blocks GitHub, add `github.com` to your allowlist so updates can get through.
 </Note>
 
 ### Splash Screen
 
-The app shows a branded splash screen on startup while the internal server initializes. The main window appears once everything is ready -- typically within a few seconds.
+A splash screen appears on startup while the app's internal server gets ready. The main window opens once everything is loaded — usually within a few seconds.
 
 ### Dedicated Window
 
-Unlike a browser tab, the desktop app runs in its own window with a clean, minimal title bar (hidden inset style on macOS). External links always open in your default browser, keeping the GAIA window focused on your tasks.
+GAIA runs in its own window with a clean title bar (hidden inset style on macOS). External links open in your default browser, so your GAIA window stays focused on your work.
 
 ## Desktop vs. Web
 
@@ -66,34 +66,34 @@ Unlike a browser tab, the desktop app runs in its own window with a clean, minim
 | Available on Linux as `.deb` / `.rpm` / `.AppImage` | N/A | Yes |
 
 <Note>
-  The desktop app renders the exact same UI as the web app. Any feature available at [app.heygaia.io](https://app.heygaia.io) is available in the desktop version.
+  The desktop app renders the same UI as the web app. Every feature at [app.heygaia.io](https://app.heygaia.io) is available in the desktop version.
 </Note>
 
 ## Tips for Power Users
 
 <CardGroup cols={2}>
   <Card title="Keep it running" icon="window-maximize">
-    GAIA stays out of your way as a standalone window. On macOS, closing all windows keeps the app alive in the Dock -- click the icon to reopen instantly.
+    GAIA stays out of your way as a standalone window. On macOS, closing all windows keeps the app alive in the Dock — click the icon to bring it back instantly.
   </Card>
   <Card title="Use keyboard shortcuts" icon="keyboard">
-    All keyboard shortcuts from the web app work in the desktop version. Press <code>/</code> in chat to open the command palette, or use standard OS shortcuts like <code>Cmd+T</code> / <code>Ctrl+T</code> for new tabs where supported.
+    Every keyboard shortcut from the web app works here too. Press <code>/</code> in chat to open the command palette, or use standard OS shortcuts like <code>Cmd+T</code> / <code>Ctrl+T</code> for new tabs where supported.
   </Card>
   <Card title="Check your version" icon="circle-info">
-    Need to report a bug? The app version is visible in **Settings**. Share it with support so they can reproduce on the exact build you're running.
+    Reporting a bug? Find your app version in **Settings** and share it with support so they can reproduce the issue on the exact build you're running.
   </Card>
   <Card title="Reset if stuck" icon="arrows-rotate">
-    If the app fails to load after an update, try deleting the app data folder and relaunching. On macOS: `~/Library/Application Support/GAIA`. On Windows: `%APPDATA%/GAIA`. On Linux: `~/.config/GAIA`.
+    If the app won't load after an update, delete the app data folder and relaunch. On macOS: `~/Library/Application Support/GAIA`. On Windows: `%APPDATA%/GAIA`. On Linux: `~/.config/GAIA`.
   </Card>
 </CardGroup>
 
 <Warning>
-  Deleting app data signs you out and clears local caches. You will need to sign in again afterward.
+  Deleting app data signs you out and clears local caches. You'll need to sign in again after.
 </Warning>
 
 ## Troubleshooting
 
-**App shows a blank screen after launch** -- The internal server may still be starting. Wait up to 15 seconds. If it persists, quit and relaunch. Check that no other process is occupying ports 5174-5180.
+**App shows a blank screen after launch** — The internal server may still be starting. Wait up to 15 seconds, then quit and relaunch if it persists. Check that nothing else is using ports 5174–5180.
 
-**"Update available" prompt never appears** -- Make sure your network allows outbound HTTPS connections to `github.com`. Corporate proxies or firewalls may block the update check.
+**"Update available" prompt never appears** — Make sure your network allows outbound HTTPS to `github.com`. Corporate proxies or firewalls can block the update check.
 
-**OAuth sign-in does not redirect back to the app** -- The `gaia://` protocol must be registered with your OS. On Linux, this requires the `.desktop` file entry (handled automatically by the `.deb` and `.rpm` installers). If you're using the AppImage, try launching the app once so it can register the protocol handler.
+**OAuth sign-in doesn't redirect back to the app** — The `gaia://` protocol needs to be registered with your OS. On Linux, this requires a `.desktop` file entry, which the `.deb` and `.rpm` installers handle automatically. If you're using the AppImage, launch the app once so it can register the protocol handler.

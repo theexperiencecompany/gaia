@@ -5,18 +5,20 @@ description: "Link your apps to GAIA so it can take action on your behalf"
 
 ## Why Connect Integrations?
 
-GAIA becomes more useful the more it knows about your work. When you connect an integration, two things happen:
+The more apps you connect, the less you have to explain.
 
-1. **GAIA gets context.** It can read your emails, calendar events, tasks, and messages — so it understands what you're working on without you having to explain.
-2. **GAIA can take action.** It can draft replies, create issues, schedule meetings, and update tasks directly in the apps you already use.
+When you link an integration, two things happen:
 
-No more switching between tabs to copy information from one tool into another. Tell GAIA what you need and it handles the rest.
+1. **GAIA gets context.** It can read your emails, calendar events, tasks, and messages — so it already knows what you're working on.
+2. **GAIA can take action.** It can draft replies, create issues, schedule meetings, and update tasks directly in the apps you use.
+
+No more switching tabs to copy information from one tool into another. Just tell GAIA what you need.
 
 ## Connect an Integration
 
 <Steps>
   <Step title="Open the Integrations page">
-    Navigate to **Settings > Integrations** from the sidebar. You'll see all available integrations organized by category, with their connection status.
+    Go to **Settings > Integrations** in the sidebar. You'll see all available integrations organized by category, with their connection status shown on each card.
 
     <img
       className="rounded-lg"
@@ -26,38 +28,39 @@ No more switching between tabs to copy information from one tool into another. T
   </Step>
 
   <Step title="Find the app you want">
-    Browse by category or use the search bar to find a specific app. Each integration card shows the app name, a short description, and whether it's currently connected.
+    Browse by category or search for a specific app. Each card shows the app name, a short description, and whether it's already connected.
   </Step>
 
   <Step title="Click Connect">
-    Click the **Connect** button on the integration you want to link. For most integrations, this opens the app's authorization page (OAuth) in your browser.
+    Click **Connect** on the integration you want. Most integrations open the app's authorization page in your browser.
   </Step>
 
   <Step title="Authorize access">
-    Sign in to the app if prompted, then review the permissions GAIA is requesting. Click **Allow** or **Authorize** to grant access. You'll be redirected back to GAIA automatically.
+    Sign in to the app if needed, then review the permissions GAIA is requesting. Click **Allow** or **Authorize**. You'll land back in GAIA automatically.
   </Step>
 
   <Step title="Confirm the connection">
-    Once authorized, the integration card shows a green dot — it's connected. GAIA now has access to that app's tools and will use them when relevant in your conversations.
+    A green dot on the integration card means it's connected. GAIA now has access to that app and will use it when it's relevant to your request.
   </Step>
 </Steps>
 
 <Tip>
-  You can also connect integrations directly from the chat sidebar. Expand the
-  **Integrations** section to see your connected apps and quickly link new ones.
+  You can also connect integrations from the chat sidebar. Expand the
+  **Integrations** section to see what's connected and add new ones without
+  leaving the conversation.
 </Tip>
 
 ## What Happens After Connecting
 
-Once an integration is connected, its tools become available in chat automatically. You don't need to configure anything else.
+Connected integrations are available in chat immediately. No extra setup needed.
 
-For example, after connecting Gmail, you can say things like:
+After connecting Gmail, for example, you can say:
 
 - "Draft a reply to the last email from Sarah"
 - "Send a summary of today's meetings to the team"
 - "Find all unread emails from this week about the Q3 report"
 
-GAIA picks the right tool based on your request. The more integrations you connect, the more GAIA can do without you leaving the conversation.
+GAIA picks the right tool based on what you ask. The more integrations you connect, the more it can do without you ever leaving the conversation.
 
 ## Available Integrations
 
@@ -82,28 +85,28 @@ GAIA supports 60+ integrations across four categories:
 </CardGroup>
 
 <Note>
-  The full list is always visible inside the app under **Settings >
-  Integrations**. New integrations are added regularly.
+  The full list is always visible under **Settings > Integrations**. New
+  integrations are added regularly.
 </Note>
 
 ## Managing Your Connections
 
 ### Disconnect an integration
 
-Open the integration's detail view and click **Disconnect**. GAIA immediately loses access to that app — no data is retained from the connection.
+Open the integration's detail view and click **Disconnect**. GAIA loses access to that app immediately. No data from the connection is kept.
 
 ### Reconnect after token expiry
 
-Some integrations use access tokens that expire after a set period. If a connection stops working, go to the Integrations page and click **Connect** again. You'll re-authorize through the same OAuth flow and the connection is restored.
+Some integrations use access tokens that expire after a set period. If a connection stops working, go to the Integrations page and click **Connect** again. You'll go through the same authorization flow and the connection will be restored.
 
 <Warning>
   If an integration shows an error status, try disconnecting and reconnecting.
-  This resolves most issues caused by expired or revoked tokens.
+  This fixes most problems caused by expired or revoked tokens.
 </Warning>
 
 ## Community Marketplace
 
-Can't find the integration you need? Check the community marketplace — other users may have already built it.
+Don't see the integration you need? Check the community marketplace — someone may have already built it.
 
 <img
   className="rounded-lg"
@@ -111,7 +114,7 @@ Can't find the integration you need? Check the community marketplace — other u
   alt="Custom integration modal for adding MCP integrations"
 />
 
-You can also create your own custom integrations using the MCP protocol and publish them to the marketplace for others to use.
+You can also build your own integrations using the MCP protocol and publish them to the marketplace for others to use.
 
 <CardGroup cols={2}>
   <Card
@@ -132,6 +135,6 @@ You can also create your own custom integrations using the MCP protocol and publ
 </CardGroup>
 
 <Tip>
-  Before building a custom integration, search the marketplace first — someone
-  may have already built what you need.
+  Search the marketplace before building your own — someone may have already
+  done the work.
 </Tip>

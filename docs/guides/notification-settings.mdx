@@ -5,25 +5,25 @@ description: "Control how and when GAIA notifies you"
 
 ## How GAIA Notifications Work
 
-GAIA sends notifications when something needs your attention — a drafted email ready for review, a new task it created on your behalf, a reminder you set, or a workflow that finished running. Each notification appears in real time and can include actions you can take without leaving the notification panel.
+GAIA notifies you when something needs your attention. An email draft is ready to send. A reminder you set just fired. A background workflow finished. Each notification shows up in real time, and many include action buttons so you can respond without navigating away.
 
-There are four types of notifications based on what triggered them:
+There are four types of notifications:
 
 <CardGroup cols={2}>
   <Card title="AI-Generated Actions" icon="wand-magic-sparkles">
-    Email drafts, calendar events, and tasks that GAIA created proactively. These typically include action buttons so you can confirm, edit, or dismiss directly.
+    Email drafts, calendar events, and tasks that GAIA created on your behalf. These include action buttons so you can confirm, edit, or dismiss right from the notification.
   </Card>
 
   <Card title="Reminders" icon="bell">
-    Time-based alerts you asked GAIA to set. These fire at the scheduled time and can include follow-up actions like marking a task complete.
+    Time-based alerts you asked GAIA to set. They fire at the scheduled time and often include follow-up actions like marking a task complete.
   </Card>
 
   <Card title="Workflow Updates" icon="arrows-spin">
-    Status updates when a workflow completes or fails. Useful for automations that run in the background.
+    Status updates when a background workflow finishes or fails. Useful when you've kicked off an automation and want to know when it's done.
   </Card>
 
   <Card title="System Notifications" icon="gear">
-    Account-related updates like new integrations being provisioned or background jobs finishing.
+    Account-level updates like a new integration being connected or a background job completing.
   </Card>
 </CardGroup>
 
@@ -35,7 +35,7 @@ There are four types of notifications based on what triggered them:
 
 ## Notification Channels
 
-GAIA delivers notifications through multiple channels simultaneously. Each channel can be toggled independently.
+GAIA can notify you across multiple channels at once. Each one can be toggled independently.
 
 | Channel | Where it appears | Enabled by default |
 |---|---|---|
@@ -45,15 +45,14 @@ GAIA delivers notifications through multiple channels simultaneously. Each chann
 | **Push (mobile)** | Native push notification on your phone | Yes (after granting permission) |
 
 <Note>
-  In-app notifications are always delivered and cannot be turned off. They serve
-  as the baseline channel so you never miss something important.
+  In-app notifications are always on and can't be turned off. They're the baseline — so you never miss something important even if other channels are disabled.
 </Note>
 
 ## Configure Channel Preferences
 
 <Steps>
   <Step title="Open Notification Settings">
-    Navigate to **Settings > Notifications** from the sidebar. You'll see each notification channel listed with a toggle switch.
+    Go to **Settings > Notifications** in the sidebar. You'll see each notification channel listed with a toggle.
     <img
       className="rounded-lg"
       src="/images/guides/notifications/notification-settings.png"
@@ -62,24 +61,23 @@ GAIA delivers notifications through multiple channels simultaneously. Each chann
   </Step>
 
   <Step title="Toggle channels on or off">
-    Use the switch next to each platform to enable or disable notifications for that channel. Changes save automatically.
+    Flip the switch next to any platform to turn it on or off. Changes save automatically.
 
-    For Telegram and Discord, the toggle only appears after you've linked your account. If a channel shows "Connect in Linked Accounts to enable," head to **Settings > Linked Accounts** first.
+    Telegram and Discord toggles only appear after you've linked those accounts. If you see "Connect in Linked Accounts to enable," go to **Settings > Linked Accounts** first.
   </Step>
 
   <Step title="Link external accounts (if needed)">
-    To receive Telegram or Discord notifications, connect those platforms under **Settings > Linked Accounts**. Once linked, return to Notification Settings to toggle them on.
+    To get Telegram or Discord notifications, connect those platforms under **Settings > Linked Accounts**. Once linked, come back to Notification Settings and toggle them on.
   </Step>
 </Steps>
 
 <Tip>
-  Keep at least one external channel enabled (Telegram or Discord) so you get
-  notified even when you're not actively using the GAIA app.
+  Keep at least one external channel enabled — Telegram or Discord — so you get notified even when you're not actively using the GAIA app.
 </Tip>
 
 ## Push Notifications on Mobile
 
-The GAIA mobile app uses native push notifications through Expo. When you first open the app, it requests permission to send notifications.
+The GAIA mobile app uses native push notifications via Expo. The first time you open the app, it asks for permission to send notifications.
 
 ### Enable push notifications
 
@@ -87,54 +85,50 @@ The GAIA mobile app uses native push notifications through Expo. When you first 
 2. Accept the notification permission prompt when it appears.
 3. Your device is automatically registered with GAIA's notification service.
 
-Push notifications include sound and badge updates by default. Tapping a notification takes you directly to the relevant screen — a todo, workflow, or conversation.
+Push notifications include sound and badge updates by default. Tapping one takes you directly to what triggered it — a todo, a workflow, or a conversation.
 
 <Warning>
-  If you denied the notification permission prompt, you'll need to enable it
-  manually in your device's system settings under the GAIA app.
+  If you denied the permission prompt, you'll need to turn notifications on manually in your device's system settings under the GAIA app.
 </Warning>
 
 ### Managing devices
 
-You can register up to 10 devices for push notifications. If you switch phones or want to stop receiving push notifications on a specific device, sign out of the GAIA app on that device — it automatically unregisters.
+You can register up to 10 devices for push notifications. If you switch phones or want to stop notifications on a specific device, sign out of the GAIA app on that device. It unregisters automatically.
 
 ## Managing Notification Noise
 
-A proactive assistant can generate a lot of notifications. Here are practical ways to stay on top of them without getting overwhelmed.
+A proactive assistant can generate a lot of notifications. Here's how to stay on top of them without feeling buried.
 
 ### Use bulk actions
 
-Open the notification panel and select multiple notifications to mark them as read or archive them in one step. This keeps your panel clean without handling each notification individually.
+Open the notification panel and select multiple notifications to mark them read or archive them in one step. Much faster than handling them one by one.
 
 ### Act on notifications inline
 
-Many GAIA notifications include action buttons — "Preview & Send" on an email draft, "View Task" on a new todo, "Confirm Event" on a calendar suggestion. Use these to handle items directly from the notification instead of navigating to the full feature page.
+Many notifications include action buttons — "Preview & Send" on an email draft, "View Task" on a new todo, "Confirm Event" on a calendar suggestion. Use these to handle things right from the notification instead of digging into the full feature.
 
 ### Archive what you've handled
 
-After you act on a notification, archive it. Archived notifications are hidden from the default view but remain accessible if you need to reference them later.
+After you act on a notification, archive it. Archived notifications are hidden from the default view but stay accessible if you need to look something up later.
 
 <Tip>
-  Get into the habit of clearing notifications at the end of each day. A clean
-  notification panel makes it easier to spot new items that need your attention.
+  Clear your notifications at the end of each day. A clean panel makes it easy to spot what actually needs your attention.
 </Tip>
 
 ## Notification Actions
 
-GAIA notifications are interactive. Depending on the notification source, you may see action buttons that let you respond directly:
+GAIA notifications are interactive. Depending on what triggered them, you'll see action buttons that let you respond directly:
 
 | Source | Available Actions |
 |---|---|
-| **Email draft** | Preview & Send (opens an editor to review and send the draft) |
+| **Email draft** | Preview & Send (opens an editor so you can review and send the draft) |
 | **Calendar event** | Confirm Event (creates the event on your calendar) |
 | **New task** | View Task, Mark Complete |
 | **Reminder** | Context-specific actions based on what the reminder is about |
-| **Workflow** | More Details (navigates to the workflow or conversation) |
+| **Workflow** | More Details (takes you to the workflow or conversation) |
 
-Actions that call an API (like confirming an event or completing a task) can only be executed once. The button disables after execution to prevent duplicates.
+Actions that write data — like confirming an event or completing a task — can only run once. The button disables after you use it to prevent duplicates.
 
 <Note>
-  If an action fails, you'll see an error message. You can retry by navigating
-  to the relevant feature page (Todos, Calendar, etc.) and performing the action
-  manually.
+  If an action fails, you'll see an error message. Retry by going to the relevant page (Todos, Calendar, etc.) and performing the action from there.
 </Note>

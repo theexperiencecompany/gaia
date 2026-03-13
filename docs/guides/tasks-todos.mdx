@@ -5,9 +5,7 @@ description: "Create, organize, and complete tasks with priorities, due dates, a
 
 ## Overview
 
-GAIA gives you a full task management system built right into your AI assistant. Create tasks through natural conversation or the dedicated UI, organize them with projects and labels, set priorities and due dates, and let GAIA suggest step-by-step workflows to get things done.
-
-Every task you create is accessible from the **Todos** page, where you can filter, sort, search, and track progress across all your projects.
+GAIA has a full task manager built in. You can create tasks by talking to GAIA in chat, or by filling out the task dialog yourself. Either way, tasks land on your **Todos** page where you can filter, sort, search, and track everything in one place.
 
 <img className="rounded-lg" src="/images/guides/todos/todos-page.png" alt="Todos page showing tasks with priorities and due dates" />
 
@@ -17,7 +15,7 @@ You have two ways to create tasks: ask GAIA in chat, or use the Add Task dialog 
 
 ### Through Chat
 
-Tell GAIA what you need to do in plain language. GAIA will create the task and set the right priority, due date, and labels based on your request.
+Just tell GAIA what you need to do. It figures out the priority, due date, and labels from what you say.
 
 **Example prompts:**
 
@@ -26,7 +24,7 @@ Tell GAIA what you need to do in plain language. GAIA will create the task and s
 - *"I need to prepare slides for Monday's presentation — add that to my Work project"*
 - *"Remind me to cancel the free trial before it expires on March 20th"*
 
-GAIA parses your intent and fills in the task details automatically. You can also ask GAIA to list, complete, or delete tasks through chat.
+You can also ask GAIA to list, complete, or delete tasks through chat.
 
 ### Through the Add Task Dialog
 
@@ -36,13 +34,13 @@ Click the **Add Task** button on the Todos page to open the task creation dialog
 
 <Steps>
   <Step title="Enter a title">
-    Write a clear, actionable title for your task. Keep it specific — "Draft investor update email" is better than "Email stuff."
+    Write a clear, actionable title. Keep it specific — "Draft investor update email" is better than "Email stuff."
   </Step>
   <Step title="Set a priority">
-    Choose **High**, **Medium**, or **Low** priority, or leave it unset. Priority determines the sort order and visual indicators on your task list.
+    Choose **High**, **Medium**, or **Low** priority, or leave it unset. Priority controls the sort order and the visual indicator on your task list.
   </Step>
   <Step title="Pick a due date">
-    Set a deadline so GAIA can track what is overdue, due today, or coming up this week. Tasks without a due date appear in your Inbox.
+    Set a deadline so GAIA knows what's overdue, due today, or coming up this week. Tasks without a due date go to your Inbox.
   </Step>
   <Step title="Assign to a project">
     Group related tasks under a project. Projects have custom colors and show task counts so you can see progress at a glance.
@@ -51,7 +49,7 @@ Click the **Add Task** button on the Todos page to open the task creation dialog
     Tag tasks with labels like "marketing," "bug," or "personal" to filter and find them quickly. You can add up to 20 labels per task.
   </Step>
   <Step title="Add subtasks">
-    Break large tasks into smaller steps. Check off subtasks individually to track granular progress.
+    Break large tasks into smaller steps. Check off each subtask individually to track your progress.
   </Step>
 </Steps>
 
@@ -65,7 +63,7 @@ Every task has one of four priority levels:
 
 <CardGroup cols={2}>
   <Card title="High" icon="flag">
-    Urgent and important. These surface at the top of your list with a red indicator. Use for deadlines that cannot slip.
+    Urgent and important. These appear at the top of your list with a red indicator. Use this for deadlines that cannot slip.
   </Card>
   <Card title="Medium" icon="flag">
     Important but not urgent. Shown with a yellow indicator. Good for tasks you plan to tackle this week.
@@ -79,7 +77,7 @@ Every task has one of four priority levels:
 </CardGroup>
 
 <Note>
-  You can filter your task list by priority to focus on what matters most. GAIA also uses priority levels when summarizing your workload or suggesting what to tackle next.
+  You can filter your task list by priority to focus on what matters most. GAIA also uses priority when summarizing your workload or suggesting what to tackle next.
 </Note>
 
 ## Projects
@@ -90,39 +88,39 @@ To create a project, click the **+** icon in the project sidebar or ask GAIA:
 
 *"Create a project called Product Launch with a purple color"*
 
-Tasks that are not assigned to a specific project appear in your **Inbox** — the default catch-all project.
+Tasks not assigned to a project go to your **Inbox** — the default catch-all.
 
 ## Labels
 
-Labels are flexible tags you attach to tasks for cross-project categorization. Unlike projects (which are hierarchical), labels work across boundaries — a task in your "Work" project can carry a "design" label alongside a task in your "Side Project" that also has "design."
+Labels are flexible tags you attach to tasks. Unlike projects, labels work across boundaries. A task in your "Work" project can share a "design" label with a task in your "Side Project."
 
 Use labels to:
 
-- Filter tasks by topic across all projects
+- Filter tasks by topic across all your projects
 - Track categories like "bug," "feature," "research," or "follow-up"
-- Surface related tasks quickly with search
+- Find related tasks quickly with search
 
 ## Subtasks
 
 Subtasks let you break a task into smaller, individually completable steps. Each subtask has its own title and completion status.
 
-When you add subtasks, your task list shows a progress indicator (for example, "2/5 subtasks") so you can see how far along you are without opening the task.
+When you add subtasks, your task list shows a progress indicator — for example, "2/5 subtasks" — so you can see how far along you are without opening the task.
 
 <Tip>
-  Use subtasks for tasks with clear sequential steps. For example, a "Publish blog post" task might have subtasks like "Write draft," "Add images," "Review SEO," and "Schedule publish."
+  Use subtasks for tasks with clear sequential steps. A "Publish blog post" task might have subtasks like "Write draft," "Add images," "Review SEO," and "Schedule publish."
 </Tip>
 
 ## Suggested Workflows
 
-This is where GAIA goes beyond a standard task manager. For any task, GAIA can generate a **suggested workflow** — a multi-step action plan that breaks the task into concrete steps it can help you execute.
+This is where GAIA goes beyond a standard task manager. For any task, GAIA can generate a **suggested workflow** — a step-by-step action plan that it can help you execute.
 
 Each workflow step includes:
 
 - A numbered sequence
 - A title and description
-- A category (email, calendar, research, etc.) indicating which tools GAIA will use
+- A category (email, calendar, research, etc.) showing which tools GAIA will use
 
-Once a workflow is generated, click **Run Workflow** to have GAIA execute the steps in your chat. GAIA will use your connected integrations — email, calendar, documents — to carry out each step.
+Once a workflow is generated, click **Run Workflow** to have GAIA carry out the steps in your chat. It uses your connected integrations — email, calendar, documents — to work through each one.
 
 **Example:** For a task titled "Prepare for Monday's board meeting," GAIA might suggest:
 
@@ -156,19 +154,17 @@ Click the checkbox next to any task to mark it complete. Completed tasks show a 
 
 ### Bulk Operations
 
-Select multiple tasks to perform bulk actions:
+Select multiple tasks to act on them all at once:
 
 - **Bulk complete** — check off several tasks at once
 - **Bulk move** — reassign tasks to a different project
 - **Bulk delete** — remove tasks you no longer need
 
 <Warning>
-  Deleted tasks cannot be recovered. Use bulk delete carefully, and consider completing tasks instead if you want to preserve a record of what you have done.
+  Deleted tasks cannot be recovered. Use bulk delete carefully. If you want a record of what you've done, consider completing tasks instead of deleting them.
 </Warning>
 
 ## Chat Prompts to Try
-
-Here are prompts to help you get the most out of GAIA's task management:
 
 - *"What are my high priority tasks this week?"*
 - *"Show me all overdue tasks"*

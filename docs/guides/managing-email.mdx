@@ -5,9 +5,9 @@ description: "Read, draft, and organize your inbox without leaving the conversat
 
 ## Overview
 
-GAIA connects to your Gmail account and turns natural language into real email actions. Read your inbox, draft replies, search for specific threads, organize with labels, and set up automated triage — all from the chat interface.
+GAIA connects to your Gmail account so you can handle email through chat. Read your inbox, draft replies, search threads, apply labels, and set up automated triage — without ever switching tabs.
 
-No tab-switching. No inbox fatigue. Just tell GAIA what you need.
+Just tell GAIA what you need.
 
 ## Connect Gmail
 
@@ -19,11 +19,11 @@ Before GAIA can work with your email, you need to link your Gmail account.
   </Step>
 
   <Step title="Connect and authorize">
-    Click **Connect**, sign in to your Google account, and grant GAIA the requested permissions. You will be redirected back automatically once authorized.
+    Click **Connect**, sign in to your Google account, and grant GAIA the requested permissions. You'll be redirected back automatically once authorized.
   </Step>
 
   <Step title="Start using email in chat">
-    Once connected, GAIA has access to your Gmail tools. No extra setup required — just ask for what you need in the chat.
+    Once connected, GAIA has access to your Gmail tools. No extra setup — just ask for what you need in the chat.
   </Step>
 </Steps>
 
@@ -40,7 +40,7 @@ Before GAIA can work with your email, you need to link your Gmail account.
 
 ## What You Can Do
 
-GAIA supports the full range of everyday email operations through Gmail.
+GAIA handles the full range of everyday email tasks through Gmail.
 
 <CardGroup cols={2}>
   <Card title="Read and Search" icon="magnifying-glass">
@@ -48,7 +48,7 @@ GAIA supports the full range of everyday email operations through Gmail.
   </Card>
 
   <Card title="Draft and Send" icon="paper-plane">
-    Compose new emails, draft replies, forward messages. GAIA creates drafts for your review before sending unless you say otherwise.
+    Write new emails, draft replies, forward messages. GAIA saves a draft for you to review before anything sends — unless you say otherwise.
   </Card>
 
   <Card title="Organize" icon="tags">
@@ -56,13 +56,13 @@ GAIA supports the full range of everyday email operations through Gmail.
   </Card>
 
   <Card title="Automate" icon="bolt">
-    Set up workflows that triage new emails, extract action items, and auto-draft replies on a schedule.
+    Set up workflows that triage new emails, pull out action items, and draft replies on a schedule.
   </Card>
 </CardGroup>
 
 ## Reading Your Inbox
 
-Ask GAIA to fetch and summarize your email. Be specific about what you want — the more detail you give, the more useful the result.
+Ask GAIA to fetch and summarize your email. The more specific you are, the more useful the result.
 
 **Example prompts:**
 
@@ -72,7 +72,7 @@ Ask GAIA to fetch and summarize your email. Be specific about what you want — 
 - "Show me the full thread with David about the partnership deal"
 - "What emails have attachments from the last 3 days?"
 
-GAIA uses Gmail search syntax under the hood, so you get the same filtering power you would in Gmail itself — by sender, date range, labels, read status, attachments, and more.
+GAIA uses Gmail search syntax under the hood, so you get the same filtering power as Gmail itself — by sender, date range, labels, read status, attachments, and more.
 
 <Note>
   When fetching full email content, GAIA limits results to 30 messages at a
@@ -82,7 +82,7 @@ GAIA uses Gmail search syntax under the hood, so you get the same filtering powe
 
 ## Drafting and Sending Email
 
-GAIA defaults to a **draft-first workflow**. When you ask it to write an email, it creates a Gmail draft so you can review the content before anything leaves your inbox.
+GAIA defaults to a **draft-first workflow**. When you ask it to write an email, it saves a Gmail draft so you can review before anything leaves your inbox.
 
 **Example prompts:**
 
@@ -93,13 +93,13 @@ GAIA defaults to a **draft-first workflow**. When you ask it to write an email, 
 - "Forward the latest email from Alex to the #leadership distribution list"
 
 <Warning>
-  GAIA will only send an email directly if you explicitly ask it to. Otherwise,
-  it saves a draft. You can review and edit drafts in Gmail before sending.
+  GAIA only sends an email if you explicitly ask it to. Otherwise, it saves a
+  draft. You can review and edit drafts in Gmail before sending.
 </Warning>
 
 ### Working with Drafts
 
-You can also manage your existing drafts through GAIA:
+You can manage your existing drafts through GAIA too:
 
 - "Show me my drafts"
 - "What drafts do I have saved?"
@@ -121,7 +121,7 @@ Keep your inbox clean without opening Gmail.
 
 ## Searching for Contacts
 
-GAIA can look up contacts from your Google account to help you compose emails to the right people.
+GAIA can look up contacts from your Google account to help you send emails to the right people.
 
 **Example prompts:**
 
@@ -131,51 +131,51 @@ GAIA can look up contacts from your Google account to help you compose emails to
 
 ## Automated Email Workflows
 
-When you connect Gmail, GAIA automatically provisions two system workflows that run in the background. You can activate or customize them from the **Workflows** page.
+When you connect Gmail, GAIA sets up two background workflows automatically. You can turn them on or customize them from the **Workflows** page.
 
 ### Inbox Triage
 
-Polls your inbox every 15 minutes. For each new email, GAIA:
+Checks your inbox every 15 minutes. For each new email, GAIA:
 
 1. Classifies it as spam, transactional, newsletter, informational, important, or action-required
 2. Skips spam, transactional messages, and newsletters entirely
-3. Extracts action items and deadlines from important emails
+3. Pulls out action items and deadlines from important emails
 4. Creates todos for anything that needs follow-up
-5. Sends you a brief summary of what was processed
+5. Sends you a brief summary of what it processed
 
 ### Auto-Draft Replies
 
-Polls your inbox every 30 minutes. GAIA identifies emails that warrant a response — direct questions, explicit requests, meeting invites, introductions — and saves draft replies in Gmail. Newsletters, automated notifications, and threads you have already replied to are skipped.
+Checks your inbox every 30 minutes. GAIA spots emails that need a response — direct questions, explicit requests, meeting invites, introductions — and saves draft replies in Gmail. Newsletters, automated notifications, and threads you've already replied to are skipped.
 
 Drafts are never sent automatically. You always review and approve before anything goes out.
 
 <Tip>
-  You can adjust the polling interval or disable these workflows entirely from
-  the Workflows page. They are designed to run quietly in the background and
-  only surface what matters.
+  You can adjust the polling interval or turn these workflows off entirely from
+  the Workflows page. They're designed to run quietly in the background and only
+  surface what matters.
 </Tip>
 
 ## Tips for Better Results
 
 <Steps>
   <Step title="Be specific about what you want">
-    "Show my unread emails from this week about the budget" works better than "Check my email." The more context you provide, the fewer round trips GAIA needs.
+    "Show my unread emails from this week about the budget" works better than "Check my email." The more context you give, the fewer back-and-forth messages you need.
   </Step>
 
   <Step title="Name people and topics">
-    "Find the thread with Alex about the API migration" gives GAIA a clear search target. Vague requests like "find that email from last week" may return too many results.
+    "Find the thread with Alex about the API migration" gives GAIA a clear target. Vague requests like "find that email from last week" may return too many results.
   </Step>
 
   <Step title="Tell GAIA when to send vs. draft">
-    If you want an email sent immediately, say so explicitly: "Send an email to Jordan saying the contract is signed." Otherwise, GAIA creates a draft for your review.
+    If you want an email sent right away, say so: "Send an email to Jordan saying the contract is signed." Otherwise, GAIA creates a draft for your review.
   </Step>
 
   <Step title="Chain email with other tools">
-    GAIA works across integrations in a single request. "Check my calendar for tomorrow, then email the attendees a summary of the agenda" combines calendar and email in one step.
+    GAIA works across integrations in a single request. "Check my calendar for tomorrow, then email the attendees a summary of the agenda" combines calendar and email in one go.
   </Step>
 
   <Step title="Let workflows handle the routine">
-    Instead of checking your inbox manually every hour, activate the Inbox Triage workflow and let GAIA surface what matters. Use the chat for one-off tasks and targeted searches.
+    Instead of manually checking your inbox every hour, turn on the Inbox Triage workflow and let GAIA surface what matters. Use chat for one-off tasks and targeted searches.
   </Step>
 </Steps>
 
