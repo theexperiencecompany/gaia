@@ -1,5 +1,7 @@
 "use client";
 
+import { memo, useMemo } from "react";
+
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import {
@@ -28,6 +30,7 @@ interface TodoItemProps {
   // onDelete: (todoId: string) => void;
   // onEdit?: (todo: Todo) => void;
   onClick?: (todo: Todo) => void;
+  onPrefetchWorkflow?: (todoId: string) => void;
 }
 
 export const priorityColors = {
@@ -51,7 +54,7 @@ const priorityRingColors = {
   [Priority.NONE]: "border-zinc-500",
 } as const;
 
-export default function TodoItem({
+export default memo(function TodoItem({
   todo,
   projects,
   isSelected,
@@ -59,6 +62,7 @@ export default function TodoItem({
   // onDelete,
   // onEdit,
   onClick,
+  onPrefetchWorkflow,
 }: TodoItemProps) {
   const handleToggleComplete = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
@@ -74,30 +78,30 @@ export default function TodoItem({
     onUpdate(todo.id, { completed: newCompletedState });
   };
 
-  const isOverdue =
-    todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed;
+  const isOverdue = useMemo(
+    () =>
+      !!todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed,
+    [todo.due_date, todo.completed],
+  );
 
-  const isToday =
-    todo.due_date &&
-    !todo.completed &&
-    (() => {
-      const d = new Date(todo.due_date);
-      const now = new Date();
-      return (
-        d.getFullYear() === now.getFullYear() &&
-        d.getMonth() === now.getMonth() &&
-        d.getDate() === now.getDate()
-      );
-    })();
+  const isToday = useMemo(() => {
+    if (!todo.due_date || todo.completed) return false;
+    const d = new Date(todo.due_date);
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  }, [todo.due_date, todo.completed]);
 
   return (
     <div
       className={`pointer-events-auto w-full cursor-pointer p-4 pl-5 mb-0 transition-all ${
         isSelected ? "bg-primary/5 ring-2 ring-primary" : "hover:bg-content2/70"
       } ${todo.completed ? "opacity-30" : ""}`}
-      onClick={() => {
-        onClick?.(todo);
-      }}
+      onClick={() => onClick?.(todo)}
+      onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
     >
       <div className="flex h-full items-start gap-3">
         <div onClick={(e) => e.stopPropagation()}>
@@ -276,4 +280,4 @@ export default function TodoItem({
       </div>
     </div>
   );
-}
+});

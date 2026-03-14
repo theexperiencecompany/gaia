@@ -1,3 +1,4 @@
+import asyncio
 import math
 import uuid
 from datetime import datetime, timezone
@@ -62,6 +63,10 @@ async def _get_workflow_categories_for_todos(
     Fetch workflow step categories for todos that have linked workflows.
     Returns a dict mapping todo_id -> list of unique tool categories.
     """
+    # Skip DB call entirely when no todos have a workflow_id
+    if not any(todo.get("workflow_id") for todo in todos):
+        return {}
+
     # Collect workflow IDs from todos
     workflow_ids = [
         todo.get("workflow_id") for todo in todos if todo.get("workflow_id")
@@ -111,8 +116,9 @@ class TodoService:
     ):
         """Invalidate relevant caches based on the operation context."""
         try:
-            # Always invalidate stats since they might change
+            # Always invalidate stats and counts since they might change
             await delete_cache(f"stats:{user_id}")
+            await delete_cache(f"counts:{user_id}")
 
             # For specific todo operations, invalidate only affected caches
             if todo_id and operation in ["update", "delete"]:
@@ -350,26 +356,22 @@ class TodoService:
         result = await todos_collection.insert_one(todo_dict)
         created_todo = await todos_collection.find_one({"_id": result.inserted_id})
 
-        # Queue workflow generation in background (same flow as Generate button)
+        # Queue workflow generation as fire-and-forget (does not block response)
         todo_id_str = str(result.inserted_id)
         try:
             from app.services.workflow.queue_service import WorkflowQueueService
 
-            success = await WorkflowQueueService.queue_todo_workflow_generation(
-                todo_id=todo_id_str,
-                user_id=user_id,
-                title=todo.title,
-                description=todo.description or "",
+            asyncio.create_task(
+                WorkflowQueueService.queue_todo_workflow_generation(
+                    todo_id=todo_id_str,
+                    user_id=user_id,
+                    title=todo.title,
+                    description=todo.description or "",
+                )
             )
-
-            if success:
-                log.info(
-                    f"Queued workflow generation for todo '{todo.title}' (ID: {todo_id_str})"
-                )
-            else:
-                log.warning(
-                    f"Failed to queue workflow generation for todo '{todo.title}'"
-                )
+            log.info(
+                f"Queued workflow generation for todo '{todo.title}' (ID: {todo_id_str})"
+            )
         except Exception as e:
             log.warning(f"Failed to queue workflow for todo '{todo.title}': {str(e)}")
 
@@ -696,13 +698,11 @@ class TodoService:
                     }
                 ).to_list(None)
 
-                for todo in updated_todos:
-                    try:
-                        await update_todo_embedding(str(todo["_id"]), todo, user_id)
-                    except Exception as e:
-                        log.warning(
-                            f"Failed to update index for todo {todo['_id']}: {str(e)}"
-                        )
+                tasks = [
+                    update_todo_embedding(str(todo["_id"]), todo, user_id)
+                    for todo in updated_todos
+                ]
+                await asyncio.gather(*tasks, return_exceptions=True)
             except Exception as e:
                 log.warning(f"Failed to update search index: {str(e)}")
 

@@ -9,6 +9,14 @@ import type {
   TodoFilters,
   TodoUpdate,
 } from "@/types/features/todoTypes";
+import type { Workflow } from "@/types/features/workflowTypes";
+
+interface CachedWorkflowStatus {
+  has_workflow: boolean;
+  is_generating: boolean;
+  workflow: Workflow | null;
+  cachedAt: number;
+}
 
 interface TodoCounts {
   inbox: number;
@@ -25,6 +33,7 @@ interface TodoState {
   counts: TodoCounts;
   loading: boolean;
   error: string | null;
+  workflowStatusCache: Record<string, CachedWorkflowStatus>;
 }
 
 interface TodoActions {
@@ -45,6 +54,7 @@ interface TodoActions {
   loadLabels: () => Promise<void>;
   loadCounts: () => Promise<void>;
   refreshAll: () => Promise<void>;
+  prefetchWorkflowStatus: (todoId: string) => Promise<void>;
 }
 
 type TodoStore = TodoState & TodoActions;
@@ -62,6 +72,7 @@ const initialState: TodoState = {
   },
   loading: false,
   error: null,
+  workflowStatusCache: {},
 };
 
 export const useTodoStore = create<TodoStore>()(
@@ -224,6 +235,32 @@ export const useTodoStore = create<TodoStore>()(
           actions.loadLabels(),
           actions.loadCounts(),
         ]);
+      },
+
+      prefetchWorkflowStatus: async (todoId) => {
+        const CACHE_TTL_MS = 30_000; // 30 seconds
+        const existing = get().workflowStatusCache[todoId];
+        if (existing && Date.now() - existing.cachedAt < CACHE_TTL_MS) return;
+        try {
+          const status = await todoApi.getWorkflowStatus(todoId);
+          set(
+            (state) => ({
+              workflowStatusCache: {
+                ...state.workflowStatusCache,
+                [todoId]: {
+                  has_workflow: status.has_workflow,
+                  is_generating: status.is_generating,
+                  workflow: status.workflow as Workflow | null,
+                  cachedAt: Date.now(),
+                },
+              },
+            }),
+            false,
+            "prefetchWorkflowStatus",
+          );
+        } catch {
+          // Silently ignore prefetch errors
+        }
       },
     }),
     { name: "todo-store" },

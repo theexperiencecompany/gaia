@@ -36,14 +36,17 @@ export function useTodoData(options: UseTodoDataOptions = {}) {
   // Track if initial load has happened
   const hasLoadedRef = useRef(false);
 
-  // Load data on mount if autoLoad is enabled
+  // Load data on mount if autoLoad is enabled — fire all three in parallel
   useEffect(() => {
     if (autoLoad && !hasLoadedRef.current) {
       hasLoadedRef.current = true;
       const parsedFilters = JSON.parse(filtersString) as TodoFilters;
-      loadTodos(parsedFilters);
-      loadProjects(); // Load projects so todo chips can display project name/color
-      loadCounts(); // Also load counts for dashboard summary
+      const todosPromise = loadTodos(parsedFilters);
+      const projectsPromise = loadProjects();
+      const countsPromise = loadCounts();
+      Promise.all([todosPromise, projectsPromise, countsPromise]).catch(
+        console.error,
+      );
     }
   }, [autoLoad, filtersString, loadTodos, loadCounts, loadProjects]);
 

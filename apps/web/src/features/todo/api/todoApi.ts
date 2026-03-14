@@ -169,33 +169,9 @@ export const todoApi = {
 
   getAllLabels: async (): Promise<{ name: string; count: number }[]> => {
     try {
-      // Use a smaller, more reasonable page size to reduce data transfer
-      const response = await apiService.get<TodoListResponse | Todo[]>(
-        "/todos?completed=false&per_page=100",
-        { silent: true },
-      );
-
-      const todos: Todo[] = normalizeListResponse(response);
-
-      const labelCounts: Record<string, number> = {};
-
-      // Count labels from active todos only
-      todos.forEach((todo: Todo) => {
-        if (todo.labels && Array.isArray(todo.labels)) {
-          todo.labels.forEach((label: string) => {
-            labelCounts[label] = (labelCounts[label] || 0) + 1;
-          });
-        }
-      });
-
-      // Convert to array format and return top 10 most used labels
-      return Object.entries(labelCounts)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
+      return await apiService.get("/todos/labels", { silent: true });
     } catch (error) {
       console.error("Error fetching labels:", error);
-      // Return empty array instead of throwing to prevent app crashes
       return [];
     }
   },

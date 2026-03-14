@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from workos import AsyncWorkOSClient
 
 
@@ -55,6 +56,9 @@ def configure_middleware(app: FastAPI) -> None:
 
     # Exception handler for rate limiting
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
+    # Compress responses ≥500 bytes (50-80% savings on JSON payloads)
+    app.add_middleware(GZipMiddleware, minimum_size=500)
 
     # Add rate limiting middleware
     app.add_middleware(SlowAPIMiddleware)

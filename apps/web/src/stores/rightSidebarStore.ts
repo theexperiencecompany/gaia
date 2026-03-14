@@ -29,5 +29,11 @@ export const useRightSidebar = create<RightSidebarState>((set) => ({
       isOpen: true,
       variant: variant ?? state.variant,
     })),
-  close: () => set({ isOpen: false, content: null }),
+  close: () => {
+    set({ isOpen: false });
+    // Delay content clear by 300ms to allow the slide-out CSS transition to complete.
+    // Without this, React 18 batching collapses open+setContent into one render so
+    // the browser never paints at translateX(100%) — the slide-in transition never fires.
+    setTimeout(() => set({ content: null }), 300);
+  },
 }));
