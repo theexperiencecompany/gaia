@@ -65,9 +65,7 @@ function TaskRow({
   return (
     <div className="flex items-start gap-2">
       <div className={`shrink-0 mt-0.5 ${shouldSpin ? "animate-spin" : ""}`}>
-        <StatusIcon
-          className={`size-4 ${STATUS_COLOR[todo.status]}`}
-        />
+        <StatusIcon className={`size-4 ${STATUS_COLOR[todo.status]}`} />
       </div>
       <span
         className={`text-xs leading-relaxed ${

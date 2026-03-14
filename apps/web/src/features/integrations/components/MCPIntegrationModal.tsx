@@ -136,8 +136,11 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const { loading: isLoading, isMac: mac, handleSubmit: submit } =
-        keyDownStateRef.current;
+      const {
+        loading: isLoading,
+        isMac: mac,
+        handleSubmit: submit,
+      } = keyDownStateRef.current;
       if (isLoading) return;
       const modifierKey = mac ? e.metaKey : e.ctrlKey;
       if (modifierKey && e.key === "Enter") {

@@ -95,7 +95,9 @@ export default function ChatBubbleBot(
         <div className="flex items-end gap-1">
           <div className="relative bottom-0 min-w-10 shrink-0">
             {showBubbleChrome && (
-              <div className={`${isLoading && isLastMessage ? "animate-spin" : ""} relative z-5 transition duration-900`}>
+              <div
+                className={`${isLoading && isLastMessage ? "animate-spin" : ""} relative z-5 transition duration-900`}
+              >
                 <Image
                   alt="GAIA Logo"
                   src={"/images/logos/logo.webp"}

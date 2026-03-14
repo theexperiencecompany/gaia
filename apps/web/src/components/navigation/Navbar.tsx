@@ -9,8 +9,8 @@ import { ChevronDown, StarFilledIcon } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
-import { useGitHubStars } from "@/hooks/useGitHubStars";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
+import { useGitHubStars } from "@/hooks/useGitHubStars";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 

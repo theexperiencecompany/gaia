@@ -11,6 +11,7 @@ import {
 } from "@icons";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { Button } from "@/components/ui/button";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   type ActionType,
@@ -19,8 +20,6 @@ import {
   NotificationStatus,
 } from "@/types/features/notificationTypes";
 import { parseDate } from "@/utils/date/dateUtils";
-
-import { Button } from "@/components/ui/button";
 
 interface EnhancedNotificationCardProps {
   notification: NotificationRecord;

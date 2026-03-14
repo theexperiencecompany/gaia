@@ -45,9 +45,8 @@ function subscribeToQuery(
 }
 
 const useMediaQuery = (query: string): boolean => {
-  const [matches, setMatches] = useState<boolean>(
-    () =>
-      typeof window !== "undefined" ? window.matchMedia(query).matches : false,
+  const [matches, setMatches] = useState<boolean>(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false,
   );
 
   useEffect(() => {

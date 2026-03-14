@@ -126,7 +126,7 @@ export const useOnboarding = () => {
       url.searchParams.delete("oauth_error");
       window.history.replaceState({}, "", url.toString());
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
