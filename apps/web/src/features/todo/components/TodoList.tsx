@@ -15,7 +15,7 @@ interface TodoListProps {
   onTodoClick?: (todo: Todo) => void;
   onRefresh?: () => void;
   onPrefetchWorkflow?: (todoId: string) => void;
-  scrollContainerRef?: React.RefObject<HTMLDivElement>;
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export default function TodoList({
