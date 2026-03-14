@@ -12,8 +12,9 @@ import {
   Textarea,
 } from "@heroui/react";
 import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useModalForm } from "@/hooks/ui/useModalForm";
+import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { toast } from "@/lib/toast";
 import { useIntegrations } from "../hooks/useIntegrations";
@@ -129,29 +130,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
     onClose();
   }, [resetForm, onClose]);
 
-  const keyDownStateRef = useRef({ loading, isMac, handleSubmit });
-  keyDownStateRef.current = { loading, isMac, handleSubmit };
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const {
-        loading: isLoading,
-        isMac: mac,
-        handleSubmit: submit,
-      } = keyDownStateRef.current;
-      if (isLoading) return;
-      const modifierKey = mac ? e.metaKey : e.ctrlKey;
-      if (modifierKey && e.key === "Enter") {
-        e.preventDefault();
-        submit();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen]);
+  useModalKeyboardSubmit({ isOpen, loading, isMac, handleSubmit });
 
   return (
     <Modal

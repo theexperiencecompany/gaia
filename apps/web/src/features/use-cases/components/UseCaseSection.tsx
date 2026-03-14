@@ -68,7 +68,7 @@ export default function UseCaseSection({
           .filter((v, i, a) => a.indexOf(v) === i) || [],
       categories: w.categories || ["featured"],
       published_id: w.id,
-      slug: w.id,
+      slug: w.slug || w.id,
       steps: w.steps,
       creator: w.creator,
       total_executions: w.total_executions || 0,

@@ -180,9 +180,7 @@ class TestCreateTodoFlow:
                             "id": "call_add_001",
                             "name": "update_tasks",
                             "args": {
-                                "updates": [
-                                    {"content": "Bonus task discovered later"}
-                                ]
+                                "updates": [{"content": "Bonus task discovered later"}]
                             },
                             "type": "tool_call",
                         }
