@@ -245,11 +245,7 @@ export default function TodoSection({
                 <div className="flex items-start gap-3">
                   <button
                     type="button"
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-                      todo.completed
-                        ? "border-success bg-success"
-                        : "border-zinc-600 hover:border-zinc-500"
-                    }`}
+                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${todo.completed ? "border-success bg-success" : "border-zinc-600 hover:border-zinc-500"}`}
                     onClick={(e) => e.stopPropagation()}
                   >
                     {todo.completed && (
@@ -260,11 +256,7 @@ export default function TodoSection({
                   <div className="flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <h4
-                        className={`text-sm font-medium ${
-                          todo.completed
-                            ? "text-zinc-500 line-through"
-                            : "text-zinc-100"
-                        }`}
+                        className={`text-sm font-medium ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
                       >
                         {todo.title}
                       </h4>
@@ -278,9 +270,7 @@ export default function TodoSection({
                           className="rounded p-1 hover:bg-zinc-900/70"
                         >
                           <ArrowRight01Icon
-                            className={`h-4 w-4 text-zinc-500 transition-transform ${
-                              isExpanded ? "rotate-90" : ""
-                            }`}
+                            className={`h-4 w-4 text-zinc-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
                           />
                         </button>
                       )}
@@ -299,11 +289,7 @@ export default function TodoSection({
 
                       {todo.due_date && (
                         <span
-                          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-                            isOverdue(todo.due_date)
-                              ? "bg-red-500/10 text-red-500"
-                              : "bg-zinc-800 text-zinc-400"
-                          }`}
+                          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${isOverdue(todo.due_date) ? "bg-red-500/10 text-red-500" : "bg-zinc-800 text-zinc-400"}`}
                         >
                           <CalendarIcon className="h-3 w-3" />
                           {formatToolDueDate(todo.due_date)}
@@ -365,22 +351,14 @@ export default function TodoSection({
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div
-                                  className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
-                                    subtask.completed
-                                      ? "border-success bg-success"
-                                      : "border-zinc-600"
-                                  }`}
+                                  className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${subtask.completed ? "border-success bg-success" : "border-zinc-600"}`}
                                 >
                                   {subtask.completed && (
                                     <Tick02Icon className="h-2.5 w-2.5 text-white" />
                                   )}
                                 </div>
                                 <span
-                                  className={`text-xs ${
-                                    subtask.completed
-                                      ? "text-zinc-500 line-through"
-                                      : "text-zinc-300"
-                                  }`}
+                                  className={`text-xs ${subtask.completed ? "text-zinc-500 line-through" : "text-zinc-300"}`}
                                 >
                                   {subtask.title}
                                 </span>

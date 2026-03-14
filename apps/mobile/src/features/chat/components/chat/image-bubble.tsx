@@ -19,7 +19,7 @@ export function ImageBubble({
   caption,
 }: ImageBubbleProps) {
   const [viewerVisible, setViewerVisible] = useState(false);
-  const { width, spacing, moderateScale, fontSize } = useResponsive();
+  const { width, spacing, fontSize } = useResponsive();
 
   const cardWidth = Math.min(width * 0.78, 360);
   const isLoading = isGenerating || !imageData.url;

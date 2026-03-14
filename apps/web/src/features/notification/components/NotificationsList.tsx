@@ -7,7 +7,7 @@ import type {
   ModalConfig,
   NotificationRecord,
 } from "@/types/features/notificationTypes";
-import { groupNotificationsByTimezone } from "@/utils";
+import { groupNotificationsByTimezone } from "@/utils/notificationUtils";
 import { EnhancedNotificationCard } from "./EnhancedNotificationCard";
 
 interface NotificationListProps {

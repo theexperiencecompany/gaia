@@ -51,9 +51,7 @@ export default function DemoTodoComplete({
               initial={{ opacity: 0 }}
               animate={{ opacity: isTarget ? 1 : 0.45 }}
               transition={{ delay: index * 0.06, duration: 0.3 }}
-              className={`relative flex items-start gap-3 p-4 pl-5 transition-all duration-300 ${
-                isTarget ? "bg-success/5" : ""
-              }`}
+              className={`relative flex items-start gap-3 p-4 pl-5 transition-all duration-300 ${isTarget ? "bg-success/5" : ""}`}
             >
               {/* Checkbox — completed for target */}
               {isTarget ? (
@@ -96,9 +94,7 @@ export default function DemoTodoComplete({
                 <m.p
                   animate={isTarget ? { opacity: 0.4 } : { opacity: 1 }}
                   transition={{ delay: 0.3, duration: 0.4 }}
-                  className={`text-base font-medium ${
-                    isTarget ? "text-zinc-400 line-through" : "text-zinc-100"
-                  }`}
+                  className={`text-base font-medium ${isTarget ? "text-zinc-400 line-through" : "text-zinc-100"}`}
                 >
                   {todo.title}
                 </m.p>

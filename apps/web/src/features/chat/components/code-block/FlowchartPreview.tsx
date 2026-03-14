@@ -91,9 +91,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
   return (
     <div className="relative h-[50vh] overflow-hidden bg-white p-4">
       <div
-        className={`absolute top-0 left-0 h-full w-full ${
-          isDragging ? "cursor-grabbing" : "cursor-grab"
-        }`}
+        className={`absolute top-0 left-0 h-full w-full ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

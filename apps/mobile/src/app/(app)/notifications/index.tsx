@@ -14,17 +14,15 @@ import {
   Tick02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  NotificationConnectBanner,
-  NotificationsList,
-  useInappNotifications,
-  useNotificationActions,
-  useRealtimeNotifications,
-} from "@/features/notifications";
 import type { NotificationPreferencesSheetRef } from "@/features/notifications/components/NotificationPreferencesSheet";
 import { NotificationPreferencesSheet } from "@/features/notifications/components/NotificationPreferencesSheet";
 import type { NotificationSnoozeSheetRef } from "@/features/notifications/components/NotificationSnoozeSheet";
 import { NotificationSnoozeSheet } from "@/features/notifications/components/NotificationSnoozeSheet";
+import { NotificationConnectBanner } from "@/features/notifications/components/notification-connect-banner";
+import { NotificationsList } from "@/features/notifications/components/notifications-list";
+import { useInappNotifications } from "@/features/notifications/hooks/use-inapp-notifications";
+import { useNotificationActions } from "@/features/notifications/hooks/use-notification-actions";
+import { useRealtimeNotifications } from "@/features/notifications/hooks/use-realtime-notifications";
 import type {
   InAppNotification,
   InAppNotificationAction,

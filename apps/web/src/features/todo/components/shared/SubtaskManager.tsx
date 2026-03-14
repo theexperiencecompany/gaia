@@ -120,11 +120,7 @@ export default function SubtaskManager({
           size="sm"
           onClick={handleAddSubtask}
           disabled={!newSubtaskTitle.trim()}
-          className={`h-9 w-9 rounded-lg border-0 p-0 ${
-            !newSubtaskTitle.trim()
-              ? "hover:bg-zinc-750 bg-zinc-800 text-zinc-600"
-              : "hover:bg-zinc-750 bg-zinc-800 text-zinc-200"
-          }`}
+          className={`h-9 w-9 rounded-lg border-0 p-0 ${!newSubtaskTitle.trim() ? "hover:bg-zinc-750 bg-zinc-800 text-zinc-600" : "hover:bg-zinc-750 bg-zinc-800 text-zinc-200"}`}
         >
           <PlusSignIcon size={16} />
         </Button>

@@ -3,7 +3,7 @@ import { Chip } from "@heroui/chip";
 import { AlertCircleIcon } from "@icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { useIntegrations } from "@/features/integrations";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { IntegrationConnectionData } from "@/features/integrations/types";
 
 interface IntegrationConnectionPromptProps {

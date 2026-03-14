@@ -5,7 +5,7 @@ import type React from "react";
 import { useCallback, useMemo, useState } from "react";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import { useExploreWorkflows } from "@/features/workflows/hooks";
+import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useComposerTextActions } from "@/stores/composerStore";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";

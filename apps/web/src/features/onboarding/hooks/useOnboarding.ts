@@ -2,7 +2,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
-import { useFetchIntegrationStatus } from "@/features/integrations";
+import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
 import {
   ANALYTICS_EVENTS,
   trackEvent,

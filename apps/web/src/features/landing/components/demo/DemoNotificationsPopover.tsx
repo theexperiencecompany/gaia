@@ -47,11 +47,7 @@ export default function DemoNotificationsPopover({
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm transition-colors ${
-                    activeTab === tab
-                      ? "border-b-2 border-primary text-white"
-                      : "text-zinc-400 hover:text-zinc-300"
-                  }`}
+                  className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm transition-colors ${activeTab === tab ? "border-b-2 border-primary text-white" : "text-zinc-400 hover:text-zinc-300"}`}
                 >
                   <span className="capitalize">{tab}</span>
                   {tab === "unread" && unreadNotifications.length > 0 && (

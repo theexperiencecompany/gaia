@@ -31,12 +31,11 @@ import { startNextServer, stopNextServer } from "./server";
 import { fixSessionCookies } from "./session";
 import {
   createMainWindow,
-  createSplashWindow,
   getMainWindow,
-  isSplashAlive,
   setPendingDeepLink,
   showMainWindow,
-} from "./windows";
+} from "./windows/main";
+import { createSplashWindow, isSplashAlive } from "./windows/splash";
 
 // ---------------------------------------------------------------------------
 // Pre-ready setup (must run before app.ready)

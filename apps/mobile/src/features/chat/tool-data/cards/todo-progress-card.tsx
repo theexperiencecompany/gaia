@@ -91,13 +91,7 @@ function SourceSection({
               }
             />
             <Text
-              className={`text-xs flex-1 leading-relaxed ${
-                todo.status === "cancelled"
-                  ? "text-zinc-600 line-through"
-                  : todo.status === "completed"
-                    ? "text-zinc-400"
-                    : "text-zinc-300"
-              }`}
+              className={`text-xs flex-1 leading-relaxed ${todo.status === "cancelled" ? "text-zinc-600 line-through" : todo.status === "completed" ? "text-zinc-400" : "text-zinc-300"}`}
             >
               {todo.content}
             </Text>

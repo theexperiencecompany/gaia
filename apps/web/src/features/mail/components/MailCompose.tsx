@@ -73,9 +73,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
       <Drawer.Root open={open} onOpenChange={onOpenChange} direction="right">
         <Drawer.Portal>
           <Drawer.Overlay
-            className={`fixed inset-0 bg-black/40 backdrop-blur-md ${
-              isAiModalOpen ? "pointer-events-auto" : "pointer-events-none"
-            }`}
+            className={`fixed inset-0 bg-black/40 backdrop-blur-md ${isAiModalOpen ? "pointer-events-auto" : "pointer-events-none"}`}
           />
           <Drawer.Content
             className="fixed right-0 bottom-0 z-10 flex min-h-[60vh] w-[50vw] flex-col gap-2 rounded-tl-xl bg-zinc-900 p-4"

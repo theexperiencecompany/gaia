@@ -5,16 +5,14 @@ import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import { Copy01Icon, LinkSquare02Icon } from "@icons";
 import { useEffect, useState } from "react";
-import {
-  type HoloCardDisplayData,
-  HoloCardEditor,
-} from "@/components/ui/holo-card";
+import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
+import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import {
   type HoloCardData,
   holoCardApi,
 } from "@/features/onboarding/api/holoCardApi";
-import { SettingsPage } from "@/features/settings/components/ui";
+import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { toast } from "@/lib/toast";
 
 export default function ProfileCardSettings() {

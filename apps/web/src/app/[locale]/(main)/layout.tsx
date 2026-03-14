@@ -20,9 +20,8 @@ import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import { usePathname } from "@/i18n/navigation";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
-import { apiService } from "@/lib/api";
-import { toast } from "@/lib/toast";
-import { wsManager } from "@/lib/websocket";
+import { apiService } from "@/lib/api/service";
+import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStoreSync } from "@/stores/chatStore";
 import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
 import {

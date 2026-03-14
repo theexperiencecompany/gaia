@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { Offer, SoftwareApplication, WithContext } from "schema-dts";
 import JsonLd from "@/components/seo/JsonLd";
-import { DownloadPage } from "@/features/download";
+import DownloadPage from "@/features/download/components/DownloadPage";
 import { GITHUB_RELEASES_BASE } from "@/hooks/ui/usePlatformDetection";
 import {
   generateBreadcrumbSchema,

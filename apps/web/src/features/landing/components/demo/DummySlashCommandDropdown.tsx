@@ -642,11 +642,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                       e.stopPropagation();
                       setSelectedCategory(category);
                     }}
-                    className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
-                      selectedCategory === category
-                        ? "bg-zinc-700 text-white"
-                        : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"
-                    }`}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${selectedCategory === category ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"}`}
                   >
                     {category === "all" ? (
                       <GridIcon

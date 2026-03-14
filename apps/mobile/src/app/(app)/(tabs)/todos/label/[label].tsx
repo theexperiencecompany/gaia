@@ -3,7 +3,8 @@ import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, ArrowLeft01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { LabelChip, LabelFilterView } from "@/features/todos";
+import { LabelChip } from "@/features/todos/components/label-chip";
+import { LabelFilterView } from "@/features/todos/components/label-filter-view";
 import { useResponsive } from "@/lib/responsive";
 
 export default function LabelFilterPage() {

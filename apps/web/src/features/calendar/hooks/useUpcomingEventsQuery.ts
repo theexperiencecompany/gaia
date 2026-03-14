@@ -1,6 +1,6 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface CalendarEventsResponse {

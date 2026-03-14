@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { inAppNotificationsApi } from "../api";
+import { inAppNotificationsApi } from "@/features/notifications/api/inapp-notifications-api";
 import type {
   InAppNotification,
   InAppNotificationAction,

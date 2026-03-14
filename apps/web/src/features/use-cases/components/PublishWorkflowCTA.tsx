@@ -18,12 +18,7 @@ export default function PublishWorkflowCTA() {
           Build and share your automation ideas with the GAIA community
         </p>
         <a
-          href={`${
-            typeof window !== "undefined" &&
-            window.location.hostname === "localhost"
-              ? "http://localhost:3001"
-              : "https://docs.heygaia.io"
-          }/guides/create-public-workflow`}
+          href={`${typeof window !== "undefined" && window.location.hostname === "localhost" ? "http://localhost:3001" : "https://docs.heygaia.io"}/guides/create-public-workflow`}
           target="_blank"
           rel="noopener noreferrer"
         >

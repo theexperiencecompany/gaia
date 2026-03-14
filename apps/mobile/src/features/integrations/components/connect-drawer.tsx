@@ -18,14 +18,14 @@ import {
 } from "react-native";
 import { Cancel01Icon, Search01Icon, Wrench01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { haptics } from "@/lib/haptics";
-import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import {
   connectIntegration,
   connectIntegrationWithToken,
   disconnectIntegration,
   fetchIntegrationsConfig,
-} from "../api";
+} from "@/features/integrations/api/integrations-api";
+import { haptics } from "@/lib/haptics";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type { IntegrationWithStatus } from "../types";
 import { BearerTokenSheet, type BearerTokenSheetRef } from "./BearerTokenSheet";
 

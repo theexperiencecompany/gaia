@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
-import { TriggerConnectionPrompt, TriggerSelectToggle } from "../components";
+import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
+import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";

@@ -24,7 +24,7 @@ import {
   WhatsappIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import type { UserInfo } from "@/features/auth";
+import type { UserInfo } from "@/features/auth/types";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 interface SettingsBottomSheetProps {

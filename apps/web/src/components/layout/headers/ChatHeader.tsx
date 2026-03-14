@@ -3,7 +3,7 @@
 import { Kbd } from "@heroui/kbd";
 import { BubbleChatAddIcon, PinIcon, SearchIcon } from "@icons";
 import Link from "next/link";
-import { SidebarHeaderButton } from "@/components";
+import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import ModelPickerButton from "@/features/chat/components/composer/ModelPickerButton";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";

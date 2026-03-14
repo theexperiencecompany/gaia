@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { memo, useCallback, useMemo } from "react";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import type { Goal } from "@/types/api/goalsApiTypes";
-import { formatDate } from "@/utils";
+import { formatDate } from "@/utils/date/dateUtils";
 
 interface GoalsViewProps {
   goals?: Goal[];

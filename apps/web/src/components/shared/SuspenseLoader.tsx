@@ -12,9 +12,7 @@ const SuspenseLoader = memo(function SuspenseLoader({
 }) {
   return (
     <div
-      className={`w-full ${fullHeight ? "h-screen" : "h-full"} ${
-        fullWidth ? "w-screen" : "w-full"
-      } flex items-center justify-center p-3`}
+      className={`w-full ${fullHeight ? "h-screen" : "h-full"} ${fullWidth ? "w-screen" : "w-full"} flex items-center justify-center p-3`}
     >
       <Spinner />
     </div>

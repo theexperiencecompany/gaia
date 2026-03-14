@@ -87,9 +87,7 @@ function DemoTodoItem({
 
   return (
     <div
-      className={`w-full cursor-pointer p-4 pl-5 transition-all hover:bg-zinc-800/50 ${
-        isSelected ? "bg-primary/5" : ""
-      } ${todo.completed ? "opacity-30" : ""}`}
+      className={`w-full cursor-pointer p-4 pl-5 transition-all hover:bg-zinc-800/50 ${isSelected ? "bg-primary/5" : ""} ${todo.completed ? "opacity-30" : ""}`}
       onClick={onClick}
     >
       <div className="flex h-full items-start gap-3">
@@ -105,9 +103,7 @@ function DemoTodoItem({
         {/* Content */}
         <div className="min-w-0 flex-1">
           <h4
-            className={`text-base font-medium ${
-              todo.completed ? "text-zinc-500 line-through" : ""
-            }`}
+            className={`text-base font-medium ${todo.completed ? "text-zinc-500 line-through" : ""}`}
           >
             {todo.title}
           </h4>
@@ -252,9 +248,7 @@ function DemoFieldChip({
   return (
     <button
       type="button"
-      className={`flex h-7 items-center gap-1 rounded-lg px-2 text-xs transition-colors ${
-        color ? "" : "bg-zinc-800 text-zinc-500"
-      } hover:bg-zinc-700 cursor-pointer`}
+      className={`flex h-7 items-center gap-1 rounded-lg px-2 text-xs transition-colors ${color ? "" : "bg-zinc-800 text-zinc-500"} hover:bg-zinc-700 cursor-pointer`}
       style={color ? { backgroundColor: `${color}20`, color } : undefined}
     >
       {icon}
@@ -356,9 +350,7 @@ function DemoTodoSidebar({
               )}
             </div>
             <h2
-              className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${
-                todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"
-              }`}
+              className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
             >
               {todo.title}
             </h2>
@@ -366,9 +358,7 @@ function DemoTodoSidebar({
 
           {/* Description */}
           <p
-            className={`cursor-pointer text-sm leading-relaxed transition-colors hover:text-zinc-300 ${
-              todo.completed ? "text-zinc-600" : "text-zinc-400"
-            }`}
+            className={`cursor-pointer text-sm leading-relaxed transition-colors hover:text-zinc-300 ${todo.completed ? "text-zinc-600" : "text-zinc-400"}`}
           >
             {todo.description || "Add a description..."}
           </p>
@@ -441,18 +431,10 @@ function DemoTodoSidebar({
                 className="flex items-center gap-2 rounded-lg p-2 hover:bg-zinc-800/50"
               >
                 <div
-                  className={`h-3.5 w-3.5 shrink-0 rounded-full border ${
-                    st.completed
-                      ? "border-green-500 bg-green-500"
-                      : "border-dashed border-zinc-500"
-                  }`}
+                  className={`h-3.5 w-3.5 shrink-0 rounded-full border ${st.completed ? "border-green-500 bg-green-500" : "border-dashed border-zinc-500"}`}
                 />
                 <span
-                  className={`text-sm ${
-                    st.completed
-                      ? "text-zinc-500 line-through"
-                      : "text-zinc-300"
-                  }`}
+                  className={`text-sm ${st.completed ? "text-zinc-500 line-through" : "text-zinc-300"}`}
                 >
                   {st.title}
                 </span>

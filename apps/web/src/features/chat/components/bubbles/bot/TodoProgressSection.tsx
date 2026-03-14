@@ -69,11 +69,7 @@ function TaskRow({
         className={`size-4 shrink-0 mt-0.5 ${STATUS_COLOR[todo.status]} ${spinClass}`}
       />
       <span
-        className={`text-xs leading-relaxed ${
-          todo.status === "cancelled"
-            ? "line-through text-zinc-600"
-            : "text-zinc-300"
-        }`}
+        className={`text-xs leading-relaxed ${todo.status === "cancelled" ? "line-through text-zinc-600" : "text-zinc-300"}`}
       >
         {todo.content}
       </span>

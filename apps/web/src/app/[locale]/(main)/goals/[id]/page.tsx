@@ -297,9 +297,7 @@ export default function GoalPage() {
       <ReactFlowProvider>
         <div className="relative flex h-full w-full flex-row justify-between">
           <div
-            className={`relative flex h-screen w-full min-w-full flex-row flex-wrap items-center justify-center gap-4 pb-8 text-background ${
-              loading ? "h-screen" : "h-fit"
-            }`}
+            className={`relative flex h-screen w-full min-w-full flex-row flex-wrap items-center justify-center gap-4 pb-8 text-background ${loading ? "h-screen" : "h-fit"}`}
           >
             {loading ? (
               <div className="bg-secondary-bg relative flex h-fit w-fit flex-col items-center justify-center gap-10 overflow-hidden rounded-xl pt-9 pb-0">

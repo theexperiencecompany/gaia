@@ -2,7 +2,7 @@ import { Button, PressableFeedback } from "heroui-native";
 import { useRef, useState } from "react";
 import { Keyboard, TextInput, View } from "react-native";
 import { AppIcon, ArrowUp02Icon, PlusSignIcon } from "@/components/icons";
-import { ConnectDrawerTrigger } from "@/features/integrations";
+import { ConnectDrawerTrigger } from "@/features/integrations/components/connect-drawer";
 import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";
 import { Text } from "./text";

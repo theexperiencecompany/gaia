@@ -1,5 +1,5 @@
 import { buildQueryString, normalizeListResponse } from "@shared/api";
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import type {
   BulkMoveRequest,
   Project,

@@ -17,7 +17,7 @@ import {
   Wrench01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { useAuth } from "@/features/auth";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
 
 export function SidebarFooter() {

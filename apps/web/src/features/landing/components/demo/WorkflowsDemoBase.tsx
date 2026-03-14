@@ -23,13 +23,7 @@ interface WorkflowsDemoBaseProps {
 function defaultFallbackIcon(isDone: boolean, isRunning: boolean) {
   return (
     <div
-      className={`h-2 w-2 rounded-full ${
-        isDone
-          ? "bg-emerald-400"
-          : isRunning
-            ? "animate-pulse bg-primary"
-            : "bg-zinc-600"
-      }`}
+      className={`h-2 w-2 rounded-full ${isDone ? "bg-emerald-400" : isRunning ? "animate-pulse bg-primary" : "bg-zinc-600"}`}
     />
   );
 }

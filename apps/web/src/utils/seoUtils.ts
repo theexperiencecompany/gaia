@@ -9,7 +9,7 @@ import type {
   WithContext,
 } from "schema-dts";
 
-import type { UseCase } from "@/features/use-cases/types";
+import type { UseCase } from "@/types/features/workflowTypes";
 import type { BlogPost } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
 

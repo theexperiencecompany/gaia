@@ -5,8 +5,8 @@
  */
 
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
-import type { ImageData, MemoryData } from "@/types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
+import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 

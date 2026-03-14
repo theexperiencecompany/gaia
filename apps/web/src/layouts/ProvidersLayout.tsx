@@ -2,7 +2,7 @@
 
 import { type ReactNode, Suspense } from "react";
 
-import { ElectronRouteGuard } from "@/components/electron";
+import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
 import LoginModal from "@/features/auth/components/LoginModal";
@@ -15,7 +15,7 @@ import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
 import { HeroUIProvider } from "@/layouts/HeroUIProvider";
 import QueryProvider from "@/layouts/QueryProvider";
-import { useWebSocketConnection } from "@/lib/websocket";
+import { useWebSocketConnection } from "@/lib/websocket/useWebSocketConnection";
 
 export default function ProvidersLayout({ children }: { children: ReactNode }) {
   // Populate the notification store on app load

@@ -11,7 +11,7 @@
  * - Sync streaming indicator state with chatStore
  */
 
-import { syncSingleConversation } from "@/services";
+import { syncSingleConversation } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
 
 // Module-level state

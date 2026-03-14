@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";

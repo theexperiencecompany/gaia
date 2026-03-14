@@ -142,11 +142,7 @@ export default function SidebarTopButtons() {
                   variant={isRouteActive(route) ? "flat" : "light"}
                   // color={isRouteActive(route) ? "primary" : "default"}
                   color={"default"}
-                  className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${
-                    isRouteActive(route)
-                      ? "text-zinc-300"
-                      : "text-zinc-400 hover:text-zinc-300"
-                  }`}
+                  className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${isRouteActive(route) ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
                   as={Link}
                   href={route}
                   onPress={() => {

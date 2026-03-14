@@ -188,9 +188,7 @@ export function ChatInput({
         >
           <PressableFeedback onPress={handleSend} isDisabled={!canSubmit}>
             <View
-              className={`h-9 w-9 rounded-full items-center justify-center ${
-                canSubmit ? "bg-accent" : "bg-surface-3"
-              }`}
+              className={`h-9 w-9 rounded-full items-center justify-center ${canSubmit ? "bg-accent" : "bg-surface-3"}`}
             >
               <SentIcon size={18} color={canSubmit ? "#000000" : "#666666"} />
             </View>

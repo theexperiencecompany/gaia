@@ -111,11 +111,7 @@ export default function DemoCommunityCards({
                     damping: 25,
                   }}
                   style={{ willChange: "transform, opacity" }}
-                  className={`flex flex-col gap-2 rounded-3xl p-4 outline ${
-                    light
-                      ? "bg-white/70 backdrop-blur-lg outline-zinc-200/60"
-                      : "bg-zinc-800 outline-zinc-700/40"
-                  }`}
+                  className={`flex flex-col gap-2 rounded-3xl p-4 outline ${light ? "bg-white/70 backdrop-blur-lg outline-zinc-200/60" : "bg-zinc-800 outline-zinc-700/40"}`}
                 >
                   {/* Icon stack - matches WorkflowIcons component */}
                   <div className="flex min-h-8 items-center -space-x-1.5">

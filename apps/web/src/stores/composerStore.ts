@@ -4,7 +4,8 @@ import { useShallow } from "zustand/react/shallow";
 
 import type { UploadedFilePreview } from "@/features/chat/components/files/FilePreview";
 import { stripLocalePrefix } from "@/i18n/config";
-import type { FileData, SearchMode } from "@/types/shared";
+import type { FileData } from "@/types/shared/fileTypes";
+import type { SearchMode } from "@/types/shared/searchTypes";
 
 interface ComposerState {
   // Text input state

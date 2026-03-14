@@ -148,11 +148,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ files, onRemove }) => {
         {files.map((file) => (
           <div
             key={file.id}
-            className={`group relative flex ${
-              file.type.startsWith("image/")
-                ? "h-14 max-h-14 min-h-14 w-14 max-w-14 min-w-14 justify-center"
-                : "max-w-[220px] min-w-[180px] p-2 pr-8"
-            } items-center rounded-xl bg-zinc-700 transition-all hover:bg-zinc-900`}
+            className={`group relative flex ${file.type.startsWith("image/") ? "h-14 max-h-14 min-h-14 w-14 max-w-14 min-w-14 justify-center" : "max-w-[220px] min-w-[180px] p-2 pr-8"} items-center rounded-xl bg-zinc-700 transition-all hover:bg-zinc-900`}
           >
             {file.isUploading && (
               <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/30">

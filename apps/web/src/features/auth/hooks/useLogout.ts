@@ -2,8 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { del } from "idb-keyval";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
-import { db } from "@/lib";
 import { ANALYTICS_EVENTS, resetUser, trackEvent } from "@/lib/analytics";
+import { db } from "@/lib/db/chatDb";
 import { authApi } from "../api/authApi";
 
 export const useLogout = () => {

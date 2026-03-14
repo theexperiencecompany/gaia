@@ -1,6 +1,6 @@
 import type * as Notifications from "expo-notifications";
 import { createContext, type ReactNode, useContext, useState } from "react";
-import { useNotifications } from "@/features/notifications";
+import { useNotifications } from "@/features/notifications/hooks/use-notifications";
 
 interface NotificationContextValue {
   expoPushToken: string | null;

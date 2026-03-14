@@ -1,7 +1,7 @@
 import { Kbd } from "@heroui/kbd";
 import { SidebarLeft01Icon, SidebarRight01Icon } from "@icons";
 import type { ReactNode } from "react";
-import { SidebarHeaderButton } from "@/components";
+import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import ContactSupport from "@/components/layout/sidebar/ContactSupport";
 import SidebarTopButtons from "@/components/layout/sidebar/SidebarTopButtons";
 import UserContainer from "@/components/layout/sidebar/UserContainer";

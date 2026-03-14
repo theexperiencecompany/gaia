@@ -1,3 +1,3 @@
-import { RemindersScreen } from "@/features/reminders";
+import { RemindersScreen } from "@/features/reminders/components/RemindersScreen";
 
 export default RemindersScreen;
