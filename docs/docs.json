@@ -117,7 +117,6 @@
             "group": "Automation",
             "pages": [
               "guides/building-workflows",
-              "guides/create-public-workflow",
               "guides/marketplace"
             ]
           },
