@@ -302,14 +302,16 @@ async function getNativeIntegrationPages(
     }
 
     const data = await response.json();
-    return (data.integrations || []).map(
-      (integration: { id: string; available: boolean }) => ({
-        url: `${baseUrl}/marketplace/${integration.id}`,
+    type NativeIntegration = { id: string; available: boolean };
+
+    return ((data.integrations as NativeIntegration[]) || [])
+      .filter((i) => i.available === true)
+      .map((i) => ({
+        url: `${baseUrl}/marketplace/${i.id}`,
         lastModified: BUILD_DATE,
         changeFrequency: "monthly" as const,
         priority: 0.7,
-      }),
-    );
+      }));
   } catch (error) {
     console.error("Error fetching native integrations for sitemap:", error);
     return [];
