@@ -24,7 +24,7 @@ import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { TodoProgressSnapshot } from "@/types/features/todoProgressTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared";
+import type { FileData } from "@/types/shared/fileTypes";
 import fetchDate from "@/utils/date/dateUtils";
 
 import { useLoadingText } from "./useLoadingText";

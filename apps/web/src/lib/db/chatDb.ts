@@ -7,7 +7,7 @@ import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionS
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared";
+import type { FileData } from "@/types/shared/fileTypes";
 
 export interface IConversation {
   id: string;
