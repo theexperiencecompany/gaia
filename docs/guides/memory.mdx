@@ -1,0 +1,110 @@
+---
+title: "Teaching GAIA to Remember You"
+description: "How GAIA's memory works and how to shape what it learns"
+---
+
+## Overview
+
+GAIA builds a persistent memory of who you are, what you care about, and how you work. That knowledge carries across every conversation, so GAIA gets more useful the more you interact with it.
+
+Memory is not chat history. It is distilled knowledge — the preferences, contacts, IDs, and patterns GAIA extracts from your conversations and stores for later.
+
+<img
+  className="rounded-lg"
+  src="/images/guides/memory/memory-graph.png"
+  alt="Memory graph view showing entities and relationships"
+/>
+
+## How GAIA Learns
+
+GAIA learns automatically. At the end of each conversation, a background process reviews what happened and pulls out anything worth keeping.
+
+This happens silently — you never need to say "remember this." GAIA picks up details on its own.
+
+**What gets stored:**
+
+- **Identity mappings** — Names linked to emails, Slack IDs, GitHub handles, calendar IDs, and other system identifiers
+- **Preferences** — Your preferred formats, timezones, communication style, and default settings
+- **Contacts and relationships** — Who you message, who reports to you, key collaborators
+- **Tools and workflows** — Which integrations you use, common operations, and recurring patterns
+- **Context** — Projects you work on, repositories you contribute to, channels you frequent
+
+<Tip>
+  The more you use GAIA with your connected integrations, the richer your memory
+  becomes. A conversation where you send a Slack message to "Sarah" teaches GAIA
+  Sarah's Slack ID, so next time you can just say "message Sarah" without
+  looking up her handle.
+</Tip>
+
+## How GAIA Uses Memory
+
+When you start a conversation, GAIA searches your memories using semantic search. It pulls in whatever is relevant to your current request — automatically, without you asking.
+
+Say you tell GAIA to "schedule a meeting with James." GAIA can already recall James's email and your preferred meeting duration from past interactions. No need to repeat yourself.
+
+Memory also drives GAIA's proactive behavior. The more it knows about your routines and preferences, the better it can anticipate what you need before you ask.
+
+## Adding Memories Manually
+
+You can teach GAIA directly by adding memories in Settings.
+
+<Steps>
+  <Step title="Open Memory Settings">
+    Go to **Settings** and select **Memories** from the sidebar.
+  </Step>
+  <Step title="Add a memory">
+    Click **Add Memory** and type what you want GAIA to know. Be specific — for
+    example, "My manager is Alex Chen, alex.chen@company.com" or "I prefer
+    meeting agendas as bullet points."
+  </Step>
+  <Step title="Save">
+    Click **Save Memory**. GAIA processes the text and pulls out the key facts.
+  </Step>
+</Steps>
+
+<Note>
+  GAIA won't store a memory if it can't extract something meaningful from your
+  text. "I like coffee" is too vague. "I order from Blue Bottle, size large,
+  oat milk" gives GAIA something it can actually use.
+</Note>
+
+## Viewing Your Memory Graph
+
+The Memory settings page gives you two ways to see what GAIA knows about you:
+
+- **Graph View** — A visual network of entities (people, tools, projects) and the relationships between them. This is the default view.
+- **List View** — A flat list of every stored memory, with the content, date, and category.
+
+Each memory is tagged by category — identity mappings, preferences, context patterns — so you can quickly scan what GAIA has learned. You can also export the graph as a PNG or SVG from Graph View.
+
+<img
+  className="rounded-lg"
+  src="/images/guides/memory/memory-list.png"
+  alt="Memory list view showing stored memories with categories and dates"
+/>
+
+## Managing Memories
+
+You have full control over what GAIA remembers.
+
+- **Delete a single memory** — In List View, click the delete button next to any memory to remove it.
+- **Clear all memories** — Click **Clear All** to erase everything. This cannot be undone.
+
+<Warning>
+  Clearing all memories resets GAIA's knowledge of your preferences, contacts,
+  and workflows. It will need to re-learn everything from future conversations.
+</Warning>
+
+## How Memory Works Under the Hood
+
+GAIA's memory runs on vector-based semantic search. When a memory is stored, it gets embedded as a vector — a numerical representation of its meaning. When GAIA needs to recall something, it searches for memories whose meaning is closest to your current request.
+
+That means GAIA does not rely on exact keyword matches. Asking about "my team lead" can surface a memory stored as "Alex Chen is my manager," because the concepts are semantically related.
+
+Memories also include graph relationships — structured connections between entities like people, tools, and projects. This lets GAIA understand not just isolated facts, but how things connect to each other.
+
+## Privacy and Security
+
+- **Memories are per-user.** Your memories are isolated to your account. No other user can access them.
+- **Memories are stored securely.** They are processed and stored in a dedicated memory service, separate from your chat history.
+- **You control your data.** You can view, add, and delete any memory at any time from Settings.

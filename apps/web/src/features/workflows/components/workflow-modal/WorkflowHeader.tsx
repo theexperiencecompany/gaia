@@ -64,7 +64,9 @@ export default function WorkflowHeader({
           currentWorkflow ? { ...currentWorkflow, is_public: true } : null,
         );
         if (currentWorkflow.id) {
-          router.push(`/use-cases/${currentWorkflow.id}`);
+          router.push(
+            `/use-cases/${currentWorkflow.slug ?? currentWorkflow.id}`,
+          );
         }
       }
       await onRefetchWorkflows();
@@ -75,7 +77,7 @@ export default function WorkflowHeader({
 
   const handleMarketplaceView = () => {
     if (currentWorkflow?.id) {
-      router.push(`/use-cases/${currentWorkflow.id}`);
+      router.push(`/use-cases/${currentWorkflow.slug ?? currentWorkflow.id}`);
     }
   };
 

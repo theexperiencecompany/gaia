@@ -62,7 +62,7 @@ export default async function UseCasesPage() {
   const itemListSchema = generateItemListSchema(
     communityWorkflows.map((workflow) => ({
       name: workflow.title,
-      url: `${siteConfig.url}/use-cases/${workflow.id}`,
+      url: `${siteConfig.url}/use-cases/${workflow.slug ?? workflow.id}`,
       description: workflow.description || "",
     })),
     "Article",

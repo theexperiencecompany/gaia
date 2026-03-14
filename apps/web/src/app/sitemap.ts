@@ -4,6 +4,7 @@ import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternative
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
@@ -137,68 +138,10 @@ async function getExploreWorkflowPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   try {
-    const apiBaseUrl = getServerApiBaseUrl();
-    if (!apiBaseUrl) {
-      console.warn(
-        "[Sitemap] No API base URL configured, skipping explore workflows",
-      );
-      return [];
-    }
-
-    if (isDevelopment()) {
-      const response = await fetch(
-        `${apiBaseUrl}/workflows/explore?limit=50&offset=0`,
-        { next: { revalidate: 3600 } },
-      );
-      if (!response.ok) {
-        console.error(
-          `[Sitemap] Explore workflows API returned ${response.status}`,
-        );
-        return [];
-      }
-      const data = await response.json();
-      return (data.workflows || []).map(
-        (wc: {
-          id: string;
-          slug?: string;
-          created_at: string;
-          categories?: string[];
-        }) => ({
-          url: `${baseUrl}/use-cases/${wc.slug || wc.id}`,
-          lastModified: new Date(wc.created_at),
-          changeFrequency: "weekly" as const,
-          priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
-        }),
-      );
-    }
-
-    type ExploreWorkflow = {
-      id: string;
-      slug?: string;
-      created_at: string;
-      categories?: string[];
-    };
-
-    const allWorkflows = await fetchAllPaginated<ExploreWorkflow>(
-      async (limit, offset) => {
-        const response = await fetch(
-          `${apiBaseUrl}/workflows/explore?limit=${limit}&offset=${offset}`,
-          { next: { revalidate: 3600 } },
-        );
-        if (!response.ok) return { items: [], total: 0, hasMore: false };
-
-        const data = await response.json();
-        return {
-          items: data.workflows || [],
-          total: data.total || 0,
-          hasMore: (data.workflows || []).length === limit,
-        };
-      },
-      100,
-    );
-
-    return allWorkflows.map((wc) => ({
-      url: `${baseUrl}/use-cases/${wc.slug || wc.id}`,
+    const limit = isDevelopment() ? 50 : 1000;
+    const exploreResp = await workflowApi.getExploreWorkflows(limit, 0);
+    return exploreResp.workflows.map((wc) => ({
+      url: `${baseUrl}/use-cases/${wc.slug ?? wc.id}`,
       lastModified: new Date(wc.created_at),
       changeFrequency: "weekly" as const,
       priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
@@ -218,34 +161,22 @@ async function getCommunityWorkflowPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   try {
+    if (isDevelopment()) {
+      const communityResponse = await workflowApi.getCommunityWorkflows(50, 0);
+      return communityResponse.workflows.map((workflow) => ({
+        url: `${baseUrl}/use-cases/${workflow.slug ?? workflow.id}`,
+        lastModified: new Date(workflow.created_at),
+        changeFrequency: "weekly" as const,
+        priority: 0.6,
+      }));
+    }
+
     const apiBaseUrl = getServerApiBaseUrl();
     if (!apiBaseUrl) {
       console.warn(
         "[Sitemap] No API base URL configured, skipping community workflows",
       );
       return [];
-    }
-
-    if (isDevelopment()) {
-      const response = await fetch(
-        `${apiBaseUrl}/workflows/community?limit=50&offset=0`,
-        { next: { revalidate: 3600 } },
-      );
-      if (!response.ok) {
-        console.error(
-          `[Sitemap] Community workflows API returned ${response.status}`,
-        );
-        return [];
-      }
-      const data = await response.json();
-      return (data.workflows || []).map(
-        (workflow: { id: string; slug?: string; created_at: string }) => ({
-          url: `${baseUrl}/use-cases/${workflow.slug || workflow.id}`,
-          lastModified: new Date(workflow.created_at),
-          changeFrequency: "weekly" as const,
-          priority: 0.6,
-        }),
-      );
     }
 
     type CommunityWorkflow = { id: string; slug?: string; created_at: string };
@@ -269,7 +200,7 @@ async function getCommunityWorkflowPages(
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.slug || workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.slug ?? workflow.id}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,
