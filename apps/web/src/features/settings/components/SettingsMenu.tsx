@@ -35,7 +35,7 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
-import { ContactSupportModal } from "@/features/support";
+import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import {
   type PlatformInfo,
   usePlatformDetection,

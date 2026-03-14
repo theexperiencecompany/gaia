@@ -10,7 +10,8 @@ import { ChevronUp } from "@/components/shared/icons";
 import type { UseCase } from "@/features/use-cases/types";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import { useExploreWorkflows, useWorkflows } from "@/features/workflows/hooks";
+import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
+import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 
 // Register GSAP plugin
 gsap.registerPlugin(ScrollTrigger);

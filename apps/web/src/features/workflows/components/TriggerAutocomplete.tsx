@@ -8,10 +8,8 @@ import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
-  findTriggerSchema,
-  type TriggerSchema,
-} from "@/features/workflows/triggers";
+import type { TriggerSchema } from "@/features/workflows/triggers/types/base";
+import { findTriggerSchema } from "@/features/workflows/triggers/utils";
 
 interface TriggerAutocompleteProps {
   selectedTrigger: string | null;
@@ -155,9 +153,7 @@ export function TriggerAutocomplete({
         items={filteredSchemas}
         defaultFilter={() => true}
         classNames={{
-          listboxWrapper: `${
-            Object.keys(groupedTriggers).length > 2 ? "min-h-[300px]" : "h-fit"
-          } p-1`,
+          listboxWrapper: `${Object.keys(groupedTriggers).length > 2 ? "min-h-[300px]" : "h-fit"} p-1`,
         }}
         startContent={
           selectedSchema &&

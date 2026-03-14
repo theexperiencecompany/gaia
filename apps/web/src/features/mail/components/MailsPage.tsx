@@ -208,11 +208,7 @@ export default function MailsPage() {
         radius="sm"
       >
         <div
-          className={`group relative grid w-full cursor-pointer gap-1 p-2 px-4 transition-all duration-200 hover:bg-primary/20 hover:text-primary sm:gap-2 sm:px-1 ${
-            email?.labelIds?.includes("UNREAD")
-              ? "font-medium"
-              : "font-normal text-foreground-400"
-          } sm:grid-cols-[auto_0.3fr_1fr_auto] sm:items-center`}
+          className={`group relative grid w-full cursor-pointer gap-1 p-2 px-4 transition-all duration-200 hover:bg-primary/20 hover:text-primary sm:gap-2 sm:px-1 ${email?.labelIds?.includes("UNREAD") ? "font-medium" : "font-normal text-foreground-400"} sm:grid-cols-[auto_0.3fr_1fr_auto] sm:items-center`}
           style={style}
           onClick={() => openEmail(email)}
         >

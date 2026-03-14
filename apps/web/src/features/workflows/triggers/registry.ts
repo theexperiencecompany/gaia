@@ -11,20 +11,20 @@
  */
 
 import type { ComponentType } from "react";
+import { asanaTriggerHandler } from "@/features/workflows/triggers/handlers/asana";
+import { calendarTriggerHandler } from "@/features/workflows/triggers/handlers/calendar";
+import { githubTriggerHandler } from "@/features/workflows/triggers/handlers/github";
+import { gmailTriggerHandler } from "@/features/workflows/triggers/handlers/gmail";
+import { googleDocsTriggerHandler } from "@/features/workflows/triggers/handlers/googleDocs";
+import { googleSheetsTriggerHandler } from "@/features/workflows/triggers/handlers/googleSheets";
+import { linearTriggerHandler } from "@/features/workflows/triggers/handlers/linear";
+import { notionTriggerHandler } from "@/features/workflows/triggers/handlers/notion";
 import {
-  asanaTriggerHandler,
-  calendarTriggerHandler,
-  githubTriggerHandler,
-  gmailTriggerHandler,
-  googleDocsTriggerHandler,
-  googleSheetsTriggerHandler,
-  linearTriggerHandler,
   manualTriggerHandler,
-  notionTriggerHandler,
   scheduleTriggerHandler,
-  slackTriggerHandler,
-  todoistTriggerHandler,
-} from "./handlers";
+} from "@/features/workflows/triggers/handlers/schedule";
+import { slackTriggerHandler } from "@/features/workflows/triggers/handlers/slack";
+import { todoistTriggerHandler } from "@/features/workflows/triggers/handlers/todoist";
 import type { TriggerConfig, TriggerSchema } from "./types";
 
 // =============================================================================

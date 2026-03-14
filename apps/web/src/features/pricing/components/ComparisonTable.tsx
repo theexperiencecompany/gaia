@@ -216,9 +216,7 @@ export function ComparisonTable({
         ].join(" ")}
       >
         <span
-          className={`max-w-48 text-center text-sm leading-snug ${
-            highlight ? "font-medium text-primary" : "text-zinc-500"
-          }`}
+          className={`max-w-48 text-center text-sm leading-snug ${highlight ? "font-medium text-primary" : "text-zinc-500"}`}
         >
           {status.description}
         </span>

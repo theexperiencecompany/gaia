@@ -3,7 +3,7 @@ import {
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
 
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";

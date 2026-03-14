@@ -4,7 +4,7 @@ import { Spinner } from "@heroui/spinner";
 import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { RaisedButton } from "@/components";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
 import type {
   PersonalizationData,
@@ -15,9 +15,9 @@ import {
   isPersonalizationCompleteMessage,
   isPersonalizationProgressMessage,
 } from "@/features/onboarding/types/websocket";
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
-import { wsManager } from "@/lib/websocket";
+import { wsManager } from "@/lib/websocket/WebSocketManager";
 import {
   OnboardingPhase,
   useOnboardingPhaseStore,

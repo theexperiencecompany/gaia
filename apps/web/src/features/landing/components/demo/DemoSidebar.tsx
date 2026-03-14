@@ -87,11 +87,7 @@ export default function DemoSidebar({
                       e.stopPropagation();
                       if (page) onPageChange(page);
                     }}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors ${
-                      isActive
-                        ? "bg-zinc-800 text-zinc-300"
-                        : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300"
-                    } ${page ? "cursor-pointer" : "cursor-default opacity-60"}`}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors ${isActive ? "bg-zinc-800 text-zinc-300" : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300"} ${page ? "cursor-pointer" : "cursor-default opacity-60"}`}
                   >
                     <div className="flex w-4.25 min-w-4.25 items-center justify-center">
                       <Icon width={18} height={18} />
@@ -308,11 +304,7 @@ export default function DemoSidebar({
                     <div
                       key={integration.id}
                       onClick={() => onIntegrationSelect?.(integration.id)}
-                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${
-                        selectedIntegrationId === integration.id
-                          ? "bg-zinc-800 text-zinc-300"
-                          : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                      }`}
+                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${selectedIntegrationId === integration.id ? "bg-zinc-800 text-zinc-300" : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"}`}
                     >
                       {getToolCategoryIcon(integration.id, {
                         width: 18,
@@ -375,11 +367,7 @@ export default function DemoSidebar({
                   ].map((item) => (
                     <div
                       key={item.label}
-                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer ${
-                        item.active
-                          ? "bg-zinc-800 text-zinc-300"
-                          : "text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300"
-                      }`}
+                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer ${item.active ? "bg-zinc-800 text-zinc-300" : "text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300"}`}
                     >
                       <item.Icon width={18} height={18} />
                       <span className="flex-1 truncate">{item.label}</span>

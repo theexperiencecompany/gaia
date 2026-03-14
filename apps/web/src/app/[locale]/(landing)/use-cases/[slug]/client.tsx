@@ -18,7 +18,7 @@ import type { UseCase } from "@/features/use-cases/types";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
-import { getTriggerDisplayInfo } from "@/features/workflows/triggers";
+import { getTriggerDisplayInfo } from "@/features/workflows/triggers/utils";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;

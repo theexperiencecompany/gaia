@@ -4,7 +4,7 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import DOMPurify from "dompurify";
 import { useEffect, useRef, useState } from "react";
 
-import { Gmail } from "@/components";
+import { Gmail } from "@/components/shared/icons";
 import type { EmailThreadData } from "@/types/features/mailTypes";
 
 import { parseEmail } from "../../../../mail/utils/mailUtils";

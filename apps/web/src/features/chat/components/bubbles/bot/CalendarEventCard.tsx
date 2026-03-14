@@ -37,9 +37,7 @@ export const EventCard = ({
 
   return (
     <div
-      className={`relative flex ${hasAction ? "items-end" : "items-start"} gap-2 rounded-lg p-3 pr-2 pl-5 transition-colors ${
-        isDotted ? "border-2 border-dashed" : ""
-      }`}
+      className={`relative flex ${hasAction ? "items-end" : "items-start"} gap-2 rounded-lg p-3 pr-2 pl-5 transition-colors ${isDotted ? "border-2 border-dashed" : ""}`}
       style={{
         ...(isDotted
           ? {
@@ -64,9 +62,7 @@ export const EventCard = ({
       <div className="min-w-0 flex-1">
         {label && (
           <div
-            className={`mb-1 text-xs font-medium ${
-              isDotted ? "text-primary" : "text-zinc-500"
-            }`}
+            className={`mb-1 text-xs font-medium ${isDotted ? "text-primary" : "text-zinc-500"}`}
           >
             {label}
           </div>

@@ -10,7 +10,7 @@ import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { TriggerSelectToggle } from "../components";
+import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
 import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";

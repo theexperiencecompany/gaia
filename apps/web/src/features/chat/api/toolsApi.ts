@@ -1,4 +1,4 @@
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 
 export interface ToolInfo {
   name: string;

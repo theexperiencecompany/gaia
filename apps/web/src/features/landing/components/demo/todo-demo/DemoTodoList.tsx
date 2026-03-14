@@ -58,11 +58,7 @@ export default function DemoTodoList({ phase }: DemoTodoListProps) {
               >
                 {/* Inner div handles highlight bg/ring and instant dimming */}
                 <div
-                  className={`relative flex items-start gap-3 p-4 pl-5 ${
-                    highlight
-                      ? "bg-primary/8 ring-1 ring-inset ring-primary/40"
-                      : "hover:bg-zinc-800/40"
-                  }`}
+                  className={`relative flex items-start gap-3 p-4 pl-5 ${highlight ? "bg-primary/8 ring-1 ring-inset ring-primary/40" : "hover:bg-zinc-800/40"}`}
                   style={{ opacity: dimmed ? 0.4 : 1 }}
                 >
                   {/* Checkbox */}

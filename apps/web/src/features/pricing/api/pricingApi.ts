@@ -1,6 +1,6 @@
 import type { AxiosError } from "axios";
 
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 
 export interface Plan {
   id: string;

@@ -7,7 +7,7 @@ import { Tab, Tabs } from "@heroui/tabs";
 import { NotificationIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { SidebarHeaderButton } from "@/components/";
+import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { NotificationStatus } from "../../../types/features/notificationTypes";

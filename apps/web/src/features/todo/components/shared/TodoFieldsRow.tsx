@@ -1,17 +1,14 @@
 "use client";
 
+import DateFieldChip from "@/features/todo/components/fields/DateFieldChip";
+import LabelsFieldChip from "@/features/todo/components/fields/LabelsFieldChip";
+import PriorityFieldChip from "@/features/todo/components/fields/PriorityFieldChip";
+import ProjectFieldChip from "@/features/todo/components/fields/ProjectFieldChip";
 import {
   Priority,
   type Priority as PriorityType,
   type Project,
 } from "@/types/features/todoTypes";
-
-import {
-  DateFieldChip,
-  LabelsFieldChip,
-  PriorityFieldChip,
-  ProjectFieldChip,
-} from "../fields";
 
 interface TodoFieldsRowProps {
   priority: PriorityType;
@@ -52,15 +49,7 @@ export default function TodoFieldsRow({
       <PriorityFieldChip
         value={priority}
         onChange={onPriorityChange}
-        className={`${
-          priority === Priority.HIGH
-            ? "text-red-400 bg-red-400/20"
-            : priority === Priority.MEDIUM
-              ? "text-yellow-400 bg-yellow-400/20"
-              : priority === Priority.LOW
-                ? "text-blue-400 bg-blue-400/20"
-                : "text-zinc-500"
-        }`}
+        className={`${priority === Priority.HIGH ? "text-red-400 bg-red-400/20" : priority === Priority.MEDIUM ? "text-yellow-400 bg-yellow-400/20" : priority === Priority.LOW ? "text-blue-400 bg-blue-400/20" : "text-zinc-500"}`}
       />
       <DateFieldChip
         value={dueDate}

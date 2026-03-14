@@ -1,4 +1,4 @@
-import type { Author } from "@/types";
+import type { Author } from "@/types/api/aboutApiTypes";
 import { formatRelativeDate } from "@/utils/date/dateUtils";
 
 import { AuthorTooltip } from "./AuthorTooltip";

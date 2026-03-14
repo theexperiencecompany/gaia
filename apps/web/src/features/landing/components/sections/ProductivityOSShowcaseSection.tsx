@@ -166,11 +166,7 @@ function ProductivityOSSidebar({
                 }
               />
               <span
-                className={`text-xl font-medium tracking-tight transition-colors ${
-                  isActive
-                    ? "text-white"
-                    : "text-zinc-500 group-hover:text-zinc-300"
-                }`}
+                className={`text-xl font-medium tracking-tight transition-colors ${isActive ? "text-white" : "text-zinc-500 group-hover:text-zinc-300"}`}
               >
                 {feature.title}
               </span>

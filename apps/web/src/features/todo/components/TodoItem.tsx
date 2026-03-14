@@ -18,7 +18,7 @@ import {
   type Todo,
   type TodoUpdate,
 } from "@/types/features/todoTypes";
-import { formatDate } from "@/utils";
+import { formatDate } from "@/utils/date/dateUtils";
 
 interface TodoItemProps {
   todo: Todo;
@@ -92,9 +92,7 @@ export default function TodoItem({
 
   return (
     <div
-      className={`pointer-events-auto w-full cursor-pointer p-4 pl-5 mb-0 transition-all ${
-        isSelected ? "bg-primary/5 ring-2 ring-primary" : "hover:bg-content2/70"
-      } ${todo.completed ? "opacity-30" : ""}`}
+      className={`pointer-events-auto w-full cursor-pointer p-4 pl-5 mb-0 transition-all ${isSelected ? "bg-primary/5 ring-2 ring-primary" : "hover:bg-content2/70"} ${todo.completed ? "opacity-30" : ""}`}
       onClick={() => {
         onClick?.(todo);
       }}
@@ -116,9 +114,7 @@ export default function TodoItem({
         <div className="min-w-0 flex-1">
           <div>
             <h4
-              className={`text-base font-medium ${
-                todo.completed ? "text-zinc-500 line-through" : ""
-              }`}
+              className={`text-base font-medium ${todo.completed ? "text-zinc-500 line-through" : ""}`}
             >
               {todo.title}
             </h4>
@@ -191,15 +187,7 @@ export default function TodoItem({
                     size="sm"
                     variant="flat"
                     radius="sm"
-                    className={`px-2 ${
-                      todo.priority === Priority.HIGH
-                        ? "text-red-400 bg-red-400/10"
-                        : todo.priority === Priority.MEDIUM
-                          ? "text-yellow-400 bg-yellow-400/10"
-                          : todo.priority === Priority.LOW
-                            ? "text-blue-400 bg-blue-400/10"
-                            : "text-zinc-500"
-                    }`}
+                    className={`px-2 ${todo.priority === Priority.HIGH ? "text-red-400 bg-red-400/10" : todo.priority === Priority.MEDIUM ? "text-yellow-400 bg-yellow-400/10" : todo.priority === Priority.LOW ? "text-blue-400 bg-blue-400/10" : "text-zinc-500"}`}
                     startContent={
                       <Flag02Icon width={15} height={15} className="mx-1" />
                     }

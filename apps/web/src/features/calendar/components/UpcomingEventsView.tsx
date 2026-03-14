@@ -6,7 +6,7 @@ import { getEventColor } from "@/features/calendar/utils/eventColors";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
-import { formatDate } from "@/utils";
+import { formatDate } from "@/utils/date/dateUtils";
 
 interface UpcomingEventsViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;

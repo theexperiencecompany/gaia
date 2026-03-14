@@ -83,11 +83,7 @@ export default function LabelsFieldChip({
                     handleAddLabel();
                     onClose();
                   }}
-                  className={`h-8 min-w-8 border-0 p-0 ${
-                    !newLabel.trim() || value.includes(newLabel.trim())
-                      ? "bg-zinc-800 text-zinc-600 hover:bg-zinc-700"
-                      : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                  }`}
+                  className={`h-8 min-w-8 border-0 p-0 ${!newLabel.trim() || value.includes(newLabel.trim()) ? "bg-zinc-800 text-zinc-600 hover:bg-zinc-700" : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"}`}
                 >
                   <PlusSignIcon size={14} />
                 </Button>

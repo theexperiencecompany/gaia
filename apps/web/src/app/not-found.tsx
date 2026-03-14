@@ -4,7 +4,7 @@ import { Home01Icon } from "@icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "@/components/shared/icons";
-import { RaisedButton } from "@/components/ui";
+import { RaisedButton } from "@/components/ui/raised-button";
 
 export default function PageNotFound() {
   const router = useRouter();

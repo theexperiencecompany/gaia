@@ -3,9 +3,9 @@ import {
   isPersonalizationCompleteMessage,
   type PersonalizationData,
 } from "@/features/onboarding/types/websocket";
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
-import { wsManager } from "@/lib/websocket";
+import { wsManager } from "@/lib/websocket/WebSocketManager";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 

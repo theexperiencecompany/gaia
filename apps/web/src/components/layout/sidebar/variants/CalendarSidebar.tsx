@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import Spinner from "@/components/ui/spinner";
 import CalendarSelector from "@/features/calendar/components/CalendarSelector";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import { accordionItemStyles } from "../constants";
 
 export default function CalendarSidebar() {

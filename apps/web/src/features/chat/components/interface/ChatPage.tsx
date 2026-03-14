@@ -5,19 +5,20 @@ import React, { useEffect, useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { VoiceApp } from "@/features/chat/components/composer/VoiceModeOverlay";
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
+import { useChatLayout } from "@/features/chat/components/interface/hooks/useChatLayout";
+import { useScrollBehavior } from "@/features/chat/components/interface/hooks/useScrollBehavior";
+import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
+import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
 import { useConversation } from "@/features/chat/hooks/useConversation";
-import { useFetchIntegrationStatus } from "@/features/integrations";
+import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { db } from "@/lib/db/chatDb";
-import { syncSingleConversation } from "@/services";
+import { syncSingleConversation } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
 import {
   useComposerTextActions,
   usePendingPrompt,
 } from "@/stores/composerStore";
-
-import { useChatLayout, useScrollBehavior } from "./hooks";
-import { ChatWithMessages, NewChatLayout } from "./layouts";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 
 const ChatPage = React.memo(function MainChat() {

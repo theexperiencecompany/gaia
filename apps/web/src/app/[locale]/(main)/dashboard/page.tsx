@@ -14,7 +14,7 @@ import { useEffect } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEventsQuery";
-import { GridSection } from "@/features/chat/components/interface";
+import { GridSection } from "@/features/chat/components/interface/sections/GridSection";
 import { useGoals } from "@/features/goals/hooks/useGoals";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";

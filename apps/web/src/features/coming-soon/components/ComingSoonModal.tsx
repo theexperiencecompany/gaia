@@ -96,9 +96,7 @@ export default function ComingSoonModal({
               <div
                 key={step.title}
                 aria-hidden="true"
-                className={`h-2 w-2 rounded-full ${
-                  index === currentStep ? "bg-primary" : "bg-gray-600"
-                }`}
+                className={`h-2 w-2 rounded-full ${index === currentStep ? "bg-primary" : "bg-gray-600"}`}
               />
             ))}
           </div>

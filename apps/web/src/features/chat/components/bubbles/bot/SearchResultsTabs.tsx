@@ -149,9 +149,7 @@ function ImageItem({ imageUrl, index, onImageClick }: ImageItemProps) {
         alt={`Search result image ${index + 1}`}
         width={96}
         height={96}
-        className={`h-full w-full bg-zinc-800 object-cover transition ${
-          isLoading ? "opacity-0" : "opacity-100"
-        }`}
+        className={`h-full w-full bg-zinc-800 object-cover transition ${isLoading ? "opacity-0" : "opacity-100"}`}
         onLoad={handleLoad}
         priority={index < 3}
       />

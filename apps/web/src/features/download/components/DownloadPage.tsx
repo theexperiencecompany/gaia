@@ -63,9 +63,7 @@ function DownloadSectionLayout({
       <div className="grid grid-cols-1 items-center gap-8 md:grid-cols-2">
         {/* Image */}
         <div
-          className={`relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900 ${
-            imagePosition === "right" ? "md:order-2" : ""
-          }`}
+          className={`relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900 ${imagePosition === "right" ? "md:order-2" : ""}`}
         >
           <ProgressiveImage
             webpSrc={webpSrc}

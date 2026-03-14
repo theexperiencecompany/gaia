@@ -9,7 +9,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { integrationsApi, useIntegrations } from "@/features/integrations";
+import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { SuggestedIntegration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
 
