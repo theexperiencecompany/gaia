@@ -771,26 +771,32 @@ async def create_integration_indexes():
 async def _backfill_integration_slugs() -> None:
     """Populate slug field for public integrations missing it."""
     try:
-        cursor = integrations_collection.find(
-            {"is_public": True, "slug": {"$exists": False}},
-            {"integration_id": 1, "name": 1, "category": 1},
-        )
-        docs = await cursor.to_list(length=500)
-        if not docs:
-            return
+        total_backfilled = 0
+        while True:
+            cursor = integrations_collection.find(
+                {"is_public": True, "slug": {"$exists": False}},
+                {"integration_id": 1, "name": 1, "category": 1},
+            )
+            docs = await cursor.to_list(length=500)
+            if not docs:
+                break
 
-        log.info(f"Backfilling slugs for {len(docs)} public integrations")
-        for doc in docs:
-            slug = await generate_unique_integration_slug(
-                name=doc.get("name", ""),
-                category=doc.get("category", "custom"),
-                integration_id=doc["integration_id"],
-                collection=integrations_collection,
-            )
-            await integrations_collection.update_one(
-                {"integration_id": doc["integration_id"]},
-                {"$set": {"slug": slug}},
-            )
+            log.info(f"Backfilling slugs for {len(docs)} public integrations")
+            for doc in docs:
+                slug = await generate_unique_integration_slug(
+                    name=doc.get("name", ""),
+                    category=doc.get("category", "custom"),
+                    integration_id=doc["integration_id"],
+                    collection=integrations_collection,
+                )
+                await integrations_collection.update_one(
+                    {"integration_id": doc["integration_id"]},
+                    {"$set": {"slug": slug}},
+                )
+            total_backfilled += len(docs)
+
+        if total_backfilled:
+            log.info(f"Slug backfill complete: {total_backfilled} integrations updated")
     except Exception as e:
         log.warning(f"Slug backfill failed (non-fatal): {e}")
 
