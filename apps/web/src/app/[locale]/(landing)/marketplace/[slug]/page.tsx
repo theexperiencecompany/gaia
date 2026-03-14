@@ -93,9 +93,9 @@ async function getNativeIntegrationSlugs(): Promise<string[]> {
     });
     if (!response.ok) return [];
     const data = await response.json();
-    return (data.integrations as Array<{ slug?: string; available?: boolean }>)
-      .filter((i) => i.slug && i.available !== false)
-      .map((i) => i.slug as string);
+    return (data.integrations as Array<{ id: string; available?: boolean }>)
+      .filter((i) => i.id && i.available !== false)
+      .map((i) => i.id);
   } catch (error) {
     console.error(
       "[SSG Marketplace] Failed to fetch native integration slugs:",
