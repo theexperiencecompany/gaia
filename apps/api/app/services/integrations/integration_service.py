@@ -141,8 +141,8 @@ def format_community_integrations(docs: list) -> list:
                 picture=creator_data.get("picture"),
             )
 
-        # Compute slug from name + category + integration_id
-        slug = generate_integration_slug(
+        # Prefer stored slug (unique), fall back to generated slug
+        slug = doc.get("slug") or generate_integration_slug(
             name=doc.get("name", ""),
             category=doc.get("category", "custom"),
             integration_id=doc["integration_id"],

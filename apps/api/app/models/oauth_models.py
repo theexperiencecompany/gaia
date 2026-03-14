@@ -14,6 +14,28 @@ from app.models.mcp_config import (
 from app.models.trigger_config import TriggerConfig
 
 
+class IntegrationHowItWorksStep(BaseModel):
+    """A single step in the 'How it works' section."""
+
+    title: str
+    body: str
+
+
+class IntegrationFAQ(BaseModel):
+    """A single FAQ entry for the integration detail page."""
+
+    question: str
+    answer: str
+
+
+class IntegrationContent(BaseModel):
+    """Rich marketplace content shown only on the integration detail page."""
+
+    use_cases: List[str] = []
+    how_it_works: List[IntegrationHowItWorksStep] = []
+    faqs: List[IntegrationFAQ] = []
+
+
 class OAuthIntegration(BaseModel):
     """OAuth integration configuration."""
 
@@ -36,6 +58,7 @@ class OAuthIntegration(BaseModel):
     associated_triggers: List[TriggerConfig] = []
     subagent_config: Optional[SubAgentConfig] = None
     metadata_config: Optional[ProviderMetadataConfig] = None
+    content: Optional[IntegrationContent] = None
 
 
 class IntegrationConfigResponse(BaseModel):

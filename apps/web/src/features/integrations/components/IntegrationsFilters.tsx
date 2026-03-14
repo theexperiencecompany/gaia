@@ -123,19 +123,20 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
 
   return (
     <div className="mb-8 space-y-4">
-      <div className="grid grid-cols-7 items-center justify-between gap-5">
-        <Tabs
-          className="col-span-4"
-          selectedKey={category}
-          onSelectionChange={(key) => handleCategoryChange(key as string)}
-          variant="light"
-        >
-          {CATEGORIES.map((cat) => (
-            <Tab key={cat.key} title={cat.label} />
-          ))}
-        </Tabs>
+      <div className="flex items-center gap-5">
+        <div className="flex-1 min-w-0 overflow-x-auto">
+          <Tabs
+            selectedKey={category}
+            onSelectionChange={(key) => handleCategoryChange(key as string)}
+            variant="light"
+          >
+            {CATEGORIES.map((cat) => (
+              <Tab key={cat.key} title={cat.label} />
+            ))}
+          </Tabs>
+        </div>
 
-        <div className="flex justify-center pl-3">
+        <div className="flex shrink-0 justify-center">
           <Select
             selectedKeys={[sort]}
             onSelectionChange={(keys) => {
@@ -152,7 +153,7 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
         </div>
 
         <Input
-          className="col-span-2"
+          className="shrink-0 w-72 min-w-64"
           type="search"
           placeholder="Search integrations..."
           value={search}
