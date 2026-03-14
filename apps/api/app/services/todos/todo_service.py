@@ -104,6 +104,10 @@ async def _get_workflow_categories_for_todos(
     return result
 
 
+# Module-level set to hold references to background tasks and prevent GC
+_background_tasks: set[asyncio.Task] = set()
+
+
 class TodoService:
     """Service class for todo operations with consistent error handling and caching."""
 
@@ -361,7 +365,7 @@ class TodoService:
         try:
             from app.services.workflow.queue_service import WorkflowQueueService
 
-            asyncio.create_task(
+            _task = asyncio.create_task(
                 WorkflowQueueService.queue_todo_workflow_generation(
                     todo_id=todo_id_str,
                     user_id=user_id,
@@ -369,6 +373,8 @@ class TodoService:
                     description=todo.description or "",
                 )
             )
+            _background_tasks.add(_task)
+            _task.add_done_callback(_background_tasks.discard)
             log.info(
                 f"Queued workflow generation for todo '{todo.title}' (ID: {todo_id_str})"
             )

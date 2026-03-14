@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Annotated, List, Optional
 import uuid
 
 from bson import ObjectId
@@ -42,7 +42,9 @@ router = APIRouter()
 
 # Counts endpoint for efficient dashboard data
 @router.get("/todos/counts")
-async def get_todo_counts(response: Response, user: dict = Depends(get_current_user)):
+async def get_todo_counts(
+    response: Response, user: Annotated[dict, Depends(get_current_user)]
+):
     """
     Get all todo counts for dashboard/sidebar in a single efficient call.
     Returns inbox count, today count, upcoming count, and completed count.
@@ -154,8 +156,8 @@ async def get_todo_counts(response: Response, user: dict = Depends(get_current_u
 # Labels endpoint — dedicated aggregation for most-used labels
 @router.get("/todos/labels")
 async def get_todo_labels(
+    user: Annotated[dict, Depends(get_current_user)],
     limit: int = 10,
-    user: dict = Depends(get_current_user),
 ) -> list[dict]:
     """Get most-used labels for the current user's todos."""
     user_id = user["user_id"]
@@ -446,7 +448,7 @@ async def generate_workflow(
 
 @router.get("/todos/{todo_id}/workflow-status")
 async def get_workflow_status(
-    todo_id: str, response: Response, user: dict = Depends(get_current_user)
+    todo_id: str, response: Response, user: Annotated[dict, Depends(get_current_user)]
 ):
     """
     Get the standalone workflow for a todo.

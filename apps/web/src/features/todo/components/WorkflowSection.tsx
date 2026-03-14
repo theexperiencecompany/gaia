@@ -43,6 +43,27 @@ const regenerationReasons = [
   },
 ] as const;
 
+function extractWorkflowCategories(steps: WorkflowType["steps"]): string[] {
+  return [
+    ...new Set(steps.map((s) => s.category).filter((c): c is string => !!c)),
+  ].slice(0, 3);
+}
+
+function toWorkflowRunData(workflow: WorkflowType) {
+  return {
+    id: workflow.id,
+    title: workflow.title,
+    description: workflow.description,
+    prompt: workflow.prompt,
+    steps: workflow.steps.map((step) => ({
+      id: step.id,
+      title: step.title,
+      description: step.description,
+      category: step.category,
+    })),
+  };
+}
+
 interface WorkflowSectionProps {
   hideBg?: boolean;
   todoId: string;
@@ -74,14 +95,8 @@ export default function WorkflowSection({
       onWorkflowLinked?.(wf.id);
 
       // Sync categories to global store so todo item updates immediately
-      const categories = [
-        ...new Set(
-          wf.steps.map((s) => s.category).filter((c): c is string => !!c),
-        ),
-      ].slice(0, 3);
-
       useTodoStore.getState().updateTodoOptimistic(todoId, {
-        workflow_categories: categories,
+        workflow_categories: extractWorkflowCategories(wf.steps),
       });
 
       toast.success("Workflow generated!");
@@ -182,33 +197,9 @@ export default function WorkflowSection({
   const handleRun = useCallback(() => {
     if (!workflow) return;
     try {
-      const workflowData = {
-        id: workflow.id,
-        title: workflow.title,
-        description: workflow.description,
-        prompt: workflow.prompt,
-        steps: workflow.steps.map(
-          (step: {
-            id: string;
-            title: string;
-            description: string;
-            category: string;
-          }) => ({
-            id: step.id,
-            title: step.title,
-            description: step.description,
-            category: step.category,
-          }),
-        ),
-      };
-
-      selectWorkflow(workflowData, { autoSend: true });
-
-      console.log(
-        "Workflow selected for manual execution in chat with auto-send",
-      );
-    } catch (error) {
-      console.error("Failed to select workflow for execution:", error);
+      selectWorkflow(toWorkflowRunData(workflow), { autoSend: true });
+    } catch (err) {
+      console.error("Failed to select workflow for execution:", err);
     }
   }, [workflow, selectWorkflow]);
 

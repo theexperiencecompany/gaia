@@ -250,7 +250,7 @@ export const useTodoStore = create<TodoStore>()(
                 [todoId]: {
                   has_workflow: status.has_workflow,
                   is_generating: status.is_generating,
-                  workflow: status.workflow as Workflow | null,
+                  workflow: status.workflow,
                   cachedAt: Date.now(),
                 },
               },
