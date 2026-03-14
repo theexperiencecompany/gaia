@@ -22,6 +22,7 @@ export { todoCommand } from "./todo";
 export { unlinkCommand } from "./unlink";
 export { workflowCommand } from "./workflow";
 
+import type { BotCommand } from "../types";
 import { authCommand } from "./auth";
 import { conversationsCommand } from "./conversations";
 import { gaiaCommand } from "./gaia";
@@ -33,7 +34,6 @@ import { stopCommand } from "./stop";
 import { todoCommand } from "./todo";
 import { unlinkCommand } from "./unlink";
 import { workflowCommand } from "./workflow";
-import type { BotCommand } from "../types";
 
 /**
  * All unified bot commands in registration order.

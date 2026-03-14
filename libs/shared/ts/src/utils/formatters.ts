@@ -116,8 +116,7 @@ export function formatFileSize(bytes: number): string {
     units.length - 1,
   );
   const value = bytes / 1024 ** index;
-  const formatted =
-    value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
+  const formatted = value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
   return `${formatted} ${units[index]}`;
 }
 

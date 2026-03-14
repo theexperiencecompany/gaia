@@ -33,11 +33,7 @@ export function parseJwt(token: string): JwtPayload | null {
 
     const parsed: unknown = JSON.parse(decoded);
 
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed)
-    ) {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return null;
     }
 

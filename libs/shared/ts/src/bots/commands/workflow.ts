@@ -8,13 +8,14 @@
  *
  * @module
  */
+
+import type { BotCommand, CommandExecuteParams } from "../types";
+import { parseTextArgs, truncateResponse } from "../utils";
 import {
   dispatchWorkflowSubcommand,
   handleWorkflowCreate,
   handleWorkflowDelete,
 } from "../utils/commands";
-import { truncateResponse, parseTextArgs } from "../utils";
-import type { BotCommand, CommandExecuteParams } from "../types";
 
 /** `/workflow` command definition with subcommands. */
 export const workflowCommand: BotCommand = {

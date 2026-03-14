@@ -7,8 +7,9 @@
  *
  * @module
  */
-import { formatBotError } from "../utils/formatters";
+
 import type { BotCommand, CommandExecuteParams, RichMessage } from "../types";
+import { formatBotError } from "../utils/formatters";
 
 /**
  * Converts a potentially relative URL to an absolute one using the frontend base URL.

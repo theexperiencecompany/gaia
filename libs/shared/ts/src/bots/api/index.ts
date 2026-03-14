@@ -2,18 +2,18 @@ import type { Readable } from "node:stream";
 import axios, { type AxiosInstance } from "axios";
 import type {
   AuthStatus,
-  BotUserContext,
-  ChatRequest,
   BotConversation,
   BotConversationListResponse,
   BotCreateTodoRequest,
-  SettingsResponse,
   BotTodo,
   BotTodoListResponse,
+  BotUserContext,
   BotWorkflow,
   BotWorkflowExecutionRequest,
   BotWorkflowExecutionResponse,
   BotWorkflowListResponse,
+  ChatRequest,
+  SettingsResponse,
 } from "../types";
 
 export class GaiaApiError extends Error {
@@ -204,7 +204,7 @@ export class GaiaClient {
         }
 
         // Wait before retrying (exponential backoff)
-        const delayMs = Math.min(1000 * Math.pow(2, attempt), 5000);
+        const delayMs = Math.min(1000 * 2 ** attempt, 5000);
         attemptedRetries++;
         console.log(
           `Retrying stream (attempt ${attemptedRetries}/${maxRetries}) after ${delayMs}ms...`,
@@ -863,7 +863,9 @@ function mapTodoResponse(data: Record<string, unknown>): BotTodo {
 /**
  * Maps a conversation response from the regular API format to the bot-expected format.
  */
-function mapConversationResponse(data: Record<string, unknown>): BotConversation {
+function mapConversationResponse(
+  data: Record<string, unknown>,
+): BotConversation {
   return {
     conversation_id:
       (data.conversation_id as string) || (data.id as string) || "",

@@ -19,12 +19,14 @@ export function formatRelativeTime(date: string | Date): string {
   const diffDays = Math.floor(diffMs / DAY_MS);
 
   if (diffSecs < 60) return "just now";
-  if (diffMins < 60) return `${diffMins} minute${diffMins === 1 ? "" : "s"} ago`;
+  if (diffMins < 60)
+    return `${diffMins} minute${diffMins === 1 ? "" : "s"} ago`;
   if (diffHours < 24)
     return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
   if (diffDays === 1) return "yesterday";
   if (diffDays < 7) return `${diffDays} days ago`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) === 1 ? "" : "s"} ago`;
+  if (diffDays < 30)
+    return `${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) === 1 ? "" : "s"} ago`;
   if (diffDays < 365)
     return `${Math.floor(diffDays / 30)} month${Math.floor(diffDays / 30) === 1 ? "" : "s"} ago`;
   return `${Math.floor(diffDays / 365)} year${Math.floor(diffDays / 365) === 1 ? "" : "s"} ago`;
@@ -81,11 +83,7 @@ export function formatDueDate(date: string | Date): string {
     now.getMonth(),
     now.getDate(),
   );
-  const startOfDue = new Date(
-    d.getFullYear(),
-    d.getMonth(),
-    d.getDate(),
-  );
+  const startOfDue = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const diffDays = Math.round(
     (startOfDue.getTime() - startOfToday.getTime()) / DAY_MS,
   );

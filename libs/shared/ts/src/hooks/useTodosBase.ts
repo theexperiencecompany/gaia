@@ -60,8 +60,7 @@ export function filterTodos(todos: Todo[], filter: TodoFilterState): Todo[] {
     }
 
     if (filter.overdue && todo.due_date) {
-      const isOverdue =
-        new Date(todo.due_date) < new Date() && !todo.completed;
+      const isOverdue = new Date(todo.due_date) < new Date() && !todo.completed;
       if (!isOverdue) return false;
     }
 
@@ -128,9 +127,7 @@ export function sortTodos(todos: Todo[], sortBy: string): Todo[] {
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
     case "completed":
-      return sorted.sort(
-        (a, b) => Number(a.completed) - Number(b.completed),
-      );
+      return sorted.sort((a, b) => Number(a.completed) - Number(b.completed));
     default:
       return sorted;
   }
@@ -140,9 +137,7 @@ export function groupTodosByDate(todos: Todo[]): Record<string, Todo[]> {
   const groups: Record<string, Todo[]> = {};
 
   for (const todo of todos) {
-    const key = todo.due_date
-      ? todo.due_date.split("T")[0]
-      : "no_date";
+    const key = todo.due_date ? todo.due_date.split("T")[0] : "no_date";
 
     if (!groups[key]) {
       groups[key] = [];
@@ -172,4 +167,3 @@ export function groupTodosByProject(
 
   return groups;
 }
-
