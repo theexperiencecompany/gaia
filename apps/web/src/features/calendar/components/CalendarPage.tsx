@@ -154,7 +154,7 @@ export default function Calendar() {
     if (new URLSearchParams(window.location.search).get("create") === "true") {
       openForCreate();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDateClick = useCallback(

@@ -375,7 +375,10 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                     {selectedEvent.created && (
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-zinc-500">Created</span>
-                        <span className="text-zinc-400">
+                        <span
+                          className="text-zinc-400"
+                          suppressHydrationWarning
+                        >
                           {new Date(selectedEvent.created).toLocaleDateString()}
                         </span>
                       </div>
@@ -383,7 +386,10 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                     {selectedEvent.updated && (
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-zinc-500">Updated</span>
-                        <span className="text-zinc-400">
+                        <span
+                          className="text-zinc-400"
+                          suppressHydrationWarning
+                        >
                           {new Date(selectedEvent.updated).toLocaleDateString()}
                         </span>
                       </div>

@@ -170,7 +170,7 @@ export default function IntegrationsPage() {
         toast.error(`Connection failed: ${error || "Unknown error"}`);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleBearerSubmit = async (id: string, token: string) => {
@@ -240,7 +240,7 @@ export default function IntegrationsPage() {
         handleIntegrationClick(integrationId);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Open sidebar once pending integration data is available after refresh
@@ -340,7 +340,7 @@ export default function IntegrationsPage() {
 
       <ContactSupportModal
         isOpen={isSupportModalOpen}
-        onOpenChange={() => setIsSupportModalOpen(!isSupportModalOpen)}
+        onOpenChange={() => setIsSupportModalOpen((prev) => !prev)}
         initialValues={{
           type: "feature",
           title: "Integration Request",

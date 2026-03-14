@@ -11,6 +11,7 @@ import {
 } from "@icons";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { Button } from "@/components/ui/button";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   type ActionType,
@@ -19,8 +20,6 @@ import {
   NotificationStatus,
 } from "@/types/features/notificationTypes";
 import { parseDate } from "@/utils/date/dateUtils";
-
-import { Button } from "@/components/ui/button";
 
 interface EnhancedNotificationCardProps {
   notification: NotificationRecord;
@@ -88,7 +87,7 @@ export const EnhancedNotificationCard = ({
 
   return (
     <div
-      className={`group relative w-full rounded-2xl transition-all ${
+      className={`cv-notification-card group relative w-full rounded-2xl transition-all ${
         isUnread ? "bg-zinc-800/70" : "bg-zinc-800/30"
       }`}
     >
@@ -184,7 +183,10 @@ export const EnhancedNotificationCard = ({
               </div>
             )}
 
-          <span className="inline-block text-[11px] text-zinc-600">
+          <span
+            className="inline-block text-[11px] text-zinc-600"
+            suppressHydrationWarning
+          >
             {formattedDate}
           </span>
         </div>

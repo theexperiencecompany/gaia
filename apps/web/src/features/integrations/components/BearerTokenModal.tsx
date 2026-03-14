@@ -64,8 +64,11 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const { isLoading: loading, isMac: mac, handleSubmit: submit } =
-        keyDownStateRef.current;
+      const {
+        isLoading: loading,
+        isMac: mac,
+        handleSubmit: submit,
+      } = keyDownStateRef.current;
       if (loading) return;
       const modifierKey = mac ? e.metaKey : e.ctrlKey;
       if (modifierKey && e.key === "Enter") {

@@ -69,11 +69,7 @@ export function ContextBuildingCard() {
       <div className="flex items-center gap-3">
         {Icon && (
           <div className={config.spin ? "animate-spin" : ""}>
-            <Icon
-              height={20}
-              width={20}
-              className={config.color}
-            />
+            <Icon height={20} width={20} className={config.color} />
           </div>
         )}
         <div className="flex-1">

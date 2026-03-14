@@ -5,7 +5,13 @@ import { MessageMultiple02Icon, SearchIcon } from "@icons";
 import { Command } from "cmdk";
 import { AnimatePresence, m } from "motion/react";
 import { useRouter } from "next/navigation";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getLinkByLabel } from "@/config/appConfig";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
@@ -280,6 +286,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                               </div>
                               <div
                                 className={COMMAND_MENU_STYLES.resultSubtitle}
+                                suppressHydrationWarning
                               >
                                 {new Date(
                                   message.message.date,

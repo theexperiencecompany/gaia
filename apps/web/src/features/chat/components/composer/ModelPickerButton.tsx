@@ -64,7 +64,7 @@ const ModelPickerButton: React.FC = () => {
     // Sort providers alphabetically and models within each provider
     const sortedGrouped: Record<string, typeof models> = {};
     Object.keys(grouped)
-      .sort()
+      .toSorted()
       .forEach((provider) => {
         sortedGrouped[provider] = grouped[provider].toSorted((a, b) => {
           // First, prioritize selected model

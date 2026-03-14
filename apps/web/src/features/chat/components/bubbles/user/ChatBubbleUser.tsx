@@ -139,7 +139,10 @@ export default function ChatBubbleUser({
         {!disableActions && (
           <div className="flex flex-col items-end gap-1 pr-13 pb-1 opacity-0 transition-all group-hover:opacity-100">
             {date && (
-              <span className="flex flex-col text-xs text-zinc-400 select-text">
+              <span
+                className="flex flex-col text-xs text-zinc-400 select-text"
+                suppressHydrationWarning
+              >
                 {parseDate(date)}
               </span>
             )}

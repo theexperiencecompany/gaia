@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+
 import {
   isPersonalizationCompleteMessage,
   type PersonalizationData,
@@ -16,61 +18,49 @@ interface UsePersonalizationReturn {
   refetch: () => Promise<void>;
 }
 
+const fetchPersonalization = async (): Promise<PersonalizationData> => {
+  return apiService.get<PersonalizationData>("/onboarding/personalization", {
+    silent: true,
+  });
+};
+
 /**
  * Hook to fetch and manage personalization data
  *
  * Data sources:
- * - Initial load: Fetches from API on mount
+ * - Initial load: Fetches from API via React Query (with deduplication and caching)
  * - Updates: WebSocket event when personalization completes
  * - Manual refresh: Call refetch() function
  *
  * Relies on WebSocket for real-time updates
- * and component remount for page navigation/reload.
+ * and React Query for caching and deduplication.
  */
 export const usePersonalization = (
   enabled: boolean = true,
 ): UsePersonalizationReturn => {
-  const [personalizationData, setPersonalizationData] =
-    useState<PersonalizationData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [hasPersonalization, setHasPersonalization] = useState(false);
 
-  // Fetch personalization data from API
-  const fetchPersonalization = useCallback(async () => {
-    if (!enabled) {
-      setIsLoading(false);
-      return;
-    }
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["personalization"],
+    queryFn: fetchPersonalization,
+    enabled,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: false,
+  });
 
-    try {
-      const data = await apiService.get<PersonalizationData>(
-        "/onboarding/personalization",
-        { silent: true },
-      );
-
-      console.log("[usePersonalization] Fetched data:", data);
-
-      // Check if personalization is complete based on phase
-      const isComplete =
-        data.phase &&
-        ["personalization_complete", "getting_started", "completed"].includes(
-          data.phase,
-        );
-
-      setPersonalizationData(data);
-      setHasPersonalization(!!isComplete);
-      setIsLoading(false);
-    } catch (error) {
-      console.error("[usePersonalization] Failed to fetch:", error);
-      setHasPersonalization(false);
-      setIsLoading(false);
-    }
-  }, [enabled]);
-
-  // Fetch on mount
+  // Update hasPersonalization when data changes
   useEffect(() => {
-    fetchPersonalization();
-  }, [fetchPersonalization]);
+    if (!data) return;
+
+    const isComplete =
+      data.phase &&
+      ["personalization_complete", "getting_started", "completed"].includes(
+        data.phase,
+      );
+    setHasPersonalization(!!isComplete);
+  }, [data]);
 
   // Listen for WebSocket updates
   useEffect(() => {
@@ -79,18 +69,16 @@ export const usePersonalization = (
     const handlePersonalizationComplete = (message: unknown) => {
       if (!isPersonalizationCompleteMessage(message)) return;
 
-      console.log("[usePersonalization] WebSocket event received");
-
-      const data: PersonalizationData = {
+      const updatedData: PersonalizationData = {
         ...message.data,
         has_personalization: true,
       };
 
-      setPersonalizationData(data);
+      // Update React Query cache directly with WebSocket data
+      queryClient.setQueryData(["personalization"], updatedData);
       setHasPersonalization(true);
-      setIsLoading(false);
 
-      toast.success("Your personalized card is ready! 🎉");
+      toast.success("Your personalized card is ready! \u{1F389}");
     };
 
     wsManager.on(
@@ -104,12 +92,14 @@ export const usePersonalization = (
         handlePersonalizationComplete,
       );
     };
-  }, [enabled]);
+  }, [enabled, queryClient]);
 
   return {
-    personalizationData,
+    personalizationData: data ?? null,
     isLoading,
     isComplete: hasPersonalization,
-    refetch: fetchPersonalization,
+    refetch: async () => {
+      await refetch();
+    },
   };
 };

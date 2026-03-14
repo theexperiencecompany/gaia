@@ -118,7 +118,7 @@ const ChatPage = React.memo(function MainChat() {
       url.searchParams.delete("q");
       router.replace(url.pathname + url.search, { scroll: false });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Common composer props

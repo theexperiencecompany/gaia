@@ -45,9 +45,7 @@ export default function WorkflowSection({
 
       // Sync categories to global store so todo item updates immediately
       const categories = [
-        ...new Set(
-          wf.steps.map((s) => s.category).filter((c): c is string => !!c),
-        ),
+        ...new Set(wf.steps.flatMap((s) => (s.category ? [s.category] : []))),
       ].slice(0, 3);
 
       useTodoStore.getState().updateTodoOptimistic(todoId, {
@@ -159,7 +157,9 @@ export default function WorkflowSection({
           </h3>
           {isGenerating && (
             <span className="flex items-center gap-1 text-xs text-primary ml-auto">
-              <div className="animate-pulse"><SparklesIcon className="h-3 w-3" /></div>
+              <div className="animate-pulse">
+                <SparklesIcon className="h-3 w-3" />
+              </div>
               Generating...
             </span>
           )}

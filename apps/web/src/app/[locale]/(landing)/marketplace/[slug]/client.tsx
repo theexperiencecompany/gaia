@@ -292,7 +292,7 @@ export function IntegrationDetailClient({
               <DateTimeIcon width={24} height={24} className="text-zinc-400" />
               <div>
                 <div className="text-xs text-zinc-500">Published</div>
-                <div className="text-sm text-zinc-300">
+                <div className="text-sm text-zinc-300" suppressHydrationWarning>
                   {formatDistanceToNow(new Date(integration.publishedAt), {
                     addSuffix: true,
                   })}

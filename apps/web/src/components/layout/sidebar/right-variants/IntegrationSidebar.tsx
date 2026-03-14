@@ -14,11 +14,10 @@ import {
 } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { SidebarHeader } from "@/components/ui/sidebar";
-import { SidebarContent } from "@/components/ui/sidebar";
+import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -53,6 +52,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const showRetry = integration.status === "created";
   const { tools } = useToolsWithIntegrations();
   const queryClient = useQueryClient();
+
+  // Hoist RegExp out of render loop - same pattern for all tools
+  const categoryPrefixRegex = useMemo(
+    () => (category ? new RegExp(`^${category}\\s*`, "gi") : null),
+    [category],
+  );
 
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -491,9 +496,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   radius="full"
                   className="font-light border-1 text-zinc-300"
                 >
-                  {category
+                  {categoryPrefixRegex
                     ? formatToolName(tool.name)
-                        .replace(new RegExp(`^${category}\\s*`, "gi"), "")
+                        .replace(categoryPrefixRegex, "")
                         .trim()
                     : formatToolName(tool.name)}
                 </Chip>

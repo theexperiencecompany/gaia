@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { apiService } from "@/lib/api";
 
@@ -23,52 +23,30 @@ export interface PersonalizationData {
   }>;
 }
 
-interface UsePersonalizationDataReturn {
-  personalizationData: PersonalizationData | null;
-  isLoading: boolean;
-  isComplete: boolean;
-  refetch: () => Promise<void>;
-}
+const fetchPersonalizationData = async (): Promise<PersonalizationData> => {
+  return apiService.get<PersonalizationData>("/onboarding/personalization", {
+    silent: true,
+  });
+};
 
 /**
- * Fetch personalization data from API
+ * Fetch personalization data from API using React Query
+ * for automatic request deduplication, caching, and revalidation.
  */
-export const usePersonalizationData = (
-  enabled: boolean = true,
-): UsePersonalizationDataReturn => {
-  const [personalizationData, setPersonalizationData] =
-    useState<PersonalizationData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fetchData = async () => {
-    if (!enabled) return;
-
-    try {
-      setIsLoading(true);
-      const data = await apiService.get<PersonalizationData>(
-        "/onboarding/personalization",
-        { silent: true },
-      );
-
-      // Only set if personalization is complete
-      if (data.has_personalization) {
-        setPersonalizationData(data);
-      }
-    } catch (error) {
-      console.error("Failed to fetch personalization data:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, [enabled]);
+export const usePersonalizationData = (enabled: boolean = true) => {
+  const query = useQuery({
+    queryKey: ["personalization"],
+    queryFn: fetchPersonalizationData,
+    enabled,
+    staleTime: 5 * 60 * 1000, // 5 minutes - personalization data changes infrequently
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: false,
+  });
 
   return {
-    personalizationData,
-    isLoading,
-    isComplete: !!personalizationData?.has_personalization,
-    refetch: fetchData,
+    personalizationData: query.data ?? null,
+    isLoading: query.isLoading,
+    isComplete: !!query.data?.has_personalization,
+    refetch: query.refetch,
   };
 };

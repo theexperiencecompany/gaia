@@ -1,5 +1,17 @@
 import { useCallback, useState } from "react";
 
+// Cache compiled RegExp patterns to avoid recreation on every file validation
+const mimeRegExpCache = new Map<string, RegExp>();
+
+function getMimeRegExp(mimePattern: string): RegExp {
+  let cached = mimeRegExpCache.get(mimePattern);
+  if (!cached) {
+    cached = new RegExp(mimePattern.replace("*", ".*"));
+    mimeRegExpCache.set(mimePattern, cached);
+  }
+  return cached;
+}
+
 export interface UseDragAndDropOptions {
   onDrop: (files: File[]) => void;
   accept?: string[];
@@ -42,8 +54,7 @@ export function useDragAndDrop({
                 .endsWith(acceptedType.toLowerCase());
             } else if (acceptedType.includes("/*")) {
               // Handle MIME types like image/*, application/*
-              const mimePattern = acceptedType.replace("*", ".*");
-              return new RegExp(mimePattern).test(file.type);
+              return getMimeRegExp(acceptedType).test(file.type);
             } else {
               // Handle exact MIME types like image/jpeg, application/pdf
               return file.type === acceptedType;

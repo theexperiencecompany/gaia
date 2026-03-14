@@ -125,7 +125,9 @@ export function MCPAppRenderer({ data }: Props) {
 
     b.onmessage = async (params) => {
       const text = params.content
-        .flatMap((c) => (c.type === "text" && "text" in c ? [String(c.text)] : []))
+        .flatMap((c) =>
+          c.type === "text" && "text" in c ? [String(c.text)] : [],
+        )
         .join(" ")
         .trim();
       if (text) await sendMessageRef.current(text);

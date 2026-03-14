@@ -19,7 +19,6 @@ import { usePathname } from "@/i18n/navigation";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { apiService } from "@/lib/api";
-import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket";
 import { useChatStoreSync } from "@/stores/chatStore";
 import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
@@ -66,7 +65,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     variant: rightSidebarVariant,
   } = useRightSidebar();
   const isMobile = useIsMobile();
-  const [defaultOpen, setDefaultOpen] = useState(true);
+  const defaultOpen = !isMobile;
   const dragRef = useRef<HTMLDivElement>(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const {
@@ -143,12 +142,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isMobile && isMobileOpen) setMobileOpen(false);
   }, [isMobile, isMobileOpen, setMobileOpen]);
-
-  // Set default open state based on screen size
-  useEffect(() => {
-    if (isMobile) setDefaultOpen(false);
-    else setDefaultOpen(true);
-  }, [isMobile]);
 
   function closeOnTouch(): void {
     if (isMobile && (isMobileOpen || isOpen)) setMobileOpen(false);

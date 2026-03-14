@@ -1,7 +1,7 @@
 "use client";
 
-import { type ReactNode, Suspense } from "react";
 import dynamic from "next/dynamic";
+import { type ReactNode, Suspense } from "react";
 
 import { ElectronRouteGuard } from "@/components/electron";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
