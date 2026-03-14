@@ -12,11 +12,12 @@ import {
   useDisclosure,
 } from "@heroui/react";
 import { PlusSignIcon } from "@icons";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
+import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
@@ -196,29 +197,7 @@ export default function TodoModal({
     }
   }, [isOpen, mode, todo, setFormData]);
 
-  const keyDownStateRef = useRef({ loading, isMac, handleSubmit });
-  keyDownStateRef.current = { loading, isMac, handleSubmit };
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const {
-        loading: isLoading,
-        isMac: mac,
-        handleSubmit: submit,
-      } = keyDownStateRef.current;
-      if (isLoading) return;
-      const modifierKey = mac ? e.metaKey : e.ctrlKey;
-      if (modifierKey && e.key === "Enter") {
-        e.preventDefault();
-        submit();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen]);
+  useModalKeyboardSubmit({ isOpen, loading, isMac, handleSubmit });
 
   const handleDateChange = (date?: string, timezone?: string) => {
     setFormData((prev) => ({

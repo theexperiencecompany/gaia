@@ -12,7 +12,7 @@ interface SelectedToolIndicatorProps {
   onRemove?: () => void;
 }
 
-const TOOL_SUFFIX_REGEX = /\s+tool$/i;
+const TOOL_SUFFIX_REGEX = / tool$/i;
 
 const formatToolName = (toolName: string): string => {
   return toolName
