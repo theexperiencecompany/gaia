@@ -74,7 +74,6 @@ class TestTodoCounts:
     """GET /api/v1/todos/counts"""
 
     async def test_counts_returns_expected_shape(self, client: AsyncClient):
-        mock_stats = MagicMock(completed=3)
         mock_aggregate = AsyncMock()
         mock_aggregate.to_list = AsyncMock(
             return_value=[
@@ -83,17 +82,13 @@ class TestTodoCounts:
                     "today": [{"count": 1}],
                     "upcoming": [],
                     "overdue": [],
+                    "completed": [{"count": 3}],
                 }
             ]
         )
         mock_inbox = {"_id": "proj_inbox", "is_default": True}
 
         with (
-            patch(
-                f"{TODO_SERVICE}._calculate_stats",
-                new_callable=AsyncMock,
-                return_value=mock_stats,
-            ),
             patch("app.api.v1.endpoints.todos.projects_collection") as mock_proj_col,
             patch("app.api.v1.endpoints.todos.todos_collection") as mock_todo_col,
         ):
