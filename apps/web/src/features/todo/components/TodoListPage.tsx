@@ -3,13 +3,71 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
-import Spinner from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import TodoList from "@/features/todo/components/TodoList";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useUrlTodoSelection } from "@/features/todo/hooks/useUrlTodoSelection";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useTodoStore } from "@/stores/todoStore";
 import type { Todo, TodoFilters, TodoUpdate } from "@/types/features/todoTypes";
+
+function TodoItemSkeleton() {
+  return (
+    <div className="w-full p-2 pl-3 pt-6">
+      <div className="flex items-start gap-3">
+        {/* Checkbox */}
+        <Skeleton className="mt-1 h-5 w-5 rounded-full bg-zinc-700" />
+        {/* Content */}
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-5 w-3/5 bg-zinc-700" />
+          <Skeleton className="mt-2 h-3 w-2/5 bg-zinc-700" />
+          <div className="mt-3 flex flex-wrap items-center gap-1">
+            <Skeleton className="h-6 w-24 rounded-lg bg-zinc-700" />
+            <Skeleton className="h-6 w-20 rounded-lg bg-zinc-700" />
+            <Skeleton className="h-6 w-16 rounded-lg bg-zinc-700" />
+            <Skeleton className="h-6 w-28 rounded-lg bg-zinc-700" />
+            <Skeleton className="h-6 w-14 rounded-lg bg-zinc-700" />
+          </div>
+        </div>
+        {/* Workflow category icons — matches real 22x22 in min-w-7 containers */}
+        <div className="flex min-h-8 items-center -space-x-1.5 self-center">
+          <div
+            className="relative flex min-w-7 items-center justify-center"
+            style={{ rotate: "8deg" }}
+          >
+            <Skeleton className="h-[22px] w-[22px] rounded-md bg-zinc-700" />
+          </div>
+          <div
+            className="relative flex min-w-7 items-center justify-center"
+            style={{ rotate: "-8deg" }}
+          >
+            <Skeleton className="h-[22px] w-[22px] rounded-md bg-zinc-700" />
+          </div>
+          <div
+            className="relative flex min-w-7 items-center justify-center"
+            style={{ rotate: "8deg" }}
+          >
+            <Skeleton className="h-[22px] w-[22px] rounded-md bg-zinc-700" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SKELETON_KEYS = ["sk-1", "sk-2", "sk-3", "sk-4", "sk-5", "sk-6"];
+
+function TodoListSkeleton() {
+  return (
+    <div className="flex w-full justify-center">
+      <div className="w-full">
+        {SKELETON_KEYS.map((key) => (
+          <TodoItemSkeleton key={key} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface TodoListPageProps {
   filters?: TodoFilters;
@@ -25,12 +83,13 @@ export default function TodoListPage({
 
   // Get right sidebar actions - these are stable from Zustand
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
-  const openRightSidebar = useRightSidebar((state) => state.open);
+  const openWithContent = useRightSidebar((state) => state.openWithContent);
   const closeRightSidebar = useRightSidebar((state) => state.close);
 
   // Individual selectors to avoid re-renders from unrelated store changes
   const storeTodos = useTodoStore((state) => state.todos);
   const storeProjects = useTodoStore((state) => state.projects);
+  const initialLoading = useTodoStore((state) => state.initialLoading);
 
   // Use useTodoData for initial load and actions
   const {
@@ -115,8 +174,7 @@ export default function TodoListPage({
   // Effect: Sync selected todo with right sidebar
   useEffect(() => {
     if (sidebarContent && selectedTodo) {
-      setRightSidebarContent(sidebarContent);
-      openRightSidebar("sheet");
+      openWithContent(sidebarContent, "sheet");
     } else if (selectedTodoId && todos.length > 0) {
       // selectedTodoId exists but todo not found - clear selection
       clearSelection();
@@ -132,7 +190,7 @@ export default function TodoListPage({
     selectedTodoId,
     todos.length,
     setRightSidebarContent,
-    openRightSidebar,
+    openWithContent,
     closeRightSidebar,
     clearSelection,
   ]);
@@ -166,11 +224,13 @@ export default function TodoListPage({
     };
   }, [closeRightSidebar]);
 
-  // Loading state
-  if (loading && todos.length === 0) {
+  // Show skeleton on initial load (before first fetch completes)
+  if (initialLoading || (loading && todos.length === 0)) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner />
+      <div className="flex h-full w-full flex-col">
+        <div className="w-full flex-1 overflow-y-auto px-4">
+          <TodoListSkeleton />
+        </div>
       </div>
     );
   }

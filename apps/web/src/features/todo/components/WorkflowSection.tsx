@@ -7,6 +7,7 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
+import { Tooltip } from "@heroui/tooltip";
 import { PlayIcon, RedoIcon, SparklesIcon, ZapIcon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
@@ -281,16 +282,18 @@ export default function WorkflowSection({
               </Button>
             )}
             {hasWorkflow && (
-              <Button
-                color="success"
-                variant="flat"
-                size="sm"
-                onPress={handleRun}
-                isDisabled={isGenerating}
-                endContent={<PlayIcon className="h-4 w-4" />}
-              >
-                Run
-              </Button>
+              <Tooltip content="Run workflow" placement="bottom">
+                <Button
+                  color="success"
+                  variant="flat"
+                  size="sm"
+                  onPress={handleRun}
+                  isDisabled={isGenerating}
+                  isIconOnly
+                >
+                  <PlayIcon className="h-4 w-4" />
+                </Button>
+              </Tooltip>
             )}
           </div>
         )}

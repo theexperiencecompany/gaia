@@ -98,13 +98,13 @@ export default memo(function TodoItem({
 
   return (
     <div
-      className={`pointer-events-auto w-full cursor-pointer p-4 pl-5 mb-0 transition-all ${
-        isSelected ? "bg-primary/5 ring-2 ring-primary" : "hover:bg-content2/70"
+      className={`pointer-events-auto w-full cursor-pointer rounded-xl p-2 pl-3 mb-0 transition-all group ${
+        isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50"
       } ${todo.completed ? "opacity-30" : ""}`}
       onClick={() => onClick?.(todo)}
       onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
     >
-      <div className="flex h-full items-start gap-3">
+      <div className="flex h-full items-start gap-2">
         <div onClick={(e) => e.stopPropagation()}>
           <Checkbox
             isSelected={todo.completed}
@@ -121,14 +121,16 @@ export default memo(function TodoItem({
         <div className="min-w-0 flex-1">
           <div>
             <h4
-              className={`text-base font-medium ${
+              className={`text-base font-normal ${
                 todo.completed ? "text-zinc-500 line-through" : ""
               }`}
             >
               {todo.title}
             </h4>
             {todo.description && (
-              <p className="mt-1 text-xs text-zinc-500">{todo.description}</p>
+              <p className="mt-1 text-xs text-zinc-500 line-clamp-1">
+                {todo.description}
+              </p>
             )}
           </div>
 
@@ -274,7 +276,7 @@ export default memo(function TodoItem({
 
         <div
           onClick={(e) => e.stopPropagation()}
-          className="flex h-full min-h-full justify-center items-center self-center"
+          className="flex h-full min-h-full justify-center items-center self-center group-hover:opacity-100 opacity-0 transition"
         >
           <ChevronRight width={20} height={20} className="text-zinc-400" />
         </div>

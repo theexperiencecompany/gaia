@@ -72,7 +72,7 @@ export default function TodoList({
                 width: "100%",
                 transform: `translateY(${virtualItem.start}px)`,
               }}
-              className="border-b border-zinc-800"
+              // className="border-b border-zinc-800"
             >
               <TodoItem
                 todo={todo}
