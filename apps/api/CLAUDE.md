@@ -92,7 +92,7 @@ Pre-model hooks in `app/agents/core/nodes/`:
 |---|---|
 | **MongoDB** | All user data: conversations, todos, reminders, workflows, notes, files, payments, integrations, etc. DB name is `GAIA`. Collections are accessed via `from app.db.mongodb.collections import <name>_collection` — lazy-loaded, async (Motor). Use `get_sync_collection()` only in sync code (e.g. Composio tools). |
 | **PostgreSQL** | LangGraph checkpointer (conversation thread state / memory). Also general relational data. |
-| **Redis** | Caching (`fastapi-cache2`), SSE stream channels, rate limiter counters, stream cancellation flags. |
+| **Redis** | Caching (`fastapi-cache2`), SSE stream channels, rate limiter counters, stream cancellation flags. Use Redis for all server-side caching of JSON-serializable data (integration status, tool schemas, API responses). The `@Cacheable` decorator (`app/utils/cacheable.py`) is the standard pattern — see `get_all_integrations_status()` in oauth_service.py for usage. **Do NOT try to cache Composio tool objects in Redis** — they contain dynamically-generated Pydantic models and `functools.partial` closures that are not pickleable. Cache these in-memory on the `ComposioService` singleton instead (keyed by `(tool_name, user_id, hook_flags)` with a TTL). |
 | **ChromaDB** | Vector store for tool retrieval (which tools the executor should use), trigger embeddings, and public integration descriptions. |
 | **RabbitMQ** | Event publishing for cross-service messaging (bots, voice agent). |
 

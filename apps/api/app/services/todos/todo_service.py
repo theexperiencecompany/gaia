@@ -450,7 +450,7 @@ class TodoService:
         if params.q and params.mode in [SearchMode.SEMANTIC, SearchMode.HYBRID]:
             return await cls._search_todos(user_id, params)
 
-        # Generate cache key for this specific query
+        # Generate cache key for this specific query — must include ALL filter dimensions
         cache_key_parts = [f"todos:{user_id}"]
         if params.project_id:
             cache_key_parts.append(f"project:{params.project_id}")
@@ -458,6 +458,16 @@ class TodoService:
             cache_key_parts.append(f"completed:{params.completed}")
         if params.priority:
             cache_key_parts.append(f"priority:{params.priority.value}")
+        if params.labels:
+            cache_key_parts.append(f"labels:{','.join(sorted(params.labels))}")
+        if params.has_due_date is not None:
+            cache_key_parts.append(f"has_due_date:{params.has_due_date}")
+        if params.overdue is not None:
+            cache_key_parts.append(f"overdue:{params.overdue}")
+        if params.due_date_start:
+            cache_key_parts.append(f"due_after:{params.due_date_start.isoformat()}")
+        if params.due_date_end:
+            cache_key_parts.append(f"due_before:{params.due_date_end.isoformat()}")
         cache_key_parts.append(f"page:{params.page}")
         cache_key = ":".join(cache_key_parts)
 

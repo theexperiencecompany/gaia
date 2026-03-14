@@ -224,8 +224,8 @@ export default function TodoListPage({
     };
   }, [closeRightSidebar]);
 
-  // Show skeleton on initial load (before first fetch completes)
-  if (initialLoading || (loading && todos.length === 0)) {
+  // Show skeleton on initial load only — subsequent filter changes keep stale todos visible
+  if (initialLoading) {
     return (
       <div className="flex h-full w-full flex-col">
         <div className="w-full flex-1 overflow-y-auto px-4">
