@@ -2,7 +2,7 @@
 
 import { Avatar } from "@heroui/avatar";
 import { Card, CardBody, CardHeader } from "@heroui/card";
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
+import { BreadcrumbItem, Breadcrumbs, ScrollShadow } from "@heroui/react";
 import { Spinner } from "@heroui/spinner";
 import {
   DateTimeIcon,
@@ -367,26 +367,28 @@ export function IntegrationDetailClient({
             )}
             <CardBody>
               {integration.tools && integration.tools.length > 0 ? (
-                <div className="grid grid-cols-2 gap-4">
-                  {integration.tools.map((tool) => (
-                    <div
-                      key={tool.name}
-                      className="bg-zinc-800/50 p-3 rounded-xl"
-                    >
-                      <p className="font-medium text-zinc-200">
-                        {tool.name
-                          .replace(/_/g, " ")
-                          .replace(/-/g, " ")
-                          .replace(/\b\w/g, (c) => c.toUpperCase())}
-                      </p>
-                      {tool.description && (
-                        <p className="text-sm text-zinc-400">
-                          {tool.description}
+                <ScrollShadow className="max-h-100">
+                  <div className="grid grid-cols-2 gap-4">
+                    {integration.tools.map((tool) => (
+                      <div
+                        key={tool.name}
+                        className="bg-zinc-800/50 p-3 rounded-xl"
+                      >
+                        <p className="font-medium text-zinc-200">
+                          {tool.name
+                            .replace(/_/g, " ")
+                            .replace(/-/g, " ")
+                            .replace(/\b\w/g, (c) => c.toUpperCase())}
                         </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        {tool.description && (
+                          <p className="text-sm text-zinc-400">
+                            {tool.description}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollShadow>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <PackageOpenIcon
