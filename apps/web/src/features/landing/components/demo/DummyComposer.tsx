@@ -43,11 +43,11 @@ const DummyComposer: React.FC<{
   };
 
   const handleSlashButtonClick = () => {
-    setIsSlashDropdownOpen(!isSlashDropdownOpen);
+    setIsSlashDropdownOpen((prev) => !prev);
   };
 
   const handleIntegrationsClick = () => {
-    setIsSlashDropdownOpen(!isSlashDropdownOpen);
+    setIsSlashDropdownOpen((prev) => !prev);
   };
 
   const handleSend = () => {

@@ -2,7 +2,7 @@ import { Button } from "@heroui/button";
 import { Call02Icon, ChatBotIcon, VoiceIcon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight } from "@/components";
+import { ChevronRight } from "@/components/shared/icons";
 import { SectionHeading } from "@/features/landing/layouts/SectionHeader";
 
 export default function MobileSection() {

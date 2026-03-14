@@ -2,7 +2,7 @@
 import { Button } from "@heroui/button";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
 import Link from "next/link";
-import React, { type FC, useEffect, useState } from "react";
+import React, { type FC, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { usePathname } from "@/i18n/navigation";
 import { useChatStore } from "@/stores/chatStore";
@@ -28,7 +28,6 @@ export const ChatTab: FC<ChatTabProps> = ({
   systemPurpose,
   isUnread = false,
 }) => {
-  const [currentConvoId, setCurrentConvoId] = useState<string | null>(null);
   const pathname = usePathname();
   const [buttonHovered, setButtonHovered] = useState(false);
 
@@ -38,10 +37,9 @@ export const ChatTab: FC<ChatTabProps> = ({
   );
   const isStreaming = streamingConversationId === id;
 
-  useEffect(() => {
-    const pathParts = pathname.split("/");
-    setCurrentConvoId(pathParts[pathParts.length - 1]);
-  }, [pathname]);
+  // Derive current conversation ID from pathname during render
+  const pathParts = pathname.split("/");
+  const currentConvoId = pathParts[pathParts.length - 1];
 
   const isActive = currentConvoId === id;
 

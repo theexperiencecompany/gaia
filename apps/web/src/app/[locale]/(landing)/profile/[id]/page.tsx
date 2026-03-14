@@ -6,7 +6,8 @@ import { Tooltip } from "@heroui/tooltip";
 import { Share08Icon } from "@icons";
 import { useParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { HoloCard, type HoloCardDisplayData } from "@/components/ui/holo-card";
+import { HoloCard } from "@/components/ui/holo-card/HoloCard";
+import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import {
   holoCardApi,
   type PublicHoloCardData,

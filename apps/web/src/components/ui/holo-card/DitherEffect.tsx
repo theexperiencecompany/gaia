@@ -1,5 +1,6 @@
 import type React from "react";
 import type { ReactNode } from "react";
+import { useId } from "react";
 
 interface DitherEffectProps {
   children: ReactNode;
@@ -12,8 +13,8 @@ export const DitherEffect: React.FC<DitherEffectProps> = ({
   intensity = 15,
   scale = 1,
 }) => {
-  // Generate a unique ID for this instance's SVG filter
-  const filterId = `dither-${Math.random().toString(36).substr(2, 9)}`;
+  const id = useId();
+  const filterId = `dither-${id.replace(/:/g, "")}`;
 
   return (
     <div className="relative">

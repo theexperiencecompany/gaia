@@ -55,7 +55,7 @@ export const CATEGORY_DISPLAY_PRIORITY: Record<string, number> = {
  * Sort categories by display priority
  */
 export function sortCategories(categories: string[]): string[] {
-  return categories.sort((a, b) => {
+  return categories.toSorted((a, b) => {
     const priorityA = CATEGORY_DISPLAY_PRIORITY[a] ?? 100;
     const priorityB = CATEGORY_DISPLAY_PRIORITY[b] ?? 100;
     return priorityA - priorityB;

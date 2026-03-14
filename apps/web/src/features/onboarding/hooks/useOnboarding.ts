@@ -1,4 +1,4 @@
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
@@ -19,7 +19,6 @@ const ONBOARDING_STORAGE_KEY = "gaia-onboarding-state";
 
 export const useOnboarding = () => {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const user = useUser();
   const { setUser } = useUserActions();
   const [isInitialized, setIsInitialized] = useState(false);
@@ -95,10 +94,12 @@ export const useOnboarding = () => {
     }
   }, [onboardingState]);
 
-  // Handle OAuth success/error from URL parameters
+  // Handle OAuth success/error from URL parameters — read on mount only;
+  // avoids subscribing to all searchParam changes.
   useEffect(() => {
-    const oauthSuccess = searchParams.get("oauth_success");
-    const oauthError = searchParams.get("oauth_error");
+    const params = new URLSearchParams(window.location.search);
+    const oauthSuccess = params.get("oauth_success");
+    const oauthError = params.get("oauth_error");
 
     if (oauthSuccess === "true") {
       toast.success("Integration connected successfully!");
@@ -125,7 +126,8 @@ export const useOnboarding = () => {
       url.searchParams.delete("oauth_error");
       window.history.replaceState({}, "", url.toString());
     }
-  }, [searchParams, refetchIntegrationStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     scrollToBottom();

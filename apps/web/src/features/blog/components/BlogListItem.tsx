@@ -1,11 +1,11 @@
 import Link from "next/link";
 
-import type { BlogPost } from "@/lib/blog";
+import type { BlogPostMeta } from "@/lib/blog";
 
 import { AuthorTooltip } from "./AuthorTooltip";
 
 interface BlogListItemProps {
-  blog: BlogPost;
+  blog: BlogPostMeta;
 }
 
 export function BlogListItem({ blog }: BlogListItemProps) {

@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
 import { Cancel01Icon } from "@icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { toast } from "@/lib/toast";
 
@@ -21,7 +21,7 @@ export default function AddMemoryForm({
   onMemoryAdded,
 }: AddMemoryFormProps) {
   const [content, setContent] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Focus the textarea when the form opens
@@ -48,29 +48,28 @@ export default function AddMemoryForm({
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!content.trim()) return;
 
-    setIsSaving(true);
-    try {
-      const response = await memoryApi.createMemory({
-        content: content.trim(),
-      });
+    startTransition(async () => {
+      try {
+        const response = await memoryApi.createMemory({
+          content: content.trim(),
+        });
 
-      if (response.success) {
-        toast.success("Memory added successfully");
-        setContent("");
-        onMemoryAdded();
-        onClose();
-      } else {
-        toast.error(response.message || "Failed to add memory");
+        if (response.success) {
+          toast.success("Memory added successfully");
+          setContent("");
+          onMemoryAdded();
+          onClose();
+        } else {
+          toast.error(response.message || "Failed to add memory");
+        }
+      } catch (error) {
+        console.error("Error adding memory:", error);
+        toast.error("Failed to add memory");
       }
-    } catch (error) {
-      console.error("Error adding memory:", error);
-      toast.error("Failed to add memory");
-    } finally {
-      setIsSaving(false);
-    }
+    });
   };
 
   // Handle keyboard shortcuts
@@ -140,7 +139,7 @@ export default function AddMemoryForm({
           color="primary"
           onPress={handleSave}
           isDisabled={!content.trim()}
-          isLoading={isSaving}
+          isLoading={isPending}
         >
           Save Memory
         </Button>

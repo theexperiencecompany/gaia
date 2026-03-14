@@ -117,22 +117,20 @@ export default function CalendarEventSection({
     });
 
     // Sort events within each day
+    const getTime = (e: CalendarEvent | SameDayEvent) => {
+      if ("start" in e && typeof e.start === "object") {
+        return new Date(e.start.dateTime || e.start.date || 0).getTime();
+      }
+      if ("start" in e && typeof e.start === "string") {
+        return new Date(e.start).getTime();
+      }
+      if ("time" in e) {
+        return new Date(e.time).getTime();
+      }
+      return 0;
+    };
     Object.values(grouped).forEach((dayEvents) => {
-      dayEvents.sort((a, b) => {
-        const getTime = (e: CalendarEvent | SameDayEvent) => {
-          if ("start" in e && typeof e.start === "object") {
-            return new Date(e.start.dateTime || e.start.date || 0).getTime();
-          }
-          if ("start" in e && typeof e.start === "string") {
-            return new Date(e.start).getTime();
-          }
-          if ("time" in e) {
-            return new Date(e.time).getTime();
-          }
-          return 0;
-        };
-        return getTime(a.event) - getTime(b.event);
-      });
+      dayEvents.sort((a, b) => getTime(a.event) - getTime(b.event));
     });
 
     return grouped;

@@ -1,4 +1,5 @@
 import { getLocale } from "next-intl/server";
+import { cache } from "react";
 import { loadFeatureTranslations } from "@/i18n/loadFeatureTranslations";
 import {
   type AlternativeData,
@@ -34,17 +35,20 @@ async function loadAlternativeTranslations(
   );
 }
 
-export async function getTranslatedAlternative(
-  slug: string,
-  locale?: string,
-): Promise<AlternativeData | undefined> {
-  const base = getAlternative(slug);
-  if (!base) return undefined;
-  const translations = await loadAlternativeTranslations(locale);
-  const t = translations[slug];
-  if (!t) return base;
-  return { ...base, ...t };
-}
+/** Wrapped with React.cache() for per-request deduplication between generateMetadata and page component */
+export const getTranslatedAlternative = cache(
+  async (
+    slug: string,
+    locale?: string,
+  ): Promise<AlternativeData | undefined> => {
+    const base = getAlternative(slug);
+    if (!base) return undefined;
+    const translations = await loadAlternativeTranslations(locale);
+    const t = translations[slug];
+    if (!t) return base;
+    return { ...base, ...t };
+  },
+);
 
 export async function getTranslatedAlternatives(
   locale?: string,

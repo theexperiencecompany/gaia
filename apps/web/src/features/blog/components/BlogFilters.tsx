@@ -4,11 +4,11 @@ import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { SearchIcon } from "@icons";
 import { useCallback, useMemo, useState } from "react";
-import type { BlogPost } from "@/lib/blog";
+import type { BlogPostMeta } from "@/lib/blog";
 
 interface BlogFiltersProps {
-  blogs: BlogPost[];
-  onFilterChange: (filteredBlogs: BlogPost[]) => void;
+  blogs: BlogPostMeta[];
+  onFilterChange: (filteredBlogs: BlogPostMeta[]) => void;
 }
 
 export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {

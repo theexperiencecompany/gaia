@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUserActions } from "@/features/auth/hooks/useUser";
@@ -17,15 +17,15 @@ export const publicPages = [...authPages, "/terms", "/privacy", "/contact"];
 
 const useFetchUser = () => {
   const { setUser, clearUser } = useUserActions();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
 
   const fetchUserInfo = useCallback(async () => {
     try {
-      const accessToken = searchParams.get("access_token");
-      const refreshToken = searchParams.get("refresh_token");
+      const params = new URLSearchParams(window.location.search);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
 
       const data = await authApi.fetchUserInfo();
 
@@ -77,7 +77,7 @@ const useFetchUser = () => {
       resetUser();
       hasIdentified.current = false;
     }
-  }, [searchParams, setUser, clearUser, router, currentPath]);
+  }, [setUser, clearUser, router, currentPath]);
 
   useEffect(() => {
     fetchUserInfo();

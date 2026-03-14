@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { cache } from "react";
 
 import BlogPostClient from "@/app/[locale]/(landing)/blog/client";
+import type { BlogPostMeta } from "@/lib/blog";
 import { getAllBlogPosts, getAllBlogSlugs, getBlogPost } from "@/lib/blog";
 import {
   generateArticleSchema,
@@ -18,10 +18,6 @@ interface PageProps {
 export const revalidate = 3600;
 export const dynamicParams = true;
 
-const getCachedBlogPost = cache(async (slug: string) => {
-  return getBlogPost(slug);
-});
-
 export async function generateStaticParams() {
   const slugs = await getAllBlogSlugs();
   return slugs.map((slug) => ({
@@ -35,7 +31,7 @@ export async function generateMetadata({
   const { slug } = await params;
 
   try {
-    const blog = await getCachedBlogPost(slug);
+    const blog = await getBlogPost(slug);
     if (!blog) {
       return {
         title: "Blog Post Not Found",
@@ -55,17 +51,23 @@ export async function generateMetadata({
 
 export default async function BlogPostPage({ params }: PageProps) {
   const { slug } = await params;
-  const blog = await getCachedBlogPost(slug);
+
+  // Fetch blog post and all posts in parallel - they are independent
+  const [blog, allBlogs] = await Promise.all([
+    getBlogPost(slug),
+    getAllBlogPosts(false),
+  ]);
 
   if (!blog) {
     notFound();
   }
 
-  // Get suggested posts (excluding current post)
-  const allBlogs = await getAllBlogPosts(false);
-  const suggestedPosts = allBlogs
+  // Get suggested posts (excluding current post), stripping content before
+  // crossing the RSC→client boundary — BlogCard only needs metadata fields.
+  const suggestedPosts: BlogPostMeta[] = allBlogs
     .filter((post) => post.slug !== slug)
-    .slice(0, 3);
+    .slice(0, 3)
+    .map(({ content: _content, ...meta }) => meta);
 
   // Generate structured data for SEO
   const articleSchema = generateArticleSchema(

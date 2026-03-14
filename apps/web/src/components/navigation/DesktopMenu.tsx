@@ -5,7 +5,7 @@ import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks/useGitHubStars";
 
-import { Github, StarFilledIcon } from "../shared";
+import { Github, StarFilledIcon } from "../shared/icons";
 
 export default function DesktopMenu({ scrolled }: { scrolled: boolean }) {
   const user = useUser();

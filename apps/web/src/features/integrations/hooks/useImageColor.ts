@@ -46,7 +46,8 @@ export const useImageColor = (
 
           // Count color occurrences (sampling every 10th pixel for performance)
           const colorMap: { [key: string]: number } = {};
-          for (let i = 0; i < data.length; i += 40) {
+          const dataLength = data.length;
+          for (let i = 0; i < dataLength; i += 40) {
             // RGBA - skip very transparent or very light/dark pixels
             const r = data[i];
             const g = data[i + 1];

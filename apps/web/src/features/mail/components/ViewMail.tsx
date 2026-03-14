@@ -403,7 +403,10 @@ export default function ViewEmail({
                               description: "text-gray-400",
                             }}
                           />
-                          <div className="text-xs text-gray-400">
+                          <div
+                            className="text-xs text-gray-400"
+                            suppressHydrationWarning
+                          >
                             {new Date(message.time).toLocaleString()}
                           </div>
                         </div>

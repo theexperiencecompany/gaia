@@ -1,19 +1,19 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Spinner from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 
 export default function RedirectPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
     const handleRedirect = () => {
+      const params = new URLSearchParams(window.location.search);
       // Check for OAuth errors
-      const oauthError = searchParams.get("oauth_error");
-      const oauthSuccess = searchParams.get("oauth_success");
+      const oauthError = params.get("oauth_error");
+      const oauthSuccess = params.get("oauth_success");
 
       if (oauthSuccess === "true") {
         // Show success toast for successful OAuth connection
@@ -73,7 +73,8 @@ export default function RedirectPage() {
     const timer = setTimeout(handleRedirect, 100);
 
     return () => clearTimeout(timer);
-  }, [router, searchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Show a simple loading message while redirecting
   return (

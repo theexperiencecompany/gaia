@@ -2,8 +2,8 @@
 
 import { Tooltip } from "@heroui/react";
 import { type ReactNode, Suspense, useMemo } from "react";
-import { Button } from "@/components";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
+import { Button } from "@/components/ui/button";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { usePathname } from "@/i18n/navigation";
 

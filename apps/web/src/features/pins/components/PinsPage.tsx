@@ -2,31 +2,25 @@
 
 import { Input } from "@heroui/input";
 import { PinIcon } from "@icons";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Spinner from "@/components/ui/spinner";
 import { PinCard } from "@/features/pins/components/PinCard";
 import { usePins } from "@/features/pins/hooks/usePins";
-import type { PinCardProps } from "@/types/features/pinTypes";
 
 export default function Pins() {
   const { pins: fetchedResults, loading, fetchPins } = usePins();
-  const [filteredResults, setFilteredResults] = useState<PinCardProps[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   useEffect(() => {
     fetchPins();
   }, [fetchPins]);
 
-  useEffect(() => {
-    setFilteredResults(fetchedResults);
-  }, [fetchedResults]);
-
-  const filterPins = (query: string) => {
-    const filtered = fetchedResults.filter((result) =>
-      result.message.response.toLowerCase().includes(query.toLowerCase()),
+  const filteredResults = useMemo(() => {
+    if (!searchQuery.trim()) return fetchedResults;
+    return fetchedResults.filter((result) =>
+      result.message.response.toLowerCase().includes(searchQuery.toLowerCase()),
     );
-    setFilteredResults(filtered);
-  };
+  }, [fetchedResults, searchQuery]);
 
   return (
     <div className="flex h-full flex-col justify-between">
@@ -87,7 +81,6 @@ export default function Pins() {
             variant="faded"
             onValueChange={(query) => {
               setSearchQuery(query);
-              filterPins(query);
             }}
           />
         </div>

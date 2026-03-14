@@ -2,12 +2,12 @@ import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import Link from "next/link";
 
-import type { BlogPost } from "@/lib/blog";
+import type { BlogPostMeta } from "@/lib/blog";
 
 import { AuthorTooltip } from "./AuthorTooltip";
 
 interface BlogCardProps {
-  blog: BlogPost;
+  blog: BlogPostMeta;
   variant?: "large" | "small";
 }
 

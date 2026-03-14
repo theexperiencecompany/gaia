@@ -362,7 +362,6 @@ function IntegrationBadge({ name }: { name: string }) {
 export default async function PersonaPage({ params }: PageProps) {
   const { locale, persona } = await params;
   setRequestLocale(locale);
-  const t = await getTranslations();
 
   const config = SPECIAL_PERSONA_CONFIGS[persona];
   if (config) {
@@ -397,7 +396,10 @@ export default async function PersonaPage({ params }: PageProps) {
     );
   }
 
-  const data = await getTranslatedPersona(persona);
+  const [t, data] = await Promise.all([
+    getTranslations(),
+    getTranslatedPersona(persona),
+  ]);
 
   if (!data) {
     notFound();

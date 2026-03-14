@@ -554,7 +554,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const categories = useMemo(() => {
-    return ["all", ...dummyTools.categories.sort()];
+    return ["all", ...dummyTools.categories.toSorted()];
   }, []);
 
   const filteredTools = useMemo(() => {

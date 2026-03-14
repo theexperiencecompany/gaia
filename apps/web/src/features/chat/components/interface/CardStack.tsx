@@ -33,7 +33,7 @@ export default function CardStack<T extends { id: string }>({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const toggleExpanded = () => {
-    setIsExpanded(!isExpanded);
+    setIsExpanded((prev) => !prev);
   };
 
   // Measure the actual card height after first render

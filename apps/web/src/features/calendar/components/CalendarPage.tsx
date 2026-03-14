@@ -1,6 +1,5 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo } from "react";
 
 import { EventSidebar } from "@/components/layout/sidebar/right-variants/CalendarRightSidebar";
@@ -11,7 +10,6 @@ import { useSetCreateEventAction } from "@/stores/calendarStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function Calendar() {
-  const searchParams = useSearchParams();
   const setCreateEventAction = useSetCreateEventAction();
   const { calendars } = useSharedCalendar();
 
@@ -153,10 +151,11 @@ export default function Calendar() {
   }, [closeRightSidebar]);
 
   useEffect(() => {
-    if (searchParams?.get("create") === "true") {
+    if (new URLSearchParams(window.location.search).get("create") === "true") {
       openForCreate();
     }
-  }, [searchParams, openForCreate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDateClick = useCallback(
     (date: Date) => {

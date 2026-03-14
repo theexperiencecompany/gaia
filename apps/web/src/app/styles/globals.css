@@ -638,6 +638,26 @@
     padding: 2rem 0 2rem -0.5rem;
   }
 
+  /* content-visibility: skip rendering off-screen items in long lists */
+  .cv-auto {
+    content-visibility: auto;
+  }
+
+  .cv-chat-message {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 120px;
+  }
+
+  .cv-notification-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 100px;
+  }
+
+  .cv-todo-item {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 60px;
+  }
+
   .navbar {
     -webkit-backdrop-filter: blur(16px) saturate(180%);
     align-items: center;

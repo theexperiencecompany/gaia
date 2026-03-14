@@ -9,13 +9,7 @@ import {
   Download01Icon,
   File01Icon,
 } from "@icons";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type WheelEvent,
-} from "react";
+import { useCallback, useEffect, useState, type WheelEvent } from "react";
 import { type VFSReadResponse, vfsApi } from "@/features/chat/api/vfsApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
@@ -188,9 +182,7 @@ export default function FileViewerPanel({
 
   const effectiveContentType = fileData?.content_type || contentType;
 
-  const isPreviewable = useMemo(() => {
-    return PREVIEWABLE_CONTENT_TYPES.has(effectiveContentType);
-  }, [effectiveContentType]);
+  const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(effectiveContentType);
 
   const [viewMode, setViewMode] = useState<ViewMode>(
     isPreviewable ? "preview" : "source",

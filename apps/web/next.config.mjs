@@ -44,6 +44,11 @@ const nextConfig = {
       "cytoscape",
       "@theexperiencecompany/gaia-icons/solid-rounded",
       // "@heroui/*",
+      "lucide-react",
+      "@radix-ui/react-icons",
+      "date-fns",
+      "lodash",
+      "motion/react",
     ],
   },
   webpack: (config) => {

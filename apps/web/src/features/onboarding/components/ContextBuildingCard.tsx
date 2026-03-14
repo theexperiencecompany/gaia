@@ -68,11 +68,9 @@ export function ContextBuildingCard() {
     <Card className="fixed right-4 bottom-[22rem] z-50 w-80 border border-white/10 bg-black/40 p-4 backdrop-blur-xl">
       <div className="flex items-center gap-3">
         {Icon && (
-          <Icon
-            height={20}
-            width={20}
-            className={`${config.color} ${config.spin ? "animate-spin" : ""}`}
-          />
+          <div className={config.spin ? "animate-spin" : ""}>
+            <Icon height={20} width={20} className={config.color} />
+          </div>
         )}
         <div className="flex-1">
           <div className={`text-sm font-medium ${config.color}`}>

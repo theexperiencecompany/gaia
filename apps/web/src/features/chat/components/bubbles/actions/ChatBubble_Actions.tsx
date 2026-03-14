@@ -204,11 +204,9 @@ export default function ChatBubble_Actions({
                 radius="lg"
                 onPress={onRetry}
               >
-                <RedoIcon
-                  className={`cursor-pointer ${isRetrying ? "animate-spin" : ""}`}
-                  height="18"
-                  width="18"
-                />
+                <div className={isRetrying ? "animate-spin" : ""}>
+                  <RedoIcon className="cursor-pointer" height="18" width="18" />
+                </div>
               </Button>
             </Tooltip>
           )}
