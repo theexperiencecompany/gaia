@@ -21,10 +21,7 @@ export interface SearchNoteResult {
 
 export interface SearchResult {
   type: SearchMode;
-  data:
-    | SearchConversationResult
-    | SearchMessageResult
-    | SearchNoteResult;
+  data: SearchConversationResult | SearchMessageResult | SearchNoteResult;
 }
 
 export interface SearchParams {

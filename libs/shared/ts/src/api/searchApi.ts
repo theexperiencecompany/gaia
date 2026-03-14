@@ -1,12 +1,12 @@
-import { buildQueryString } from "./queryBuilder";
 import type {
-  SearchMode,
-  SearchParams,
-  SearchResponse,
   SearchConversationResult,
   SearchMessageResult,
+  SearchMode,
   SearchNoteResult,
+  SearchParams,
+  SearchResponse,
 } from "../types/search";
+import { buildQueryString } from "./queryBuilder";
 
 export const SearchApiEndpoints = {
   search: "/search",
@@ -22,16 +22,14 @@ export interface SearchApi {
 }
 
 export function buildSearchQuery(params: SearchParams): string {
-  const filters: Record<
-    string,
-    string | number | boolean | undefined | null
-  > = {
-    query: params.query,
-    limit: params.limit,
-    offset: params.offset,
-    conversation_id: params.conversationId,
-    type: params.type,
-  };
+  const filters: Record<string, string | number | boolean | undefined | null> =
+    {
+      query: params.query,
+      limit: params.limit,
+      offset: params.offset,
+      conversation_id: params.conversationId,
+      type: params.type,
+    };
 
   return `${SearchApiEndpoints.search}${buildQueryString(filters)}`;
 }

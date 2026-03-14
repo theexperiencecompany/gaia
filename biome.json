@@ -32,7 +32,6 @@
 
       "!!apps/api",
       "!!apps/voice-agent",
-      "!!apps/bots",
       "!!infra",
 
       "!!docs",

@@ -1,7 +1,4 @@
-import type {
-  Workflow,
-  CommunityWorkflow,
-} from "../types/workflow";
+import type { CommunityWorkflow, Workflow } from "../types/workflow";
 
 export const WorkflowQueryKeys = {
   all: ["workflows"] as const,
@@ -9,8 +6,7 @@ export const WorkflowQueryKeys = {
     params
       ? ([...WorkflowQueryKeys.all, "list", params] as const)
       : ([...WorkflowQueryKeys.all, "list"] as const),
-  detail: (id: string) =>
-    [...WorkflowQueryKeys.all, "detail", id] as const,
+  detail: (id: string) => [...WorkflowQueryKeys.all, "detail", id] as const,
   executions: (workflowId: string) =>
     [...WorkflowQueryKeys.all, "executions", workflowId] as const,
   community: (params?: Record<string, unknown>) =>
@@ -45,7 +41,10 @@ export function filterWorkflows(
       }
     }
 
-    if (filter.activated !== undefined && workflow.activated !== filter.activated) {
+    if (
+      filter.activated !== undefined &&
+      workflow.activated !== filter.activated
+    ) {
       return false;
     }
 
@@ -62,7 +61,10 @@ export function filterWorkflows(
       }
     }
 
-    if (filter.isPublic !== undefined && workflow.is_public !== filter.isPublic) {
+    if (
+      filter.isPublic !== undefined &&
+      workflow.is_public !== filter.isPublic
+    ) {
       return false;
     }
 
@@ -84,7 +86,10 @@ export function filterWorkflows(
   });
 }
 
-export function sortWorkflows(workflows: Workflow[], sortBy: string): Workflow[] {
+export function sortWorkflows(
+  workflows: Workflow[],
+  sortBy: string,
+): Workflow[] {
   const sorted = [...workflows];
 
   switch (sortBy) {
@@ -108,9 +113,7 @@ export function sortWorkflows(workflows: Workflow[], sortBy: string): Workflow[]
           new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
       );
     case "executions_desc":
-      return sorted.sort(
-        (a, b) => b.total_executions - a.total_executions,
-      );
+      return sorted.sort((a, b) => b.total_executions - a.total_executions);
     case "last_executed_desc":
       return sorted.sort((a, b) => {
         const aTime = a.last_executed_at
@@ -146,4 +149,3 @@ export function getWorkflowStatus(workflow: Workflow): string {
 
   return "active";
 }
-

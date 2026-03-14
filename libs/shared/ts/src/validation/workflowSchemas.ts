@@ -7,12 +7,14 @@ export const workflowStepSchema = z.object({
   order: z.number().int().nonnegative().optional(),
 });
 
-export const triggerConfigSchema = z.object({
-  type: z.string().min(1, "Trigger type is required"),
-  enabled: z.boolean().default(true),
-  cron_expression: z.string().optional(),
-  timezone: z.string().optional(),
-}).passthrough();
+export const triggerConfigSchema = z
+  .object({
+    type: z.string().min(1, "Trigger type is required"),
+    enabled: z.boolean().default(true),
+    cron_expression: z.string().optional(),
+    timezone: z.string().optional(),
+  })
+  .passthrough();
 
 export const createWorkflowSchema = z.object({
   name: z
@@ -28,10 +30,7 @@ export const createWorkflowSchema = z.object({
     .min(1, "Prompt is required")
     .max(5000, "Prompt must be 5000 characters or fewer"),
   trigger: triggerConfigSchema,
-  steps: z
-    .array(workflowStepSchema)
-    .min(0)
-    .default([]),
+  steps: z.array(workflowStepSchema).min(0).default([]),
 });
 
 export const updateWorkflowSchema = z.object({
