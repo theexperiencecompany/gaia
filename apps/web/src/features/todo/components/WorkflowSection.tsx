@@ -14,8 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { useTodoWorkflowWebSocket } from "@/features/todo/hooks/useTodoWorkflowWebSocket";
-import { WorkflowSteps } from "@/features/workflows/components";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
+import { WorkflowSteps } from "@/features/workflows/components";
 import { toast } from "@/lib/toast";
 import { useTodoStore } from "@/stores/todoStore";
 import type { Workflow as WorkflowType } from "@/types/features/workflowTypes";
@@ -244,10 +244,14 @@ export default function WorkflowSection({
                     isLoading={isGenerating}
                     isDisabled={isGenerating}
                     startContent={
-                      !isGenerating && <RedoIcon className="h-4 w-4 text-zinc-400" />
+                      !isGenerating && (
+                        <RedoIcon className="h-4 w-4 text-zinc-400" />
+                      )
                     }
                     endContent={
-                      !isGenerating && <ChevronDown className="h-3 w-3 text-zinc-400" />
+                      !isGenerating && (
+                        <ChevronDown className="h-3 w-3 text-zinc-400" />
+                      )
                     }
                   >
                     {isGenerating ? "Regenerating..." : "Regenerate"}
@@ -256,7 +260,9 @@ export default function WorkflowSection({
                 <DropdownMenu
                   aria-label="Regeneration reasons"
                   onAction={(key) => handleRegenerate(key as string)}
-                  disabledKeys={isGenerating ? regenerationReasons.map((r) => r.key) : []}
+                  disabledKeys={
+                    isGenerating ? regenerationReasons.map((r) => r.key) : []
+                  }
                 >
                   {regenerationReasons.map((reason) => (
                     <DropdownItem

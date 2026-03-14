@@ -1,7 +1,5 @@
 "use client";
 
-import { memo, useMemo } from "react";
-
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import {
@@ -11,6 +9,7 @@ import {
   Folder02Icon,
   Tag01Icon,
 } from "@icons";
+import { memo, useMemo } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -80,7 +79,9 @@ export default memo(function TodoItem({
 
   const isOverdue = useMemo(
     () =>
-      !!todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed,
+      !!todo.due_date &&
+      new Date(todo.due_date) < new Date() &&
+      !todo.completed,
     [todo.due_date, todo.completed],
   );
 

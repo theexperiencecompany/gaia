@@ -177,7 +177,10 @@ export default function TodoListPage({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div ref={scrollContainerRef} className="w-full flex-1 overflow-y-auto px-4">
+      <div
+        ref={scrollContainerRef}
+        className="w-full flex-1 overflow-y-auto px-4"
+      >
         <TodoList
           todos={todos}
           onTodoUpdate={handleTodoUpdate}
