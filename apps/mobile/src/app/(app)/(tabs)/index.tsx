@@ -7,7 +7,9 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { ChatLayout, ChatScreenContent, useChatContext } from "@/features/chat";
+import { ChatScreenContent } from "@/features/chat/components/chat/chat-screen-content";
+import { ChatLayout } from "@/features/chat/components/chat-layout";
+import { useChatContext } from "@/features/chat/hooks/use-chat-context";
 import { useChatStore } from "@/stores/chat-store";
 
 export default function ChatScreen() {

@@ -26,17 +26,15 @@ import {
   PlusSignIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { useResponsive } from "@/lib/responsive";
-import {
-  AppEmptyStateCard,
-  AppFilterChipGroup,
-  AppSearchInput,
-} from "@/shared/components/ui";
 import {
   connectIntegration,
   disconnectIntegration,
   fetchIntegrations,
-} from "../api";
+} from "@/features/integrations/api/integrations-api";
+import { useResponsive } from "@/lib/responsive";
+import { AppEmptyStateCard } from "@/shared/components/ui/app-empty-state-card";
+import { AppFilterChipGroup } from "@/shared/components/ui/app-filter-chip-group";
+import { AppSearchInput } from "@/shared/components/ui/app-search-input";
 import type { Integration } from "../types";
 import { BearerTokenSheet, type BearerTokenSheetRef } from "./BearerTokenSheet";
 import {

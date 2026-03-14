@@ -3,8 +3,8 @@ import { useRouter } from "expo-router";
 import { Button, Card } from "heroui-native";
 import { View } from "react-native";
 import { Text } from "@/components/ui/text";
+import { inAppNotificationsApi } from "@/features/notifications/api/inapp-notifications-api";
 import { useResponsive } from "@/lib/responsive";
-import { inAppNotificationsApi } from "../api";
 
 export function NotificationConnectBanner() {
   const router = useRouter();

@@ -10,14 +10,12 @@ import {
   Tick02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  NotificationConnectBanner,
-  NotificationsList,
-  useInappNotifications,
-  useNotificationActions,
-} from "@/features/notifications";
 import type { NotificationPreferencesSheetRef } from "@/features/notifications/components/NotificationPreferencesSheet";
 import { NotificationPreferencesSheet } from "@/features/notifications/components/NotificationPreferencesSheet";
+import { NotificationConnectBanner } from "@/features/notifications/components/notification-connect-banner";
+import { NotificationsList } from "@/features/notifications/components/notifications-list";
+import { useInappNotifications } from "@/features/notifications/hooks/use-inapp-notifications";
+import { useNotificationActions } from "@/features/notifications/hooks/use-notification-actions";
 import type {
   InAppNotification,
   InAppNotificationAction,
