@@ -9,6 +9,7 @@ export interface UserInfo {
   onboarding?: {
     completed: boolean;
     completed_at?: string;
+    phase?: string;
     preferences?: {
       profession?: string;
       response_style?: string;

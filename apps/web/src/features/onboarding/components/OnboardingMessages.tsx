@@ -4,18 +4,26 @@ import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot"
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 
 import type { Message } from "../types";
-import OnboardingIntegrationButtons from "./OnboardingIntegrationButtons";
+import { OnboardingProcessing } from "./OnboardingProcessing";
 
 interface OnboardingMessagesProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
-  isOnboardingComplete?: boolean;
+  isProcessingPhase?: boolean;
+  hasGmail?: boolean;
+  isIntelligenceComplete?: boolean;
+  intelligenceConversationId?: string | null;
+  onProcessingComplete?: (conversationId: string) => void;
 }
 
 export const OnboardingMessages = ({
   messages,
   messagesEndRef,
-  isOnboardingComplete = false,
+  isProcessingPhase = false,
+  hasGmail = false,
+  isIntelligenceComplete = false,
+  intelligenceConversationId = null,
+  onProcessingComplete,
 }: OnboardingMessagesProps) => {
   return (
     <>
@@ -54,7 +62,7 @@ export const OnboardingMessages = ({
               disableActions={true}
               {...message}
             >
-              {isOnboardingComplete && index === messages.length - 1 && (
+              {isProcessingPhase && index === messages.length - 1 && (
                 <m.div
                   className="ml-[43px]"
                   initial={{ opacity: 0, y: 15 }}
@@ -65,7 +73,12 @@ export const OnboardingMessages = ({
                     delay: 0.3,
                   }}
                 >
-                  <OnboardingIntegrationButtons />
+                  <OnboardingProcessing
+                    hasGmail={hasGmail}
+                    isIntelligenceComplete={isIntelligenceComplete}
+                    intelligenceConversationId={intelligenceConversationId}
+                    onComplete={onProcessingComplete ?? (() => {})}
+                  />
                 </m.div>
               )}
             </ChatBubbleBot>

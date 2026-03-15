@@ -140,6 +140,30 @@ async def _search_platform_emails(
         return []
 
 
+async def fetch_emails_for_onboarding(
+    user_id: str,
+    months: int = 1,
+) -> list[dict]:
+    """
+    Fetch the last `months` months of received emails for onboarding intelligence.
+    Returns list of email dicts with sender, subject, snippet, is_unread fields.
+    Does NOT store to memory — caller uses the raw data.
+    """
+    try:
+        query = f"in:inbox newer_than:{months * 30}d"
+        result = await search_messages(
+            user_id=user_id,
+            query=query,
+            max_results=300,
+        )
+        return result.get("messages", [])
+    except Exception as e:
+        log.error(
+            f"[fetch_emails_for_onboarding] Failed for {user_id}: {e}", exc_info=True
+        )
+        return []
+
+
 async def process_gmail_to_memory(user_id: str) -> Dict:
     """
     Process user's Gmail emails into Mem0 memories.

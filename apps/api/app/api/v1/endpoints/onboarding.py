@@ -59,42 +59,18 @@ async def complete_user_onboarding(
             user_timezone=tz_info[0],
         )
 
-        composio_service = get_composio_service()
-        connection_status = await composio_service.check_connection_status(
-            ["gmail"], user["user_id"]
-        )
-        has_gmail = connection_status.get("gmail", False)
-
-        # Check if Gmail emails have already been processed
-        user_doc = await users_collection.find_one({"_id": ObjectId(user["user_id"])})
-        email_already_processed = (
-            user_doc.get("email_memory_processed", False) if user_doc else False
-        )
-
-        if has_gmail and not email_already_processed:
-            # Gmail connected but not yet processed - queue email processing
-            # Email processor will trigger personalization when done
-            log.info(
-                f"User {user['user_id']} has Gmail (not processed) - queueing email processing"
-            )
+        # Always queue intelligence task — handles Gmail, no-Gmail, email processed/unprocessed
+        try:
             from app.utils.redis_utils import RedisPoolManager
 
-            try:
-                pool = await RedisPoolManager.get_pool()
-                await pool.enqueue_job(
-                    "process_gmail_emails_to_memory", user["user_id"]
-                )
-                log.info(f"Queued Gmail processing for user {user['user_id']}")
-            except Exception as e:
-                log.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
-                # Fallback: queue personalization directly
-                background_tasks.add_task(queue_personalization, user["user_id"])
-        else:
-            # No Gmail OR already processed - queue personalization directly
-            reason = "already processed" if email_already_processed else "no Gmail"
-            log.info(
-                f"User {user['user_id']} ({reason}) - queueing personalization directly"
+            pool = await RedisPoolManager.get_pool()
+            await pool.enqueue_job(
+                "process_onboarding_intelligence_task", user["user_id"]
             )
+            log.info(f"Queued onboarding intelligence for user {user['user_id']}")
+        except Exception as e:
+            log.error(f"Failed to queue intelligence task: {e}", exc_info=True)
+            # Fallback: queue legacy personalization directly
             background_tasks.add_task(queue_personalization, user["user_id"])
 
         return OnboardingResponse(
@@ -338,6 +314,9 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             "suggested_workflows": workflows,
             "name": user_doc.get("name", "User"),
             "holo_card_id": str(user_doc["_id"]),
+            "first_message_conversation_id": onboarding.get(
+                "first_message_conversation_id"
+            ),
         }
 
     except HTTPException:

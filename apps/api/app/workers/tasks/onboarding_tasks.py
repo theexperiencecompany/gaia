@@ -6,6 +6,20 @@ from app.services.onboarding.post_onboarding_service import (
 )
 
 
+async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
+    """ARQ background task for the full onboarding intelligence pipeline."""
+    async with wide_task("process_onboarding_intelligence_task", user_id=user_id):
+        log.set(user={"id": user_id})
+        from app.services.onboarding.intelligence_service import (
+            process_onboarding_intelligence,
+        )
+
+        await process_onboarding_intelligence(user_id)
+        message = f"Onboarding intelligence completed for user {user_id}"
+        log.info(message)
+        return message
+
+
 async def process_personalization_task(ctx, user_id: str) -> str:
     """
     ARQ background task to generate personalized onboarding card.
