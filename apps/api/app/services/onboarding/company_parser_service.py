@@ -134,10 +134,15 @@ async def parse_company_url(url: str) -> Optional[CompanyProfile]:
         prompt = COMPANY_PARSE_PROMPT.format(page_content=page_text)
         response_msg = await llm.ainvoke([HumanMessage(content=prompt)])
 
-        # Parse JSON from response - strip markdown fences if present
+        # Strip markdown fences if the LLM wrapped the JSON in a code block
         content = response_msg.content.strip()
-        content = re.sub(r"^```(?:json)?\s*", "", content)
-        content = re.sub(r"\s*```$", "", content)
+        if content.startswith("```"):
+            # Remove opening fence (e.g. ```json or ```)
+            content = (
+                content[content.index("\n") + 1 :] if "\n" in content else content[3:]
+            )
+        if content.endswith("```"):
+            content = content[: content.rfind("```")].rstrip()
 
         result_data = json.loads(content)
 
