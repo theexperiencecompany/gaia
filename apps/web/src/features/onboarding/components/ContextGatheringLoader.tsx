@@ -21,6 +21,7 @@ import { wsManager } from "@/lib/websocket";
 import {
   OnboardingPhase,
   useOnboardingPhaseStore,
+  useOnboardingStore,
 } from "@/stores/onboardingStore";
 
 /**
@@ -39,17 +40,14 @@ import {
  * and page reload/navigation fetches fresh data.
  */
 
-interface ContextGatheringLoaderProps {
-  onComplete: () => void;
-}
-
-export default function ContextGatheringLoader({
-  onComplete,
-}: ContextGatheringLoaderProps) {
+export default function ContextGatheringLoader() {
   const user = useUser();
   const [personalizationData, setPersonalizationData] =
     useState<PersonalizationData | null>(null);
   const { phase, setPhase } = useOnboardingPhaseStore();
+  const setHoloCardReady = useOnboardingStore(
+    (state) => state.setHoloCardReady,
+  );
   const [isInitializing, setIsInitializing] = useState(true);
   const [progressData, setProgressData] = useState<
     PersonalizationProgressMessage["data"] | null
@@ -200,8 +198,8 @@ export default function ContextGatheringLoader({
   };
 
   const handleShowMeAround = async () => {
-    // Open the modal first
-    onComplete();
+    // Mark holo card as ready — it will show after user sends a few messages
+    setHoloCardReady(true);
     // Then persist the state change
     await transitionToGettingStarted();
   };

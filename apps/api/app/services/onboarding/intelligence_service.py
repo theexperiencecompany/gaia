@@ -34,6 +34,7 @@ from app.agents.memory.email_processor import (
 from app.models.onboarding_models import (
     CompanyProfile,
     InboxTriage,
+    SocialProfile,
     WritingStyleProfile,
 )
 from app.models.todo_models import Priority, TodoModel
@@ -45,6 +46,7 @@ from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.post_onboarding_service import (
     process_post_onboarding_personalization,
 )
+from app.services.onboarding.social_profile_service import extract_social_profiles
 from app.services.onboarding.writing_style_service import learn_writing_style
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.todo_service import TodoService
@@ -107,6 +109,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     emails: list[dict] = []
     writing_style: Optional[WritingStyleProfile] = None
     company_profile: Optional[CompanyProfile] = None
+    social_profiles: list[SocialProfile] = []
 
     phase1_tasks: list[Coroutine[Any, Any, None]] = []
 
@@ -150,6 +153,10 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     phase1_tasks.append(_run_personalization())
 
     await asyncio.gather(*phase1_tasks, return_exceptions=True)
+
+    # Extract social profiles from fetched emails (CPU-only, no I/O)
+    if emails:
+        social_profiles = extract_social_profiles(emails)
 
     # ── Phase 2: Triage + todos + workflows ───────────────────────────────────
 
@@ -203,7 +210,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         triage=triage,
         created_todos=created_todos,
         created_workflows=created_workflows,
-        social_profiles=[],
+        social_profiles=[p.model_dump() for p in social_profiles],
         writing_style=writing_style,
     )
 
@@ -218,6 +225,10 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         update_fields["onboarding.writing_style"] = writing_style.model_dump()
     if company_profile:
         update_fields["onboarding.company_profile"] = company_profile.model_dump()
+    if social_profiles:
+        update_fields["onboarding.social_profiles"] = [
+            p.model_dump() for p in social_profiles
+        ]
     if conversation_id:
         update_fields["onboarding.first_message_conversation_id"] = conversation_id
 

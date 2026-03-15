@@ -109,11 +109,13 @@ async def get_memory_message(
     user_name: Optional[str] = None,
     user_timezone: Optional[str] = None,
     user_preferences: Optional[dict] = None,
+    writing_style: Optional[dict] = None,
 ) -> SystemMessage:
     """Create memory system message with user context (preferences, timezone, times) and optional memories.
 
     This message ALWAYS returns (even if no memories exist) to provide:
     - User preferences (profession, response style, custom instructions)
+    - User's learned writing style (for email drafting tone matching)
     - User's name
     - Current UTC time
     - User's local timezone and time
@@ -125,6 +127,7 @@ async def get_memory_message(
         user_name: User's full name (already available from user dict)
         user_timezone: User's timezone (already available from user dict)
         user_preferences: User's onboarding preferences (already available from user dict)
+        writing_style: User's learned writing style from onboarding (summary + sample_snippets)
 
     Returns:
         SystemMessage with user context and memories
@@ -137,9 +140,11 @@ async def get_memory_message(
         if user_name:
             context_parts.append(f"User Name: {user_name}")
 
-        # Add user preferences if available
-        if user_preferences:
-            if formatted_prefs := format_user_preferences_for_agent(user_preferences):
+        # Add user preferences (and writing style) if available
+        if user_preferences or writing_style:
+            if formatted_prefs := format_user_preferences_for_agent(
+                user_preferences or {}, writing_style=writing_style
+            ):
                 context_parts.append(f"\nUser Preferences:\n{formatted_prefs}")
 
         # Add time information

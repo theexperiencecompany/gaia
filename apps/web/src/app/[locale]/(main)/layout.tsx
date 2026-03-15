@@ -27,6 +27,7 @@ import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
 import {
   OnboardingPhase,
   useOnboardingPhaseStore,
+  useOnboardingStore,
 } from "@/stores/onboardingStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
@@ -60,6 +61,10 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     closeModal: closeHoloCardModal,
   } = useHoloCardModalStore();
   const { phase: onboardingPhase, setPhase } = useOnboardingPhaseStore();
+  const holoCardReady = useOnboardingStore((s) => s.holoCardReady);
+  const holoCardShown = useOnboardingStore((s) => s.holoCardShown);
+  const messagesSent = useOnboardingStore((s) => s.messagesSentAfterOnboarding);
+  const setHoloCardShown = useOnboardingStore((s) => s.setHoloCardShown);
 
   // Check if user needs onboarding
   useOnboardingGuard();
@@ -121,6 +126,25 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     onboardingPhase &&
     (onboardingPhase === OnboardingPhase.GETTING_STARTED ||
       onboardingPhase === OnboardingPhase.COMPLETED);
+
+  // Open holo card after user has sent enough messages post-onboarding
+  const HOLO_CARD_MESSAGE_THRESHOLD = 2;
+  useEffect(() => {
+    if (
+      holoCardReady &&
+      !holoCardShown &&
+      messagesSent >= HOLO_CARD_MESSAGE_THRESHOLD
+    ) {
+      setHoloCardShown(true);
+      openHoloCardModal();
+    }
+  }, [
+    holoCardReady,
+    holoCardShown,
+    messagesSent,
+    setHoloCardShown,
+    openHoloCardModal,
+  ]);
 
   useChatStoreSync();
 
@@ -233,9 +257,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             <div
               className={`fixed z-40 w-70 space-y-3 overflow-hidden ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
             >
-              {shouldShowPersonalizationCard && (
-                <ContextGatheringLoader onComplete={openHoloCardModal} />
-              )}
+              {shouldShowPersonalizationCard && <ContextGatheringLoader />}
               {/* {shouldShowGettingStartedCard && <OnboardingStepsCard />} */}
             </div>
           )}

@@ -14,6 +14,11 @@ class WritingStyleProfile(BaseModel):
     sample_snippets: list[str]  # 3-5 real excerpts from sent emails (style only)
 
 
+class SocialProfile(BaseModel):
+    platform: str  # e.g. "twitter", "linkedin", "github"
+    url: str
+
+
 class EmailSummary(BaseModel):
     sender: str
     subject: str

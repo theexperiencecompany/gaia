@@ -51,6 +51,8 @@ EMAIL_COMPOSER = """
         - Content Length Preference: {content_length}
         - Clarity Preference: {clarity_option}
 
+        {learned_writing_style}
+
         Only mention user notes when relevant to the email context.
 
         The user want's to write an email for: {prompt}.

@@ -110,9 +110,8 @@ export const useOnboardingWebSocket = (
       const apiBaseUrl =
         process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1/";
       return (
-        apiBaseUrl
-          .replace("http://", "ws://")
-          .replace("https://", "wss://") + "ws/connect"
+        apiBaseUrl.replace("http://", "ws://").replace("https://", "wss://") +
+        "ws/connect"
       );
     };
 

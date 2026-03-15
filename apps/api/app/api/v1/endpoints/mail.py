@@ -56,6 +56,7 @@ from app.services.mail.mail_service import (
 )
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.embedding_utils import search_notes_by_similarity
+from app.utils.user_preferences_utils import format_writing_style_for_prompt
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 router = APIRouter()
@@ -273,6 +274,10 @@ async def process_email(
             input_text=request.prompt, user_id=str(user_id)
         )
 
+        # Fetch learned writing style from onboarding data
+        writing_style_data = current_user.get("onboarding", {}).get("writing_style")
+        learned_style_block = format_writing_style_for_prompt(writing_style_data)
+
         prompt = EMAIL_COMPOSER.format(
             sender_name=current_user.get("name") or "none",
             subject=request.subject or "empty",
@@ -282,6 +287,7 @@ async def process_email(
             clarity_option=request.clarityOption or "None",
             notes="- ".join(notes) if notes else "No relevant notes found.",
             prompt=request.prompt,
+            learned_writing_style=learned_style_block,
         )
 
         result = await do_prompt_no_stream(
