@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "node:fs";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("fs");
 
@@ -14,15 +14,15 @@ vi.mock("../../src/lib/version.js", () => ({
   CLI_VERSION: "0.0.1-test",
 }));
 
+import type { GaiaConfig } from "../../src/lib/config.js";
 // Import after mocks are registered so the module picks them up.
 import {
-  readConfig,
-  writeConfig,
-  updateConfig,
-  GAIA_CONFIG_DIR,
   CONFIG_PATH,
+  GAIA_CONFIG_DIR,
+  readConfig,
+  updateConfig,
+  writeConfig,
 } from "../../src/lib/config.js";
-import type { GaiaConfig } from "../../src/lib/config.js";
 
 const mockedFs = vi.mocked(fs);
 

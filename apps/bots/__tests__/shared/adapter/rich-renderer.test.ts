@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { richMessageToMarkdown } from "@gaia/shared";
 import type { RichMessage } from "@gaia/shared";
+import { richMessageToMarkdown } from "@gaia/shared";
+import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Helper to build a minimal RichMessage
