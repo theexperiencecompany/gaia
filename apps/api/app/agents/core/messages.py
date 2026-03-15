@@ -68,9 +68,9 @@ async def construct_langchain_messages(
     # Add relevant memories if user context available
     if user_id and query:
         user_timezone = user_dict.get("timezone") if user_dict else None
-        user_preferences = (
-            user_dict.get("onboarding", {}).get("preferences") if user_dict else None
-        )
+        onboarding = user_dict.get("onboarding", {}) if user_dict else {}
+        user_preferences = onboarding.get("preferences") if onboarding else None
+        writing_style = onboarding.get("writing_style") if onboarding else None
 
         memory_msg = await get_memory_message(
             user_id=user_id,
@@ -78,6 +78,7 @@ async def construct_langchain_messages(
             user_name=user_name,
             user_timezone=user_timezone,
             user_preferences=user_preferences,
+            writing_style=writing_style,
         )
 
         if memory_msg:

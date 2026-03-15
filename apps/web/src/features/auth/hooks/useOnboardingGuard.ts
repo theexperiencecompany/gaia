@@ -4,6 +4,12 @@ import { usePathname } from "@/i18n/navigation";
 
 import { useUser } from "./useUser";
 
+/** Phases where the intelligence pipeline is still running — user should stay on /onboarding */
+const PROCESSING_PHASES = new Set([
+  "personalization_pending",
+  "personalization_complete",
+]);
+
 export const useOnboardingGuard = () => {
   const user = useUser();
   const router = useRouter();
@@ -13,10 +19,13 @@ export const useOnboardingGuard = () => {
     // Only proceed if user data is loaded with email and onboarding data is available
     if (user.email && user.onboarding !== undefined) {
       const isOnboardingCompleted = user.onboarding?.completed;
+      const phase = user.onboarding?.phase;
+      const isStillProcessing = phase && PROCESSING_PHASES.has(phase);
 
       if (pathname === "/onboarding") {
-        // If on onboarding page but already completed, redirect to main app
-        if (isOnboardingCompleted) {
+        // If onboarding is completed AND processing is done, redirect to main app
+        // Don't redirect while the intelligence pipeline is still running
+        if (isOnboardingCompleted && !isStillProcessing) {
           router.push("/c");
         }
       } else {

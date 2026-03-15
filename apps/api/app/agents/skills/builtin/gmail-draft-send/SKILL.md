@@ -104,6 +104,12 @@ If user wants changes:
 4. **Handle errors gracefully** - If send fails, explain and offer retry
 5. **Check before replying** - Search for context when replying to threads
 
+## Writing Style
+- If the user context includes a **Learned Writing Style** section, use it as the primary guide for tone, voice, and phrasing when composing the email body.
+- Match the style profile description (formality, length, greeting/sign-off patterns).
+- Use the reference snippets as examples of how the user naturally writes.
+- The user-selected writing style (e.g. "Formal", "Casual") from the UI takes precedence if it conflicts with the learned style.
+
 ## Tips
 - Use clear, concise subject lines
 - Keep body focused and actionable

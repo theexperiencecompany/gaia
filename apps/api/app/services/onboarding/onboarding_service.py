@@ -161,6 +161,7 @@ async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
         return {
             "completed": onboarding_data.get("completed", False),
             "completed_at": onboarding_data.get("completed_at"),
+            "phase": onboarding_data.get("phase"),
             "preferences": onboarding_data.get("preferences", {}),
         }
 

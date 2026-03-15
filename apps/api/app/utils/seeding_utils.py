@@ -176,7 +176,7 @@ async def seed_initial_conversation(user_id: str) -> None:
         # Create the welcome message with breaks for bubbles
         welcome_message = (
             f"Hey! I'm Gaia, your personal AI assistant—I'm here to help you actually get things done. 👋{NEW_MESSAGE_BREAKER}"
-            "Here's what I can help with: \n - 📧 Manage your Gmail inbox\n - 📅 Schedule calendar events\n - ✅ Create and track todos with smart workflows\n - 🎯 Set goals with visual roadmaps\n - 🔍 Search the web and generate images\n - 🧠 Remember important things about you and a lot more!{NEW_MESSAGE_BREAKER}"
+            f"Here's what I can help with: \n - 📧 Manage your Gmail inbox\n - 📅 Schedule calendar events\n - ✅ Create and track todos with smart workflows\n - 🎯 Set goals with visual roadmaps\n - 🔍 Search the web and generate images\n - 🧠 Remember important things about you and a lot more!{NEW_MESSAGE_BREAKER}"
             f"Try asking me to: Check your unread emails, create a task for something you need to do, set up a goal with a roadmap, search for information, or just tell me about your day so I can get to know you better! {NEW_MESSAGE_BREAKER}"
             "What would you like to explore first?"
         )

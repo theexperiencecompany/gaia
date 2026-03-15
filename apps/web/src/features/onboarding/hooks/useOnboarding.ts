@@ -161,33 +161,6 @@ export const useOnboarding = () => {
     }
   }, [onboardingState.isProcessingPhase, _submitOnboardingToBackend]);
 
-  // Handle OAuth success/error from URL parameters
-  useEffect(() => {
-    const oauthSuccess = searchParams.get("oauth_success");
-    const oauthError = searchParams.get("oauth_error");
-
-    if (oauthSuccess === "true") {
-      toast.success("Gmail connected!");
-      refetchIntegrationStatus();
-      const url = new URL(window.location.href);
-      url.searchParams.delete("oauth_success");
-      window.history.replaceState({}, "", url.toString());
-      // Advance past the Gmail step now that OAuth succeeded
-      submitResponse("Connected", "connected");
-    } else if (oauthError) {
-      switch (oauthError) {
-        case "cancelled":
-          toast.error("Connection cancelled. You can try again anytime.");
-          break;
-        default:
-          toast.error("Connection failed. Please try again.");
-      }
-      const url = new URL(window.location.href);
-      url.searchParams.delete("oauth_error");
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [searchParams, refetchIntegrationStatus, submitResponse]);
-
   useEffect(() => {
     scrollToBottom();
   }, [onboardingState.messages]);
@@ -335,6 +308,33 @@ export const useOnboarding = () => {
       onboardingState.userResponses,
     ],
   );
+
+  // Handle OAuth success/error from URL parameters
+  useEffect(() => {
+    const oauthSuccess = searchParams.get("oauth_success");
+    const oauthError = searchParams.get("oauth_error");
+
+    if (oauthSuccess === "true") {
+      toast.success("Gmail connected!");
+      refetchIntegrationStatus();
+      const url = new URL(window.location.href);
+      url.searchParams.delete("oauth_success");
+      window.history.replaceState({}, "", url.toString());
+      // Advance past the Gmail step now that OAuth succeeded
+      submitResponse("Connected", "connected");
+    } else if (oauthError) {
+      switch (oauthError) {
+        case "cancelled":
+          toast.error("Connection cancelled. You can try again anytime.");
+          break;
+        default:
+          toast.error("Connection failed. Please try again.");
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.delete("oauth_error");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [searchParams, refetchIntegrationStatus, submitResponse]);
 
   // Called when Gmail OAuth succeeds
   const handleGmailConnect = useCallback(() => {
@@ -531,7 +531,12 @@ export const useOnboarding = () => {
     }));
 
     setIsInitialized(true);
-  }, [isInitialized, onboardingState.messages.length, user.name, user.onboarding]);
+  }, [
+    isInitialized,
+    onboardingState.messages.length,
+    user.name,
+    user.onboarding,
+  ]);
 
   const handleRestart = useCallback(() => {
     if (typeof window !== "undefined") {

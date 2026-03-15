@@ -61,11 +61,16 @@ const useFetchUser = () => {
       // Check if onboarding is needed and prevent navigation loops
       if (accessToken && refreshToken) {
         const needsOnboarding = !data?.onboarding?.completed;
+        const phase = data?.onboarding?.phase;
+        const isStillProcessing =
+          phase === "personalization_pending" ||
+          phase === "personalization_complete";
 
         if (needsOnboarding && currentPath !== "/onboarding") {
           router.push("/onboarding");
         } else if (
           !needsOnboarding &&
+          !isStillProcessing &&
           (currentPath === "/onboarding" || publicPages.includes(currentPath))
         ) {
           router.push("/c");

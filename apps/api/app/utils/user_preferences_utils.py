@@ -3,7 +3,7 @@ User preferences utilities for formatting and processing user data.
 Provides functions to format user preferences for agent system prompts.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from shared.py.wide_events import log
 
@@ -89,21 +89,70 @@ def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
     return parts
 
 
-def format_user_preferences_for_agent(preferences: Dict[str, Any]) -> Optional[str]:
+def format_writing_style_for_prompt(
+    writing_style: Optional[Dict[str, Any]],
+) -> str:
+    """
+    Format the user's learned writing style into a prompt block for email composition.
+
+    The writing style data comes from ``user.onboarding.writing_style`` in MongoDB
+    and contains ``summary`` (str) and ``sample_snippets`` (list[str]).
+
+    Args:
+        writing_style: Dictionary with ``summary`` and ``sample_snippets`` keys,
+                       or None if no writing style was learned during onboarding.
+
+    Returns:
+        A formatted instruction block to inject into the email composer prompt,
+        or an empty string if no writing style data is available.
+    """
+    if not writing_style:
+        return ""
+
+    summary = writing_style.get("summary", "")
+    snippets: List[str] = writing_style.get("sample_snippets", [])
+
+    if not summary:
+        return ""
+
+    lines = [
+        "Learned Writing Style (match this tone and voice when composing the email):",
+        f"  Style Profile: {summary}",
+    ]
+
+    if snippets:
+        lines.append("  Reference Snippets (exemplify the user's natural voice):")
+        for snippet in snippets[:3]:
+            lines.append(f'    - "{snippet}"')
+
+    return "\n".join(lines)
+
+
+def format_user_preferences_for_agent(
+    preferences: Dict[str, Any],
+    writing_style: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
     """
     Format user preferences into a string suitable for agent system prompt.
 
     Args:
         preferences: Dictionary of user preferences from onboarding
+        writing_style: Optional dictionary with learned writing style data
+                       (``summary`` and ``sample_snippets``) from onboarding
 
     Returns:
         Formatted string of user preferences or None if no valid preferences
     """
-    if not preferences:
+    if not preferences and not writing_style:
         return None
 
     try:
-        parts = build_user_context_parts(preferences)
+        parts = build_user_context_parts(preferences) if preferences else []
+
+        # Append writing style block for email drafting context
+        style_block = format_writing_style_for_prompt(writing_style)
+        if style_block:
+            parts.append(f"\n{style_block}")
 
         if parts:
             return "\n".join(parts)
