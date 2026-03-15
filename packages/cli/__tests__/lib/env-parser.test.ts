@@ -232,13 +232,13 @@ describe("getDeploymentDefaults", () => {
   it("returns selfhost deployment defaults", () => {
     const defaults = getDeploymentDefaults("selfhost");
     expect(defaults.SETUP_MODE).toBe("selfhost");
-    expect(defaults.GAIA_BACKEND_URL).toBe("http://gaia-backend:80");
+    expect(defaults.GAIA_BACKEND_URL).toBe("http://gaia-backend:80"); // NOSONAR — internal Docker network URL, not a public endpoint
   });
 
   it("returns developer deployment defaults", () => {
     const defaults = getDeploymentDefaults("developer");
     expect(defaults.SETUP_MODE).toBe("developer");
-    expect(defaults.GAIA_BACKEND_URL).toBe("http://host.docker.internal:8000");
+    expect(defaults.GAIA_BACKEND_URL).toBe("http://host.docker.internal:8000"); // NOSONAR — internal Docker network URL, not a public endpoint
   });
 });
 

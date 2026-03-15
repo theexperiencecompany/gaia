@@ -222,6 +222,10 @@ describe("TelegramAdapter - platform identity", () => {
 
 describe("TelegramAdapter - group mention message handling (registerEvents)", () => {
   let adapter: TelegramAdapter;
+  // Retrieved once in beforeEach after registerEvents() registers it via bot.on("message:text", ...)
+  let onHandler:
+    | ((ctx: ReturnType<typeof makeCtx>) => Promise<void>)
+    | undefined;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -230,6 +234,11 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
     await (
       adapter as unknown as { registerEvents: () => Promise<void> }
     ).registerEvents();
+    onHandler = vi
+      .mocked(mockBotOn)
+      .mock.calls.find((c) => c[0] === "message:text")?.[1] as
+      | ((ctx: ReturnType<typeof makeCtx>) => Promise<void>)
+      | undefined;
   });
 
   afterEach(() => {
@@ -237,13 +246,6 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
   });
 
   it("strips @botUsername from group message and streams the cleaned content", async () => {
-    // Retrieve the handler registered via bot.on("message:text", ...)
-    const onHandler = vi
-      .mocked(mockBotOn)
-      .mock.calls.find((c) => c[0] === "message:text")?.[1] as
-      | ((ctx: ReturnType<typeof makeCtx>) => Promise<void>)
-      | undefined;
-
     expect(onHandler).toBeDefined();
 
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
@@ -253,7 +255,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       replyFn,
     });
 
-    await onHandler!(ctx);
+    await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
     // handleStreamingChat must be called with the mention stripped
     expect(handleStreamingChat).toHaveBeenCalledWith(
@@ -273,12 +275,6 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
   });
 
   it("replies 'How can I help you?' when mention text is empty after stripping", async () => {
-    const onHandler = vi
-      .mocked(mockBotOn)
-      .mock.calls.find((c) => c[0] === "message:text")?.[1] as
-      | ((ctx: ReturnType<typeof makeCtx>) => Promise<void>)
-      | undefined;
-
     expect(onHandler).toBeDefined();
 
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
@@ -295,12 +291,6 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
   });
 
   it("ignores group messages that do not mention the bot", async () => {
-    const onHandler = vi
-      .mocked(mockBotOn)
-      .mock.calls.find((c) => c[0] === "message:text")?.[1] as
-      | ((ctx: ReturnType<typeof makeCtx>) => Promise<void>)
-      | undefined;
-
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     const ctx = makeCtx({
       chatType: "group",
@@ -315,12 +305,6 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
   });
 
   it("routes private chat messages directly to handleTelegramStreaming", async () => {
-    const onHandler = vi
-      .mocked(mockBotOn)
-      .mock.calls.find((c) => c[0] === "message:text")?.[1] as
-      | ((ctx: ReturnType<typeof makeCtx>) => Promise<void>)
-      | undefined;
-
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     const ctx = makeCtx({
       chatType: "private",
@@ -328,7 +312,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       replyFn,
     });
 
-    await onHandler!(ctx);
+    await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(),
@@ -345,12 +329,6 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
   });
 
   it("skips messages that start with a command prefix '/'", async () => {
-    const onHandler = vi
-      .mocked(mockBotOn)
-      .mock.calls.find((c) => c[0] === "message:text")?.[1] as
-      | ((ctx: ReturnType<typeof makeCtx>) => Promise<void>)
-      | undefined;
-
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     const ctx = makeCtx({
       chatType: "private",
@@ -358,7 +336,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       replyFn,
     });
 
-    await onHandler!(ctx);
+    await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
     expect(handleStreamingChat).not.toHaveBeenCalled();
   });
