@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.17.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.16.0...api-v0.17.0) (2026-03-13)
+
+
+### Features
+
+* Add custom integration tools to gather context ([#534](https://github.com/theexperiencecompany/gaia/issues/534)) ([e256633](https://github.com/theexperiencecompany/gaia/commit/e256633270452e43e53acf2dcdd6bfca5b4bb0ec))
+* Add script to populate GAIA's knowledge base from markdown and include initial GAIA documentation. ([d359181](https://github.com/theexperiencecompany/gaia/commit/d359181821c53e4237903b33c5b101c387af0af1))
+* added support for artifacts ([#547](https://github.com/theexperiencecompany/gaia/issues/547)) ([bf95597](https://github.com/theexperiencecompany/gaia/commit/bf95597efedb2ab1dd9f87ee9d5c9e4df13aaaff))
+* Deep research tool, free-tier search fallbacks, and rate limit UI ([#530](https://github.com/theexperiencecompany/gaia/issues/530)) ([8e00025](https://github.com/theexperiencecompany/gaia/commit/8e00025a422426fa36e82e6a6e59f719e5c8e702))
+* Enhance calendar event creation with attendee and Google Meet support, and refactor meeting invite skills. ([dd2100c](https://github.com/theexperiencecompany/gaia/commit/dd2100cb5d330a2d948a5a756f1f905309bb1b91))
+* implement MCP Apps Builder ([#533](https://github.com/theexperiencecompany/gaia/issues/533)) ([2df1ad1](https://github.com/theexperiencecompany/gaia/commit/2df1ad18780a527c5a953f83652c1e1d7f6b6453))
+* Implement streaming for calendar data to the frontend and refine calendar tool functionalities, including a new Composio/Langchain patch. ([2f2dfe9](https://github.com/theexperiencecompany/gaia/commit/2f2dfe9fc8f1c25cbad449d8f3613cab076891ff))
+* structured logging and Grafana observability stack ([#548](https://github.com/theexperiencecompany/gaia/issues/548)) ([be96cc0](https://github.com/theexperiencecompany/gaia/commit/be96cc05ff3b3e9d49877479f11d996fcbf04bb3))
+
+
+### Bug Fixes
+
+* **api:** align builtin skill tool slugs with Composio inventory ([#527](https://github.com/theexperiencecompany/gaia/issues/527)) ([095cfaa](https://github.com/theexperiencecompany/gaia/commit/095cfaaabb7269507dbbb7525ac01127ede95825))
+* **comms,toast:** content-length prompt rules and toast title overflow ([d5f7f8b](https://github.com/theexperiencecompany/gaia/commit/d5f7f8bbaa35040ca131f2a544f51d50b39175c8))
+* Docker version issues & system workflows instructions. ([#542](https://github.com/theexperiencecompany/gaia/issues/542)) ([ef9f3cc](https://github.com/theexperiencecompany/gaia/commit/ef9f3ccf7f2ce66bf63d65fc0c70f4b75e77a5d3))
+* Enhance caching logic in research tool and improve type validation in utility functions ([731be49](https://github.com/theexperiencecompany/gaia/commit/731be4953f2c0e8597c8020c56cb124ea9f57b41))
+* Enhance MCPClient connection handling with token refresh and status updates on auth errors ([#528](https://github.com/theexperiencecompany/gaia/issues/528)) ([420e4dd](https://github.com/theexperiencecompany/gaia/commit/420e4dd4e15724b6641ff74b929e714d121ffe5d))
+* enhance meeting preparation and reminder prompts for calendar and email workflows ([8f2e6df](https://github.com/theexperiencecompany/gaia/commit/8f2e6dfb9ffe75bc1e336c58aa6f433ab8289588))
+* Improve error handling and logging in subagent tool invocation; enhance research tool depth validation; update token management error logging; refine search utility URL validation ([#536](https://github.com/theexperiencecompany/gaia/issues/536)) ([d34b0ae](https://github.com/theexperiencecompany/gaia/commit/d34b0ae0cf1ceb045fe4ad82873bb038f0884ec7))
+* **mcp-sandbox-proxy:** enhance parent origin detection for postMessage ([2df1ad1](https://github.com/theexperiencecompany/gaia/commit/2df1ad18780a527c5a953f83652c1e1d7f6b6453))
+* **MCPAppRenderer:** improve error handling and adjust app height for better layout ([2df1ad1](https://github.com/theexperiencecompany/gaia/commit/2df1ad18780a527c5a953f83652c1e1d7f6b6453))
+
 ## [0.16.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.15.0...api-v0.16.0) (2026-02-27)
 
 

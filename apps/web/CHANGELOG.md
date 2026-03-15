@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.18.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.17.0...web-v0.18.0) (2026-03-13)
+
+
+### Features
+
+* Add custom integration tools to gather context ([#534](https://github.com/theexperiencecompany/gaia/issues/534)) ([e256633](https://github.com/theexperiencecompany/gaia/commit/e256633270452e43e53acf2dcdd6bfca5b4bb0ec))
+* add StatusBanner component and integrate it into MainLayout; improve integration sorting logic ([454f74c](https://github.com/theexperiencecompany/gaia/commit/454f74c3bca32b3766cd1253bc0677af255b1efe))
+* added support for artifacts ([#547](https://github.com/theexperiencecompany/gaia/issues/547)) ([bf95597](https://github.com/theexperiencecompany/gaia/commit/bf95597efedb2ab1dd9f87ee9d5c9e4df13aaaff))
+* Create Pricing Page with updated plans and descriptions, including new features and improved layout ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* Deep research tool, free-tier search fallbacks, and rate limit UI ([#530](https://github.com/theexperiencecompany/gaia/issues/530)) ([8e00025](https://github.com/theexperiencecompany/gaia/commit/8e00025a422426fa36e82e6a6e59f719e5c8e702))
+* Enhance calendar event creation with attendee and Google Meet support, and refactor meeting invite skills. ([dd2100c](https://github.com/theexperiencecompany/gaia/commit/dd2100cb5d330a2d948a5a756f1f905309bb1b91))
+* enhance UI components with animations and layout adjustments; improve responsiveness and accessibility ([a614c3d](https://github.com/theexperiencecompany/gaia/commit/a614c3d89b8e5bdea12ed39697ebb37f3a5630b2))
+* founders use case landing pages ([#546](https://github.com/theexperiencecompany/gaia/issues/546)) ([74e0521](https://github.com/theexperiencecompany/gaia/commit/74e0521572d0839868dca6e16601dc73f919be91))
+* implement MCP Apps Builder ([#533](https://github.com/theexperiencecompany/gaia/issues/533)) ([2df1ad1](https://github.com/theexperiencecompany/gaia/commit/2df1ad18780a527c5a953f83652c1e1d7f6b6453))
+* Implement new Install Page for GAIA CLI with interactive code blocks and installation methods ([#535](https://github.com/theexperiencecompany/gaia/issues/535)) ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* Scale programmatic SEO — 100 comparisons, 181 glossary terms, 240+ integration combos ([#549](https://github.com/theexperiencecompany/gaia/issues/549)) ([6073770](https://github.com/theexperiencecompany/gaia/commit/6073770f095a6de0dbc4aac64e4ab0693d8888df))
+
+
+### Bug Fixes
+
+* Add new wallpaper image for enhanced visual appeal on the pricing page ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* Adjust Final Section layout for better visual hierarchy and responsiveness ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* **api:** align builtin skill tool slugs with Composio inventory ([#527](https://github.com/theexperiencecompany/gaia/issues/527)) ([095cfaa](https://github.com/theexperiencecompany/gaia/commit/095cfaaabb7269507dbbb7525ac01127ede95825))
+* **comms,toast:** content-length prompt rules and toast title overflow ([d5f7f8b](https://github.com/theexperiencecompany/gaia/commit/d5f7f8bbaa35040ca131f2a544f51d50b39175c8))
+* Enhance Footer component with new background image and improved styling ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* enhance integration sorting and category ordering during search ([6266cf9](https://github.com/theexperiencecompany/gaia/commit/6266cf9fbebb4acfa450dd659f01142f6224200d))
+* Improve error handling and logging in subagent tool invocation; enhance research tool depth validation; update token management error logging; refine search utility URL validation ([#536](https://github.com/theexperiencecompany/gaia/issues/536)) ([d34b0ae](https://github.com/theexperiencecompany/gaia/commit/d34b0ae0cf1ceb045fe4ad82873bb038f0884ec7))
+* Improve Pricing Cards layout for better responsiveness and user experience ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* **mcp-sandbox-proxy:** enhance parent origin detection for postMessage ([2df1ad1](https://github.com/theexperiencecompany/gaia/commit/2df1ad18780a527c5a953f83652c1e1d7f6b6453))
+* **MCPAppRenderer:** improve error handling and adjust app height for better layout ([2df1ad1](https://github.com/theexperiencecompany/gaia/commit/2df1ad18780a527c5a953f83652c1e1d7f6b6453))
+* Refactor Comparison Table to improve feature descriptions and layout consistency ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* update Postgres image to version 18-alpine ([#543](https://github.com/theexperiencecompany/gaia/issues/543)) ([4d1d5df](https://github.com/theexperiencecompany/gaia/commit/4d1d5dfbbbb0d0dab5c82687489817042e0a3a18))
+* Update Pricing Card component to streamline pricing display and button interactions ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* Update Pricing Modal to enhance user experience with trust messaging and improved layout ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+
 ## [0.17.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.16.0...web-v0.17.0) (2026-02-27)
 
 

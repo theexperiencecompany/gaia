@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.2.0...desktop-v0.3.0) (2026-03-13)
+
+
+### Features
+
+* added support for artifacts ([#547](https://github.com/theexperiencecompany/gaia/issues/547)) ([bf95597](https://github.com/theexperiencecompany/gaia/commit/bf95597efedb2ab1dd9f87ee9d5c9e4df13aaaff))
+
+
+### Bug Fixes
+
+* **ci:** enhance release workflows to preserve latest desktop release; update package.json for electron-builder to prevent auto-publishing ([c875193](https://github.com/theexperiencecompany/gaia/commit/c875193342cd7ba103b73663c4c6d63e466e212f))
+* update getServerUrl to handle non-packaged app environment ([4ef68f9](https://github.com/theexperiencecompany/gaia/commit/4ef68f94f55c8c1bf6771c8ff5375cec825786e9))
+
 ## [0.2.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.1.1...desktop-v0.2.0) (2026-02-27)
 
 
