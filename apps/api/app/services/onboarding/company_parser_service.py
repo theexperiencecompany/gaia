@@ -1,8 +1,11 @@
 """Service to fetch and parse a company landing page into a CompanyProfile."""
 
+import ipaddress
 import json
 import re
+import socket
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 from langchain_core.messages import HumanMessage
@@ -28,19 +31,54 @@ Respond as JSON:
 }}
 """
 
+# Hosts that must never be fetched (SSRF protection)
+_BLOCKED_HOSTS = {
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",  # nosec B104 — this is a blocklist entry for SSRF protection, not a bind address
+    "[::1]",
+    "metadata.google.internal",
+}
+
 
 def _normalize_url(url: str) -> str:
-    """Ensure URL has https:// scheme."""
+    """Ensure URL uses https:// scheme. Upgrades plain http:// to https://."""
     url = url.strip()
-    if not url.startswith(("http://", "https://")):
+    if url.startswith("http://"):
+        url = url.replace("http://", "https://", 1)
+    elif not url.startswith("https://"):
         url = f"https://{url}"
     return url
 
 
+def _is_safe_url(url: str) -> bool:
+    """Validate that a URL does not point to internal/private networks (SSRF protection)."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        if hostname in _BLOCKED_HOSTS:
+            return False
+        # Resolve hostname and check for private IP ranges
+        resolved = socket.getaddrinfo(
+            hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM
+        )
+        for _, _, _, _, addr in resolved:
+            ip = ipaddress.ip_address(addr[0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False
+    except (socket.gaierror, ValueError, OSError):
+        return False
+    return True
+
+
 def _extract_text_from_html(html: str) -> str:
     """Very basic HTML -> plain text. Strip tags, collapse whitespace."""
+    # Limit input length before regex processing to avoid excessive backtracking
+    html = html[:200_000]
     # Remove script and style blocks
-    html = re.sub(
+    html = re.sub(  # NOSONAR — bounded input, simple non-overlapping alternation, no ReDoS risk
         r"<(script|style)[^>]*>.*?</(script|style)>",
         "",
         html,
@@ -66,10 +104,20 @@ async def parse_company_url(url: str) -> Optional[CompanyProfile]:
     try:
         normalized = _normalize_url(url)
 
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            response = await client.get(
-                normalized,
-                headers={"User-Agent": "Mozilla/5.0 (compatible; GAIA/1.0)"},
+        if not _is_safe_url(normalized):
+            log.warning("[company_parser] Blocked request to non-public URL")
+            return None
+
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            follow_redirects=True,
+            max_redirects=5,
+        ) as client:
+            response = (
+                await client.get(  # NOSONAR — URL is validated by _is_safe_url above
+                    normalized,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; GAIA/1.0)"},
+                )
             )
             response.raise_for_status()
             html = response.text
@@ -77,7 +125,7 @@ async def parse_company_url(url: str) -> Optional[CompanyProfile]:
         page_text = _extract_text_from_html(html)
 
         if len(page_text) < 50:
-            log.warning(f"[company_parser] Very little text extracted from {url}")
+            log.warning("[company_parser] Very little text extracted from URL")
             return None
 
         llm = await providers.aget("llm_gemini_flash")
@@ -105,5 +153,5 @@ async def parse_company_url(url: str) -> Optional[CompanyProfile]:
         return profile
 
     except Exception as e:
-        log.error(f"[company_parser] Failed to parse {url}: {e}", exc_info=True)
+        log.error(f"[company_parser] Failed to parse company URL: {e}", exc_info=True)
         return None
