@@ -7,11 +7,11 @@ import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronUp } from "@/components/shared/icons";
-import type { UseCase } from "@/types/features/workflowTypes";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
+import type { UseCase } from "@/types/features/workflowTypes";
 
 // Register GSAP plugin
 gsap.registerPlugin(ScrollTrigger);

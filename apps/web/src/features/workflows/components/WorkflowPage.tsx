@@ -16,9 +16,9 @@ import React, {
 } from "react";
 import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
-import type { UseCase } from "@/types/features/workflowTypes";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { useHeader } from "@/hooks/layout/useHeader";
+import type { UseCase } from "@/types/features/workflowTypes";
 import {
   type CommunityWorkflow,
   type Workflow,
