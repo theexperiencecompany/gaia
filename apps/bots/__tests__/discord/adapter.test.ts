@@ -24,7 +24,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 vi.mock("discord.js", () => {
-  const EmbedBuilder = vi.fn().mockImplementation(() => {
+  // biome-ignore lint/complexity/useArrowFunction: vitest invokes mockImplementation as a constructor (new EmbedBuilder()), which requires function() not =>
+  const EmbedBuilder = vi.fn().mockImplementation(function () {
     const self: Record<string, unknown> = {};
     const chain = (name: string) => {
       self[name] = vi.fn().mockReturnValue(self);
@@ -46,20 +47,29 @@ vi.mock("discord.js", () => {
     EmbedBuilder,
     ActionRowBuilder: vi
       .fn()
-      .mockImplementation(() => ({ addComponents: vi.fn().mockReturnThis() })),
-    ButtonBuilder: vi.fn().mockImplementation(() => ({
-      setLabel: vi.fn().mockReturnThis(),
-      setURL: vi.fn().mockReturnThis(),
-      setStyle: vi.fn().mockReturnThis(),
-    })),
+      // biome-ignore lint/complexity/useArrowFunction: vitest invokes mockImplementation as a constructor (new ActionRowBuilder()), which requires function() not =>
+      .mockImplementation(function () {
+        return { addComponents: vi.fn().mockReturnThis() };
+      }),
+    // biome-ignore lint/complexity/useArrowFunction: vitest invokes mockImplementation as a constructor (new ButtonBuilder()), which requires function() not =>
+    ButtonBuilder: vi.fn().mockImplementation(function () {
+      return {
+        setLabel: vi.fn().mockReturnThis(),
+        setURL: vi.fn().mockReturnThis(),
+        setStyle: vi.fn().mockReturnThis(),
+      };
+    }),
     ButtonStyle: { Link: 5 },
-    Client: vi.fn().mockImplementation(() => ({
-      once: vi.fn(),
-      on: vi.fn(),
-      login: vi.fn().mockResolvedValue(undefined),
-      destroy: vi.fn(),
-      user: { id: "bot-user-id", tag: "GAIA#0001" },
-    })),
+    // biome-ignore lint/complexity/useArrowFunction: vitest invokes mockImplementation as a constructor (new Client()), which requires function() not =>
+    Client: vi.fn().mockImplementation(function () {
+      return {
+        once: vi.fn(),
+        on: vi.fn(),
+        login: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn(),
+        user: { id: "bot-user-id", tag: "GAIA#0001" },
+      };
+    }),
     Events: {
       ClientReady: "ready",
       InteractionCreate: "interactionCreate",
