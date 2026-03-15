@@ -208,6 +208,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           </div>
 
           <WorkflowSection
+            key={todo.id}
             hideBg={true}
             todoId={todo.id}
             onWorkflowLinked={handleWorkflowLinked}

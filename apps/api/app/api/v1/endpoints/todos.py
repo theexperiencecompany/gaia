@@ -405,12 +405,25 @@ async def generate_workflow(
             existing_workflow = await WorkflowService.get_workflow(
                 todo.workflow_id, user["user_id"]
             )
-            if existing_workflow:
+            if (
+                existing_workflow
+                and existing_workflow.steps
+                and len(existing_workflow.steps) > 0
+            ):
                 return {
                     "status": "exists",
                     "workflow": existing_workflow,
                     "message": "Workflow already exists for this todo",
                 }
+            # Empty or failed workflow — delete it and allow regeneration
+            if existing_workflow and existing_workflow.id:
+                await WorkflowService.delete_workflow(
+                    existing_workflow.id, user["user_id"]
+                )
+            await todos_collection.update_one(
+                {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
+                {"$unset": {"workflow_id": ""}},
+            )
 
         # Invalidate cached workflow status so next poll reflects generating state
         await delete_cache(f"workflow_status:{user['user_id']}:{todo_id}")
@@ -479,6 +492,7 @@ async def get_workflow_status(
 
         # Get standalone workflow if workflow_id exists
         workflow = None
+        has_workflow = False
         workflow_status = "not_started"
 
         # Check if workflow generation is queued/pending (Redis flag)
@@ -494,17 +508,20 @@ async def get_workflow_status(
                 has_steps = workflow.steps and len(workflow.steps) > 0
                 if has_steps:
                     workflow_status = "completed"
-                else:
-                    # Workflow exists but no steps = still generating
+                    has_workflow = True
+                elif await WorkflowQueueService.is_workflow_generating(todo_id):
                     is_generating = True
                     workflow_status = "generating"
+                else:
+                    # Workflow exists but empty steps and not generating = failed
+                    workflow_status = "failed"
 
         wf_result = {
             "todo_id": todo_id,
-            "has_workflow": workflow is not None and not is_generating,
+            "has_workflow": has_workflow,
             "is_generating": is_generating,
             "workflow_status": workflow_status,
-            "workflow": workflow if not is_generating else None,
+            "workflow": workflow if has_workflow else None,
         }
         if not is_generating:
             await set_cache(wf_cache_key, wf_result, ttl=60)

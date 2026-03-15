@@ -95,22 +95,37 @@ export default function WorkflowSection({
       setError(null);
       onWorkflowLinked?.(wf.id);
 
-      // Sync categories to global store so todo item updates immediately
-      useTodoStore.getState().updateTodoOptimistic(todoId, {
+      // Sync categories and cache to global store so todo item updates immediately
+      const store = useTodoStore.getState();
+      store.updateTodoOptimistic(todoId, {
         workflow_categories: extractWorkflowCategories(wf.steps),
       });
+      // Invalidate prefetch cache so re-opening sidebar doesn't show stale "generating" state
+      store.workflowStatusCache[todoId] = {
+        has_workflow: true,
+        is_generating: false,
+        workflow: wf,
+        cachedAt: Date.now(),
+      };
 
       toast.success("Workflow generated!");
     },
     [onWorkflowLinked, todoId],
   );
 
-  const handleWorkflowFailed = useCallback((errorMsg: string) => {
-    console.log("[WorkflowSection] WebSocket workflow failed:", errorMsg);
-    setIsGenerating(false);
-    setError(errorMsg);
-    toast.error("Failed to generate workflow");
-  }, []);
+  const handleWorkflowFailed = useCallback(
+    (errorMsg: string) => {
+      console.log("[WorkflowSection] WebSocket workflow failed:", errorMsg);
+      setIsGenerating(false);
+      setError(errorMsg);
+
+      // Clear stale "generating" cache so sidebar doesn't show outdated state
+      delete useTodoStore.getState().workflowStatusCache[todoId];
+
+      toast.error("Failed to generate workflow");
+    },
+    [todoId],
+  );
 
   useTodoWorkflowWebSocket({
     todoId,
@@ -180,18 +195,30 @@ export default function WorkflowSection({
       const instruction = reason?.label ?? reasonKey;
 
       try {
-        await workflowApi.regenerateWorkflowSteps(workflow.id, {
-          instruction,
-          force_different_tools: true,
-        });
-        toast.success("Regenerating workflow...");
+        const response = await workflowApi.regenerateWorkflowSteps(
+          workflow.id,
+          {
+            instruction,
+            force_different_tools: true,
+          },
+        );
+        if (response.workflow) {
+          setWorkflow(response.workflow);
+          useTodoStore.getState().updateTodoOptimistic(todoId, {
+            workflow_categories: extractWorkflowCategories(
+              response.workflow.steps,
+            ),
+          });
+          toast.success("Workflow regenerated!");
+        }
+        setIsGenerating(false);
       } catch (err) {
         setIsGenerating(false);
         setError(err instanceof Error ? err.message : "Unknown error");
         toast.error("Failed to regenerate workflow");
       }
     },
-    [workflow, isGenerating],
+    [workflow, isGenerating, todoId],
   );
 
   // Run workflow

@@ -1121,8 +1121,16 @@ class WorkflowService:
                     },
                 )
             else:
-                await handle_workflow_error(
-                    workflow_id, user_id, Exception("Failed to generate workflow steps")
+                error_msg = "Failed to generate workflow steps"
+                log.error(f"[WorkflowGen] {error_msg} for {workflow_id}")
+                await workflows_collection.find_one_and_update(
+                    {"_id": workflow_id, "user_id": user_id},
+                    {
+                        "$set": {
+                            "error_message": error_msg,
+                            "updated_at": datetime.now(timezone.utc),
+                        }
+                    },
                 )
 
         except Exception as e:
