@@ -125,16 +125,23 @@ export function useNotifications(
 
   const bulkMarkAsRead = useCallback(
     async (ids: string[]) => {
+      const idSet = new Set(ids);
+      const prev = useNotificationStore.getState().notifications;
+      setNotifications(
+        prev.map((n) =>
+          idSet.has(n.id) ? { ...n, status: NotificationStatus.READ } : n,
+        ),
+      );
       try {
         await NotificationsAPI.bulkMarkAsRead(ids);
-        await fetchNotifications(true);
         toast.success(`Marked ${ids.length} notifications as read`);
       } catch (error) {
+        await fetchNotifications(true);
         toast.error("Failed to mark notifications as read");
         console.error("Error bulk marking notifications as read:", error);
       }
     },
-    [fetchNotifications],
+    [fetchNotifications, setNotifications],
   );
 
   const bulkArchive = useCallback(

@@ -104,6 +104,12 @@ async def process_workflow_generation_task(
             )
 
             if workflow and workflow.id:
+                # Verify workflow actually has steps before linking
+                if not workflow.steps or len(workflow.steps) == 0:
+                    raise ValueError(
+                        f"Workflow {workflow.id} created but has no steps — generation failed silently"
+                    )
+
                 update_data = {
                     "workflow_id": workflow.id,
                     "updated_at": datetime.now(timezone.utc),

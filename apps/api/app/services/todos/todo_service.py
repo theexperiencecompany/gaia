@@ -1,3 +1,4 @@
+import asyncio
 import math
 import uuid
 from datetime import datetime, timezone
@@ -62,6 +63,10 @@ async def _get_workflow_categories_for_todos(
     Fetch workflow step categories for todos that have linked workflows.
     Returns a dict mapping todo_id -> list of unique tool categories.
     """
+    # Skip DB call entirely when no todos have a workflow_id
+    if not any(todo.get("workflow_id") for todo in todos):
+        return {}
+
     # Collect workflow IDs from todos
     workflow_ids = [
         todo.get("workflow_id") for todo in todos if todo.get("workflow_id")
@@ -99,6 +104,10 @@ async def _get_workflow_categories_for_todos(
     return result
 
 
+# Module-level set to hold references to background tasks and prevent GC
+_background_tasks: set[asyncio.Task] = set()
+
+
 class TodoService:
     """Service class for todo operations with consistent error handling and caching."""
 
@@ -111,8 +120,9 @@ class TodoService:
     ):
         """Invalidate relevant caches based on the operation context."""
         try:
-            # Always invalidate stats since they might change
+            # Always invalidate stats and counts since they might change
             await delete_cache(f"stats:{user_id}")
+            await delete_cache(f"counts:{user_id}")
 
             # For specific todo operations, invalidate only affected caches
             if todo_id and operation in ["update", "delete"]:
@@ -350,26 +360,24 @@ class TodoService:
         result = await todos_collection.insert_one(todo_dict)
         created_todo = await todos_collection.find_one({"_id": result.inserted_id})
 
-        # Queue workflow generation in background (same flow as Generate button)
+        # Queue workflow generation as fire-and-forget (does not block response)
         todo_id_str = str(result.inserted_id)
         try:
             from app.services.workflow.queue_service import WorkflowQueueService
 
-            success = await WorkflowQueueService.queue_todo_workflow_generation(
-                todo_id=todo_id_str,
-                user_id=user_id,
-                title=todo.title,
-                description=todo.description or "",
+            _task = asyncio.create_task(
+                WorkflowQueueService.queue_todo_workflow_generation(
+                    todo_id=todo_id_str,
+                    user_id=user_id,
+                    title=todo.title,
+                    description=todo.description or "",
+                )
             )
-
-            if success:
-                log.info(
-                    f"Queued workflow generation for todo '{todo.title}' (ID: {todo_id_str})"
-                )
-            else:
-                log.warning(
-                    f"Failed to queue workflow generation for todo '{todo.title}'"
-                )
+            _background_tasks.add(_task)
+            _task.add_done_callback(_background_tasks.discard)
+            log.info(
+                f"Queued workflow generation for todo '{todo.title}' (ID: {todo_id_str})"
+            )
         except Exception as e:
             log.warning(f"Failed to queue workflow for todo '{todo.title}': {str(e)}")
 
@@ -442,7 +450,7 @@ class TodoService:
         if params.q and params.mode in [SearchMode.SEMANTIC, SearchMode.HYBRID]:
             return await cls._search_todos(user_id, params)
 
-        # Generate cache key for this specific query
+        # Generate cache key for this specific query — must include ALL filter dimensions
         cache_key_parts = [f"todos:{user_id}"]
         if params.project_id:
             cache_key_parts.append(f"project:{params.project_id}")
@@ -450,6 +458,16 @@ class TodoService:
             cache_key_parts.append(f"completed:{params.completed}")
         if params.priority:
             cache_key_parts.append(f"priority:{params.priority.value}")
+        if params.labels:
+            cache_key_parts.append(f"labels:{','.join(sorted(params.labels))}")
+        if params.has_due_date is not None:
+            cache_key_parts.append(f"has_due_date:{params.has_due_date}")
+        if params.overdue is not None:
+            cache_key_parts.append(f"overdue:{params.overdue}")
+        if params.due_date_start:
+            cache_key_parts.append(f"due_after:{params.due_date_start.isoformat()}")
+        if params.due_date_end:
+            cache_key_parts.append(f"due_before:{params.due_date_end.isoformat()}")
         cache_key_parts.append(f"page:{params.page}")
         cache_key = ":".join(cache_key_parts)
 
@@ -696,13 +714,11 @@ class TodoService:
                     }
                 ).to_list(None)
 
-                for todo in updated_todos:
-                    try:
-                        await update_todo_embedding(str(todo["_id"]), todo, user_id)
-                    except Exception as e:
-                        log.warning(
-                            f"Failed to update index for todo {todo['_id']}: {str(e)}"
-                        )
+                tasks = [
+                    update_todo_embedding(str(todo["_id"]), todo, user_id)
+                    for todo in updated_todos
+                ]
+                await asyncio.gather(*tasks, return_exceptions=True)
             except Exception as e:
                 log.warning(f"Failed to update search index: {str(e)}")
 
