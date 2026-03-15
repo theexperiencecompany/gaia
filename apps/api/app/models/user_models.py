@@ -130,6 +130,18 @@ class OnboardingData(BaseModel):
         default_factory=dict,
         description="Map of integration IDs to their scan state data (e.g. {'gmail': {'last_scan': timestamp}})",
     )
+    company_url: Optional[str] = Field(
+        None, description="Company website URL provided during onboarding"
+    )
+    company_profile: Optional[dict] = Field(
+        None, description="Parsed company profile from URL"
+    )
+    writing_style: Optional[dict] = Field(
+        None, description="Learned writing style profile from sent emails"
+    )
+    first_message_conversation_id: Optional[str] = Field(
+        None, description="ID of the seeded onboarding conversation"
+    )
 
 
 class OnboardingRequest(BaseModel):
@@ -142,6 +154,7 @@ class OnboardingRequest(BaseModel):
     timezone: Optional[str] = Field(
         None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
     )
+    company_url: Optional[str] = None
 
     @field_validator("name")
     @classmethod

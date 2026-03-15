@@ -81,6 +81,14 @@ async def complete_onboarding(
             "updated_at": datetime.now(timezone.utc),
         }
 
+        # Store company_url — normalize empty/missing to None for consistent schema
+        if onboarding_data.company_url and onboarding_data.company_url.strip():
+            update_fields["onboarding.company_url"] = (
+                onboarding_data.company_url.strip()
+            )
+        else:
+            update_fields["onboarding.company_url"] = None
+
         # Always set timezone at root level from onboarding data
         if onboarding_data.timezone:
             update_fields["timezone"] = onboarding_data.timezone.strip()

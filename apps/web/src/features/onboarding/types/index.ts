@@ -12,6 +12,7 @@ export interface Question {
   placeholder: string;
   fieldName: string;
   chipOptions?: { label: string; value: string }[];
+  optional?: boolean;
 }
 
 export interface OnboardingState {
@@ -23,7 +24,8 @@ export interface OnboardingState {
   };
   userResponses: Record<string, string>;
   isProcessing: boolean;
-  isOnboardingComplete: boolean;
+  isProcessingPhase: boolean;
+  hasGmail: boolean;
   hasAnsweredCurrentQuestion: boolean;
 }
 

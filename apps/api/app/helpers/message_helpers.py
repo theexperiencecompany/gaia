@@ -3,8 +3,12 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 from zoneinfo import ZoneInfo
 
+from bson import ObjectId
 from langchain_core.messages import SystemMessage
 
+from app.agents.prompts.onboarding_prompts import (
+    ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT,
+)
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     WORKFLOW_EXECUTION_PROMPT,
@@ -13,12 +17,14 @@ from app.agents.templates.agent_template import (
     COMMS_PROMPT_TEMPLATE,
     EXECUTOR_PROMPT_TEMPLATE,
 )
+from app.db.mongodb.collections import conversations_collection, users_collection
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.memory_service import memory_service
 from app.services.workflow import WorkflowService
@@ -303,6 +309,69 @@ def format_reply_context(
     context = f"""[The user is responding to {role_label} earlier message: "{reply_to_message.content}"]"""
 
     return f"{context}\n\n{existing_content}" if existing_content else context
+
+
+async def get_onboarding_system_prompt_if_applicable(
+    user_id: str,
+    conversation_id: str,
+) -> Optional[str]:
+    """
+    Returns the onboarding first conversation system prompt if this is the
+    user's onboarding conversation and they haven't completed onboarding yet.
+    Returns None for normal conversations.
+    """
+    try:
+        # Check conversation tag and message count
+        conv = await conversations_collection.find_one(
+            {"conversation_id": conversation_id},
+            {"is_onboarding_conversation": 1, "messages": 1},
+        )
+        if not conv or not conv.get("is_onboarding_conversation"):
+            return None
+
+        # Auto-complete after ~4 user turns (8 messages: 1 seeded + 3-4 exchanges)
+        message_count = len(conv.get("messages", []))
+        if message_count >= 8:
+            await users_collection.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$set": {"onboarding.phase": OnboardingPhase.COMPLETED}},
+            )
+            log.info(
+                f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
+            )
+            return None
+
+        # Check user phase — only inject during active onboarding
+        user_doc = await users_collection.find_one(
+            {"_id": ObjectId(user_id)},
+            {"onboarding.phase": 1, "name": 1, "onboarding.preferences": 1},
+        )
+        if not user_doc:
+            return None
+
+        phase = user_doc.get("onboarding", {}).get("phase", "initial")
+        if phase == OnboardingPhase.COMPLETED:
+            return None
+
+        name = user_doc.get("name", "there")
+        onboarding = user_doc.get("onboarding", {})
+        profession = onboarding.get("preferences", {}).get("profession", "")
+        triage_summary = onboarding.get("triage_summary", "")
+
+        onboarding_context = (
+            f"Profession: {profession}" if profession else "Profession: not specified"
+        )
+        if triage_summary:
+            onboarding_context += f"\nInbox summary: {triage_summary}"
+
+        return ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT.format(
+            name=name,
+            onboarding_context=onboarding_context,
+        )
+
+    except Exception as e:
+        log.warning(f"[onboarding_prompt] Failed to check onboarding conversation: {e}")
+        return None
 
 
 def format_files_list(

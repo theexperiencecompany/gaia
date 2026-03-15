@@ -1,57 +1,55 @@
 "use client";
 
 import {
-  OnboardingChips,
-  OnboardingComplete,
   OnboardingInput,
   OnboardingMessages,
   OnboardingProgress,
 } from "@/features/onboarding/components";
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
+import { useOnboardingWebSocket } from "@/features/onboarding/hooks/useOnboardingWebSocket";
 
 export default function Onboarding() {
   const {
     onboardingState,
     messagesEndRef,
     inputRef,
-    handleChipSelect,
     handleProfessionSelect,
     handleProfessionInputChange,
     handleInputChange,
     handleSubmit,
-    handleLetsGo,
+    handleSkip,
+    handleGmailSkip,
+    handleConversationReady,
     handleRestart,
   } = useOnboarding();
 
+  const { intelligenceConversationId, isIntelligenceComplete } =
+    useOnboardingWebSocket(onboardingState.isProcessingPhase);
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-primary-bg backdrop-blur-2xl">
-      {/* Progress Indicator - 3 steps: name, profession, connections */}
       <OnboardingProgress
         currentStep={onboardingState.currentQuestionIndex}
-        totalSteps={3}
+        totalSteps={5}
         onRestart={handleRestart}
       />
 
-      {/* Messages Container */}
       <div className="relative z-10 flex-1 overflow-y-auto px-4 pt-20 pb-10">
         <div className="relative mx-auto max-w-2xl">
           <OnboardingMessages
             messages={onboardingState.messages}
             messagesEndRef={messagesEndRef}
-            isOnboardingComplete={onboardingState.isOnboardingComplete}
-          />
-          <OnboardingChips
-            onboardingState={onboardingState}
-            onChipSelect={handleChipSelect}
+            isProcessingPhase={onboardingState.isProcessingPhase}
+            hasGmail={onboardingState.hasGmail}
+            isIntelligenceComplete={isIntelligenceComplete}
+            intelligenceConversationId={intelligenceConversationId}
+            onProcessingComplete={handleConversationReady}
           />
         </div>
       </div>
 
-      {/* Fixed Input Container */}
-      <div className="relative z-10 mx-auto w-full max-w-lg pb-3">
-        {onboardingState.isOnboardingComplete ? (
-          <OnboardingComplete onLetsGo={handleLetsGo} />
-        ) : (
+      {!onboardingState.isProcessingPhase && (
+        <div className="relative z-10 mx-auto w-full max-w-lg pb-3">
           <OnboardingInput
             onboardingState={onboardingState}
             onSubmit={handleSubmit}
@@ -59,9 +57,11 @@ export default function Onboarding() {
             onProfessionSelect={handleProfessionSelect}
             onProfessionInputChange={handleProfessionInputChange}
             inputRef={inputRef}
+            onSkip={handleSkip}
+            onGmailSkip={handleGmailSkip}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from uuid import uuid4
 
 from shared.py.wide_events import log
 from app.constants.general import NEW_MESSAGE_BREAKER
-from app.db.mongodb.collections import goals_collection
+from app.db.mongodb.collections import conversations_collection, goals_collection
 from app.models.chat_models import (
     ConversationModel,
     MessageModel,
@@ -278,3 +279,50 @@ async def seed_onboarding_todo(user_id: str) -> None:
 
     except Exception as e:
         log.error(f"Failed to seed onboarding todo for user {user_id}: {e}")
+
+
+async def seed_onboarding_conversation(
+    user_id: str,
+    first_message: str,
+) -> Optional[str]:
+    """
+    Seed the onboarding first conversation with GAIA's dynamic first message.
+    Tags the conversation with is_onboarding_conversation=True.
+    Returns the conversation_id or None on failure.
+    """
+    log.set(operation="seed_onboarding_conversation", user_id=user_id)
+    try:
+        conversation_id = str(uuid4())
+        conversation = ConversationModel(
+            conversation_id=conversation_id,
+            description="Your personalized GAIA setup",
+            is_system_generated=False,
+            is_unread=True,
+        )
+
+        user_dict = {"user_id": user_id}
+        await create_conversation_service(conversation, user_dict)
+
+        message = MessageModel(
+            type="ai",
+            response=first_message,
+            date=datetime.now(timezone.utc).isoformat(),
+        )
+
+        update_request = UpdateMessagesRequest(
+            conversation_id=conversation_id, messages=[message]
+        )
+        await update_messages(update_request, user_dict)
+
+        # Tag with is_onboarding_conversation so the agent uses the onboarding system prompt
+        await conversations_collection.update_one(
+            {"conversation_id": conversation_id},
+            {"$set": {"is_onboarding_conversation": True}},
+        )
+
+        log.info(f"Seeded onboarding conversation {conversation_id} for user {user_id}")
+        return conversation_id
+
+    except Exception as e:
+        log.error(f"Failed to seed onboarding conversation for user {user_id}: {e}")
+        return None
