@@ -76,14 +76,27 @@ async def update_gaia_task(
     Update a GaiaTask's status and append notes to its log. Call after taking
     any action related to the task (e.g. sent a follow-up, received a reply,
     made a decision).
+
+    Valid statuses: 'active', 'waiting', 'stalled'. Do NOT use this tool to
+    complete or cancel a task — use complete_gaia_task or cancel_gaia_task instead.
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
         return "Error: user_id not found in config"
 
+    if status:
+        try:
+            parsed_status = GaiaTaskStatus(status)
+        except ValueError:
+            return f"Invalid status '{status}'. Valid transitional values: active, waiting, stalled"
+        if parsed_status in (GaiaTaskStatus.COMPLETED, GaiaTaskStatus.CANCELLED, GaiaTaskStatus.EXPIRED):
+            return f"Use complete_gaia_task or cancel_gaia_task to set status to '{status}'"
+    else:
+        parsed_status = None
+
     request = UpdateGaiaTaskRequest(
         notes=notes,
-        status=GaiaTaskStatus(status) if status else None,
+        status=parsed_status,
     )
     task = await gaia_task_service.update_task(
         task_id=task_id, user_id=user_id, request=request
