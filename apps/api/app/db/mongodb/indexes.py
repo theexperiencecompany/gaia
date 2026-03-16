@@ -23,6 +23,7 @@ from app.db.mongodb.collections import (
     conversations_collection,
     device_tokens_collection,
     files_collection,
+    gaia_tasks_collection,
     goals_collection,
     integrations_collection,
     mail_collection,
@@ -86,6 +87,7 @@ async def create_all_indexes():
             create_installed_skills_indexes(),
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
+            create_gaia_task_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -116,6 +118,7 @@ async def create_all_indexes():
             "skills",
             "workflow_executions",
             "bot_sessions",
+            "gaia_tasks",
         ]
 
         index_results = {}
@@ -960,6 +963,22 @@ async def create_bot_session_indexes():
 
     except Exception as e:
         log.error(f"Error creating bot session indexes: {str(e)}")
+        raise
+
+
+async def create_gaia_task_indexes():
+    """Create indexes for gaia_tasks collection."""
+    try:
+        await asyncio.gather(
+            # Primary query: active tasks per user
+            gaia_tasks_collection.create_index([("user_id", 1), ("status", 1)]),
+            # Unique task lookup
+            gaia_tasks_collection.create_index([("task_id", 1)], unique=True),
+            # Expiry scan (maintenance mode checks expires_at)
+            gaia_tasks_collection.create_index([("expires_at", 1)], sparse=True),
+        )
+    except Exception as e:
+        log.error(f"Error creating gaia_task indexes: {str(e)}")
         raise
 
 
