@@ -14,6 +14,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from app.services.vfs.grep_utils import GrepOptions, compile_pattern, search_file_content
+
 from shared.py.wide_events import log
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.mongodb.collections import _get_mongodb_instance, vfs_nodes_collection
@@ -539,15 +541,14 @@ class MongoVFS:
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
 
-        query = self._build_query(path, user_id)
-        node = await vfs_nodes_collection.find_one(query)
-        if not node or node.get("node_type") != VFSNodeType.FILE.value:
-            return None, 0
+        query = {**self._build_query(path, user_id), "node_type": VFSNodeType.FILE.value}
 
-        await vfs_nodes_collection.update_one(
-            self._build_query(path, user_id),
+        node = await vfs_nodes_collection.find_one_and_update(
+            query,
             {"$set": {"accessed_at": datetime.now(timezone.utc)}},
         )
+        if not node:
+            return None, 0
 
         # Inline content — slice in Python
         if node.get("content") is not None:
@@ -572,12 +573,16 @@ class MongoVFS:
                     # for pagination purposes.
                     await stream.read(offset)
 
+                chunk_bytes: bytes
                 if limit > 0:
                     chunk_bytes = await stream.read(limit)
                 else:
                     chunk_bytes = await stream.read()
 
-                content = chunk_bytes.decode("utf-8")
+                # Use errors="replace" to handle mid-character UTF-8 splits
+                # that can occur when byte offset doesn't align with a char
+                # boundary (only affects multi-byte content like CJK/emoji).
+                content = chunk_bytes.decode("utf-8", errors="replace")
                 # total_size_bytes ≈ total chars for ASCII/JSON content
                 return content, total_size_bytes
             except Exception as e:
@@ -1081,12 +1086,16 @@ class MongoVFS:
             List of dicts with keys: path, name, matches
             Each match has: line_num, line, is_context
         """
+        content_filter: dict[str, Any] = {"$ne": None, "$regex": pattern}
+        if case_insensitive:
+            content_filter["$options"] = "i"
+
         query: dict[str, Any] = {
             "user_id": self._get_query_user_id(
                 base_path or f"/users/{user_id}", user_id
             ),
             "node_type": "file",
-            "content": {"$ne": None},
+            "content": content_filter,
         }
 
         if base_path:
@@ -1108,117 +1117,33 @@ class MongoVFS:
             else:
                 query["name"] = {"$not": combined_exclude}
 
-        regex_options = "i" if case_insensitive else ""
-        query["content"]["$regex"] = pattern
-        if regex_options:
-            query["content"]["$options"] = regex_options
-
         projection = {"path": 1, "name": 1, "content": 1, "_id": 0}
 
         cursor = vfs_nodes_collection.find(query, projection).limit(max_files)
         docs = await cursor.to_list(length=max_files)
 
-        flags = re.IGNORECASE if case_insensitive else 0
-        try:
-            compiled = re.compile(pattern, flags)
-        except re.error:
-            compiled = re.compile(re.escape(pattern), flags)
-
-        wants_context = (before_context > 0 or after_context > 0) and not invert
+        compiled = compile_pattern(pattern, case_insensitive)
+        opts = GrepOptions(
+            case_insensitive=case_insensitive,
+            invert=invert,
+            only_matching=only_matching,
+            before_context=before_context,
+            after_context=after_context,
+            max_matches=max_matches_per_file,
+            max_line_length=max_line_length,
+        )
 
         results: list[dict[str, Any]] = []
         for doc in docs:
-            content: str = doc["content"]
-            doc_lines = content.split("\n")
-
-            # First pass: find matching line indices
-            match_indices: list[int] = []
-            for i, line in enumerate(doc_lines):
-                hit = compiled.search(line) is not None
-                if hit != invert:
-                    match_indices.append(i)
-                    if len(match_indices) >= max_matches_per_file:
-                        break
-
-            if not match_indices:
-                continue
-
-            file_matches: list[dict[str, Any]] = []
-
-            if wants_context:
-                include_set: set[int] = set()
-                for idx in match_indices:
-                    start = max(0, idx - before_context)
-                    end = min(len(doc_lines) - 1, idx + after_context)
-                    for j in range(start, end + 1):
-                        include_set.add(j)
-                match_set = set(match_indices)
-                prev_idx = -2
-                for idx in sorted(include_set):
-                    if prev_idx >= 0 and idx > prev_idx + 1:
-                        file_matches.append(
-                            {"line_num": 0, "line": "--", "is_context": False}
-                        )
-                    prev_idx = idx
-                    line = doc_lines[idx]
-                    is_match = idx in match_set
-                    if is_match and only_matching:
-                        for m in compiled.finditer(line):
-                            file_matches.append(
-                                {
-                                    "line_num": idx + 1,
-                                    "line": m.group(),
-                                    "is_context": False,
-                                }
-                            )
-                    else:
-                        display_line = line[:max_line_length]
-                        if len(line) > max_line_length:
-                            display_line += "..."
-                        file_matches.append(
-                            {
-                                "line_num": idx + 1,
-                                "line": display_line,
-                                "is_context": not is_match,
-                            }
-                        )
-            else:
-                for idx in match_indices:
-                    line = doc_lines[idx]
-                    if only_matching and not invert:
-                        for m in compiled.finditer(line):
-                            file_matches.append(
-                                {
-                                    "line_num": idx + 1,
-                                    "line": m.group(),
-                                    "is_context": False,
-                                }
-                            )
-                    else:
-                        display_line = line[:max_line_length]
-                        if len(line) > max_line_length:
-                            display_line += "..."
-                        file_matches.append(
-                            {
-                                "line_num": idx + 1,
-                                "line": display_line,
-                                "is_context": False,
-                            }
-                        )
-
-            if file_matches:
-                doc_path: str = doc["path"]
-                if base_path and doc_path.startswith(base_path.rstrip("/") + "/"):
-                    rel_name = doc_path[len(base_path.rstrip("/")) + 1 :]
-                else:
-                    rel_name = doc.get("name", doc_path.rsplit("/", 1)[-1])
-                results.append(
-                    {
-                        "path": doc_path,
-                        "name": rel_name,
-                        "matches": file_matches,
-                    }
-                )
+            result = search_file_content(
+                doc["content"],
+                compiled,
+                file_path=doc["path"],
+                base_path=base_path or "",
+                opts=opts,
+            )
+            if result is not None:
+                results.append(result)
 
         return results
 

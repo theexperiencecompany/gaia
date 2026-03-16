@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, cast
 
 from shared.py.wide_events import log
+from app.agents.middleware.config_utils import extract_vfs_context
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import get_session_path
@@ -214,42 +215,17 @@ class VFSCompactionMiddleware(AgentMiddleware):
             tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
         )
 
-        # Extract user context from runtime
-        runtime = request.runtime
-        config = getattr(runtime, "config", {}) or {}
-        configurable = config.get("configurable", {})
-        user_id = configurable.get("user_id")
-        vfs_session_id = configurable.get("vfs_session_id")
-        thread_id = configurable.get("thread_id")
-        conversation_id = vfs_session_id or thread_id
-        subagent_id = configurable.get("subagent_id")
-        metadata_cfg = config.get("metadata", {})
-        agent_name_meta = metadata_cfg.get("agent_name")
+        ctx = extract_vfs_context(request.runtime)
 
-        if not user_id:
-            raise ValueError("VFS compaction requires 'user_id' in configurable")
-        if not conversation_id:
-            raise ValueError(
-                "VFS compaction requires 'vfs_session_id' or 'thread_id' in configurable"
-            )
-
-        written_by = subagent_id or agent_name_meta
-        if not written_by:
-            raise ValueError(
-                "VFS compaction requires 'subagent_id' in configurable or 'agent_name' in metadata"
-            )
-
-        # Generate storage path
         content_hash = hashlib.md5(
             content_str.encode(), usedforsecurity=False
         ).hexdigest()[:8]  # noqa: S324
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        session_path = get_session_path(user_id, conversation_id)
+        session_path = get_session_path(ctx.user_id, ctx.conversation_id)
         vfs_path = (
             f"{session_path}/tool_outputs/{tool_name}_{timestamp}_{content_hash}.json"
         )
 
-        # Store in VFS
         vfs = await self._get_vfs()
 
         output_data: dict[str, Any] = {
@@ -266,21 +242,20 @@ class VFSCompactionMiddleware(AgentMiddleware):
         await vfs.write(
             path=vfs_path,
             content=json.dumps(output_data, indent=2, default=str),
-            user_id=user_id,
+            user_id=ctx.user_id,
             metadata={
                 "type": "tool_output",
                 "tool_name": tool_name,
                 "agent_name": "executor",
-                "written_by": written_by,
-                "agent_thread_id": thread_id,
-                "conversation_id": conversation_id,
-                "vfs_session_id": vfs_session_id,
+                "written_by": ctx.written_by,
+                "agent_thread_id": ctx.thread_id,
+                "conversation_id": ctx.conversation_id,
+                "vfs_session_id": ctx.vfs_session_id,
                 "compacted": True,
                 "reason": reason,
             },
         )
 
-        # Create compacted content with size info and spawn_subagent hint
         summary = self._create_summary(content_str, tool_name)
         size_kb = len(content_str) / 1024
         compacted_content = (
@@ -293,7 +268,6 @@ class VFSCompactionMiddleware(AgentMiddleware):
             f"Compacted {tool_name} output ({len(content_str)} chars) to {vfs_path} ({reason})"
         )
 
-        # Return new ToolMessage with compacted content
         return ToolMessage(
             content=compacted_content,
             tool_call_id=tool_call_id,
@@ -309,11 +283,9 @@ class VFSCompactionMiddleware(AgentMiddleware):
 
     def _create_summary(self, content: str, tool_name: str) -> str:
         """Create a summary of the tool output."""
-        # Try to parse as JSON and summarize
         try:
             data = json.loads(content)
             if isinstance(data, list):
-                # Show first few items for context
                 preview = data[:3] if len(data) > 3 else data
                 return f"[{tool_name}] Returned {len(data)} items. Preview: {json.dumps(preview, default=str)[:200]}..."
             elif isinstance(data, dict):

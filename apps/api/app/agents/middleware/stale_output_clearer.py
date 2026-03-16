@@ -15,6 +15,7 @@ Two phases:
    placeholder that includes a VFS re-read reference when available.
 """
 
+import bisect
 import re
 from typing import Any
 
@@ -58,6 +59,7 @@ class StaleOutputClearerMiddleware(AgentMiddleware):
         size_tiers: list[tuple[int, int]] | None = None,
         default_turns: int = STALE_DEFAULT_TURNS,
         never_mask_tools: set[str] | None = None,
+        require_reread_ref: bool = True,
     ) -> None:
         """
         Initialize the stale output clearer middleware.
@@ -69,12 +71,16 @@ class StaleOutputClearerMiddleware(AgentMiddleware):
                         STALE_SIZE_TIERS from constants if not provided.
             default_turns: Turns threshold for outputs larger than every tier.
             never_mask_tools: Tool names whose outputs should never be masked.
+            require_reread_ref: If True (default), only mask outputs that have
+                a VFS re-read reference (from compaction or vfs_source tag).
+                Prevents permanent data loss when compaction is disabled.
         """
         super().__init__()
         self.min_size = min_size
         self.size_tiers = size_tiers if size_tiers is not None else STALE_SIZE_TIERS
         self.default_turns = default_turns
         self.never_mask_tools = never_mask_tools or set()
+        self.require_reread_ref = require_reread_ref
 
     def _turns_for_size(self, size: int) -> int:
         """
@@ -152,72 +158,77 @@ class StaleOutputClearerMiddleware(AgentMiddleware):
         if not messages:
             return None
 
-        # Build an index of positions where AIMessages appear.
-        # This lets us count how many AI turns have happened after a given
-        # message position.
         ai_indices: list[int] = [
             i for i, msg in enumerate(messages) if isinstance(msg, AIMessage)
         ]
+        total_ai = len(ai_indices)
 
-        new_messages: list[Any] = []
-        total_chars_saved = 0
-        any_modified = False
+        if total_ai == 0:
+            return None
+
+        # First pass: identify which indices need masking (avoids copying
+        # the full message list when nothing qualifies).
+        mask_candidates: list[tuple[int, str, int, str | None]] = []
+        #                     (idx, tool_name, content_size, reread_ref)
 
         for idx, msg in enumerate(messages):
-            # Only consider ToolMessages
             if not isinstance(msg, ToolMessage):
-                new_messages.append(msg)
                 continue
 
             additional_kwargs: dict[str, Any] = getattr(
                 msg, "additional_kwargs", {}
             ) or {}
-
-            # Already masked or compacted -- keep as-is
             if additional_kwargs.get("masked") or additional_kwargs.get("compacted"):
-                new_messages.append(msg)
                 continue
 
-            # Never mask certain tools
             tool_name = getattr(msg, "name", None) or ""
             if tool_name in self.never_mask_tools:
-                new_messages.append(msg)
                 continue
 
-            # Get content size
             content = msg.content if hasattr(msg, "content") else str(msg)
             content_str = str(content)
             content_size = len(content_str)
 
-            # Skip small outputs
             if content_size < self.min_size:
-                new_messages.append(msg)
                 continue
 
-            # Count AI turns that occurred after this message
-            turns_after = sum(1 for ai_idx in ai_indices if ai_idx > idx)
+            turns_after = total_ai - bisect.bisect_right(ai_indices, idx)
 
-            # Check against required turns for this size
             required_turns = self._turns_for_size(content_size)
             if turns_after < required_turns:
+                continue
+
+            reread_ref = self._extract_reread_ref(content_str, additional_kwargs)
+            if self.require_reread_ref and reread_ref is None:
+                continue
+
+            mask_candidates.append((idx, tool_name, content_size, reread_ref))
+
+        if not mask_candidates:
+            return None
+
+        mask_map = {idx: (tool_name, content_size, reread_ref)
+                    for idx, tool_name, content_size, reread_ref in mask_candidates}
+        new_messages: list[Any] = []
+        total_chars_saved = 0
+
+        for idx, msg in enumerate(messages):
+            if idx not in mask_map:
                 new_messages.append(msg)
                 continue
 
-            # --- Mask this message ---
+            tool_name, content_size, reread_ref = mask_map[idx]
+            additional_kwargs = getattr(msg, "additional_kwargs", {}) or {}
 
-            # Try to find a re-read reference
-            reread_ref = self._extract_reread_ref(content_str, additional_kwargs)
+            turns_after = total_ai - bisect.bisect_right(ai_indices, idx)
 
-            # Build placeholder content
             size_kb = content_size / 1024
             placeholder_parts = [
                 f"[{tool_name} output masked — {size_kb:.1f} KB / {content_size} chars, "
                 f"{turns_after} turns ago]",
             ]
             if reread_ref:
-                placeholder_parts.append(
-                    f"[Re-read via: {reread_ref}]"
-                )
+                placeholder_parts.append(f"[Re-read via: {reread_ref}]")
 
             placeholder_content = "\n".join(placeholder_parts)
 
@@ -235,13 +246,9 @@ class StaleOutputClearerMiddleware(AgentMiddleware):
 
             new_messages.append(masked_msg)
             total_chars_saved += content_size - len(placeholder_content)
-            any_modified = True
-
-        if not any_modified:
-            return None
 
         log.info(
-            f"StaleOutputClearer masked stale tool outputs, "
+            f"StaleOutputClearer masked {len(mask_candidates)} stale tool outputs, "
             f"saving ~{total_chars_saved} chars"
         )
         return {"messages": new_messages}

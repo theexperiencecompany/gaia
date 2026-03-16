@@ -17,7 +17,6 @@ import argparse
 import asyncio
 import contextlib
 import fnmatch
-import re
 import shlex
 from dataclasses import dataclass
 from typing import Any, NoReturn, Optional
@@ -29,6 +28,7 @@ from app.agents.tools.vfs_constants import (
 )
 from app.constants.summarization import MAX_GREP_OUTPUT_CHARS
 from app.services.vfs import MongoVFS, VFSAccessError, get_vfs
+from app.services.vfs.grep_utils import GrepOptions, compile_pattern, search_file_content
 from shared.py.wide_events import log
 from app.services.vfs.path_resolver import (
     get_agent_root,
@@ -96,6 +96,7 @@ class VFSCommandParser:
     MAX_GREP_MATCHES = 50
     MAX_GREP_FILES = 50
     MAX_GREP_FILE_CHARS = 200_000
+    MAX_GRIDFS_CONCURRENCY = 5  # Limit parallel GridFS reads to avoid pool exhaustion
     MAX_LINE_LENGTH = 200
     MAX_LS_ITEMS = 100
     DEFAULT_TREE_DEPTH = 3
@@ -991,15 +992,20 @@ class VFSCommandParser:
                 )
             ]
 
-        # Client-side search for GridFS files (they can't use $regex on content)
+        # GridFS files can't use $regex on content — search client-side with concurrency cap.
         gridfs_results: list[dict[str, Any]] = []
         if gridfs_paths:
-            gridfs_search_tasks = [
-                self._grep_gridfs_file(vfs, fp, pattern, resolved_path, user_id, args)
-                for fp in gridfs_paths
-            ]
+            sem = asyncio.Semaphore(self.MAX_GRIDFS_CONCURRENCY)
+
+            async def _bounded_grep(fp: str) -> dict[str, Any] | None:
+                async with sem:
+                    return await self._grep_gridfs_file(
+                        vfs, fp, pattern, resolved_path, user_id, args
+                    )
+
             raw_results = await asyncio.gather(
-                *gridfs_search_tasks, return_exceptions=True
+                *[_bounded_grep(fp) for fp in gridfs_paths],
+                return_exceptions=True,
             )
             for res in raw_results:
                 if isinstance(res, BaseException):
@@ -1037,111 +1043,21 @@ class VFSCommandParser:
         """
         Search a single file's content client-side.
 
-        Returns a match dict {"path": str, "name": str, "matches": [...]}
-        or None if no matches.
-
-        Each match entry has:
-          - line_num: int
-          - line: str (the display line)
-          - is_context: bool (True if this is a context line, not a match)
+        Delegates to the shared grep_utils.search_file_content.
         """
-        flags = re.IGNORECASE if args.ignore_case else 0
-        try:
-            compiled = re.compile(pattern, flags)
-        except re.error:
-            compiled = re.compile(re.escape(pattern), flags)
-
-        invert = getattr(args, "invert_match", False)
-        only_matching = getattr(args, "only_matching", False)
-        after_ctx = getattr(args, "context", 0) or getattr(args, "after_context", 0)
-        before_ctx = getattr(args, "context", 0) or getattr(args, "before_context", 0)
-        wants_context = (after_ctx > 0 or before_ctx > 0) and not invert
-
-        lines = content.split("\n")
-
-        # First pass: find matching line indices
-        match_indices: list[int] = []
-        for i, line in enumerate(lines):
-            hit = compiled.search(line) is not None
-            if hit != invert:
-                match_indices.append(i)
-                if len(match_indices) >= self.MAX_GREP_MATCHES:
-                    break
-
-        if not match_indices:
-            return None
-
-        # Build output entries (matches + optional context lines)
-        file_matches: list[dict[str, Any]] = []
-
-        if wants_context:
-            include_set: set[int] = set()
-            for idx in match_indices:
-                start = max(0, idx - before_ctx)
-                end = min(len(lines) - 1, idx + after_ctx)
-                for j in range(start, end + 1):
-                    include_set.add(j)
-            match_set = set(match_indices)
-
-            prev_idx = -2
-            for idx in sorted(include_set):
-                if prev_idx >= 0 and idx > prev_idx + 1:
-                    file_matches.append(
-                        {"line_num": 0, "line": "--", "is_context": False}
-                    )
-                prev_idx = idx
-                line = lines[idx]
-                is_match = idx in match_set
-
-                if is_match and only_matching:
-                    for m in compiled.finditer(line):
-                        file_matches.append(
-                            {
-                                "line_num": idx + 1,
-                                "line": m.group(),
-                                "is_context": False,
-                            }
-                        )
-                else:
-                    display_line = line[: self.MAX_LINE_LENGTH]
-                    if len(line) > self.MAX_LINE_LENGTH:
-                        display_line += "..."
-                    file_matches.append(
-                        {
-                            "line_num": idx + 1,
-                            "line": display_line,
-                            "is_context": not is_match,
-                        }
-                    )
-        else:
-            for idx in match_indices:
-                line = lines[idx]
-                if only_matching and not invert:
-                    for m in compiled.finditer(line):
-                        file_matches.append(
-                            {
-                                "line_num": idx + 1,
-                                "line": m.group(),
-                                "is_context": False,
-                            }
-                        )
-                else:
-                    display_line = line[: self.MAX_LINE_LENGTH]
-                    if len(line) > self.MAX_LINE_LENGTH:
-                        display_line += "..."
-                    file_matches.append(
-                        {"line_num": idx + 1, "line": display_line, "is_context": False}
-                    )
-
-        if not file_matches:
-            return None
-
-        # Compute relative path from base_path for display
-        if base_path and file_path.startswith(base_path.rstrip("/") + "/"):
-            rel_name = file_path[len(base_path.rstrip("/")) + 1 :]
-        else:
-            rel_name = file_path.rsplit("/", 1)[-1]
-        return {"path": file_path, "name": rel_name, "matches": file_matches}
+        compiled = compile_pattern(pattern, args.ignore_case)
+        opts = GrepOptions(
+            case_insensitive=args.ignore_case,
+            invert=getattr(args, "invert_match", False),
+            only_matching=getattr(args, "only_matching", False),
+            before_context=getattr(args, "context", 0) or getattr(args, "before_context", 0),
+            after_context=getattr(args, "context", 0) or getattr(args, "after_context", 0),
+            max_matches=self.MAX_GREP_MATCHES,
+            max_line_length=self.MAX_LINE_LENGTH,
+        )
+        return search_file_content(
+            content, compiled, file_path=file_path, base_path=base_path, opts=opts
+        )
 
     def _search_single_file(
         self,

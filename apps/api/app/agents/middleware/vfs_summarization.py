@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from shared.py.wide_events import log
+from app.agents.middleware.config_utils import extract_vfs_context
 from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import get_session_path
 from langchain.agents.middleware import SummarizationMiddleware
@@ -204,7 +205,6 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         if not messages:
             return None
 
-        # Determine how many messages to keep
         keep_count = 15
         if isinstance(self.keep, tuple) and len(self.keep) == 2:
             keep_type, keep_value = self.keep
@@ -217,15 +217,27 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         to_summarize = messages[:-keep_count]
         to_keep = messages[-keep_count:]
 
+        # Cap the summary prompt to avoid exceeding the summarization model's
+        # own context window.  ~100K chars ≈ 25K tokens — well within most
+        # models while still capturing the important history.
+        max_prompt_chars = 100_000
+
         try:
+            raw_history = "\n".join(
+                f"{type(m).__name__}: {getattr(m, 'content', str(m))}"
+                for m in to_summarize
+            )
+            if len(raw_history) > max_prompt_chars:
+                raw_history = (
+                    raw_history[:max_prompt_chars]
+                    + f"\n\n[... truncated — {len(raw_history) - max_prompt_chars} chars omitted]"
+                )
+
             summary_prompt = HumanMessage(
                 content=(
                     "Summarize the following conversation history concisely, "
                     "preserving key decisions, facts, and context:\n\n"
-                    + "\n".join(
-                        f"{type(m).__name__}: {getattr(m, 'content', str(m))}"
-                        for m in to_summarize
-                    )
+                    + raw_history
                 )
             )
             summary_response = await self._summarization_model.ainvoke([summary_prompt])
@@ -252,50 +264,27 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
     ) -> str:
         """Archive full conversation to VFS before summarization."""
         messages = state.get("messages", [])
-
-        # Extract user_id and conversation_id from runtime config
-        config: dict[str, Any] = getattr(runtime, "config", {}) or {}
-        configurable = config.get("configurable", {})
-        user_id = configurable.get("user_id")
-        vfs_session_id = configurable.get("vfs_session_id")
-        thread_id = configurable.get("thread_id")
-        conversation_id = vfs_session_id or thread_id
-        subagent_id = configurable.get("subagent_id")
-        metadata_cfg = config.get("metadata", {})
-        agent_name_meta = metadata_cfg.get("agent_name")
-
-        if not user_id:
-            raise ValueError("VFS archiving requires 'user_id' in configurable")
-        if not conversation_id:
-            raise ValueError(
-                "VFS archiving requires 'vfs_session_id' or 'thread_id' in configurable"
-            )
-        written_by = subagent_id or agent_name_meta
-        if not written_by:
-            raise ValueError(
-                "VFS archiving requires 'subagent_id' in configurable or 'agent_name' in metadata"
-            )
+        ctx = extract_vfs_context(runtime)
 
         vfs = await self._get_vfs()
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        session_path = get_session_path(user_id, conversation_id)
+        session_path = get_session_path(ctx.user_id, ctx.conversation_id)
         archive_path = f"{session_path}/archives/pre_summary_{timestamp}.json"
 
-        # Serialize messages
         history = self._serialize_messages(messages)
 
         await vfs.write(
             path=archive_path,
             content=json.dumps(history, indent=2, default=str),
-            user_id=user_id,
+            user_id=ctx.user_id,
             metadata={
                 "type": "pre_summarization_archive",
                 "agent_name": "executor",
-                "written_by": written_by,
-                "agent_thread_id": thread_id,
-                "conversation_id": conversation_id,
-                "vfs_session_id": vfs_session_id,
+                "written_by": ctx.written_by,
+                "agent_thread_id": ctx.thread_id,
+                "conversation_id": ctx.conversation_id,
+                "vfs_session_id": ctx.vfs_session_id,
                 "message_count": len(messages),
                 "archived_at": datetime.now(timezone.utc).isoformat(),
                 "trigger_reason": "summarization_middleware",
@@ -307,13 +296,30 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         )
         return archive_path
 
+    _ARCHIVE_CONTENT_MAX = 5_000  # caps un-compacted outputs that slip through
+
     def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:
-        """Serialize messages for VFS storage."""
+        """Serialize messages for VFS storage, truncating oversized content."""
         history = []
         for msg in messages:
+            content = msg.content if hasattr(msg, "content") else str(msg)
+            content_str = str(content)
+
+            additional_kwargs = getattr(msg, "additional_kwargs", {}) or {}
+            vfs_path = additional_kwargs.get("vfs_path")
+
+            if len(content_str) > self._ARCHIVE_CONTENT_MAX:
+                truncated_note = (
+                    f"\n[... truncated — {len(content_str)} chars total"
+                )
+                if vfs_path:
+                    truncated_note += f", full output at: {vfs_path}"
+                truncated_note += "]"
+                content_str = content_str[: self._ARCHIVE_CONTENT_MAX] + truncated_note
+
             entry: dict[str, Any] = {
                 "type": type(msg).__name__,
-                "content": msg.content if hasattr(msg, "content") else str(msg),
+                "content": content_str,
             }
 
             # Handle tool calls
