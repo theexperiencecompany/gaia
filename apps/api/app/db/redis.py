@@ -203,7 +203,7 @@ redis_cache = RedisCache()
 
 
 # Wrappers for RedisCache instance methods
-async def get_cache(key: str, model: Optional[type] = None):
+async def get_cache(key: str, model: Optional[type] = None) -> Any:
     """
     Convenience wrapper for retrieving cached values.
 
