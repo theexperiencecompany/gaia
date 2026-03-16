@@ -195,18 +195,25 @@ docker compose -f infra/docker/docker-compose.yml exec mongo mongosh
 <AccordionGroup>
   <Accordion title="Port already in use">
     Another service is using the port. Stop it or change the port mapping in
-    docker-compose.yml: ```bash lsof -i :8000 # Find what's using port 8000 ```
+    docker-compose.yml:
+    ```bash
+    lsof -i :8000 # Find what's using port 8000
+    ```
   </Accordion>
 
   <Accordion title="Container won't start">
-    Check logs for the failing service: ```bash docker compose -f
-    infra/docker/docker-compose.yml logs postgres ```
+    Check logs for the failing service:
+    ```bash
+    docker compose -f infra/docker/docker-compose.yml logs postgres
+    ```
   </Accordion>
 
   <Accordion title="Database connection refused">
-    Ensure containers are healthy: ```bash docker compose -f
-    infra/docker/docker-compose.yml ps ``` Wait for `healthy` status before
-    connecting.
+    Ensure containers are healthy:
+    ```bash
+    docker compose -f infra/docker/docker-compose.yml ps
+    ```
+    Wait for `healthy` status before connecting.
   </Accordion>
 </AccordionGroup>
 

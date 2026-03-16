@@ -197,12 +197,16 @@ Once merged:
     ```
   </Accordion>
 
-{" "}
-
-<Accordion title="Failed CI Checks">
-  Review the CI logs and fix issues: ```bash mise lint:fix mise test git add .
-  git commit -m "fix: resolve CI issues" git push ```
-</Accordion>
+  <Accordion title="Failed CI Checks">
+    Review the CI logs and fix issues:
+    ```bash
+    mise lint:fix
+    mise test
+    git add .
+    git commit -m "fix: resolve CI issues"
+    git push
+    ```
+  </Accordion>
 
   <Accordion title="Outdated Branch">
     Rebase on latest master:
