@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
 import { todoApi } from "@/features/todo/api/todoApi";
+import { startWorkflowPolling } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
 import { toast } from "@/lib/toast";
 import type {
   Project,
@@ -167,6 +168,9 @@ export const useTodoStore = create<TodoStore>()(
           .then((newTodo) => {
             get().replaceTodo(tempId, newTodo);
             get().loadCounts().catch(console.error);
+            toast.info("Generating workflow...");
+            // Poll for workflow completion as fallback (WS may not deliver from ARQ worker)
+            startWorkflowPolling(newTodo.id);
           })
           .catch((err) => {
             get().removeTodo(tempId);

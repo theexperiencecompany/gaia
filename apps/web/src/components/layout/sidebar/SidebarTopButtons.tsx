@@ -6,7 +6,7 @@ import {
   // Calendar03Icon, // Temporarily disabled
   CheckListIcon,
   ConnectIcon,
-  Home01Icon,
+  Home11Icon,
   MessageMultiple02Icon,
   // Target02Icon, // Temporarily disabled
   ZapIcon,
@@ -60,7 +60,7 @@ export default function SidebarTopButtons() {
   const buttonData = [
     {
       route: "/dashboard",
-      icon: <Home01Icon />,
+      icon: <Home11Icon />,
       label: "Home",
     },
     // Temporarily disabled — Calendar and Goals features are not yet ready.

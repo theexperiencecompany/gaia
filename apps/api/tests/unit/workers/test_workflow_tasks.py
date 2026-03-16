@@ -749,7 +749,6 @@ class TestExecuteWorkflowAsChat:
 
     I/O boundaries mocked:
       - get_user_by_id
-      - get_user_selected_model
       - get_or_create_workflow_conversation
       - call_agent_silent  (the core agent invocation)
     """
@@ -772,7 +771,6 @@ class TestExecuteWorkflowAsChat:
     def _patch_io(
         self,
         user_data=None,
-        model_config=None,
         conversation_id="conv_abc",
         agent_response=("All done.", {}),
     ):
@@ -782,11 +780,6 @@ class TestExecuteWorkflowAsChat:
                 "app.workers.tasks.workflow_tasks.get_user_by_id",
                 new_callable=AsyncMock,
                 return_value=user_data or {"user_id": "user_abc", "timezone": "UTC"},
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=model_config,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
@@ -810,11 +803,6 @@ class TestExecuteWorkflowAsChat:
                 "app.workers.tasks.workflow_tasks.get_user_by_id",
                 new_callable=AsyncMock,
                 return_value={"user_id": workflow.user_id, "timezone": "UTC"},
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
@@ -860,11 +848,6 @@ class TestExecuteWorkflowAsChat:
                 return_value={"user_id": workflow.user_id, "timezone": "UTC"},
             ),
             patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
                 return_value={"conversation_id": "conv_1"},
@@ -896,11 +879,6 @@ class TestExecuteWorkflowAsChat:
                 "app.workers.tasks.workflow_tasks.get_user_by_id",
                 new_callable=AsyncMock,
                 return_value={"user_id": workflow.user_id, "timezone": "UTC"},
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
@@ -937,11 +915,6 @@ class TestExecuteWorkflowAsChat:
                 side_effect=ConnectionError("DB unreachable"),
             ),
             patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
                 return_value={"conversation_id": "conv_fallback"},
@@ -975,11 +948,6 @@ class TestExecuteWorkflowAsChat:
                 "app.workers.tasks.workflow_tasks.get_user_by_id",
                 new_callable=AsyncMock,
                 return_value={"user_id": workflow.user_id, "timezone": "UTC"},
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",

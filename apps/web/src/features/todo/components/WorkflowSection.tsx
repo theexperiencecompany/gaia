@@ -86,46 +86,22 @@ export default function WorkflowSection({
 
   const { selectWorkflow } = useWorkflowSelection();
 
-  // WebSocket handlers
+  // WebSocket handlers — store updates and toasts are handled by the global
+  // useTodoWorkflowGlobalListener; these callbacks only update local component state.
   const handleWorkflowGenerated = useCallback(
     (wf: WorkflowType) => {
-      console.log("[WorkflowSection] WebSocket received workflow:", wf);
       setWorkflow(wf);
       setIsGenerating(false);
       setError(null);
       onWorkflowLinked?.(wf.id);
-
-      // Sync categories and cache to global store so todo item updates immediately
-      const store = useTodoStore.getState();
-      store.updateTodoOptimistic(todoId, {
-        workflow_categories: extractWorkflowCategories(wf.steps),
-      });
-      // Invalidate prefetch cache so re-opening sidebar doesn't show stale "generating" state
-      store.workflowStatusCache[todoId] = {
-        has_workflow: true,
-        is_generating: false,
-        workflow: wf,
-        cachedAt: Date.now(),
-      };
-
-      toast.success("Workflow generated!");
     },
-    [onWorkflowLinked, todoId],
+    [onWorkflowLinked],
   );
 
-  const handleWorkflowFailed = useCallback(
-    (errorMsg: string) => {
-      console.log("[WorkflowSection] WebSocket workflow failed:", errorMsg);
-      setIsGenerating(false);
-      setError(errorMsg);
-
-      // Clear stale "generating" cache so sidebar doesn't show outdated state
-      delete useTodoStore.getState().workflowStatusCache[todoId];
-
-      toast.error("Failed to generate workflow");
-    },
-    [todoId],
-  );
+  const handleWorkflowFailed = useCallback((errorMsg: string) => {
+    setIsGenerating(false);
+    setError(errorMsg);
+  }, []);
 
   useTodoWorkflowWebSocket({
     todoId,
@@ -223,9 +199,17 @@ export default function WorkflowSection({
 
   // Run workflow
   const handleRun = useCallback(() => {
-    if (!workflow) return;
+    console.log("[WorkflowSection] handleRun clicked, workflow:", workflow?.id);
+    if (!workflow) {
+      console.log("[WorkflowSection] no workflow, returning");
+      return;
+    }
     try {
+      console.log(
+        "[WorkflowSection] calling selectWorkflow with autoSend:true",
+      );
       selectWorkflow(toWorkflowRunData(workflow), { autoSend: true });
+      console.log("[WorkflowSection] selectWorkflow done");
     } catch (err) {
       console.error("Failed to select workflow for execution:", err);
     }

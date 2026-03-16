@@ -195,13 +195,7 @@ export default function ChatsList() {
     return () => {
       scrollContainer?.removeEventListener("scroll", handleScroll);
     };
-  }, [
-    isLoading,
-    hasMore,
-    isLoadingMore,
-    loadMoreConversations,
-    conversations.length,
-  ]);
+  }, [isLoading, hasMore, isLoadingMore, loadMoreConversations]);
 
   return (
     <>

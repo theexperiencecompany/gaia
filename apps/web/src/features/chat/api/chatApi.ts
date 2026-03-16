@@ -267,13 +267,13 @@ export const chatApi = {
         body: JSON.stringify({
           conversation_id: conversationId || null,
           message: inputText,
-          fileIds, // For backward compatibility
-          fileData, // Send complete file data
-          selectedTool, // Add selectedTool to the request body
-          toolCategory, // Add toolCategory to the request body
-          selectedWorkflow, // Add selectedWorkflow to the request body
-          selectedCalendarEvent, // Add selectedCalendarEvent to the request body
-          replyToMessage, // Add replyToMessage to the request body
+          fileIds,
+          fileData,
+          selectedTool,
+          toolCategory,
+          selectedWorkflow,
+          selectedCalendarEvent,
+          replyToMessage,
           messages: convoMessages
             .slice(-30)
             .filter(({ response }) => response.trim().length > 0)
@@ -291,28 +291,21 @@ export const chatApi = {
             return;
           }
 
-          // Handle both sync and async error returns
-          if (errorResult) {
-            if (errorResult instanceof Promise) {
-              errorResult.then((err) => {
-                if (err) {
-                  console.error(
-                    "[chatApi] Message handler returned async error:",
-                    err,
-                  );
-                  onError(new Error(err));
-                  controller.abort();
-                }
-              });
-            } else {
-              console.error(
-                "[chatApi] Message handler returned error:",
-                errorResult,
-              );
-              onError(new Error(errorResult));
-              controller.abort();
-            }
-            return;
+          // onMessage (handleStreamEvent) is async — handle errors from the Promise.
+          // No queue/gate needed: handleNewConversation updates the Zustand store
+          // synchronously before any awaits, so subsequent events can render immediately.
+          if (errorResult instanceof Promise) {
+            errorResult.then((err) => {
+              if (err) {
+                console.error("[chatApi] Stream event error:", err);
+                onError(new Error(err));
+                controller.abort();
+              }
+            });
+          } else if (errorResult) {
+            console.error("[chatApi] Stream event error:", errorResult);
+            onError(new Error(errorResult));
+            controller.abort();
           }
         },
         onclose() {

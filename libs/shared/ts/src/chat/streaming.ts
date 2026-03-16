@@ -303,7 +303,11 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     });
   }
 
-  if (
+  // Backend emits progress as a plain string: {"progress": "message"}
+  // Guard against object form too: {"progress": {"message": "...", ...}}
+  if (typeof payload.progress === "string" && payload.progress.length > 0) {
+    events.push({ type: "progress", message: payload.progress });
+  } else if (
     isObject(payload.progress) &&
     typeof payload.progress.message === "string"
   ) {

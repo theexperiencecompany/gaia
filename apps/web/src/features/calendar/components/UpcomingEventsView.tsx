@@ -205,7 +205,6 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       connectTitle="Connect Your Calendar"
       connectDescription="Manage events and view your schedule"
       connectIcon={<GoogleCalendarIcon width={32} height={32} />}
-      path="/calendar"
       actions={actions}
     >
       <div className="space-y-6 p-4">

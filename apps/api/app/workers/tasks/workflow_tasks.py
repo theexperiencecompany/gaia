@@ -41,7 +41,6 @@ from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
 )
-from app.services.model_service import get_user_selected_model
 from app.services.notification_service import notification_service
 from app.services.todos.todo_service import TodoService
 from app.services.user_service import get_user_by_id
@@ -427,12 +426,6 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             user_time = datetime.now(timezone.utc)
 
         user_model_config = None
-        try:
-            user_model_config = await get_user_selected_model(user_id)
-        except Exception as e:
-            log.warning(
-                f"Could not get user's selected model for workflow, using default: {e}"
-            )
 
         # Get or create the workflow conversation for thread context
         conversation = await get_or_create_workflow_conversation(

@@ -96,11 +96,6 @@ export const settingsCommand: BotCommand = {
             ].join("\n"),
           },
           {
-            name: "🤖 AI Model",
-            value: settings.selectedModelName || "Default",
-            inline: true,
-          },
-          {
             name: "🔗 Connected Integrations",
             value: integrationsText,
           },
