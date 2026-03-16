@@ -5,6 +5,7 @@ internal working memory.
 
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from shared.py.wide_events import log
 
@@ -145,7 +146,7 @@ class GaiaTaskService:
     async def update_task(
         self, task_id: str, user_id: str, request: UpdateGaiaTaskRequest
     ) -> GaiaTask | None:
-        update: dict = {"updated_at": datetime.now(timezone.utc)}
+        update: dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
 
         if request.status is not None:
             update["status"] = request.status
@@ -153,6 +154,14 @@ class GaiaTaskService:
             update["active_loop_ids"] = request.active_loop_ids
         if request.owned_workflow_ids is not None:
             update["owned_workflow_ids"] = request.owned_workflow_ids
+
+        result = await gaia_tasks_collection.update_one(
+            {"task_id": task_id, "user_id": user_id},
+            {"$set": update},
+        )
+
+        if result.matched_count == 0:
+            return None
 
         if request.notes:
             task = await self.get_task(task_id, user_id)
@@ -165,10 +174,6 @@ class GaiaTaskService:
                     user_id=user_id,
                 )
 
-        await gaia_tasks_collection.update_one(
-            {"task_id": task_id, "user_id": user_id},
-            {"$set": update},
-        )
         return await self.get_task(task_id, user_id)
 
     async def complete_task(
@@ -179,6 +184,7 @@ class GaiaTaskService:
             return None
 
         now = datetime.now(timezone.utc)
+        archive_path = task.vfs_path.replace("/tasks/", "/tasks/archive/")
         await gaia_tasks_collection.update_one(
             {"task_id": task_id, "user_id": user_id},
             {
@@ -186,6 +192,7 @@ class GaiaTaskService:
                     "status": GaiaTaskStatus.COMPLETED,
                     "completed_at": now,
                     "updated_at": now,
+                    "vfs_path": archive_path,
                 }
             },
         )
@@ -196,7 +203,6 @@ class GaiaTaskService:
             content=f"\n## {now.isoformat()}\n- Task completed: {summary}\n",
             user_id=user_id,
         )
-        archive_path = task.vfs_path.replace("/tasks/", "/tasks/archive/")
         await vfs.move(source=task.vfs_path, dest=archive_path, user_id=user_id)
 
         log.info("gaia_task.completed", task_id=task_id, user_id=user_id, summary=summary)
@@ -210,9 +216,10 @@ class GaiaTaskService:
             return None
 
         now = datetime.now(timezone.utc)
+        archive_path = task.vfs_path.replace("/tasks/", "/tasks/archive/")
         await gaia_tasks_collection.update_one(
             {"task_id": task_id, "user_id": user_id},
-            {"$set": {"status": GaiaTaskStatus.CANCELLED, "updated_at": now}},
+            {"$set": {"status": GaiaTaskStatus.CANCELLED, "updated_at": now, "vfs_path": archive_path}},
         )
 
         vfs = MongoVFS()
@@ -221,7 +228,6 @@ class GaiaTaskService:
             content=f"\n## {now.isoformat()}\n- Task cancelled: {reason}\n",
             user_id=user_id,
         )
-        archive_path = task.vfs_path.replace("/tasks/", "/tasks/archive/")
         await vfs.move(source=task.vfs_path, dest=archive_path, user_id=user_id)
 
         log.info("gaia_task.cancelled", task_id=task_id, user_id=user_id, reason=reason)
