@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-import { ScenarioSchema, type Scenario } from "../types/scenario";
 import { useScenarioPlayer } from "../hooks/useScenarioPlayer";
+import { type Scenario, ScenarioSchema } from "../types/scenario";
 import RecordingChatLayout from "./RecordingChatLayout";
+import RecordingDesktopFrame from "./RecordingDesktopFrame";
 
 interface RecordingPageProps {
   scenarioId: string;
@@ -38,7 +38,10 @@ export default function RecordingPage({
     if (scenarioData !== null && scenarioData !== undefined) {
       const parsed = parseScenario(scenarioData);
       if ("error" in parsed)
-        return { status: "error", message: `Invalid scenario: ${parsed.error}` };
+        return {
+          status: "error",
+          message: `Invalid scenario: ${parsed.error}`,
+        };
       return { status: "ready", scenario: parsed.scenario };
     }
     return { status: "loading" };
@@ -56,7 +59,10 @@ export default function RecordingPage({
       .then((data) => {
         const parsed = parseScenario(data);
         if ("error" in parsed) {
-          setState({ status: "error", message: `Invalid scenario: ${parsed.error}` });
+          setState({
+            status: "error",
+            message: `Invalid scenario: ${parsed.error}`,
+          });
         } else {
           setState({ status: "ready", scenario: parsed.scenario });
         }
@@ -68,7 +74,7 @@ export default function RecordingPage({
 
   if (state.status === "loading") {
     // Blank — server should have pre-loaded; this is a fallback during hydration
-    return <div className="h-screen bg-background" />;
+    return <div className="h-screen" style={{ backgroundColor: "#111111" }} />;
   }
 
   if (state.status === "error") {
@@ -116,21 +122,49 @@ function RecordingScenarioRunner({ scenario }: { scenario: Scenario }) {
     return () => clearTimeout(id);
   }, [play]);
 
+  const logicalWidth = scenario.viewport?.width ?? 390;
+  const logicalHeight = scenario.viewport?.height ?? 844;
+  const isDesktop = logicalWidth >= 900;
+
+  // The browser viewport is the full physical resolution (e.g. 1170×2532)
+  // but we want CSS to lay out at the logical size (e.g. 390×844).
+  // CSS zoom on <html> changes the effective layout viewport:
+  //   effective width = window.innerWidth / zoom
+  // Unlike transform: scale(), zoom affects actual CSS layout, so scroll
+  // calculations, flex layouts, and component widths all work correctly.
+  useEffect(() => {
+    const zoom = window.innerWidth / logicalWidth;
+    document.documentElement.style.zoom = String(zoom);
+    return () => {
+      document.documentElement.style.zoom = "";
+    };
+  }, [logicalWidth]);
+
+  const chatContent = (
+    <RecordingChatLayout
+      messages={messages}
+      partialMessage={partialMessage}
+      loadingState={loadingState}
+      isDesktop={isDesktop}
+    />
+  );
+
   return (
     <div
       style={{
-        width: scenario.viewport?.width ?? 390,
-        height: scenario.viewport?.height ?? 844,
+        width: logicalWidth,
+        height: logicalHeight,
         overflow: "hidden",
         position: "relative",
       }}
       data-recording-phase={phase}
+      data-recording-viewport={isDesktop ? "desktop" : "mobile"}
     >
-      <RecordingChatLayout
-        messages={messages}
-        partialMessage={partialMessage}
-        loadingState={loadingState}
-      />
+      {isDesktop ? (
+        <RecordingDesktopFrame>{chatContent}</RecordingDesktopFrame>
+      ) : (
+        chatContent
+      )}
     </div>
   );
 }

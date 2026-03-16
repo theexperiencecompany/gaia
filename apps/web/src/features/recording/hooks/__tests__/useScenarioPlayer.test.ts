@@ -1,8 +1,8 @@
 // apps/web/src/features/recording/hooks/__tests__/useScenarioPlayer.test.ts
-import { renderHook, act, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { useScenarioPlayer } from "../useScenarioPlayer";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Scenario } from "../../types/scenario";
+import { useScenarioPlayer } from "../useScenarioPlayer";
 
 // Mock the loadingStore with a stable setIsLoading reference to prevent
 // useCallback dependency churn across renders

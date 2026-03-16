@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { AnimatePresence } from "motion/react";
+import { useEffect, useRef } from "react";
 
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
@@ -15,10 +15,11 @@ interface RecordingChatLayoutProps {
   messages: MessageType[];
   partialMessage: MessageType | null;
   loadingState: ScenarioLoadingState;
+  isDesktop?: boolean;
 }
 
 // No-op dispatchers — required by ChatBubbleBot but never triggered in recording
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: required by ChatBubbleBot dispatch signature
 const noopDispatch = (() => {}) as React.Dispatch<React.SetStateAction<any>>;
 const noop = () => {};
 
@@ -48,8 +49,7 @@ function animateScrollTo(
   function step(now: number) {
     const t = Math.min((now - startTime) / duration, 1);
     // easeInOutQuart — feels slow and intentional
-    const ease =
-      t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+    const ease = t < 0.5 ? 8 * t * t * t * t : 1 - (-2 * t + 2) ** 4 / 2;
     el.scrollTop = startY + distance * ease;
     if (t < 1) rafRef.current = requestAnimationFrame(step);
     else {
@@ -64,6 +64,7 @@ export default function RecordingChatLayout({
   messages,
   partialMessage,
   loadingState,
+  isDesktop = false,
 }: RecordingChatLayoutProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
@@ -121,9 +122,7 @@ export default function RecordingChatLayout({
     };
   }, []);
 
-  const allMessages = partialMessage
-    ? [...messages, partialMessage]
-    : messages;
+  const allMessages = partialMessage ? [...messages, partialMessage] : messages;
 
   // Index of last bot message in the full list — only that one shows the logo
   const lastBotIdx = allMessages.reduce(
@@ -132,13 +131,22 @@ export default function RecordingChatLayout({
   );
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ backgroundColor: "#111111" }}>
+    <div
+      className="flex flex-col h-full overflow-hidden"
+      style={{ backgroundColor: "#111111" }}
+    >
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-4"
+        className="flex-1 overflow-y-auto overflow-x-hidden py-4"
         style={{ scrollbarWidth: "none" }}
       >
-        <div className="space-y-4">
+        <div
+          className={
+            isDesktop
+              ? "conversation_history mx-auto w-full max-w-(--breakpoint-lg) space-y-4 p-4"
+              : "space-y-4 px-2"
+          }
+        >
           {allMessages.map((msg, i) =>
             msg.type === "user" ? (
               <ChatBubbleUser
@@ -150,7 +158,11 @@ export default function RecordingChatLayout({
               <ChatBubbleBot
                 key={msg.message_id}
                 {...getMessageProps(msg, "bot", noopOptions)}
-                loading={msg === partialMessage ? loadingState.isLoading : (msg.loading ?? false)}
+                loading={
+                  msg === partialMessage
+                    ? loadingState.isLoading
+                    : (msg.loading ?? false)
+                }
                 isLastMessage={i === lastBotIdx}
                 onRetry={noop}
                 disableActions
@@ -170,7 +182,9 @@ export default function RecordingChatLayout({
           </AnimatePresence>
         </div>
       </div>
-      <RecordingComposer />
+      <div className={isDesktop ? "shrink-0 pb-2" : ""}>
+        <RecordingComposer isDesktop={isDesktop} />
+      </div>
     </div>
   );
 }

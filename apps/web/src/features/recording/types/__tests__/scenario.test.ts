@@ -1,11 +1,11 @@
 // apps/web/src/features/recording/types/__tests__/scenario.test.ts
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  ScenarioSchema,
-  UserMessageStateSchema,
   BotMessageStateSchema,
   LoadingStateSchema,
   PauseStateSchema,
+  ScenarioSchema,
+  UserMessageStateSchema,
 } from "../scenario";
 
 describe("ScenarioSchema", () => {

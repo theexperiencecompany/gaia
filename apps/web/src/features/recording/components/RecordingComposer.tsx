@@ -2,10 +2,19 @@
 
 import { ArrowUp02Icon, PlusSignIcon, ToolsIcon } from "@icons";
 
-export default function RecordingComposer() {
+interface RecordingComposerProps {
+  isDesktop?: boolean;
+}
+
+export default function RecordingComposer({
+  isDesktop = false,
+}: RecordingComposerProps) {
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1 px-2">
-      <div className="searchbar relative rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
+      <div
+        className="relative rounded-3xl bg-zinc-800 px-1 pt-1 pb-2"
+        style={isDesktop ? { width: "50%" } : { width: "100%" }}
+      >
         {/* Input area — matches HeroUI Textarea inputWrapper with px-3, size="lg" */}
         <div className="px-3 py-2.5 min-h-[44px] flex items-center">
           <span className="text-base font-light text-zinc-500 select-none">
@@ -30,7 +39,11 @@ export default function RecordingComposer() {
               aria-hidden="true"
               tabIndex={-1}
             >
-              <ToolsIcon className="min-h-[23px] min-w-[23px]" width={23} height={23} />
+              <ToolsIcon
+                className="min-h-[23px] min-w-[23px]"
+                width={23}
+                height={23}
+              />
             </button>
           </div>
           {/* Right: send button (disabled) — matches ComposerRight */}

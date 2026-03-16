@@ -9,6 +9,13 @@
 @plugin "./hero.ts";
 @plugin "tailwindcss-animate";
 
+/* Prevent white flash on initial paint: body background is set here (in the CSS
+   bundle, loaded synchronously) so the dark background is present before any JS
+   runs. The recording layout overrides this with #111111 via its own style tag. */
+body {
+  background-color: hsl(var(--background));
+}
+
 @keyframes sheet-fade-in {
   from {
     opacity: 0;

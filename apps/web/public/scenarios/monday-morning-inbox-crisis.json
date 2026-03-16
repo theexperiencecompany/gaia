@@ -1,0 +1,260 @@
+{
+  "id": "monday-morning-inbox-crisis",
+  "title": "Monday Morning — Inbox Crisis",
+  "viewport": { "width": 390, "height": 844 },
+  "settings": { "theme": "dark" },
+  "states": [
+    {
+      "type": "user_message",
+      "text": "I haven't checked anything since Friday. What blew up over the weekend?",
+      "typingSpeed": 42,
+      "pauseAfter": 600
+    },
+    {
+      "type": "loading",
+      "text": "Scanning your weekend backlog...",
+      "toolInfo": { "toolCategory": "general", "showCategory": false },
+      "duration": 1000,
+      "pauseAfter": 100
+    },
+    {
+      "type": "loading",
+      "text": "Triaging 47 unread emails...",
+      "toolInfo": { "toolCategory": "gmail", "showCategory": true },
+      "duration": 1400,
+      "pauseAfter": 150
+    },
+    {
+      "type": "tool_calls",
+      "entries": [
+        {
+          "tool_name": "tool_calls_data",
+          "tool_category": "gmail",
+          "data": [
+            {
+              "tool_name": "gmail_inbox_scan",
+              "tool_category": "gmail",
+              "message": "Triaged 47 emails — 3 urgent, 5 need reply, 39 informational",
+              "inputs": { "query": "is:unread after:2026/03/13", "categorize": true },
+              "output": "Urgent: (1) CTO David Liu — 'Production incident: API latency spike Saturday 2am, resolved by 6am but needs post-mortem' sent Sat 6:14 AM. (2) VP Sales Megan Torres — 'Cloudwick wants to accelerate deal — need pricing by EOD Monday' sent Sun 4:30 PM. (3) Board member James Chen — 'Reminder: board deck due Wednesday, still missing product section' sent Sun 8:00 PM. Need reply: investor update from Sarah (FYI), HR onboarding docs for new hire starting Tuesday, vendor contract renewal from Datadog, client feedback survey results, team retro action items."
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "pauseAfter": 300
+    },
+    {
+      "type": "loading",
+      "text": "Checking this week's schedule...",
+      "toolInfo": { "toolCategory": "google_calendar", "showCategory": true },
+      "duration": 1100,
+      "pauseAfter": 150
+    },
+    {
+      "type": "tool_calls",
+      "entries": [
+        {
+          "tool_name": "tool_calls_data",
+          "tool_category": "google_calendar",
+          "data": [
+            {
+              "tool_name": "get_calendar_events",
+              "tool_category": "google_calendar",
+              "message": "Retrieved 6 events for Monday March 16",
+              "inputs": { "date": "2026-03-16", "calendars": ["primary", "work"] },
+              "output": "6 events today: 9:00am All-Hands (30 min), 10:30am Cloudwick Deal Review with Sales (45 min, Google Meet), 12:00pm Lunch with new hire Priya Sharma (1 hr), 2:00pm Post-Mortem: Saturday API Incident (1 hr), 3:30pm Board Deck Working Session (1 hr), 5:00pm 1:1 with CTO David (30 min). First meeting in 90 minutes."
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "pauseAfter": 300
+    },
+    {
+      "type": "loading",
+      "text": "Reviewing overdue tasks...",
+      "toolInfo": { "toolCategory": "todoist", "showCategory": true },
+      "duration": 1000,
+      "pauseAfter": 150
+    },
+    {
+      "type": "tool_calls",
+      "entries": [
+        {
+          "tool_name": "tool_calls_data",
+          "tool_category": "todoist",
+          "data": [
+            {
+              "tool_name": "todoist_get_tasks",
+              "tool_category": "todoist",
+              "message": "Found 3 overdue from Friday, 4 due today",
+              "inputs": { "filter": "overdue | today", "include_priority": true },
+              "output": "Overdue: (1) Send Cloudwick pricing proposal — due Friday, HIGH, blocking $180K deal. (2) Review post-mortem template — due Friday, MEDIUM. (3) Finalize Q1 investor update — due Friday, HIGH. Due today: (4) Approve new hire onboarding plan (5) Product section for board deck (6) Weekly metrics report (7) Reply to Datadog contract renewal."
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "pauseAfter": 1400
+    },
+    {
+      "type": "bot_message",
+      "text": "Okay, the weekend wasn't as bad as 47 emails suggests. Here's what actually matters:\n\n**Handle RIGHT NOW** (before your 9am All-Hands):\n- **Cloudwick pricing proposal** — Megan says they want to accelerate. This is a $180K deal and it was due Friday. Get this to her before the 10:30am deal review.\n- **Board deck product section** — James reminded you last night. Due Wednesday, but the working session is at 3:30pm today. You need a draft before then.\n\n**Handle today:**\n- Respond to David's post-mortem email — the incident is resolved but he needs you in the 2pm review\n- Approve Priya's onboarding plan before your lunch with her at noon\n- Reply to Datadog contract renewal (it's a simple sign-off)\n\n**Can wait:**\n- The other 39 emails are newsletters, notifications, and FYIs. Nothing burning.\n- Investor update can slide to tomorrow — it's informational, not time-sensitive.\n\n**Your first 90 minutes:**\n1. Draft Cloudwick pricing (45 min) — send to Megan before deal review\n2. Skim David's post-mortem email so you're prepped for 2pm\n3. Quick reply to James: \"Product section draft coming by 3pm\"\n\nThe Cloudwick deal is the highest-leverage thing on your plate. Start there.",
+      "streamingSpeed": 5,
+      "tool_data": [
+        {
+          "tool_name": "calendar_options",
+          "tool_category": "google_calendar",
+          "data": [
+            {
+              "summary": "All-Hands",
+              "start": "2026-03-16T09:00:00",
+              "end": "2026-03-16T09:30:00",
+              "description": "Weekly all-hands meeting. Company updates and announcements.",
+              "attendees": ["team@company.com"]
+            },
+            {
+              "summary": "Cloudwick Deal Review",
+              "start": "2026-03-16T10:30:00",
+              "end": "2026-03-16T11:15:00",
+              "description": "Review pricing and timeline for Cloudwick enterprise deal. Megan Torres leading.",
+              "attendees": ["megan.torres@company.com", "sales@company.com"]
+            },
+            {
+              "summary": "Lunch — New Hire Priya Sharma",
+              "start": "2026-03-16T12:00:00",
+              "end": "2026-03-16T13:00:00",
+              "description": "Welcome lunch with Priya Sharma, new Senior Engineer starting tomorrow.",
+              "attendees": ["priya.sharma@company.com"]
+            },
+            {
+              "summary": "Post-Mortem: Saturday API Incident",
+              "start": "2026-03-16T14:00:00",
+              "end": "2026-03-16T15:00:00",
+              "description": "Review root cause and action items from Saturday's API latency spike. Led by David Liu.",
+              "attendees": ["david.liu@company.com", "eng-leads@company.com"]
+            },
+            {
+              "summary": "Board Deck Working Session",
+              "start": "2026-03-16T15:30:00",
+              "end": "2026-03-16T16:30:00",
+              "description": "Collaborative session to finalize board deck. Product section still needed.",
+              "attendees": ["leadership@company.com"]
+            },
+            {
+              "summary": "1:1 with David Liu",
+              "start": "2026-03-16T17:00:00",
+              "end": "2026-03-16T17:30:00",
+              "description": "Weekly sync with CTO. Topics: incident follow-up, Q2 eng hiring, architecture review.",
+              "attendees": ["david.liu@company.com"]
+            }
+          ],
+          "timestamp": null
+        },
+        {
+          "tool_name": "todo_data",
+          "tool_category": "todoist",
+          "data": {
+            "action": "list",
+            "todos": [
+              {
+                "id": "m1",
+                "title": "Send Cloudwick pricing proposal",
+                "completed": false,
+                "priority": "high",
+                "due_date": "2026-03-13",
+                "labels": ["sales", "overdue", "blocking"],
+                "subtasks": [],
+                "created_at": "2026-03-10T09:00:00Z",
+                "updated_at": "2026-03-12T16:00:00Z"
+              },
+              {
+                "id": "m2",
+                "title": "Finalize Q1 investor update",
+                "completed": false,
+                "priority": "high",
+                "due_date": "2026-03-13",
+                "labels": ["investors", "overdue"],
+                "subtasks": [],
+                "created_at": "2026-03-09T10:00:00Z",
+                "updated_at": "2026-03-12T14:00:00Z"
+              },
+              {
+                "id": "m3",
+                "title": "Review post-mortem template",
+                "completed": false,
+                "priority": "medium",
+                "due_date": "2026-03-13",
+                "labels": ["engineering", "overdue"],
+                "subtasks": [],
+                "created_at": "2026-03-11T11:00:00Z",
+                "updated_at": "2026-03-11T11:00:00Z"
+              },
+              {
+                "id": "m4",
+                "title": "Approve Priya Sharma onboarding plan",
+                "completed": false,
+                "priority": "medium",
+                "due_date": "2026-03-16",
+                "labels": ["hiring"],
+                "subtasks": [],
+                "created_at": "2026-03-12T09:00:00Z",
+                "updated_at": "2026-03-12T09:00:00Z"
+              },
+              {
+                "id": "m5",
+                "title": "Product section for board deck",
+                "completed": false,
+                "priority": "high",
+                "due_date": "2026-03-16",
+                "labels": ["board", "urgent"],
+                "subtasks": [],
+                "created_at": "2026-03-10T14:00:00Z",
+                "updated_at": "2026-03-14T20:00:00Z"
+              },
+              {
+                "id": "m6",
+                "title": "Weekly metrics report",
+                "completed": false,
+                "priority": "medium",
+                "due_date": "2026-03-16",
+                "labels": ["reporting"],
+                "subtasks": [],
+                "created_at": "2026-03-09T09:00:00Z",
+                "updated_at": "2026-03-09T09:00:00Z"
+              },
+              {
+                "id": "m7",
+                "title": "Reply to Datadog contract renewal",
+                "completed": false,
+                "priority": "low",
+                "due_date": "2026-03-16",
+                "labels": ["vendor"],
+                "subtasks": [],
+                "created_at": "2026-03-13T15:00:00Z",
+                "updated_at": "2026-03-13T15:00:00Z"
+              }
+            ],
+            "stats": {
+              "total": 7,
+              "completed": 0,
+              "pending": 7,
+              "overdue": 3,
+              "today": 4,
+              "upcoming": 0
+            }
+          },
+          "timestamp": null
+        }
+      ],
+      "follow_up_actions": [
+        "Draft Cloudwick pricing now",
+        "Prep for 2pm post-mortem",
+        "Start board deck product section",
+        "Show full inbox"
+      ],
+      "pauseAfter": 4000
+    }
+  ]
+}

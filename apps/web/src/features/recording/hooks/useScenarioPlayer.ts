@@ -70,7 +70,9 @@ export function useScenarioPlayer(
   const setGlobalLoading = useLoadingStore((s) => s.setIsLoading);
 
   const [messages, setMessages] = useState<MessageType[]>([]);
-  const [partialMessage, setPartialMessage] = useState<MessageType | null>(null);
+  const [partialMessage, setPartialMessage] = useState<MessageType | null>(
+    null,
+  );
   const [loadingState, setLoadingState] = useState<ScenarioLoadingState>({
     isLoading: false,
     loadingText: "",
@@ -194,12 +196,12 @@ export function useScenarioPlayer(
             response: state.text,
             message_id: msgId,
             loading: false,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // biome-ignore lint/suspicious/noExplicitAny: scenario state data is loosely typed
             tool_data: (state.tool_data as any) ?? undefined,
             follow_up_actions: state.follow_up_actions ?? undefined,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // biome-ignore lint/suspicious/noExplicitAny: scenario state data is loosely typed
             image_data: (state.image_data as any) ?? undefined,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // biome-ignore lint/suspicious/noExplicitAny: scenario state data is loosely typed
             memory_data: (state.memory_data as any) ?? undefined,
           };
           clearLoading();
@@ -225,8 +227,7 @@ export function useScenarioPlayer(
       const nextIdx = stateIndexRef.current + 1;
       const nextState = scenario.states[nextIdx];
       const keepMounted =
-        nextState?.type === "loading" ||
-        nextState?.type === "tool_calls";
+        nextState?.type === "loading" || nextState?.type === "tool_calls";
 
       const id = setTimeout(() => {
         if (!keepMounted) clearLoading();
@@ -247,8 +248,11 @@ export function useScenarioPlayer(
             m.message_id === lastBot.message_id
               ? {
                   ...m,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  tool_data: [...(m.tool_data ?? []), ...(state.entries as any)],
+                  tool_data: [
+                    ...(m.tool_data ?? []),
+                    // biome-ignore lint/suspicious/noExplicitAny: scenario state data is loosely typed
+                    ...(state.entries as any),
+                  ],
                 }
               : m,
           );
@@ -261,7 +265,7 @@ export function useScenarioPlayer(
             response: "",
             message_id: msgId,
             loading: false,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // biome-ignore lint/suspicious/noExplicitAny: scenario state data is loosely typed
             tool_data: state.entries as any,
           },
         ];
@@ -304,7 +308,7 @@ export function useScenarioPlayer(
           const entry = {
             tool_name: "todo_data" as const,
             tool_category: "todoist",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // biome-ignore lint/suspicious/noExplicitAny: scenario state data is loosely typed
             data: state.data as any,
             timestamp: null,
           };
@@ -326,7 +330,7 @@ export function useScenarioPlayer(
               {
                 tool_name: "todo_data" as const,
                 tool_category: "todoist",
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                // biome-ignore lint/suspicious/noExplicitAny: scenario state data is loosely typed
                 data: state.data as any,
                 timestamp: null,
               },
@@ -351,7 +355,7 @@ export function useScenarioPlayer(
           response: "",
           message_id: msgId,
           loading: false,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // biome-ignore lint/suspicious/noExplicitAny: scenario state data is loosely typed
           image_data: state.image_data as any,
         },
       ]);
