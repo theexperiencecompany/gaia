@@ -82,7 +82,7 @@ class GaiaTaskService:
             user_id=user_id,
         )
 
-        context = {
+        context: dict[str, Any] = {
             "task_id": task.task_id,
             "title": task.title,
             "status": task.status,
@@ -182,6 +182,7 @@ class GaiaTaskService:
         task = await self.get_task(task_id, user_id)
         if not task:
             return None
+        assert task.vfs_path is not None, f"Task {task_id} has no vfs_path"
 
         now = datetime.now(timezone.utc)
         archive_path = task.vfs_path.replace("/tasks/", "/tasks/archive/")
@@ -214,6 +215,7 @@ class GaiaTaskService:
         task = await self.get_task(task_id, user_id)
         if not task:
             return None
+        assert task.vfs_path is not None, f"Task {task_id} has no vfs_path"
 
         now = datetime.now(timezone.utc)
         archive_path = task.vfs_path.replace("/tasks/", "/tasks/archive/")
