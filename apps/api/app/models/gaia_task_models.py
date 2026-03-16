@@ -5,7 +5,6 @@ GaiaTask models — GAIA's internal working memory for multi-step tasks.
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,35 +27,25 @@ class GaiaTask(BaseModel):
     title: str
     description: str
     status: GaiaTaskStatus = GaiaTaskStatus.ACTIVE
-    primary_conversation_id: Optional[str] = None
-    owned_workflow_ids: List[str] = Field(default_factory=list)
-    active_loop_ids: List[str] = Field(default_factory=list)
-    vfs_path: str = ""
+    primary_conversation_id: str | None = None
+    owned_workflow_ids: list[str] = Field(default_factory=list)
+    active_loop_ids: list[str] = Field(default_factory=list)
+    vfs_path: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    completed_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    completed_at: datetime | None = None
+    expires_at: datetime | None = None
 
 
 class CreateGaiaTaskRequest(BaseModel):
     title: str
     description: str
-    expires_in_days: Optional[int] = 30
-    primary_conversation_id: Optional[str] = None
+    expires_in_days: int | None = 30
+    primary_conversation_id: str | None = None
 
 
 class UpdateGaiaTaskRequest(BaseModel):
-    status: Optional[GaiaTaskStatus] = None
-    notes: Optional[str] = None  # Appended to log.md
-    active_loop_ids: Optional[List[str]] = None
-    owned_workflow_ids: Optional[List[str]] = None
-
-
-class GaiaTaskSummary(BaseModel):
-    """Lightweight representation injected into every agent call."""
-
-    task_id: str
-    title: str
-    status: GaiaTaskStatus
-    created_at: datetime
-    active_loop_count: int
+    status: GaiaTaskStatus | None = None
+    notes: str | None = None  # Appended to log.md
+    active_loop_ids: list[str] | None = None
+    owned_workflow_ids: list[str] | None = None
