@@ -69,9 +69,14 @@ export default function RecordingLayout({ children }: { children: ReactNode }) {
               display: none !important;
             }
 
-            /* Neutralize viewport-unit min-heights that break with CSS zoom */
+            /* Neutralize viewport-unit values that break with CSS zoom.
+               With zoom, viewport units reference the physical viewport (e.g. 2880px)
+               not the logical viewport (1440px), causing oversized elements. */
             [data-recording-phase] .conversation_history {
               min-height: 0 !important;
+            }
+            [data-recording-phase] .imessage-bubble {
+              max-width: 100% !important;
             }
           `}</style>
           {children}

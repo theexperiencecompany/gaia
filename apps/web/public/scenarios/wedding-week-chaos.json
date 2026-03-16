@@ -1,8 +1,13 @@
 {
   "id": "wedding-week-chaos",
-  "title": "Wedding Week — 5 Days Out",
-  "viewport": { "width": 390, "height": 844 },
-  "settings": { "theme": "dark" },
+  "title": "Wedding Week \u2014 5 Days Out",
+  "viewport": {
+    "width": 1080,
+    "height": 608
+  },
+  "settings": {
+    "theme": "dark"
+  },
   "states": [
     {
       "type": "user_message",
@@ -13,14 +18,20 @@
     {
       "type": "loading",
       "text": "Let me pull everything together...",
-      "toolInfo": { "toolCategory": "general", "showCategory": false },
+      "toolInfo": {
+        "toolCategory": "general",
+        "showCategory": false
+      },
       "duration": 900,
       "pauseAfter": 100
     },
     {
       "type": "loading",
       "text": "Checking vendor confirmation emails...",
-      "toolInfo": { "toolCategory": "gmail", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "gmail",
+        "showCategory": true
+      },
       "duration": 1400,
       "pauseAfter": 150
     },
@@ -34,9 +45,11 @@
             {
               "tool_name": "gmail_search",
               "tool_category": "gmail",
-              "message": "Checked vendor confirmation status — 2 unconfirmed",
-              "inputs": { "query": "subject:(wedding OR confirmation OR final details) newer_than:14d" },
-              "output": "CONFIRMED: Sage & Stone Catering (final headcount email Mar 14), DJ Marcus (playlist confirmed Mar 13), Elena Vasquez Photography (timeline confirmed Mar 12), Riverside Pavilion venue (final walkthrough done Mar 11). NOT CONFIRMED: Bloom & Vine Florals — your follow-up email sent Mar 12, no response in 4 days. Golden Gate Shuttle Co — sent shuttle route confirmation request Mar 13, still waiting."
+              "message": "Checked vendor confirmation status \u2014 2 unconfirmed",
+              "inputs": {
+                "query": "subject:(wedding OR confirmation OR final details) newer_than:14d"
+              },
+              "output": "CONFIRMED: Sage & Stone Catering (final headcount email Mar 14), DJ Marcus (playlist confirmed Mar 13), Elena Vasquez Photography (timeline confirmed Mar 12), Riverside Pavilion venue (final walkthrough done Mar 11). NOT CONFIRMED: Bloom & Vine Florals \u2014 your follow-up email sent Mar 12, no response in 4 days. Golden Gate Shuttle Co \u2014 sent shuttle route confirmation request Mar 13, still waiting."
             }
           ],
           "timestamp": null
@@ -47,7 +60,10 @@
     {
       "type": "loading",
       "text": "Reviewing your schedule through Thursday...",
-      "toolInfo": { "toolCategory": "google_calendar", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "google_calendar",
+        "showCategory": true
+      },
       "duration": 1200,
       "pauseAfter": 150
     },
@@ -61,9 +77,15 @@
             {
               "tool_name": "get_calendar_events",
               "tool_category": "google_calendar",
-              "message": "Retrieved Mon-Sat schedule — 7 work meetings need delegation",
-              "inputs": { "date_range": "2026-03-16 to 2026-03-21", "calendars": ["primary", "work"] },
-              "output": "Mon: 10am Sprint Planning (delegate to Alex), 2pm Client Check-in with Nava Labs (delegate to Sarah). Tue: 9:30am Design Review (delegate to Marcus), 3pm Hiring Committee (skip — send notes async). Wed: 11am All-Hands (attend — last day), 4pm 1:1 with Manager (tell them you're out Thu-next Wed). Thu: Clear — 6:30pm Rehearsal Dinner at Osteria Stellina. Fri: 2pm Venue Setup. Sat: THE DAY — ceremony 4pm, reception 5:30pm."
+              "message": "Retrieved Mon-Sat schedule \u2014 7 work meetings need delegation",
+              "inputs": {
+                "date_range": "2026-03-16 to 2026-03-21",
+                "calendars": [
+                  "primary",
+                  "work"
+                ]
+              },
+              "output": "Mon: 10am Sprint Planning (delegate to Alex), 2pm Client Check-in with Nava Labs (delegate to Sarah). Tue: 9:30am Design Review (delegate to Marcus), 3pm Hiring Committee (skip \u2014 send notes async). Wed: 11am All-Hands (attend \u2014 last day), 4pm 1:1 with Manager (tell them you're out Thu-next Wed). Thu: Clear \u2014 6:30pm Rehearsal Dinner at Osteria Stellina. Fri: 2pm Venue Setup. Sat: THE DAY \u2014 ceremony 4pm, reception 5:30pm."
             }
           ],
           "timestamp": null
@@ -74,7 +96,10 @@
     {
       "type": "loading",
       "text": "Pulling up your wedding checklist...",
-      "toolInfo": { "toolCategory": "todoist", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "todoist",
+        "showCategory": true
+      },
       "duration": 1000,
       "pauseAfter": 150
     },
@@ -89,7 +114,10 @@
               "tool_name": "todoist_get_tasks",
               "tool_category": "todoist",
               "message": "Wedding checklist: 14 complete, 8 still pending",
-              "inputs": { "filter": "#wedding", "include_completed": true },
+              "inputs": {
+                "filter": "#wedding",
+                "include_completed": true
+              },
               "output": "DONE: Marriage license obtained, rings picked up, suit alterations complete, hotel block confirmed, welcome bags assembled, vows first draft, seating chart v1, rehearsal dinner menu finalized, wedding party gifts wrapped, song list approved, officiant briefed, bartender confirmed, dessert table ordered, hair & makeup booked. PENDING: Finalize vows (refine first draft), print final seating chart (updated 2 RSVPs last week), confirm honeymoon hotel in Tulum, pack for honeymoon, send day-of timeline to bridal party, write toast for rehearsal dinner, assemble emergency kit, tip envelopes for vendors."
             }
           ],
@@ -100,7 +128,7 @@
     },
     {
       "type": "bot_message",
-      "text": "Deep breath. You're in better shape than you think — 14 of 22 items done.\n\n**Handle TODAY** (these can't wait):\n- **Call Bloom & Vine Florals NOW** — no response in 4 days is a red flag. If you can't reach them by noon, you need a backup florist. I'd call Petals & Pine as a Plan B.\n- **Golden Gate Shuttle Co** — call them directly, don't wait for email. Confirm the route, pickup times, and headcount.\n- **Send work handoff emails** — Sprint Planning to Alex, Nava Labs check-in to Sarah, Design Review to Marcus. Do this before EOD so they have time to prep.\n\n**Tomorrow (Tuesday):**\n- Finalize vows (you have the first draft — refine it, don't rewrite)\n- Print the final seating chart (2 RSVPs changed — update and print)\n- Confirm Tulum honeymoon hotel and send yourself the confirmation\n\n**Wednesday (last work day):**\n- Send day-of timeline to bridal party (they need 48+ hours notice)\n- Tell your manager in the 4pm 1:1 that you're out Thu through next Wednesday\n- Write rehearsal dinner toast (keep it under 3 minutes)\n\n**Thursday:**\n- Pack for honeymoon (beach clothes, sunscreen, passports, chargers)\n- Assemble emergency kit: sewing kit, Advil, Tums, stain remover, extra bobby pins, phone charger, snacks\n- Prep vendor tip envelopes (caterer, DJ, photographer, bartender, coordinator)\n- 6:30pm — Rehearsal Dinner at Osteria Stellina\n\n**Things you're forgetting:**\n- Extra copies of marriage license for the officiant (bring 2)\n- Cash tips for day-of vendors (plan $150-200 each for photographer and DJ)\n- Break in your dress shoes before Saturday\n- Charge all cameras/phones Friday night\n\nYou've got this. The hard part is done — Saturday is going to be perfect.",
+      "text": "Deep breath. You're in better shape than you think \u2014 14 of 22 items done.\n\n**Handle TODAY** (these can't wait):\n- **Call Bloom & Vine Florals NOW** \u2014 no response in 4 days is a red flag. If you can't reach them by noon, you need a backup florist. I'd call Petals & Pine as a Plan B.\n- **Golden Gate Shuttle Co** \u2014 call them directly, don't wait for email. Confirm the route, pickup times, and headcount.\n- **Send work handoff emails** \u2014 Sprint Planning to Alex, Nava Labs check-in to Sarah, Design Review to Marcus. Do this before EOD so they have time to prep.\n\n**Tomorrow (Tuesday):**\n- Finalize vows (you have the first draft \u2014 refine it, don't rewrite)\n- Print the final seating chart (2 RSVPs changed \u2014 update and print)\n- Confirm Tulum honeymoon hotel and send yourself the confirmation\n\n**Wednesday (last work day):**\n- Send day-of timeline to bridal party (they need 48+ hours notice)\n- Tell your manager in the 4pm 1:1 that you're out Thu through next Wednesday\n- Write rehearsal dinner toast (keep it under 3 minutes)\n\n**Thursday:**\n- Pack for honeymoon (beach clothes, sunscreen, passports, chargers)\n- Assemble emergency kit: sewing kit, Advil, Tums, stain remover, extra bobby pins, phone charger, snacks\n- Prep vendor tip envelopes (caterer, DJ, photographer, bartender, coordinator)\n- 6:30pm \u2014 Rehearsal Dinner at Osteria Stellina\n\n**Things you're forgetting:**\n- Extra copies of marriage license for the officiant (bring 2)\n- Cash tips for day-of vendors (plan $150-200 each for photographer and DJ)\n- Break in your dress shoes before Saturday\n- Charge all cameras/phones Friday night\n\nYou've got this. The hard part is done \u2014 Saturday is going to be perfect.",
       "streamingSpeed": 5,
       "tool_data": [
         {
@@ -112,24 +140,32 @@
               "start": "2026-03-16T10:00:00",
               "end": "2026-03-16T11:00:00",
               "description": "Weekly sprint planning. Hand off to Alex Rivera for this week.",
-              "attendees": ["alex.rivera@company.com", "eng-team@company.com"]
+              "attendees": [
+                "alex.rivera@company.com",
+                "eng-team@company.com"
+              ]
             },
             {
-              "summary": "Client Check-in — Nava Labs (DELEGATE to Sarah)",
+              "summary": "Client Check-in \u2014 Nava Labs (DELEGATE to Sarah)",
               "start": "2026-03-16T14:00:00",
               "end": "2026-03-16T14:45:00",
               "description": "Monthly check-in with Nava Labs. Sarah can cover.",
-              "attendees": ["sarah.kim@company.com", "contact@navalabs.com"]
+              "attendees": [
+                "sarah.kim@company.com",
+                "contact@navalabs.com"
+              ]
             },
             {
-              "summary": "Rehearsal Dinner — Osteria Stellina",
+              "summary": "Rehearsal Dinner \u2014 Osteria Stellina",
               "start": "2026-03-19T18:30:00",
               "end": "2026-03-19T21:00:00",
               "description": "Rehearsal dinner with wedding party and immediate family. Private dining room.",
-              "attendees": ["wedding-party@family.com"]
+              "attendees": [
+                "wedding-party@family.com"
+              ]
             },
             {
-              "summary": "Venue Setup — Riverside Pavilion",
+              "summary": "Venue Setup \u2014 Riverside Pavilion",
               "start": "2026-03-20T14:00:00",
               "end": "2026-03-20T17:00:00",
               "description": "Setup day. Florist delivers 12pm, caterer arrives 2pm, DJ load-in 3pm.",
@@ -153,22 +189,30 @@
             "todos": [
               {
                 "id": "w1",
-                "title": "Call Bloom & Vine Florals — confirm arrangements",
+                "title": "Call Bloom & Vine Florals \u2014 confirm arrangements",
                 "completed": false,
                 "priority": "high",
                 "due_date": "2026-03-16",
-                "labels": ["wedding", "urgent", "vendor"],
+                "labels": [
+                  "wedding",
+                  "urgent",
+                  "vendor"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-12T10:00:00Z",
                 "updated_at": "2026-03-12T10:00:00Z"
               },
               {
                 "id": "w2",
-                "title": "Confirm Golden Gate Shuttle Co — route and times",
+                "title": "Confirm Golden Gate Shuttle Co \u2014 route and times",
                 "completed": false,
                 "priority": "high",
                 "due_date": "2026-03-16",
-                "labels": ["wedding", "urgent", "vendor"],
+                "labels": [
+                  "wedding",
+                  "urgent",
+                  "vendor"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-13T09:00:00Z",
                 "updated_at": "2026-03-13T09:00:00Z"
@@ -179,7 +223,10 @@
                 "completed": false,
                 "priority": "high",
                 "due_date": "2026-03-17",
-                "labels": ["wedding", "personal"],
+                "labels": [
+                  "wedding",
+                  "personal"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-08T20:00:00Z",
                 "updated_at": "2026-03-14T22:00:00Z"
@@ -190,7 +237,10 @@
                 "completed": false,
                 "priority": "medium",
                 "due_date": "2026-03-17",
-                "labels": ["wedding", "logistics"],
+                "labels": [
+                  "wedding",
+                  "logistics"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-10T11:00:00Z",
                 "updated_at": "2026-03-14T15:00:00Z"
@@ -201,7 +251,10 @@
                 "completed": false,
                 "priority": "high",
                 "due_date": "2026-03-18",
-                "labels": ["wedding", "communication"],
+                "labels": [
+                  "wedding",
+                  "communication"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-05T09:00:00Z",
                 "updated_at": "2026-03-05T09:00:00Z"
@@ -212,7 +265,10 @@
                 "completed": false,
                 "priority": "medium",
                 "due_date": "2026-03-17",
-                "labels": ["wedding", "honeymoon"],
+                "labels": [
+                  "wedding",
+                  "honeymoon"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-01T10:00:00Z",
                 "updated_at": "2026-03-01T10:00:00Z"
@@ -223,7 +279,10 @@
                 "completed": false,
                 "priority": "medium",
                 "due_date": "2026-03-19",
-                "labels": ["wedding", "honeymoon"],
+                "labels": [
+                  "wedding",
+                  "honeymoon"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-01T10:00:00Z",
                 "updated_at": "2026-03-01T10:00:00Z"
@@ -234,7 +293,10 @@
                 "completed": false,
                 "priority": "medium",
                 "due_date": "2026-03-19",
-                "labels": ["wedding", "logistics"],
+                "labels": [
+                  "wedding",
+                  "logistics"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-08T14:00:00Z",
                 "updated_at": "2026-03-08T14:00:00Z"

@@ -40,7 +40,7 @@ function animateScrollTo(
   if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
   const startY = el.scrollTop;
   const distance = targetY - startY;
-  if (Math.abs(distance) < 2) {
+  if (Math.abs(distance) < 5) {
     onComplete?.();
     return;
   }
@@ -76,7 +76,12 @@ export default function RecordingChatLayout({
     0,
   );
 
-  // New message committed or tool cards added → scroll to bottom.
+  // Helper: check if scroll is already near the bottom (within tolerance).
+  // Uses a generous tolerance (5px) to avoid CSS-zoom fractional jitter.
+  const isNearBottom = (el: HTMLElement) =>
+    el.scrollHeight - el.clientHeight - el.scrollTop < 5;
+
+  // New message committed or tool cards added → always scroll to bottom.
   // Duration scales with distance so short reveals are snappy and tall
   // reveals (tool cards, follow-up actions) give the viewer time to read.
   useEffect(() => {
@@ -88,7 +93,7 @@ export default function RecordingChatLayout({
     const target = el.scrollHeight - el.clientHeight;
     const distance = Math.abs(target - el.scrollTop);
 
-    if (distance < 2) return;
+    if (distance < 5) return;
 
     // Scale: ~600ms for small scrolls, up to 2500ms for large reveals
     const duration = Math.min(2500, Math.max(600, distance * 3));
@@ -98,18 +103,18 @@ export default function RecordingChatLayout({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, toolDataKey]);
 
-  // Loading text changes — gentle scroll to keep indicator visible
+  // Loading text changes — only scroll if already near bottom
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || !isNearBottom(el)) return;
     animateScrollTo(el, el.scrollHeight - el.clientHeight, 800, rafRef);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingState.loadingTextKey]);
 
-  // Streaming in progress — smooth follow instead of instant jump
+  // Streaming in progress — only follow if already near bottom
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !partialMessage) return;
+    if (!el || !partialMessage || !isNearBottom(el)) return;
     animateScrollTo(el, el.scrollHeight - el.clientHeight, 300, rafRef);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partialMessage?.response?.length]);

@@ -1,25 +1,33 @@
 {
   "id": "client-fire-drill",
-  "title": "Client Fire Drill — Angry Enterprise Client",
-  "viewport": { "width": 390, "height": 844 },
-  "settings": { "theme": "dark" },
+  "title": "Client Fire Drill \u2014 Angry Enterprise Client",
+  "viewport": {
+    "width": 1080,
+    "height": 608
+  },
+  "settings": {
+    "theme": "dark"
+  },
   "states": [
     {
       "type": "user_message",
-      "text": "Apex Enterprise just sent an angry email about missed deadlines. Pull up everything on this account — I need to respond in the next hour.",
+      "text": "Apex Enterprise just sent an angry email about missed deadlines. Pull up everything on this account \u2014 I need to respond in the next hour.",
       "typingSpeed": 40,
       "pauseAfter": 600
     },
     {
       "type": "thinking",
-      "content": "High-priority client situation. I need to: (1) pull up the actual email thread to understand what they're angry about, (2) check the Apex project deliverables to see what actually slipped, (3) look at recent meetings for context on commitments made, and (4) check account details — contract value, renewal date. Then I'll help draft a response that acknowledges without over-apologizing.",
+      "content": "High-priority client situation. I need to: (1) pull up the actual email thread to understand what they're angry about, (2) check the Apex project deliverables to see what actually slipped, (3) look at recent meetings for context on commitments made, and (4) check account details \u2014 contract value, renewal date. Then I'll help draft a response that acknowledges without over-apologizing.",
       "duration": 2500,
       "pauseAfter": 300
     },
     {
       "type": "loading",
       "text": "Pulling up Apex Enterprise email thread...",
-      "toolInfo": { "toolCategory": "gmail", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "gmail",
+        "showCategory": true
+      },
       "duration": 1500,
       "pauseAfter": 150
     },
@@ -33,9 +41,12 @@
             {
               "tool_name": "gmail_search",
               "tool_category": "gmail",
-              "message": "Found email thread with Apex Enterprise — 4 messages, latest is the escalation",
-              "inputs": { "query": "from:apex-enterprise subject:deliverables OR deadlines", "max_results": 5 },
-              "output": "Latest (today 8:12 AM) from VP Product Karen Walsh: 'This is the second time deliverables have slipped without proactive communication. The API integration was due March 7 and the dashboard redesign was due March 12 — neither has been delivered. We have our own stakeholders waiting on these. I need a call this week to discuss whether the current engagement is working.' Previous: Mar 10 you sent status update promising 'on track for March 12.' Mar 7 Karen asked about API integration status. Mar 3 kickoff recap email confirming all dates."
+              "message": "Found email thread with Apex Enterprise \u2014 4 messages, latest is the escalation",
+              "inputs": {
+                "query": "from:apex-enterprise subject:deliverables OR deadlines",
+                "max_results": 5
+              },
+              "output": "Latest (today 8:12 AM) from VP Product Karen Walsh: 'This is the second time deliverables have slipped without proactive communication. The API integration was due March 7 and the dashboard redesign was due March 12 \u2014 neither has been delivered. We have our own stakeholders waiting on these. I need a call this week to discuss whether the current engagement is working.' Previous: Mar 10 you sent status update promising 'on track for March 12.' Mar 7 Karen asked about API integration status. Mar 3 kickoff recap email confirming all dates."
             }
           ],
           "timestamp": null
@@ -46,7 +57,10 @@
     {
       "type": "loading",
       "text": "Checking Apex deliverables and deadlines...",
-      "toolInfo": { "toolCategory": "todoist", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "todoist",
+        "showCategory": true
+      },
       "duration": 1200,
       "pauseAfter": 150
     },
@@ -60,9 +74,12 @@
             {
               "tool_name": "todoist_get_tasks",
               "tool_category": "todoist",
-              "message": "Found 6 Apex deliverables — 2 overdue, 2 in progress, 2 upcoming",
-              "inputs": { "filter": "#apex-enterprise", "include_priority": true },
-              "output": "OVERDUE: (1) API Integration v2 — due Mar 7, 9 days late, blocked on auth token migration, 80% complete. (2) Dashboard Redesign — due Mar 12, 4 days late, design approved but frontend build stalled, 60% complete. IN PROGRESS: (3) Data Export Module — due Mar 21, on track. (4) SSO Implementation — due Mar 28, started last week. UPCOMING: (5) Performance Audit — due Apr 4. (6) User Migration Script — due Apr 11."
+              "message": "Found 6 Apex deliverables \u2014 2 overdue, 2 in progress, 2 upcoming",
+              "inputs": {
+                "filter": "#apex-enterprise",
+                "include_priority": true
+              },
+              "output": "OVERDUE: (1) API Integration v2 \u2014 due Mar 7, 9 days late, blocked on auth token migration, 80% complete. (2) Dashboard Redesign \u2014 due Mar 12, 4 days late, design approved but frontend build stalled, 60% complete. IN PROGRESS: (3) Data Export Module \u2014 due Mar 21, on track. (4) SSO Implementation \u2014 due Mar 28, started last week. UPCOMING: (5) Performance Audit \u2014 due Apr 4. (6) User Migration Script \u2014 due Apr 11."
             }
           ],
           "timestamp": null
@@ -73,7 +90,10 @@
     {
       "type": "loading",
       "text": "Finding recent Apex meetings...",
-      "toolInfo": { "toolCategory": "google_calendar", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "google_calendar",
+        "showCategory": true
+      },
       "duration": 1000,
       "pauseAfter": 150
     },
@@ -88,8 +108,11 @@
               "tool_name": "get_calendar_events",
               "tool_category": "google_calendar",
               "message": "Found last Apex meeting and next scheduled check-in",
-              "inputs": { "search": "apex", "time_range": "2026-03-01 to 2026-04-01" },
-              "output": "Last meeting: Mar 10 'Apex Weekly Sync' — you, Karen Walsh, Dev Lead Raj Patel. Notes: committed to March 12 dashboard delivery. Next scheduled: Mar 19 'Apex Bi-Weekly Check-in' — but Karen likely wants something sooner given the email."
+              "inputs": {
+                "search": "apex",
+                "time_range": "2026-03-01 to 2026-04-01"
+              },
+              "output": "Last meeting: Mar 10 'Apex Weekly Sync' \u2014 you, Karen Walsh, Dev Lead Raj Patel. Notes: committed to March 12 dashboard delivery. Next scheduled: Mar 19 'Apex Bi-Weekly Check-in' \u2014 but Karen likely wants something sooner given the email."
             }
           ],
           "timestamp": null
@@ -100,7 +123,10 @@
     {
       "type": "loading",
       "text": "Reviewing Apex account details...",
-      "toolInfo": { "toolCategory": "search", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "search",
+        "showCategory": true
+      },
       "duration": 1100,
       "pauseAfter": 150
     },
@@ -115,8 +141,10 @@
               "tool_name": "web_search",
               "tool_category": "search",
               "message": "Retrieved Apex Enterprise account summary",
-              "inputs": { "query": "Apex Enterprise account details contract" },
-              "output": "Apex Enterprise — $240K/year contract, signed Aug 2025. Renewal: April 28 (6 weeks away). Key contacts: Karen Walsh (VP Product, decision maker), Raj Patel (Dev Lead, day-to-day). Account health was 'green' until this week. They evaluated 2 competitors before choosing you."
+              "inputs": {
+                "query": "Apex Enterprise account details contract"
+              },
+              "output": "Apex Enterprise \u2014 $240K/year contract, signed Aug 2025. Renewal: April 28 (6 weeks away). Key contacts: Karen Walsh (VP Product, decision maker), Raj Patel (Dev Lead, day-to-day). Account health was 'green' until this week. They evaluated 2 competitors before choosing you."
             }
           ],
           "timestamp": null
@@ -126,7 +154,7 @@
     },
     {
       "type": "bot_message",
-      "text": "They have a point — two deliverables slipped and you didn't flag it proactively. But this is recoverable.\n\n**What actually happened:**\n- **API Integration** — 9 days late. 80% done, blocked on auth token migration. Realistic completion: **March 19** (3 more days)\n- **Dashboard Redesign** — 4 days late. 60% done, frontend build stalled. Realistic completion: **March 21** (5 more days)\n\n**What's on track** (important to mention):\n- Data Export Module — due Mar 21, on schedule\n- SSO Implementation — due Mar 28, started and progressing\n\n**The real risk:** Renewal is April 28 — 6 weeks out. Karen is the decision maker and she's already questioning the engagement. This email is a warning shot, not a goodbye.\n\n**Response strategy:**\n1. **Acknowledge** — don't minimize or make excuses\n2. **Own the communication gap** — the miss wasn't just the deadline, it was not telling them\n3. **Commit to specific new dates** — March 19 (API) and March 21 (Dashboard)\n4. **Offer a make-good** — propose a call this week + weekly status reports going forward\n\n**Draft response to Karen:**\n> *\"Karen, you're right — both the delays and the lack of proactive communication are on us, and I'm sorry. Here's where we stand: the API integration is 80% complete and will be delivered by March 19. The dashboard redesign will follow by March 21. I should have flagged these risks earlier instead of you having to chase us. Going forward, I'll send you a written status update every Monday and flag any risks immediately. Can we get 30 minutes this week so I can walk you through the plan in detail?\"*\n\nDon't over-apologize. Don't offer discounts yet — save that for if the renewal conversation gets tough.",
+      "text": "They have a point \u2014 two deliverables slipped and you didn't flag it proactively. But this is recoverable.\n\n**What actually happened:**\n- **API Integration** \u2014 9 days late. 80% done, blocked on auth token migration. Realistic completion: **March 19** (3 more days)\n- **Dashboard Redesign** \u2014 4 days late. 60% done, frontend build stalled. Realistic completion: **March 21** (5 more days)\n\n**What's on track** (important to mention):\n- Data Export Module \u2014 due Mar 21, on schedule\n- SSO Implementation \u2014 due Mar 28, started and progressing\n\n**The real risk:** Renewal is April 28 \u2014 6 weeks out. Karen is the decision maker and she's already questioning the engagement. This email is a warning shot, not a goodbye.\n\n**Response strategy:**\n1. **Acknowledge** \u2014 don't minimize or make excuses\n2. **Own the communication gap** \u2014 the miss wasn't just the deadline, it was not telling them\n3. **Commit to specific new dates** \u2014 March 19 (API) and March 21 (Dashboard)\n4. **Offer a make-good** \u2014 propose a call this week + weekly status reports going forward\n\n**Draft response to Karen:**\n> *\"Karen, you're right \u2014 both the delays and the lack of proactive communication are on us, and I'm sorry. Here's where we stand: the API integration is 80% complete and will be delivered by March 19. The dashboard redesign will follow by March 21. I should have flagged these risks earlier instead of you having to chase us. Going forward, I'll send you a written status update every Monday and flag any risks immediately. Can we get 30 minutes this week so I can walk you through the plan in detail?\"*\n\nDon't over-apologize. Don't offer discounts yet \u2014 save that for if the renewal conversation gets tough.",
       "streamingSpeed": 5,
       "tool_data": [
         {
@@ -138,14 +166,20 @@
               "start": "2026-03-10T14:00:00",
               "end": "2026-03-10T14:45:00",
               "description": "Weekly sync with Apex Enterprise. Committed to March 12 dashboard delivery.",
-              "attendees": ["karen.walsh@apexenterprise.com", "raj.patel@apexenterprise.com"]
+              "attendees": [
+                "karen.walsh@apexenterprise.com",
+                "raj.patel@apexenterprise.com"
+              ]
             },
             {
               "summary": "Apex Bi-Weekly Check-in",
               "start": "2026-03-19T14:00:00",
               "end": "2026-03-19T14:45:00",
               "description": "Bi-weekly check-in with Apex Enterprise team.",
-              "attendees": ["karen.walsh@apexenterprise.com", "raj.patel@apexenterprise.com"]
+              "attendees": [
+                "karen.walsh@apexenterprise.com",
+                "raj.patel@apexenterprise.com"
+              ]
             }
           ],
           "timestamp": null
@@ -158,44 +192,58 @@
             "todos": [
               {
                 "id": "ax1",
-                "title": "API Integration v2 — Apex Enterprise",
+                "title": "API Integration v2 \u2014 Apex Enterprise",
                 "completed": false,
                 "priority": "high",
                 "due_date": "2026-03-07",
-                "labels": ["apex", "overdue", "engineering"],
+                "labels": [
+                  "apex",
+                  "overdue",
+                  "engineering"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-03T09:00:00Z",
                 "updated_at": "2026-03-14T16:00:00Z"
               },
               {
                 "id": "ax2",
-                "title": "Dashboard Redesign — Apex Enterprise",
+                "title": "Dashboard Redesign \u2014 Apex Enterprise",
                 "completed": false,
                 "priority": "high",
                 "due_date": "2026-03-12",
-                "labels": ["apex", "overdue", "design"],
+                "labels": [
+                  "apex",
+                  "overdue",
+                  "design"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-03T09:00:00Z",
                 "updated_at": "2026-03-13T11:00:00Z"
               },
               {
                 "id": "ax3",
-                "title": "Data Export Module — Apex Enterprise",
+                "title": "Data Export Module \u2014 Apex Enterprise",
                 "completed": false,
                 "priority": "medium",
                 "due_date": "2026-03-21",
-                "labels": ["apex", "engineering"],
+                "labels": [
+                  "apex",
+                  "engineering"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-03T09:00:00Z",
                 "updated_at": "2026-03-12T10:00:00Z"
               },
               {
                 "id": "ax4",
-                "title": "SSO Implementation — Apex Enterprise",
+                "title": "SSO Implementation \u2014 Apex Enterprise",
                 "completed": false,
                 "priority": "medium",
                 "due_date": "2026-03-28",
-                "labels": ["apex", "engineering"],
+                "labels": [
+                  "apex",
+                  "engineering"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-03T09:00:00Z",
                 "updated_at": "2026-03-10T14:00:00Z"

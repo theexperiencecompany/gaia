@@ -41,10 +41,13 @@ docker compose up -d                       # infra only
 docker compose --profile backend up -d    # + API
 docker compose --profile all up -d        # everything
 
-# Recording Demo Videos (dev server needs apps/web/.env.local — copy from .env.example)
-cp apps/web/.env.example apps/web/.env.local  # one-time setup
-nx dev web &
-cd scripts/record-video && pnpm record --scenario calendar-booking-demo
+# Recording Demo Videos
+# IMPORTANT: The main dev server runs on port 3000 — NEVER kill it or use port 3000 for recording.
+# Recording uses a SEPARATE dev server on port 3001.
+# To record, start a dedicated server on 3001 (if not already running):
+cd apps/web && npx next dev --turbopack -p 3001 &
+# Then record from the gaia-demo-videos repo:
+cd .context/gaia-demo-videos && pnpm record --scenario <name> --dev-server-url http://127.0.0.1:3001
 
 # Quality (run after changes — see After Major Changes below)
 nx run-many -t lint

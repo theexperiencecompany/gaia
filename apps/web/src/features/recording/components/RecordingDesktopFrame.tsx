@@ -123,9 +123,13 @@ function StaticSidebar() {
       <div className="relative z-[4] p-2 px-3 pb-3">
         {/* User row */}
         <div className="flex w-full items-center gap-3 rounded-xl px-2 py-2">
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-700">
-            <span className="text-xs text-zinc-300">A</span>
-          </div>
+          <Image
+            src="https://github.com/aryanranderiya.png"
+            alt="User"
+            width={28}
+            height={28}
+            className="size-7 shrink-0 rounded-full object-cover"
+          />
           <div className="flex flex-col items-start -space-y-0.5">
             <span className="text-sm text-zinc-300">Aryan</span>
             <span className="text-[11px] text-zinc-500">GAIA Pro</span>

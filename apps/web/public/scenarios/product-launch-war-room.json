@@ -1,25 +1,33 @@
 {
   "id": "product-launch-war-room",
-  "title": "Launch Day — Product Hunt War Room",
-  "viewport": { "width": 390, "height": 844 },
-  "settings": { "theme": "dark" },
+  "title": "Launch Day \u2014 Product Hunt War Room",
+  "viewport": {
+    "width": 1080,
+    "height": 608
+  },
+  "settings": {
+    "theme": "dark"
+  },
   "states": [
     {
       "type": "user_message",
-      "text": "It's launch day. Product Hunt goes live at 9am. Give me a full status check — marketing, eng, support. What's not ready?",
+      "text": "It's launch day. Product Hunt goes live at 9am. Give me a full status check \u2014 marketing, eng, support. What's not ready?",
       "typingSpeed": 40,
       "pauseAfter": 600
     },
     {
       "type": "thinking",
-      "content": "Launch day. Need to check: (1) launch checklist — what's done and what's still pending, (2) team readiness — any blockers from eng, marketing, or support, (3) Product Hunt competition today — who else is launching, (4) today's schedule so they know the battle rhythm. Two hours to go, so I need to surface only what's critical-path.",
+      "content": "Launch day. Need to check: (1) launch checklist \u2014 what's done and what's still pending, (2) team readiness \u2014 any blockers from eng, marketing, or support, (3) Product Hunt competition today \u2014 who else is launching, (4) today's schedule so they know the battle rhythm. Two hours to go, so I need to surface only what's critical-path.",
       "duration": 2200,
       "pauseAfter": 300
     },
     {
       "type": "loading",
       "text": "Pulling up launch checklist...",
-      "toolInfo": { "toolCategory": "todoist", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "todoist",
+        "showCategory": true
+      },
       "duration": 1200,
       "pauseAfter": 150
     },
@@ -33,8 +41,11 @@
             {
               "tool_name": "todoist_get_tasks",
               "tool_category": "todoist",
-              "message": "Launch checklist: 14/18 complete — 4 items pending",
-              "inputs": { "filter": "#product-launch", "include_completed": true },
+              "message": "Launch checklist: 14/18 complete \u2014 4 items pending",
+              "inputs": {
+                "filter": "#product-launch",
+                "include_completed": true
+              },
               "output": "COMPLETE (14): Landing page live, PH listing drafted, social assets created, blog post published, email template finalized, press kit uploaded, analytics tracking verified, Stripe billing tested, onboarding flow QA'd, demo video recorded, changelog published, support docs written, Intercom bot updated, team Slack channel created. PENDING (4): Upload demo video to PH listing, send launch email to waitlist (3,247 subscribers), brief support team on FAQ doc, final smoke test on production."
             }
           ],
@@ -46,7 +57,10 @@
     {
       "type": "loading",
       "text": "Checking team readiness updates...",
-      "toolInfo": { "toolCategory": "gmail", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "gmail",
+        "showCategory": true
+      },
       "duration": 1300,
       "pauseAfter": 150
     },
@@ -61,8 +75,11 @@
               "tool_name": "gmail_search",
               "tool_category": "gmail",
               "message": "Found 3 team readiness emails from overnight",
-              "inputs": { "query": "subject:launch newer_than:12h", "categorize": true },
-              "output": "1) Eng Lead Priya (11:42 PM): 'Deploy is green. All smoke tests passing on production. Monitoring dashboards are up. I'll be on standby from 8am.' 2) Marketing Lead Jake (6:30 AM): 'PH listing is drafted and ready — just need the demo video uploaded. Social posts scheduled for 9:15am, 12pm, 3pm, 6pm. Hacker News post queued.' 3) Support Lead Nina (yesterday 5:14 PM): 'FAQ doc is written but needs your review before I can brief the team. Can you approve by 8am?'"
+              "inputs": {
+                "query": "subject:launch newer_than:12h",
+                "categorize": true
+              },
+              "output": "1) Eng Lead Priya (11:42 PM): 'Deploy is green. All smoke tests passing on production. Monitoring dashboards are up. I'll be on standby from 8am.' 2) Marketing Lead Jake (6:30 AM): 'PH listing is drafted and ready \u2014 just need the demo video uploaded. Social posts scheduled for 9:15am, 12pm, 3pm, 6pm. Hacker News post queued.' 3) Support Lead Nina (yesterday 5:14 PM): 'FAQ doc is written but needs your review before I can brief the team. Can you approve by 8am?'"
             }
           ],
           "timestamp": null
@@ -73,7 +90,10 @@
     {
       "type": "loading",
       "text": "Scouting today's Product Hunt competition...",
-      "toolInfo": { "toolCategory": "search", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "search",
+        "showCategory": true
+      },
       "duration": 1500,
       "pauseAfter": 150
     },
@@ -88,8 +108,10 @@
               "tool_name": "web_search",
               "tool_category": "search",
               "message": "Checked Product Hunt launches for March 16, 2026",
-              "inputs": { "query": "Product Hunt launches today March 16 2026" },
-              "output": "3 notable launches today: (1) Syncly — AI meeting notes tool, 42 upvotes already (launched at midnight). (2) PixelForge — AI image editor, 28 upvotes. (3) Stackwise — developer docs search. No YC-backed or well-funded launches today. Moderate competition — a strong showing could hit top 3. Yesterday's #1 had 487 upvotes."
+              "inputs": {
+                "query": "Product Hunt launches today March 16 2026"
+              },
+              "output": "3 notable launches today: (1) Syncly \u2014 AI meeting notes tool, 42 upvotes already (launched at midnight). (2) PixelForge \u2014 AI image editor, 28 upvotes. (3) Stackwise \u2014 developer docs search. No YC-backed or well-funded launches today. Moderate competition \u2014 a strong showing could hit top 3. Yesterday's #1 had 487 upvotes."
             }
           ],
           "timestamp": null
@@ -100,7 +122,10 @@
     {
       "type": "loading",
       "text": "Checking launch day schedule...",
-      "toolInfo": { "toolCategory": "google_calendar", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "google_calendar",
+        "showCategory": true
+      },
       "duration": 900,
       "pauseAfter": 150
     },
@@ -114,9 +139,14 @@
             {
               "tool_name": "get_calendar_events",
               "tool_category": "google_calendar",
-              "message": "Retrieved launch day battle rhythm — 6 events",
-              "inputs": { "date": "2026-03-16", "calendars": ["primary"] },
-              "output": "8:00am Team Standup (15 min, all hands on deck), 9:00am PH Goes Live (milestone), 10:00am Social Media Blitz — first engagement wave, 12:00pm Launch Check-in (30 min, metrics review), 3:00pm Afternoon Metrics Review (30 min), 5:00pm Team Celebration (1 hr, champagne in the office)"
+              "message": "Retrieved launch day battle rhythm \u2014 6 events",
+              "inputs": {
+                "date": "2026-03-16",
+                "calendars": [
+                  "primary"
+                ]
+              },
+              "output": "8:00am Team Standup (15 min, all hands on deck), 9:00am PH Goes Live (milestone), 10:00am Social Media Blitz \u2014 first engagement wave, 12:00pm Launch Check-in (30 min, metrics review), 3:00pm Afternoon Metrics Review (30 min), 5:00pm Team Celebration (1 hr, champagne in the office)"
             }
           ],
           "timestamp": null
@@ -126,7 +156,7 @@
     },
     {
       "type": "bot_message",
-      "text": "Two hours to go. Here's where you stand.\n\n**Status: 78% ready** — 14 of 18 checklist items done.\n\n**Do BEFORE 9am** (critical path):\n- **Upload demo video to PH listing** — Jake is waiting on this. It's the last thing blocking the listing going live. Do it NOW.\n- **Review Nina's FAQ doc and approve** — she asked by 8am so she can brief support before launch. Quick skim, reply \"approved,\" done.\n\n**Do before noon:**\n- **Send waitlist email** — 3,247 subscribers ready to flood Product Hunt with upvotes. Time it for 9:15am, right after PH goes live.\n- **Final smoke test** — Priya says everything is green, but do one click-through yourself. 5 minutes of peace of mind.\n\n**Competition intel:**\nModerate day on PH. Syncly (AI meeting notes) is the frontrunner with 42 upvotes at midnight launch. No YC-backed or big-name launches. Yesterday's #1 hit 487 upvotes. **You have a real shot at top 3** if you get the waitlist email out quickly.\n\n**Your minute-by-minute:**\n- **7:00-7:15** — Upload demo video to PH listing\n- **7:15-7:25** — Review and approve FAQ doc for Nina\n- **7:25-7:45** — Quick production smoke test\n- **7:45-8:00** — Stage the waitlist email (schedule for 9:15am)\n- **8:00** — Team standup. Confirm everyone is go.\n- **9:00** — Ship it.\n\nThe waitlist is ready, the product works, and the team is on standby. Let's go.",
+      "text": "Two hours to go. Here's where you stand.\n\n**Status: 78% ready** \u2014 14 of 18 checklist items done.\n\n**Do BEFORE 9am** (critical path):\n- **Upload demo video to PH listing** \u2014 Jake is waiting on this. It's the last thing blocking the listing going live. Do it NOW.\n- **Review Nina's FAQ doc and approve** \u2014 she asked by 8am so she can brief support before launch. Quick skim, reply \"approved,\" done.\n\n**Do before noon:**\n- **Send waitlist email** \u2014 3,247 subscribers ready to flood Product Hunt with upvotes. Time it for 9:15am, right after PH goes live.\n- **Final smoke test** \u2014 Priya says everything is green, but do one click-through yourself. 5 minutes of peace of mind.\n\n**Competition intel:**\nModerate day on PH. Syncly (AI meeting notes) is the frontrunner with 42 upvotes at midnight launch. No YC-backed or big-name launches. Yesterday's #1 hit 487 upvotes. **You have a real shot at top 3** if you get the waitlist email out quickly.\n\n**Your minute-by-minute:**\n- **7:00-7:15** \u2014 Upload demo video to PH listing\n- **7:15-7:25** \u2014 Review and approve FAQ doc for Nina\n- **7:25-7:45** \u2014 Quick production smoke test\n- **7:45-8:00** \u2014 Stage the waitlist email (schedule for 9:15am)\n- **8:00** \u2014 Team standup. Confirm everyone is go.\n- **9:00** \u2014 Ship it.\n\nThe waitlist is ready, the product works, and the team is on standby. Let's go.",
       "streamingSpeed": 5,
       "tool_data": [
         {
@@ -138,7 +168,9 @@
               "start": "2026-03-16T08:00:00",
               "end": "2026-03-16T08:15:00",
               "description": "All-hands launch day standup. Final go/no-go. Everyone on standby.",
-              "attendees": ["team@company.com"]
+              "attendees": [
+                "team@company.com"
+              ]
             },
             {
               "summary": "Product Hunt Goes Live",
@@ -152,21 +184,27 @@
               "start": "2026-03-16T12:00:00",
               "end": "2026-03-16T12:30:00",
               "description": "Review upvotes, signups, traffic, conversion rate. Adjust social strategy if needed.",
-              "attendees": ["team@company.com"]
+              "attendees": [
+                "team@company.com"
+              ]
             },
             {
               "summary": "Afternoon Metrics Review",
               "start": "2026-03-16T15:00:00",
               "end": "2026-03-16T15:30:00",
               "description": "Second metrics check. Evaluate final push strategy for evening.",
-              "attendees": ["team@company.com"]
+              "attendees": [
+                "team@company.com"
+              ]
             },
             {
               "summary": "Team Celebration",
               "start": "2026-03-16T17:00:00",
               "end": "2026-03-16T18:00:00",
               "description": "Win or lose, we shipped it. Champagne.",
-              "attendees": ["team@company.com"]
+              "attendees": [
+                "team@company.com"
+              ]
             }
           ],
           "timestamp": null
@@ -183,7 +221,11 @@
                 "completed": false,
                 "priority": "high",
                 "due_date": "2026-03-16",
-                "labels": ["launch", "critical-path", "blocking"],
+                "labels": [
+                  "launch",
+                  "critical-path",
+                  "blocking"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-14T10:00:00Z",
                 "updated_at": "2026-03-15T22:00:00Z"
@@ -194,7 +236,10 @@
                 "completed": false,
                 "priority": "high",
                 "due_date": "2026-03-16",
-                "labels": ["launch", "marketing"],
+                "labels": [
+                  "launch",
+                  "marketing"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-12T09:00:00Z",
                 "updated_at": "2026-03-15T16:00:00Z"
@@ -205,7 +250,10 @@
                 "completed": false,
                 "priority": "medium",
                 "due_date": "2026-03-16",
-                "labels": ["launch", "support"],
+                "labels": [
+                  "launch",
+                  "support"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-13T11:00:00Z",
                 "updated_at": "2026-03-15T17:14:00Z"
@@ -216,7 +264,10 @@
                 "completed": false,
                 "priority": "medium",
                 "due_date": "2026-03-16",
-                "labels": ["launch", "engineering"],
+                "labels": [
+                  "launch",
+                  "engineering"
+                ],
                 "subtasks": [],
                 "created_at": "2026-03-14T14:00:00Z",
                 "updated_at": "2026-03-14T14:00:00Z"

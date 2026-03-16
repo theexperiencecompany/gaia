@@ -1,10 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useUserStore } from "@/stores/userStore";
 import { useScenarioPlayer } from "../hooks/useScenarioPlayer";
 import { type Scenario, ScenarioSchema } from "../types/scenario";
 import RecordingChatLayout from "./RecordingChatLayout";
 import RecordingDesktopFrame from "./RecordingDesktopFrame";
+
+const RECORDING_USER = {
+  userId: "recording-demo",
+  name: "Aryan",
+  email: "aryan@heygaia.io",
+  profilePicture: "https://github.com/aryanranderiya.png",
+} as const;
 
 interface RecordingPageProps {
   scenarioId: string;
@@ -104,6 +112,11 @@ function RecordingScenarioRunner({ scenario }: { scenario: Scenario }) {
   const { messages, partialMessage, loadingState, phase, play } =
     useScenarioPlayer(scenario, { autoPlay: false });
 
+  // Set user profile for avatar rendering in chat bubbles + sidebar
+  useEffect(() => {
+    useUserStore.getState().setUser(RECORDING_USER);
+  }, []);
+
   useEffect(() => {
     document.title = "recording:idle";
   }, []);
@@ -126,14 +139,13 @@ function RecordingScenarioRunner({ scenario }: { scenario: Scenario }) {
   const logicalHeight = scenario.viewport?.height ?? 844;
   const isDesktop = logicalWidth >= 900;
 
-  // The browser viewport is the full physical resolution (e.g. 1170×2532)
-  // but we want CSS to lay out at the logical size (e.g. 390×844).
-  // CSS zoom on <html> changes the effective layout viewport:
-  //   effective width = window.innerWidth / zoom
-  // Unlike transform: scale(), zoom affects actual CSS layout, so scroll
-  // calculations, flex layouts, and component widths all work correctly.
+  // The browser viewport is the full physical resolution (e.g. 2880×1800).
+  // CSS zoom on <html> makes layout happen at the logical size (e.g. 1440×900).
+  // This is necessary because CDP screencast captures at CSS pixel resolution —
+  // deviceScaleFactor does NOT increase capture resolution.
   useEffect(() => {
     const zoom = window.innerWidth / logicalWidth;
+    if (Math.abs(zoom - 1) < 0.01) return; // no zoom needed
     document.documentElement.style.zoom = String(zoom);
     return () => {
       document.documentElement.style.zoom = "";
@@ -152,8 +164,8 @@ function RecordingScenarioRunner({ scenario }: { scenario: Scenario }) {
   return (
     <div
       style={{
-        width: logicalWidth,
-        height: logicalHeight,
+        width: "100%",
+        height: "100%",
         overflow: "hidden",
         position: "relative",
       }}

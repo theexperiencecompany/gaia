@@ -1,25 +1,33 @@
 {
   "id": "job-offer-negotiation",
-  "title": "Job Offer — Should I Negotiate?",
-  "viewport": { "width": 390, "height": 844 },
-  "settings": { "theme": "dark" },
+  "title": "Job Offer \u2014 Should I Negotiate?",
+  "viewport": {
+    "width": 1080,
+    "height": 608
+  },
+  "settings": {
+    "theme": "dark"
+  },
   "states": [
     {
       "type": "user_message",
-      "text": "I just got an offer from Datadog — $195K base, $80K RSUs over 4 years, $25K signing bonus. Is this good? What should I push back on?",
+      "text": "I just got an offer from Datadog \u2014 $195K base, $80K RSUs over 4 years, $25K signing bonus. Is this good? What should I push back on?",
       "typingSpeed": 45,
       "pauseAfter": 700
     },
     {
       "type": "thinking",
-      "content": "This is a Senior SWE offer at Datadog. I need to: (1) check market rates for Sr SWE at Datadog and peer companies (MongoDB, Elastic, Confluent, HashiCorp), (2) break down total comp vs market — the base looks competitive but the RSUs feel low at $20K/year, (3) identify the best negotiation lever, and (4) draft a specific counter-offer with a response template. The signing bonus is solid — don't touch that.",
+      "content": "This is a Senior SWE offer at Datadog. I need to: (1) check market rates for Sr SWE at Datadog and peer companies (MongoDB, Elastic, Confluent, HashiCorp), (2) break down total comp vs market \u2014 the base looks competitive but the RSUs feel low at $20K/year, (3) identify the best negotiation lever, and (4) draft a specific counter-offer with a response template. The signing bonus is solid \u2014 don't touch that.",
       "duration": 2800,
       "pauseAfter": 300
     },
     {
       "type": "loading",
       "text": "Researching Senior SWE compensation at Datadog and peers...",
-      "toolInfo": { "toolCategory": "search", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "search",
+        "showCategory": true
+      },
       "duration": 1800,
       "pauseAfter": 150
     },
@@ -34,8 +42,10 @@
               "tool_name": "web_search",
               "tool_category": "search",
               "message": "Pulled Sr SWE compensation data from Levels.fyi and Blind",
-              "inputs": { "query": "Datadog Senior Software Engineer total compensation 2026 levels.fyi" },
-              "output": "Datadog Sr SWE (L5): Base $180-210K (median $195K), RSUs $100-160K/4yr (median $130K), Signing $20-30K. Peer companies — MongoDB L5: $190K base, $140K RSUs. Elastic L5: $185K base, $120K RSUs. Confluent L5: $200K base, $150K RSUs. HashiCorp L5: $192K base, $135K RSUs."
+              "inputs": {
+                "query": "Datadog Senior Software Engineer total compensation 2026 levels.fyi"
+              },
+              "output": "Datadog Sr SWE (L5): Base $180-210K (median $195K), RSUs $100-160K/4yr (median $130K), Signing $20-30K. Peer companies \u2014 MongoDB L5: $190K base, $140K RSUs. Elastic L5: $185K base, $120K RSUs. Confluent L5: $200K base, $150K RSUs. HashiCorp L5: $192K base, $135K RSUs."
             }
           ],
           "timestamp": null
@@ -46,7 +56,10 @@
     {
       "type": "loading",
       "text": "Analyzing total compensation and equity breakdown...",
-      "toolInfo": { "toolCategory": "search", "showCategory": true },
+      "toolInfo": {
+        "toolCategory": "search",
+        "showCategory": true
+      },
       "duration": 1300,
       "pauseAfter": 150
     },
@@ -61,7 +74,9 @@
               "tool_name": "web_search",
               "tool_category": "search",
               "message": "Analyzed Datadog equity performance and total comp benchmarks",
-              "inputs": { "query": "Datadog DDOG stock performance RSU vesting schedule total comp analysis 2026" },
+              "inputs": {
+                "query": "Datadog DDOG stock performance RSU vesting schedule total comp analysis 2026"
+              },
               "output": "DDOG stock: $148 (up 31% YTD). Standard 4-year vest, 1-year cliff, quarterly after. Your total comp: $195K + $20K/yr RSUs + $25K signing = ~$240K Y1. Market median for Datadog L5: $195K + $32.5K/yr RSUs + $25K = ~$252K Y1. Top quartile: $280K+ Y1. Your RSUs are 38% below median."
             }
           ],
@@ -72,7 +87,7 @@
     },
     {
       "type": "bot_message",
-      "text": "Your base is strong. Your equity is below market — that's your lever.\n\n**Your offer vs. market:**\n\n| Component | Your Offer | Datadog Median | Gap |\n|-----------|-----------|----------------|-----|\n| Base | $195K | $195K | At median |\n| RSUs (4yr) | $80K ($20K/yr) | $130K ($32.5K/yr) | **38% below** |\n| Signing | $25K | $25K | At median |\n| **Y1 Total** | **~$240K** | **~$252K** | -$12K/yr |\n\n**The play: push on RSUs, leave everything else alone.**\n\nYour base is right at median — trying to move it looks greedy and rarely works at Datadog. The signing bonus is solid. But your RSUs are significantly below what they give most L5 offers.\n\n**Specific counter:** Ask for **$130K RSUs over 4 years** ($32.5K/yr). That brings your Y1 total comp to ~$252K — right at median, not aggressive. If they meet you halfway at $105K, you're still up $6K/year.\n\n**Word-for-word response:**\n> *\"Thank you — I'm genuinely excited about this role and the team. I'd love to make this work. After reviewing the total compensation, the base and signing bonus feel strong, but I'd like to discuss the equity component. Based on my research into Datadog L5 ranges, I'd be more comfortable at $130K in RSUs over four years. I believe this better reflects the market and my experience. Happy to discuss further.\"*\n\n**Do NOT negotiate:**\n- The signing bonus — $25K is already at the top of their range\n- The base — it's at median and Datadog is rigid on base bands\n\n**Bonus tactic:** If RSUs don't budge, ask for a **6-month cliff** instead of 12 months. It's a smaller ask that often flies under the radar but puts $10K+ in your pocket sooner.",
+      "text": "Your base is strong. Your equity is below market \u2014 that's your lever.\n\n**Your offer vs. market:**\n\n| Component | Your Offer | Datadog Median | Gap |\n|-----------|-----------|----------------|-----|\n| Base | $195K | $195K | At median |\n| RSUs (4yr) | $80K ($20K/yr) | $130K ($32.5K/yr) | **38% below** |\n| Signing | $25K | $25K | At median |\n| **Y1 Total** | **~$240K** | **~$252K** | -$12K/yr |\n\n**The play: push on RSUs, leave everything else alone.**\n\nYour base is right at median \u2014 trying to move it looks greedy and rarely works at Datadog. The signing bonus is solid. But your RSUs are significantly below what they give most L5 offers.\n\n**Specific counter:** Ask for **$130K RSUs over 4 years** ($32.5K/yr). That brings your Y1 total comp to ~$252K \u2014 right at median, not aggressive. If they meet you halfway at $105K, you're still up $6K/year.\n\n**Word-for-word response:**\n> *\"Thank you \u2014 I'm genuinely excited about this role and the team. I'd love to make this work. After reviewing the total compensation, the base and signing bonus feel strong, but I'd like to discuss the equity component. Based on my research into Datadog L5 ranges, I'd be more comfortable at $130K in RSUs over four years. I believe this better reflects the market and my experience. Happy to discuss further.\"*\n\n**Do NOT negotiate:**\n- The signing bonus \u2014 $25K is already at the top of their range\n- The base \u2014 it's at median and Datadog is rigid on base bands\n\n**Bonus tactic:** If RSUs don't budge, ask for a **6-month cliff** instead of 12 months. It's a smaller ask that often flies under the radar but puts $10K+ in your pocket sooner.",
       "streamingSpeed": 6,
       "tool_data": [
         {
@@ -81,14 +96,14 @@
           "data": {
             "results": [
               {
-                "title": "Datadog Senior Software Engineer Compensation — Levels.fyi",
+                "title": "Datadog Senior Software Engineer Compensation \u2014 Levels.fyi",
                 "url": "https://www.levels.fyi/companies/datadog/salaries/software-engineer/levels/senior",
                 "snippet": "Median total comp for Datadog L5 (Senior SWE): $252K. Base: $180-210K, Stock: $100-160K/4yr, Bonus: $20-30K signing. Based on 847 verified data points."
               },
               {
-                "title": "How to Negotiate a Datadog Offer — Candor Salary Negotiation",
+                "title": "How to Negotiate a Datadog Offer \u2014 Candor Salary Negotiation",
                 "url": "https://candor.co/guides/datadog-salary-negotiation",
-                "snippet": "Datadog is most flexible on RSU grants. Base salary bands are rigid at each level. The most successful negotiations focus on equity — ask for 40-60% more RSUs, expect to land 20-30% above initial offer."
+                "snippet": "Datadog is most flexible on RSU grants. Base salary bands are rigid at each level. The most successful negotiations focus on equity \u2014 ask for 40-60% more RSUs, expect to land 20-30% above initial offer."
               }
             ]
           },
