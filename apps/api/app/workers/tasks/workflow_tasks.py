@@ -51,6 +51,7 @@ from app.services.workflow.conversation_service import (
 )
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
+from app.services.gaia_task_service import gaia_task_service
 from bson import ObjectId
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
@@ -265,6 +266,17 @@ async def execute_workflow_by_id(
                 conversation_id=conversation_id,
             )
 
+            # Notify parent GaiaTask if this workflow is task-owned
+            if getattr(workflow, "source_gaia_task_id", None):
+                try:
+                    await gaia_task_service.on_workflow_completed(
+                        workflow_id=workflow_id,
+                        user_id=workflow.user_id,
+                        summary=summary,
+                    )
+                except Exception as task_err:
+                    log.warning(f"Failed to notify GaiaTask of workflow completion: {task_err}")
+
             return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
 
         except Exception as e:
@@ -373,6 +385,17 @@ async def execute_workflow_by_id(
                     )
                 except Exception as notify_err:
                     log.debug("Failed to send failure notification: %s" % notify_err)
+
+            # Notify parent GaiaTask if this workflow is task-owned
+            if workflow and getattr(workflow, "source_gaia_task_id", None):
+                try:
+                    await gaia_task_service.on_workflow_failed(
+                        workflow_id=workflow_id,
+                        user_id=workflow.user_id,
+                        error_message=str(e),
+                    )
+                except Exception as task_err:
+                    log.warning(f"Failed to notify GaiaTask of workflow failure: {task_err}")
 
             return "Error executing workflow %s: %s" % (workflow_id, str(e))
 
