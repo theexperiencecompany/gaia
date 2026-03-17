@@ -66,7 +66,7 @@ export const SlackMessageCard: React.FC<SlackMessageCardProps> = ({
         <span
           style={{
             fontFamily: FONTS.body,
-            fontSize: 22,
+            fontSize: 24,
             fontWeight: 700,
             color: "#d1d2d3",
           }}

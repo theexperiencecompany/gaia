@@ -77,7 +77,7 @@ export const PrepDocCard: React.FC<PrepDocCardProps> = ({
       </div>
 
       {/* Questions */}
-      <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
         {questions.map((q, i) => {
           const qDelay = enterDelay + 15 + i * 18;
           const tpDelay = qDelay + 8;
@@ -106,7 +106,7 @@ export const PrepDocCard: React.FC<PrepDocCardProps> = ({
               <div
                 style={{
                   fontFamily: FONTS.body,
-                  fontSize: 23,
+                  fontSize: 24,
                   fontWeight: 700,
                   color: COLORS.textDark,
                   marginBottom: 8,
@@ -119,7 +119,7 @@ export const PrepDocCard: React.FC<PrepDocCardProps> = ({
               <div
                 style={{
                   fontFamily: FONTS.body,
-                  fontSize: 21,
+                  fontSize: 22,
                   color: COLORS.zinc400,
                   paddingLeft: 20,
                   borderLeft: `3px solid ${COLORS.zinc700}`,
