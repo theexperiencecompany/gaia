@@ -49,3 +49,13 @@ class UpdateGaiaTaskRequest(BaseModel):
     notes: str | None = None  # Appended to log.md
     active_loop_ids: list[str] | None = None
     owned_workflow_ids: list[str] | None = None
+
+
+class GaiaTaskSummary(BaseModel):
+    """Lightweight representation injected into every agent call."""
+
+    task_id: str
+    title: str
+    status: GaiaTaskStatus
+    created_at: datetime
+    active_loop_count: int
