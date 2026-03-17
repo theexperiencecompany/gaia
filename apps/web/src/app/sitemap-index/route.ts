@@ -13,7 +13,7 @@ export async function GET() {
     lastmod,
   }));
 
-  const xml = sitemapIndexToXml(sitemapUrls, "/sitemap-index.xsl");
+  const xml = sitemapIndexToXml(sitemapUrls);
 
   return new NextResponse(xml, {
     headers: {

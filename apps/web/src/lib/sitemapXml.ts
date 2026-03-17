@@ -1,8 +1,5 @@
 import type { MetadataRoute } from "next";
 
-/**
- * Escapes special XML characters in a string.
- */
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -19,16 +16,9 @@ function formatDate(date: string | Date | undefined): string {
 }
 
 /**
- * Serialize sitemap entries into XML with optional XSL stylesheet reference.
+ * Serialize sitemap entries into XML.
  */
-export function entriesToXml(
-  entries: MetadataRoute.Sitemap,
-  stylesheetUrl?: string,
-): string {
-  const stylesheet = stylesheetUrl
-    ? `<?xml-stylesheet type="text/xsl" href="${stylesheetUrl}"?>\n`
-    : "";
-
+export function entriesToXml(entries: MetadataRoute.Sitemap): string {
   const urls = entries
     .map((entry) => {
       const parts: string[] = [];
@@ -60,20 +50,15 @@ export function entriesToXml(
     })
     .join("\n");
 
-  return `<?xml version="1.0" encoding="UTF-8"?>\n${stylesheet}<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls}\n</urlset>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls}\n</urlset>`;
 }
 
 /**
- * Serialize a sitemap index into XML with optional XSL stylesheet reference.
+ * Serialize a sitemap index into XML.
  */
 export function sitemapIndexToXml(
   sitemapUrls: Array<{ loc: string; lastmod?: string }>,
-  stylesheetUrl?: string,
 ): string {
-  const stylesheet = stylesheetUrl
-    ? `<?xml-stylesheet type="text/xsl" href="${stylesheetUrl}"?>\n`
-    : "";
-
   const sitemaps = sitemapUrls
     .map((s) => {
       const parts = [`  <sitemap>`, `    <loc>${escapeXml(s.loc)}</loc>`];
@@ -85,5 +70,5 @@ export function sitemapIndexToXml(
     })
     .join("\n");
 
-  return `<?xml version="1.0" encoding="UTF-8"?>\n${stylesheet}<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemaps}\n</sitemapindex>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemaps}\n</sitemapindex>`;
 }

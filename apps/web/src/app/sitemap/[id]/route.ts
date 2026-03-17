@@ -15,7 +15,7 @@ export async function GET(
   }
 
   const entries = await getSitemapEntries(id);
-  const xml = entriesToXml(entries, "/sitemap.xsl");
+  const xml = entriesToXml(entries);
 
   return new NextResponse(xml, {
     headers: {
