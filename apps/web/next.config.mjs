@@ -109,24 +109,33 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    return [
-      {
-        source: "/sitemap.xml",
-        destination: "/sitemap-index",
-      },
-      {
-        source: "/ingest/static/:path*",
-        destination: "https://us-assets.i.posthog.com/static/:path*",
-      },
-      {
-        source: "/ingest/:path*",
-        destination: "https://us.i.posthog.com/:path*",
-      },
-      {
-        source: "/ingest/flags",
-        destination: "https://us.i.posthog.com/flags",
-      },
-    ];
+    return {
+      beforeFiles: [
+        {
+          source: "/sitemap.xml",
+          destination: "/sitemap-index",
+        },
+        {
+          source: "/sitemap/:id(\\d+).xml",
+          destination: "/sitemap/:id",
+        },
+      ],
+      afterFiles: [
+        {
+          source: "/ingest/static/:path*",
+          destination: "https://us-assets.i.posthog.com/static/:path*",
+        },
+        {
+          source: "/ingest/:path*",
+          destination: "https://us.i.posthog.com/:path*",
+        },
+        {
+          source: "/ingest/flags",
+          destination: "https://us.i.posthog.com/flags",
+        },
+      ],
+      fallback: [],
+    };
   },
   // This is required to support PostHog trailing slash API requests
   skipTrailingSlashRedirect: true,

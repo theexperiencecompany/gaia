@@ -15,7 +15,7 @@ import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
  * Sitemap IDs for different content types.
  * Each ID generates a separate sitemap file, accessible at /sitemap/{id}.xml
  */
-const SITEMAP_IDS = {
+export const SITEMAP_IDS = {
   STATIC: 0,
   BLOG: 1,
   EXPLORE: 2,
@@ -29,26 +29,19 @@ const SITEMAP_IDS = {
   NATIVE_INTEGRATIONS: 10,
 } as const;
 
-/**
- * Generate sitemap IDs for Next.js sitemap index.
- * This creates multiple sitemaps: /sitemap/0.xml, /sitemap/1.xml, etc.
- * The main /sitemap.xml serves as an index pointing to all child sitemaps.
- */
-export async function generateSitemaps() {
-  return [
-    { id: SITEMAP_IDS.STATIC },
-    { id: SITEMAP_IDS.BLOG },
-    { id: SITEMAP_IDS.EXPLORE },
-    { id: SITEMAP_IDS.COMMUNITY },
-    { id: SITEMAP_IDS.INTEGRATIONS },
-    { id: SITEMAP_IDS.COMPARISONS },
-    { id: SITEMAP_IDS.PERSONAS },
-    { id: SITEMAP_IDS.GLOSSARY },
-    { id: SITEMAP_IDS.ALTERNATIVES },
-    { id: SITEMAP_IDS.INTEGRATION_COMBOS },
-    { id: SITEMAP_IDS.NATIVE_INTEGRATIONS },
-  ];
-}
+export const ALL_SITEMAP_IDS = [
+  SITEMAP_IDS.STATIC,
+  SITEMAP_IDS.BLOG,
+  SITEMAP_IDS.EXPLORE,
+  SITEMAP_IDS.COMMUNITY,
+  SITEMAP_IDS.INTEGRATIONS,
+  SITEMAP_IDS.COMPARISONS,
+  SITEMAP_IDS.PERSONAS,
+  SITEMAP_IDS.GLOSSARY,
+  SITEMAP_IDS.ALTERNATIVES,
+  SITEMAP_IDS.INTEGRATION_COMBOS,
+  SITEMAP_IDS.NATIVE_INTEGRATIONS,
+] as const;
 
 function withLocaleUrls(
   entries: MetadataRoute.Sitemap,
@@ -415,15 +408,11 @@ function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
 }
 
 /**
- * Generate dynamic sitemap for GAIA.
- * Uses sitemap index pattern with separate sitemaps for each content type.
- * Note: In Next.js 16.0.0+, the id is passed as a Promise that resolves to a string.
+ * Get sitemap entries for a given sitemap ID.
  */
-export default async function sitemap(props: {
-  id: Promise<string>;
-}): Promise<MetadataRoute.Sitemap> {
-  const idString = await props.id;
-  const id = Number(idString);
+export async function getSitemapEntries(
+  id: number,
+): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getSiteUrl();
 
   switch (id) {

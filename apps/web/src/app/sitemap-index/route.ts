@@ -1,30 +1,19 @@
 import { NextResponse } from "next/server";
 
-import { generateSitemaps } from "@/app/sitemap";
 import { getSiteUrl } from "@/lib/seo";
+import { ALL_SITEMAP_IDS } from "@/lib/sitemapData";
+import { sitemapIndexToXml } from "@/lib/sitemapXml";
 
-/**
- * Route handler for the root sitemap index.
- * This generates an XML sitemap index that points to all child sitemaps
- * created by generateSitemaps() in sitemap.ts.
- */
 export async function GET() {
   const baseUrl = getSiteUrl();
-  const sitemapEntries = await generateSitemaps();
-  const sitemapIds = sitemapEntries.map((entry) => Number(entry.id));
   const lastmod = new Date().toISOString();
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${sitemapIds
-  .map(
-    (id) => `  <sitemap>
-    <loc>${baseUrl}/sitemap/${id}.xml</loc>
-    <lastmod>${lastmod}</lastmod>
-  </sitemap>`,
-  )
-  .join("\n")}
-</sitemapindex>`;
+  const sitemapUrls = ALL_SITEMAP_IDS.map((id) => ({
+    loc: `${baseUrl}/sitemap/${id}.xml`,
+    lastmod,
+  }));
+
+  const xml = sitemapIndexToXml(sitemapUrls, "/sitemap-index.xsl");
 
   return new NextResponse(xml, {
     headers: {
