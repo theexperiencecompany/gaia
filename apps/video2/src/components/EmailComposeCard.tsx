@@ -38,7 +38,7 @@ export const EmailComposeCard: React.FC<EmailComposeCardProps> = ({
 
   // Attachments appear after body finishes typing
   const attachmentStart = bodyTypingDelay + Math.ceil(body.length * 0.5) + 10;
-  const crmStart = attachmentStart + attachments.length * 6 + 10;
+  const crmStart = attachmentStart + attachments.length * 6 + 8;
 
   const crmP = spring({
     frame: frame - crmStart,
