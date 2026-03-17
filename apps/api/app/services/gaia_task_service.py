@@ -9,7 +9,7 @@ from typing import Any
 
 from shared.py.wide_events import log
 
-from app.db.mongodb.collections import gaia_tasks_collection
+from app.db.mongodb.collections import gaia_tasks_collection, workflows_collection
 from app.models.gaia_task_models import (
     CreateGaiaTaskRequest,
     GaiaTask,
@@ -253,6 +253,12 @@ class GaiaTaskService:
                 "$push": {"owned_workflow_ids": workflow_id},
                 "$set": {"updated_at": now},
             },
+        )
+
+        # Also set source_gaia_task_id on the Workflow document so the worker can find the parent task
+        await workflows_collection.update_one(
+            {"id": workflow_id, "user_id": user_id},
+            {"$set": {"source_gaia_task_id": task_id}},
         )
 
         vfs = MongoVFS()
