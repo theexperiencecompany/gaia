@@ -1,0 +1,15 @@
+# Downloaded clips (large binaries)
+clips/raw/
+clips/trimmed/
+clips/probe/
+clips/preview/
+
+# Rendered output
+output/
+
+# Music (large binary)
+music/
+
+# Python cache
+__pycache__/
+*.pyc
