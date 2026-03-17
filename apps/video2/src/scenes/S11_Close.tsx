@@ -130,13 +130,13 @@ export const S11_Close: React.FC = () => {
             flexDirection: "column",
             alignItems: "center",
             gap: 24,
-            marginTop: 40,
+            marginTop: 60,
           }}
         >
           <div
             style={{
               fontFamily: FONTS.display,
-              fontSize: 52,
+              fontSize: 60,
               fontWeight: 700,
               textTransform: "uppercase",
               letterSpacing: "-0.02em",
