@@ -95,9 +95,10 @@ export const SpreadsheetCard: React.FC<SpreadsheetCardProps> = ({
           key={rowIdx}
           style={{
             display: "flex",
-            padding: "14px 28px",
+            padding: "12px 28px",
             background: row.highlight ? "rgba(0, 187, 255, 0.06)" : "transparent",
             borderBottom: `1px solid ${COLORS.zinc700}`,
+            borderLeft: row.highlight ? "3px solid rgba(0,187,255,0.4)" : "none",
           }}
         >
           <div

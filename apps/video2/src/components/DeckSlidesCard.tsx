@@ -64,6 +64,7 @@ export const DeckSlidesCard: React.FC<DeckSlidesCardProps> = ({
               borderRadius: 20,
               background: slide.highlight ? COLORS.zinc900 : COLORS.surface,
               border: slide.highlight ? `2px solid ${COLORS.primary}` : "none",
+              boxShadow: slide.highlight ? "0 0 40px rgba(0,187,255,0.2)" : "none",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
