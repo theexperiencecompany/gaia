@@ -39,9 +39,9 @@ export const S10_TheBeat: React.FC = () => {
   const replyY = interpolate(replyP, [0, 1], [15, 0]);
 
   // Typing indicator dots at frame 100
-  const dot1 = Math.sin((frame - 100) * 0.3) * 0.5 + 0.5;
-  const dot2 = Math.sin((frame - 100) * 0.3 + 1) * 0.5 + 0.5;
-  const dot3 = Math.sin((frame - 100) * 0.3 + 2) * 0.5 + 0.5;
+  const dot1 = frame >= 100 ? Math.sin((frame - 100) / 8) * 0.5 + 0.5 : 0;
+  const dot2 = frame >= 100 ? Math.sin((frame - 100) / 8 + 1.2) * 0.5 + 0.5 : 0;
+  const dot3 = frame >= 100 ? Math.sin((frame - 100) / 8 + 2.4) * 0.5 + 0.5 : 0;
   const showTyping = frame >= 100 && frame < 130;
 
   return (
@@ -118,46 +118,84 @@ export const S10_TheBeat: React.FC = () => {
           ]}
         />
 
-        {/* GAIA final question */}
-        <div
-          style={{
-            transform: `translateY(${qaY}px)`,
-            opacity: qaOpacity,
-            padding: "0 30px 18px",
-            display: "flex",
-            alignItems: "flex-end",
-            gap: 12,
-          }}
-        >
+        <div style={{ width: 900 }}>
+          {/* GAIA final question */}
           <div
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              background: COLORS.primary,
-              flexShrink: 0,
-              marginBottom: 4,
-            }}
-          />
-          <div
-            style={{
-              background: COLORS.surface,
-              borderRadius: "40px 40px 40px 8px",
-              padding: "22px 30px",
-              fontFamily: FONTS.body,
-              fontSize: 28,
-              color: COLORS.zinc400,
-              lineHeight: 1.45,
+              transform: `translateY(${qaY}px)`,
+              opacity: qaOpacity,
+              padding: "0 30px 18px",
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 12,
+              marginTop: 16,
             }}
           >
-            Ready to send. Want to review first, or just go?
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                background: COLORS.primary,
+                flexShrink: 0,
+                marginBottom: 4,
+              }}
+            />
+            <div
+              style={{
+                background: COLORS.surface,
+                borderRadius: "40px 40px 40px 8px",
+                padding: "22px 30px",
+                fontFamily: FONTS.body,
+                fontSize: 28,
+                color: COLORS.zinc400,
+                lineHeight: 1.45,
+              }}
+            >
+              Ready to send. Want to review first, or just go?
+            </div>
           </div>
-        </div>
 
-        {/* Typing indicator */}
-        {showTyping && (
+          {/* Typing indicator */}
+          {showTyping && (
+            <div
+              style={{
+                padding: "0 30px 18px",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <div
+                style={{
+                  background: COLORS.primary,
+                  borderRadius: "40px 40px 8px 40px",
+                  padding: "18px 24px",
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                }}
+              >
+                {[dot1, dot2, dot3].map((d, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: "#000",
+                      opacity: d,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* User "Send it." reply */}
           <div
             style={{
+              transform: `translateY(${replyY}px)`,
+              opacity: replyOpacity,
               padding: "0 30px 18px",
               display: "flex",
               justifyContent: "flex-end",
@@ -167,50 +205,15 @@ export const S10_TheBeat: React.FC = () => {
               style={{
                 background: COLORS.primary,
                 borderRadius: "40px 40px 8px 40px",
-                padding: "18px 24px",
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
+                padding: "22px 36px",
+                fontFamily: FONTS.body,
+                fontSize: 32,
+                fontWeight: 700,
+                color: "#000",
               }}
             >
-              {[dot1, dot2, dot3].map((d, i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
-                    background: "#000",
-                    opacity: d,
-                  }}
-                />
-              ))}
+              Send it.
             </div>
-          </div>
-        )}
-
-        {/* User "Send it." reply */}
-        <div
-          style={{
-            transform: `translateY(${replyY}px)`,
-            opacity: replyOpacity,
-            padding: "0 30px 18px",
-            display: "flex",
-            justifyContent: "flex-end",
-          }}
-        >
-          <div
-            style={{
-              background: COLORS.primary,
-              borderRadius: "40px 40px 8px 40px",
-              padding: "22px 36px",
-              fontFamily: FONTS.body,
-              fontSize: 32,
-              fontWeight: 700,
-              color: "#000",
-            }}
-          >
-            Send it.
           </div>
         </div>
       </div>
