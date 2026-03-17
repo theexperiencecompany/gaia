@@ -11,10 +11,18 @@ Chat with your AI assistant, manage todos, and run workflows without leaving Dis
 ## Add GAIA to Your Server
 
 <CardGroup cols={2}>
-  <Card title="Add Bot to Your Server" icon="discord" href="https://heygaia.io/discord-bot">
+  <Card
+    title="Add Bot to Your Server"
+    icon="discord"
+    href="https://heygaia.io/discord-bot"
+  >
     Invite the GAIA bot to your own Discord server
   </Card>
-  <Card title="Join the GAIA Community" icon="users" href="https://discord.heygaia.io">
+  <Card
+    title="Join the GAIA Community"
+    icon="users"
+    href="https://discord.heygaia.io"
+  >
     Chat with GAIA in the official GAIA Discord server
   </Card>
 </CardGroup>
@@ -54,7 +62,8 @@ What's on my calendar this week?
 ```
 
 <Tip>
-  DMs are the most private way to use GAIA on Discord. Your messages are only visible to you and the bot — no server members can see the conversation.
+  DMs are the most private way to use GAIA on Discord. Your messages are only
+  visible to you and the bot — no server members can see the conversation.
 </Tip>
 
 For the full list of available commands, see the [Commands Reference](/bots/commands).
@@ -115,7 +124,8 @@ DISCORD_OAUTH_CLIENT_SECRET=your_client_secret
 ```
 
 <Note>
-  The Client ID here is the same as your `DISCORD_CLIENT_ID` used by the bot — it's the application ID, not a separate credential.
+  The Client ID here is the same as your `DISCORD_CLIENT_ID` used by the bot —
+  it's the application ID, not a separate credential.
 </Note>
 
 ### Step 4: Configure Environment Variables
@@ -153,8 +163,8 @@ nx build bot-discord && nx start bot-discord
 
 ### Troubleshooting
 
-| Problem | Solution |
-|---|---|
-| Bot doesn't respond to commands | Run `nx run bot-discord:deploy-commands`, check bot permissions |
-| Authentication link doesn't work | Verify `GAIA_BOT_API_KEY` matches API config |
-| Bot offline | Check that the process is running and `DISCORD_BOT_TOKEN` is valid |
+| Problem                          | Solution                                                           |
+| -------------------------------- | ------------------------------------------------------------------ |
+| Bot doesn't respond to commands  | Run `nx run bot-discord:deploy-commands`, check bot permissions    |
+| Authentication link doesn't work | Verify `GAIA_BOT_API_KEY` matches API config                       |
+| Bot offline                      | Check that the process is running and `DISCORD_BOT_TOKEN` is valid |
