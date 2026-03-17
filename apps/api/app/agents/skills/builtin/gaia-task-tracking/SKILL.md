@@ -107,3 +107,15 @@ complete_gaia_task(
 - Creating multiple tasks for related sub-steps (one task can track the whole initiative)
 - Forgetting to update task status after taking action
 - Not reading existing task context before acting on a returning topic
+
+## Workflow Ownership
+
+When creating a workflow as part of a multi-step task:
+
+1. Create the task first (or identify the existing task)
+2. Create the workflow via `create_workflow`
+3. Link it: `link_workflow_to_task(task_id=..., workflow_id=..., workflow_title=...)`
+
+The task will be automatically updated when the workflow completes or fails:
+- **Success**: Task log and progress.md updated with execution summary
+- **Failure**: Task log updated with error; if task was "waiting", status changes to "stalled"
