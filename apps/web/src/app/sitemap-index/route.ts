@@ -12,7 +12,6 @@ export async function GET() {
   const baseUrl = getSiteUrl();
   const sitemapEntries = await generateSitemaps();
   const sitemapIds = sitemapEntries.map((entry) => Number(entry.id));
-  const lastmod = new Date().toISOString();
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -20,7 +19,6 @@ ${sitemapIds
   .map(
     (id) => `  <sitemap>
     <loc>${baseUrl}/sitemap/${id}.xml</loc>
-    <lastmod>${lastmod}</lastmod>
   </sitemap>`,
   )
   .join("\n")}
