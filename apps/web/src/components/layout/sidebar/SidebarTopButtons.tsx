@@ -8,6 +8,7 @@ import {
   ConnectIcon,
   Home11Icon,
   MessageMultiple02Icon,
+  TaskDailyIcon,
   // Target02Icon, // Temporarily disabled
   ZapIcon,
 } from "@icons";
@@ -77,7 +78,7 @@ export default function SidebarTopButtons() {
     {
       route: "/todos",
       icon: <CheckListIcon />,
-      label: "Todos",
+      label: "Tasks",
     },
     {
       route: "/integrations",

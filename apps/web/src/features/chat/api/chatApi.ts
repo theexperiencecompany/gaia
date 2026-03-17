@@ -252,6 +252,11 @@ export const chatApi = {
       if (match) conversationId = match[1];
     }
 
+    // Guard against double onClose — [DONE] in onmessage fires onClose, then
+    // the SSE library fires onclose when the connection ends.  Without this
+    // flag both would call onClose, causing duplicate cleanup / persistence.
+    let doneReceived = false;
+
     await fetchEventSource(
       `${process.env.NEXT_PUBLIC_API_BASE_URL}chat-stream`,
       {
@@ -287,6 +292,7 @@ export const chatApi = {
           const errorResult = onMessage(event);
 
           if (event.data === "[DONE]") {
+            doneReceived = true;
             onClose();
             return;
           }
@@ -309,7 +315,11 @@ export const chatApi = {
           }
         },
         onclose() {
-          onClose();
+          // Only call onClose if [DONE] didn't already trigger it.
+          // Connection drops without [DONE] (e.g. network failure) still need cleanup.
+          if (!doneReceived) {
+            onClose();
+          }
         },
         onerror: (err) => {
           console.error("[chatApi] Stream error:", {

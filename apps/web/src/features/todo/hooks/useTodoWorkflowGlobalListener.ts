@@ -27,19 +27,22 @@ function extractWorkflowCategories(steps: Workflow["steps"]): string[] {
 
 /** Apply a completed workflow to the store (shared by WS handler and poller). */
 function applyWorkflowToStore(todoId: string, workflow: Workflow) {
-  const store = useTodoStore.getState();
-
-  store.updateTodoOptimistic(todoId, {
+  useTodoStore.getState().updateTodoOptimistic(todoId, {
     workflow_id: workflow.id,
     workflow_categories: extractWorkflowCategories(workflow.steps),
   });
 
-  store.workflowStatusCache[todoId] = {
-    has_workflow: true,
-    is_generating: false,
-    workflow,
-    cachedAt: Date.now(),
-  };
+  useTodoStore.setState((state) => ({
+    workflowStatusCache: {
+      ...state.workflowStatusCache,
+      [todoId]: {
+        has_workflow: true,
+        is_generating: false,
+        workflow,
+        cachedAt: Date.now(),
+      },
+    },
+  }));
 }
 
 // Tracks todo IDs that are actively being polled so we can cancel on WS delivery
@@ -136,7 +139,10 @@ export function useTodoWorkflowGlobalListener() {
     // Cancel polling
     pendingPolls.delete(todo_id);
 
-    delete useTodoStore.getState().workflowStatusCache[todo_id];
+    useTodoStore.setState((state) => {
+      const { [todo_id]: _, ...rest } = state.workflowStatusCache;
+      return { workflowStatusCache: rest };
+    });
     toast.error("Failed to generate workflow");
   }, []);
 

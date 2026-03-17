@@ -62,7 +62,7 @@ export function NotificationConnectBanner({
     return (
       <div className="w-full px-3">
         <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-900/80 px-3 py-2 text-xs w-full">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-6">
             <div className="-space-x-2 flex">
               {unconnectedPlatforms.map((p, index) => (
                 <Image
