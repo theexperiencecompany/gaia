@@ -55,6 +55,10 @@ class TodoBase(BaseModel):
     workflow_id: str | None = Field(
         default=None, description="ID of the associated workflow"
     )
+    vfs_path: str | None = Field(
+        default=None,
+        description="VFS directory for tracked todos (canvas.md + log.md)",
+    )
 
 
 # For creating new todos
@@ -81,6 +85,7 @@ class TodoUpdateRequest(BaseModel):
     completed: bool | None = None
     subtasks: list[SubTask] | None = None
     workflow_id: str | None = None
+    vfs_path: str | None = None
 
 
 # For responses with ID and user_id

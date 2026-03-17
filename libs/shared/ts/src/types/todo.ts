@@ -25,6 +25,7 @@ export interface Todo {
   completed: boolean;
   subtasks: SubTask[];
   workflow_id?: string;
+  vfs_path?: string;
   workflow_categories?: string[];
   starred?: boolean;
   created_at: string;
