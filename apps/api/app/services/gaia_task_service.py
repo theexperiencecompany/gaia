@@ -235,6 +235,36 @@ class GaiaTaskService:
         log.info("gaia_task.cancelled", task_id=task_id, user_id=user_id, reason=reason)
         return await self.get_task(task_id, user_id)
 
+    async def expire_task(self, task_id: str, user_id: str) -> GaiaTask | None:
+        """Expire a task that has passed its deadline. Called by maintenance scan."""
+        task = await self.get_task(task_id, user_id)
+        if not task:
+            return None
+
+        now = datetime.now(timezone.utc)
+        await gaia_tasks_collection.update_one(
+            {"task_id": task_id, "user_id": user_id},
+            {"$set": {"status": GaiaTaskStatus.EXPIRED, "updated_at": now}},
+        )
+
+        if task.vfs_path:
+            vfs = MongoVFS()
+            await vfs.append(
+                path=f"{task.vfs_path}/log.md",
+                content=f"\n## {now.isoformat()}\n- Task expired: deadline reached without completion\n",
+                user_id=user_id,
+            )
+            archive_path = task.vfs_path.replace("/tasks/", "/tasks/archive/")
+            await vfs.move(source=task.vfs_path, dest=archive_path, user_id=user_id)
+
+            await gaia_tasks_collection.update_one(
+                {"task_id": task_id, "user_id": user_id},
+                {"$set": {"vfs_path": archive_path}},
+            )
+
+        log.info("gaia_task.expired", task_id=task_id, user_id=user_id)
+        return await self.get_task(task_id, user_id)
+
     async def adopt_workflow(
         self, task_id: str, user_id: str, workflow_id: str, workflow_title: str
     ) -> GaiaTask | None:
