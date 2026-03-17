@@ -253,6 +253,11 @@ class Workflow(BaseScheduledTask):
         default=None,
         description="ID of the source todo if is_todo_workflow=True",
     )
+    # GaiaTask linkage (for workflows owned by a GaiaTask)
+    source_gaia_task_id: Optional[str] = Field(
+        default=None,
+        description="ID of the parent GaiaTask if this workflow is task-owned",
+    )
 
     # System workflow flags (for auto-provisioned workflows created on integration connect)
     is_system_workflow: bool = Field(
