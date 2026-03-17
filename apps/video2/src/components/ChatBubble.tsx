@@ -81,13 +81,13 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
           style={{
             background: COLORS.surface,
             borderRadius: "40px 40px 40px 8px",
-            padding: "22px 30px",
+            padding: "24px 32px",
             fontFamily: FONTS.body,
-            fontSize: 28,
+            fontSize: 30,
             fontWeight: 500,
             color: COLORS.textDark,
             lineHeight: 1.45,
-            maxWidth: 700,
+            maxWidth: 720,
             display: "inline-block",
           }}
         >
