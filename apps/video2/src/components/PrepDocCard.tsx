@@ -36,7 +36,7 @@ export const PrepDocCard: React.FC<PrepDocCardProps> = ({
     <div
       style={{
         width: 860,
-        background: "#1c1c1e",
+        background: COLORS.zinc900,
         borderRadius: 28,
         border: `1px solid ${COLORS.zinc700}`,
         overflow: "hidden",
