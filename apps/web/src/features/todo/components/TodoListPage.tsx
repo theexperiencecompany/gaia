@@ -116,8 +116,10 @@ export default function TodoListPage({
   // Use refs to store latest callback versions to avoid stale closures
   const updateTodoRef = useRef(updateTodo);
   const deleteTodoRef = useRef(deleteTodo);
+  const clearSelectionRef = useRef(clearSelection);
   updateTodoRef.current = updateTodo;
   deleteTodoRef.current = deleteTodo;
+  clearSelectionRef.current = clearSelection;
 
   // Stable callbacks that don't change reference
   const handleTodoUpdate = useCallback(
@@ -131,13 +133,20 @@ export default function TodoListPage({
     [],
   );
 
-  const handleTodoDelete = useCallback(async (todoId: string) => {
-    try {
-      await deleteTodoRef.current(todoId);
-    } catch (error) {
-      console.error("Failed to delete todo:", error);
-    }
-  }, []);
+  const handleTodoDelete = useCallback(
+    async (todoId: string) => {
+      try {
+        await deleteTodoRef.current(todoId);
+      } catch (error) {
+        console.error("Failed to delete todo:", error);
+      }
+      // Always close sidebar after deletion — effects alone miss the case
+      // where the deleted todo was the last one in the current filtered view
+      clearSelectionRef.current();
+      closeRightSidebar();
+    },
+    [closeRightSidebar],
+  );
 
   // Stable click handler
   const handleTodoClick = useCallback(
@@ -175,11 +184,11 @@ export default function TodoListPage({
   useEffect(() => {
     if (sidebarContent && selectedTodo) {
       openWithContent(sidebarContent, "sheet");
-    } else if (selectedTodoId && todos.length > 0) {
-      // selectedTodoId exists but todo not found - clear selection
+    } else if (selectedTodoId) {
+      // selectedTodoId exists but todo not found (deleted or stale) - clear selection
       clearSelection();
       closeRightSidebar();
-    } else if (!selectedTodoId) {
+    } else {
       // No selection - ensure sidebar is closed
       setRightSidebarContent(null);
       closeRightSidebar();
@@ -208,7 +217,7 @@ export default function TodoListPage({
 
   // Effect: Handle todo deletion while selected
   useEffect(() => {
-    if (selectedTodoId && todos.length > 0) {
+    if (selectedTodoId) {
       const todoExists = todos.some((t) => t.id === selectedTodoId);
       if (!todoExists) {
         clearSelection();
