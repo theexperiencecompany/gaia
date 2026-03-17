@@ -126,6 +126,7 @@ _COLLECTION_MAPPINGS = {
     "processed_webhooks_collection": "processed_webhooks",
     "bot_sessions_collection": "bot_sessions",
     "gaia_tasks_collection": "gaia_tasks",
+    "proactive_runs_collection": "proactive_runs",
 }
 
 
