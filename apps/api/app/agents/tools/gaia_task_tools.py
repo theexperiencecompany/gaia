@@ -207,6 +207,36 @@ async def read_task_vfs(
     return content
 
 
+@tool
+async def link_workflow_to_task(
+    config: RunnableConfig,
+    task_id: Annotated[str, "ID of the GaiaTask to link the workflow to"],
+    workflow_id: Annotated[str, "ID of the workflow to link"],
+    workflow_title: Annotated[str, "Title of the workflow being linked"],
+) -> str:
+    """
+    Link an existing workflow to a GaiaTask so the task tracks its execution.
+    Call after creating a workflow that's part of a multi-step task. The task
+    will be automatically updated when the workflow completes or fails.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return "Error: user_id not found in config"
+
+    task = await gaia_task_service.adopt_workflow(
+        task_id=task_id,
+        user_id=user_id,
+        workflow_id=workflow_id,
+        workflow_title=workflow_title,
+    )
+    if not task:
+        return f"Task {task_id} not found"
+    return (
+        f"Workflow {workflow_id} linked to task {task_id}. "
+        f"Task now owns {len(task.owned_workflow_ids)} workflow(s)."
+    )
+
+
 tools = [
     create_gaia_task,
     update_gaia_task,
@@ -214,4 +244,5 @@ tools = [
     cancel_gaia_task,
     list_gaia_tasks,
     read_task_vfs,
+    link_workflow_to_task,
 ]
