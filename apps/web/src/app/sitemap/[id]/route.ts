@@ -8,7 +8,7 @@ export async function GET(
   props: { params: Promise<{ id: string }> },
 ) {
   const { id: rawId } = await props.params;
-  const id = Number(rawId);
+  const id = Number(rawId.replace(/\.xml$/, ""));
 
   if (!ALL_SITEMAP_IDS.includes(id as (typeof ALL_SITEMAP_IDS)[number])) {
     return new NextResponse("Not Found", { status: 404 });
