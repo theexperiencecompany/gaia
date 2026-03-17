@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 
 import { todoApi } from "@/features/todo/api/todoApi";
+import { useRouter } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket";
 import { useTodoStore } from "@/stores/todoStore";
@@ -103,18 +104,28 @@ export function startWorkflowPolling(todoId: string) {
  * Also cancels any active polling for the todo.
  */
 export function useTodoWorkflowGlobalListener() {
-  const handleGenerated = useCallback((msg: unknown) => {
-    const message = msg as WorkflowGeneratedMessage;
-    const { todo_id, workflow } = message;
+  const router = useRouter();
 
-    if (!todo_id || !workflow) return;
+  const handleGenerated = useCallback(
+    (msg: unknown) => {
+      const message = msg as WorkflowGeneratedMessage;
+      const { todo_id, workflow } = message;
 
-    // Cancel polling — WS delivered successfully
-    pendingPolls.delete(todo_id);
+      if (!todo_id || !workflow) return;
 
-    applyWorkflowToStore(todo_id, workflow);
-    toast.success("Workflow generated!");
-  }, []);
+      // Cancel polling — WS delivered successfully
+      pendingPolls.delete(todo_id);
+
+      applyWorkflowToStore(todo_id, workflow);
+      toast.success("Workflow generated!", {
+        action: {
+          label: "Open",
+          onClick: () => router.push(`/todos?todoId=${todo_id}`),
+        },
+      });
+    },
+    [router],
+  );
 
   const handleFailed = useCallback((msg: unknown) => {
     const message = msg as WorkflowFailedMessage;
