@@ -133,7 +133,7 @@ nx run-many -t lint --projects=web,desktop
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
-- **Always branch from `develop`** — when creating PRs, checking out new branches, or setting up worktrees, always base them on `develop`, not `master` or any other branch.
+- **`develop` is the base branch, not `master`.** All feature branches are created from and merged into `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `develop` as the base — not `master` or `main`.
 
 ## Common Issues
 
