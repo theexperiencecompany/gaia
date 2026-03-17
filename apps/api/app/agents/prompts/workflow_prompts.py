@@ -243,13 +243,6 @@ TRIGGER-AWARE STEP GENERATION:
 - Focus on steps that USE the trigger data, not steps that DUPLICATE the trigger data
 - Example: Email trigger → Don't create "fetch_gmail_messages", instead create "compose_email" (reply), "create_calendar_event" (follow-up), etc.
 
-JSON OUTPUT REQUIREMENTS:
-- NEVER include comments (//) in the JSON output
-- Use only valid JSON syntax with no explanatory comments
-- All string values must be properly quoted
-- No trailing commas or syntax errors
-- Use the exact category name for routing (e.g., "gmail", "notion", "todos", "reminders")
-
 BAD WORKFLOW EXAMPLES (DO NOT CREATE):
 ❌ "Analyze project requirements" → LLM does this inherently, no external tool needed
 ❌ "Generate summary of findings" → LLM will summarize naturally, use generate_document only if saving to external file
@@ -288,9 +281,7 @@ DESCRIPTION: {description}
 AVAILABLE TOOL CATEGORIES: {categories}
 
 Available Tools:
-{tools}
-
-{format_instructions}"""
+{tools}"""
 
 
 WORKFLOW_EXECUTION_PROMPT = """You are executing a workflow manually for the user. 

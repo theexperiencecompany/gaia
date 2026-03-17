@@ -3,8 +3,8 @@ AGENT_RECURSION_LIMIT = 75  # Main agent graphs (comms, executor, provider subag
 SUBAGENT_RECURSION_LIMIT = 25  # Spawned subagents (spawn_subagent tool loop)
 DEFAULT_MAX_TOKENS = 1_000_000
 DEFAULT_MODEL_NAME = "gemini-3.1-flash-lite-preview"
-# Direct Gemini API model (latest/paid)
-DEFAULT_GEMINI_MODEL_NAME = "gemini-2.5-flash"
+# Direct Gemini API model
+DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite-preview"
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.1-fast"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 

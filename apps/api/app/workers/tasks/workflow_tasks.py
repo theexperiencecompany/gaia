@@ -105,8 +105,9 @@ async def process_workflow_generation_task(
             if workflow and workflow.id:
                 # Verify workflow actually has steps before linking
                 if not workflow.steps or len(workflow.steps) == 0:
+                    reason = workflow.error_message or "unknown error"
                     raise ValueError(
-                        f"Workflow {workflow.id} created but has no steps — generation failed silently"
+                        f"Workflow {workflow.id} created but has no steps — {reason}"
                     )
 
                 update_data = {
