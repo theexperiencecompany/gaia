@@ -235,5 +235,130 @@ class GaiaTaskService:
         log.info("gaia_task.cancelled", task_id=task_id, user_id=user_id, reason=reason)
         return await self.get_task(task_id, user_id)
 
+    async def adopt_workflow(
+        self, task_id: str, user_id: str, workflow_id: str, workflow_title: str
+    ) -> GaiaTask | None:
+        """Link a workflow to a task by appending its ID to owned_workflow_ids."""
+        task = await self.get_task(task_id, user_id)
+        if not task:
+            return None
+
+        if workflow_id in task.owned_workflow_ids:
+            return task  # Already linked
+
+        now = datetime.now(timezone.utc)
+        await gaia_tasks_collection.update_one(
+            {"task_id": task_id, "user_id": user_id},
+            {
+                "$push": {"owned_workflow_ids": workflow_id},
+                "$set": {"updated_at": now},
+            },
+        )
+
+        vfs = MongoVFS()
+        assert task.vfs_path is not None
+        await vfs.append(
+            path=f"{task.vfs_path}/log.md",
+            content=f"\n## {now.isoformat()}\n- Workflow adopted: {workflow_title} ({workflow_id})\n",
+            user_id=user_id,
+        )
+
+        log.info(
+            "gaia_task.workflow_adopted",
+            task_id=task_id,
+            workflow_id=workflow_id,
+            user_id=user_id,
+        )
+        return await self.get_task(task_id, user_id)
+
+    async def on_workflow_completed(
+        self, workflow_id: str, user_id: str, summary: str
+    ) -> None:
+        """Called by the workflow worker when an owned workflow completes successfully."""
+        doc = await gaia_tasks_collection.find_one(
+            {
+                "user_id": user_id,
+                "owned_workflow_ids": workflow_id,
+                "status": {"$nin": [GaiaTaskStatus.COMPLETED, GaiaTaskStatus.CANCELLED]},
+            }
+        )
+        if not doc:
+            return
+
+        doc.pop("_id", None)
+        task = GaiaTask(**doc)
+
+        now = datetime.now(timezone.utc)
+        vfs = MongoVFS()
+        assert task.vfs_path is not None
+        await vfs.append(
+            path=f"{task.vfs_path}/log.md",
+            content=f"\n## {now.isoformat()}\n- Workflow completed: {workflow_id} — {summary}\n",
+            user_id=user_id,
+        )
+
+        await vfs.append(
+            path=f"{task.vfs_path}/progress.md",
+            content=f"\n### Workflow Result ({workflow_id})\n{summary}\n",
+            user_id=user_id,
+        )
+
+        await gaia_tasks_collection.update_one(
+            {"task_id": task.task_id, "user_id": user_id},
+            {"$set": {"updated_at": now}},
+        )
+
+        log.info(
+            "gaia_task.workflow_completed",
+            task_id=task.task_id,
+            workflow_id=workflow_id,
+            user_id=user_id,
+        )
+
+    async def on_workflow_failed(
+        self, workflow_id: str, user_id: str, error_message: str
+    ) -> None:
+        """Called by the workflow worker when an owned workflow fails."""
+        doc = await gaia_tasks_collection.find_one(
+            {
+                "user_id": user_id,
+                "owned_workflow_ids": workflow_id,
+                "status": {"$nin": [GaiaTaskStatus.COMPLETED, GaiaTaskStatus.CANCELLED]},
+            }
+        )
+        if not doc:
+            return
+
+        doc.pop("_id", None)
+        task = GaiaTask(**doc)
+
+        now = datetime.now(timezone.utc)
+        vfs = MongoVFS()
+        assert task.vfs_path is not None
+        await vfs.append(
+            path=f"{task.vfs_path}/log.md",
+            content=f"\n## {now.isoformat()}\n- Workflow FAILED: {workflow_id} — {error_message}\n",
+            user_id=user_id,
+        )
+
+        if task.status == GaiaTaskStatus.WAITING:
+            await gaia_tasks_collection.update_one(
+                {"task_id": task.task_id, "user_id": user_id},
+                {"$set": {"status": GaiaTaskStatus.STALLED, "updated_at": now}},
+            )
+        else:
+            await gaia_tasks_collection.update_one(
+                {"task_id": task.task_id, "user_id": user_id},
+                {"$set": {"updated_at": now}},
+            )
+
+        log.info(
+            "gaia_task.workflow_failed",
+            task_id=task.task_id,
+            workflow_id=workflow_id,
+            user_id=user_id,
+            error=error_message,
+        )
+
 
 gaia_task_service = GaiaTaskService()
