@@ -78,37 +78,34 @@ function withLocaleUrls(
 
 const BUILD_DATE = new Date().toISOString();
 
-type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
-type StaticPage = { path: string; freq: ChangeFreq; priority: number };
-
-const TRANSLATED_STATIC_PAGES: Array<StaticPage> = [
-  { path: "/compare", freq: "weekly", priority: 0.5 },
-  { path: "/alternative-to", freq: "weekly", priority: 0.5 },
-  { path: "/automate", freq: "weekly", priority: 0.5 },
-  { path: "/for", freq: "weekly", priority: 0.5 },
-  { path: "/learn", freq: "weekly", priority: 0.5 },
+const TRANSLATED_STATIC_PAGES = [
+  "/compare",
+  "/alternative-to",
+  "/automate",
+  "/for",
+  "/learn",
 ];
 
-const UNTRANSLATED_STATIC_PAGES: Array<StaticPage> = [
-  { path: "", freq: "daily", priority: 1.0 },
-  { path: "/pricing", freq: "weekly", priority: 0.9 },
-  { path: "/marketplace", freq: "weekly", priority: 0.9 },
-  { path: "/blog", freq: "daily", priority: 0.9 },
-  { path: "/use-cases", freq: "weekly", priority: 0.9 },
-  { path: "/download", freq: "weekly", priority: 0.9 },
-  { path: "/faq", freq: "monthly", priority: 0.8 },
-  { path: "/manifesto", freq: "monthly", priority: 0.8 },
-  { path: "/about", freq: "monthly", priority: 0.8 },
-  { path: "/contact", freq: "monthly", priority: 0.7 },
-  { path: "/brand", freq: "monthly", priority: 0.7 },
-  { path: "/login", freq: "monthly", priority: 0.6 },
-  { path: "/signup", freq: "monthly", priority: 0.6 },
-  { path: "/terms", freq: "monthly", priority: 0.5 },
-  { path: "/privacy", freq: "monthly", priority: 0.5 },
-  { path: "/thanks", freq: "monthly", priority: 0.4 },
-  { path: "/open-source-ai-assistant", freq: "monthly", priority: 0.9 },
-  { path: "/ai-chief-of-staff", freq: "monthly", priority: 0.9 },
-  { path: "/inbox-zero-ai", freq: "monthly", priority: 0.9 },
+const UNTRANSLATED_STATIC_PAGES = [
+  "",
+  "/pricing",
+  "/marketplace",
+  "/blog",
+  "/use-cases",
+  "/download",
+  "/faq",
+  "/manifesto",
+  "/about",
+  "/contact",
+  "/brand",
+  "/login",
+  "/signup",
+  "/terms",
+  "/privacy",
+  "/thanks",
+  "/open-source-ai-assistant",
+  "/ai-chief-of-staff",
+  "/inbox-zero-ai",
 ];
 
 /**
@@ -120,8 +117,6 @@ async function getBlogPages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
     return blogs.map((blog) => ({
       url: `${baseUrl}/blog/${blog.slug}`,
       lastModified: new Date(blog.date),
-      changeFrequency: "monthly" as const,
-      priority: 0.7,
     }));
   } catch (error) {
     console.error("Error fetching blogs for sitemap:", error);
@@ -143,8 +138,6 @@ async function getExploreWorkflowPages(
     return exploreResp.workflows.map((wc) => ({
       url: `${baseUrl}/use-cases/${wc.slug ?? wc.id}`,
       lastModified: new Date(wc.created_at),
-      changeFrequency: "weekly" as const,
-      priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
     }));
   } catch (error) {
     console.error("Error fetching explore workflows for sitemap:", error);
@@ -166,8 +159,6 @@ async function getCommunityWorkflowPages(
       return communityResponse.workflows.map((workflow) => ({
         url: `${baseUrl}/use-cases/${workflow.slug ?? workflow.id}`,
         lastModified: new Date(workflow.created_at),
-        changeFrequency: "weekly" as const,
-        priority: 0.6,
       }));
     }
 
@@ -202,8 +193,6 @@ async function getCommunityWorkflowPages(
     return allWorkflows.map((workflow) => ({
       url: `${baseUrl}/use-cases/${workflow.slug ?? workflow.id}`,
       lastModified: new Date(workflow.created_at),
-      changeFrequency: "weekly" as const,
-      priority: 0.6,
     }));
   } catch (error) {
     console.error("Error fetching community workflows for sitemap:", error);
@@ -240,8 +229,6 @@ async function getNativeIntegrationPages(
       .map((i) => ({
         url: `${baseUrl}/marketplace/${i.id}`,
         lastModified: BUILD_DATE,
-        changeFrequency: "monthly" as const,
-        priority: 0.7,
       }));
   } catch (error) {
     console.error("Error fetching native integrations for sitemap:", error);
@@ -276,8 +263,6 @@ async function getIntegrationPages(
             lastModified: new Date(
               integration.publishedAt || integration.createdAt || Date.now(),
             ),
-            changeFrequency: "weekly" as const,
-            priority: 0.7,
           }),
         );
       }
@@ -313,8 +298,6 @@ async function getIntegrationPages(
         lastModified: new Date(
           integration.publishedAt || integration.createdAt || Date.now(),
         ),
-        changeFrequency: "weekly" as const,
-        priority: 0.7,
       }),
     );
   } catch (error) {
@@ -331,23 +314,8 @@ function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
   return slugs.map((slug) => ({
     url: `${baseUrl}/compare/${slug}`,
     lastModified: BUILD_DATE,
-    changeFrequency: "monthly" as const,
-    priority: 0.8,
   }));
 }
-
-const FEATURED_PERSONA_SLUGS = new Set([
-  "startup-founders",
-  "software-developers",
-  "sales-professionals",
-  "product-managers",
-  "engineering-managers",
-  "agency-owners",
-  "financial-advisors",
-  "healthcare-professionals",
-  "data-analysts",
-  "hr-managers",
-]);
 
 /**
  * Persona pages (AI assistant for [role])
@@ -364,8 +332,6 @@ async function getPersonaPages(
     return slugs.map((slug) => ({
       url: `${baseUrl}/for/${slug}`,
       lastModified: BUILD_DATE,
-      changeFrequency: "monthly" as const,
-      priority: FEATURED_PERSONA_SLUGS.has(slug) ? 0.9 : 0.7,
     }));
   } catch (error) {
     console.error("Error generating persona sitemap pages:", error);
@@ -381,8 +347,6 @@ function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
   return slugs.map((slug) => ({
     url: `${baseUrl}/learn/${slug}`,
     lastModified: BUILD_DATE,
-    changeFrequency: "monthly" as const,
-    priority: 0.7,
   }));
 }
 
@@ -394,8 +358,6 @@ function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
   return slugs.map((slug) => ({
     url: `${baseUrl}/alternative-to/${slug}`,
     lastModified: BUILD_DATE,
-    changeFrequency: "monthly" as const,
-    priority: 0.8,
   }));
 }
 
@@ -409,40 +371,30 @@ function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
     .map((combo) => ({
       url: `${baseUrl}/automate/${combo.slug}`,
       lastModified: BUILD_DATE,
-      changeFrequency: "monthly" as const,
-      priority: 0.7,
     }));
 }
 
 /**
- * Generate dynamic sitemap for GAIA.
- * Uses sitemap index pattern with separate sitemaps for each content type.
- * Note: In Next.js 16.0.0+, the id is passed as a Promise that resolves to a string.
+ * Return sitemap entries for a given sitemap ID.
  */
-export default async function sitemap(props: {
-  id: Promise<string>;
-}): Promise<MetadataRoute.Sitemap> {
-  const idString = await props.id;
-  const id = Number(idString);
+export async function getSitemapEntries(
+  sitemapId: number,
+): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getSiteUrl();
 
-  switch (id) {
+  switch (sitemapId) {
     case SITEMAP_IDS.STATIC:
       return [
         ...withLocaleUrls(
-          TRANSLATED_STATIC_PAGES.map((p) => ({
-            url: `${baseUrl}${p.path}`,
+          TRANSLATED_STATIC_PAGES.map((path) => ({
+            url: `${baseUrl}${path}`,
             lastModified: BUILD_DATE,
-            changeFrequency: p.freq,
-            priority: p.priority,
           })),
           baseUrl,
         ),
-        ...UNTRANSLATED_STATIC_PAGES.map((p) => ({
-          url: `${baseUrl}${p.path}`,
+        ...UNTRANSLATED_STATIC_PAGES.map((path) => ({
+          url: `${baseUrl}${path}`,
           lastModified: BUILD_DATE,
-          changeFrequency: p.freq,
-          priority: p.priority,
         })),
       ];
     case SITEMAP_IDS.BLOG:

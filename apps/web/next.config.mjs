@@ -115,6 +115,10 @@ const nextConfig = {
         destination: "/sitemap-index",
       },
       {
+        source: "/sitemap/:id(\\d+).xml",
+        destination: "/sitemap/:id",
+      },
+      {
         source: "/ingest/static/:path*",
         destination: "https://us-assets.i.posthog.com/static/:path*",
       },

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { generateSitemaps } from "@/app/sitemap";
+import { generateSitemaps } from "@/app/sitemap-data";
 import { getSiteUrl } from "@/lib/seo";
 
 /**
