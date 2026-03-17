@@ -56,8 +56,8 @@ export const S01_Notification: React.FC = () => {
         {/* Telegram icon */}
         <div
           style={{
-            width: 88,
-            height: 88,
+            width: 96,
+            height: 96,
             borderRadius: 20,
             background: "#229ed9",
             display: "flex",
@@ -86,7 +86,7 @@ export const S01_Notification: React.FC = () => {
             <span
               style={{
                 fontFamily: FONTS.body,
-                fontSize: 24,
+                fontSize: 26,
                 color: COLORS.zinc400,
                 fontWeight: 500,
               }}
@@ -96,7 +96,7 @@ export const S01_Notification: React.FC = () => {
             <span
               style={{
                 fontFamily: FONTS.body,
-                fontSize: 20,
+                fontSize: 22,
                 color: COLORS.zinc500,
               }}
             >
@@ -108,7 +108,7 @@ export const S01_Notification: React.FC = () => {
           <div
             style={{
               fontFamily: FONTS.body,
-              fontSize: 34,
+              fontSize: 40,
               fontWeight: 700,
               color: COLORS.textDark,
               marginBottom: 6,
@@ -121,7 +121,7 @@ export const S01_Notification: React.FC = () => {
           <div
             style={{
               fontFamily: FONTS.body,
-              fontSize: 26,
+              fontSize: 30,
               color: COLORS.zinc400,
               lineHeight: 1.4,
             }}
