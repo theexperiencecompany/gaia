@@ -293,6 +293,28 @@ Available Tools:
 {format_instructions}"""
 
 
+SIGNAL_MATCHING_INSTRUCTIONS = """
+TRACKED TODOS (Working Memory)
+{tracked_todos_context}
+
+SIGNAL MATCHING:
+If the current trigger data (email, calendar event, slack message, etc.) relates to
+any tracked todo listed above, you MUST:
+1. Read the todo's canvas: vfs_read(path="<vfs_path>/canvas.md")
+2. Update the canvas with the new information from this signal
+3. Write the updated canvas: vfs_write(path="<vfs_path>/canvas.md", content="...")
+4. Include: what signal arrived, key details, how it changes the Current State
+
+When updating canvas, be verbose:
+- Include email addresses, thread IDs, event IDs
+- Quote relevant content from the signal
+- Update the "Current State" section to reflect new reality
+- Add to "Timeline" section with timestamp
+
+If no tracked todo matches, proceed with normal workflow execution.
+"""
+
+
 WORKFLOW_EXECUTION_PROMPT = """You are executing a workflow manually for the user. 
 
 **INTELLIGENT WORKFLOW EXECUTION:**
@@ -361,6 +383,8 @@ Description: {workflow_description}
 
 **User's Request:**
 {user_message}
+
+{signal_matching_section}
 
 Begin executing the workflow steps. Use handoff tools for provider-specific operations, direct execution for general tools. Start with step 1."""
 
@@ -495,4 +519,6 @@ Description: {workflow_description}
 
 **Steps to Execute:**
 {workflow_steps}
+
+{signal_matching_section}
 """
