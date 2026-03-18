@@ -3,7 +3,6 @@ Task modules for ARQ worker.
 """
 
 from .cleanup_tasks import cleanup_stuck_personalization
-from .gaia_task_maintenance import scan_gaia_tasks
 from .memory_email_tasks import process_gmail_emails_to_memory
 from .memory_tasks import store_memories_batch
 from .onboarding_tasks import process_personalization_task
@@ -30,5 +29,4 @@ __all__ = [
     "regenerate_workflow_steps",
     "execute_workflow_as_chat",
     "cleanup_stuck_personalization",
-    "scan_gaia_tasks",
 ]

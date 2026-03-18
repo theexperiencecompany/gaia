@@ -21,7 +21,7 @@ from app.models.message_models import (
 )
 from app.db.redis import get_cache, set_cache
 from app.services.gaia_knowledge_service import gaia_knowledge_service
-from app.services.gaia_task_service import gaia_task_service
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.memory_service import memory_service
 from app.services.workflow import WorkflowService
 from shared.py.wide_events import log
@@ -99,9 +99,9 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     return ""
 
 
-async def _get_active_tasks_section(user_id: str) -> str:
-    """Fetch active GaiaTasks summary with 60s Redis cache."""
-    cache_key = f"gaia_tasks:summary:{user_id}"
+async def _get_tracked_todos_section(user_id: str) -> str:
+    """Fetch active tracked-todo summary with 60s Redis cache."""
+    cache_key = f"tracked_todos:summary:{user_id}"
 
     try:
         cached = await get_cache(cache_key)
@@ -110,7 +110,7 @@ async def _get_active_tasks_section(user_id: str) -> str:
     except Exception:
         pass  # Cache miss is fine
 
-    summary = await gaia_task_service.get_active_tasks_summary(user_id)
+    summary = await tracked_todo_service.get_active_tracked_summary(user_id)
 
     if summary:
         try:
@@ -177,14 +177,14 @@ async def get_memory_message(
                 log.warning(f"Error formatting user local time: {e}")
 
         # Search for conversation memories, GAIA knowledge, and active tasks in parallel
-        memories_section, gaia_knowledge_section, active_tasks_section = await asyncio.gather(
+        memories_section, gaia_knowledge_section, tracked_todos_section = await asyncio.gather(
             _get_user_memories_section(query, user_id),
             _get_gaia_knowledge_section(query),
-            _get_active_tasks_section(user_id),
+            _get_tracked_todos_section(user_id),
         )
 
         # Combine all sections
-        tasks_block = f"\n\n{active_tasks_section}" if active_tasks_section else ""
+        tasks_block = f"\n\n{tracked_todos_section}" if tracked_todos_section else ""
         content = "\n".join(context_parts) + memories_section + gaia_knowledge_section + tasks_block
         return SystemMessage(content=content, memory_message=True)
 

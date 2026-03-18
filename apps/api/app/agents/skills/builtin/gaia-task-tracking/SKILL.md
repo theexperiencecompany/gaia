@@ -1,53 +1,45 @@
 ---
-name: gaia-task-tracking
-description: Track multi-step work across time and channels using GaiaTasks. Auto-create tasks for work that expects responses, involves multiple steps, or needs monitoring. Manage task lifecycle with VFS-backed working memory.
+name: tracked-todo-working-memory
+description: Track multi-step work across time and channels using tracked todos with VFS canvas. Create tracked todos for work that expects responses, involves multiple steps, or needs monitoring. Manage todo lifecycle with canvas.md working memory and ChromaDB-indexed context.
 target: executor
 ---
 
-# GaiaTask Tracking
+# Tracked Todo Working Memory
 
 ## When to Use
 
-**CREATE a GaiaTask when:**
+**CREATE a tracked todo when:**
 - You sent an email and expect a reply (e.g. "email Rahul about the contract")
 - The request involves multiple steps across time (e.g. "plan the offsite and book everything")
 - Work spans multiple providers (e.g. "create a Linear issue, then update the Notion doc when it's done")
 - The user asks you to monitor or follow up on something
 - You're coordinating something that won't resolve in this conversation
 
-**DO NOT create a GaiaTask when:**
+**DO NOT create a tracked todo when:**
 - The action is one-shot with no follow-up (e.g. "what's the weather?")
 - The task completes entirely within this conversation
 - It's a simple lookup or question
 
-**UPDATE an existing GaiaTask when:**
-- You take any action related to an active task (sent follow-up, received reply, made progress)
-- The status changes (waiting for response, stalled, back to active)
-
-**COMPLETE or CANCEL a GaiaTask when:**
-- The goal has been fully achieved → complete_gaia_task
-- The user says to stop tracking it or it's no longer relevant → cancel_gaia_task
-
 ## Strategy
 
-### Check Before Creating
-Before creating a new task, always call `list_gaia_tasks` first. If a related task already exists, update it instead of creating a duplicate.
+### Search Before Creating
+Before creating a new tracked todo, use `search_todo_context` to check if related work already exists. If so, update the existing canvas instead of creating a duplicate.
 
-### Context Is in the Active Tasks Block
-Every conversation includes an `ACTIVE TASKS:` block in your context. When you see active tasks listed there:
-1. Check if the user's current request relates to any active task
-2. If yes, read the task's `progress.md` via `read_task_vfs` for full context before acting
-3. After acting, update the task with notes about what you did
+### Context Is in the Active Tracked Todos Block
+Every conversation includes an `ACTIVE TRACKED TODOS:` block in your context. When you see tracked todos listed there:
+1. Check if the user's current request relates to any active tracked todo
+2. If yes, read the todo's `canvas.md` via `vfs_read` for full context before acting
+3. After acting, update `canvas.md` with what you did and the current state
 
-### Progressive Disclosure
-- Start with `progress.md` for a quick summary of where things stand
-- Read `log.md` for chronological history if you need details
-- Read `context.json` for structured metadata (IDs, relationships)
+### Canvas.md Is Your Brain
+The canvas is YOUR working memory — write to it after every significant action:
+- Key details: email addresses, thread IDs, calendar IDs, issue URLs
+- Current state: what's true RIGHT NOW
+- Timeline: chronological list of actions taken
+- Context: accumulated context from signals and decisions
 
-### Status Transitions
-- `active` → work is ongoing, you're taking actions
-- `waiting` → you did something and are waiting for a response (e.g. sent email, waiting for reply)
-- `stalled` → no progress has been made and something is blocking
+### Log.md Is System-Written
+The system appends to `log.md` automatically (creation, completion). Don't write to it directly.
 
 ## Workflow
 
@@ -57,65 +49,45 @@ Determine if this request needs persistent tracking:
 - Does it involve waiting for external responses?
 - Does the user need GAIA to follow up proactively?
 
-### Step 2: Check Existing Tasks
+### Step 2: Search Existing Context
 ```
-list_gaia_tasks → check if related task exists
+search_todo_context(query="relevant keywords")
 ```
-If a task exists, skip to Step 4 (update it). If not, continue.
+If a tracked todo exists, read its canvas and update it. If not, continue.
 
-### Step 3: Create the Task
+### Step 3: Create the Tracked Todo
 ```
-create_gaia_task(
+create_tracked_todo(
   title="Short descriptive title",
   description="What needs to happen and what the expected outcome is",
-  expires_in_days=30  # or None for permanent
+  initial_canvas="# Title\n\n## Key Details\n- Email: ...\n- Thread ID: ...\n\n## Current State\nWaiting for reply from Rahul.\n\n## Timeline\n- 2026-03-19: Sent initial email"
 )
 ```
-The task automatically gets a VFS directory with `progress.md`, `log.md`, and `context.json`.
 
-### Step 4: Take Action and Update
-After every significant action related to a task:
+### Step 4: Take Action and Update Canvas
+After every significant action:
 ```
-update_gaia_task(
-  task_id="...",
-  notes="Sent follow-up email to Rahul about the contract deadline",
-  status="waiting"  # if now waiting for response
+vfs_write(
+  path="/users/{user_id}/todos/{todo_id}/canvas.md",
+  content="...updated canvas with new state..."
 )
 ```
 
 ### Step 5: Complete When Done
-When the goal is achieved:
-```
-complete_gaia_task(
-  task_id="...",
-  summary="Contract signed by all parties. Filed in Google Drive."
-)
-```
+Mark the todo as completed in the normal todo system when the goal is achieved.
 
 ## Important Rules
 
-1. **Always check active tasks** when starting a conversation — the ACTIVE TASKS block tells you what's in flight.
-2. **Never create duplicate tasks** — check `list_gaia_tasks` first.
-3. **Log every action** — use `update_gaia_task` with notes after taking any task-related action, even small ones.
-4. **Set status to waiting** after actions that expect external responses.
-5. **Read progress.md first** when resuming work on a task from a previous conversation.
-6. **Don't over-create tasks** — quick one-off requests don't need tracking.
+1. **Always check active tracked todos** when starting a conversation — the ACTIVE TRACKED TODOS block tells you what's in flight.
+2. **Never create duplicates** — search with `search_todo_context` first.
+3. **Update canvas after every action** — your future self depends on it.
+4. **Write canvas for your future self** — include IDs, links, and exact state, not vague summaries.
+5. **Don't over-create** — quick one-off requests don't need tracking.
 
 ## Anti-Patterns
 
-- Creating a task for "send an email" when there's no expected follow-up
-- Creating multiple tasks for related sub-steps (one task can track the whole initiative)
-- Forgetting to update task status after taking action
-- Not reading existing task context before acting on a returning topic
-
-## Workflow Ownership
-
-When creating a workflow as part of a multi-step task:
-
-1. Create the task first (or identify the existing task)
-2. Create the workflow via `create_workflow`
-3. Link it: `link_workflow_to_task(task_id=..., workflow_id=..., workflow_title=...)`
-
-The task will be automatically updated when the workflow completes or fails:
-- **Success**: Task log and progress.md updated with execution summary
-- **Failure**: Task log updated with error; if task was "waiting", status changes to "stalled"
+- Creating a tracked todo for "send an email" when there's no expected follow-up
+- Creating multiple tracked todos for related sub-steps (one todo can track the whole initiative)
+- Forgetting to update canvas.md after taking action
+- Not reading existing canvas before acting on a returning topic
+- Writing vague canvas entries like "made progress" instead of specific details

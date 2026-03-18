@@ -13,7 +13,6 @@ from app.workers.tasks import (
     process_reminder,
     process_workflow_generation_task,
     regenerate_workflow_steps,
-    scan_gaia_tasks,
     store_memories_batch,
 )
 
@@ -30,7 +29,6 @@ WorkerSettings.functions = [
     process_personalization_task,
     store_memories_batch,
     cleanup_stuck_personalization,
-    scan_gaia_tasks,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -50,11 +48,6 @@ WorkerSettings.cron_jobs = [
         cleanup_stuck_personalization,
         minute={0, 30},  # Every 30 minutes
         second=0,
-    ),
-    cron(
-        scan_gaia_tasks,
-        minute={0, 30},
-        second=15,
     ),
 ]
 

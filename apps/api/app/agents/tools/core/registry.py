@@ -182,7 +182,7 @@ class ToolRegistry:
             document_tool,
             file_tools,
             flowchart_tool,
-            gaia_task_tools,
+            tracked_todo_tools,
             goal_tool,
             image_tool,
             integration_tool,
@@ -215,8 +215,8 @@ class ToolRegistry:
 
         self._add_category("notifications", tools=[*notification_tool.tools])
         self._add_category(
-            "gaia_tasks",
-            tools=[*gaia_task_tools.tools],
+            "tracked_todos",
+            tools=[*tracked_todo_tools.tools],
             space="tasks",
         )
         self._add_category(

@@ -32,7 +32,6 @@ class NotificationSourceEnum(str, Enum):
     WORKFLOW_COMPLETED = "workflow_completed"
     WORKFLOW_FAILED = "workflow_failed"
     SYSTEM_WORKFLOWS_PROVISIONED = "system_workflows_provisioned"
-    GAIA_TASK_ATTENTION = "gaia_task_attention"
 
 
 class ActionType(str, Enum):
