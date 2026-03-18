@@ -266,7 +266,7 @@ class TrackedTodoService:
         for doc in docs:
             todo_id = str(doc["_id"])
             title = doc.get("title", "")
-            labels = [l for l in doc.get("labels", []) if l != GAIA_TRACKED_LABEL]
+            labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
             vfs_path = doc.get("vfs_path", "")
 
             # Try to extract Key Details section from canvas for IDs
