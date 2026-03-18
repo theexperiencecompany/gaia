@@ -340,8 +340,8 @@ async def vfs_write(
                 if canvas_match:
                     todo_id = canvas_match.group(1)
                     await tracked_todo_service.reindex_canvas(todo_id, ctx["user_id"])
-            except Exception:
-                pass  # Re-indexing failure should never block VFS write
+            except Exception as reindex_err:
+                log.debug(f"Canvas reindex skipped: {reindex_err}", path=resolved_path)
 
         return result
 
