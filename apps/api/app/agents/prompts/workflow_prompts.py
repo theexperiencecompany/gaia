@@ -381,10 +381,10 @@ Description: {workflow_description}
 **Steps to Execute:**
 {workflow_steps}
 
+{signal_matching_section}
+
 **User's Request:**
 {user_message}
-
-{signal_matching_section}
 
 Begin executing the workflow steps. Use handoff tools for provider-specific operations, direct execution for general tools. Start with step 1."""
 

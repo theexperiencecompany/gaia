@@ -7,6 +7,7 @@ from langchain_core.messages import SystemMessage
 
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
+    SIGNAL_MATCHING_INSTRUCTIONS,
     WORKFLOW_EXECUTION_PROMPT,
 )
 from app.agents.templates.agent_template import (
@@ -266,10 +267,22 @@ async def format_workflow_execution_message(
         workflow_title = selected_workflow.title
         workflow_description = selected_workflow.prompt or selected_workflow.description
 
+    # Build signal matching section from tracked todos
+    tracked_todos_ctx = ""
+    if trigger_context:
+        tracked_todos_ctx = trigger_context.get("tracked_todos_context", "")
+
+    signal_matching_section = ""
+    if tracked_todos_ctx:
+        signal_matching_section = SIGNAL_MATCHING_INSTRUCTIONS.format(
+            tracked_todos_context=tracked_todos_ctx
+        )
+
     common_args = {
         "workflow_title": workflow_title,
         "workflow_description": workflow_description,
         "workflow_steps": steps_text,
+        "signal_matching_section": signal_matching_section,
     }
 
     # Email-triggered workflows get enhanced context
