@@ -12,11 +12,9 @@ import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { CustomResponseStyleInput } from "@/features/settings/components/CustomResponseStyleInput";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
-import {
-  SettingsPage,
-  SettingsRow,
-  SettingsSection,
-} from "@/features/settings/components/ui";
+import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
+import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
+import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { toast } from "@/lib/toast";
 import {
   getCurrentBrowserTimezone,

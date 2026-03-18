@@ -2,7 +2,7 @@ import { Chip, Skeleton, SkeletonGroup } from "heroui-native";
 import { useCallback, useState } from "react";
 import { FlatList, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
-import { AppSearchInput } from "@/shared/components/ui";
+import { AppSearchInput } from "@/shared/components/ui/app-search-input";
 import { useCommunityIntegrations } from "../hooks/useCommunityIntegrations";
 import type { CommunityIntegration } from "../types";
 import { CommunityIntegrationCard } from "./CommunityIntegrationCard";

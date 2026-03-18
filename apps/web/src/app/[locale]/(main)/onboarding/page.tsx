@@ -1,12 +1,10 @@
 "use client";
 
-import {
-  OnboardingChips,
-  OnboardingComplete,
-  OnboardingInput,
-  OnboardingMessages,
-  OnboardingProgress,
-} from "@/features/onboarding/components";
+import { OnboardingChips } from "@/features/onboarding/components/OnboardingChips";
+import { OnboardingComplete } from "@/features/onboarding/components/OnboardingComplete";
+import { OnboardingInput } from "@/features/onboarding/components/OnboardingInput";
+import { OnboardingMessages } from "@/features/onboarding/components/OnboardingMessages";
+import { OnboardingProgress } from "@/features/onboarding/components/OnboardingProgress";
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
 
 export default function Onboarding() {

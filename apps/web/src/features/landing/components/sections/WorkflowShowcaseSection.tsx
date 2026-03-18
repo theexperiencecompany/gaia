@@ -1,6 +1,6 @@
 "use client";
 
-import { ZapIcon } from "@/components";
+import { ZapIcon } from "@/components/shared/icons";
 import WorkflowDemoAnimation from "../demo/workflow-demo/WorkflowDemoAnimation";
 import ShowcaseSectionLayout from "./ShowcaseSectionLayout";
 import ShowcaseSidebarContent from "./ShowcaseSidebarContent";

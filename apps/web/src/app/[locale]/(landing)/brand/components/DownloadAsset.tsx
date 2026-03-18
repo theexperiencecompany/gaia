@@ -64,9 +64,7 @@ export function DownloadAsset({
 
         {/* Download Buttons - Bottom Right on Hover */}
         <div
-          className={`absolute bottom-4 right-4 flex gap-2 transition-opacity duration-300 ${
-            isHovered ? "opacity-100" : "opacity-0"
-          }`}
+          className={`absolute bottom-4 right-4 flex gap-2 transition-opacity duration-300 ${isHovered ? "opacity-100" : "opacity-0"}`}
         >
           {downloadOptions.map((option) => (
             <Button

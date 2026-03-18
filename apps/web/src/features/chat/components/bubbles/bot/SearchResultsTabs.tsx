@@ -191,9 +191,7 @@ function ImageItem({
         alt={`Search result image ${index + 1}`}
         width={112}
         height={112}
-        className={`h-full w-full bg-zinc-800 object-cover transition ${
-          isLoading ? "opacity-0" : "opacity-100"
-        }`}
+        className={`h-full w-full bg-zinc-800 object-cover transition ${isLoading ? "opacity-0" : "opacity-100"}`}
         onLoad={handleLoad}
         priority={index < 3}
       />

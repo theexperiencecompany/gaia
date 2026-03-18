@@ -93,9 +93,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         style={baseStyle}
       >
         <div
-          className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
-            isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
-          }`}
+          className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
           onClick={() => {
             trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_SELECTED, {
               tool_name: match.tool.name,
@@ -602,11 +600,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                       e.stopPropagation();
                       handleCategoryChange(category);
                     }}
-                    className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
-                      selectedCategory === category
-                        ? "bg-zinc-700/40 text-white"
-                        : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"
-                    }`}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${selectedCategory === category ? "bg-zinc-700/40 text-white" : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"}`}
                   >
                     {category === "all" ? (
                       <GridIcon

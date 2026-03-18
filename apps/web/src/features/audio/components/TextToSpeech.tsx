@@ -3,7 +3,7 @@ import { VolumeHighIcon, VolumeOffIcon } from "@icons";
 // import Spinner from "@/components/ui/spinner";
 import * as React from "react";
 import Spinner from "@/components/ui/spinner";
-import { api } from "@/lib/api";
+import { api } from "@/lib/api/client";
 
 export default function TextToSpeech({ text }: { text: string }) {
   const [loading, setLoading] = React.useState(false);

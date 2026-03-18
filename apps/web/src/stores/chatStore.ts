@@ -6,7 +6,7 @@ import type { IConversation, IMessage } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
 import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
 import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared";
+import type { FileData } from "@/types/shared/fileTypes";
 
 // Optimistic message for new conversations (before conversation ID is assigned)
 // These are stored in Zustand only to avoid IndexedDB pollution if not cleared properly

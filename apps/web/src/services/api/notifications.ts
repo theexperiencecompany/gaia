@@ -1,4 +1,4 @@
-import { apiauth } from "@/lib/api";
+import { apiauth } from "@/lib/api/client";
 import {
   type BulkActionRequest,
   BulkActions,

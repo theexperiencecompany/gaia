@@ -284,11 +284,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                             : [...customRecurrenceDays, day.value];
                           onCustomRecurrenceDaysChange(newDays);
                         }}
-                        className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${
-                          customRecurrenceDays.includes(day.value)
-                            ? "bg-blue-600 text-white"
-                            : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"
-                        }`}
+                        className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${customRecurrenceDays.includes(day.value) ? "bg-blue-600 text-white" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"}`}
                       >
                         {day.label}
                       </button>

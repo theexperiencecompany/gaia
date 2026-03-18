@@ -17,7 +17,7 @@ import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { RaisedButton } from "@/components";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";

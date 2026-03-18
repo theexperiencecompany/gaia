@@ -181,12 +181,7 @@ export default function ChatRenderer({
 
   return (
     <>
-      <title id="chat_title">
-        {`${
-          conversations.find((convo) => convo.conversation_id === convoIdParam)
-            ?.description || "New chat"
-        } | GAIA`}
-      </title>
+      <title id="chat_title">{`${conversations.find((convo) => convo.conversation_id === convoIdParam)?.description || "New chat"} | GAIA`}</title>
       <GeneratedImageSheet
         imageData={imageData}
         openImage={openGeneratedImage}

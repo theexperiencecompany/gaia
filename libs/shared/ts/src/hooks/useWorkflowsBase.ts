@@ -1,4 +1,4 @@
-import type { CommunityWorkflow, Workflow } from "../types/workflow";
+import type { Workflow } from "../types/workflow";
 
 export const WorkflowQueryKeys = {
   all: ["workflows"] as const,

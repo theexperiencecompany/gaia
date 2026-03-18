@@ -20,8 +20,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { TwitterShareButton } from "react-share";
-import { TwitterIcon } from "@/components";
-import { Dices } from "@/components/shared/icons";
+import { Dices, TwitterIcon } from "@/components/shared/icons";
 import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
 import { toast } from "@/lib/toast";
 

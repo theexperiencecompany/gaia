@@ -38,7 +38,7 @@ export function IntegrationsPageClient() {
   const [nativeIntegrations, setNativeIntegrations] = useState<
     CommunityIntegration[]
   >([]);
-  const [nativeLoading, setNativeLoading] = useState(false);
+  const [, setNativeLoading] = useState(false);
   const nativeFetched = useRef(false);
 
   const totalPages = useMemo(() => Math.ceil(total / ITEMS_PER_PAGE), [total]);

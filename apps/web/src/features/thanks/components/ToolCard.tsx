@@ -96,9 +96,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
                   width={20}
                   height={20}
                   alt={`${tool.name} favicon`}
-                  className={`h-5 w-5 rounded-sm ${
-                    isDarkFavicon ? "invert" : ""
-                  }`}
+                  className={`h-5 w-5 rounded-sm ${isDarkFavicon ? "invert" : ""}`}
                   src={favicon}
                   onLoad={(e) => checkImageBrightness(e.currentTarget)}
                   onError={() => setFaviconError(true)}
@@ -139,18 +137,14 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
         className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-all duration-200 hover:border-primary/50 hover:bg-zinc-800/50"
       >
         <div
-          className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg ${
-            favicon ? "" : "bg-zinc-800"
-          }`}
+          className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg ${favicon ? "" : "bg-zinc-800"}`}
         >
           {favicon ? (
             <Image
               width={100}
               height={100}
               alt={`${tool.name} favicon`}
-              className={`h-6 w-6 object-contain ${
-                isDarkFavicon ? "invert" : ""
-              }`}
+              className={`h-6 w-6 object-contain ${isDarkFavicon ? "invert" : ""}`}
               src={favicon}
               onLoad={(e) => checkImageBrightness(e.currentTarget)}
               onError={() => setFaviconError(true)}

@@ -2,7 +2,7 @@ import { shuffle } from "lodash";
 import type React from "react";
 import { useMemo } from "react";
 
-import { ChevronRight } from "@/components";
+import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface Integration {

@@ -24,7 +24,6 @@
     "lint": "npm run check",
     "lint:fix": "npm run fix",
     "format": "biome format --write .",
-    "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\"",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
@@ -214,7 +213,6 @@
     "@types/react-dom": "^19.2.3",
     "@types/string-similarity": "^4.0.2",
     "@types/uuid": "^9.0.8",
-    "barrelsby": "^2.8.1",
     "depcheck": "^1.4.7",
     "schema-dts": "^1.1.5",
     "typescript": "^5.9.3",

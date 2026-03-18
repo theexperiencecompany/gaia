@@ -11,16 +11,16 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import type { IntegrationWithStatus } from "@/features/integrations";
 import {
   connectIntegration,
   disconnectIntegration,
   fetchIntegrationsConfig,
-} from "@/features/integrations";
+} from "@/features/integrations/api/integrations-api";
 import {
   IntegrationDetailSheet,
   type IntegrationDetailSheetRef,
 } from "@/features/integrations/components/integration-detail-sheet";
+import type { IntegrationWithStatus } from "@/features/integrations/types";
 import { useResponsive } from "@/lib/responsive";
 
 export default function IntegrationsPage() {

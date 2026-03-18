@@ -1,5 +1,5 @@
 import type { FeatureUsage, UsageSummary } from "@shared/types";
-import { apiauth } from "@/lib/api";
+import { apiauth } from "@/lib/api/client";
 
 export type {
   FeatureUsage,

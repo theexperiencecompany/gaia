@@ -29,7 +29,8 @@ import {
 } from "@/stores/composerStore";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
-import type { FileData, SearchMode } from "@/types/shared";
+import type { FileData } from "@/types/shared/fileTypes";
+import type { SearchMode } from "@/types/shared/searchTypes";
 
 import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";

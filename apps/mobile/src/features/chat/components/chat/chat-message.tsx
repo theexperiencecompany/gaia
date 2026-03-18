@@ -10,15 +10,16 @@ import { AppIcon, Brain02Icon } from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
+import { ThinkingCard } from "@/features/chat/components/streaming/ThinkingCard";
+import { ToolProgressCard } from "@/features/chat/components/streaming/ToolProgressCard";
 import { useResponsive } from "@/lib/responsive";
 import { extractUrls, useLinkPreview } from "../../hooks/use-link-preview";
-import { ToolDataRenderer } from "../../tool-data";
+import { ToolDataRenderer } from "../../tool-data/renderers";
 import type { Message } from "../../types";
 import {
   MemoryBottomSheet,
   type MemoryBottomSheetRef,
 } from "../memory/memory-bottom-sheet";
-import { ThinkingCard, ToolProgressCard } from "../streaming";
 import { ImageBubble } from "./image-bubble";
 import { LinkPreviewCard } from "./link-preview-card";
 import { LoadingIndicator } from "./loading-indicator";

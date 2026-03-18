@@ -2,7 +2,6 @@ import type { BottomSheetBackdropProps } from "@gorhom/bottom-sheet";
 import GorhomBottomSheet, { BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import {
   createContext,
-  forwardRef,
   type ReactNode,
   useCallback,
   useContext,

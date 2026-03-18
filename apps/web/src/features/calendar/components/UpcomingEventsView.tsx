@@ -18,7 +18,7 @@ import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { useAppendToInput } from "@/stores/composerStore";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
-import { formatDate } from "@/utils";
+import { formatDate } from "@/utils/date/dateUtils";
 
 interface UpcomingEventsViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;

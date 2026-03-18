@@ -20,7 +20,7 @@
  * - dispatchCommand — unknown command sends ephemeral error
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock @slack/bolt
@@ -65,8 +65,8 @@ vi.mock("@gaia/shared", async (importOriginal) => {
 // Import adapter after mocks are in place
 // ---------------------------------------------------------------------------
 
+import { convertToSlackMrkdwn, handleStreamingChat } from "@gaia/shared";
 import { SlackAdapter } from "../../slack/src/adapter";
-import { handleStreamingChat, convertToSlackMrkdwn } from "@gaia/shared";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -126,7 +126,9 @@ describe("SlackAdapter - createCommandTarget.send", () => {
           respond: typeof respond,
           userName?: string,
         ) => {
-          send: (t: string) => Promise<{ id: string; edit: (t: string) => Promise<void> }>;
+          send: (
+            t: string,
+          ) => Promise<{ id: string; edit: (t: string) => Promise<void> }>;
           sendEphemeral: (t: string) => Promise<{ id: string }>;
           sendRich: (m: unknown) => Promise<{ id: string }>;
           startTyping: () => Promise<() => void>;
@@ -218,7 +220,11 @@ describe("SlackAdapter - createCommandTarget.sendEphemeral", () => {
           c: string,
           cl: typeof client,
           r: typeof respond,
-        ) => { sendEphemeral: (t: string) => Promise<{ id: string; edit: (t: string) => Promise<void> }> };
+        ) => {
+          sendEphemeral: (
+            t: string,
+          ) => Promise<{ id: string; edit: (t: string) => Promise<void> }>;
+        };
       }
     ).createCommandTarget("U123", "C456", client, respond);
 
@@ -455,14 +461,16 @@ describe("SlackAdapter - ACK timing in registerCommands", () => {
     ).registerCommands(commands);
 
     // Bolt's app.command should have been called with the slash-prefixed command name
-    expect(mockApp.command).toHaveBeenCalledWith(
-      "/todo",
-      expect.any(Function),
-    );
+    expect(mockApp.command).toHaveBeenCalledWith("/todo", expect.any(Function));
 
     // Extract and invoke the registered handler to verify ack() is called first.
     const handlerFn = vi.mocked(mockApp.command).mock.calls[0][1] as (args: {
-      command: { user_id: string; channel_id: string; text: string; user_name: string };
+      command: {
+        user_id: string;
+        channel_id: string;
+        text: string;
+        user_name: string;
+      };
       ack: () => Promise<void>;
       respond: () => Promise<void>;
       client: ReturnType<typeof makeSlackClient>;
@@ -473,7 +481,12 @@ describe("SlackAdapter - ACK timing in registerCommands", () => {
     const client = makeSlackClient();
 
     await handlerFn({
-      command: { user_id: "U1", channel_id: "C1", text: "list", user_name: "alice" },
+      command: {
+        user_id: "U1",
+        channel_id: "C1",
+        text: "list",
+        user_name: "alice",
+      },
       ack,
       respond,
       client,
@@ -552,7 +565,8 @@ describe("SlackAdapter - app_mention event handling", () => {
     ).registerEvents();
 
     // The first event() call registers app_mention
-    mentionHandler = vi.mocked(appMock.event).mock.calls[0][1] as typeof mentionHandler;
+    mentionHandler = vi.mocked(appMock.event).mock
+      .calls[0][1] as typeof mentionHandler;
   });
 
   it("strips bot mention from event text before streaming", async () => {
@@ -737,17 +751,16 @@ describe("SlackAdapter - dispatchCommand unknown command", () => {
       userId: "U123",
       channelId: "C456",
       send: vi.fn(),
-      sendEphemeral: vi.fn().mockResolvedValue({ id: "ephemeral", edit: vi.fn() }),
+      sendEphemeral: vi
+        .fn()
+        .mockResolvedValue({ id: "ephemeral", edit: vi.fn() }),
       sendRich: vi.fn(),
       startTyping: vi.fn(),
     };
 
     await (
       adapter as unknown as {
-        dispatchCommand: (
-          name: string,
-          target: typeof target,
-        ) => Promise<void>;
+        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
       }
     ).dispatchCommand("mystery", target);
 

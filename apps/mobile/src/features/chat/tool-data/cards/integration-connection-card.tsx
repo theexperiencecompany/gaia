@@ -5,7 +5,7 @@ import { AlertCircleIcon, ConnectIcon } from "@/components/icons";
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
-import { connectIntegration } from "@/features/integrations/api";
+import { connectIntegration } from "@/features/integrations/api/integrations-api";
 import {
   BearerTokenSheet,
   type BearerTokenSheetRef,

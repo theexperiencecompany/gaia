@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
-import type { UseCase } from "@/features/use-cases/types";
 import {
   type Workflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
+import type { UseCase } from "@/types/features/workflowTypes";
 import {
   generateUseCaseMetadata,
   generateUseCaseStructuredData,

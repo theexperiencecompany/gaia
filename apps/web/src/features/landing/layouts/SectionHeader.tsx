@@ -40,18 +40,14 @@ export function SectionHeading({
         </div>
       )}
       <div
-        className={`${
-          smallHeading ? "sm:text-3xl" : "sm:text-4xl"
-        } ${headingClassName} mb-2 flex items-center gap-4 text-3xl font-semibold`}
+        className={`${smallHeading ? "sm:text-3xl" : "sm:text-4xl"} ${headingClassName} mb-2 flex items-center gap-4 text-3xl font-semibold`}
       >
         {icon}
         <span>{heading}</span>
       </div>
       {!!subheading && (
         <div
-          className={`${subheadingClassName} text-foreground-500 ${
-            smallHeading ? "text-md" : "text-lg"
-          }`}
+          className={`${subheadingClassName} text-foreground-500 ${smallHeading ? "text-md" : "text-lg"}`}
         >
           {subheading}
         </div>

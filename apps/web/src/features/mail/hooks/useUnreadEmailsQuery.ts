@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import type { EmailData } from "@/types/features/mailTypes";
 
 interface UnreadEmailsResponse {

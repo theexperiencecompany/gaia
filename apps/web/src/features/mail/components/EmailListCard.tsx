@@ -3,8 +3,8 @@ import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import { useEffect, useRef } from "react";
 
-import { Gmail } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { Gmail } from "@/components/shared/icons";
 import { useAppendToInput } from "@/stores/composerStore";
 import type { EmailFetchData } from "@/types/features/mailTypes";
 

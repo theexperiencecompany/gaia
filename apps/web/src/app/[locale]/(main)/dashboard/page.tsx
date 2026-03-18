@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEventsQuery";
-import { GridSection } from "@/features/chat/components/interface";
+import { GridSection } from "@/features/chat/components/interface/sections/GridSection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";

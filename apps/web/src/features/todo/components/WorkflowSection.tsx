@@ -16,7 +16,7 @@ import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection
 import { todoApi } from "@/features/todo/api/todoApi";
 import { useTodoWorkflowWebSocket } from "@/features/todo/hooks/useTodoWorkflowWebSocket";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
-import { WorkflowSteps } from "@/features/workflows/components";
+import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { toast } from "@/lib/toast";
 import { useTodoStore } from "@/stores/todoStore";
 import type { Workflow as WorkflowType } from "@/types/features/workflowTypes";

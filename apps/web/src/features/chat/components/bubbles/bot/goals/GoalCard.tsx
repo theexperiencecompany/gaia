@@ -102,9 +102,7 @@ function GoalCardHeader({
           className="rounded-lg p-2 transition-colors hover:bg-zinc-800"
         >
           <ArrowRight01Icon
-            className={`h-4 w-4 text-zinc-500 transition-transform ${
-              isExpanded ? "rotate-90" : ""
-            }`}
+            className={`h-4 w-4 text-zinc-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
           />
         </button>
       )}
@@ -169,17 +167,7 @@ function GoalCardContent({
           </div>
           <div className="h-2 w-full rounded-full bg-zinc-700">
             <div
-              className={`h-2 rounded-full transition-all duration-300 ${
-                progress >= 90
-                  ? "bg-green-500"
-                  : progress >= 75
-                    ? "bg-blue-500"
-                    : progress >= 50
-                      ? "bg-yellow-500"
-                      : progress >= 25
-                        ? "bg-orange-500"
-                        : "bg-red-500"
-              }`}
+              className={`h-2 rounded-full transition-all duration-300 ${progress >= 90 ? "bg-green-500" : progress >= 75 ? "bg-blue-500" : progress >= 50 ? "bg-yellow-500" : progress >= 25 ? "bg-orange-500" : "bg-red-500"}`}
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -336,22 +324,14 @@ export function GoalCard({
         {roadmapTasks.map((node) => (
           <div key={node.id} className="flex items-center gap-3 py-1">
             <div
-              className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
-                node.data.isComplete
-                  ? "border-green-500 bg-green-500"
-                  : "border-zinc-600"
-              }`}
+              className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${node.data.isComplete ? "border-green-500 bg-green-500" : "border-zinc-600"}`}
             >
               {node.data.isComplete && (
                 <CheckmarkCircle02Icon className="h-2.5 w-2.5 text-white" />
               )}
             </div>
             <span
-              className={`text-sm ${
-                node.data.isComplete
-                  ? "text-zinc-500 line-through"
-                  : "text-zinc-300"
-              }`}
+              className={`text-sm ${node.data.isComplete ? "text-zinc-500 line-through" : "text-zinc-300"}`}
             >
               {node.data.title || node.data.label || "Untitled Task"}
             </span>

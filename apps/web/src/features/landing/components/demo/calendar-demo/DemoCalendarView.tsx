@@ -88,9 +88,7 @@ export default function DemoCalendarView() {
                   {dayLabel}
                 </span>
                 <span
-                  className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium ${
-                    isToday ? "bg-primary text-black" : "text-zinc-400"
-                  }`}
+                  className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium ${isToday ? "bg-primary text-black" : "text-zinc-400"}`}
                 >
                   {dayNum}
                 </span>

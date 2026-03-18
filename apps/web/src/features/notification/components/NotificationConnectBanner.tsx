@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import type { PlatformLink } from "@/types/platform";
 import {
   NOTIFICATION_PLATFORM_LABELS,

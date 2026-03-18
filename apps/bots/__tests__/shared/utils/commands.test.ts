@@ -12,7 +12,6 @@
  * - Subcommand dispatch routes to the right handler
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CommandContext } from "@gaia/shared";
 import {
   dispatchTodoSubcommand,
@@ -29,6 +28,7 @@ import {
   handleWorkflowGet,
   handleWorkflowList,
 } from "@gaia/shared";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -139,7 +139,9 @@ describe("handleWorkflowExecute", () => {
 
   it("returns error on failure", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.executeWorkflow).mockRejectedValue({ response: { status: 404 } });
+    vi.mocked(gaia.executeWorkflow).mockRejectedValue({
+      response: { status: 404 },
+    });
 
     const result = await handleWorkflowExecute(gaia, "missing", ctx);
 
@@ -165,7 +167,9 @@ describe("handleWorkflowGet", () => {
 
   it("returns not found on 404", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.getWorkflow).mockRejectedValue({ response: { status: 404 } });
+    vi.mocked(gaia.getWorkflow).mockRejectedValue({
+      response: { status: 404 },
+    });
 
     const result = await handleWorkflowGet(gaia, "bad-id", ctx);
 
@@ -403,7 +407,9 @@ describe("handleNewConversation", () => {
 
   it("returns failure message on error (no error propagation)", async () => {
     const gaia = makeGaia();
-    vi.mocked(gaia.resetSession).mockRejectedValue(new Error("Connection lost"));
+    vi.mocked(gaia.resetSession).mockRejectedValue(
+      new Error("Connection lost"),
+    );
 
     const result = await handleNewConversation(gaia, ctx);
 

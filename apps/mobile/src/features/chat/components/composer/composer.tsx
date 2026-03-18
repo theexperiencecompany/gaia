@@ -18,7 +18,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { AI_MODELS } from "@/features/chat/data/models";
-import { ConnectDrawerTrigger } from "@/features/integrations";
+import { ConnectDrawerTrigger } from "@/features/integrations/components/connect-drawer";
 import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";
 import type { AttachmentFile } from "./attachment-preview";

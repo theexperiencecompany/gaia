@@ -14,7 +14,6 @@ import { parseTextArgs, truncateResponse } from "../utils";
 import {
   dispatchWorkflowSubcommand,
   handleWorkflowCreate,
-  handleWorkflowDelete,
 } from "../utils/commands";
 
 /** `/workflow` command definition with subcommands. */

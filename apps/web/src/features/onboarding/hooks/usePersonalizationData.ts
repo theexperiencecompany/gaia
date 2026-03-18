@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 

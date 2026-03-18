@@ -1010,9 +1010,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
         <View className="flex-row items-start justify-between gap-3 px-4 pt-3 pb-3">
           <View className="flex-row items-center gap-3 flex-1 min-w-0">
             <View
-              className={`w-10 h-10 rounded-xl items-center justify-center shrink-0 ${
-                isUpgradeRequired ? "bg-yellow-500/15" : "bg-red-500/15"
-              }`}
+              className={`w-10 h-10 rounded-xl items-center justify-center shrink-0 ${isUpgradeRequired ? "bg-yellow-500/15" : "bg-red-500/15"}`}
             >
               <AppIcon
                 icon={isUpgradeRequired ? UploadCircle01Icon : Clock01Icon}
@@ -1195,9 +1193,7 @@ export function ArtifactCard({ data }: { data: unknown }) {
           return (
             <View
               key={`${artifact.path || artifact.filename || "artifact"}-${artifact.size_bytes || 0}-${index}`}
-              className={`rounded-xl bg-white/5 border border-white/8 px-3 py-3 ${
-                index > 0 ? "mt-2" : ""
-              }`}
+              className={`rounded-xl bg-white/5 border border-white/8 px-3 py-3 ${index > 0 ? "mt-2" : ""}`}
             >
               <View className="flex-row items-center gap-3">
                 <View className="w-9 h-9 rounded-lg bg-primary/10 items-center justify-center shrink-0">

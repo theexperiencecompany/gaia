@@ -1,11 +1,9 @@
 import { Button } from "@heroui/button";
 import Link from "next/link";
-
+import { Github, StarFilledIcon } from "@/components/shared/icons";
 import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks/useGitHubStars";
-
-import { Github, StarFilledIcon } from "../shared";
 
 export default function DesktopMenu({ scrolled }: { scrolled: boolean }) {
   const user = useUser();

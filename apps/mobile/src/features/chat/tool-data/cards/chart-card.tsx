@@ -550,9 +550,7 @@ function ChartItem({ item }: { item: ChartDisplayData }) {
             <Pressable
               key={mode}
               onPress={() => setViewMode(mode)}
-              className={`rounded-full px-2.5 py-1 ${
-                viewMode === mode ? "bg-primary/20" : "bg-white/5"
-              }`}
+              className={`rounded-full px-2.5 py-1 ${viewMode === mode ? "bg-primary/20" : "bg-white/5"}`}
             >
               <Text
                 style={{

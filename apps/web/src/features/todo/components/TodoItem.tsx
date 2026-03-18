@@ -19,7 +19,7 @@ import {
   type Todo,
   type TodoUpdate,
 } from "@/types/features/todoTypes";
-import { formatDate } from "@/utils";
+import { formatDate } from "@/utils/date/dateUtils";
 
 interface TodoItemProps {
   todo: Todo;
@@ -198,15 +198,7 @@ export default memo(function TodoItem({
                     size="sm"
                     variant="flat"
                     radius="sm"
-                    className={`px-2 ${
-                      todo.priority === Priority.HIGH
-                        ? "text-red-400 bg-red-400/10"
-                        : todo.priority === Priority.MEDIUM
-                          ? "text-yellow-400 bg-yellow-400/10"
-                          : todo.priority === Priority.LOW
-                            ? "text-blue-400 bg-blue-400/10"
-                            : "text-zinc-500"
-                    }`}
+                    className={`px-2 ${todo.priority === Priority.HIGH ? "text-red-400 bg-red-400/10" : todo.priority === Priority.MEDIUM ? "text-yellow-400 bg-yellow-400/10" : todo.priority === Priority.LOW ? "text-blue-400 bg-blue-400/10" : "text-zinc-500"}`}
                     startContent={
                       <Flag02Icon width={15} height={15} className="mx-1" />
                     }
