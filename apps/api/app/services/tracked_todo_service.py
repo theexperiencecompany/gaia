@@ -8,6 +8,7 @@ A tracked todo is a regular todo with:
 - log.md (system-written audit trail)
 """
 
+import re
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -241,6 +242,63 @@ class TrackedTodoService:
             content=f"\n## {now.isoformat()} [{event_type}]\n- {details}\n",
             user_id=user_id,
         )
+
+    async def get_signal_matching_context(self, user_id: str) -> str:
+        """Compact tracked todos summary optimized for signal matching.
+
+        Includes key IDs (thread_ids, email addresses, event_ids) so the
+        agent can match incoming signals to relevant todos.
+        """
+        cursor = todos_collection.find(
+            {
+                "user_id": user_id,
+                "labels": GAIA_TRACKED_LABEL,
+                "completed": False,
+            }
+        ).sort("updated_at", -1)
+        docs = await cursor.to_list(length=15)
+        if not docs:
+            return ""
+
+        vfs = MongoVFS()
+        lines = []
+
+        for doc in docs:
+            todo_id = str(doc["_id"])
+            title = doc.get("title", "")
+            labels = [l for l in doc.get("labels", []) if l != GAIA_TRACKED_LABEL]
+            vfs_path = doc.get("vfs_path", "")
+
+            # Try to extract Key Details section from canvas for IDs
+            key_details = ""
+            if vfs_path:
+                try:
+                    canvas = await vfs.read(
+                        path=f"{vfs_path}/canvas.md", user_id=user_id
+                    )
+                    if canvas:
+                        # Extract Key Details section
+                        match = re.search(
+                            r"## Key Details\n(.*?)(?=\n## |\Z)",
+                            canvas,
+                            re.DOTALL,
+                        )
+                        if match:
+                            key_details = match.group(1).strip()
+                except Exception:
+                    pass
+
+            labels_str = f" [{', '.join(labels)}]" if labels else ""
+            entry = f'- "{title}"{labels_str} (id: {todo_id}, vfs: {vfs_path})'
+            if key_details:
+                # Indent key details under the todo
+                detail_lines = key_details.split("\n")
+                for dl in detail_lines[:5]:  # Max 5 detail lines per todo
+                    entry += f"\n    {dl.strip()}"
+
+            lines.append(entry)
+
+        return "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n" + "\n".join(lines)
 
     async def reindex_canvas(self, todo_id: str, user_id: str) -> bool:
         """Re-index a todo's canvas.md in ChromaDB after agent writes to it."""
