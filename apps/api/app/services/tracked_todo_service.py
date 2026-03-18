@@ -15,7 +15,7 @@ from bson import ObjectId
 from shared.py.wide_events import log
 
 from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import TodoModel, TodoResponse
+from app.models.todo_models import Priority, TodoModel, TodoResponse
 from app.services.todos.todo_service import TodoService
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import (
@@ -53,7 +53,7 @@ class TrackedTodoService:
         description: str | None = None,
         project_id: str | None = None,
         due_date: datetime | None = None,
-        priority: str = "none",
+        priority: Priority = Priority.NONE,
         labels: list[str] | None = None,
         initial_canvas: str | None = None,
     ) -> TodoResponse:
@@ -203,7 +203,7 @@ class TrackedTodoService:
         for doc in docs:
             age_days = (now - doc.get("created_at", now)).days
             last_update = (now - doc.get("updated_at", now)).days
-            labels = [l for l in doc.get("labels", []) if l != GAIA_TRACKED_LABEL]
+            labels = [lbl for lbl in doc.get("labels", []) if lbl != GAIA_TRACKED_LABEL]
             labels_str = f" [{', '.join(labels)}]" if labels else ""
             due_str = ""
             if doc.get("due_date"):

@@ -10,6 +10,7 @@ from typing import Annotated
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from app.models.todo_models import Priority
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.canvas_vector_utils import search_canvas_context
 
@@ -54,7 +55,7 @@ async def create_tracked_todo(
         description=description,
         initial_canvas=initial_canvas,
         labels=labels,
-        priority=priority,
+        priority=Priority(priority),
     )
 
     return (
