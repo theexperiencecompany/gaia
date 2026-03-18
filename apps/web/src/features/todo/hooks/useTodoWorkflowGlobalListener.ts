@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { useRouter } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
-import { wsManager } from "@/lib/websocket";
+import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useTodoStore } from "@/stores/todoStore";
 import type { Workflow } from "@/types/features/workflowTypes";
 
