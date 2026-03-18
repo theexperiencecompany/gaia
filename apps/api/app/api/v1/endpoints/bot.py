@@ -24,7 +24,6 @@ from app.services.bot_token_service import create_bot_session_token
 from app.services.chat_service import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_connected_integrations
-from app.services.model_service import get_user_selected_model
 from app.services.platform_link_service import Platform, PlatformLinkService
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -340,8 +339,6 @@ async def get_settings(
             user_name=None,
             account_created_at=None,
             profile_image_url=None,
-            selected_model_name=None,
-            selected_model_icon_url=None,
             connected_integrations=[],
         )
 
@@ -367,16 +364,6 @@ async def get_settings(
     except Exception as e:
         log.error(f"Error fetching integrations for settings: {e}")
 
-    selected_model_name = None
-    selected_model_icon_url = None
-    try:
-        model = await get_user_selected_model(user_id)
-        if model:
-            selected_model_name = model.name
-            selected_model_icon_url = model.logo_url
-    except Exception as e:
-        log.error(f"Error fetching model for settings: {e}")
-
     user_name = user.get("name") or user.get("username")
     profile_image_url = user.get("profile_image_url") or user.get("avatar_url")
     account_created_at = None
@@ -389,8 +376,6 @@ async def get_settings(
         user_name=user_name,
         account_created_at=account_created_at,
         profile_image_url=profile_image_url,
-        selected_model_name=selected_model_name,
-        selected_model_icon_url=selected_model_icon_url,
         connected_integrations=connected_integrations_list,
     )
 

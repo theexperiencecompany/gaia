@@ -1,5 +1,6 @@
+import { PressableFeedback } from "heroui-native";
 import { type PropsWithChildren, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { IconSymbol } from "@/shared/components/ui/icon-symbol";
 import { Colors } from "@/shared/constants/theme";
@@ -15,21 +16,24 @@ export function Collapsible({
 
   return (
     <View>
-      <TouchableOpacity
-        style={styles.heading}
+      <PressableFeedback
         onPress={() => setIsOpen((value) => !value)}
-        activeOpacity={0.8}
+        feedbackPosition="behind"
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isOpen }}
       >
-        <IconSymbol
-          name="chevron.right"
-          size={18}
-          weight="medium"
-          color={theme === "light" ? Colors.light.icon : Colors.dark.icon}
-          style={{ transform: [{ rotate: isOpen ? "90deg" : "0deg" }] }}
-        />
+        <View style={styles.heading}>
+          <IconSymbol
+            name="chevron.right"
+            size={18}
+            weight="medium"
+            color={theme === "light" ? Colors.light.icon : Colors.dark.icon}
+            style={{ transform: [{ rotate: isOpen ? "90deg" : "0deg" }] }}
+          />
 
-        <Text style={[styles.title, { color: textColor }]}>{title}</Text>
-      </TouchableOpacity>
+          <Text style={[styles.title, { color: textColor }]}>{title}</Text>
+        </View>
+      </PressableFeedback>
       {isOpen && <View style={styles.content}>{children}</View>}
     </View>
   );

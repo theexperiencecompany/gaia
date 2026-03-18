@@ -24,6 +24,15 @@ repos:
       - id: detect-private-key
         priority: 0
 
+  - repo: local
+    hooks:
+      - id: biome-check
+        name: Biome check (lint + format + imports)
+        entry: npx biome check --write --no-errors-on-unmatched --files-ignore-unknown=true
+        language: system
+        files: \.(js|jsx|ts|tsx|json|css|html)$
+        exclude: ^(apps/api/|apps/voice-agent/|infra/|docs/)
+
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.4.0
     hooks:

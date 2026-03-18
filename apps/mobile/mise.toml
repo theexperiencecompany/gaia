@@ -1,71 +1,178 @@
+# Mobile mise.toml for GAIA
+# React Native / Expo app
+#
+# Quick start:
+#   mise run dev            # Start Expo dev server (scan QR with Expo Go or dev build)
+#   mise run android        # Build & run on connected Android device / emulator
+#   mise run ios            # Build & run on iOS simulator (macOS only)
+#
+#   mise run build:dev      # EAS cloud build — dev client (required for native modules)
+#   mise run build:preview  # EAS cloud build — internal preview APK/IPA
+#   mise run build:prod     # EAS cloud build — production
+#
+# Native modules (e.g. react-native-webview) require a dev client build, not Expo Go.
+# Run `mise run build:dev` once, install the APK, then use `mise run dev` for hot reload.
+#
+# Run `mise tasks` to list all available commands.
+
 [tools]
 node = "22"
-java = "temurin-17"
 
-[tasks.setup]
-description = "Install dependencies and setup Expo environment"
-run = "pnpm install"
+[env]
+EXPO_PUBLIC_API_URL = "http://localhost:8000/api/v1"
 
-[tasks.deps]
-description = "Install dependencies"
-run = "pnpm install"
+# ---------------------------------------------------------------------------
+# Development
+# ---------------------------------------------------------------------------
 
 [tasks.dev]
-description = "Start Expo development server"
-run = "pnpm start"
+description = "Start Expo dev server (hot reload, tunnel mode)"
+run = "pnpm exec expo start"
+
+[tasks."dev:local"]
+description = "Start dev server with .env.local overrides"
+run = "dotenv -e .env.local pnpm exec expo start"
+
+[tasks."dev:staging"]
+description = "Start dev server pointing at staging API"
+run = "dotenv -e .env.staging pnpm exec expo start"
+
+[tasks."dev:clear"]
+description = "Start dev server with cleared Metro cache"
+run = "pnpm exec expo start --clear"
 
 [tasks.android]
-description = "Run on Android device/emulator"
-run = "pnpm android"
+description = "Build & run debug APK on connected Android device / emulator"
+run = """
+# Resolve Android SDK path generically
+ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+if [ ! -d "$ANDROID_SDK" ]; then
+  echo "Error: Android SDK not found. Set ANDROID_HOME or install Android Studio." >&2
+  exit 1
+fi
+echo "sdk.dir=$ANDROID_SDK" > android/local.properties
+pnpm exec expo run:android
+"""
 
 [tasks.ios]
-description = "Run on iOS device/simulator"
-run = "pnpm ios"
+description = "Build & run on iOS simulator (macOS only)"
+run = "pnpm exec expo run:ios"
 
-[tasks.web]
-description = "Run on Web"
-run = "pnpm web"
+# ---------------------------------------------------------------------------
+# EAS Cloud Builds  (requires: eas login)
+# ---------------------------------------------------------------------------
+
+[tasks."build:dev"]
+description = "EAS: build dev client for Android + iOS (install once, then use 'mise run dev')"
+run = "eas build --profile development --platform all"
+
+[tasks."build:dev:android"]
+description = "EAS: build dev client APK for Android"
+run = "eas build --profile development --platform android"
+
+[tasks."build:dev:ios"]
+description = "EAS: build dev client IPA for iOS"
+run = "eas build --profile development --platform ios"
+
+[tasks."build:preview"]
+description = "EAS: build internal preview (shareable APK/IPA)"
+run = "eas build --profile preview --platform all"
+
+[tasks."build:preview:android"]
+description = "EAS: build internal preview APK for Android"
+run = "eas build --profile preview --platform android"
+
+[tasks."build:preview:ios"]
+description = "EAS: build internal preview IPA for iOS"
+run = "eas build --profile preview --platform ios"
+
+[tasks."build:prod"]
+description = "EAS: build production release (auto-increments version)"
+run = "eas build --profile production --platform all"
+
+[tasks."build:prod:android"]
+description = "EAS: build production APK/AAB for Android"
+run = "eas build --profile production --platform android"
+
+[tasks."build:prod:ios"]
+description = "EAS: build production IPA for iOS"
+run = "eas build --profile production --platform ios"
+
+[tasks.submit]
+description = "EAS: submit latest production build to app stores"
+run = "eas submit --profile production --platform all"
+
+[tasks."submit:android"]
+description = "EAS: submit to Google Play"
+run = "eas submit --profile production --platform android"
+
+[tasks."submit:ios"]
+description = "EAS: submit to App Store"
+run = "eas submit --profile production --platform ios"
+
+# ---------------------------------------------------------------------------
+# Native / Prebuild
+# ---------------------------------------------------------------------------
 
 [tasks.prebuild]
-description = "Generate native code (run after adding native dependencies)"
-run = "npx expo prebuild"
+description = "Generate /android and /ios native folders (after adding native deps)"
+run = "pnpm exec expo prebuild"
 
 [tasks."prebuild:clean"]
-description = "Clean and regenerate native code"
-run = "npx expo prebuild --clean"
+description = "Clean-regenerate native folders from scratch"
+run = "pnpm exec expo prebuild --clean"
 
-[tasks."eas:build"]
-description = "Build with EAS Build (cloud)"
-run = "eas build"
-
-[tasks."eas:build:android"]
-description = "Build Android with EAS"
-run = "eas build --platform android"
-
-[tasks."eas:build:ios"]
-description = "Build iOS with EAS"
-run = "eas build --platform ios"
-
-[tasks."eas:submit"]
-description = "Submit to app stores"
-run = "eas submit"
+# ---------------------------------------------------------------------------
+# Quality
+# ---------------------------------------------------------------------------
 
 [tasks.lint]
-description = "Run linter (Biome)"
+description = "Lint with Biome"
 run = "pnpm lint"
 
 [tasks."lint:fix"]
-description = "Run linter with auto-fix"
+description = "Lint and auto-fix with Biome"
 run = "pnpm lint:fix"
 
+[tasks.type]
+description = "TypeScript type check"
+run = "npx tsc --noEmit"
+
+# ---------------------------------------------------------------------------
+# Dependencies & Setup
+# ---------------------------------------------------------------------------
+
+[tasks.deps]
+description = "Install all dependencies"
+run = "pnpm install"
+
+[tasks.setup]
+description = "First-time setup: install deps, copy env template, and configure Android SDK"
+run = """
+pnpm install
+[ -f .env.local ] || cp .env.example .env.local 2>/dev/null || echo "No .env.example found — create .env.local manually"
+ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+if [ -d "$ANDROID_SDK" ]; then
+  echo "sdk.dir=$ANDROID_SDK" > android/local.properties
+  echo "Android SDK configured: $ANDROID_SDK"
+else
+  echo "Warning: Android SDK not found. Set ANDROID_HOME before running 'mise run android'."
+fi
+echo "Setup complete. Run 'mise run dev' to start."
+"""
+
+# ---------------------------------------------------------------------------
+# Clean
+# ---------------------------------------------------------------------------
+
 [tasks.clean]
-description = "Clean build artifacts"
-run = "rm -rf .expo node_modules android ios"
+description = "Remove build artifacts and caches"
+run = "rm -rf .expo android ios"
+
+[tasks."clean:all"]
+description = "Full clean including node_modules"
+run = "rm -rf .expo android ios node_modules"
 
 [tasks."clean:cache"]
-description = "Clear Expo cache and restart"
-run = "npx expo start -c"
-
-[tasks."clean:metro"]
-description = "Clear Metro bundler cache"
-run = "npx expo start --clear"
+description = "Clear Expo and Metro cache only"
+run = "expo start -c --non-interactive & sleep 3 && kill %1 2>/dev/null; true"

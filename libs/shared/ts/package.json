@@ -9,7 +9,33 @@
   "exports": {
     ".": "./src/index.ts",
     "./bots": "./src/bots/index.ts",
-    "./cli": "./src/cli/index.ts"
+    "./chat": "./src/chat/index.ts",
+    "./cli": "./src/cli/index.ts",
+    "./icons": "./src/icons/index.ts",
+    "./tool-utils": "./src/tool-utils/index.ts",
+    "./utils": "./src/utils/index.ts",
+    "./types": "./src/types/index.ts",
+    "./types/files": "./src/types/files.ts",
+    "./types/integrations": "./src/types/integrations.ts",
+    "./types/search": "./src/types/search.ts",
+    "./types/reminders": "./src/types/reminders.ts",
+    "./types/skills": "./src/types/skills.ts",
+    "./types/tools": "./src/types/tools.ts",
+    "./types/notes": "./src/types/notes.ts",
+    "./types/memory": "./src/types/memory.ts",
+    "./types/chat": "./src/types/chat.ts",
+    "./types/models": "./src/types/models.ts",
+    "./api": "./src/api/index.ts",
+    "./api/apiClient": "./src/api/apiClient.ts",
+    "./api/workflows": "./src/api/workflowsApi.ts",
+    "./api/todos": "./src/api/todosApi.ts",
+    "./api/integrations": "./src/api/integrationsApi.ts",
+    "./api/notifications": "./src/api/notificationsApi.ts",
+    "./api/conversations": "./src/api/conversationsApi.ts",
+    "./utils/dateUtils": "./src/utils/dateUtils.ts",
+    "./utils/auth": "./src/utils/auth.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./validation": "./src/validation/index.ts"
   },
   "scripts": {
     "build": "tsc",
@@ -20,10 +46,13 @@
   "dependencies": {
     "@infisical/sdk": "^4.0.0",
     "axios": "^1.7.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "string-similarity": "^4.0.4",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/string-similarity": "^4.0.2",
     "typescript": "^5.7.0"
   }
 }

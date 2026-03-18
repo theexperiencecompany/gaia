@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Tuple
 
 from app.agents.tools.integrations.calendar_tool import (
     register_calendar_custom_tools,
@@ -88,7 +88,42 @@ class CustomToolsRegistry:
     def __init__(self) -> None:
         self._composio: Composio | None = None
         self._tools_by_toolkit: Dict[str, List[str]] = {}
-        self._registered_toolkits: set = set()
+        self._registered_toolkits: set[str] = set()
+
+    def _toolkit_registrations(
+        self,
+    ) -> List[Tuple[str, Callable[["Composio"], List[str]]]]:
+        """Return the canonical list of toolkit registrations."""
+        return [
+            ("gmail", register_gmail_custom_tools),
+            ("googlecalendar", register_calendar_custom_tools),
+            ("googledocs", register_google_docs_custom_tools),
+            ("google_maps", register_google_maps_custom_tools),
+            ("googlemeet", register_google_meet_custom_tools),
+            ("googlesheets", register_google_sheets_custom_tools),
+            ("googletasks", register_google_tasks_custom_tools),
+            ("instagram", register_instagram_custom_tools),
+            ("notion", register_notion_custom_tools),
+            ("linkedin", register_linkedin_custom_tools),
+            ("twitter", register_twitter_custom_tools),
+            ("linear", register_linear_custom_tools),
+            ("reddit", register_reddit_custom_tools),
+            ("slack", register_slack_custom_tools),
+            ("github", register_github_custom_tools),
+            ("hubspot", register_hubspot_custom_tools),
+            ("airtable", register_airtable_custom_tools),
+            ("asana", register_asana_custom_tools),
+            ("clickup", register_clickup_custom_tools),
+            ("trello", register_trello_custom_tools),
+            ("todoist", register_todoist_custom_tools),
+            ("microsoft_teams", register_microsoft_teams_custom_tools),
+            ("gaia", register_urgency_custom_tools),
+        ]
+
+    def _is_fully_initialized(self) -> bool:
+        """Check whether all configured toolkit registrations have completed."""
+        expected_count = len(self._toolkit_registrations())
+        return len(self._registered_toolkits) == expected_count
 
     def initialize(self, composio: Composio) -> None:
         """
@@ -97,38 +132,28 @@ class CustomToolsRegistry:
         Args:
             composio: The Composio client instance
         """
-        self._composio = composio
+        if self._composio is composio and self._is_fully_initialized():
+            return
 
-        self._register_all_tools()
+        self._composio = composio
+        self._tools_by_toolkit.clear()
+        self._registered_toolkits.clear()
+
+        try:
+            self._register_all_tools()
+        except Exception:
+            self._composio = None
+            self._tools_by_toolkit.clear()
+            self._registered_toolkits.clear()
+            raise
 
     def _register_all_tools(self) -> None:
         """Register all custom tools for all toolkits."""
         if self._composio is None:
             raise RuntimeError("Registry not initialized. Call initialize() first.")
 
-        self._register_toolkit("gmail", register_gmail_custom_tools)
-        self._register_toolkit("googlecalendar", register_calendar_custom_tools)
-        self._register_toolkit("googledocs", register_google_docs_custom_tools)
-        self._register_toolkit("google_maps", register_google_maps_custom_tools)
-        self._register_toolkit("googlemeet", register_google_meet_custom_tools)
-        self._register_toolkit("googlesheets", register_google_sheets_custom_tools)
-        self._register_toolkit("googletasks", register_google_tasks_custom_tools)
-        self._register_toolkit("instagram", register_instagram_custom_tools)
-        self._register_toolkit("notion", register_notion_custom_tools)
-        self._register_toolkit("linkedin", register_linkedin_custom_tools)
-        self._register_toolkit("twitter", register_twitter_custom_tools)
-        self._register_toolkit("linear", register_linear_custom_tools)
-        self._register_toolkit("reddit", register_reddit_custom_tools)
-        self._register_toolkit("slack", register_slack_custom_tools)
-        self._register_toolkit("github", register_github_custom_tools)
-        self._register_toolkit("hubspot", register_hubspot_custom_tools)
-        self._register_toolkit("airtable", register_airtable_custom_tools)
-        self._register_toolkit("asana", register_asana_custom_tools)
-        self._register_toolkit("clickup", register_clickup_custom_tools)
-        self._register_toolkit("trello", register_trello_custom_tools)
-        self._register_toolkit("todoist", register_todoist_custom_tools)
-        self._register_toolkit("microsoft_teams", register_microsoft_teams_custom_tools)
-        self._register_toolkit("gaia", register_urgency_custom_tools)
+        for toolkit, register_func in self._toolkit_registrations():
+            self._register_toolkit(toolkit, register_func)
 
     def _register_toolkit(
         self,
@@ -145,19 +170,23 @@ class CustomToolsRegistry:
         if self._composio is None:
             raise RuntimeError("Registry not initialized. Call initialize() first.")
 
-        if toolkit in self._registered_toolkits:
+        normalized_toolkit = toolkit.lower()
+
+        if normalized_toolkit in self._registered_toolkits:
             return
 
         tool_names = register_func(self._composio)
-        self._tools_by_toolkit[toolkit.lower()] = tool_names
-        self._registered_toolkits.add(toolkit)
+        self._tools_by_toolkit[normalized_toolkit] = tool_names
+        self._registered_toolkits.add(normalized_toolkit)
 
         log.set(
-            custom_tools_toolkit=toolkit,
+            custom_tools_toolkit=normalized_toolkit,
             custom_tools_registered_count=len(tool_names),
             custom_tools_names=tool_names,
         )
-        log.info(f"Registered {len(tool_names)} custom tools for {toolkit} toolkit")
+        log.info(
+            f"Registered {len(tool_names)} custom tools for {normalized_toolkit} toolkit"
+        )
 
     def get_tool_names(self, toolkit: str) -> List[str]:
         """
@@ -180,7 +209,7 @@ class CustomToolsRegistry:
 
     def get_registered_toolkits(self) -> List[str]:
         """Get list of toolkits that have custom tools registered."""
-        return list(self._registered_toolkits)
+        return sorted(self._registered_toolkits)
 
     @property
     def is_initialized(self) -> bool:

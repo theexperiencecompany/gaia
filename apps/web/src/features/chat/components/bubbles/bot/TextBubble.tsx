@@ -38,7 +38,7 @@ import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
-import { IntegrationListSection } from "@/features/integrations";
+import { IntegrationListSection } from "@/features/integrations/components/IntegrationListSection";
 import type {
   IntegrationConnectionData,
   IntegrationListStreamData,
@@ -50,29 +50,17 @@ import WorkflowDraftCard from "@/features/workflows/components/WorkflowDraftCard
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
-  CalendarOptions,
-  CodeData,
-  DeepResearchResults,
-  DocumentData,
-  EmailComposeData,
-  EmailSentData,
-  EmailThreadData,
-  GoalDataMessageType,
-  GoogleDocsData,
-  SearchResults,
-  TodoToolData,
-  WeatherData,
-  WorkflowCreatedData,
-  WorkflowDraftData,
-} from "@/types";
-import type {
   CalendarFetchData,
   CalendarListFetchData,
+  CalendarOptions,
 } from "@/types/features/calendarTypes";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import type {
   ContactData,
+  EmailComposeData,
   EmailFetchData,
+  EmailSentData,
+  EmailThreadData,
   PeopleSearchData,
 } from "@/types/features/mailTypes";
 import type { NotificationRecord } from "@/types/features/notificationTypes";
@@ -84,13 +72,27 @@ import type {
   RedditPostData,
   RedditSearchData,
 } from "@/types/features/redditTypes";
+import type {
+  DeepResearchResults,
+  SearchResults,
+} from "@/types/features/searchTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
-import type { ArtifactData } from "@/types/features/toolDataTypes";
+import type { TodoToolData } from "@/types/features/todoToolTypes";
+import type {
+  ArtifactData,
+  CodeData,
+  DocumentData,
+  GoalDataMessageType,
+  GoogleDocsData,
+  WorkflowCreatedData,
+  WorkflowDraftData,
+} from "@/types/features/toolDataTypes";
 import type {
   TwitterSearchData,
   TwitterUserData,
 } from "@/types/features/twitterTypes";
+import type { WeatherData } from "@/types/features/weatherTypes";
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";

@@ -30,11 +30,7 @@ export default function DemoToolCalls({
       <button
         type="button"
         onClick={onToggle}
-        className={`flex cursor-pointer items-center gap-2 py-1 transition-colors ${
-          light
-            ? "text-zinc-600 hover:text-zinc-900"
-            : "text-zinc-500 hover:text-white"
-        }`}
+        className={`flex cursor-pointer items-center gap-2 py-1 transition-colors ${light ? "text-zinc-600 hover:text-zinc-900" : "text-zinc-500 hover:text-white"}`}
       >
         <div className="flex items-center -space-x-2">
           {tools.map((t, i) => (

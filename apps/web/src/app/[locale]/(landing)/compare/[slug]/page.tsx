@@ -35,6 +35,8 @@ export async function generateStaticParams() {
   return getAllComparisonSlugs().map((slug) => ({ slug }));
 }
 
+export const dynamicParams = false;
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {

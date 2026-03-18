@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @source "../../../src";
+@source "../../../../../libs/shared/ts/src/**/*.{js,ts,jsx,tsx}";
 
 /* HeroUI */
 @source "../../../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
@@ -473,6 +474,23 @@
     background: linear-gradient(0deg, #0000 31%, #0bf3 100%);
   }
 
+  .mcp-app-surface {
+    height: 100%;
+    width: 100%;
+  }
+
+  .mcp-app-surface > div {
+    display: block;
+    height: 100%;
+    width: 100%;
+  }
+
+  .mcp-app-surface iframe {
+    display: block;
+    height: 100%;
+    width: 100%;
+  }
+
   .chat_bubble {
     border-radius: 25px 25px 25px 0;
     color: #fff;
@@ -701,23 +719,6 @@
     min-height: 50px;
     overflow: hidden;
     width: 100%;
-  }
-
-  .mcp-app-surface {
-    height: 100%;
-    width: 100%;
-  }
-
-  .mcp-app-surface > div {
-    display: block !important;
-    height: 100% !important;
-    width: 100% !important;
-  }
-
-  .mcp-app-surface iframe {
-    display: block;
-    height: 100% !important;
-    width: 100% !important;
   }
 
   .animate-scale-in {

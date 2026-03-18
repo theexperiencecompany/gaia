@@ -17,18 +17,18 @@
  * Discord.js and @gaia/shared are mocked so no real HTTP calls are made.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock discord.js before importing the adapter so the module sees the mocks.
 // ---------------------------------------------------------------------------
 
 vi.mock("discord.js", () => {
+  // biome-ignore lint/complexity/useArrowFunction: vitest invokes mockImplementation as a constructor (new EmbedBuilder()), which requires function() not =>
   const EmbedBuilder = vi.fn().mockImplementation(function () {
     const self: Record<string, unknown> = {};
     const chain = (name: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (self as any)[name] = vi.fn().mockReturnValue(self);
+      self[name] = vi.fn().mockReturnValue(self);
     };
     [
       "setTitle",
@@ -45,9 +45,13 @@ vi.mock("discord.js", () => {
 
   return {
     EmbedBuilder,
-    ActionRowBuilder: vi.fn().mockImplementation(function () {
-      return { addComponents: vi.fn().mockReturnThis() };
-    }),
+    ActionRowBuilder: vi
+      .fn()
+      // biome-ignore lint/complexity/useArrowFunction: vitest invokes mockImplementation as a constructor (new ActionRowBuilder()), which requires function() not =>
+      .mockImplementation(function () {
+        return { addComponents: vi.fn().mockReturnThis() };
+      }),
+    // biome-ignore lint/complexity/useArrowFunction: vitest invokes mockImplementation as a constructor (new ButtonBuilder()), which requires function() not =>
     ButtonBuilder: vi.fn().mockImplementation(function () {
       return {
         setLabel: vi.fn().mockReturnThis(),
@@ -56,6 +60,7 @@ vi.mock("discord.js", () => {
       };
     }),
     ButtonStyle: { Link: 5 },
+    // biome-ignore lint/complexity/useArrowFunction: vitest invokes mockImplementation as a constructor (new Client()), which requires function() not =>
     Client: vi.fn().mockImplementation(function () {
       return {
         once: vi.fn(),
@@ -99,7 +104,12 @@ vi.mock("@gaia/shared", () => {
     commands = new Map();
     protected async dispatchCommand(
       name: string,
-      target: { sendEphemeral: (t: string) => Promise<unknown>; userId: string; channelId: string; profile?: { username?: string; displayName?: string } },
+      target: {
+        sendEphemeral: (t: string) => Promise<unknown>;
+        userId: string;
+        channelId: string;
+        profile?: { username?: string; displayName?: string };
+      },
       args: Record<string, string | number | boolean | undefined> = {},
       rawText?: string,
     ) {
@@ -108,11 +118,18 @@ vi.mock("@gaia/shared", () => {
         await target.sendEphemeral(`Unknown command: /${name}`);
         return;
       }
-      const ctx = this.buildContext(target.userId, target.channelId, target.profile);
+      const ctx = this.buildContext(
+        target.userId,
+        target.channelId,
+        target.profile,
+      );
       try {
         await cmd.execute({ gaia: this.gaia, target, ctx, args, rawText });
       } catch (error) {
-        const errMsg = error instanceof Error ? `Error: ${error.message}` : "Something went wrong";
+        const errMsg =
+          error instanceof Error
+            ? `Error: ${error.message}`
+            : "Something went wrong";
         try {
           await target.sendEphemeral(errMsg);
         } catch {
@@ -125,7 +142,12 @@ vi.mock("@gaia/shared", () => {
       channelId?: string,
       profile?: { username?: string; displayName?: string },
     ) {
-      return { platform: this.platform, platformUserId: userId, channelId, profile };
+      return {
+        platform: this.platform,
+        platformUserId: userId,
+        channelId,
+        profile,
+      };
     }
   };
 
@@ -141,7 +163,9 @@ vi.mock("@gaia/shared", () => {
     richMessageToMarkdown: vi.fn().mockReturnValue("mocked markdown"),
     convertToSlackMrkdwn: vi.fn((t: string) => t),
     convertToTelegramMarkdown: vi.fn((t: string) => t),
-    parseTextArgs: vi.fn((text: string) => ({ subcommand: text.split(" ")[0] })),
+    parseTextArgs: vi.fn((text: string) => ({
+      subcommand: text.split(" ")[0],
+    })),
   };
 });
 
@@ -149,8 +173,8 @@ vi.mock("@gaia/shared", () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { DiscordAdapter } from "../../discord/src/adapter";
 import { handleStreamingChat } from "@gaia/shared";
+import { DiscordAdapter } from "../../discord/src/adapter";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -205,7 +229,6 @@ function makeGuildMessage(overrides: {
 }) {
   const {
     content = "<@bot-id> hello",
-    botId = "bot-id",
     hasGuild = true,
     authorBot = false,
   } = overrides;
@@ -255,12 +278,20 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
     const mockCommand = {
       name: "todo",
       description: "Manage todos",
-      options: [{ name: "text", description: "Task text", type: "string" as const }],
-      execute: vi.fn().mockImplementation(
-        async ({ target }: { target: { send: (t: string) => Promise<unknown> } }) => {
-          await target.send("todo response");
-        },
-      ),
+      options: [
+        { name: "text", description: "Task text", type: "string" as const },
+      ],
+      execute: vi
+        .fn()
+        .mockImplementation(
+          async ({
+            target,
+          }: {
+            target: { send: (t: string) => Promise<unknown> };
+          }) => {
+            await target.send("todo response");
+          },
+        ),
     };
     // Access the protected `commands` map via the BaseBotAdapter stub.
     (adapter as unknown as { commands: Map<string, unknown> }).commands.set(
@@ -388,7 +419,11 @@ describe("DiscordAdapter - ephemeral replies", () => {
       name: "settings",
       description: "Settings",
       options: [],
-      execute: async ({ target }: { target: { sendEphemeral: (t: string) => Promise<unknown> } }) => {
+      execute: async ({
+        target,
+      }: {
+        target: { sendEphemeral: (t: string) => Promise<unknown> };
+      }) => {
         await target.sendEphemeral("Here are your settings.");
       },
     };
@@ -553,7 +588,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
 
     await (
       adapter as unknown as {
-        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+        handleMentionMessage: (
+          m: typeof message,
+          botId: string,
+        ) => Promise<void>;
       }
     ).handleMentionMessage(message, BOT_ID);
 
@@ -576,7 +614,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
 
     await (
       adapter as unknown as {
-        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+        handleMentionMessage: (
+          m: typeof message,
+          botId: string,
+        ) => Promise<void>;
       }
     ).handleMentionMessage(message, BOT_ID);
 
@@ -599,7 +640,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
 
     await (
       adapter as unknown as {
-        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+        handleMentionMessage: (
+          m: typeof message,
+          botId: string,
+        ) => Promise<void>;
       }
     ).handleMentionMessage(message, BOT_ID);
 
@@ -615,7 +659,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
 
     await (
       adapter as unknown as {
-        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+        handleMentionMessage: (
+          m: typeof message,
+          botId: string,
+        ) => Promise<void>;
       }
     ).handleMentionMessage(message, BOT_ID);
 
@@ -746,9 +793,9 @@ describe("DiscordAdapter - DM welcome flow", () => {
     const adapter = new DiscordAdapter();
 
     // Skip welcome for this user so we can isolate the blank-content check.
-    (
-      adapter as unknown as { dmWelcomeSent: Set<string> }
-    ).dmWelcomeSent.add("blank-user");
+    (adapter as unknown as { dmWelcomeSent: Set<string> }).dmWelcomeSent.add(
+      "blank-user",
+    );
 
     const send = vi.fn().mockResolvedValue({ edit: vi.fn() });
     const message = {
@@ -812,7 +859,9 @@ describe("DiscordAdapter - context menu interaction", () => {
 
     const interaction = {
       commandName: "Summarize with GAIA",
-      targetMessage: { content: "This is a long message that needs summarizing." },
+      targetMessage: {
+        content: "This is a long message that needs summarizing.",
+      },
       user: { id: "user-ctx" },
       channelId: "channel-ctx",
       replied: false,
@@ -916,10 +965,7 @@ describe("DiscordAdapter - dispatchCommand unknown command", () => {
 
     await (
       adapter as unknown as {
-        dispatchCommand: (
-          name: string,
-          target: typeof target,
-        ) => Promise<void>;
+        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
       }
     ).dispatchCommand("nonexistent", target);
 
@@ -938,17 +984,19 @@ describe("DiscordAdapter - dispatchCommand args forwarding", () => {
     const adapter = new DiscordAdapter();
 
     // Spy on the prototype method so we assert on the real dispatch being invoked.
-    const dispatchSpy = vi.spyOn(
-      Object.getPrototypeOf(Object.getPrototypeOf(adapter)) as {
-        dispatchCommand: (
-          name: string,
-          target: unknown,
-          args: Record<string, unknown>,
-          rawText?: string,
-        ) => Promise<void>;
-      },
-      "dispatchCommand",
-    ).mockResolvedValue(undefined);
+    const dispatchSpy = vi
+      .spyOn(
+        Object.getPrototypeOf(Object.getPrototypeOf(adapter)) as {
+          dispatchCommand: (
+            name: string,
+            target: unknown,
+            args: Record<string, unknown>,
+            rawText?: string,
+          ) => Promise<void>;
+        },
+        "dispatchCommand",
+      )
+      .mockResolvedValue(undefined);
 
     const target = {
       platform: "discord" as const,
@@ -988,16 +1036,18 @@ describe("DiscordAdapter - dispatchCommand error propagation", () => {
 
     const boom = new Error("dispatch failed");
 
-    const dispatchSpy = vi.spyOn(
-      Object.getPrototypeOf(Object.getPrototypeOf(adapter)) as {
-        dispatchCommand: (
-          name: string,
-          target: unknown,
-          args: Record<string, unknown>,
-        ) => Promise<void>;
-      },
-      "dispatchCommand",
-    ).mockRejectedValue(boom);
+    const dispatchSpy = vi
+      .spyOn(
+        Object.getPrototypeOf(Object.getPrototypeOf(adapter)) as {
+          dispatchCommand: (
+            name: string,
+            target: unknown,
+            args: Record<string, unknown>,
+          ) => Promise<void>;
+        },
+        "dispatchCommand",
+      )
+      .mockRejectedValue(boom);
 
     const target = {
       platform: "discord" as const,
@@ -1064,9 +1114,7 @@ describe("DiscordAdapter - buildContext", () => {
 
     const ctx = (
       adapter as unknown as {
-        buildContext: (
-          userId: string,
-        ) => {
+        buildContext: (userId: string) => {
           platform: string;
           platformUserId: string;
           channelId: string | undefined;

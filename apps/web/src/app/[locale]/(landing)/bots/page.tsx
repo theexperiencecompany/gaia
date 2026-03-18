@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
-import { BotsPage } from "@/features/bots";
+import BotsPage from "@/features/bots/components/BotsPage";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,

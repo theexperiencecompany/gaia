@@ -3,8 +3,8 @@
 import { Kbd } from "@heroui/kbd";
 import { BubbleChatAddIcon, PinIcon, SearchIcon } from "@icons";
 import Link from "next/link";
-import { SidebarHeaderButton } from "@/components";
-import ModelPickerButton from "@/features/chat/components/composer/ModelPickerButton";
+import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
+// import ModelPickerButton from "@/features/chat/components/composer/ModelPickerButton";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -27,8 +27,8 @@ export default function ChatHeader() {
 
   return (
     <div className="flex w-full justify-between">
-      <ModelPickerButton />
-      <div className="relative flex items-center">
+      {/* <ModelPickerButton /> */}
+      <div className="relative ml-auto flex items-center">
         <SidebarHeaderButton
           onClick={handleSearchClick}
           aria-label="Search"

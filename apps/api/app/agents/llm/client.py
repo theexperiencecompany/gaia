@@ -6,7 +6,6 @@ from app.constants.llm import (
     DEFAULT_GEMINI_FREE_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_GROK_MODEL_NAME,
-    DEFAULT_MODEL_NAME,
     GEMINI_FREE_FALLBACK_MODELS,
     OPENROUTER_BASE_URL,
 )
@@ -22,13 +21,13 @@ from langchain_openai import ChatOpenAI
 from typing_extensions import TypedDict
 
 PROVIDER_MODELS = {
-    "openai": DEFAULT_MODEL_NAME,
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
+    "openai": "gpt-4o-mini",
     "openrouter": DEFAULT_GROK_MODEL_NAME,
 }
 PROVIDER_PRIORITY = {
-    1: "openai",
-    2: "gemini",
+    1: "gemini",
+    2: "openai",
     3: "openrouter",
 }
 
@@ -69,6 +68,7 @@ def init_gemini_llm():
     return ChatGoogleGenerativeAI(
         model=PROVIDER_MODELS["gemini"],
         temperature=0.1,
+        streaming=True,
     ).configurable_fields(
         model=ConfigurableField(
             id="model_name", name="Model", description="Which model to use"

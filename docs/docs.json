@@ -8,7 +8,10 @@
     "dark": "#00bbff"
   },
   "background": {
-    "color": { "light": "#ffffff", "dark": "#111111" }
+    "color": {
+      "light": "#ffffff",
+      "dark": "#111111"
+    }
   },
   "seo": {
     "indexing": "all",
@@ -64,7 +67,6 @@
               "developers/contributing"
             ]
           },
-
           {
             "group": "Messaging Platforms (Bots)",
             "pages": [
@@ -92,8 +94,40 @@
         "tab": "Guides",
         "groups": [
           {
-            "group": "Guides",
-            "pages": ["guides/create-public-workflow"]
+            "group": "Getting Started",
+            "pages": [
+              "guides/chatting-effectively",
+              "guides/connecting-integrations",
+              "guides/adding-mcp-integrations",
+              "guides/memory"
+            ]
+          },
+          {
+            "group": "Productivity",
+            "pages": [
+              "guides/managing-email",
+              "guides/tasks-todos",
+              "guides/reminders"
+            ]
+          },
+          {
+            "group": "Automation",
+            "pages": ["guides/building-workflows", "guides/marketplace"]
+          },
+          {
+            "group": "Apps & Platforms",
+            "pages": [
+              "guides/desktop-app",
+              "guides/slack-bot",
+              "guides/discord-telegram"
+            ]
+          },
+          {
+            "group": "Account",
+            "pages": [
+              "guides/usage-subscription",
+              "guides/notification-settings"
+            ]
           }
         ]
       },

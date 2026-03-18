@@ -14,11 +14,11 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";
 import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
-import type { UseCase } from "@/features/use-cases/types";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
-import { getTriggerDisplayInfo } from "@/features/workflows/triggers";
+import { getTriggerDisplayInfo } from "@/features/workflows/triggers/utils";
+import type { UseCase } from "@/types/features/workflowTypes";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;

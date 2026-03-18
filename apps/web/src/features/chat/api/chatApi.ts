@@ -3,11 +3,11 @@ import {
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
 
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
-import type { FileData } from "@/types/shared";
+import type { FileData } from "@/types/shared/fileTypes";
 
 export interface FileUploadResponse {
   fileId: string;
@@ -252,6 +252,11 @@ export const chatApi = {
       if (match) conversationId = match[1];
     }
 
+    // Guard against double onClose — [DONE] in onmessage fires onClose, then
+    // the SSE library fires onclose when the connection ends.  Without this
+    // flag both would call onClose, causing duplicate cleanup / persistence.
+    let doneReceived = false;
+
     await fetchEventSource(
       `${process.env.NEXT_PUBLIC_API_BASE_URL}chat-stream`,
       {
@@ -267,13 +272,13 @@ export const chatApi = {
         body: JSON.stringify({
           conversation_id: conversationId || null,
           message: inputText,
-          fileIds, // For backward compatibility
-          fileData, // Send complete file data
-          selectedTool, // Add selectedTool to the request body
-          toolCategory, // Add toolCategory to the request body
-          selectedWorkflow, // Add selectedWorkflow to the request body
-          selectedCalendarEvent, // Add selectedCalendarEvent to the request body
-          replyToMessage, // Add replyToMessage to the request body
+          fileIds,
+          fileData,
+          selectedTool,
+          toolCategory,
+          selectedWorkflow,
+          selectedCalendarEvent,
+          replyToMessage,
           messages: convoMessages
             .slice(-30)
             .filter(({ response }) => response.trim().length > 0)
@@ -287,36 +292,34 @@ export const chatApi = {
           const errorResult = onMessage(event);
 
           if (event.data === "[DONE]") {
+            doneReceived = true;
             onClose();
             return;
           }
 
-          // Handle both sync and async error returns
-          if (errorResult) {
-            if (errorResult instanceof Promise) {
-              errorResult.then((err) => {
-                if (err) {
-                  console.error(
-                    "[chatApi] Message handler returned async error:",
-                    err,
-                  );
-                  onError(new Error(err));
-                  controller.abort();
-                }
-              });
-            } else {
-              console.error(
-                "[chatApi] Message handler returned error:",
-                errorResult,
-              );
-              onError(new Error(errorResult));
-              controller.abort();
-            }
-            return;
+          // onMessage (handleStreamEvent) is async — handle errors from the Promise.
+          // No queue/gate needed: handleNewConversation updates the Zustand store
+          // synchronously before any awaits, so subsequent events can render immediately.
+          if (errorResult instanceof Promise) {
+            errorResult.then((err) => {
+              if (err) {
+                console.error("[chatApi] Stream event error:", err);
+                onError(new Error(err));
+                controller.abort();
+              }
+            });
+          } else if (errorResult) {
+            console.error("[chatApi] Stream event error:", errorResult);
+            onError(new Error(errorResult));
+            controller.abort();
           }
         },
         onclose() {
-          onClose();
+          // Only call onClose if [DONE] didn't already trigger it.
+          // Connection drops without [DONE] (e.g. network failure) still need cleanup.
+          if (!doneReceived) {
+            onClose();
+          }
         },
         onerror: (err) => {
           console.error("[chatApi] Stream error:", {

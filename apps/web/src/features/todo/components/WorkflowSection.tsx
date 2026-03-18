@@ -1,17 +1,69 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/react";
-import { PlayIcon, SparklesIcon, UndoIcon, ZapIcon } from "@icons";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
+} from "@heroui/dropdown";
+import { Tooltip } from "@heroui/tooltip";
+import { PlayIcon, RedoIcon, SparklesIcon, ZapIcon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
+import { ChevronDown } from "@/components/shared/icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { useTodoWorkflowWebSocket } from "@/features/todo/hooks/useTodoWorkflowWebSocket";
-import { WorkflowSteps } from "@/features/workflows/components";
+import { workflowApi } from "@/features/workflows/api/workflowApi";
+import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { toast } from "@/lib/toast";
 import { useTodoStore } from "@/stores/todoStore";
 import type { Workflow as WorkflowType } from "@/types/features/workflowTypes";
+
+const regenerationReasons = [
+  {
+    key: "too_complex",
+    label: "Too Complex",
+    description: "Simplify with fewer steps",
+  },
+  {
+    key: "missing_functionality",
+    label: "Missing Functionality",
+    description: "Add specific features",
+  },
+  {
+    key: "wrong_tools",
+    label: "Wrong Tools",
+    description: "Use different integrations",
+  },
+  {
+    key: "alternative_approach",
+    label: "Alternative Approach",
+    description: "Try a completely different strategy",
+  },
+] as const;
+
+function extractWorkflowCategories(steps: WorkflowType["steps"]): string[] {
+  return [
+    ...new Set(steps.map((s) => s.category).filter((c): c is string => !!c)),
+  ].slice(0, 3);
+}
+
+function toWorkflowRunData(workflow: WorkflowType) {
+  return {
+    id: workflow.id,
+    title: workflow.title,
+    description: workflow.description,
+    prompt: workflow.prompt,
+    steps: workflow.steps.map((step) => ({
+      id: step.id,
+      title: step.title,
+      description: step.description,
+      category: step.category,
+    })),
+  };
+}
 
 interface WorkflowSectionProps {
   hideBg?: boolean;
@@ -34,36 +86,21 @@ export default function WorkflowSection({
 
   const { selectWorkflow } = useWorkflowSelection();
 
-  // WebSocket handlers
+  // WebSocket handlers — store updates and toasts are handled by the global
+  // useTodoWorkflowGlobalListener; these callbacks only update local component state.
   const handleWorkflowGenerated = useCallback(
     (wf: WorkflowType) => {
-      console.log("[WorkflowSection] WebSocket received workflow:", wf);
       setWorkflow(wf);
       setIsGenerating(false);
       setError(null);
       onWorkflowLinked?.(wf.id);
-
-      // Sync categories to global store so todo item updates immediately
-      const categories = [
-        ...new Set(
-          wf.steps.map((s) => s.category).filter((c): c is string => !!c),
-        ),
-      ].slice(0, 3);
-
-      useTodoStore.getState().updateTodoOptimistic(todoId, {
-        workflow_categories: categories,
-      });
-
-      toast.success("Workflow generated!");
     },
-    [onWorkflowLinked, todoId],
+    [onWorkflowLinked],
   );
 
   const handleWorkflowFailed = useCallback((errorMsg: string) => {
-    console.log("[WorkflowSection] WebSocket workflow failed:", errorMsg);
     setIsGenerating(false);
     setError(errorMsg);
-    toast.error("Failed to generate workflow");
   }, []);
 
   useTodoWorkflowWebSocket({
@@ -72,9 +109,20 @@ export default function WorkflowSection({
     onWorkflowFailed: handleWorkflowFailed,
   });
 
-  // Fetch on mount
+  // Fetch on mount — check prefetch cache first for instant display
   useEffect(() => {
     const fetchWorkflow = async () => {
+      // Use client-side prefetch cache if fresh (< 30s)
+      const cached = useTodoStore.getState().workflowStatusCache[todoId];
+      if (cached && Date.now() - cached.cachedAt < 30_000) {
+        if (cached.is_generating) {
+          setIsGenerating(true);
+        } else if (cached.has_workflow && cached.workflow) {
+          setWorkflow(cached.workflow as WorkflowType);
+        }
+        return;
+      }
+
       try {
         const status = await todoApi.getWorkflowStatus(todoId);
         if (status.is_generating) {
@@ -89,7 +137,7 @@ export default function WorkflowSection({
     fetchWorkflow();
   }, [todoId]);
 
-  // Generate workflow
+  // Generate workflow (initial)
   const handleGenerate = useCallback(async () => {
     if (isGenerating) return;
     setIsGenerating(true);
@@ -112,37 +160,58 @@ export default function WorkflowSection({
     }
   }, [todoId, isGenerating, onWorkflowLinked]);
 
+  // Regenerate existing workflow with a reason
+  const handleRegenerate = useCallback(
+    async (reasonKey: string) => {
+      if (isGenerating || !workflow) return;
+      setIsGenerating(true);
+      setError(null);
+
+      const reason = regenerationReasons.find((r) => r.key === reasonKey);
+      const instruction = reason?.label ?? reasonKey;
+
+      try {
+        const response = await workflowApi.regenerateWorkflowSteps(
+          workflow.id,
+          {
+            instruction,
+            force_different_tools: true,
+          },
+        );
+        if (response.workflow) {
+          setWorkflow(response.workflow);
+          useTodoStore.getState().updateTodoOptimistic(todoId, {
+            workflow_categories: extractWorkflowCategories(
+              response.workflow.steps,
+            ),
+          });
+          toast.success("Workflow regenerated!");
+        }
+        setIsGenerating(false);
+      } catch (err) {
+        setIsGenerating(false);
+        setError(err instanceof Error ? err.message : "Unknown error");
+        toast.error("Failed to regenerate workflow");
+      }
+    },
+    [workflow, isGenerating, todoId],
+  );
+
   // Run workflow
   const handleRun = useCallback(() => {
-    if (!workflow) return;
+    console.log("[WorkflowSection] handleRun clicked, workflow:", workflow?.id);
+    if (!workflow) {
+      console.log("[WorkflowSection] no workflow, returning");
+      return;
+    }
     try {
-      const workflowData = {
-        id: workflow.id,
-        title: workflow.title,
-        description: workflow.description,
-        prompt: workflow.prompt,
-        steps: workflow.steps.map(
-          (step: {
-            id: string;
-            title: string;
-            description: string;
-            category: string;
-          }) => ({
-            id: step.id,
-            title: step.title,
-            description: step.description,
-            category: step.category,
-          }),
-        ),
-      };
-
-      selectWorkflow(workflowData, { autoSend: true });
-
       console.log(
-        "Workflow selected for manual execution in chat with auto-send",
+        "[WorkflowSection] calling selectWorkflow with autoSend:true",
       );
-    } catch (error) {
-      console.error("Failed to select workflow for execution:", error);
+      selectWorkflow(toWorkflowRunData(workflow), { autoSend: true });
+      console.log("[WorkflowSection] selectWorkflow done");
+    } catch (err) {
+      console.error("Failed to select workflow for execution:", err);
     }
   }, [workflow, selectWorkflow]);
 
@@ -168,7 +237,48 @@ export default function WorkflowSection({
         {/* Actions - only show when has workflow or error */}
         {(hasWorkflow || error) && (
           <div className="flex items-center gap-2">
-            <Tooltip content="Regenerate" color="foreground">
+            {hasWorkflow ? (
+              <Dropdown placement="bottom-end">
+                <DropdownTrigger>
+                  <Button
+                    color="default"
+                    variant="flat"
+                    size="sm"
+                    isLoading={isGenerating}
+                    isDisabled={isGenerating}
+                    startContent={
+                      !isGenerating && (
+                        <RedoIcon className="h-4 w-4 text-zinc-400" />
+                      )
+                    }
+                    endContent={
+                      !isGenerating && (
+                        <ChevronDown className="h-3 w-3 text-zinc-400" />
+                      )
+                    }
+                  >
+                    {isGenerating ? "Regenerating..." : "Regenerate"}
+                  </Button>
+                </DropdownTrigger>
+                <DropdownMenu
+                  aria-label="Regeneration reasons"
+                  onAction={(key) => handleRegenerate(key as string)}
+                  disabledKeys={
+                    isGenerating ? regenerationReasons.map((r) => r.key) : []
+                  }
+                >
+                  {regenerationReasons.map((reason) => (
+                    <DropdownItem
+                      key={reason.key}
+                      textValue={reason.label}
+                      description={reason.description}
+                    >
+                      {reason.label}
+                    </DropdownItem>
+                  ))}
+                </DropdownMenu>
+              </Dropdown>
+            ) : (
               <Button
                 color="default"
                 variant="flat"
@@ -177,22 +287,24 @@ export default function WorkflowSection({
                 isIconOnly
                 isDisabled={isGenerating}
               >
-                <UndoIcon
+                <RedoIcon
                   className={`h-4 w-4 text-zinc-400 ${isGenerating ? "animate-spin" : ""}`}
                 />
               </Button>
-            </Tooltip>
+            )}
             {hasWorkflow && (
-              <Button
-                color="success"
-                variant="flat"
-                size="sm"
-                onPress={handleRun}
-                isDisabled={isGenerating}
-                endContent={<PlayIcon className="h-4 w-4" />}
-              >
-                Run
-              </Button>
+              <Tooltip content="Run workflow" placement="bottom">
+                <Button
+                  color="success"
+                  variant="flat"
+                  size="sm"
+                  onPress={handleRun}
+                  isDisabled={isGenerating}
+                  isIconOnly
+                >
+                  <PlayIcon className="h-4 w-4" />
+                </Button>
+              </Tooltip>
             )}
           </div>
         )}

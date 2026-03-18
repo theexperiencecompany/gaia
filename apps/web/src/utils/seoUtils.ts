@@ -8,10 +8,9 @@ import type {
   Person,
   WithContext,
 } from "schema-dts";
-
-import type { UseCase } from "@/features/use-cases/types";
 import type { BlogPost } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
+import type { UseCase } from "@/types/features/workflowTypes";
 
 function toAbsoluteUrl(url: string): string {
   if (/^https?:\/\//i.test(url)) return url;

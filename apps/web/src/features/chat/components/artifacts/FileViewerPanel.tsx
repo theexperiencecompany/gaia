@@ -293,11 +293,7 @@ export default function FileViewerPanel({
             <button
               type="button"
               onClick={() => setViewMode("preview")}
-              className={`rounded-sm p-1.5 transition-colors ${
-                viewMode === "preview"
-                  ? "bg-zinc-700 text-zinc-100"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
+              className={`rounded-sm p-1.5 transition-colors ${viewMode === "preview" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
               aria-label="Preview mode"
             >
               <File01Icon size={16} />
@@ -305,11 +301,7 @@ export default function FileViewerPanel({
             <button
               type="button"
               onClick={() => setViewMode("source")}
-              className={`rounded-sm p-1.5 transition-colors ${
-                viewMode === "source"
-                  ? "bg-zinc-700 text-zinc-100"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
+              className={`rounded-sm p-1.5 transition-colors ${viewMode === "source" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
               aria-label="Code mode"
             >
               <CodeIcon size={16} />
@@ -360,11 +352,7 @@ export default function FileViewerPanel({
       </div>
 
       <div
-        className={`min-h-0 flex-1 ${
-          isHtmlPreview
-            ? "overflow-hidden"
-            : "overflow-y-auto overscroll-contain"
-        }`}
+        className={`min-h-0 flex-1 ${isHtmlPreview ? "overflow-hidden" : "overflow-y-auto overscroll-contain"}`}
         style={{ touchAction: "pan-x pan-y" }}
         onWheel={handleContentWheel}
       >

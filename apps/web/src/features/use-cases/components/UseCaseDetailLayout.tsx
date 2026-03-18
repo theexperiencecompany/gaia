@@ -1,7 +1,7 @@
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import type { ReactNode } from "react";
 
-import { RaisedButton } from "@/components";
+import { RaisedButton } from "@/components/ui/raised-button";
 
 import PublishWorkflowCTA from "./PublishWorkflowCTA";
 import ShareButton from "./ShareButton";

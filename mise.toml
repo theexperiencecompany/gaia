@@ -60,6 +60,7 @@ experimental_monorepo_root = true
 [tools]
 python = "3.12"
 node = "22"
+java = "21"
 uv = "latest"
 prek = "0.2.23"
 "npm:nx" = "latest"
@@ -239,7 +240,7 @@ description = "Lint all apps (parallel with caching)"
 run = "nx run-many -t lint --parallel=3"
 
 [tasks."lint:fix"]
-description = "Lint and fix all apps"
+description = "Fix all apps: lint + format + sort imports (biome check --write)"
 run = "nx run-many -t lint:fix --parallel=3"
 
 [tasks."lint:affected"]
@@ -247,15 +248,15 @@ description = "Lint only affected projects (parallel with caching)"
 run = "nx affected -t lint --parallel=3"
 
 [tasks.format]
-description = "Format and write changes to all apps (parallel)"
+description = "Whitespace/indentation only — does NOT sort imports (use lint:fix for that)"
 run = "nx run-many -t format --parallel=3"
 
 [tasks."format:check"]
-description = "Check formatting for all apps (parallel with caching)"
+description = "Check whitespace/indentation only — does NOT check import order"
 run = "nx run-many -t format:check --parallel=3"
 
 [tasks."format:affected"]
-description = "Format and write changes to affected projects (parallel)"
+description = "Whitespace/indentation only for affected projects — does NOT sort imports"
 run = "nx affected -t format --parallel=3"
 
 [tasks."type-check"]

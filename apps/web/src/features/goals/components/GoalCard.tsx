@@ -17,7 +17,7 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import type { Goal } from "@/types/api/goalsApiTypes";
-import { parseDate2 } from "@/utils";
+import { parseDate2 } from "@/utils/date/dateUtils";
 
 export function GoalCard({
   goal,

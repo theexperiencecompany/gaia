@@ -21,14 +21,11 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatInput } from "@/components/ui/chat-input";
 import { Text } from "@/components/ui/text";
-import {
-  ChatLayout,
-  ChatMessage,
-  type Message,
-  useChat,
-  useChatContext,
-} from "@/features/chat";
-import { getRelevantThinkingMessage } from "@/features/chat/utils/playfulThinking";
+import type { Message } from "@/features/chat/api/chat-api";
+import { ChatMessage } from "@/features/chat/components/chat/chat-message";
+import { ChatLayout } from "@/features/chat/components/chat-layout";
+import { useChat } from "@/features/chat/hooks/use-chat";
+import { useChatContext } from "@/features/chat/hooks/use-chat-context";
 import { useResponsive } from "@/lib/responsive";
 import { useChatStore } from "@/stores/chat-store";
 
@@ -63,6 +60,7 @@ function ChatContent({
     messages,
     isTyping,
     progress,
+    progressToolName,
     flatListRef,
     sendMessage,
     scrollToBottom,
@@ -72,25 +70,6 @@ function ChatContent({
   const insets = useSafeAreaInsets();
 
   const [inputValue, setInputValue] = useState("");
-  const [lastUserMessage, setLastUserMessage] = useState("");
-  const [thinkingMessage, setThinkingMessage] = useState(() =>
-    getRelevantThinkingMessage(""),
-  );
-
-  useEffect(() => {
-    if (isTyping && !progress) {
-      setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
-      const interval = setInterval(
-        () => {
-          setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
-        },
-        2000 + Math.random() * 1000,
-      );
-      return () => clearInterval(interval);
-    }
-  }, [isTyping, progress, lastUserMessage]);
-
-  const displayMessage = progress || thinkingMessage;
 
   useEffect(() => {
     scrollToBottom();
@@ -139,7 +118,6 @@ function ChatContent({
 
   const handleSend = useCallback(
     (text: string) => {
-      setLastUserMessage(text);
       sendMessage(text);
       setInputValue("");
     },
@@ -158,11 +136,18 @@ function ChatContent({
           message={item}
           onFollowUpAction={handleFollowUpAction}
           isLoading={showLoading}
-          loadingMessage={showLoading ? displayMessage : undefined}
+          progressToolName={showLoading ? progressToolName : null}
+          progressMessage={showLoading ? progress : null}
         />
       );
     },
-    [handleFollowUpAction, messages.length, isTyping, displayMessage],
+    [
+      handleFollowUpAction,
+      messages.length,
+      isTyping,
+      progress,
+      progressToolName,
+    ],
   );
 
   const showEmptyState = messages.length === 0 && !isTyping && !activeChatId;
@@ -188,7 +173,8 @@ function ChatContent({
             extraData={[
               messages[messages.length - 1]?.text,
               isTyping,
-              displayMessage,
+              progress,
+              progressToolName,
             ]}
             contentContainerStyle={{
               paddingTop: spacing.md,

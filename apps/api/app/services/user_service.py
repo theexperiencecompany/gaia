@@ -107,7 +107,6 @@ async def update_user_profile(
             "email": updated_user.get("email"),
             "picture": updated_user.get("picture"),
             "updated_at": updated_user.get("updated_at"),
-            "selected_model": updated_user.get("selected_model"),
         }
 
     except HTTPException:

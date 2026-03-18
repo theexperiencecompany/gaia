@@ -16,15 +16,14 @@ import React, {
 } from "react";
 import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
-import type { UseCase } from "@/features/use-cases/types";
+import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { useHeader } from "@/hooks/layout/useHeader";
-
+import type { UseCase } from "@/types/features/workflowTypes";
 import {
   type CommunityWorkflow,
   type Workflow,
   workflowApi,
 } from "../api/workflowApi";
-import { useWorkflows } from "../hooks";
 import { CommunityBanner } from "./CommunityBanner";
 import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
@@ -77,7 +76,7 @@ export default function WorkflowPage() {
         .filter((v, i, a) => a.indexOf(v) === i) || [],
     categories: workflow.categories || ["featured"],
     published_id: workflow.id,
-    slug: workflow.id,
+    slug: workflow.slug || workflow.id,
     steps: workflow.steps,
     creator: workflow.creator,
   });
@@ -309,7 +308,9 @@ export default function WorkflowPage() {
                 communityWorkflow={workflow}
                 variant="community"
                 showCreator={true}
-                onCardClick={() => handleCommunityWorkflowClick(workflow.id)}
+                onCardClick={() =>
+                  handleCommunityWorkflowClick(workflow.slug ?? workflow.id)
+                }
               />
             ),
           )

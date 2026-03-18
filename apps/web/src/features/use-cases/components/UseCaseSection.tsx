@@ -7,10 +7,11 @@ import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronUp } from "@/components/shared/icons";
-import type { UseCase } from "@/features/use-cases/types";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import { useExploreWorkflows, useWorkflows } from "@/features/workflows/hooks";
+import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
+import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
+import type { UseCase } from "@/types/features/workflowTypes";
 
 // Register GSAP plugin
 gsap.registerPlugin(ScrollTrigger);
@@ -68,7 +69,7 @@ export default function UseCaseSection({
           .filter((v, i, a) => a.indexOf(v) === i) || [],
       categories: w.categories || ["featured"],
       published_id: w.id,
-      slug: w.id,
+      slug: w.slug || w.id,
       steps: w.steps,
       creator: w.creator,
       total_executions: w.total_executions || 0,

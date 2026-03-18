@@ -49,7 +49,9 @@ def _build_chat_context(
         tool_category=body.toolCategory,
         has_reply=bool(body.replyToMessage),
         has_calendar_event=bool(body.selectedCalendarEvent),
-        selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
+        selected_workflow_id=body.selectedWorkflow.id
+        if body.selectedWorkflow
+        else None,
     )
 
 

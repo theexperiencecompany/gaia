@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser } from "@/features/auth/hooks/useUser";
 import SelectedCalendarEventIndicator from "@/features/chat/components/composer/SelectedCalendarEventIndicator";
 import SelectedReplyIndicator from "@/features/chat/components/composer/SelectedReplyIndicator";

@@ -186,7 +186,9 @@ class TestGraphRouting:
         """
         hook_calls: list[Any] = []
 
-        async def capture_hook(state: Any, config: Any, store: Any) -> dict:  # NOSONAR — async required for LangGraph hook interface
+        async def capture_hook(  # NOSONAR — async required for LangGraph hook interface
+            state: Any, config: Any, store: Any
+        ) -> dict:
             hook_calls.append(True)
             return {}
 
@@ -213,7 +215,9 @@ class TestGraphRouting:
         """
         hook_calls: list[Any] = []
 
-        async def capture_hook(state: Any, config: Any, store: Any) -> dict:  # NOSONAR — async required for LangGraph hook interface
+        async def capture_hook(
+            state: Any, config: Any, store: Any
+        ) -> dict:  # NOSONAR — async required for LangGraph hook interface
             hook_calls.append(True)
             return {}
 

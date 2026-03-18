@@ -4,28 +4,17 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "base": {
-      "android": {
-        "env": {
-          "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON"
-        }
-      }
-    },
     "development": {
-      "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "NODE_ENV": "development",
-        "EXPO_PUBLIC_API_URL": "http://localhost:8000"
+        "NODE_ENV": "development"
       }
     },
     "preview": {
-      "extends": "base",
       "distribution": "internal"
     },
     "production": {
-      "extends": "base",
       "autoIncrement": true,
       "env": {
         "NODE_ENV": "production",

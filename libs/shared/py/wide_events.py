@@ -261,17 +261,20 @@ class WideEventLogger:
         _loguru.opt(depth=1).info(message, **kwargs)
 
     def warning(self, message: str, **kwargs: Any) -> None:
-        _loguru.opt(depth=1).warning(message, **kwargs)
+        exc_info = kwargs.pop("exc_info", False)
+        _loguru.opt(depth=1, exception=exc_info).warning(message, **kwargs)
         self._append("warnings", message, **kwargs)
         self._bump("WARNING")
 
     def error(self, message: str, **kwargs: Any) -> None:
-        _loguru.opt(depth=1).error(message, **kwargs)
+        exc_info = kwargs.pop("exc_info", False)
+        _loguru.opt(depth=1, exception=exc_info).error(message, **kwargs)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
 
     def critical(self, message: str, **kwargs: Any) -> None:
-        _loguru.opt(depth=1).critical(message, **kwargs)
+        exc_info = kwargs.pop("exc_info", False)
+        _loguru.opt(depth=1, exception=exc_info).critical(message, **kwargs)
         self._append("errors", message, **kwargs)
         self._bump("CRITICAL")
 

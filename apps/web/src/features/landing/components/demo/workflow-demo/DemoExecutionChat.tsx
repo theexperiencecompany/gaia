@@ -173,9 +173,7 @@ export default function DemoExecutionChat({
                   className="shrink-0 z-3"
                 />
                 <div
-                  className={`imessage-bubble imessage-from-them text-sm leading-relaxed ${
-                    light ? "text-zinc-800" : "text-white"
-                  }`}
+                  className={`imessage-bubble imessage-from-them text-sm leading-relaxed ${light ? "text-zinc-800" : "text-white"}`}
                   style={{
                     ...(light
                       ? {
@@ -188,9 +186,7 @@ export default function DemoExecutionChat({
                   {typedResponse}
                   {isTyping && (
                     <span
-                      className={`ml-0.5 inline-block h-3 w-0.5 animate-pulse align-middle ${
-                        light ? "bg-zinc-800/60" : "bg-white/60"
-                      }`}
+                      className={`ml-0.5 inline-block h-3 w-0.5 animate-pulse align-middle ${light ? "bg-zinc-800/60" : "bg-white/60"}`}
                     />
                   )}
                 </div>

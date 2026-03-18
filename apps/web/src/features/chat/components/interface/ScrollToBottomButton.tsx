@@ -19,9 +19,7 @@ export default function ScrollToBottomButton({
 
   return (
     <div
-      className={`absolute z-10 flex w-full items-center justify-center transition-opacity duration-200 ${
-        hasMessages ? "bottom-32" : "bottom-6"
-      }`}
+      className={`absolute z-10 flex w-full items-center justify-center transition-opacity duration-200 ${hasMessages ? "bottom-32" : "bottom-6"}`}
     >
       <Button onPress={onScrollToBottom} isIconOnly radius="full" size="sm">
         <ArrowDown02Icon className="h-5 w-5 text-zinc-400" />

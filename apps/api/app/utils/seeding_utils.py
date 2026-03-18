@@ -175,8 +175,8 @@ async def seed_initial_conversation(user_id: str) -> None:
         # Create the welcome message with breaks for bubbles
         welcome_message = (
             f"Hey! I'm Gaia, your personal AI assistant—I'm here to help you actually get things done. 👋{NEW_MESSAGE_BREAKER}"
-            "Here's what I can help with: \n - 📧 Manage your Gmail inbox\n - 📅 Schedule calendar events\n - ✅ Create and track todos with smart workflows\n - 🎯 Set goals with visual roadmaps\n - 🔍 Search the web and generate images\n - 🧠 Remember important things about you and a lot more!{NEW_MESSAGE_BREAKER}"
-            f"Try asking me to: Check your unread emails, create a task for something you need to do, set up a goal with a roadmap, search for information, or just tell me about your day so I can get to know you better! {NEW_MESSAGE_BREAKER}"
+            f"Here's what I can help with: \n - 📧 Manage your Gmail inbox\n - 📅 Schedule calendar events\n - ✅ Create and track todos with smart workflows\n - 🔍 Search the web and generate images\n - 🧠 Remember important things about you and a lot more!{NEW_MESSAGE_BREAKER}"
+            f"Try asking me to: Check your unread emails, create a task for something you need to do, search for information, or just tell me about your day so I can get to know you better! {NEW_MESSAGE_BREAKER}"
             "What would you like to explore first?"
         )
 
@@ -249,20 +249,8 @@ async def seed_onboarding_todo(user_id: str) -> None:
         todo = TodoModel(
             title="Welcome to Todos! Explore all the features 🎉",
             description=(
-                "This interactive todo helps you discover everything you can do with tasks in Gaia.\n\n"
-                "**Features to try:**\n"
-                "• Complete subtasks to track your progress\n"
-                "• Edit title, description, and details\n"
-                "• Add labels like #work, #personal, or #learning\n"
-                "• Set priorities to organize by importance\n"
-                "• Adjust due dates and get reminders\n"
-                "• Move between projects (like Inbox, Work, etc.)\n"
-                "• Create your own subtasks for breaking down work\n\n"
-                "**Pro tips:**\n"
-                "✨ Use Gaia AI to auto-generate todos from conversations\n"
-                "🔗 Link todos to goals for visual roadmap tracking\n"
-                "🔍 Search and filter todos by label, priority, or date\n\n"
-                "Complete the subtasks to learn by doing, then create your first real todo!"
+                "This interactive todo helps you discover everything you can do with tasks in Gaia. "
+                "Complete the subtasks below to learn by doing, then create your first real todo!"
             ),
             labels=["onboarding", "tutorial", "getting-started"],
             priority=Priority.HIGH,

@@ -2,11 +2,12 @@
 
 import { Avatar } from "@heroui/avatar";
 import { Card, CardBody, CardHeader } from "@heroui/card";
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
+import { BreadcrumbItem, Breadcrumbs, ScrollShadow } from "@heroui/react";
 import { Spinner } from "@heroui/spinner";
 import {
   DateTimeIcon,
   GitForkIcon,
+  Home12Icon,
   LayersIcon,
   PackageOpenIcon,
   UserCircle02Icon,
@@ -16,7 +17,7 @@ import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { RaisedButton } from "@/components";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -60,6 +61,8 @@ export function IntegrationDetailClient({
     );
   }, [userIntegrationsData, integration.integrationId]);
 
+  const isNative = integration.source === "platform";
+
   const handleAdd = async () => {
     // Already added in this session
     if (isAdded) return;
@@ -80,35 +83,54 @@ export function IntegrationDetailClient({
     const loadingToast = toast.loading("Adding integration...");
 
     try {
-      const result = await integrationsApi.addIntegration(
-        integration.integrationId,
-      );
-
-      // If redirecting to OAuth, update toast but keep loading state
-      // The browser will navigate away, so we don't dismiss
-      if (result.status === "redirecting") {
-        toast.loading("Redirecting to authorize...", { id: loadingToast });
-        return;
-      }
-
-      // Bearer token required - show modal
-      if (result.status === "bearer_required") {
-        toast.dismiss(loadingToast);
-        setBearerModalOpen(true);
-        setIsAdding(false);
-        return;
-      }
-
-      // Integration connected successfully
-      toast.dismiss(loadingToast);
-      toast.success(`Successfully added ${result.name}!`);
-      setIsAdded(true);
-
-      setTimeout(() => {
-        router.push(
-          `/integrations?id=${integration.integrationId}&refresh=true`,
+      if (isNative) {
+        // Native integrations use the /connect endpoint
+        const result = await integrationsApi.connectIntegration(
+          integration.integrationId,
         );
-      }, 1000);
+
+        if (result.status === "redirecting") {
+          toast.loading("Redirecting to authorize...", { id: loadingToast });
+          return;
+        }
+
+        toast.dismiss(loadingToast);
+        toast.success(`Successfully added ${result.name}!`);
+        setIsAdded(true);
+
+        setTimeout(() => {
+          router.push(
+            `/integrations?id=${integration.integrationId}&refresh=true`,
+          );
+        }, 1000);
+      } else {
+        // Community integrations use the /public/{id}/add endpoint
+        const result = await integrationsApi.addIntegration(
+          integration.integrationId,
+        );
+
+        if (result.status === "redirecting") {
+          toast.loading("Redirecting to authorize...", { id: loadingToast });
+          return;
+        }
+
+        if (result.status === "bearer_required") {
+          toast.dismiss(loadingToast);
+          setBearerModalOpen(true);
+          setIsAdding(false);
+          return;
+        }
+
+        toast.dismiss(loadingToast);
+        toast.success(`Successfully added ${result.name}!`);
+        setIsAdded(true);
+
+        setTimeout(() => {
+          router.push(
+            `/integrations?id=${integration.integrationId}&refresh=true`,
+          );
+        }, 1000);
+      }
     } catch {
       toast.dismiss(loadingToast);
       toast.error("Failed to add integration.");
@@ -255,50 +277,84 @@ export function IntegrationDetailClient({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-              {integration.creator?.picture ? (
-                <Avatar
-                  src={integration.creator?.picture || undefined}
-                  name={integration.creator?.name || undefined}
-                  size="sm"
-                  className="h-6 w-6"
-                />
-              ) : (
-                <UserCircle02Icon
+            {isNative ? (
+              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+                <Home12Icon width={24} height={24} className="text-zinc-400" />
+                <div>
+                  <div className="text-xs text-zinc-500">Type</div>
+                  <div className="text-sm text-zinc-300">Native</div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+                {integration.creator?.picture ? (
+                  <Avatar
+                    src={integration.creator?.picture || undefined}
+                    name={integration.creator?.name || undefined}
+                    size="sm"
+                    className="h-6 w-6"
+                  />
+                ) : (
+                  <UserCircle02Icon
+                    width={24}
+                    height={24}
+                    className="text-zinc-400"
+                  />
+                )}
+                <div>
+                  <div className="text-xs text-zinc-500">Created by</div>
+                  <div className="text-sm text-zinc-300">
+                    {integration.creator?.name || "Unknown"}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!isNative && (
+              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+                <GitForkIcon width={24} height={24} className="text-zinc-400" />
+                <div>
+                  <div className="text-xs text-zinc-500">Users</div>
+                  <div className="text-sm text-zinc-300">
+                    {integration.cloneCount}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isNative ? (
+              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+                <LayersIcon width={24} height={24} className="text-zinc-400" />
+                <div>
+                  <div className="text-xs text-zinc-500">Auth</div>
+                  <div className="text-sm text-zinc-300">
+                    {integration.authType === "oauth"
+                      ? "OAuth"
+                      : integration.authType === "bearer"
+                        ? "API Key"
+                        : "No Auth"}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
+                <DateTimeIcon
                   width={24}
                   height={24}
                   className="text-zinc-400"
                 />
-              )}
-              <div>
-                <div className="text-xs text-zinc-500">Created by</div>
-                <div className="text-sm text-zinc-300">
-                  {integration.creator?.name || "Unknown"}
+                <div>
+                  <div className="text-xs text-zinc-500">Published</div>
+                  <div className="text-sm text-zinc-300">
+                    {integration.publishedAt
+                      ? formatDistanceToNow(new Date(integration.publishedAt), {
+                          addSuffix: true,
+                        })
+                      : "N/A"}
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-              <GitForkIcon width={24} height={24} className="text-zinc-400" />
-              <div>
-                <div className="text-xs text-zinc-500">Users</div>
-                <div className="text-sm text-zinc-300">
-                  {integration.cloneCount}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
-              <DateTimeIcon width={24} height={24} className="text-zinc-400" />
-              <div>
-                <div className="text-xs text-zinc-500">Published</div>
-                <div className="text-sm text-zinc-300">
-                  {formatDistanceToNow(new Date(integration.publishedAt), {
-                    addSuffix: true,
-                  })}
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
           <Card className="bg-zinc-900/50 backdrop-blur-md outline-0 border-none rounded-3xl">
@@ -311,26 +367,28 @@ export function IntegrationDetailClient({
             )}
             <CardBody>
               {integration.tools && integration.tools.length > 0 ? (
-                <div className="grid grid-cols-2 gap-4">
-                  {integration.tools.map((tool) => (
-                    <div
-                      key={tool.name}
-                      className="bg-zinc-800/50 p-3 rounded-xl"
-                    >
-                      <p className="font-medium text-zinc-200">
-                        {tool.name
-                          .replace(/_/g, " ")
-                          .replace(/-/g, " ")
-                          .replace(/\b\w/g, (c) => c.toUpperCase())}
-                      </p>
-                      {tool.description && (
-                        <p className="text-sm text-zinc-400">
-                          {tool.description}
+                <ScrollShadow className="max-h-100">
+                  <div className="grid grid-cols-2 gap-4">
+                    {integration.tools.map((tool) => (
+                      <div
+                        key={tool.name}
+                        className="bg-zinc-800/50 p-3 rounded-xl"
+                      >
+                        <p className="font-medium text-zinc-200">
+                          {tool.name
+                            .replace(/_/g, " ")
+                            .replace(/-/g, " ")
+                            .replace(/\b\w/g, (c) => c.toUpperCase())}
                         </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        {tool.description && (
+                          <p className="text-sm text-zinc-400">
+                            {tool.description}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollShadow>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <PackageOpenIcon

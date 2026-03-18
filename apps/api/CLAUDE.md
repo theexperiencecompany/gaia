@@ -70,6 +70,7 @@ Providers are registered (not initialized) during `unified_startup()` in `app/co
 ### Nodes
 
 Pre-model hooks in `app/agents/core/nodes/`:
+
 - `filter_messages_node` — trims history to fit context window
 - `manage_system_prompts_node` — injects dynamic system prompt
 - `follow_up_actions_node` — end-of-graph hook on `comms_agent` only
@@ -88,13 +89,13 @@ Pre-model hooks in `app/agents/core/nodes/`:
 
 ## Database
 
-| Store | Used for |
-|---|---|
-| **MongoDB** | All user data: conversations, todos, reminders, workflows, notes, files, payments, integrations, etc. DB name is `GAIA`. Collections are accessed via `from app.db.mongodb.collections import <name>_collection` — lazy-loaded, async (Motor). Use `get_sync_collection()` only in sync code (e.g. Composio tools). |
-| **PostgreSQL** | LangGraph checkpointer (conversation thread state / memory). Also general relational data. |
-| **Redis** | Caching (`fastapi-cache2`), SSE stream channels, rate limiter counters, stream cancellation flags. |
-| **ChromaDB** | Vector store for tool retrieval (which tools the executor should use), trigger embeddings, and public integration descriptions. |
-| **RabbitMQ** | Event publishing for cross-service messaging (bots, voice agent). |
+| Store          | Used for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **MongoDB**    | All user data: conversations, todos, reminders, workflows, notes, files, payments, integrations, etc. DB name is `GAIA`. Collections are accessed via `from app.db.mongodb.collections import <name>_collection` — lazy-loaded, async (Motor). Use `get_sync_collection()` only in sync code (e.g. Composio tools).                                                                                                                                                                                                                                                                                                                                                       |
+| **PostgreSQL** | LangGraph checkpointer (conversation thread state / memory). Also general relational data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Redis**      | Caching (`fastapi-cache2`), SSE stream channels, rate limiter counters, stream cancellation flags. Use Redis for all server-side caching of JSON-serializable data (integration status, tool schemas, API responses). The `@Cacheable` decorator (`app/utils/cacheable.py`) is the standard pattern — see `get_all_integrations_status()` in oauth_service.py for usage. **Do NOT try to cache Composio tool objects in Redis** — they contain dynamically-generated Pydantic models and `functools.partial` closures that are not pickleable. Cache these in-memory on the `ComposioService` singleton instead (keyed by `(tool_name, user_id, hook_flags)` with a TTL). |
+| **ChromaDB**   | Vector store for tool retrieval (which tools the executor should use), trigger embeddings, and public integration descriptions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **RabbitMQ**   | Event publishing for cross-service messaging (bots, voice agent).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 ## Testing
 
@@ -103,12 +104,14 @@ Tests run with `pytest-asyncio` in `asyncio_mode = auto` (all async tests work w
 Default `addopts`: `-m "not composio" --strict-markers -n 4` — four parallel workers, composio tests excluded.
 
 **Test structure:**
+
 - `tests/unit/` — no external deps, mock everything. Fast.
 - `tests/integration/` — compiles real LangGraph graphs or exercises the full FastAPI request cycle (mocked service layer, no real DBs).
 - `tests/e2e/` — marked `e2e`, require real or near-real services, not cached, run separately.
 - `tests/composio/` — require real Composio credentials, excluded by default.
 
 **Root `conftest.py` gotchas:**
+
 - Sets `ENV=development` at import time before any app module loads. Must stay first.
 - Patches `inject_infisical_secrets` and `MongoDB.ping` globally so tests never hang on external connections.
 - Patches `tiered_limiter.check_and_increment` and `payment_service.get_user_subscription_status` globally.
@@ -151,6 +154,7 @@ SonarQube scans run in CI. Suppress false positives with `# NOSONAR` (all rules)
 ### After Major Changes
 
 Always run these before considering work complete:
+
 ```bash
 # Backend
 nx type-check api

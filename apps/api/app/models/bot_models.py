@@ -139,12 +139,6 @@ class BotSettingsResponse(BaseModel):
     profile_image_url: Optional[str] = Field(
         None, description="User's profile image URL (null if not set)"
     )
-    selected_model_name: Optional[str] = Field(
-        None, description="Selected AI model name (null if using default)"
-    )
-    selected_model_icon_url: Optional[str] = Field(
-        None, description="Model icon URL (null if using default)"
-    )
     connected_integrations: list[IntegrationInfo] = Field(
         default_factory=list,
         description="List of connected integrations (empty if none)",

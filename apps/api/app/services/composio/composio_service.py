@@ -89,19 +89,21 @@ class ComposioService:
         log.set(composio_toolkit=tool_kit)
         log.info(f"Loading {tool_kit} toolkit...")
 
-        custom_tool_names = custom_tools_registry.get_tool_names(tool_kit.lower())
-
         tools = await asyncio.to_thread(
             lambda: self.composio.tools.get(  # type: ignore[call-overload]
                 user_id="",
                 toolkits=[tool_kit],
-                tools=custom_tool_names,
                 limit=1000,
             )
         )
 
         exclude_tools = exclude_tools or []
         tool_names = [t.name for t in tools]
+
+        custom_tool_names = custom_tools_registry.get_tool_names(tool_kit)
+        for custom_tool_name in custom_tool_names:
+            if custom_tool_name not in tool_names:
+                tool_names.append(custom_tool_name)
         master_before_modifier = before_execute(tools=tool_names)(
             master_before_execute_hook
         )
@@ -114,7 +116,6 @@ class ComposioService:
             lambda: self.composio.tools.get(  # type: ignore[call-overload]
                 user_id="",
                 toolkits=[tool_kit],
-                tools=custom_tool_names,
                 modifiers=[
                     master_schema_mod,
                     master_before_modifier,
@@ -123,6 +124,15 @@ class ComposioService:
                 limit=1000,
             )
         )
+
+        if custom_tool_names:
+            custom_tools = await self.get_tools_by_name(custom_tool_names)
+            seen_names = {tool.name for tool in tools}
+            for tool in custom_tools:
+                if tool.name in seen_names:
+                    continue
+                tools.append(tool)
+                seen_names.add(tool.name)
 
         result = [tool for tool in tools if tool.name not in exclude_tools]
         await self._store_tool_metadata(tool_kit, result)

@@ -4,7 +4,7 @@ import {
   getFileIcon,
   getFormattedFileType,
 } from "@/features/chat/components/files/FilePreview";
-import type { FileData } from "@/types/shared";
+import type { FileData } from "@/types/shared/fileTypes";
 
 interface ChatBubbleFilePreviewProps {
   files: FileData[];
@@ -21,11 +21,7 @@ const ChatBubbleFilePreview: React.FC<ChatBubbleFilePreviewProps> = ({
         {files.map((file) => (
           <div
             key={file.fileId}
-            className={`group ${
-              file?.type?.startsWith("image/")
-                ? "flex h-[300px] w-[300px] flex-col items-center justify-center overflow-hidden rounded-xl"
-                : "flex w-fit items-center rounded-xl bg-zinc-700 p-3 text-white"
-            }`}
+            className={`group ${file?.type?.startsWith("image/") ? "flex h-[300px] w-[300px] flex-col items-center justify-center overflow-hidden rounded-xl" : "flex w-fit items-center rounded-xl bg-zinc-700 p-3 text-white"}`}
           >
             {file?.type?.startsWith("image/") ? (
               <div className="h-full w-full overflow-hidden">

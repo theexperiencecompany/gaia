@@ -11,19 +11,19 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
     WORKFLOW_PROMPT_GENERATION_TEMPLATE,
 )
-from app.agents.templates.workflow_template import (
-    WORKFLOW_GENERATION_TEMPLATE,
-    workflow_parser,
-)
+from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
 from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.workflow_models import (
     GeneratedPromptOutput,
     GeneratedStep,
+    GeneratedWorkflow,
     SuggestedTrigger,
 )
 
 prompt_output_parser = PydanticOutputParser(pydantic_object=GeneratedPromptOutput)
+
+_MAX_GENERATION_ATTEMPTS = 2
 
 
 def _build_trigger_hint(trigger_config: Optional[dict]) -> str:
@@ -93,6 +93,22 @@ def enrich_steps(generated_steps: List[GeneratedStep]) -> List[dict]:
     return enriched
 
 
+def _parse_workflow_response(content: str) -> GeneratedWorkflow:
+    """Parse raw LLM text into GeneratedWorkflow, handling markdown fences."""
+    cleaned = content.strip()
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    if cleaned.startswith("```"):
+        first_newline = cleaned.find("\n")
+        if first_newline != -1:
+            cleaned = cleaned[first_newline + 1 :]
+        else:
+            cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    cleaned = cleaned.strip()
+    return GeneratedWorkflow.model_validate_json(cleaned)
+
+
 class WorkflowGenerationService:
     """Service for generating workflow steps using LLM."""
 
@@ -100,100 +116,152 @@ class WorkflowGenerationService:
     async def generate_steps_with_llm(
         prompt: str, title: str, trigger_config=None, description: str | None = None
     ) -> list:
-        """Generate workflow steps using LLM with Pydantic parser."""
-        try:
-            log.info(f"[WorkflowGen] ========== START: {title} ==========")
+        """Generate workflow steps using LLM with structured output.
 
-            log.info("[WorkflowGen] Getting tool registry...")
-            # Inline import required: top-level causes a circular import via
-            # registry → workflow_tool → services.workflow → generation_service
-            from app.agents.tools.core.registry import get_tool_registry
+        Uses the LLM's native structured output (function calling / JSON schema)
+        for reliable generation. Falls back to text parsing if the provider
+        doesn't support with_structured_output. Retries once on failure.
 
-            tool_registry = await get_tool_registry()
+        Raises:
+            RuntimeError: If generation fails after all retry attempts.
+        """
+        log.info(f"[WorkflowGen] ========== START: {title} ==========")
 
-            tools_with_categories = []
-            category_names = []
-            categories = tool_registry.get_all_category_objects()
-            for category in categories.keys():
-                category_names.append(category)
-                category_tools = categories[category].get_tool_objects()
-                tool_names = [
-                    tool.name if hasattr(tool, "name") else str(tool)
-                    for tool in category_tools
-                ]
-                tools_with_categories.append(f"{category}: {', '.join(tool_names)}")
+        log.info("[WorkflowGen] Getting tool registry...")
+        # Inline import required: top-level causes a circular import via
+        # registry → workflow_tool → services.workflow → generation_service
+        from app.agents.tools.core.registry import get_tool_registry
 
-            # Add subagent capabilities
-            for integration in OAUTH_INTEGRATIONS:
-                if (
-                    integration.subagent_config
-                    and integration.subagent_config.has_subagent
-                ):
-                    cfg = integration.subagent_config
-                    category_names.append(integration.id)
-                    tools_with_categories.append(
-                        f"{integration.id} (subagent): {cfg.capabilities}"
+        tool_registry = await get_tool_registry()
+
+        tools_with_categories = []
+        category_names = []
+        categories = tool_registry.get_all_category_objects()
+        for category in categories.keys():
+            category_names.append(category)
+            category_tools = categories[category].get_tool_objects()
+            tool_names = [
+                tool.name if hasattr(tool, "name") else str(tool)
+                for tool in category_tools
+            ]
+            tools_with_categories.append(f"{category}: {', '.join(tool_names)}")
+
+        # Add subagent capabilities
+        for integration in OAUTH_INTEGRATIONS:
+            if integration.subagent_config and integration.subagent_config.has_subagent:
+                cfg = integration.subagent_config
+                category_names.append(integration.id)
+                tools_with_categories.append(
+                    f"{integration.id} (subagent): {cfg.capabilities}"
+                )
+
+        for tool in tool_registry.get_core_tools():
+            tool_name = tool.name if hasattr(tool, "name") else str(tool)
+            tools_with_categories.append(f"Always Available: {tool_name}")
+
+        # gaia is always a valid category — for pure LLM reasoning steps
+        category_names.append("gaia")
+        tools_with_categories.append(
+            "gaia: GAIA reasoning — summarize content, draft text, classify items, "
+            "generate outlines, extract key points, write briefs. No external tool call."
+        )
+
+        log.info(f"[WorkflowGen] Categories: {len(category_names)}")
+
+        trigger_context = generate_trigger_context(trigger_config)
+
+        llm = init_llm()
+
+        # Use native structured output for reliable JSON generation.
+        # with_structured_output uses the LLM's function-calling / JSON schema
+        # instead of fragile prompt-based text parsing.
+        use_native_structured = hasattr(llm, "with_structured_output")
+        structured_llm = None
+        if use_native_structured:
+            try:
+                structured_llm = llm.with_structured_output(GeneratedWorkflow)
+            except (NotImplementedError, TypeError):
+                log.info(
+                    "[WorkflowGen] LLM does not support with_structured_output, "
+                    "using text parsing fallback"
+                )
+
+        log.info("[WorkflowGen] Formatting prompt...")
+        prompt_context = prompt
+        if description:
+            prompt_context = (
+                f"{prompt}\n\n"
+                f"Short display summary for additional context: {description}"
+            )
+        formatted_prompt = WORKFLOW_GENERATION_TEMPLATE.format(
+            description=prompt_context,
+            title=title,
+            trigger_context=trigger_context,
+            tools="\n".join(tools_with_categories),
+            categories=", ".join(category_names),
+        )
+        log.info(f"[WorkflowGen] Prompt: {len(formatted_prompt)} chars")
+
+        last_error: Optional[Exception] = None
+        for attempt in range(_MAX_GENERATION_ATTEMPTS):
+            try:
+                if attempt > 0:
+                    log.info(f"[WorkflowGen] Retry attempt {attempt} for: {title}")
+
+                log.info("[WorkflowGen] === CALLING LLM ===")
+
+                if structured_llm:
+                    result = await structured_llm.ainvoke(formatted_prompt)
+                else:
+                    # Fallback: invoke LLM and parse text response.
+                    # Append minimal format guidance since with_structured_output
+                    # isn't available to constrain the output schema.
+                    fallback_prompt = (
+                        formatted_prompt
+                        + "\n\nRespond with ONLY a JSON object in this exact format, "
+                        "no other text:\n"
+                        '{"steps": [{"title": "...", "category": "...", '
+                        '"description": "..."}]}'
+                    )
+                    llm_response = await llm.ainvoke(fallback_prompt)
+                    response_content = getattr(
+                        llm_response, "content", str(llm_response)
+                    )
+                    log.debug(
+                        f"[WorkflowGen] Raw response ({len(response_content)} chars)"
+                    )
+                    result = _parse_workflow_response(response_content)
+
+                log.info("[WorkflowGen] === LLM RESPONDED ===")
+
+                if not result or not result.steps:
+                    raise ValueError(
+                        "LLM returned a workflow with no steps — "
+                        "the model may not have understood the request"
                     )
 
-            for tool in tool_registry.get_core_tools():
-                tool_name = tool.name if hasattr(tool, "name") else str(tool)
-                tools_with_categories.append(f"Always Available: {tool_name}")
+                steps_data = enrich_steps(result.steps)
 
-            # gaia is always a valid category — for pure LLM reasoning steps
-            # (summarize, draft, classify, generate, analyze) with no external tool call
-            category_names.append("gaia")
-            tools_with_categories.append(
-                "gaia: GAIA reasoning — summarize content, draft text, classify items, "
-                "generate outlines, extract key points, write briefs. No external tool call."
-            )
-
-            log.info(f"[WorkflowGen] Categories: {len(category_names)}")
-
-            trigger_context = generate_trigger_context(trigger_config)
-
-            llm = init_llm()
-
-            log.info("[WorkflowGen] Formatting prompt...")
-            prompt_context = prompt
-            if description:
-                prompt_context = (
-                    f"{prompt}\n\n"
-                    f"Short display summary for additional context: {description}"
+                log.info(
+                    f"[WorkflowGen] ========== DONE: {len(steps_data)} steps =========="
                 )
-            # format_instructions is pre-filled via partial_variables
-            formatted_prompt = WORKFLOW_GENERATION_TEMPLATE.format(
-                description=prompt_context,
-                title=title,
-                trigger_context=trigger_context,
-                tools="\n".join(tools_with_categories),
-                categories=", ".join(category_names),
-            )
-            log.info(f"[WorkflowGen] Prompt: {len(formatted_prompt)} chars")
+                return steps_data
 
-            log.info("[WorkflowGen] === CALLING LLM ===")
-            llm_response = await llm.ainvoke(formatted_prompt)
-            log.info("[WorkflowGen] === LLM RESPONDED ===")
+            except Exception as e:
+                last_error = e
+                log.warning(
+                    f"[WorkflowGen] Attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS} "
+                    f"failed: {e}"
+                )
 
-            # Parse response
-            response_content = getattr(llm_response, "content", str(llm_response))
-            log.info(f"[WorkflowGen] Response: {len(response_content)} chars")
-            log.debug(f"[WorkflowGen] Full response:\n{response_content}")
-
-            log.info("[WorkflowGen] === PARSING ===")
-            result = workflow_parser.parse(response_content)
-            log.info(f"[WorkflowGen] === SUCCESS: {len(result.steps)} steps ===")
-
-            # Enrich with id
-            steps_data = enrich_steps(result.steps)
-
-            log.info(
-                f"[WorkflowGen] ========== DONE: {len(steps_data)} steps =========="
-            )
-            return steps_data
-
-        except Exception as e:
-            log.error(f"[WorkflowGen] ========== FAILED: {e} ==========", exc_info=True)
-            return []
+        log.error(
+            f"[WorkflowGen] ========== FAILED after {_MAX_GENERATION_ATTEMPTS} "
+            f"attempts: {last_error} =========="
+        )
+        raise RuntimeError(
+            f"Workflow step generation failed for '{title}' "
+            f"after {_MAX_GENERATION_ATTEMPTS} attempts: {last_error}"
+        ) from last_error
 
     @staticmethod
     async def generate_workflow_prompt(

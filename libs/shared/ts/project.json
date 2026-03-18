@@ -16,9 +16,19 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "echo 'Linting shared-typescript'",
+        "command": "biome check .",
         "cwd": "{projectRoot}"
-      }
+      },
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/biome.json"]
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "biome check --write .",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
     }
   }
 }

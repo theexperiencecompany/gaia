@@ -25,6 +25,9 @@ type SendMessageOverrides = {
   selectedWorkflow?: WorkflowData | null;
   selectedCalendarEvent?: SelectedCalendarEventData | null;
   replyToMessage?: ReplyToMessageData | null;
+  /** Explicit conversation ID to use. Pass null to force a new conversation.
+   *  When omitted, falls back to the active conversation ID from the store. */
+  conversationId?: string | null;
 };
 
 export const useSendMessage = () => {
@@ -74,103 +77,141 @@ export const useSendMessage = () => {
       const isoTimestamp = fetchDate();
       const createdAt = new Date(isoTimestamp);
       const optimisticId = uuidv4();
-      const conversationId = useChatStore.getState().activeConversationId;
+      // Use explicit override when provided (e.g. auto-send from workflow sidebar
+      // where the store may still hold a stale ID from the previous conversation).
+      // `overrides.conversationId` being present (even as null) takes precedence.
+      const conversationId =
+        overrides !== undefined && "conversationId" in overrides
+          ? overrides.conversationId
+          : useChatStore.getState().activeConversationId;
+      console.log(
+        "[useSendMessage] called, content:",
+        content,
+        "conversationId:",
+        conversationId,
+        "selectedWorkflow:",
+        selectedWorkflow?.id,
+      );
 
-      const userMessage: MessageType = {
-        type: "user",
-        response: trimmedContent,
-        date: isoTimestamp,
-        message_id: optimisticId, // Temporary ID for optimistic UI
-        fileIds: normalizedFiles.map((file) => file.fileId),
-        fileData: normalizedFiles,
-        selectedTool: selectedTool ?? undefined,
-        toolCategory: selectedToolCategory ?? undefined,
-        selectedWorkflow: selectedWorkflow ?? undefined,
-        selectedCalendarEvent: selectedCalendarEvent ?? undefined,
-        replyToMessage: replyToMessage ?? undefined,
-      };
+      try {
+        const userMessage: MessageType = {
+          type: "user",
+          response: trimmedContent,
+          date: isoTimestamp,
+          message_id: optimisticId, // Temporary ID for optimistic UI
+          fileIds: normalizedFiles.map((file) => file.fileId),
+          fileData: normalizedFiles,
+          selectedTool: selectedTool ?? undefined,
+          toolCategory: selectedToolCategory ?? undefined,
+          selectedWorkflow: selectedWorkflow ?? undefined,
+          selectedCalendarEvent: selectedCalendarEvent ?? undefined,
+          replyToMessage: replyToMessage ?? undefined,
+        };
+        console.log(
+          "[useSendMessage] userMessage built, entering branch. conversationId falsy?",
+          !conversationId,
+        );
 
-      // For new conversations: use Zustand optimistic message (no conversationId yet)
-      // For existing conversations: persist directly to IndexedDB with optimistic ID
-      if (!conversationId) {
-        // New conversation - use Zustand optimistic message
-        useChatStore.getState().setOptimisticMessage({
+        // For new conversations: use Zustand optimistic message (no conversationId yet)
+        // For existing conversations: persist directly to IndexedDB with optimistic ID
+        if (!conversationId) {
+          console.log(
+            "[useSendMessage] new conversation path — setting optimistic message",
+          );
+          // New conversation - use Zustand optimistic message
+          useChatStore.getState().setOptimisticMessage({
+            id: optimisticId,
+            conversationId: null,
+            content: trimmedContent,
+            role: "user",
+            createdAt,
+            fileIds: normalizedFiles.map((file) => file.fileId),
+            fileData: normalizedFiles,
+            toolName: selectedTool,
+            toolCategory: selectedToolCategory,
+            workflowId: selectedWorkflow?.id ?? null,
+            selectedWorkflow,
+            selectedCalendarEvent,
+            replyToMessage,
+          });
+
+          // Set loading state AFTER user message is in store
+          // This ensures the loading indicator appears AFTER the user message in the UI
+          useLoadingStore
+            .getState()
+            .setLoadingWithContext(true, trimmedContent);
+
+          console.log(
+            "[useSendMessage] calling fetchChatStream for new conversation",
+          );
+          await fetchChatStream(
+            trimmedContent,
+            [userMessage],
+            normalizedFiles,
+            selectedTool,
+            selectedToolCategory,
+            selectedWorkflow,
+            selectedCalendarEvent,
+            optimisticId,
+            replyToMessage,
+          );
+          return;
+        }
+
+        // For existing conversations: persist to IndexedDB immediately with optimistic ID
+        // Backend will send real ID which will replace this optimistic message
+        const optimisticMessage: IMessage = {
           id: optimisticId,
-          conversationId: null,
+          conversationId,
           content: trimmedContent,
           role: "user",
+          status: "sending",
           createdAt,
+          updatedAt: createdAt,
+          messageId: optimisticId,
           fileIds: normalizedFiles.map((file) => file.fileId),
           fileData: normalizedFiles,
           toolName: selectedTool,
           toolCategory: selectedToolCategory,
           workflowId: selectedWorkflow?.id ?? null,
-        });
-
-        // Set loading state AFTER user message is in store
-        // This ensures the loading indicator appears AFTER the user message in the UI
-        useLoadingStore.getState().setLoadingWithContext(true, trimmedContent);
-
-        await fetchChatStream(
-          trimmedContent,
-          [userMessage],
-          normalizedFiles,
-          selectedTool,
-          selectedToolCategory,
-          selectedWorkflow,
-          selectedCalendarEvent,
-          optimisticId,
-          replyToMessage,
-        );
-        return;
-      }
-
-      // For existing conversations: persist to IndexedDB immediately with optimistic ID
-      // Backend will send real ID which will replace this optimistic message
-      const optimisticMessage: IMessage = {
-        id: optimisticId,
-        conversationId,
-        content: trimmedContent,
-        role: "user",
-        status: "sending",
-        createdAt,
-        updatedAt: createdAt,
-        messageId: optimisticId,
-        fileIds: normalizedFiles.map((file) => file.fileId),
-        fileData: normalizedFiles,
-        toolName: selectedTool,
-        toolCategory: selectedToolCategory,
-        workflowId: selectedWorkflow?.id ?? null,
-        selectedWorkflow: selectedWorkflow,
-        selectedCalendarEvent: selectedCalendarEvent,
-        replyToMessageId: replyToMessage?.id ?? null,
-        replyToMessageData: replyToMessage,
-        optimistic: true,
-      };
-      try {
-        await db.putMessage(optimisticMessage);
-
-        // Set loading state AFTER user message is persisted
-        useLoadingStore.getState().setLoadingWithContext(true, trimmedContent);
-
-        const streamingUserMessage: MessageType = {
-          ...userMessage,
-          loading: false,
+          selectedWorkflow: selectedWorkflow,
+          selectedCalendarEvent: selectedCalendarEvent,
+          replyToMessageId: replyToMessage?.id ?? null,
+          replyToMessageData: replyToMessage,
+          optimistic: true,
         };
+        try {
+          await db.putMessage(optimisticMessage);
 
-        await fetchChatStream(
-          trimmedContent,
-          [streamingUserMessage],
-          normalizedFiles,
-          selectedTool,
-          selectedToolCategory,
-          selectedWorkflow,
-          selectedCalendarEvent,
-          optimisticId,
-          replyToMessage,
+          // Set loading state AFTER user message is persisted
+          useLoadingStore
+            .getState()
+            .setLoadingWithContext(true, trimmedContent);
+
+          const streamingUserMessage: MessageType = {
+            ...userMessage,
+            loading: false,
+          };
+
+          await fetchChatStream(
+            trimmedContent,
+            [streamingUserMessage],
+            normalizedFiles,
+            selectedTool,
+            selectedToolCategory,
+            selectedWorkflow,
+            selectedCalendarEvent,
+            optimisticId,
+            replyToMessage,
+          );
+        } catch (error) {
+          console.error("[useSendMessage] Stream failed:", error);
+        }
+      } catch (outerError) {
+        console.error(
+          "[useSendMessage] OUTER ERROR — something threw:",
+          outerError,
         );
-      } catch (error) {
-        console.error("[useSendMessage] Stream failed:", error);
       }
     },
     [fetchChatStream],

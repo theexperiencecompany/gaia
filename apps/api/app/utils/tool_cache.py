@@ -43,7 +43,7 @@ def cache_gather_context(ttl: int = _DEFAULT_TTL) -> Callable[[F], F]:
                     if cached:
                         return json.loads(cached)  # type: ignore[no-any-return]
                 except Exception as exc:
-                    log.debug("Cache read miss for %s: %s", cache_key, exc)
+                    log.debug(f"Cache read miss for {cache_key}: {exc}")
 
             result: Dict[str, Any] = await func(
                 request, execute_request, auth_credentials
@@ -53,7 +53,7 @@ def cache_gather_context(ttl: int = _DEFAULT_TTL) -> Callable[[F], F]:
                 try:
                     await redis_client.setex(cache_key, ttl, json.dumps(result))
                 except Exception as exc:
-                    log.debug("Cache write failed for %s: %s", cache_key, exc)
+                    log.debug(f"Cache write failed for {cache_key}: {exc}")
 
             return result
 

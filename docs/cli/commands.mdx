@@ -1,6 +1,6 @@
 ---
 title: "Commands Reference"
-description: "Complete reference for all GAIA CLI commands"
+description: "Full reference for GAIA CLI commands including init, setup, start, dev, logs, stop, and status for managing your instance."
 icon: "rectangle-terminal"
 ---
 
@@ -23,18 +23,18 @@ gaia --help        # Show all commands
 
 ## All Commands
 
-| Command | Description |
-|---------|-------------|
-| `gaia init` | Full setup from scratch — clone repo, configure env, and initialize services |
-| `gaia setup` | Configure an existing repository |
-| `gaia start` | Start GAIA services in self-host mode |
-| `gaia dev` | Run developer mode in Nx TUI (`mise dev`) |
-| `gaia dev full` | Run developer mode + workers in Nx TUI (`mise dev:full`) |
-| `gaia logs` | Stream logs for currently running services |
-| `gaia stop` | Stop running GAIA services |
-| `gaia status` | Check health and latency of GAIA services |
-| `gaia --version` | Display the current CLI version |
-| `gaia --help` | Show help and available commands |
+| Command          | Description                                                                  |
+| ---------------- | ---------------------------------------------------------------------------- |
+| `gaia init`      | Full setup from scratch — clone repo, configure env, and initialize services |
+| `gaia setup`     | Configure an existing repository                                             |
+| `gaia start`     | Start GAIA services in self-host mode                                        |
+| `gaia dev`       | Run developer mode in Nx TUI (`mise dev`)                                    |
+| `gaia dev full`  | Run developer mode + workers in Nx TUI (`mise dev:full`)                     |
+| `gaia logs`      | Stream logs for currently running services                                   |
+| `gaia stop`      | Stop running GAIA services                                                   |
+| `gaia status`    | Check health and latency of GAIA services                                    |
+| `gaia --version` | Display the current CLI version                                              |
+| `gaia --help`    | Show help and available commands                                             |
 
 ---
 
@@ -48,8 +48,8 @@ gaia init
 
 **Options:**
 
-| Flag | Description |
-|------|-------------|
+| Flag              | Description             |
+| ----------------- | ----------------------- |
 | `--branch <name>` | Clone a specific branch |
 
 ```bash
@@ -89,17 +89,17 @@ gaia start
 
 **Options:**
 
-| Flag | Description |
-|------|-------------|
-| `--build` | Rebuild Docker images before starting |
-| `--pull` | Pull latest base images before starting |
+| Flag      | Description                             |
+| --------- | --------------------------------------- |
+| `--build` | Rebuild Docker images before starting   |
+| `--pull`  | Pull latest base images before starting |
 
 ```bash
 gaia start --build --pull
 ```
 
 <Note>
-In developer mode, use `gaia dev` or `gaia dev full` instead of `gaia start`.
+  In developer mode, use `gaia dev` or `gaia dev full` instead of `gaia start`.
 </Note>
 
 ---
@@ -151,8 +151,8 @@ gaia stop
 
 **Options:**
 
-| Flag | Description |
-|------|-------------|
+| Flag            | Description                                                                  |
+| --------------- | ---------------------------------------------------------------------------- |
 | `--force-ports` | Aggressively stop listeners on API/Web ports (may affect non-GAIA processes) |
 
 ```bash
@@ -264,11 +264,12 @@ bun remove -g @heygaia/cli
     ```
 
     </CodeGroup>
+
   </Accordion>
 
-  <Accordion title="Raw mode is not supported">
-    The CLI requires an interactive terminal. Don’t run it in a non-TTY context.
-  </Accordion>
+<Accordion title="Raw mode is not supported">
+  The CLI requires an interactive terminal. Don’t run it in a non-TTY context.
+</Accordion>
 
   <Accordion title="Python 3 not found during setup">
     Install Python through Mise:
@@ -276,5 +277,6 @@ bun remove -g @heygaia/cli
     ```bash
     mise install python
     ```
+
   </Accordion>
 </AccordionGroup>

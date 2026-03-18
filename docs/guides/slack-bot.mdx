@@ -1,0 +1,182 @@
+---
+title: "Using GAIA in Slack"
+description: "Bring GAIA into your Slack workspace for quick actions and team collaboration"
+---
+
+## Why Use GAIA in Slack?
+
+Switching between apps kills focus. With GAIA in Slack, you can manage todos, run workflows, check your calendar, and get answers — all without leaving the conversation you're already in.
+
+Your team gets the same benefit. Add GAIA to a shared channel and everyone can ask questions, trigger automations, and stay on top of work together.
+
+## Connect Your GAIA Account
+
+Before you can use GAIA in Slack, link your Slack identity to your GAIA account. You only need to do this once.
+
+<Steps>
+  <Step title="Open a DM with GAIA">
+    Find the GAIA app in your Slack sidebar under **Apps**. If you don't see it, click **Add apps** and search for GAIA. Open a direct message with the bot.
+  </Step>
+
+  <Step title="Run the auth command">
+    Type this slash command in any channel or DM where GAIA is present:
+
+    ```
+    /auth
+    ```
+
+    GAIA sends you an ephemeral link — only you can see it.
+
+  </Step>
+
+<Step title="Log in and authorize">
+  Click the link, sign in to your GAIA account in the browser, and authorize the
+  connection. You'll be redirected back automatically.
+</Step>
+
+  <Step title="Confirm the link">
+    Back in Slack, run `/status` to check that your account is connected. You should see a confirmation that the bot and API are online and your account is linked.
+  </Step>
+</Steps>
+
+<Tip>
+  You can also connect Slack from the GAIA web app. Go to **Settings >
+  Integrations**, find Slack, and click **Connect**. See the
+  [Connecting Integrations](/guides/connecting-integrations) guide for details.
+</Tip>
+
+## Talk to GAIA
+
+There are three ways to reach GAIA in Slack.
+
+### Slash command
+
+Use `/gaia` followed by your message in any channel or DM where the bot is installed:
+
+```
+/gaia What should I focus on today?
+```
+
+GAIA posts a "Thinking..." message and updates it in real time as the response streams in.
+
+### @mention in a channel
+
+In any channel GAIA has been added to, mention the bot directly:
+
+```
+@GAIA Summarize the last 5 emails from the marketing team
+```
+
+The response appears in the channel for everyone to see — useful for team questions.
+
+### Direct message
+
+Open a DM with GAIA and type freely. No slash command or @mention needed. Every message you send goes straight to GAIA, just like the web app.
+
+```
+Draft a follow-up email to the client about the project timeline
+```
+
+<Note>
+  Slash command responses are **ephemeral** — only you can see them. @mentions
+  and DM replies are visible to everyone in the channel or conversation.
+</Note>
+
+## Commands Reference
+
+Here are the most useful commands available in Slack. For the full list, see the [Commands Reference](/bots/commands).
+
+### Conversations
+
+| Command           | What it does                                                        |
+| ----------------- | ------------------------------------------------------------------- |
+| `/gaia <message>` | Send a message to GAIA and get a streamed response                  |
+| `/new`            | Start a fresh conversation (previous ones are saved in the web app) |
+| `/stop`           | Cancel the current response and reset                               |
+| `/conversations`  | List your recent conversations with links to the web app            |
+
+### Todos
+
+| Command                          | What it does                                      |
+| -------------------------------- | ------------------------------------------------- |
+| `/todo list`                     | Show all active todos                             |
+| `/todo add "Buy groceries"`      | Create a new todo                                 |
+| `/todo add "Fix login bug" high` | Create a todo with a priority (low, medium, high) |
+| `/todo complete <id>`            | Mark a todo as done                               |
+| `/todo delete <id>`              | Permanently remove a todo                         |
+
+### Workflows
+
+| Command                  | What it does                             |
+| ------------------------ | ---------------------------------------- |
+| `/workflow list`         | Show all your workflows and their status |
+| `/workflow get <id>`     | Get details about a specific workflow    |
+| `/workflow execute <id>` | Manually trigger a workflow              |
+
+### Account
+
+| Command     | What it does                                        |
+| ----------- | --------------------------------------------------- |
+| `/auth`     | Link your Slack account to GAIA                     |
+| `/unlink`   | Disconnect your Slack account from GAIA             |
+| `/status`   | Check if the bot and API are online                 |
+| `/settings` | View your connected integrations and selected model |
+| `/help`     | Show all available commands                         |
+
+## DMs vs Channels
+
+GAIA behaves a little differently depending on where you talk to it.
+
+**In DMs**, every message you type goes straight to GAIA. No prefix needed. This is the best place for personal tasks — checking your calendar, managing todos, or asking questions you don't want to share with the team.
+
+**In channels**, use `/gaia` or `@GAIA` to get the bot's attention. This works better for team collaboration — asking GAIA to summarize a document, trigger a shared workflow, or answer a question the whole team needs to see.
+
+<Warning>
+  Auth URLs and sensitive information are always sent as ephemeral messages
+  (visible only to you), even in public channels. However, @mention responses
+  are visible to everyone in the channel. Avoid sharing private data in channel
+  mentions.
+</Warning>
+
+## Tips for Team Use
+
+### Set up a dedicated channel
+
+Create a `#gaia` channel and invite the bot. This gives your team one central place to work with GAIA without cluttering project channels.
+
+### Use workflows for recurring tasks
+
+Instead of typing the same request every Monday morning, create a workflow in the GAIA web app and trigger it from Slack with `/workflow execute <id>`. Share workflow IDs with your team so anyone can run them.
+
+### Combine with integrations
+
+GAIA gets more useful with every integration you connect. Link Google Calendar, Gmail, Linear, or GitHub, and Slack becomes a single interface for all of them.
+
+```
+/gaia What meetings do I have tomorrow and are there any open PRs assigned to me?
+```
+
+<Tip>
+  Each team member needs to link their own GAIA account with `/auth` and connect
+  their own integrations. GAIA respects individual permissions — it only
+  accesses what each user has authorized.
+</Tip>
+
+### Keep conversations organized
+
+Use `/new` to start a fresh conversation when you switch topics. GAIA carries context within a conversation, so starting clean avoids confusion when you go from "plan my week" to "debug this API error."
+
+## Troubleshooting
+
+| Problem                               | Solution                                                                                            |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| GAIA doesn't respond                  | Run `/status` to check if the bot is online. If not, contact your workspace admin.                  |
+| "Account not linked" error            | Run `/auth` to connect your Slack identity to your GAIA account.                                    |
+| Slash command not found               | The GAIA app may not be installed in your workspace. Ask your Slack admin to install it.            |
+| Response seems stuck on "Thinking..." | Run `/stop` to cancel, then try again. If the issue persists, start a new conversation with `/new`. |
+| Integration not working               | Verify the integration is connected in the GAIA web app under **Settings > Integrations**.          |
+
+<Note>
+  For developer setup and self-hosting instructions, see the [Slack bot
+  reference](/bots/slack).
+</Note>

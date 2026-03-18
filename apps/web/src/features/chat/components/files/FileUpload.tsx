@@ -408,9 +408,7 @@ export default function FileUpload({
                   {files.map((fileWithPreview, index) => (
                     <div
                       key={fileWithPreview.previewUrl}
-                      className={`relative flex items-center rounded-xl p-3 ${
-                        fileWithPreview.error ? "bg-red-500/10" : "bg-zinc-800"
-                      }`}
+                      className={`relative flex items-center rounded-xl p-3 ${fileWithPreview.error ? "bg-red-500/10" : "bg-zinc-800"}`}
                     >
                       <Button
                         isIconOnly

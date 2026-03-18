@@ -1,9 +1,7 @@
 "use client";
 
-import {
-  ArrowRightIcon,
-  CheckmarkCircleIcon,
-} from "@theexperiencecompany/gaia-icons/stroke-rounded";
+import { Button } from "@heroui/button";
+import { ArrowRight02Icon, CheckmarkCircleIcon } from "@icons";
 import Link from "next/link";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
@@ -158,8 +156,22 @@ export function IntegrationRichContent({
   integration,
   comparisonSlug,
 }: IntegrationRichContentProps) {
-  const useCases = generateUseCases(integration);
-  const faqs = generateFAQs(integration);
+  const useCases =
+    integration.content?.useCases && integration.content.useCases.length > 0
+      ? integration.content.useCases
+      : generateUseCases(integration);
+  const howItWorksSteps =
+    integration.content?.howItWorks && integration.content.howItWorks.length > 0
+      ? integration.content.howItWorks.map((s, i) => ({
+          step: String(i + 1),
+          title: s.title,
+          body: s.body,
+        }))
+      : null;
+  const faqs =
+    integration.content?.faqs && integration.content.faqs.length > 0
+      ? integration.content.faqs
+      : generateFAQs(integration);
   const { name, category } = integration;
   const categoryLabel = category.charAt(0).toUpperCase() + category.slice(1);
 
@@ -205,26 +217,28 @@ export function IntegrationRichContent({
           </p>
         </div>
         <ol className="space-y-4">
-          {[
-            {
-              step: "1",
-              title: `Connect ${name} to GAIA`,
-              body: `Open the GAIA Marketplace, find the ${name} integration, and click "Add to your GAIA". Authorise access in under two minutes — no code, no configuration files.`,
-            },
-            {
-              step: "2",
-              title: "Tell GAIA what to automate in plain English",
-              body: `Describe the task in your own words: "summarise my ${name} activity every morning" or "notify me on Slack when a new ${categoryLabel.toLowerCase()} event happens". GAIA understands context and intent.`,
-            },
-            {
-              step: "3",
-              title: "GAIA handles it automatically, 24/7",
-              body: `GAIA runs your ${name} automations in the background around the clock. No manual triggers, no scripts to maintain — just results delivered to you.`,
-            },
-          ].map(({ step, title, body }) => (
+          {(
+            howItWorksSteps ?? [
+              {
+                step: "1",
+                title: `Connect ${name} to GAIA`,
+                body: `Open the GAIA Marketplace, find the ${name} integration, and click "Add to your GAIA". Authorise access in under two minutes — no code, no configuration files.`,
+              },
+              {
+                step: "2",
+                title: "Tell GAIA what to automate in plain English",
+                body: `Describe the task in your own words: "summarise my ${name} activity every morning" or "notify me on Slack when a new ${categoryLabel.toLowerCase()} event happens". GAIA understands context and intent.`,
+              },
+              {
+                step: "3",
+                title: "GAIA handles it automatically, 24/7",
+                body: `GAIA runs your ${name} automations in the background around the clock. No manual triggers, no scripts to maintain — just results delivered to you.`,
+              },
+            ]
+          ).map(({ step, title, body }) => (
             <li key={step} className="flex gap-5">
               <div className="flex-shrink-0 flex items-start pt-0.5">
-                <span className="h-8 w-8 rounded-full bg-[#00bbff]/10 border border-[#00bbff]/30 flex items-center justify-center text-[#00bbff] text-sm font-semibold">
+                <span className="h-8 w-8 rounded-full bg-[#00bbff]/10 flex items-center justify-center text-[#00bbff] text-sm font-semibold">
                   {step}
                 </span>
               </div>
@@ -253,7 +267,7 @@ export function IntegrationRichContent({
       </section>
 
       {/* Section 4: Related integrations CTA */}
-      <section className="rounded-3xl bg-gradient-to-br from-zinc-900/70 to-zinc-900/40 backdrop-blur-md border border-zinc-800/50 p-8 space-y-4">
+      <section className="rounded-3xl bg-gradient-to-br from-zinc-900/70 to-zinc-900/40 backdrop-blur-md p-8 space-y-4">
         <h2 className="text-2xl font-medium text-foreground">
           GAIA connects {name} with your entire stack
         </h2>
@@ -263,13 +277,17 @@ export function IntegrationRichContent({
           more — letting you build cross-tool automations in plain English
           without writing a single line of code.
         </p>
-        <Link
+        <Button
+          as={Link}
           href="/marketplace"
-          className="inline-flex items-center gap-2 rounded-xl bg-[#00bbff]/10 hover:bg-[#00bbff]/20 border border-[#00bbff]/30 text-[#00bbff] px-5 py-2.5 text-sm font-medium transition-colors"
+          variant="flat"
+          color="primary"
+          endContent={
+            <ArrowRight02Icon className="h-3.5 w-3.5" aria-hidden="true" />
+          }
         >
           Browse all integrations
-          <ArrowRightIcon className="h-3.5 w-3.5" aria-hidden="true" />
-        </Link>
+        </Button>
       </section>
 
       {/* Cross-link to comparison page when one exists */}

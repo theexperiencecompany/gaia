@@ -10,7 +10,8 @@ import DOMPurify from "dompurify";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { Gmail, Separator } from "@/components";
+import { Gmail } from "@/components/shared/icons";
+import { Separator } from "@/components/ui/separator";
 import { mailApi } from "@/features/mail/api/mailApi";
 import { toast } from "@/lib/toast";
 

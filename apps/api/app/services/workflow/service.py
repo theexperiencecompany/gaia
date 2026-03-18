@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from shared.py.wide_events import log
+from shared.py.utils.slugify import slugify
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import workflows_collection
 from app.decorators.caching import Cacheable
@@ -34,6 +35,27 @@ from .generation_service import WorkflowGenerationService
 from .queue_service import WorkflowQueueService
 from .scheduler import workflow_scheduler
 from .validators import WorkflowValidator
+
+
+async def generate_unique_workflow_slug(
+    title: str, exclude_id: Optional[str] = None
+) -> str:
+    """Generate a slug from title, appending a numeric suffix if taken."""
+    base = slugify(title)
+    if not base:
+        base = "workflow"
+
+    candidate = base
+    suffix = 1
+    while True:
+        query: dict = {"slug": candidate, "is_public": True}
+        if exclude_id:
+            query["_id"] = {"$ne": exclude_id}
+        existing = await workflows_collection.find_one(query)
+        if not existing:
+            return candidate
+        candidate = f"{base}-{suffix}"
+        suffix += 1
 
 
 class WorkflowService:
@@ -135,6 +157,11 @@ class WorkflowService:
             # Insert into database
             workflow_dict = workflow.model_dump(mode="json")
             workflow_dict["_id"] = workflow_dict["id"]
+
+            if workflow_dict.get("is_public") and not workflow_dict.get("slug"):
+                workflow_dict["slug"] = await generate_unique_workflow_slug(
+                    workflow_dict["title"]
+                )
 
             result = await workflows_collection.insert_one(workflow_dict)
             if not result.inserted_id:
@@ -906,6 +933,7 @@ class WorkflowService:
                         "_id": 1,
                         "title": 1,
                         "description": 1,
+                        "slug": 1,
                         "steps": {
                             "$map": {
                                 "input": "$steps",
@@ -958,10 +986,12 @@ class WorkflowService:
                     }
                     normalized_steps.append(normalized_step)
 
+                wf_id = workflow["_id"]
                 formatted_workflow = {
-                    "id": workflow["_id"],
+                    "id": wf_id,
                     "title": workflow["title"],
                     "description": workflow.get("description"),
+                    "slug": workflow.get("slug"),
                     "prompt": workflow.get("prompt"),
                     "steps": normalized_steps,
                     "created_at": workflow["created_at"],
@@ -1034,10 +1064,12 @@ class WorkflowService:
                     }
                     normalized_steps.append(normalized_step)
 
+                wf_id = workflow["_id"]
                 formatted_workflow = {
-                    "id": workflow["_id"],
+                    "id": wf_id,
                     "title": workflow["title"],
                     "description": workflow.get("description", ""),
+                    "slug": workflow.get("slug"),
                     "prompt": workflow.get("prompt") or workflow.get("description", ""),
                     "steps": normalized_steps,
                     "created_at": workflow["created_at"],
@@ -1070,7 +1102,8 @@ class WorkflowService:
             if not workflow:
                 return
 
-            # Generate steps using structured LLM output
+            # Generate steps using structured LLM output.
+            # Raises RuntimeError on failure (no silent empty-list return).
             steps_data = await WorkflowGenerationService.generate_steps_with_llm(
                 workflow.effective_prompt,
                 workflow.title,
@@ -1078,21 +1111,31 @@ class WorkflowService:
                 description=workflow.description,
             )
 
-            if steps_data:
+            await workflows_collection.find_one_and_update(
+                {"_id": workflow_id, "user_id": user_id},
+                {
+                    "$set": {
+                        "steps": steps_data,
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+            )
+
+        except Exception as e:
+            log.error(f"Error generating workflow steps for {workflow_id}: {str(e)}")
+            # Persist the error message so the status endpoint can report why it failed
+            try:
                 await workflows_collection.find_one_and_update(
                     {"_id": workflow_id, "user_id": user_id},
                     {
                         "$set": {
-                            "steps": steps_data,
+                            "error_message": str(e),
                             "updated_at": datetime.now(timezone.utc),
                         }
                     },
                 )
-            else:
-                await handle_workflow_error(
-                    workflow_id, user_id, Exception("Failed to generate workflow steps")
+            except Exception as db_err:
+                log.error(
+                    f"Failed to persist error_message for {workflow_id}: {db_err}"
                 )
-
-        except Exception as e:
-            log.error(f"Error generating workflow steps for {workflow_id}: {str(e)}")
             await handle_workflow_error(workflow_id, user_id, e)

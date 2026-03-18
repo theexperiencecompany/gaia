@@ -6,7 +6,7 @@ Uses model_service to fetch models with caching support.
 from typing import Dict, NamedTuple
 
 from shared.py.wide_events import log
-from app.services.model_service import get_available_models, get_model_by_id
+from app.services.model_service import get_model_by_id
 
 
 class ModelPricing(NamedTuple):
@@ -32,15 +32,6 @@ async def get_model_pricing(model_name: str) -> ModelPricing:
     try:
         # Try exact match first using model_service (uses caching)
         model = await get_model_by_id(model_name)
-
-        # If no exact match, try to find among all available models
-        if not model:
-            all_models = await get_available_models()
-
-            for m in all_models:
-                # Check if model_id contains the model_name or model_name contains model_id
-                if model_name in m.model_id or m.model_id in model_name:
-                    model = m
 
         if model:
             input_cost = getattr(model, "pricing_per_1k_input_tokens", None)

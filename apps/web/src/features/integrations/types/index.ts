@@ -199,6 +199,22 @@ export interface IntegrationListStreamData {
  * Community/Public Marketplace Types
  */
 
+export interface IntegrationHowItWorksStep {
+  title: string;
+  body: string;
+}
+
+export interface IntegrationFAQ {
+  question: string;
+  answer: string;
+}
+
+export interface IntegrationContent {
+  useCases: string[];
+  howItWorks: IntegrationHowItWorksStep[];
+  faqs: IntegrationFAQ[];
+}
+
 export interface CommunityIntegrationCreator {
   name: string | null;
   picture: string | null;
@@ -214,8 +230,9 @@ export interface CommunityIntegration {
   cloneCount: number;
   toolCount: number;
   tools: Array<{ name: string; description: string | null }>;
-  publishedAt: string;
+  publishedAt: string | null;
   creator: CommunityIntegrationCreator | null;
+  source?: "platform" | "custom";
 }
 
 export interface CommunityIntegrationsResponse {
@@ -229,5 +246,8 @@ export interface PublicIntegrationResponse extends CommunityIntegration {
     serverUrl: string;
     requiresAuth: boolean;
     authType: string | null;
-  };
+  } | null;
+  source?: "platform" | "custom";
+  authType?: "oauth" | "bearer" | "none" | null;
+  content?: IntegrationContent | null;
 }

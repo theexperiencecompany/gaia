@@ -390,7 +390,7 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
     operatingSystem: "Web, Windows, macOS, Linux",
     description: siteConfig.description,
     url: siteConfig.url,
-    image: siteConfig.url + "/og-image.webp",
+    image: `${siteConfig.url}/og-image.webp`,
     downloadUrl: "https://heygaia.io/download",
     featureList:
       "Email management, Calendar automation, Task management, AI workflows, 50+ integrations, Open source, Self-hostable",

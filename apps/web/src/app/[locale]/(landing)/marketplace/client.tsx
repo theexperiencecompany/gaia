@@ -34,6 +34,13 @@ export function IntegrationsPageClient() {
   const isInitialMount = useRef(true);
   const hasRefreshed = useRef(false);
 
+  // Native integrations state (fetched once, filtered client-side)
+  const [nativeIntegrations, setNativeIntegrations] = useState<
+    CommunityIntegration[]
+  >([]);
+  const [, setNativeLoading] = useState(false);
+  const nativeFetched = useRef(false);
+
   const totalPages = useMemo(() => Math.ceil(total / ITEMS_PER_PAGE), [total]);
 
   const loadIntegrations = useCallback(
@@ -63,6 +70,40 @@ export function IntegrationsPageClient() {
     [filters],
   );
 
+  const loadNativeIntegrations = useCallback(async () => {
+    if (nativeFetched.current) return;
+    nativeFetched.current = true;
+    setNativeLoading(true);
+    try {
+      const result = await integrationsApi.getNativeIntegrations();
+      setNativeIntegrations(result);
+    } catch (error) {
+      console.error("Failed to load native integrations:", error);
+      nativeFetched.current = false;
+    } finally {
+      setNativeLoading(false);
+    }
+  }, []);
+
+  // Load native integrations on mount
+  useEffect(() => {
+    loadNativeIntegrations();
+  }, [loadNativeIntegrations]);
+
+  // Client-side filtering for native integrations
+  const filteredNativeIntegrations = useMemo(() => {
+    return nativeIntegrations.filter((i) => {
+      const matchesCategory =
+        filters.category === "all" || i.category === filters.category;
+      const q = filters.search.toLowerCase();
+      const matchesSearch =
+        !filters.search ||
+        i.name.toLowerCase().includes(q) ||
+        i.description.toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [filters.category, filters.search, nativeIntegrations]);
+
   // Handle ?refresh=true query parameter
   useEffect(() => {
     if (typeof window === "undefined" || hasRefreshed.current) return;
@@ -90,7 +131,6 @@ export function IntegrationsPageClient() {
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     loadIntegrations(page, false);
-    // Scroll to top of grid
     window.scrollTo({ top: 400, behavior: "smooth" });
   };
 
@@ -107,6 +147,9 @@ export function IntegrationsPageClient() {
   };
 
   const showSkeletons = isLoading && (integrations.length === 0 || isFiltering);
+
+  const displayLoading = showSkeletons;
+  const displayTotal = filteredNativeIntegrations.length + total;
 
   return (
     <div className="min-h-screen pt-32 pb-16">
@@ -139,20 +182,21 @@ export function IntegrationsPageClient() {
           initialFilters={filters}
         />
 
-        {showSkeletons && (
+        {displayLoading && (
           <p className="mb-6 text-sm text-zinc-500">Loading...</p>
         )}
-        {!isLoading && (
+        {!displayLoading && (
           <p className="mb-6 text-sm text-zinc-500">
-            {total} integration{total !== 1 ? "s" : ""} found
+            {displayTotal} integration{displayTotal !== 1 ? "s" : ""} found
           </p>
         )}
 
-        {showSkeletons ? (
+        {displayLoading ? (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             <PublicIntegrationCardSkeletonGrid count={6} />
           </div>
-        ) : integrations.length === 0 ? (
+        ) : filteredNativeIntegrations.length === 0 &&
+          integrations.length === 0 ? (
           <div className="py-20 text-center">
             <p className="text-zinc-400">No integrations found</p>
             <p className="mt-2 text-sm text-zinc-500">
@@ -162,6 +206,12 @@ export function IntegrationsPageClient() {
         ) : (
           <>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {filteredNativeIntegrations.map((integration) => (
+                <PublicIntegrationCard
+                  key={integration.integrationId}
+                  integration={integration}
+                />
+              ))}
               {integrations.map((integration) => (
                 <PublicIntegrationCard
                   key={integration.integrationId}
@@ -170,7 +220,7 @@ export function IntegrationsPageClient() {
               ))}
             </div>
 
-            {/* Pagination */}
+            {/* Pagination — community only */}
             {totalPages > 1 && (
               <div className="mt-12 flex justify-center">
                 <Pagination
