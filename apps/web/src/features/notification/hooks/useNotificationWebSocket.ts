@@ -87,6 +87,10 @@ export function useNotificationWebSocket() {
 
             // Sync chats when a workflow completion notification arrives
             if (message.notification.metadata?.conversation_id) {
+              console.debug(
+                "[NotificationWS] Notification has conversation_id, triggering sync",
+                message.notification.metadata.conversation_id,
+              );
               batchSyncConversations();
             }
           }

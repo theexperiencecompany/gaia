@@ -27,11 +27,9 @@ from app.models.chat_models import (
     tool_fields,
 )
 from app.models.message_models import MessageRequestWithHistory
-from app.models.models_models import ModelConfig
 from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
 from app.services.file_service import get_files
-from app.services.model_service import get_user_selected_model
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -71,24 +69,12 @@ async def run_chat_stream_background(
         )
 
 
-async def _get_user_model_config(user_id: Optional[str]) -> Optional[ModelConfig]:
-    """Fetch the user-selected model config, returning None on failure."""
-    if not user_id:
-        return None
-    try:
-        return await get_user_selected_model(user_id)
-    except Exception as e:
-        log.warning(f"Could not get user's selected model: {e}")
-        return None
-
-
 def _set_stream_log_context(
     body: MessageRequestWithHistory,
     user_id: Optional[str],
     conversation_id: str,
     stream_id: str,
     is_new_conversation: bool,
-    user_model_config: Optional[ModelConfig],
 ) -> None:
     """Attach structured log context for the stream."""
     log.set(
@@ -110,13 +96,6 @@ def _set_stream_log_context(
         user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
         selected_tool=body.selectedTool,
     )
-    if user_model_config:
-        log.set(
-            model=ModelContext(
-                name=user_model_config.model_id,
-                provider=user_model_config.model_provider.value,
-            )
-        )
 
 
 def _start_description_task(
@@ -343,14 +322,12 @@ async def _run_chat_stream(
         )
 
         user_id = user.get("user_id")
-        user_model_config = await _get_user_model_config(user_id)
         _set_stream_log_context(
             body,
             user_id,
             conversation_id,
             stream_id,
             is_new_conversation,
-            user_model_config,
         )
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
@@ -375,7 +352,6 @@ async def _run_chat_stream(
             user=user,
             conversation_id=conversation_id,
             user_time=user_time,
-            user_model_config=user_model_config,
             usage_metadata_callback=usage_metadata_callback,
             stream_id=stream_id,
         ):

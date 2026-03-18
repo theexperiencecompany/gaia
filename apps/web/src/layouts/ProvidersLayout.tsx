@@ -10,6 +10,7 @@ import { GlobalIntegrationModal } from "@/features/integrations/components/Globa
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
+import { useTodoWorkflowGlobalListener } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
 
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
@@ -26,6 +27,9 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   // Subscribe to notification events — updates the shared store directly
   useNotificationWebSocket();
+
+  // Subscribe to workflow generation events — updates todo store globally
+  useTodoWorkflowGlobalListener();
 
   return (
     <HeroUIProvider>

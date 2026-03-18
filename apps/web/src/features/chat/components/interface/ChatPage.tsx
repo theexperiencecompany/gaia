@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { VoiceApp } from "@/features/chat/components/composer/VoiceModeOverlay";
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
@@ -12,6 +12,7 @@ import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewC
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
+import { useSendMessage } from "@/hooks/useSendMessage";
 import { db } from "@/lib/db/chatDb";
 import { syncSingleConversation } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
@@ -19,6 +20,7 @@ import {
   useComposerTextActions,
   usePendingPrompt,
 } from "@/stores/composerStore";
+import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 
 const ChatPage = React.memo(function MainChat() {
@@ -31,6 +33,14 @@ const ChatPage = React.memo(function MainChat() {
   );
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // --- Workflow auto-send ---
+  // This runs at the ChatPage level (not inside Composer) so that the
+  // useChatStream refs survive the NewChatLayout → ChatWithMessages remount.
+  const sendMessage = useSendMessage();
+  const selectedWorkflow = useWorkflowSelectionStore((s) => s.selectedWorkflow);
+  const autoSend = useWorkflowSelectionStore((s) => s.autoSend);
+  const autoSendFiredRef = useRef(false);
   const shouldSync = searchParams.get("sync") === "true";
   const queryParam = searchParams.get("q");
 
@@ -38,6 +48,37 @@ const ChatPage = React.memo(function MainChat() {
   useFetchIntegrationStatus({
     refetchOnMount: "always",
   });
+
+  // Workflow auto-send: when navigating from /todos with a selected workflow,
+  // send "Run this workflow" automatically. This MUST live in ChatPage (not
+  // Composer) because Composer remounts when hasMessages toggles from false→true,
+  // which orphans the useChatStream refs and kills the streaming connection.
+  useEffect(() => {
+    if (!(selectedWorkflow && autoSend)) return;
+    if (autoSendFiredRef.current) return;
+    autoSendFiredRef.current = true;
+
+    const workflow = selectedWorkflow;
+    useWorkflowSelectionStore.getState().clearSelectedWorkflow();
+    useChatStore.getState().setActiveConversationId(null);
+
+    // Defer to next tick so the store updates (clearSelectedWorkflow,
+    // setActiveConversationId) are processed first and useConversation
+    // correctly shows the optimistic message.
+    setTimeout(() => {
+      sendMessage("Run this workflow", {
+        selectedWorkflow: workflow,
+        selectedTool: null,
+        selectedToolCategory: null,
+        conversationId: null,
+      });
+    }, 0);
+  }, [selectedWorkflow, autoSend, sendMessage]);
+
+  // Reset the auto-send guard when the workflow/autoSend state clears
+  useEffect(() => {
+    if (!selectedWorkflow || !autoSend) autoSendFiredRef.current = false;
+  }, [selectedWorkflow, autoSend]);
 
   const {
     hasMessages,

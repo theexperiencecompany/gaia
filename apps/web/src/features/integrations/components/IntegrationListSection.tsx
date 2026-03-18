@@ -324,7 +324,7 @@ function IntegrationListSection({
     <CollapsibleListWrapper
       icon={<ConnectIcon size={20} />}
       count={total_count}
-      label="Integration"
+      label="Integrations"
       isCollapsible={true}
     >
       {content}

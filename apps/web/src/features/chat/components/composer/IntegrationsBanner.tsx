@@ -38,7 +38,7 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
     <div className="absolute -top-9 flex w-full justify-center pointer-events-none pb-10">
       <button
         type="button"
-        className="flex w-[90%] items-center justify-between rounded-full bg-zinc-800/40 pr-4 pl-6 py-2 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer"
+        className="flex w-[90%] items-center justify-between rounded-full bg-zinc-800/40 pr-8 pl-8 pt-2 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer pb-14!"
         onClick={onToggleSlashCommand}
       >
         <span className="text-xs">Connect your tools to GAIA</span>

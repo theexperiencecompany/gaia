@@ -150,8 +150,6 @@ export interface AuthenticatedSettingsResponse {
   userName: string | null;
   accountCreatedAt: string | null;
   profileImageUrl: string | null;
-  selectedModelName: string | null;
-  selectedModelIconUrl: string | null;
   connectedIntegrations: IntegrationInfo[];
 }
 

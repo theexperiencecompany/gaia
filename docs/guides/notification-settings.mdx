@@ -14,13 +14,15 @@ There are four types of notifications:
     Email drafts, calendar events, and tasks that GAIA created on your behalf. These include action buttons so you can confirm, edit, or dismiss right from the notification.
   </Card>
 
-  <Card title="Reminders" icon="bell">
-    Time-based alerts you asked GAIA to set. They fire at the scheduled time and often include follow-up actions like marking a task complete.
-  </Card>
+<Card title="Reminders" icon="bell">
+  Time-based alerts you asked GAIA to set. They fire at the scheduled time and
+  often include follow-up actions like marking a task complete.
+</Card>
 
-  <Card title="Workflow Updates" icon="arrows-spin">
-    Status updates when a background workflow finishes or fails. Useful when you've kicked off an automation and want to know when it's done.
-  </Card>
+<Card title="Workflow Updates" icon="arrows-spin">
+  Status updates when a background workflow finishes or fails. Useful when
+  you've kicked off an automation and want to know when it's done.
+</Card>
 
   <Card title="System Notifications" icon="gear">
     Account-level updates like a new integration being connected or a background job completing.
@@ -37,15 +39,17 @@ There are four types of notifications:
 
 GAIA can notify you across multiple channels at once. Each one can be toggled independently.
 
-| Channel | Where it appears | Enabled by default |
-|---|---|---|
-| **In-app** | Notification panel inside the GAIA web and mobile apps | Always on |
-| **Telegram** | Direct message from the GAIA Telegram bot | Yes (requires linked account) |
-| **Discord** | Direct message from the GAIA Discord bot | Yes (requires linked account) |
-| **Push (mobile)** | Native push notification on your phone | Yes (after granting permission) |
+| Channel           | Where it appears                                       | Enabled by default              |
+| ----------------- | ------------------------------------------------------ | ------------------------------- |
+| **In-app**        | Notification panel inside the GAIA web and mobile apps | Always on                       |
+| **Telegram**      | Direct message from the GAIA Telegram bot              | Yes (requires linked account)   |
+| **Discord**       | Direct message from the GAIA Discord bot               | Yes (requires linked account)   |
+| **Push (mobile)** | Native push notification on your phone                 | Yes (after granting permission) |
 
 <Note>
-  In-app notifications are always on and can't be turned off. They're the baseline — so you never miss something important even if other channels are disabled.
+  In-app notifications are always on and can't be turned off. They're the
+  baseline — so you never miss something important even if other channels are
+  disabled.
 </Note>
 
 ## Configure Channel Preferences
@@ -64,6 +68,7 @@ GAIA can notify you across multiple channels at once. Each one can be toggled in
     Flip the switch next to any platform to turn it on or off. Changes save automatically.
 
     Telegram and Discord toggles only appear after you've linked those accounts. If you see "Connect in Linked Accounts to enable," go to **Settings > Linked Accounts** first.
+
   </Step>
 
   <Step title="Link external accounts (if needed)">
@@ -72,7 +77,8 @@ GAIA can notify you across multiple channels at once. Each one can be toggled in
 </Steps>
 
 <Tip>
-  Keep at least one external channel enabled — Telegram or Discord — so you get notified even when you're not actively using the GAIA app.
+  Keep at least one external channel enabled — Telegram or Discord — so you get
+  notified even when you're not actively using the GAIA app.
 </Tip>
 
 ## Push Notifications on Mobile
@@ -88,7 +94,8 @@ The GAIA mobile app uses native push notifications via Expo. The first time you 
 Push notifications include sound and badge updates by default. Tapping one takes you directly to what triggered it — a todo, a workflow, or a conversation.
 
 <Warning>
-  If you denied the permission prompt, you'll need to turn notifications on manually in your device's system settings under the GAIA app.
+  If you denied the permission prompt, you'll need to turn notifications on
+  manually in your device's system settings under the GAIA app.
 </Warning>
 
 ### Managing devices
@@ -112,23 +119,25 @@ Many notifications include action buttons — "Preview & Send" on an email draft
 After you act on a notification, archive it. Archived notifications are hidden from the default view but stay accessible if you need to look something up later.
 
 <Tip>
-  Clear your notifications at the end of each day. A clean panel makes it easy to spot what actually needs your attention.
+  Clear your notifications at the end of each day. A clean panel makes it easy
+  to spot what actually needs your attention.
 </Tip>
 
 ## Notification Actions
 
 GAIA notifications are interactive. Depending on what triggered them, you'll see action buttons that let you respond directly:
 
-| Source | Available Actions |
-|---|---|
-| **Email draft** | Preview & Send (opens an editor so you can review and send the draft) |
-| **Calendar event** | Confirm Event (creates the event on your calendar) |
-| **New task** | View Task, Mark Complete |
-| **Reminder** | Context-specific actions based on what the reminder is about |
-| **Workflow** | More Details (takes you to the workflow or conversation) |
+| Source             | Available Actions                                                     |
+| ------------------ | --------------------------------------------------------------------- |
+| **Email draft**    | Preview & Send (opens an editor so you can review and send the draft) |
+| **Calendar event** | Confirm Event (creates the event on your calendar)                    |
+| **New task**       | View Task, Mark Complete                                              |
+| **Reminder**       | Context-specific actions based on what the reminder is about          |
+| **Workflow**       | More Details (takes you to the workflow or conversation)              |
 
 Actions that write data — like confirming an event or completing a task — can only run once. The button disables after you use it to prevent duplicates.
 
 <Note>
-  If an action fails, you'll see an error message. Retry by going to the relevant page (Todos, Calendar, etc.) and performing the action from there.
+  If an action fails, you'll see an error message. Retry by going to the
+  relevant page (Todos, Calendar, etc.) and performing the action from there.
 </Note>

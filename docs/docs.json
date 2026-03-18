@@ -46,10 +46,7 @@
           },
           {
             "group": "CLI",
-            "pages": [
-              "cli/installation",
-              "cli/commands"
-            ]
+            "pages": ["cli/installation", "cli/commands"]
           },
           {
             "group": "Self-Hosting",
@@ -115,10 +112,7 @@
           },
           {
             "group": "Automation",
-            "pages": [
-              "guides/building-workflows",
-              "guides/marketplace"
-            ]
+            "pages": ["guides/building-workflows", "guides/marketplace"]
           },
           {
             "group": "Apps & Platforms",
