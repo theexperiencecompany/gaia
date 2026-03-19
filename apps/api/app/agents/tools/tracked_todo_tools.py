@@ -5,10 +5,11 @@ Allows GAIA's executor to create tracked todos with VFS canvas
 and search across canvas context via ChromaDB.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Optional
 
 from bson import ObjectId
+from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from shared.py.wide_events import log
@@ -77,6 +78,27 @@ async def create_tracked_todo(
     if not user_id:
         return "Error: user_id not found in config"
 
+    # Validate scheduled_at is in the future
+    if scheduled_at:
+        try:
+            parsed_scheduled = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+            if parsed_scheduled <= datetime.now(timezone.utc):
+                return "Error: scheduled_at must be in the future. Please provide a future datetime."
+        except ValueError:
+            return f"Error: invalid scheduled_at format '{scheduled_at}'. Use ISO format like '2026-03-20T09:00:00Z'."
+
+    # Validate recurrence format
+    if recurrence:
+        valid_shortcuts = {"daily", "weekly", "every_4h", "every_1h"}
+        if recurrence not in valid_shortcuts:
+            try:
+                _croniter(recurrence)  # Validate cron syntax
+            except (ValueError, KeyError):
+                return (
+                    f"Error: invalid recurrence '{recurrence}'. "
+                    f"Use one of: {', '.join(sorted(valid_shortcuts))}, or a valid cron expression."
+                )
+
     result = await tracked_todo_service.create_tracked_todo(
         user_id=user_id,
         title=title,
@@ -108,10 +130,18 @@ async def create_tracked_todo(
     if scheduled_at:
         try:
             parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
-            await tracked_todo_service.schedule_execution(result.id, parsed_at)
+            success = await tracked_todo_service.schedule_execution(result.id, parsed_at)
+            if not success:
+                return (
+                    f"Tracked todo created (ID: {result.id}) but scheduling failed. "
+                    f"The todo exists but will NOT execute automatically at {scheduled_at}."
+                )
         except Exception as e:
-            # Non-fatal — todo was created, scheduling failed
             log.warning(f"Created todo {result.id} but failed to schedule: {e}")
+            return (
+                f"Tracked todo created (ID: {result.id}) but scheduling failed: {e}. "
+                f"The todo exists but will NOT execute automatically."
+            )
 
     return (
         f"Tracked todo created: {result.id}\n"
@@ -221,4 +251,116 @@ async def complete_tracked_todo(
     return f"Tracked todo {todo_id} completed and archived."
 
 
-tools = [create_tracked_todo, search_todo_context, update_tracked_todo_canvas, complete_tracked_todo]
+@tool
+async def update_tracked_todo(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the tracked todo to update"],
+    labels: Annotated[
+        Optional[list[str]],
+        "New labels to SET on the todo (replaces all existing labels). "
+        "Always include 'gaia-tracked' in the list.",
+    ] = None,
+    due_date: Annotated[
+        Optional[str],
+        "ISO datetime string for the deadline. Set to empty string '' to clear.",
+    ] = None,
+    priority: Annotated[
+        Optional[str],
+        "Priority: 'high', 'medium', 'low', or 'none'.",
+    ] = None,
+    scheduled_at: Annotated[
+        Optional[str],
+        "ISO datetime string when GAIA should execute this todo. Must be in the future.",
+    ] = None,
+    recurrence: Annotated[
+        Optional[str],
+        "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or cron expression. "
+        "Set to empty string '' to clear.",
+    ] = None,
+) -> str:
+    """Update properties of an existing tracked todo.
+
+    Use this to change labels, due dates, priority, scheduling, or recurrence
+    after a tracked todo has been created. For updating canvas content,
+    use update_tracked_todo_canvas instead.
+
+    Args:
+        todo_id: The tracked todo ID (from ACTIVE TRACKED TODOS context block).
+        labels: Replace labels. Always include 'gaia-tracked'.
+        due_date: Set or clear due date.
+        priority: Change priority.
+        scheduled_at: Schedule or reschedule execution. Must be in the future.
+        recurrence: Set or clear recurrence pattern.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return "Error: user_id not found in config"
+
+    update_fields: dict[str, object] = {}
+
+    if labels is not None:
+        if "gaia-tracked" not in labels:
+            labels.append("gaia-tracked")
+        update_fields["labels"] = labels
+
+    if due_date is not None:
+        if due_date == "":
+            update_fields["due_date"] = None
+        else:
+            try:
+                update_fields["due_date"] = datetime.fromisoformat(
+                    due_date.replace("Z", "+00:00")
+                )
+            except ValueError:
+                return f"Error: invalid due_date format '{due_date}'."
+
+    if priority is not None:
+        update_fields["priority"] = priority
+
+    if scheduled_at is not None:
+        if scheduled_at == "":
+            update_fields["scheduled_at"] = None
+        else:
+            try:
+                parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+            except ValueError:
+                return f"Error: invalid scheduled_at format '{scheduled_at}'."
+            if parsed_at <= datetime.now(timezone.utc):
+                return "Error: scheduled_at must be in the future."
+            update_fields["scheduled_at"] = parsed_at
+
+    if recurrence is not None:
+        if recurrence == "":
+            update_fields["recurrence"] = None
+        else:
+            valid_shortcuts = {"daily", "weekly", "every_4h", "every_1h"}
+            if recurrence not in valid_shortcuts:
+                try:
+                    _croniter(recurrence)
+                except (ValueError, KeyError):
+                    return f"Error: invalid recurrence '{recurrence}'."
+            update_fields["recurrence"] = recurrence
+
+    if not update_fields:
+        return "No fields to update. Provide at least one field to change."
+
+    update_fields["updated_at"] = datetime.now(timezone.utc)
+
+    result = await todos_collection.update_one(
+        {"_id": ObjectId(todo_id), "user_id": user_id, "vfs_path": {"$exists": True}},
+        {"$set": update_fields},
+    )
+
+    if result.matched_count == 0:
+        return f"Error: tracked todo {todo_id} not found or not a tracked todo."
+
+    # If scheduled_at was set (not cleared), reschedule ARQ job
+    if scheduled_at and scheduled_at != "":
+        parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        await tracked_todo_service.reschedule_execution(todo_id, parsed_at)
+
+    updated_keys = [k for k in update_fields if k != "updated_at"]
+    return f"Updated tracked todo {todo_id}: {', '.join(updated_keys)}"
+
+
+tools = [create_tracked_todo, search_todo_context, update_tracked_todo_canvas, complete_tracked_todo, update_tracked_todo]
