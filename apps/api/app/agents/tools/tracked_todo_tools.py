@@ -48,6 +48,13 @@ async def create_tracked_todo(
         Optional[str],
         "How often to repeat. Options: 'daily', 'weekly', 'every_4h', or a cron expression. Requires scheduled_at to also be set.",
     ] = None,
+    expires_at: Annotated[
+        Optional[str],
+        "ISO datetime string when this todo becomes irrelevant. "
+        "Use for time-sensitive context like 'check if package arrived' (expires in 3 days) "
+        "or 'follow up if no reply' (expires in 2 weeks). "
+        "Different from due_date: due_date means 'should be done by'; expires_at means 'no longer matters after'.",
+    ] = None,
 ) -> str:
     """
     Create a tracked todo with VFS canvas for persistent working memory.
@@ -62,6 +69,9 @@ async def create_tracked_todo(
                   If set, GAIA will automatically run this todo at that time.
     recurrence: How often to repeat. Options: 'daily', 'weekly', 'every_4h', or a cron expression.
                 Requires scheduled_at to also be set.
+    expires_at: ISO datetime string when this todo becomes irrelevant regardless of completion.
+                Different from due_date: due_date = deadline (overdue = still needs doing),
+                expires_at = relevance window (expired = no longer worth tracking).
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
@@ -76,8 +86,8 @@ async def create_tracked_todo(
         priority=Priority(priority),
     )
 
-    # Store scheduled_at and recurrence on the todo document
-    if scheduled_at or recurrence:
+    # Store scheduled_at, recurrence, and expires_at on the todo document
+    if scheduled_at or recurrence or expires_at:
         update_fields: dict[str, object] = {}
         if scheduled_at:
             update_fields["scheduled_at"] = datetime.fromisoformat(
@@ -85,6 +95,10 @@ async def create_tracked_todo(
             )
         if recurrence:
             update_fields["recurrence"] = recurrence
+        if expires_at:
+            update_fields["expires_at"] = datetime.fromisoformat(
+                expires_at.replace("Z", "+00:00")
+            )
         await todos_collection.update_one(
             {"_id": ObjectId(result.id)},
             {"$set": update_fields},
