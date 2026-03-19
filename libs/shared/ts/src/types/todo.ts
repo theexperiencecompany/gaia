@@ -46,6 +46,9 @@ export interface TodoUpdate {
   completed?: boolean;
   subtasks?: SubTask[];
   workflow_id?: string;
+  scheduled_at?: string | null;
+  recurrence?: string | null;
+  expires_at?: string | null;
 }
 
 export interface TodoFilters {

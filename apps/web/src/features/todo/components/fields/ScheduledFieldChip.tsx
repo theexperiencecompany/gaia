@@ -2,39 +2,60 @@
 
 import { Input } from "@heroui/react";
 import { Cancel01Icon, Clock01Icon } from "@icons";
-import { format } from "date-fns";
-
 import BaseFieldChip from "./BaseFieldChip";
 
 interface ScheduledFieldChipProps {
   value?: string; // ISO datetime string
   onChange: (scheduledAt?: string) => void;
   className?: string;
+  timezone?: string; // User's preferred timezone
 }
 
 export default function ScheduledFieldChip({
   value,
   onChange,
   className,
+  timezone,
 }: ScheduledFieldChipProps) {
+  // Use user's preferred timezone or fallback to browser timezone
+  const userTimezone =
+    timezone && timezone.trim() !== ""
+      ? timezone
+      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   const formatDisplayValue = (dateString: string) => {
     const date = new Date(dateString);
-    return format(date, "EEE, MMM d 'at' h:mm a");
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: userTimezone,
+    }).format(date);
   };
 
   const displayValue = value ? formatDisplayValue(value) : undefined;
 
-  // Extract date portion (YYYY-MM-DD) from the ISO string
-  const dateInputValue = value ? value.split("T")[0] : "";
+  // Extract date portion (YYYY-MM-DD) in the user's timezone
+  const dateInputValue = value
+    ? new Intl.DateTimeFormat("en-CA", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        timeZone: userTimezone,
+      }).format(new Date(value))
+    : "";
 
-  // Extract time portion (HH:mm) from the ISO string
+  // Extract time portion (HH:mm) in the user's timezone
   const timeInputValue = value
-    ? (() => {
-        const date = new Date(value);
-        const hh = String(date.getHours()).padStart(2, "0");
-        const mm = String(date.getMinutes()).padStart(2, "0");
-        return `${hh}:${mm}`;
-      })()
+    ? new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: userTimezone,
+      }).format(new Date(value))
     : "";
 
   const buildISOFromParts = (datePart: string, timePart: string): string => {

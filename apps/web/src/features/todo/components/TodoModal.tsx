@@ -372,6 +372,7 @@ export default function TodoModal({
                     onChange={(scheduledAt) =>
                       updateField("scheduled_at", scheduledAt)
                     }
+                    timezone={userTimezone}
                   />
                   <RecurrenceFieldChip
                     value={formData.recurrence}

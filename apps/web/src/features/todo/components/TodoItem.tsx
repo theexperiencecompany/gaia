@@ -3,6 +3,7 @@
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import {
+  AiBrainIcon,
   AlertCircleIcon,
   CalendarCheckOut01Icon,
   CheckmarkCircle02Icon,
@@ -130,6 +131,7 @@ export default function TodoItem({
             todo.due_date ||
             todo.scheduled_at ||
             todo.expires_at ||
+            todo.vfs_path ||
             todo.labels.length > 0) && (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {todo.due_date && (
@@ -184,6 +186,21 @@ export default function TodoItem({
                   {formatDistanceToNow(new Date(todo.expires_at), {
                     addSuffix: true,
                   })}
+                </Chip>
+              )}
+
+              {todo.vfs_path && (
+                <Chip
+                  className="flex items-center text-zinc-400 px-1"
+                  size="sm"
+                  radius="sm"
+                  color="secondary"
+                  variant="flat"
+                  startContent={
+                    <AiBrainIcon width={14} height={14} className="mx-1" />
+                  }
+                >
+                  Tracked
                 </Chip>
               )}
 
