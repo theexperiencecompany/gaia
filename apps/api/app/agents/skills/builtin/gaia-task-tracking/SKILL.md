@@ -67,14 +67,20 @@ create_tracked_todo(
 ### Step 4: Take Action and Update Canvas
 After every significant action:
 ```
-vfs_write(
-  path="/users/{user_id}/todos/{todo_id}/canvas.md",
-  content="...updated canvas with new state..."
+update_tracked_todo_canvas(
+  todo_id="...",
+  canvas_content="...full updated canvas with new state..."
 )
 ```
 
 ### Step 5: Complete When Done
-Mark the todo as completed in the normal todo system when the goal is achieved.
+When the todo's goal is fully achieved:
+```
+complete_tracked_todo(
+  todo_id="...",
+  summary="One or two sentences describing what was achieved"
+)
+```
 
 ## Important Rules
 

@@ -13,6 +13,7 @@ from app.db.mongodb.collections import todos_collection
 from app.db.redis import delete_cache
 from app.db.utils import serialize_document
 from app.models.todo_models import TodoResponse
+from app.services.tracked_todo_service import tracked_todo_service
 
 
 async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoResponse]:
@@ -36,18 +37,49 @@ async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoRes
         # Convert string IDs to ObjectIds
         object_ids = [ObjectId(todo_id) for todo_id in todo_ids]
 
-        # Perform bulk update
-        result = await todos_collection.update_many(
-            {"_id": {"$in": object_ids}, "user_id": user_id},
+        # Handle tracked todos lifecycle before bulk update
+        tracked_cursor = todos_collection.find(
             {
-                "$set": {
-                    "completed": True,
-                    "updated_at": datetime.now(timezone.utc),
-                }
+                "_id": {"$in": object_ids},
+                "user_id": user_id,
+                "vfs_path": {"$exists": True, "$ne": None},
             },
+            {"_id": 1},
         )
+        tracked_docs = await tracked_cursor.to_list(length=None)
+        tracked_ids = {doc["_id"] for doc in tracked_docs}
+        for doc in tracked_docs:
+            try:
+                await tracked_todo_service.complete_tracked_todo(
+                    str(doc["_id"]), user_id, "Completed via bulk operation"
+                )
+            except Exception:
+                pass  # Don't block bulk complete if one VFS lifecycle fails
 
-        if result.modified_count == 0:
+        # Only bulk-update the non-tracked todos (tracked ones already updated by service)
+        remaining_ids = [oid for oid in object_ids if oid not in tracked_ids]
+
+        if not remaining_ids and not tracked_ids:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No todos found or already completed",
+            )
+
+        modified_count = 0
+        if remaining_ids:
+            result = await todos_collection.update_many(
+                {"_id": {"$in": remaining_ids}, "user_id": user_id},
+                {
+                    "$set": {
+                        "completed": True,
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+            )
+            modified_count = result.modified_count
+
+        total_modified = modified_count + len(tracked_ids)
+        if total_modified == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No todos found or already completed",
@@ -64,7 +96,7 @@ async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoRes
             if todo.get("project_id"):
                 await delete_cache(f"todos:{user_id}:project:{todo['project_id']}")
 
-        log.info(f"Bulk completed {result.modified_count} todos for user {user_id}")
+        log.info(f"Bulk completed {total_modified} todos for user {user_id}")
 
         return [TodoResponse(**serialize_document(todo)) for todo in todos]
 

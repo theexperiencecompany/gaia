@@ -71,6 +71,10 @@ class TodoBase(BaseModel):
         default=0,
         description="Number of failed execution attempts (managed by system)",
     )
+    expires_at: datetime | None = Field(
+        default=None,
+        description="When this todo becomes irrelevant regardless of completion (LLM-set relevance window)",
+    )
 
 
 # For creating new todos
@@ -100,6 +104,7 @@ class TodoUpdateRequest(BaseModel):
     vfs_path: str | None = None
     scheduled_at: datetime | None = None
     recurrence: str | None = None
+    expires_at: datetime | None = None
 
 
 # For responses with ID and user_id
