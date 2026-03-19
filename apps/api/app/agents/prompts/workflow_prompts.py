@@ -293,16 +293,16 @@ Available Tools:
 {format_instructions}"""
 
 
-SIGNAL_MATCHING_INSTRUCTIONS = """
-TRACKED TODOS (Working Memory)
+SIGNAL_MATCHING_INSTRUCTIONS = """TRACKED TODOS (Working Memory)
 {tracked_todos_context}
 
 SIGNAL MATCHING:
 If the current trigger data (email, calendar event, slack message, etc.) relates to
 any tracked todo listed above, you MUST:
-1. Read the todo's canvas: vfs_read(path="<vfs_path>/canvas.md")
+Note: Replace ACTUAL_VFS_PATH below with the exact vfs path shown next to the matching todo above (e.g. /users/uid/todos/todo_id).
+1. Read the todo's canvas: vfs_read(path="ACTUAL_VFS_PATH/canvas.md")
 2. Update the canvas with the new information from this signal
-3. Write the updated canvas: vfs_write(path="<vfs_path>/canvas.md", content="...")
+3. Write the updated canvas: vfs_write(path="ACTUAL_VFS_PATH/canvas.md", content="...")
 4. Include: what signal arrived, key details, how it changes the Current State
 
 When updating canvas, be verbose:
@@ -502,11 +502,6 @@ For each workflow step:
 6. If a step fails, use your reasoning to determine the best path forward
 7. Remember the email context throughout - this workflow was triggered for a reason
 
-**Your Task:**
-Execute the workflow steps using handoff tools for provider-specific operations while maintaining email context awareness.
-
-Begin executing the workflow steps now, starting with step 1.
-
 **EMAIL TRIGGER DETAILS:**
 - From: {email_sender}
 - Subject: {email_subject}
@@ -521,4 +516,7 @@ Description: {workflow_description}
 {workflow_steps}
 
 {signal_matching_section}
+
+**Your Task:**
+Execute the workflow steps using handoff tools for provider-specific operations while maintaining email context awareness. Begin executing the workflow steps now, starting with step 1.
 """
