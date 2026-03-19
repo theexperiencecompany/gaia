@@ -211,7 +211,7 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
     vfs_path: str | None = doc.get("vfs_path")
     if vfs_path:
         try:
-            canvas_content = await MongoVFS().read(path=vfs_path, user_id=user_id)
+            canvas_content = await MongoVFS().read(path=f"{vfs_path}/canvas.md", user_id=user_id)
         except Exception as exc:
             log.warning(f"_execute_via_agent: could not read VFS canvas at {vfs_path}: {exc}")
 

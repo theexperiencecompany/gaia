@@ -144,6 +144,10 @@ class TrackedTodoService:
         if not doc:
             return False
 
+        # Guard against double-completion (VFS already archived)
+        if doc.get("completed"):
+            return True
+
         vfs_path = doc.get("vfs_path")
         if not vfs_path:
             return False
