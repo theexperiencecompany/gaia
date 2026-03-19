@@ -111,6 +111,16 @@ complete_tracked_todo(
 )
 ```
 
+### Listing All Tracked Todos
+
+Use `list_tracked_todos` when you need a complete view beyond the ACTIVE TRACKED TODOS context block:
+
+```
+list_tracked_todos()
+```
+
+Returns all active tracked todos with full metadata: ID, title, labels, priority, due dates, scheduling, recurrence, expiry, retry count, and VFS paths.
+
 ## Important Rules
 
 1. **Always check active tracked todos** when starting a conversation — the ACTIVE TRACKED TODOS block tells you what's in flight.
