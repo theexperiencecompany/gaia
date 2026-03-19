@@ -291,7 +291,7 @@ class TrackedTodoService:
                     pass
 
             labels_str = f" [{', '.join(labels)}]" if labels else ""
-            entry = f'- "{title}"{labels_str} (id: {todo_id}, vfs: {vfs_path})'
+            entry = f'- "{title}"{labels_str} (ID: {todo_id}, vfs: {vfs_path})'
             if key_details:
                 # Indent key details under the todo
                 detail_lines = key_details.split("\n")

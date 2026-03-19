@@ -98,6 +98,8 @@ async def create_tracked_todo(
                     f"Error: invalid recurrence '{recurrence}'. "
                     f"Use one of: {', '.join(sorted(valid_shortcuts))}, or a valid cron expression."
                 )
+        if not scheduled_at:
+            return "Error: recurrence requires scheduled_at to also be set. Please provide both."
 
     result = await tracked_todo_service.create_tracked_todo(
         user_id=user_id,
@@ -277,6 +279,12 @@ async def update_tracked_todo(
         "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or cron expression. "
         "Set to empty string '' to clear.",
     ] = None,
+    expires_at: Annotated[
+        Optional[str],
+        "ISO datetime when this todo becomes irrelevant. Set to empty string '' to clear. "
+        "Different from due_date: due_date = deadline (overdue = still needs doing), "
+        "expires_at = relevance window (expired = no longer worth tracking).",
+    ] = None,
 ) -> str:
     """Update properties of an existing tracked todo.
 
@@ -291,6 +299,7 @@ async def update_tracked_todo(
         priority: Change priority.
         scheduled_at: Schedule or reschedule execution. Must be in the future.
         recurrence: Set or clear recurrence pattern.
+        expires_at: Set or clear the expiry datetime (when the todo becomes irrelevant).
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
@@ -341,8 +350,23 @@ async def update_tracked_todo(
                     return f"Error: invalid recurrence '{recurrence}'."
             update_fields["recurrence"] = recurrence
 
+    if expires_at is not None:
+        if expires_at == "":
+            update_fields["expires_at"] = None
+        else:
+            try:
+                update_fields["expires_at"] = datetime.fromisoformat(
+                    expires_at.replace("Z", "+00:00")
+                )
+            except ValueError:
+                return f"Error: invalid expires_at format '{expires_at}'."
+
     if not update_fields:
         return "No fields to update. Provide at least one field to change."
+
+    # Guard: cannot clear scheduled_at while recurrence is still being set in the same call
+    if update_fields.get("recurrence") and update_fields.get("scheduled_at") is None and "scheduled_at" in update_fields:
+        return "Error: cannot clear scheduled_at while recurrence is set. Clear recurrence first."
 
     update_fields["updated_at"] = datetime.now(timezone.utc)
 
