@@ -574,6 +574,24 @@ class TodoService:
         except Exception as e:
             log.warning(f"Failed to update index: {str(e)}")
 
+        # Trigger tracked todo completion lifecycle if marked complete and has VFS canvas
+        if (
+            update_dict.get("completed") is True
+            and updated.get("vfs_path")
+        ):
+            try:
+                # Deferred import to avoid circular dependency:
+                # tracked_todo_service -> TodoService -> tracked_todo_service
+                from app.services.tracked_todo_service import (
+                    tracked_todo_service,
+                )
+
+                await tracked_todo_service.complete_tracked_todo(
+                    todo_id, user_id, summary="Completed via UI"
+                )
+            except Exception as e:
+                log.warning(f"Failed tracked todo completion for {todo_id}: {e}")
+
         # Sync subtask changes back to goals if this is a goal-related todo
         if "subtasks" in update_dict:
             try:
