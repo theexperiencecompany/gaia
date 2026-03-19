@@ -39,6 +39,8 @@ from app.models.todo_models import (
 from app.services.todos.sync_service import (
     sync_subtask_to_goal_completion,
 )
+from app.services.vfs.mongo_vfs import MongoVFS
+from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
     bulk_index_todos,
     delete_todo_embedding,
@@ -620,7 +622,26 @@ class TodoService:
             user_id=user_id,
             todo_id=todo_id,
         )
-        # Single atomic delete with ownership verification
+        # Fetch the document before deleting to check for tracked todo assets
+        doc = await todos_collection.find_one(
+            {"_id": ObjectId(todo_id), "user_id": user_id}
+        )
+        if not doc:
+            raise ValueError(f"Todo {todo_id} not found")
+
+        # Clean up tracked todo assets if present
+        if doc.get("vfs_path"):
+            try:
+                await delete_canvas_embedding(todo_id)
+            except Exception as e:
+                log.warning(f"Failed to delete canvas embedding for {todo_id}: {e}")
+            try:
+                vfs = MongoVFS()
+                await vfs.delete(path=doc["vfs_path"], user_id=user_id, recursive=True)
+            except Exception as e:
+                log.warning(f"Failed to delete VFS directory for {todo_id}: {e}")
+
+        # Delete the document with ownership verification
         result = await todos_collection.delete_one(
             {"_id": ObjectId(todo_id), "user_id": user_id}
         )
