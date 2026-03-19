@@ -79,6 +79,16 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
         log.info(f"_execute_todo_with_retry: todo {todo_id} already completed")
         return f"completed:{todo_id}"
 
+    # Skip expired todos — let maintenance sweep handle gracefully
+    if doc.get("expires_at") and doc["expires_at"] <= datetime.now(timezone.utc):
+        log.info(f"Todo {todo_id} has expired (expires_at={doc['expires_at']}), skipping execution")
+        return f"expired:{todo_id}"
+
+    # Skip failed todos — user must manually reset before re-execution
+    if "failed" in doc.get("labels", []):
+        log.info(f"Todo {todo_id} is marked failed, skipping execution")
+        return f"skipped:{todo_id} (marked failed)"
+
     user_id: str = doc.get("user_id", "")
     retry_count: int = doc.get("gaia_retry_count", 0)
 
