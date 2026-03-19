@@ -3,6 +3,7 @@
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import {
+  AlertCircleIcon,
   CalendarCheckOut01Icon,
   CheckmarkCircle02Icon,
   Clock01Icon,
@@ -10,7 +11,7 @@ import {
   Folder02Icon,
   Tag01Icon,
 } from "@icons";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -128,6 +129,7 @@ export default function TodoItem({
           {(todo.priority !== Priority.NONE ||
             todo.due_date ||
             todo.scheduled_at ||
+            todo.expires_at ||
             todo.labels.length > 0) && (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {todo.due_date && (
@@ -164,6 +166,24 @@ export default function TodoItem({
                     new Date(todo.scheduled_at),
                     "EEE, MMM d 'at' h:mm a",
                   )}
+                </Chip>
+              )}
+
+              {todo.expires_at && (
+                <Chip
+                  className="flex items-center text-zinc-400 px-1"
+                  size="sm"
+                  radius="sm"
+                  color="warning"
+                  variant="flat"
+                  startContent={
+                    <AlertCircleIcon width={16} height={16} className="mx-1" />
+                  }
+                >
+                  Expires{" "}
+                  {formatDistanceToNow(new Date(todo.expires_at), {
+                    addSuffix: true,
+                  })}
                 </Chip>
               )}
 

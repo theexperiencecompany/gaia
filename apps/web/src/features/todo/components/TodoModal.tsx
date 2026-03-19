@@ -11,7 +11,8 @@ import {
   Tooltip,
   useDisclosure,
 } from "@heroui/react";
-import { PlusSignIcon } from "@icons";
+import { AlertCircleIcon, PlusSignIcon } from "@icons";
+import { format } from "date-fns";
 import { useCallback, useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
@@ -25,6 +26,7 @@ import {
   type TodoCreate,
 } from "@/types/features/todoTypes";
 
+import RecurrenceFieldChip from "./fields/RecurrenceFieldChip";
 import ScheduledFieldChip from "./fields/ScheduledFieldChip";
 import SubtaskManager from "./shared/SubtaskManager";
 import TodoFieldsRow from "./shared/TodoFieldsRow";
@@ -371,20 +373,25 @@ export default function TodoModal({
                       updateField("scheduled_at", scheduledAt)
                     }
                   />
-                  <select
-                    value={formData.recurrence ?? ""}
-                    onChange={(e) =>
-                      updateField("recurrence", e.target.value || undefined)
-                    }
-                    className="h-8 rounded-lg bg-zinc-800 px-3 text-sm text-zinc-500 outline-none focus:ring-1 focus:ring-zinc-600 hover:bg-zinc-700 hover:text-zinc-400 transition-colors"
-                    aria-label="Recurrence"
-                  >
-                    <option value="">No recurrence</option>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="every_4h">Every 4 hours</option>
-                  </select>
+                  <RecurrenceFieldChip
+                    value={formData.recurrence}
+                    onChange={(val) => updateField("recurrence", val)}
+                  />
                 </div>
+
+                {/* Expires At (read-only, set by the LLM) */}
+                {mode === "edit" && todo?.expires_at && (
+                  <div className="flex items-center gap-2 text-sm text-zinc-500">
+                    <AlertCircleIcon width={16} height={16} />
+                    <span>
+                      Expires{" "}
+                      {format(
+                        new Date(todo.expires_at),
+                        "EEE, MMM d 'at' h:mm a",
+                      )}
+                    </span>
+                  </div>
+                )}
 
                 {/* Subtasks Manager */}
                 <SubtaskManager
