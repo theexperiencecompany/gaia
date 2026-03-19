@@ -11,6 +11,7 @@ Handles:
 
 import random
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import uuid5, NAMESPACE_URL
 from zoneinfo import ZoneInfo
 
@@ -31,6 +32,7 @@ from app.services.notification_service import notification_service
 from app.services.model_service import get_user_selected_model
 from app.services.user_service import get_user_by_id
 from app.services.vfs.mongo_vfs import MongoVFS
+from app.utils.redis_utils import RedisPoolManager
 
 
 MAX_RETRY_ATTEMPTS = 3
@@ -49,9 +51,6 @@ async def execute_tracked_todo(ctx: dict, todo_id: str) -> str:
     async with wide_task("execute_tracked_todo", todo_id=todo_id):
         log.info(f"execute_tracked_todo: starting for todo {todo_id}")
 
-        # Deferred import to avoid circular dependency
-        from app.utils.redis_utils import RedisPoolManager
-
         pool = await RedisPoolManager.get_pool()
         lock_key = f"gaia_todo_exec:{todo_id}"
 
@@ -66,7 +65,7 @@ async def execute_tracked_todo(ctx: dict, todo_id: str) -> str:
             await pool.delete(lock_key)
 
 
-async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool) -> str:
+async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
     """
     Fetch the todo document, run the appropriate execution path, and
     handle retry / recurrence logic on the result.
@@ -82,6 +81,10 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool) -> str:
 
     user_id: str = doc.get("user_id", "")
     retry_count: int = doc.get("gaia_retry_count", 0)
+
+    if not user_id:
+        log.error(f"Todo {todo_id} has no user_id, cannot execute")
+        return f"error:{todo_id} (missing user_id)"
 
     try:
         await _run_execution(doc, user_id)
@@ -153,7 +156,9 @@ async def _run_execution(doc: dict, user_id: str) -> None:
             "trigger_type": "scheduled_todo",
             "todo_id": str(doc["_id"]),
         }
-        await WorkflowQueueService.queue_workflow_execution(workflow_id, user_id, context)
+        success = await WorkflowQueueService.queue_workflow_execution(workflow_id, user_id, context)
+        if not success:
+            raise RuntimeError(f"Failed to queue workflow {workflow_id} for todo {doc['_id']}")
         log.info(f"_run_execution: queued workflow {workflow_id} for todo {doc['_id']}")
     else:
         await _execute_via_agent(doc, user_id)
@@ -237,6 +242,9 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
         user_model_config=user_model_config,
         trigger_context=trigger_context,
     )
+
+    if complete_message and complete_message.startswith("Error when calling silent agent:"):
+        raise RuntimeError(complete_message)
 
     log.info(f"_execute_via_agent: agent completed for todo {todo_id}")
     return complete_message[:200] if complete_message else ""
@@ -334,9 +342,6 @@ async def safety_net_check_orphaned_todos(ctx: dict) -> str:
     For each, checks whether the execution lock already exists; if not,
     re-enqueues with a random 0–60 second jitter to spread load.
     """
-    # Deferred import to avoid circular dependency
-    from app.utils.redis_utils import RedisPoolManager
-
     async with wide_task("safety_net_check_orphaned_todos"):
         now = datetime.now(timezone.utc)
         log.info("safety_net_check_orphaned_todos: scanning for orphaned todos")
@@ -348,7 +353,7 @@ async def safety_net_check_orphaned_todos(ctx: dict) -> str:
                 "labels": "gaia-tracked",
                 "gaia_retry_count": {"$lt": MAX_RETRY_ATTEMPTS},
             }
-        )
+        ).limit(100)
 
         pool = await RedisPoolManager.get_pool()
         re_enqueued = 0
