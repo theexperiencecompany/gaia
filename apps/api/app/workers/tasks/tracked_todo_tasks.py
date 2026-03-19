@@ -12,7 +12,7 @@ Handles:
 import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import uuid5, NAMESPACE_URL
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from bson import ObjectId
@@ -225,10 +225,9 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
         prompt_parts.append(f"Canvas context:\n{canvas_content}")
     prompt = "\n\n".join(prompt_parts)
 
-    # Generate a stable conversation_id from the todo_id so the agent
-    # has thread continuity across retries without persisting a separate
-    # conversation document. Using uuid5 (NAMESPACE_URL) for determinism.
-    conversation_id = str(uuid5(NAMESPACE_URL, f"todo_execution:{todo_id}"))
+    # Generate a fresh conversation_id for each execution to prevent
+    # history accumulation in PostgreSQL. Each execution is independent.
+    conversation_id = str(uuid4())
 
     request = MessageRequestWithHistory(
         message=prompt,

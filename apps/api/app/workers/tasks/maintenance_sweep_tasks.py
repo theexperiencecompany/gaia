@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import NAMESPACE_URL, uuid5
+from uuid import uuid4
 
 from bson import ObjectId
 from shared.py.wide_events import log, wide_task
@@ -389,7 +389,7 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
         log.warning(f"_call_health_check_agent: could not get user model config: {exc}")
 
     user_time = datetime.now(timezone.utc)
-    conversation_id = str(uuid5(NAMESPACE_URL, f"maintenance_check:{todo_id}"))
+    conversation_id = str(uuid4())
 
     request = MessageRequestWithHistory(
         message=prompt,
