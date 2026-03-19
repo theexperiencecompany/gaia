@@ -215,10 +215,11 @@ class TrackedTodoService:
                 else:
                     due_str = f" due({days_until}d)"
 
+            todo_id = str(doc["_id"])
             lines.append(
                 f'  "{doc["title"]}"{labels_str}{due_str}'
                 f" — {age_days}d old, updated {last_update}d ago"
-                f" | VFS: {doc.get('vfs_path', 'none')}"
+                f" | ID: {todo_id} | VFS: {doc.get('vfs_path', 'none')}"
             )
 
         return "\n".join(lines)
