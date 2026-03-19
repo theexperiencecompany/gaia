@@ -15,6 +15,10 @@ from app.workers.tasks import (
     regenerate_workflow_steps,
     store_memories_batch,
 )
+from app.workers.tasks.tracked_todo_tasks import (
+    execute_tracked_todo,
+    safety_net_check_orphaned_todos,
+)
 
 # Configure the worker settings with all task functions and lifecycle hooks
 WorkerSettings.functions = [
@@ -29,6 +33,7 @@ WorkerSettings.functions = [
     process_personalization_task,
     store_memories_batch,
     cleanup_stuck_personalization,
+    execute_tracked_todo,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -49,6 +54,7 @@ WorkerSettings.cron_jobs = [
         minute={0, 30},  # Every 30 minutes
         second=0,
     ),
+    cron(safety_net_check_orphaned_todos, minute={0, 30}, second=0),
 ]
 
 WorkerSettings.on_startup = startup
