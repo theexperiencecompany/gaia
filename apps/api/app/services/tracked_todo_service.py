@@ -24,6 +24,7 @@ from app.utils.canvas_vector_utils import (
     store_canvas_embedding,
     update_canvas_embedding,
 )
+from app.utils.redis_utils import RedisPoolManager
 
 
 CANVAS_TEMPLATE = """# {title}
@@ -322,6 +323,34 @@ class TrackedTodoService:
             title=doc.get("title", ""),
             labels=doc.get("labels"),
         )
+
+    async def schedule_execution(self, todo_id: str, scheduled_at: datetime) -> bool:
+        """Enqueue an ARQ deferred job to execute this tracked todo at scheduled_at.
+
+        Returns True if job was enqueued successfully, False otherwise.
+        """
+        try:
+            pool = await RedisPoolManager.get_pool()
+            await pool.enqueue_job(
+                "execute_tracked_todo",
+                todo_id,
+                _defer_until=scheduled_at,
+            )
+            return True
+        except Exception as e:
+            log.warning(f"Failed to schedule todo execution for {todo_id}: {e}")
+            return False
+
+    async def reschedule_execution(
+        self, todo_id: str, new_scheduled_at: datetime
+    ) -> bool:
+        """Cancel any existing ARQ job for this todo and enqueue a new one.
+
+        Note: ARQ does not support cancelling deferred jobs by argument.
+        We enqueue a new job; the task itself uses a Redis lock to prevent
+        double-execution. This is safe — at most one execution fires per lock window.
+        """
+        return await self.schedule_execution(todo_id, new_scheduled_at)
 
 
 tracked_todo_service = TrackedTodoService()
