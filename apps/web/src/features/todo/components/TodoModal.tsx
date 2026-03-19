@@ -25,6 +25,7 @@ import {
   type TodoCreate,
 } from "@/types/features/todoTypes";
 
+import ScheduledFieldChip from "./fields/ScheduledFieldChip";
 import SubtaskManager from "./shared/SubtaskManager";
 import TodoFieldsRow from "./shared/TodoFieldsRow";
 
@@ -92,6 +93,8 @@ export default function TodoModal({
         project_id: todo.project_id,
         due_date: todo.due_date,
         due_date_timezone: todo.due_date_timezone,
+        scheduled_at: todo.scheduled_at,
+        recurrence: todo.recurrence,
         subtasks: todo.subtasks || [],
       };
     }
@@ -102,6 +105,8 @@ export default function TodoModal({
       labels: [],
       priority: Priority.NONE,
       project_id: initialProjectId,
+      scheduled_at: undefined,
+      recurrence: undefined,
       subtasks: [],
     };
   }, [mode, todo, initialProjectId]);
@@ -191,6 +196,8 @@ export default function TodoModal({
         project_id: todo.project_id,
         due_date: todo.due_date,
         due_date_timezone: todo.due_date_timezone,
+        scheduled_at: todo.scheduled_at,
+        recurrence: todo.recurrence,
         subtasks: todo.subtasks || [],
       });
     }
@@ -355,6 +362,29 @@ export default function TodoModal({
                   onLabelsChange={(labels) => updateField("labels", labels)}
                   userTimezone={userTimezone}
                 />
+
+                {/* Scheduling Row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <ScheduledFieldChip
+                    value={formData.scheduled_at}
+                    onChange={(scheduledAt) =>
+                      updateField("scheduled_at", scheduledAt)
+                    }
+                  />
+                  <select
+                    value={formData.recurrence ?? ""}
+                    onChange={(e) =>
+                      updateField("recurrence", e.target.value || undefined)
+                    }
+                    className="h-8 rounded-lg bg-zinc-800 px-3 text-sm text-zinc-500 outline-none focus:ring-1 focus:ring-zinc-600 hover:bg-zinc-700 hover:text-zinc-400 transition-colors"
+                    aria-label="Recurrence"
+                  >
+                    <option value="">No recurrence</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="every_4h">Every 4 hours</option>
+                  </select>
+                </div>
 
                 {/* Subtasks Manager */}
                 <SubtaskManager

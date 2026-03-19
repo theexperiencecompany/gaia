@@ -5,10 +5,12 @@ import { Chip } from "@heroui/chip";
 import {
   CalendarCheckOut01Icon,
   CheckmarkCircle02Icon,
+  Clock01Icon,
   Flag02Icon,
   Folder02Icon,
   Tag01Icon,
 } from "@icons";
+import { format } from "date-fns";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -125,6 +127,7 @@ export default function TodoItem({
 
           {(todo.priority !== Priority.NONE ||
             todo.due_date ||
+            todo.scheduled_at ||
             todo.labels.length > 0) && (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {todo.due_date && (
@@ -143,6 +146,24 @@ export default function TodoItem({
                   }
                 >
                   {formatDate(todo.due_date)}
+                </Chip>
+              )}
+
+              {todo.scheduled_at && (
+                <Chip
+                  className="flex items-center text-zinc-400 px-1"
+                  size="sm"
+                  radius="sm"
+                  color="primary"
+                  variant="flat"
+                  startContent={
+                    <Clock01Icon width={16} height={16} className="mx-1" />
+                  }
+                >
+                  {format(
+                    new Date(todo.scheduled_at),
+                    "EEE, MMM d 'at' h:mm a",
+                  )}
                 </Chip>
               )}
 
