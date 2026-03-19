@@ -114,12 +114,25 @@ async def maintenance_sweep_tracked_todos(ctx: dict) -> str:
 
 
 def _has_upcoming_schedule(doc: dict, now: datetime) -> bool:
-    """Return True if the todo has a future scheduled_at or a recurrence rule."""
+    """Return True if the todo has a genuine upcoming execution.
+
+    A recurring todo with a stale scheduled_at (>2 days old) is NOT considered
+    to have an upcoming schedule — it's likely orphaned.
+    """
     scheduled_at: datetime | None = doc.get("scheduled_at")
     if scheduled_at and scheduled_at > now:
         return True
+
+    # Recurrence alone doesn't count if the last scheduled_at is stale
     if doc.get("recurrence"):
-        return True
+        if scheduled_at:
+            days_since_scheduled = (now - scheduled_at).days
+            if days_since_scheduled <= 2:
+                # Recently executed recurring todo — next run is coming
+                return True
+        # Recurrence set but scheduled_at is missing or stale — orphaned
+        return False
+
     return False
 
 
@@ -151,11 +164,9 @@ def _is_dormant(doc: dict, now: datetime) -> bool:
         return True
 
     # Blocking label present — only surface if it has been stuck too long
-    created_at: datetime | None = doc.get("created_at")
-    if created_at:
-        label_days = (now - created_at).days
-        if label_days > WAITING_LABEL_MAX_DAYS:
-            return True
+    # Use idle_days as proxy for label age (label changes trigger updated_at)
+    if idle_days > WAITING_LABEL_MAX_DAYS:
+        return True
 
     return False
 
