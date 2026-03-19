@@ -14,6 +14,8 @@ from app.db.redis import delete_cache
 from app.db.utils import serialize_document
 from app.models.todo_models import TodoResponse
 from app.services.tracked_todo_service import tracked_todo_service
+from app.services.vfs.mongo_vfs import MongoVFS
+from app.utils.canvas_vector_utils import delete_canvas_embedding
 
 
 async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoResponse]:
@@ -219,14 +221,37 @@ async def bulk_delete_todos(todo_ids: List[str], user_id: str) -> None:
         # Convert string IDs to ObjectIds
         object_ids = [ObjectId(todo_id) for todo_id in todo_ids]
 
-        # Get project IDs for cache clearing
+        # Get project IDs and vfs_path for cache clearing and tracked todo cleanup
         cursor = todos_collection.find(
-            {"_id": {"$in": object_ids}, "user_id": user_id}, {"project_id": 1}
+            {"_id": {"$in": object_ids}, "user_id": user_id},
+            {"project_id": 1, "vfs_path": 1},
         )
         todos_to_delete = await cursor.to_list(length=None)
         project_ids = set(
             todo.get("project_id") for todo in todos_to_delete if todo.get("project_id")
         )
+
+        # Clean up tracked todo assets before deletion
+        tracked_cursor = todos_collection.find(
+            {
+                "_id": {"$in": object_ids},
+                "user_id": user_id,
+                "vfs_path": {"$exists": True, "$ne": None},
+            },
+            {"_id": 1, "vfs_path": 1},
+        )
+        tracked_docs = await tracked_cursor.to_list(length=None)
+        for doc in tracked_docs:
+            tid = str(doc["_id"])
+            try:
+                await delete_canvas_embedding(tid)
+            except Exception:
+                pass
+            try:
+                vfs = MongoVFS()
+                await vfs.delete(path=doc["vfs_path"], user_id=user_id, recursive=True)
+            except Exception:
+                pass
 
         # Perform bulk delete
         result = await todos_collection.delete_many(
