@@ -9,6 +9,7 @@ Handles:
 - Safety-net cron for orphaned todos
 """
 
+import random
 from datetime import datetime, timedelta, timezone
 from uuid import uuid5, NAMESPACE_URL
 from zoneinfo import ZoneInfo
@@ -333,8 +334,6 @@ async def safety_net_check_orphaned_todos(ctx: dict) -> str:
     For each, checks whether the execution lock already exists; if not,
     re-enqueues with a random 0–60 second jitter to spread load.
     """
-    import random
-
     # Deferred import to avoid circular dependency
     from app.utils.redis_utils import RedisPoolManager
 
