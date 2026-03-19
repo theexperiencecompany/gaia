@@ -352,5 +352,24 @@ class TrackedTodoService:
         """
         return await self.schedule_execution(todo_id, new_scheduled_at)
 
+    async def archive_tracked_todo(
+        self, todo_id: str, user_id: str, reason: str
+    ) -> bool:
+        """Archive a tracked todo by marking it completed with a system-generated summary.
+
+        Used by maintenance sweep when a todo expires cleanly (no action needed).
+        Logs the archival reason to log.md before completing.
+        """
+        try:
+            await self.system_log(
+                todo_id, user_id, "auto_archived", f"Archived by maintenance sweep: {reason}"
+            )
+            return await self.complete_tracked_todo(
+                todo_id, user_id, summary=f"Auto-archived: {reason}"
+            )
+        except Exception as e:
+            log.warning(f"Failed to archive tracked todo {todo_id}: {e}")
+            return False
+
 
 tracked_todo_service = TrackedTodoService()
