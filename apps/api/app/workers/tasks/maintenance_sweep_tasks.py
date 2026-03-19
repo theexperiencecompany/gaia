@@ -26,6 +26,7 @@ from app.utils.redis_utils import RedisPoolManager
 DORMANT_DAYS = 5
 WAITING_LABEL_MAX_DAYS = 8
 NOTIFICATION_COOLDOWN_SECONDS = 86400  # 24 hours
+MAX_HEALTH_CHECKS_PER_USER = 10  # Max agent health-check calls per user per sweep
 
 BLOCKING_LABELS = {"waiting-for-reply", "waiting-for-approval", "blocked"}
 
@@ -83,8 +84,15 @@ async def maintenance_sweep_tracked_todos(ctx: dict) -> str:
         requeued = 0
         needs_attention_todos: list[dict] = []
 
+        # Track health-check calls per user to cap LLM usage per sweep
+        health_checks_used: dict[str, int] = {}
+
         for doc in expired:
+            uid = doc["user_id"]
+            if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
+                continue
             result = await _health_check_expired(doc, pool)
+            health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
             if result == "archived":
                 archived += 1
             else:
@@ -95,7 +103,12 @@ async def maintenance_sweep_tracked_todos(ctx: dict) -> str:
             notified_overdue += 1
 
         for doc in dormant:
+            uid = doc["user_id"]
+            if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
+                needs_attention_todos.append(doc)
+                continue
             result = await _health_check_dormant(doc, pool)
+            health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
             if result == "requeued":
                 requeued += 1
             else:
