@@ -369,6 +369,7 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
     # Deferred import to avoid circular dependency
     from app.agents.core.agent import call_agent_silent
     from app.models.message_models import MessageRequestWithHistory
+    from app.services.model_service import get_user_selected_model
     from app.services.user_service import get_user_by_id
 
     try:
@@ -380,6 +381,12 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
     except Exception as exc:
         log.warning(f"_call_health_check_agent: could not fetch user {user_id}: {exc}")
         user_data = {"user_id": user_id, "name": "User"}
+
+    user_model_config = None
+    try:
+        user_model_config = await get_user_selected_model(user_id)
+    except Exception as exc:
+        log.warning(f"_call_health_check_agent: could not get user model config: {exc}")
 
     user_time = datetime.now(timezone.utc)
     conversation_id = str(uuid5(NAMESPACE_URL, f"maintenance_check:{todo_id}"))
@@ -398,6 +405,7 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
             conversation_id=conversation_id,
             user=user_data,
             user_time=user_time,
+            user_model_config=user_model_config,
             trigger_context={
                 "trigger_type": "maintenance_health_check",
                 "todo_id": todo_id,
