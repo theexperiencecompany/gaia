@@ -20,6 +20,21 @@ target: executor
 - The task completes entirely within this conversation
 - It's a simple lookup or question
 
+## due_date vs expires_at
+
+These serve different purposes and can both be set:
+
+- **due_date** = **deadline** ("this needs to be done by Friday"). If overdue, the task still needs doing. Use for actionable deadlines.
+- **expires_at** = **relevance window** ("this only matters for the next 3 days"). If expired, the task is no longer worth tracking. Use for time-sensitive context.
+
+**Examples:**
+- "Book restaurant for anniversary dinner" → `due_date` = anniversary eve. No `expires_at`.
+- "Check if Amazon package arrived" → `expires_at` = 3 days from now. No `due_date`.
+- "Send cold follow-up if Sarah doesn't reply" → `expires_at` = 14 days (lead gone cold). No `due_date`.
+- "File taxes" → `due_date` = April 15, `expires_at` = April 15 (both: deadline AND hard cutoff).
+
+**When NOT to set `expires_at`:** Open-ended tasks with no natural expiry ("research competitors", "improve test coverage"). Only set it when there's a genuine time window after which the task becomes meaningless.
+
 ## Strategy
 
 ### Search Before Creating
