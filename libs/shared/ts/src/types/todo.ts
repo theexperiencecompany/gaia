@@ -26,6 +26,8 @@ export interface Todo {
   subtasks: SubTask[];
   workflow_id?: string;
   vfs_path?: string;
+  scheduled_at?: string;   // ISO datetime string
+  recurrence?: string;     // 'daily' | 'weekly' | 'every_4h' | cron expression
   workflow_categories?: string[];
   starred?: boolean;
   created_at: string;

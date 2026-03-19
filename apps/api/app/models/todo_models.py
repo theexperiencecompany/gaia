@@ -59,6 +59,18 @@ class TodoBase(BaseModel):
         default=None,
         description="VFS directory for tracked todos (canvas.md + log.md)",
     )
+    scheduled_at: datetime | None = Field(
+        default=None,
+        description="When GAIA should execute this tracked todo",
+    )
+    recurrence: str | None = Field(
+        default=None,
+        description="Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'",
+    )
+    gaia_retry_count: int = Field(
+        default=0,
+        description="Number of failed execution attempts (managed by system)",
+    )
 
 
 # For creating new todos
@@ -86,6 +98,8 @@ class TodoUpdateRequest(BaseModel):
     subtasks: list[SubTask] | None = None
     workflow_id: str | None = None
     vfs_path: str | None = None
+    scheduled_at: datetime | None = None
+    recurrence: str | None = None
 
 
 # For responses with ID and user_id
