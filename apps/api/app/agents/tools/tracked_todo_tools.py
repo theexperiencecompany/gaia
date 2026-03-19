@@ -363,4 +363,69 @@ async def update_tracked_todo(
     return f"Updated tracked todo {todo_id}: {', '.join(updated_keys)}"
 
 
-tools = [create_tracked_todo, search_todo_context, update_tracked_todo_canvas, complete_tracked_todo, update_tracked_todo]
+@tool
+async def list_tracked_todos(
+    config: RunnableConfig,
+) -> str:
+    """List all active tracked todos with full metadata.
+
+    Returns a formatted list of all tracked todos (not completed) with their
+    ID, title, labels, due_date, scheduled_at, recurrence, expires_at,
+    priority, and age. Use this when you need a complete picture of all
+    tracked work, beyond what's in the ACTIVE TRACKED TODOS context block.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return "Error: user_id not found in config"
+
+    cursor = todos_collection.find(
+        {
+            "user_id": user_id,
+            "labels": "gaia-tracked",
+            "completed": False,
+        }
+    ).sort("updated_at", -1).limit(50)
+
+    docs = await cursor.to_list(length=50)
+    if not docs:
+        return "No active tracked todos."
+
+    now = datetime.now(timezone.utc)
+    lines: list[str] = []
+
+    for doc in docs:
+        todo_id = str(doc["_id"])
+        title = doc.get("title", "Untitled")
+        labels = [lbl for lbl in doc.get("labels", []) if lbl != "gaia-tracked"]
+        labels_str = f" [{', '.join(labels)}]" if labels else ""
+        priority = doc.get("priority", "none")
+        age_days = (now - doc.get("created_at", now)).days
+        last_update = (now - doc.get("updated_at", now)).days
+
+        parts = [f'- "{title}"{labels_str} (ID: {todo_id})']
+        parts.append(f"  Priority: {priority} | Age: {age_days}d | Last updated: {last_update}d ago")
+
+        detail_parts: list[str] = []
+        if doc.get("due_date"):
+            days_until = (doc["due_date"] - now).days
+            detail_parts.append(f"Due: {'OVERDUE ' + str(-days_until) + 'd' if days_until < 0 else str(days_until) + 'd'}")
+        if doc.get("scheduled_at"):
+            detail_parts.append(f"Scheduled: {doc['scheduled_at'].isoformat()}")
+        if doc.get("recurrence"):
+            detail_parts.append(f"Recurrence: {doc['recurrence']}")
+        if doc.get("expires_at"):
+            expires_days = (doc["expires_at"] - now).days
+            detail_parts.append(f"Expires: {'EXPIRED ' + str(-expires_days) + 'd ago' if expires_days < 0 else 'in ' + str(expires_days) + 'd'}")
+        if doc.get("gaia_retry_count", 0) > 0:
+            detail_parts.append(f"Retries: {doc['gaia_retry_count']}")
+
+        if detail_parts:
+            parts.append(f"  {' | '.join(detail_parts)}")
+
+        parts.append(f"  VFS: {doc.get('vfs_path', 'none')}")
+        lines.append("\n".join(parts))
+
+    return f"Active tracked todos ({len(docs)}):\n\n" + "\n\n".join(lines)
+
+
+tools = [create_tracked_todo, search_todo_context, update_tracked_todo_canvas, complete_tracked_todo, update_tracked_todo, list_tracked_todos]
