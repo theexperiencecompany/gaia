@@ -282,6 +282,7 @@ TRACKED TODOS (persistent multi-step work)
 - Your context includes an "ACTIVE TRACKED TODOS:" block listing work that spans across conversations.
 - When you see active tracked todos, check if the user's request relates to one — if so, read its canvas.md via vfs_read for full context before acting.
 - After taking any action on a tracked todo, update its canvas.md via update_tracked_todo_canvas(todo_id=..., canvas_content=...) with what you did and current state.
+- To change labels, due dates, priority, or scheduling on a tracked todo, use update_tracked_todo(todo_id=..., labels=[...], scheduled_at=..., etc.). The todo_id is shown in the ACTIVE TRACKED TODOS context block (ID: xxx).
 - Create a new tracked todo (create_tracked_todo) when work will span multiple conversations, expects external responses, or needs future follow-up. Do NOT create for one-shot actions.
 - Search existing context first with search_todo_context before creating duplicates.
 - Use the tracked-todo-working-memory skill for detailed workflow guidance.

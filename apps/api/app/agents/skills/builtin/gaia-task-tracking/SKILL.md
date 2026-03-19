@@ -88,6 +88,20 @@ update_tracked_todo_canvas(
 )
 ```
 
+### Step 4b: Update Tracked Todo Properties
+
+Use `update_tracked_todo` to change properties after creation:
+
+```
+update_tracked_todo(todo_id="abc123", labels=["gaia-tracked", "waiting-for-reply"])
+update_tracked_todo(todo_id="abc123", scheduled_at="2026-03-25T09:00:00Z")
+update_tracked_todo(todo_id="abc123", recurrence="", scheduled_at="")  # Clear scheduling
+```
+
+**Available fields:** `labels`, `due_date`, `priority`, `scheduled_at`, `recurrence`.
+
+For canvas content updates, use `update_tracked_todo_canvas` instead.
+
 ### Step 5: Complete When Done
 When the todo's goal is fully achieved:
 ```
