@@ -274,7 +274,7 @@ async def format_workflow_execution_message(
 
     signal_matching_section = ""
     if tracked_todos_ctx:
-        signal_matching_section = SIGNAL_MATCHING_INSTRUCTIONS.format(
+        signal_matching_section = "\n" + SIGNAL_MATCHING_INSTRUCTIONS.format(
             tracked_todos_context=tracked_todos_ctx
         )
 
