@@ -5,6 +5,7 @@ Indexes canvas.md content for semantic search across all of a user's
 tracked todos. Follows the same pattern as todo_vector_utils.py.
 """
 
+import asyncio
 from datetime import datetime, timezone
 
 from shared.py.wide_events import log
@@ -55,11 +56,39 @@ async def update_canvas_embedding(
     title: str = "",
     labels: list[str] | None = None,
 ) -> bool:
-    """Re-index canvas content after update."""
+    """Re-index canvas content after update, preserving completed status."""
+    # Preserve completed metadata before deleting the old embedding
+    was_completed = False
+    completed_at_value: str | None = None
+    try:
+        chroma_collection = await ChromaClient.get_langchain_client(
+            collection_name=COLLECTION_NAME, create_if_not_exists=True
+        )
+        existing = await asyncio.to_thread(
+            chroma_collection._collection.get,
+            ids=[f"canvas_{todo_id}"],
+            include=["metadatas"],
+        )
+        if existing and existing.get("metadatas") and existing["metadatas"][0]:
+            old_meta = existing["metadatas"][0]
+            was_completed = bool(old_meta.get("completed", False))
+            completed_at_value = old_meta.get("completed_at")
+    except Exception:
+        pass  # If we can't read old metadata, default to not-completed
+
     await delete_canvas_embedding(todo_id)
-    return await store_canvas_embedding(
+    result = await store_canvas_embedding(
         todo_id, canvas_content, user_id, title, labels
     )
+
+    # Restore completed status if the todo was previously completed
+    if result and was_completed:
+        try:
+            await mark_canvas_completed(todo_id)
+        except Exception:
+            pass
+
+    return result
 
 
 async def delete_canvas_embedding(todo_id: str) -> bool:
@@ -87,15 +116,20 @@ async def mark_canvas_completed(todo_id: str) -> bool:
         )
         doc_id = f"canvas_{todo_id}"
 
-        existing = await chroma_collection.aget(ids=[doc_id], include=["metadatas"])
+        existing = await asyncio.to_thread(
+            chroma_collection._collection.get, ids=[doc_id], include=["metadatas"]
+        )
         if not existing or not existing["metadatas"]:
             return False
 
-        metadata = existing["metadatas"][0]
+        metadata: dict[str, str | int | float | bool | None] = dict(
+            existing["metadatas"][0]
+        )
         metadata["completed"] = True
         metadata["completed_at"] = datetime.now(timezone.utc).isoformat()
 
-        await chroma_collection.aupdate(
+        await asyncio.to_thread(
+            chroma_collection._collection.update,
             ids=[doc_id],
             metadatas=[metadata],
         )
