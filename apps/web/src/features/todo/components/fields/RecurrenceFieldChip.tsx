@@ -44,10 +44,19 @@ export default function RecurrenceFieldChip({
           {RECURRENCE_OPTIONS.map((option) => (
             <div
               key={option.value ?? "none"}
+              role="option"
+              tabIndex={0}
               onClick={(e) => {
                 e.stopPropagation();
                 onChange(option.value);
                 onClose();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onChange(option.value);
+                  onClose();
+                }
               }}
               className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-zinc-800 ${
                 value === option.value || (!value && option.value === undefined)
