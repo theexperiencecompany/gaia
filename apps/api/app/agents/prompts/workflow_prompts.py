@@ -296,22 +296,28 @@ Available Tools:
 SIGNAL_MATCHING_INSTRUCTIONS = """TRACKED TODOS (Working Memory)
 {tracked_todos_context}
 
-SIGNAL MATCHING:
-If the current trigger data (email, calendar event, slack message, etc.) relates to
-any tracked todo listed above, you MUST:
-Note: Replace ACTUAL_VFS_PATH below with the exact vfs path shown next to the matching todo above (e.g. /users/uid/todos/todo_id).
-1. Read the todo's canvas: vfs_read(path="ACTUAL_VFS_PATH/canvas.md")
-2. Update the canvas with the new information from this signal
-3. Write the updated canvas: vfs_write(path="ACTUAL_VFS_PATH/canvas.md", content="...")
-4. Include: what signal arrived, key details, how it changes the Current State
+SIGNAL MATCHING (CRITICAL — do this BEFORE executing the workflow):
+Check if the incoming signal (email, calendar event, slack message, etc.) relates to
+any tracked todo listed above. Match by:
+- Email address or sender name appearing in a todo's Key Details
+- Thread ID, event ID, or issue ID matching a todo's Key Details
+- Subject or content that clearly relates to a todo's title or description
+- Same person, project, or topic as an active todo
 
-When updating canvas, be verbose:
-- Include email addresses, thread IDs, event IDs
-- Quote relevant content from the signal
-- Update the "Current State" section to reflect new reality
-- Add to "Timeline" section with timestamp
+If a match is found, you MUST:
+1. Read the todo's canvas first: vfs_read(path="<vfs_path_from_above>/canvas.md")
+2. Update the canvas with the new signal information
+3. Write the updated canvas: vfs_write(path="<vfs_path_from_above>/canvas.md", content="<full_updated_canvas>")
 
-If no tracked todo matches, proceed with normal workflow execution.
+When updating canvas, be verbose — this is GAIA's working memory:
+- Include email addresses, thread IDs, event IDs, timestamps
+- Quote relevant content from the signal (key sentences, not entire emails)
+- Update the "Current State" section to reflect the new reality
+- Add to "Timeline" section: "- {date}: {what happened}"
+- If the signal changes what should happen next, update Current State accordingly
+
+After updating the canvas, proceed with normal workflow execution.
+If no tracked todo matches, proceed with normal workflow execution directly.
 """
 
 
