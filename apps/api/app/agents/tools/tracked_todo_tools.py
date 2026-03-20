@@ -145,12 +145,67 @@ async def create_tracked_todo(
                 f"The todo exists but will NOT execute automatically."
             )
 
+    # Search for similar past work and attach references
+    reference_ids: list[str] = []
+    reference_context = ""
+    try:
+        similar = await tracked_todo_service.find_similar_past_work(
+            query=f"{title} {description or ''}", user_id=user_id, top_k=3
+        )
+        if similar:
+            reference_ids = [s["todo_id"] for s in similar]
+            await todos_collection.update_one(
+                {"_id": ObjectId(result.id)},
+                {"$set": {"references": reference_ids}},
+            )
+            # Read referenced canvases for learnings
+            ref_lines: list[str] = []
+            vfs = MongoVFS()
+            for ref in similar:
+                try:
+                    ref_todo = await todos_collection.find_one({"_id": ObjectId(ref["todo_id"])})
+                    if ref_todo and ref_todo.get("vfs_path"):
+                        ref_canvas = await vfs.read(
+                            path=f"{ref_todo['vfs_path']}/canvas.md", user_id=user_id
+                        )
+                        if ref_canvas and "## Learnings" in ref_canvas:
+                            learnings_start = ref_canvas.index("## Learnings")
+                            next_section = ref_canvas.find("\n## ", learnings_start + 1)
+                            learnings = ref_canvas[learnings_start:next_section] if next_section != -1 else ref_canvas[learnings_start:]
+                            ref_lines.append(
+                                f"From \"{ref['title']}\" (ID: {ref['todo_id']}, score: {ref['score']}):\n{learnings.strip()}"
+                            )
+                        else:
+                            ref_lines.append(
+                                f"From \"{ref['title']}\" (ID: {ref['todo_id']}, score: {ref['score']}): {ref.get('snippet', '')[:200]}"
+                            )
+                except Exception:
+                    ref_lines.append(f"From \"{ref['title']}\" (ID: {ref['todo_id']}): {ref.get('snippet', '')[:200]}")
+            if ref_lines:
+                reference_context = "\n\n## Past References\n" + "\n\n".join(ref_lines)
+                try:
+                    await vfs.append(
+                        path=f"{result.vfs_path}/canvas.md",
+                        content=f"\n{reference_context}",
+                        user_id=user_id,
+                    )
+                    await tracked_todo_service.reindex_canvas(result.id, user_id)
+                except Exception as e:
+                    log.warning(f"Failed to append reference context to canvas: {e}")
+    except Exception as e:
+        log.warning(f"Failed to find similar past work for {result.id}: {e}")
+
+    ref_msg = ""
+    if reference_ids:
+        ref_msg = f"\nReferences: {len(reference_ids)} similar past todo(s) found and linked"
+
     return (
         f"Tracked todo created: {result.id}\n"
         f"Title: {result.title}\n"
         f"VFS: {result.vfs_path}\n"
         f"Canvas: {result.vfs_path}/canvas.md\n"
         f"Log: {result.vfs_path}/log.md"
+        f"{ref_msg}"
     )
 
 
@@ -159,6 +214,7 @@ async def search_todo_context(
     config: RunnableConfig,
     query: Annotated[str, "Search query to find relevant tracked todo context"],
     top_k: Annotated[int, "Max results to return"] = 5,
+    include_completed: Annotated[bool, "Include completed todos in search results (default True for full history)"] = True,
 ) -> str:
     """
     Semantic search across all tracked todo canvases for the current user.
@@ -174,6 +230,7 @@ async def search_todo_context(
         query=query,
         user_id=user_id,
         top_k=top_k,
+        include_completed=include_completed,
     )
 
     if not matches:
@@ -181,8 +238,9 @@ async def search_todo_context(
 
     lines = []
     for m in matches:
+        status = " [completed]" if m.get("completed") else ""
         lines.append(
-            f"- [{m['title']}] (todo_id: {m['todo_id']}, score: {m['score']})\n"
+            f"- [{m['title']}]{status} (todo_id: {m['todo_id']}, score: {m['score']})\n"
             f"  {m['snippet'][:200]}"
         )
     return "\n".join(lines)
@@ -285,6 +343,10 @@ async def update_tracked_todo(
         "Different from due_date: due_date = deadline (overdue = still needs doing), "
         "expires_at = relevance window (expired = no longer worth tracking).",
     ] = None,
+    references: Annotated[
+        Optional[list[str]],
+        "IDs of related past tracked todos to link. Appended to existing references.",
+    ] = None,
 ) -> str:
     """Update properties of an existing tracked todo.
 
@@ -300,6 +362,7 @@ async def update_tracked_todo(
         scheduled_at: Schedule or reschedule execution. Must be in the future.
         recurrence: Set or clear recurrence pattern.
         expires_at: Set or clear the expiry datetime (when the todo becomes irrelevant).
+        references: IDs of related past tracked todos to link (appended to existing).
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
@@ -384,6 +447,14 @@ async def update_tracked_todo(
         await tracked_todo_service.reschedule_execution(todo_id, parsed_at)
 
     updated_keys = [k for k in update_fields if k != "updated_at"]
+
+    if references is not None:
+        await todos_collection.update_one(
+            {"_id": ObjectId(todo_id), "user_id": user_id},
+            {"$addToSet": {"references": {"$each": references}}},
+        )
+        updated_keys.append("references")
+
     return f"Updated tracked todo {todo_id}: {', '.join(updated_keys)}"
 
 
