@@ -215,6 +215,30 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
         except Exception as exc:
             log.warning(f"_execute_via_agent: could not read VFS canvas at {vfs_path}: {exc}")
 
+    # Read referenced canvases for institutional memory
+    reference_context = ""
+    ref_ids: list[str] = doc.get("references", [])
+    if ref_ids:
+        ref_parts: list[str] = []
+        for ref_id in ref_ids[:5]:  # Cap at 5 to avoid context bloat
+            try:
+                ref_doc = await todos_collection.find_one({"_id": ObjectId(ref_id)})
+                if ref_doc and ref_doc.get("vfs_path"):
+                    ref_canvas = await MongoVFS().read(
+                        path=f"{ref_doc['vfs_path']}/canvas.md", user_id=user_id
+                    )
+                    if ref_canvas and "## Learnings" in ref_canvas:
+                        learnings_start = ref_canvas.index("## Learnings")
+                        next_section = ref_canvas.find("\n## ", learnings_start + 1)
+                        learnings = ref_canvas[learnings_start:next_section] if next_section != -1 else ref_canvas[learnings_start:]
+                        ref_parts.append(
+                            f"From past todo \"{ref_doc.get('title', 'Unknown')}\":\n{learnings.strip()}"
+                        )
+            except Exception:
+                continue
+        if ref_parts:
+            reference_context = "\n\nPast experience (from similar completed todos):\n" + "\n\n".join(ref_parts)
+
     # Build prompt
     title: str = doc.get("title", "Untitled Todo")
     description: str = doc.get("description", "")
@@ -223,6 +247,8 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
         prompt_parts.append(f"Details: {description}")
     if canvas_content:
         prompt_parts.append(f"Canvas context:\n{canvas_content}")
+    if reference_context:
+        prompt_parts.append(reference_context)
     prompt = "\n\n".join(prompt_parts)
 
     # Generate a fresh conversation_id for each execution to prevent
