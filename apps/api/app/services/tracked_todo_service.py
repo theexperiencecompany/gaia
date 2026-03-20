@@ -20,7 +20,7 @@ from app.models.todo_models import Priority, TodoModel, TodoResponse
 from app.services.todos.todo_service import TodoService
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import (
-    delete_canvas_embedding,
+    mark_canvas_completed,
     store_canvas_embedding,
     update_canvas_embedding,
 )
@@ -179,8 +179,8 @@ class TrackedTodoService:
             },
         )
 
-        # Remove from ChromaDB index
-        await delete_canvas_embedding(todo_id)
+        # Mark as completed in ChromaDB (keep embedding but mark completed)
+        await mark_canvas_completed(todo_id)
 
         log.info(
             "tracked_todo.completed",
@@ -375,6 +375,23 @@ class TrackedTodoService:
         except Exception as e:
             log.warning(f"Failed to archive tracked todo {todo_id}: {e}")
             return False
+
+    async def find_similar_past_work(
+        self, query: str, user_id: str, top_k: int = 3
+    ) -> list[dict]:
+        """Search completed tracked todo canvases for similar past work.
+
+        Returns a list of matches with todo_id, title, score, and snippet.
+        Only returns completed todos.
+        """
+        from app.utils.canvas_vector_utils import search_canvas_context
+
+        all_results = await search_canvas_context(
+            query=query, user_id=user_id, top_k=top_k * 2, include_completed=True
+        )
+
+        completed_results = [r for r in all_results if r.get("completed")]
+        return completed_results[:top_k]
 
 
 tracked_todo_service = TrackedTodoService()
