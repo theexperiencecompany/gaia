@@ -21,6 +21,7 @@ from app.services.todos.todo_service import TodoService
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import (
     mark_canvas_completed,
+    search_canvas_context,
     store_canvas_embedding,
     update_canvas_embedding,
 )
@@ -294,8 +295,8 @@ class TrackedTodoService:
                         )
                         if match:
                             key_details = match.group(1).strip()
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning("tracked_todo.canvas_read_failed", todo_id=str(doc["_id"]), error=str(e))
 
             labels_str = f" [{', '.join(labels)}]" if labels else ""
             entry = f'- "{title}"{labels_str} (ID: {todo_id}, vfs: {vfs_path})'
@@ -346,7 +347,7 @@ class TrackedTodoService:
             )
             return True
         except Exception as e:
-            log.warning(f"Failed to schedule todo execution for {todo_id}: {e}")
+            log.warning("tracked_todo.schedule_failed", todo_id=todo_id, error=str(e))
             return False
 
     async def reschedule_execution(
@@ -376,7 +377,7 @@ class TrackedTodoService:
                 todo_id, user_id, summary=f"Auto-archived: {reason}"
             )
         except Exception as e:
-            log.warning(f"Failed to archive tracked todo {todo_id}: {e}")
+            log.warning("tracked_todo.archive_failed", todo_id=todo_id, error=str(e))
             return False
 
     async def find_similar_past_work(
@@ -387,8 +388,6 @@ class TrackedTodoService:
         Returns a list of matches with todo_id, title, score, and snippet.
         Only returns completed todos.
         """
-        from app.utils.canvas_vector_utils import search_canvas_context
-
         all_results = await search_canvas_context(
             query=query, user_id=user_id, top_k=top_k * 2, include_completed=True
         )

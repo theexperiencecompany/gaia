@@ -115,7 +115,7 @@ async def maintenance_sweep_tracked_todos(ctx: dict) -> str:
                 needs_attention_todos.append(doc)
 
         if needs_attention_todos:
-            await _send_dormant_digest(needs_attention_todos, pool)
+            await _send_dormant_digest(needs_attention_todos)
 
         summary = (
             f"archived:{archived} notified_expired:{notified_expired} "
@@ -309,7 +309,7 @@ async def _notify_overdue(doc: dict, pool: Any) -> None:
     log.info(f"_notify_overdue: notified for overdue todo {todo_id} ({days_overdue}d overdue)")
 
 
-async def _send_dormant_digest(todos: list[dict], pool: Any) -> None:
+async def _send_dormant_digest(todos: list[dict]) -> None:
     """Send a single digest notification for all dormant todos that need attention."""
     if not todos:
         return

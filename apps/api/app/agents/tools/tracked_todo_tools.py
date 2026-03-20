@@ -139,7 +139,7 @@ async def create_tracked_todo(
                     f"The todo exists but will NOT execute automatically at {scheduled_at}."
                 )
         except Exception as e:
-            log.warning(f"Created todo {result.id} but failed to schedule: {e}")
+            log.warning("tracked_todo.schedule_after_create_failed", todo_id=result.id, error=str(e))
             return (
                 f"Tracked todo created (ID: {result.id}) but scheduling failed: {e}. "
                 f"The todo exists but will NOT execute automatically."
@@ -191,9 +191,9 @@ async def create_tracked_todo(
                     )
                     await tracked_todo_service.reindex_canvas(result.id, user_id)
                 except Exception as e:
-                    log.warning(f"Failed to append reference context to canvas: {e}")
+                    log.warning("tracked_todo.append_reference_context_failed", error=str(e))
     except Exception as e:
-        log.warning(f"Failed to find similar past work for {result.id}: {e}")
+        log.warning("tracked_todo.find_similar_past_work_failed", todo_id=result.id, error=str(e))
 
     ref_msg = ""
     if reference_ids:

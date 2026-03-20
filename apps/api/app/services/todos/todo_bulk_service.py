@@ -55,8 +55,8 @@ async def bulk_complete_todos(todo_ids: List[str], user_id: str) -> List[TodoRes
                 await tracked_todo_service.complete_tracked_todo(
                     str(doc["_id"]), user_id, "Completed via bulk operation"
                 )
-            except Exception:
-                pass  # Don't block bulk complete if one VFS lifecycle fails
+            except Exception as e:
+                log.warning("tracked_todo.bulk_complete_failed", todo_id=str(doc["_id"]), error=str(e))
 
         # Only bulk-update the non-tracked todos (tracked ones already updated by service)
         remaining_ids = [oid for oid in object_ids if oid not in tracked_ids]
@@ -245,13 +245,13 @@ async def bulk_delete_todos(todo_ids: List[str], user_id: str) -> None:
             tid = str(doc["_id"])
             try:
                 await delete_canvas_embedding(tid)
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("tracked_todo.bulk_delete_embedding_failed", todo_id=tid, error=str(e))
             try:
                 vfs = MongoVFS()
                 await vfs.delete(path=doc["vfs_path"], user_id=user_id, recursive=True)
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("tracked_todo.bulk_delete_vfs_failed", todo_id=tid, error=str(e))
 
         # Perform bulk delete
         result = await todos_collection.delete_many(

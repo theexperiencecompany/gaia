@@ -59,7 +59,6 @@ async def update_canvas_embedding(
     """Re-index canvas content after update, preserving completed status."""
     # Preserve completed metadata before deleting the old embedding
     was_completed = False
-    completed_at_value: str | None = None
     try:
         chroma_collection = await ChromaClient.get_langchain_client(
             collection_name=COLLECTION_NAME, create_if_not_exists=True
@@ -72,9 +71,8 @@ async def update_canvas_embedding(
         if existing and existing.get("metadatas") and existing["metadatas"][0]:
             old_meta = existing["metadatas"][0]
             was_completed = bool(old_meta.get("completed", False))
-            completed_at_value = old_meta.get("completed_at")
-    except Exception:
-        pass  # If we can't read old metadata, default to not-completed
+    except Exception as e:
+        log.debug("canvas.preserve_completed_metadata_failed", todo_id=todo_id, error=str(e))
 
     await delete_canvas_embedding(todo_id)
     result = await store_canvas_embedding(
@@ -85,8 +83,8 @@ async def update_canvas_embedding(
     if result and was_completed:
         try:
             await mark_canvas_completed(todo_id)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("canvas.restore_completed_status_failed", todo_id=todo_id, error=str(e))
 
     return result
 

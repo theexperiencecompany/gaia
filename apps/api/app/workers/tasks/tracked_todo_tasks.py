@@ -234,7 +234,8 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
                         ref_parts.append(
                             f"From past todo \"{ref_doc.get('title', 'Unknown')}\":\n{learnings.strip()}"
                         )
-            except Exception:
+            except Exception as e:
+                log.debug("execute_todo.reference_read_failed", ref_id=ref_id, error=str(e))
                 continue
         if ref_parts:
             reference_context = "\n\nPast experience (from similar completed todos):\n" + "\n\n".join(ref_parts)
