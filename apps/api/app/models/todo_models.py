@@ -75,6 +75,10 @@ class TodoBase(BaseModel):
         default=None,
         description="When this todo becomes irrelevant regardless of completion (LLM-set relevance window)",
     )
+    references: list[str] = Field(
+        default_factory=list,
+        description="IDs of related past tracked todos (institutional memory references)",
+    )
 
 
 # For creating new todos
