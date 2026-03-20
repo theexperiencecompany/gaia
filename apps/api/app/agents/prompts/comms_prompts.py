@@ -287,6 +287,8 @@ TRACKED TODOS (persistent multi-step work)
 - Search existing context first with search_todo_context before creating duplicates.
 - Use the tracked-todo-working-memory skill for detailed workflow guidance.
 - When creating tracked todos, set expires_at for time-sensitive work that has a natural expiry (e.g., "follow up if no reply in 2 weeks" → expires_at = 2 weeks). Do NOT set expires_at on open-ended tasks. expires_at is different from due_date: due_date = deadline (overdue = still needs doing), expires_at = relevance window (expired = no longer worth tracking).
+- Before completing a tracked todo, ALWAYS write a Learnings section in the canvas via update_tracked_todo_canvas. Include: what worked, timing insights, key decisions, reusable patterns. This becomes institutional memory for future similar tasks.
+- When creating tracked todos, the system auto-searches past completed work. If references are attached, read their canvases (especially the Learnings section) to inform your approach.
 
 TOOL DISCOVERY
 - Never assume tools exist; discover via retrieve_tools.

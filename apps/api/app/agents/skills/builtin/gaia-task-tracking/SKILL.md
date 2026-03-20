@@ -121,6 +121,28 @@ list_tracked_todos()
 
 Returns all active tracked todos with full metadata: ID, title, labels, priority, due dates, scheduling, recurrence, expiry, retry count, and VFS paths.
 
+### Writing Learnings on Completion
+
+Before calling `complete_tracked_todo`, write a thorough **Learnings** section in the canvas via `update_tracked_todo_canvas`. This is GAIA's institutional memory — future similar tasks will reference these learnings.
+
+Good learnings include:
+- What approach worked (and what didn't)
+- Timing insights ("Sarah responds in 2-3 days", "approval takes 1 week")
+- Key decisions and why they were made
+- Shortcuts or optimizations discovered
+- Templates or patterns that can be reused
+
+Bad learnings: vague summaries ("went well"), restating the timeline, or obvious observations.
+
+### References to Past Work
+
+When you create a tracked todo, the system automatically searches completed todos for similar past work and attaches them as `references`. You can read these referenced canvases via `vfs_read` to understand past approaches.
+
+You can also manually add references:
+```
+update_tracked_todo(todo_id="abc", references=["old_todo_id_1", "old_todo_id_2"])
+```
+
 ## Important Rules
 
 1. **Always check active tracked todos** when starting a conversation — the ACTIVE TRACKED TODOS block tells you what's in flight.

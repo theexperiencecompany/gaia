@@ -40,6 +40,9 @@ CANVAS_TEMPLATE = """# {title}
 
 ## Context
 <!-- accumulated context from signals, related information, decisions made -->
+
+## Learnings
+<!-- written on completion: what worked, what didn't, key decisions, timing insights, optimizations for next time -->
 """
 
 GAIA_TRACKED_LABEL = "gaia-tracked"
