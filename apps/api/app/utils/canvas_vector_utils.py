@@ -32,6 +32,7 @@ async def store_canvas_embedding(
             "todo_id": str(todo_id),
             "title": title,
             "updated_at": datetime.now(timezone.utc).isoformat(),
+            "completed": False,
         }
         if labels:
             metadata["labels"] = ", ".join(labels)
@@ -74,24 +75,65 @@ async def delete_canvas_embedding(todo_id: str) -> bool:
         return False
 
 
+async def mark_canvas_completed(todo_id: str) -> bool:
+    """Mark a canvas embedding as completed without deleting it.
+
+    The embedding remains searchable but is tagged as completed
+    so active-only searches can filter it out.
+    """
+    try:
+        chroma_collection = await ChromaClient.get_langchain_client(
+            collection_name=COLLECTION_NAME, create_if_not_exists=True
+        )
+        doc_id = f"canvas_{todo_id}"
+
+        existing = await chroma_collection.aget(ids=[doc_id], include=["metadatas"])
+        if not existing or not existing["metadatas"]:
+            return False
+
+        metadata = existing["metadatas"][0]
+        metadata["completed"] = True
+        metadata["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+        await chroma_collection.aupdate(
+            ids=[doc_id],
+            metadatas=[metadata],
+        )
+        return True
+    except Exception as e:
+        log.warning(f"Failed to mark canvas completed for {todo_id}: {e}")
+        return False
+
+
 async def search_canvas_context(
     query: str,
     user_id: str,
     top_k: int = 10,
+    include_completed: bool = True,
 ) -> list[dict]:
     """Semantic search across all canvas content for a user.
 
-    Returns list of {todo_id, title, score, snippet} dicts.
+    Returns list of {todo_id, title, score, snippet, completed} dicts.
     """
     try:
         chroma_collection = await ChromaClient.get_langchain_client(
             collection_name=COLLECTION_NAME, create_if_not_exists=True
         )
 
+        if include_completed:
+            where_filter: dict = {"user_id": str(user_id)}
+        else:
+            where_filter = {
+                "$and": [
+                    {"user_id": str(user_id)},
+                    {"completed": False},
+                ]
+            }
+
         results = await chroma_collection.asimilarity_search_with_score(
             query=query,
             k=top_k,
-            filter={"user_id": str(user_id)},
+            filter=where_filter,
         )
 
         matches = []
@@ -103,6 +145,7 @@ async def search_canvas_context(
                     "title": meta.get("title", ""),
                     "score": round(score, 3),
                     "snippet": doc.page_content[:500] if hasattr(doc, "page_content") else "",
+                    "completed": meta.get("completed", False),
                 }
             )
         return matches
