@@ -59,6 +59,18 @@ export default function ScheduledFieldChip({
     : "";
 
   const buildISOFromParts = (datePart: string, timePart: string): string => {
+    if (timezone) {
+      // Build an ISO string that represents this wall-clock time in the user's timezone
+      // Use Intl to compute the offset, then adjust
+      const naive = new Date(`${datePart}T${timePart}:00`);
+      const utcStr = naive.toLocaleString("en-US", { timeZone: "UTC" });
+      const tzStr = naive.toLocaleString("en-US", { timeZone: timezone });
+      const utcDate = new Date(utcStr);
+      const tzDate = new Date(tzStr);
+      const offsetMs = utcDate.getTime() - tzDate.getTime();
+      const adjusted = new Date(naive.getTime() + offsetMs);
+      return adjusted.toISOString();
+    }
     const [year, month, day] = datePart.split("-").map(Number);
     const [hour, minute] = timePart.split(":").map(Number);
     const date = new Date(year, month - 1, day, hour, minute);
