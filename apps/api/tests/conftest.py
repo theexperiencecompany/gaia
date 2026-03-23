@@ -58,6 +58,7 @@ _patches = [
     patch(
         "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
         new_callable=AsyncMock,
+        return_value={},
     ),
 ]
 for p in _patches:
@@ -200,7 +201,7 @@ def test_app() -> FastAPI:
 @pytest.fixture
 async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     """Async HTTP client bound to the test app."""
-    transport = ASGITransport(app=test_app)
+    transport = ASGITransport(app=test_app, raise_app_exceptions=False)
     async with AsyncClient(
         transport=transport,
         base_url="http://test",  # NOSONAR
@@ -215,7 +216,7 @@ async def unauthed_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None
 
     original = test_app.dependency_overrides.pop(get_current_user, None)
     try:
-        transport = ASGITransport(app=test_app)
+        transport = ASGITransport(app=test_app, raise_app_exceptions=False)
         async with AsyncClient(
             transport=transport,
             base_url="http://test",  # NOSONAR
