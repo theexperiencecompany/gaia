@@ -32,21 +32,27 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> Dict[str,
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
-    # Get user subscription
-    subscription = await payment_service.get_user_subscription_status(user_id)
-    user_plan = subscription.plan_type or PlanType.FREE
+    try:
+        # Get user subscription
+        subscription = await payment_service.get_user_subscription_status(user_id)
+        user_plan = subscription.plan_type or PlanType.FREE
 
-    # Get real-time usage data directly from Redis
-    features_formatted = await _get_realtime_usage(user_id, user_plan)
+        # Get real-time usage data directly from Redis
+        features_formatted = await _get_realtime_usage(user_id, user_plan)
 
-    log.set(period="realtime", result_count=len(features_formatted))
-    log.set(outcome="success")
-    return {
-        "user_id": user_id,
-        "plan_type": user_plan.value if hasattr(user_plan, "value") else str(user_plan),
-        "features": features_formatted,
-        "last_updated": datetime.now(timezone.utc).isoformat(),
-    }
+        log.set(period="realtime", result_count=len(features_formatted))
+        log.set(outcome="success")
+        return {
+            "user_id": user_id,
+            "plan_type": user_plan.value
+            if hasattr(user_plan, "value")
+            else str(user_plan),
+            "features": features_formatted,
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        log.error(f"Error getting usage summary: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get usage summary")
 
 
 @router.get("/history")
@@ -67,39 +73,43 @@ async def get_usage_history(
     if feature_key and feature_key not in FEATURE_LIMITS:
         raise HTTPException(status_code=400, detail=f"Unknown feature: {feature_key}")
 
-    history = await usage_service.get_usage_history(user_id, feature_key, days)
+    try:
+        history = await usage_service.get_usage_history(user_id, feature_key, days)
 
-    formatted_history = []
-    for snapshot in history:
-        features_formatted: Dict[str, Dict[str, Any]] = {}
-        for feature in snapshot.features:
-            key = feature.feature_key
-            if key not in features_formatted:
-                feature_info = get_feature_info(key)
-                features_formatted[key] = {
-                    "title": feature_info["title"],
-                    "periods": {},
+        formatted_history = []
+        for snapshot in history:
+            features_formatted: Dict[str, Dict[str, Any]] = {}
+            for feature in snapshot.features:
+                key = feature.feature_key
+                if key not in features_formatted:
+                    feature_info = get_feature_info(key)
+                    features_formatted[key] = {
+                        "title": feature_info["title"],
+                        "periods": {},
+                    }
+
+                features_formatted[key]["periods"][feature.period] = {
+                    "used": feature.used,
+                    "limit": feature.limit,
+                    "percentage": (
+                        (feature.used / feature.limit * 100) if feature.limit > 0 else 0
+                    ),
                 }
 
-            features_formatted[key]["periods"][feature.period] = {
-                "used": feature.used,
-                "limit": feature.limit,
-                "percentage": (
-                    (feature.used / feature.limit * 100) if feature.limit > 0 else 0
-                ),
-            }
+            formatted_history.append(
+                {
+                    "date": snapshot.created_at.isoformat(),
+                    "plan_type": snapshot.plan_type,
+                    "features": features_formatted,
+                }
+            )
 
-        formatted_history.append(
-            {
-                "date": snapshot.created_at.isoformat(),
-                "plan_type": snapshot.plan_type,
-                "features": features_formatted,
-            }
-        )
-
-    log.set(result_count=len(formatted_history))
-    log.set(outcome="success")
-    return formatted_history
+        log.set(result_count=len(formatted_history))
+        log.set(outcome="success")
+        return formatted_history
+    except Exception as e:
+        log.error(f"Error getting usage history: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get usage history")
 
 
 async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> Dict[str, Any]:

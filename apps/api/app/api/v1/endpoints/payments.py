@@ -27,7 +27,11 @@ router = APIRouter()
 async def get_plans_endpoint(request: Request, active_only: bool = True):
     """Get all available subscription plans."""
     log.set(payment={"operation": "get_plans"})
-    return await payment_service.get_plans(active_only=active_only)
+    try:
+        return await payment_service.get_plans(active_only=active_only)
+    except Exception as e:
+        log.error(f"Error getting plans: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get plans")
 
 
 @router.post("/subscriptions")
@@ -51,9 +55,13 @@ async def create_subscription_endpoint(
             else None,
         },
     )
-    return await payment_service.create_subscription(
-        user_id, subscription_data.product_id, subscription_data.quantity
-    )
+    try:
+        return await payment_service.create_subscription(
+            user_id, subscription_data.product_id, subscription_data.quantity
+        )
+    except Exception as e:
+        log.error(f"Error creating subscription: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create subscription")
 
 
 @router.post("/verify-payment", response_model=PaymentVerificationResponse)
@@ -71,8 +79,12 @@ async def verify_payment_endpoint(
         user={"id": user_id},
         payment={"operation": "verify_payment"},
     )
-    result = await payment_service.verify_payment_completion(user_id)
-    return PaymentVerificationResponse(**result)
+    try:
+        result = await payment_service.verify_payment_completion(user_id)
+        return PaymentVerificationResponse(**result)
+    except Exception as e:
+        log.error(f"Error verifying payment: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to verify payment")
 
 
 @router.get("/subscription-status", response_model=UserSubscriptionStatus)
@@ -90,7 +102,11 @@ async def get_subscription_status_endpoint(
         user={"id": user_id},
         payment={"operation": "get_status"},
     )
-    return await payment_service.get_user_subscription_status(user_id)
+    try:
+        return await payment_service.get_user_subscription_status(user_id)
+    except Exception as e:
+        log.error(f"Error getting subscription status: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get subscription status")
 
 
 @router.post("/webhooks/dodo")
