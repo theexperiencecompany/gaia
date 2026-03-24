@@ -38,19 +38,26 @@ function EmailBodyRenderer({
   content,
 }: {
   body: string;
-  content?: { text: string; html: string };
+  content?: { text: string; html?: string };
 }) {
   const [loading, setLoading] = useState(true);
   const shadowHostRef = useRef<HTMLDivElement | null>(null);
 
-  const htmlContent = content?.html || content?.text || body;
+  const hasHtml = Boolean(content?.html);
+  const textContent = content?.text || body;
+  const htmlContent = content?.html || "";
 
-  const sanitizedHtml = DOMPurify.sanitize(htmlContent, {
+  const sanitizedHtml = DOMPurify.sanitize(hasHtml ? htmlContent : "", {
     ADD_ATTR: ["target"],
     ADD_TAGS: ["iframe"],
   });
 
   useEffect(() => {
+    if (!hasHtml) {
+      setLoading(false);
+      return;
+    }
+
     if (!sanitizedHtml) {
       setLoading(false);
       return;
@@ -66,11 +73,21 @@ function EmailBodyRenderer({
       shadowRoot.appendChild(contentWrapper);
       setLoading(false);
     }
-  }, [sanitizedHtml]);
+  }, [hasHtml, sanitizedHtml]);
 
   if (!body && (!content || (!content.text && !content.html))) {
     return (
       <div className="p-4 text-sm text-gray-500">No content available.</div>
+    );
+  }
+
+  if (!hasHtml) {
+    return (
+      <div className="w-full rounded-lg bg-white p-4 text-black">
+        <pre className="whitespace-pre-wrap break-words text-sm">
+          {textContent}
+        </pre>
+      </div>
     );
   }
 
@@ -152,7 +169,7 @@ export default function EmailThreadCard({
                         </div>
                       </div>
                     </div>
-                    {message.body && (
+                    {(message.body || message.content?.text) && (
                       <div className="mt-3">
                         <EmailBodyRenderer
                           body={message.body}

@@ -313,13 +313,18 @@ def gmail_thread_after_hook(
         if not response or "error" in response["data"]:
             return response["data"]
 
-        # Process the raw thread response
+        # Process thread data as normalized text for frontend rendering.
         processed_response = process_get_thread_response(response["data"])
 
         if writer is not None and processed_response.get("messages"):
             # Transform to EmailThreadData format for frontend
             thread_messages = []
             for msg in processed_response["messages"]:
+                content_data = msg.get("content")
+                content_text = msg.get("body", "")
+                if isinstance(content_data, dict):
+                    content_text = str(content_data.get("text", content_text) or "")
+
                 thread_messages.append(
                     {
                         "id": msg.get("id", ""),
@@ -328,7 +333,7 @@ def gmail_thread_after_hook(
                         "time": msg.get("time", ""),
                         "snippet": msg.get("snippet", ""),
                         "body": msg.get("body", ""),
-                        "content": msg.get("content", ""),
+                        "content": {"text": content_text},
                     }
                 )
 
@@ -342,8 +347,31 @@ def gmail_thread_after_hook(
             }
             writer(payload)
 
-        # Return processed response for LLM
-        return processed_response
+        # Return a compact plain-text-only version for LLM context.
+        llm_messages = []
+        for msg in processed_response.get("messages", []):
+            llm_messages.append(
+                {
+                    "id": msg.get("id", ""),
+                    "threadId": msg.get("threadId", ""),
+                    "from": msg.get("from", ""),
+                    "to": msg.get("to", ""),
+                    "subject": msg.get("subject", ""),
+                    "snippet": msg.get("snippet", ""),
+                    "time": msg.get("time", ""),
+                    "isRead": msg.get("isRead", True),
+                    "hasAttachment": msg.get("hasAttachment", False),
+                    "body": msg.get("body", ""),
+                    "labels": msg.get("labels", []),
+                    "body_meta": msg.get("body_meta", {}),
+                }
+            )
+
+        return {
+            "id": processed_response.get("id", ""),
+            "messageCount": processed_response.get("messageCount", 0),
+            "messages": llm_messages,
+        }
 
     except Exception as e:
         logger.error(f"Error in gmail_thread_after_hook: {e}")

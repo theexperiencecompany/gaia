@@ -263,7 +263,7 @@ class Workflow(BaseScheduledTask):
         default=None,
         description=(
             "Stable identifier linking this document back to its definition in code. "
-            "Used for reset-to-default and idempotency. e.g. 'gmail:email_intelligence'."
+            "Used for reset-to-default and idempotency. e.g. 'gmail:inbox_intelligence'."
         ),
     )
 

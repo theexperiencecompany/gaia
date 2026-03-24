@@ -5,11 +5,10 @@ import email
 import email.message
 import email.parser
 import email.policy
-from html import unescape
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import app_logger as logger
-from bs4 import BeautifulSoup
+from app.utils.email_normalizer import normalize_email_text
 
 # ============================================================================
 # GmailMessageParser - Class-based email parsing using email.parser
@@ -332,23 +331,22 @@ class GmailMessageParser:
 
 def _get_text_from_html(html_content):
     """Extract text from HTML content."""
-    if not html_content:
-        return ""
-
-    soup = BeautifulSoup(unescape(html_content), "html.parser")
-    return soup.get_text()
+    normalized = normalize_email_text(html_content, strip_reply_chain=False)
+    return normalized["text"]
 
 
 # Template for minimal message representation
 def minimal_message_template(
-    email_data: Dict[str, Any], short_body=True, include_both_formats=False
+    email_data: Dict[str, Any],
+    short_body: bool = True,
+    include_both_formats: bool = False,
 ) -> Dict[str, Any]:
     """
     Convert a Gmail message to a minimal representation with only essential fields.
 
     Args:
         email_data: The full Gmail message data
-        short_body: Whether to truncate body content to 100 characters
+        short_body: Legacy flag retained for compatibility (no char cap applied)
         include_both_formats: Whether to include both text and HTML content
 
     Returns:
@@ -363,7 +361,15 @@ def minimal_message_template(
     body_content = (
         content["text"] if content else parser.text_content
     ) or email_data.get("messageText", "")
+
+    normalized_body = normalize_email_text(
+        body_content,
+        preview_chars=280,
+        strip_reply_chain=False,
+    )
+
     labels = parser.labels
+    snippet = email_data.get("snippet", "") or normalized_body["preview"]
 
     result = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
@@ -371,19 +377,28 @@ def minimal_message_template(
         "from": parser.sender or email_data.get("sender", ""),
         "to": parser.to or email_data.get("to", ""),
         "subject": parser.subject or email_data.get("subject", ""),
-        "snippet": email_data.get("snippet", ""),
+        "snippet": snippet,
         "time": parser.date or email_data.get("messageTimestamp", ""),
         "isRead": "UNREAD" not in labels,
         "hasAttachment": "HAS_ATTACHMENT" in labels,
-        "body": body_content[:100] if short_body else body_content,
+        "body": normalized_body["text"],
         "labels": labels,
+        "body_meta": {
+            "original_len": normalized_body["original_len"],
+            "kept_len": normalized_body["kept_len"],
+            "truncated": normalized_body["truncated"],
+        },
     }
 
     # Add content formats if requested
     if include_both_formats and content:
+        normalized_content = normalize_email_text(
+            content["text"] or body_content,
+            preview_chars=280,
+            strip_reply_chain=False,
+        )
         result["content"] = {
-            "text": content["text"],
-            "html": content["html"],
+            "text": normalized_content["text"],
         }
 
     return result
@@ -392,22 +407,27 @@ def minimal_message_template(
 # Template for message details (when a single message needs more detail)
 def detailed_message_template(email_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Convert a Gmail message to a detailed but optimized representation including both text and HTML content.
+    Convert a Gmail message to a detailed but optimized representation.
 
     Args:
         email_data: The full Gmail message data
 
     Returns:
-        A dictionary with the essential email fields plus body content in both formats
+        A dictionary with essential fields and normalized body text.
     """
     # Use GmailMessageParser directly for efficiency
     parser = GmailMessageParser(email_data)
     parser.parse()
 
     content = parser.content
+    normalized_text = normalize_email_text(
+        content["text"],
+        preview_chars=320,
+        strip_reply_chain=False,
+    )
     labels = parser.labels
 
-    return {
+    response = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
         "from": parser.sender,
@@ -417,11 +437,23 @@ def detailed_message_template(email_data: Dict[str, Any]) -> Dict[str, Any]:
         "time": parser.date,
         "isRead": "UNREAD" not in labels,
         "hasAttachment": "HAS_ATTACHMENT" in labels,
-        "body": content["text"],  # Plain text for backward compatibility
+        "body": normalized_text["text"],
         "labels": labels,
-        "content": {"text": content["text"], "html": content["html"]},
+        "content": {"text": normalized_text["text"]},
         "cc": parser.cc,
+        "content_note": (
+            "parsed_plain_text_from_html"
+            if normalized_text["was_html"]
+            else "plain_text"
+        ),
+        "body_meta": {
+            "original_len": normalized_text["original_len"],
+            "kept_len": normalized_text["kept_len"],
+            "truncated": normalized_text["truncated"],
+        },
     }
+
+    return response
 
 
 # Template for thread information
@@ -438,7 +470,11 @@ def thread_template(thread_data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": thread_data.get("id", ""),
         "messages": [
-            minimal_message_template(msg, short_body=False, include_both_formats=True)
+            minimal_message_template(
+                msg,
+                short_body=False,
+                include_both_formats=True,
+            )
             for msg in thread_data.get("messages", [])
         ],
         "messageCount": len(thread_data.get("messages", [])),
@@ -448,13 +484,13 @@ def thread_template(thread_data: Dict[str, Any]) -> Dict[str, Any]:
 # Template for draft information
 def draft_template(draft_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Convert a Gmail draft to a minimal representation including both text and HTML content.
+    Convert a Gmail draft to a normalized representation.
 
     Args:
         draft_data: The full Gmail draft data
 
     Returns:
-        A dictionary with the essential draft fields including text and HTML content
+        A dictionary with essential draft fields and normalized body content.
     """
     message = draft_data.get("message", {})
 
@@ -463,6 +499,11 @@ def draft_template(draft_data: Dict[str, Any]) -> Dict[str, Any]:
     parser.parse()
 
     content = parser.content
+    normalized_body = normalize_email_text(
+        content["text"],
+        preview_chars=280,
+        strip_reply_chain=False,
+    )
 
     return {
         "id": draft_data.get("id", ""),
@@ -470,8 +511,15 @@ def draft_template(draft_data: Dict[str, Any]) -> Dict[str, Any]:
             "to": parser.to,
             "subject": parser.subject,
             "snippet": message.get("snippet", ""),
-            "body": content["text"],  # Plain text for backward compatibility
-            "content": {"text": content["text"], "html": content["html"]},
+            "body": normalized_body["text"],
+            "content": {
+                "text": normalized_body["text"],
+            },
+            "body_meta": {
+                "original_len": normalized_body["original_len"],
+                "kept_len": normalized_body["kept_len"],
+                "truncated": normalized_body["truncated"],
+            },
         },
     }
 

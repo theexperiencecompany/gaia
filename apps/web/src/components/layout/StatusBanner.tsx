@@ -5,10 +5,9 @@ import axios from "axios";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const PING_URL =
-  process.env.NODE_ENV === "development"
-    ? `${process.env.NEXT_PUBLIC_API_BASE_URL}ping`
-    : "https://api.heygaia.io/api/v1/ping";
+const PING_URL = process.env.NEXT_PUBLIC_API_BASE_URL
+  ? `${process.env.NEXT_PUBLIC_API_BASE_URL}ping`
+  : "https://api.heygaia.io/api/v1/ping";
 const STATUS_URL = "https://status.heygaia.io";
 const POLL_INTERVAL = 60_000;
 

@@ -4,8 +4,6 @@ Gmail trigger handler.
 Handles Gmail new message trigger processing.
 """
 
-import re
-from html import unescape
 from typing import Any, Dict, List, Set
 
 from app.config.loggers import general_logger as logger
@@ -15,6 +13,7 @@ from app.models.trigger_configs import GmailNewMessageConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.triggers.base import TriggerHandler
+from app.utils.email_normalizer import normalize_email_text
 
 
 class GmailTriggerHandler(TriggerHandler):
@@ -38,34 +37,6 @@ class GmailTriggerHandler(TriggerHandler):
         return self.SUPPORTED_EVENTS
 
     @staticmethod
-    def _normalize_message_text(raw_text: str) -> tuple[str, bool]:
-        """Return compact plain-text message content.
-
-        If input looks like HTML, convert it to readable plain text to reduce
-        token usage in workflow context.
-        """
-
-        text = raw_text.strip()
-        if not text:
-            return "", False
-
-        looks_html = bool(re.search(r"<[a-zA-Z][^>]*>", text))
-        if not looks_html:
-            return text, False
-
-        parsed = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", text)
-        parsed = re.sub(r"(?i)<br\s*/?>", "\n", parsed)
-        parsed = re.sub(r"(?i)</(p|div|li|tr|h[1-6])>", "\n", parsed)
-        parsed = re.sub(r"(?i)<li[^>]*>", "- ", parsed)
-        parsed = re.sub(r"(?s)<[^>]+>", " ", parsed)
-        parsed = unescape(parsed)
-        parsed = re.sub(r"[\t\r\f\v]+", " ", parsed)
-        parsed = re.sub(r"\n{3,}", "\n\n", parsed)
-        parsed = re.sub(r" +", " ", parsed)
-
-        return parsed.strip(), True
-
-    @staticmethod
     def _build_trigger_context(data: Dict[str, Any]) -> Dict[str, Any]:
         """Build compact Gmail trigger context for workflow execution."""
         message_text_raw = data.get("message_text", "")
@@ -74,10 +45,17 @@ class GmailTriggerHandler(TriggerHandler):
             if isinstance(message_text_raw, str)
             else str(message_text_raw or "")
         )
-        message_text, parsed_from_html = GmailTriggerHandler._normalize_message_text(
-            message_text
+        normalized = normalize_email_text(
+            message_text,
+            preview_chars=400,
+            strip_reply_chain=False,
         )
-        preview = message_text.replace("\n", " ").strip()
+
+        content_note = (
+            "parsed_plain_text_from_html" if normalized["was_html"] else "plain_text"
+        )
+        if normalized["truncated"]:
+            content_note = f"{content_note}_truncated"
 
         return {
             "type": "gmail",
@@ -88,11 +66,14 @@ class GmailTriggerHandler(TriggerHandler):
                 "thread_id": data.get("thread_id"),
                 "sender": data.get("sender", "Unknown"),
                 "subject": data.get("subject", "No Subject"),
-                "message_text": message_text[:4000],
-                "preview": preview[:400],
-                "content_note": (
-                    "parsed_plain_text_from_html" if parsed_from_html else "plain_text"
-                ),
+                "message_text": normalized["text"],
+                "preview": normalized["preview"],
+                "content_note": content_note,
+                "content_stats": {
+                    "original_len": normalized["original_len"],
+                    "kept_len": normalized["kept_len"],
+                    "truncated": normalized["truncated"],
+                },
             },
             "trigger_data": {
                 "message_id": data.get("message_id"),

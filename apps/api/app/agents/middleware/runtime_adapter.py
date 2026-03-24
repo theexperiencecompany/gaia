@@ -43,10 +43,8 @@ def to_agent_state(state: State | dict[str, Any]) -> AgentState[Any]:
     return agent_state
 
 
-@dataclass(frozen=True)
-class BigtoolRuntime(  # type: ignore[misc]  # Runtime IS frozen via _DC_KWARGS but mypy can't see it
-    Runtime[Any]
-):
+@dataclass(frozen=True)  # type: ignore[misc]  # Runtime IS frozen via _DC_KWARGS but mypy can't see it
+class BigtoolRuntime(Runtime[Any]):
     """
     Runtime adapter for langgraph_bigtool integration.
 
