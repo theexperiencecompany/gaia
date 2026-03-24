@@ -9,7 +9,7 @@ type InboxRevealCardProps = InboxScanResults;
 export function InboxRevealCard({ email_count }: InboxRevealCardProps) {
   return (
     <m.div
-      className="flex items-center gap-3 rounded-xl bg-zinc-800/60 px-4 py-3"
+      className="flex items-center gap-3 rounded-2xl bg-zinc-800/60 px-4 py-3"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}

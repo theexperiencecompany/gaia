@@ -9,7 +9,7 @@ type WorkflowsRevealCardProps = WorkflowResults;
 export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
   return (
     <m.div
-      className="overflow-hidden rounded-xl bg-zinc-800/60 p-4"
+      className="overflow-hidden rounded-2xl bg-zinc-800/60 p-4"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
@@ -29,7 +29,11 @@ export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
               <ZapIcon className="mt-0.5 size-3.5 shrink-0 text-zinc-500" />
               <div>
                 <p className="text-sm text-zinc-300">{workflow.title}</p>
-                <p className="text-xs text-zinc-500">Runs tomorrow at 9am</p>
+                {workflow.description && (
+                  <p className="text-xs text-zinc-500">
+                    {workflow.description}
+                  </p>
+                )}
               </div>
             </div>
           ))}

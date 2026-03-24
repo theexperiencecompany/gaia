@@ -10,7 +10,7 @@ export function WritingStyleRevealCard({
 }: WritingStyleRevealCardProps) {
   return (
     <m.div
-      className="rounded-xl bg-zinc-800/60 p-4"
+      className="rounded-2xl bg-zinc-800/60 p-4"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
