@@ -7,8 +7,6 @@ import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 
-export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
-
 interface UsePersonalizationReturn {
   personalizationData: PersonalizationData | null;
   isLoading: boolean;

@@ -26,7 +26,6 @@ export const professionOptions: ProfessionOption[] = [
 export const FIELD_NAMES = {
   NAME: "name",
   PROFESSION: "profession",
-  COMPANY_URL: "company_url",
   GMAIL: "gmail",
 } as const;
 

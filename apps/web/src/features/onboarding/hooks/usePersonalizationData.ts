@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
-
+import type { House } from "@/features/onboarding/types/websocket";
 import { apiService } from "@/lib/api/service";
-
-export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 
 export interface PersonalizationData {
   has_personalization?: boolean;

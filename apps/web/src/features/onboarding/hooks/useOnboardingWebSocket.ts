@@ -3,8 +3,6 @@ import type { PersonalizationData } from "@/features/onboarding/types/websocket"
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 
-export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
-
 interface UseOnboardingWebSocketReturn {
   personalizationData: PersonalizationData | null;
   isLoading: boolean;

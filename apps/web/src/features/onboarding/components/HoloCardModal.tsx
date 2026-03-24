@@ -12,10 +12,8 @@ import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
-import {
-  type House,
-  usePersonalization,
-} from "@/features/onboarding/hooks/usePersonalization";
+import { usePersonalization } from "@/features/onboarding/hooks/usePersonalization";
+import type { House } from "@/features/onboarding/types/websocket";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { toast } from "@/lib/toast";
 

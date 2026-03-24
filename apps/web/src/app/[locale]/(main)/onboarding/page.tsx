@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   OnboardingInput,
   OnboardingMessages,
@@ -8,7 +9,6 @@ import {
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
 import { useOnboardingReveal } from "@/features/onboarding/hooks/useOnboardingReveal";
 import { useOnboardingWebSocket } from "@/features/onboarding/hooks/useOnboardingWebSocket";
-import { useRouter } from "@/i18n/navigation";
 
 export default function Onboarding() {
   const router = useRouter();

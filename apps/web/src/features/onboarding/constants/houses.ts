@@ -1,4 +1,4 @@
-import type { House } from "@/features/onboarding/hooks/useOnboardingWebSocket";
+import type { House } from "@/features/onboarding/types/websocket";
 
 export const HOUSES: Record<House, { image: string }> = {
   frostpeak: {

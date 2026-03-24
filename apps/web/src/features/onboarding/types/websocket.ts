@@ -4,6 +4,8 @@
 
 import type { OnboardingPhase } from "@/stores/onboardingStore";
 
+export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
+
 export type BioStatus = "pending" | "processing" | "completed" | "no_gmail";
 
 export interface PersonalizationData {
