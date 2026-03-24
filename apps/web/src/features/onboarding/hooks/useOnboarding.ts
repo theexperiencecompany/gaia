@@ -352,7 +352,7 @@ export const useOnboarding = () => {
 
   // Called when user skips Gmail
   const handleGmailSkip = useCallback(() => {
-    submitResponse("Skip for now", "skipped");
+    submitResponse("Continue without Gmail", "skipped");
   }, [submitResponse]);
 
   const handleChipSelect = useCallback(
@@ -458,11 +458,6 @@ export const useOnboarding = () => {
       submitResponse,
     ],
   );
-
-  // Skip optional field (company_url)
-  const handleSkip = useCallback(() => {
-    submitResponse("Skip", "");
-  }, [submitResponse]);
 
   // Called by processing component when intelligence is complete
   const handleConversationReady = useCallback(
@@ -581,7 +576,6 @@ export const useOnboarding = () => {
     handleProfessionInputChange,
     handleInputChange,
     handleSubmit,
-    handleSkip,
     handleGmailConnect,
     handleGmailSkip,
     handleConversationReady,

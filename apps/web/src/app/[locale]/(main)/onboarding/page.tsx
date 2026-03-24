@@ -17,7 +17,6 @@ export default function Onboarding() {
     handleProfessionInputChange,
     handleInputChange,
     handleSubmit,
-    handleSkip,
     handleGmailSkip,
     handleConversationReady,
     handleRestart,
@@ -30,7 +29,7 @@ export default function Onboarding() {
     <div className="fixed inset-0 z-50 flex flex-col bg-primary-bg backdrop-blur-2xl">
       <OnboardingProgress
         currentStep={onboardingState.currentQuestionIndex}
-        totalSteps={5}
+        totalSteps={4}
         onRestart={handleRestart}
       />
 
@@ -57,7 +56,6 @@ export default function Onboarding() {
             onProfessionSelect={handleProfessionSelect}
             onProfessionInputChange={handleProfessionInputChange}
             inputRef={inputRef}
-            onSkip={handleSkip}
             onGmailSkip={handleGmailSkip}
           />
         </div>

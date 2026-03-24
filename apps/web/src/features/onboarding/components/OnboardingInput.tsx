@@ -18,7 +18,6 @@ interface OnboardingInputProps {
   onProfessionSelect: (professionKey: React.Key | null) => void;
   onProfessionInputChange: (value: string) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  onSkip?: () => void;
   onGmailSkip?: () => void;
 }
 
@@ -29,7 +28,6 @@ export const OnboardingInput = ({
   onProfessionSelect,
   onProfessionInputChange,
   inputRef,
-  onSkip,
   onGmailSkip,
 }: OnboardingInputProps) => {
   const { connectIntegration } = useIntegrations();
@@ -102,41 +100,6 @@ export const OnboardingInput = ({
           </Autocomplete>
         );
 
-      case FIELD_NAMES.COMPANY_URL:
-        return (
-          <div className="flex flex-col gap-2">
-            <Input
-              key={`input-${onboardingState.currentQuestionIndex}`}
-              ref={inputRef}
-              value={onboardingState.currentInputs.text}
-              radius="full"
-              onChange={(e) => onInputChange(e.target.value)}
-              placeholder={currentQuestion.placeholder}
-              variant="faded"
-              size="lg"
-              classNames={{ inputWrapper: "pr-1" }}
-              endContent={
-                <Button
-                  isIconOnly
-                  type="submit"
-                  color="primary"
-                  radius="full"
-                  aria-label="Continue"
-                >
-                  <ArrowUp02Icon />
-                </Button>
-              }
-            />
-            <button
-              type="button"
-              onClick={onSkip}
-              className="cursor-pointer text-center text-sm text-zinc-500 transition-colors hover:text-zinc-300"
-            >
-              Skip for now
-            </button>
-          </div>
-        );
-
       case FIELD_NAMES.GMAIL:
         return (
           <div className="flex flex-col gap-3">
@@ -152,7 +115,7 @@ export const OnboardingInput = ({
               onClick={onGmailSkip}
               className="cursor-pointer text-center text-sm text-zinc-500 transition-colors hover:text-zinc-300"
             >
-              Skip for now
+              Continue without Gmail
             </button>
           </div>
         );
