@@ -64,9 +64,9 @@ async def update_canvas_embedding(
         existing = await collection.get(
             ids=[f"canvas_{todo_id}"], include=["metadatas"]
         )
-        if existing and existing.get("metadatas") and existing["metadatas"][0]:
-            old_meta = existing["metadatas"][0]
-            was_completed = bool(old_meta.get("completed", False))
+        metadatas = existing.get("metadatas") if existing else None
+        if metadatas and metadatas[0]:
+            was_completed = bool(metadatas[0].get("completed", False))
     except Exception as e:
         log.debug(
             "canvas.preserve_completed_metadata_failed", todo_id=todo_id, error=str(e)

@@ -368,14 +368,14 @@ export default function TodoModal({
                 {/* Scheduling Row */}
                 <div className="flex flex-wrap items-center gap-2">
                   <ScheduledFieldChip
-                    value={formData.scheduled_at}
+                    value={formData.scheduled_at ?? undefined}
                     onChange={(scheduledAt) =>
                       updateField("scheduled_at", scheduledAt)
                     }
                     timezone={userTimezone}
                   />
                   <RecurrenceFieldChip
-                    value={formData.recurrence}
+                    value={formData.recurrence ?? undefined}
                     onChange={(val) => updateField("recurrence", val)}
                   />
                 </div>
