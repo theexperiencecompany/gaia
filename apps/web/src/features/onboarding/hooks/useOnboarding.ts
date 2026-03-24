@@ -108,7 +108,6 @@ export const useOnboarding = () => {
           name: responses[FIELD_NAMES.NAME]?.trim() || "",
           profession: responses[FIELD_NAMES.PROFESSION] || "",
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          company_url: responses[FIELD_NAMES.COMPANY_URL] || undefined,
         };
 
         const response = await authApi.completeOnboarding(onboardingData);
