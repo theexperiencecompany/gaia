@@ -102,6 +102,15 @@ When investigating a bug, feature, or unfamiliar area of the codebase:
 - **Explore the intricacies** — check edge cases, related config, middleware, environment variables, and cross-app interactions. Do not stop at the surface.
 - **Use relevant skills** — before starting any significant task, check if a skill applies (`writing-plans`, `accurate-testing`, `logging-best-practices`, `copywriting`, etc.) and invoke it via the `Skill` tool.
 
+### Reporting Issues
+
+When asked to find bugs or issues in the code, **only report problems that a real user would actually encounter**:
+
+- Focus on broken UI, wrong data, missing functionality, bad UX flows, and visual bugs.
+- **Do NOT flag theoretical race conditions or extreme timing edge cases.** If an issue requires contriving a microsecond-level timing scenario to reproduce, it is not a real issue.
+- Ask yourself: "Would a QA tester find this bug in normal usage?" If not, don't report it.
+- Prioritize: functional bugs > UX issues > visual inconsistencies > code quality. Skip hypothetical concerns.
+
 ### Task Tracking
 
 **Always create todos for multi-step work** — use TaskCreate at the start of any non-trivial task. Update status (`in_progress` → `completed`) as you go. Never leave tasks stale.
