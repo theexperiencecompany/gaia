@@ -296,7 +296,11 @@ class TrackedTodoService:
                         if match:
                             key_details = match.group(1).strip()
                 except Exception as e:
-                    log.warning("tracked_todo.canvas_read_failed", todo_id=str(doc["_id"]), error=str(e))
+                    log.warning(
+                        "tracked_todo.canvas_read_failed",
+                        todo_id=str(doc["_id"]),
+                        error=str(e),
+                    )
 
             labels_str = f" [{', '.join(labels)}]" if labels else ""
             entry = f'- "{title}"{labels_str} (ID: {todo_id}, vfs: {vfs_path})'
@@ -308,7 +312,10 @@ class TrackedTodoService:
 
             lines.append(entry)
 
-        return "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n" + "\n".join(lines)
+        return (
+            "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n"
+            + "\n".join(lines)
+        )
 
     async def reindex_canvas(self, todo_id: str, user_id: str) -> bool:
         """Re-index a todo's canvas.md in ChromaDB after agent writes to it."""
@@ -371,7 +378,10 @@ class TrackedTodoService:
         """
         try:
             await self.system_log(
-                todo_id, user_id, "auto_archived", f"Archived by maintenance sweep: {reason}"
+                todo_id,
+                user_id,
+                "auto_archived",
+                f"Archived by maintenance sweep: {reason}",
             )
             return await self.complete_tracked_todo(
                 todo_id, user_id, summary=f"Auto-archived: {reason}"

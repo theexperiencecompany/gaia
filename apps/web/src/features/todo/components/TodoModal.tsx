@@ -11,9 +11,8 @@ import {
   Tooltip,
   useDisclosure,
 } from "@heroui/react";
-import { AlertCircleIcon, PlusSignIcon } from "@icons";
+import { AlertCircleIcon, TaskAddIcon } from "@icons";
 import { format } from "date-fns";
-import { PlusSignIcon, TaskAddIcon } from "@icons";
 import { useCallback, useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";

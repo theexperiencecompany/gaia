@@ -10,7 +10,9 @@ from uuid import uuid4
 from bson import ObjectId
 from shared.py.wide_events import log, wide_task
 
+from app.agents.core.agent import call_agent_silent
 from app.db.mongodb.collections import todos_collection
+from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
     ChannelConfig,
     NotificationContent,
@@ -18,8 +20,10 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
+from app.services.model_service import get_default_model
 from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import tracked_todo_service
+from app.services.user_service import get_user_by_id
 from app.utils.redis_utils import RedisPoolManager
 
 
@@ -209,18 +213,23 @@ async def _health_check_expired(doc: dict, pool: Any) -> str:
     response = await _call_health_check_agent(todo_id, user_id, prompt)
 
     if response.startswith("ARCHIVE:"):
-        reason = response[len("ARCHIVE:"):].strip()
+        reason = response[len("ARCHIVE:") :].strip()
         await tracked_todo_service.archive_tracked_todo(todo_id, user_id, reason)
         await _set_cooldown(pool, todo_id)
         log.info(f"_health_check_expired: archived todo {todo_id} — {reason}")
         return "archived"
 
     # Default: notify
-    message = response[len("NOTIFY:"):].strip() if response.startswith("NOTIFY:") else response
+    message = (
+        response[len("NOTIFY:") :].strip()
+        if response.startswith("NOTIFY:")
+        else response
+    )
     await _send_individual_notification(
         user_id=user_id,
         title=f"Expired: {title}",
-        body=message or f"Your tracked todo '{title}' has expired and may need attention.",
+        body=message
+        or f"Your tracked todo '{title}' has expired and may need attention.",
         todo_id=todo_id,
         notification_type=NotificationType.WARNING,
     )
@@ -262,7 +271,7 @@ async def _health_check_dormant(doc: dict, pool: Any) -> str:
         jitter_seconds = random.randint(10, 120)  # nosec B311 — non-crypto scheduling jitter
         scheduled_at = now + timedelta(seconds=jitter_seconds)
         await tracked_todo_service.schedule_execution(todo_id, scheduled_at)
-        action = response[len("EXECUTE:"):].strip()
+        action = response[len("EXECUTE:") :].strip()
         await tracked_todo_service.system_log(
             todo_id,
             user_id,
@@ -306,7 +315,9 @@ async def _notify_overdue(doc: dict, pool: Any) -> None:
     )
 
     await _set_cooldown(pool, todo_id)
-    log.info(f"_notify_overdue: notified for overdue todo {todo_id} ({days_overdue}d overdue)")
+    log.info(
+        f"_notify_overdue: notified for overdue todo {todo_id} ({days_overdue}d overdue)"
+    )
 
 
 async def _send_dormant_digest(todos: list[dict]) -> None:
@@ -345,13 +356,19 @@ async def _send_dormant_digest(todos: list[dict]) -> None:
                         title=f"{count} dormant todo{'s' if count != 1 else ''} need attention",
                         body=body,
                     ),
-                    channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
+                    channels=[
+                        ChannelConfig(channel_type="inapp", enabled=True, priority=1)
+                    ],
                     metadata={"todo_count": count},
                 )
             )
-            log.info(f"_send_dormant_digest: sent digest for user {user_id} ({count} todos)")
+            log.info(
+                f"_send_dormant_digest: sent digest for user {user_id} ({count} todos)"
+            )
         except Exception as exc:
-            log.warning(f"_send_dormant_digest: could not send digest for user {user_id}: {exc}")
+            log.warning(
+                f"_send_dormant_digest: could not send digest for user {user_id}: {exc}"
+            )
 
 
 async def _read_canvas(doc: dict) -> str:
@@ -368,7 +385,9 @@ async def _read_canvas(doc: dict) -> str:
         content = await MongoVFS().read(path=f"{vfs_path}/canvas.md", user_id=user_id)
         return content or ""
     except Exception as exc:
-        log.warning(f"_read_canvas: could not read canvas for todo {doc.get('_id')}: {exc}")
+        log.warning(
+            f"_read_canvas: could not read canvas for todo {doc.get('_id')}: {exc}"
+        )
         return ""
 
 
@@ -379,11 +398,6 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
     Returns the agent's response string, or "NEEDS_ATTENTION: Health check failed"
     if the agent call errors.
     """
-    # Deferred import to avoid circular dependency
-    from app.agents.core.agent import call_agent_silent
-    from app.models.message_models import MessageRequestWithHistory
-    from app.services.model_service import get_user_selected_model
-    from app.services.user_service import get_user_by_id
 
     try:
         user_data = await get_user_by_id(user_id)
@@ -397,7 +411,7 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
 
     user_model_config = None
     try:
-        user_model_config = await get_user_selected_model(user_id)
+        user_model_config = await get_default_model()
     except Exception as exc:
         log.warning(f"_call_health_check_agent: could not get user model config: {exc}")
 
@@ -425,10 +439,14 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
             },
         )
     except Exception as exc:
-        log.warning(f"_call_health_check_agent: agent call failed for todo {todo_id}: {exc}")
+        log.warning(
+            f"_call_health_check_agent: agent call failed for todo {todo_id}: {exc}"
+        )
         return "NEEDS_ATTENTION: Health check failed"
 
-    if complete_message and complete_message.startswith("Error when calling silent agent:"):
+    if complete_message and complete_message.startswith(
+        "Error when calling silent agent:"
+    ):
         return "NEEDS_ATTENTION: Health check failed"
 
     return (complete_message or "").strip()
@@ -452,7 +470,9 @@ async def _send_individual_notification(
                     title=title,
                     body=body,
                 ),
-                channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
+                channels=[
+                    ChannelConfig(channel_type="inapp", enabled=True, priority=1)
+                ],
                 metadata={"todo_id": todo_id},
             )
         )

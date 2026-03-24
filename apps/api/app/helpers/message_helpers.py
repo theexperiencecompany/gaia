@@ -178,7 +178,11 @@ async def get_memory_message(
                 log.warning(f"Error formatting user local time: {e}")
 
         # Search for conversation memories, GAIA knowledge, and active tasks in parallel
-        memories_section, gaia_knowledge_section, tracked_todos_section = await asyncio.gather(
+        (
+            memories_section,
+            gaia_knowledge_section,
+            tracked_todos_section,
+        ) = await asyncio.gather(
             _get_user_memories_section(query, user_id),
             _get_gaia_knowledge_section(query),
             _get_tracked_todos_section(user_id),
@@ -186,7 +190,12 @@ async def get_memory_message(
 
         # Combine all sections
         tasks_block = f"\n\n{tracked_todos_section}" if tracked_todos_section else ""
-        content = "\n".join(context_parts) + memories_section + gaia_knowledge_section + tasks_block
+        content = (
+            "\n".join(context_parts)
+            + memories_section
+            + gaia_knowledge_section
+            + tasks_block
+        )
         return SystemMessage(content=content, memory_message=True)
 
     except Exception as e:

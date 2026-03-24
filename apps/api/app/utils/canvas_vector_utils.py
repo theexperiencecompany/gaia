@@ -61,12 +61,16 @@ async def update_canvas_embedding(
     try:
         raw_client = await ChromaClient.get_client()
         collection = await raw_client.get_collection(COLLECTION_NAME)
-        existing = await collection.get(ids=[f"canvas_{todo_id}"], include=["metadatas"])
+        existing = await collection.get(
+            ids=[f"canvas_{todo_id}"], include=["metadatas"]
+        )
         if existing and existing.get("metadatas") and existing["metadatas"][0]:
             old_meta = existing["metadatas"][0]
             was_completed = bool(old_meta.get("completed", False))
     except Exception as e:
-        log.debug("canvas.preserve_completed_metadata_failed", todo_id=todo_id, error=str(e))
+        log.debug(
+            "canvas.preserve_completed_metadata_failed", todo_id=todo_id, error=str(e)
+        )
 
     await delete_canvas_embedding(todo_id)
     result = await store_canvas_embedding(
@@ -78,7 +82,9 @@ async def update_canvas_embedding(
         try:
             await mark_canvas_completed(todo_id)
         except Exception as e:
-            log.debug("canvas.restore_completed_status_failed", todo_id=todo_id, error=str(e))
+            log.debug(
+                "canvas.restore_completed_status_failed", todo_id=todo_id, error=str(e)
+            )
 
     return result
 
@@ -163,7 +169,9 @@ async def search_canvas_context(
                     "todo_id": meta.get("todo_id", ""),
                     "title": meta.get("title", ""),
                     "score": round(score, 3),
-                    "snippet": doc.page_content[:500] if hasattr(doc, "page_content") else "",
+                    "snippet": doc.page_content[:500]
+                    if hasattr(doc, "page_content")
+                    else "",
                     "completed": meta.get("completed", False),
                 }
             )

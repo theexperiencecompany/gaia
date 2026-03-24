@@ -81,7 +81,9 @@ async def create_tracked_todo(
     # Validate scheduled_at is in the future
     if scheduled_at:
         try:
-            parsed_scheduled = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+            parsed_scheduled = datetime.fromisoformat(
+                scheduled_at.replace("Z", "+00:00")
+            )
             if parsed_scheduled <= datetime.now(timezone.utc):
                 return "Error: scheduled_at must be in the future. Please provide a future datetime."
         except ValueError:
@@ -132,14 +134,20 @@ async def create_tracked_todo(
     if scheduled_at:
         try:
             parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
-            success = await tracked_todo_service.schedule_execution(result.id, parsed_at)
+            success = await tracked_todo_service.schedule_execution(
+                result.id, parsed_at
+            )
             if not success:
                 return (
                     f"Tracked todo created (ID: {result.id}) but scheduling failed. "
                     f"The todo exists but will NOT execute automatically at {scheduled_at}."
                 )
         except Exception as e:
-            log.warning("tracked_todo.schedule_after_create_failed", todo_id=result.id, error=str(e))
+            log.warning(
+                "tracked_todo.schedule_after_create_failed",
+                todo_id=result.id,
+                error=str(e),
+            )
             return (
                 f"Tracked todo created (ID: {result.id}) but scheduling failed: {e}. "
                 f"The todo exists but will NOT execute automatically."
@@ -163,7 +171,9 @@ async def create_tracked_todo(
             vfs = MongoVFS()
             for ref in similar:
                 try:
-                    ref_todo = await todos_collection.find_one({"_id": ObjectId(ref["todo_id"])})
+                    ref_todo = await todos_collection.find_one(
+                        {"_id": ObjectId(ref["todo_id"])}
+                    )
                     if ref_todo and ref_todo.get("vfs_path"):
                         ref_canvas = await vfs.read(
                             path=f"{ref_todo['vfs_path']}/canvas.md", user_id=user_id
@@ -171,16 +181,22 @@ async def create_tracked_todo(
                         if ref_canvas and "## Learnings" in ref_canvas:
                             learnings_start = ref_canvas.index("## Learnings")
                             next_section = ref_canvas.find("\n## ", learnings_start + 1)
-                            learnings = ref_canvas[learnings_start:next_section] if next_section != -1 else ref_canvas[learnings_start:]
+                            learnings = (
+                                ref_canvas[learnings_start:next_section]
+                                if next_section != -1
+                                else ref_canvas[learnings_start:]
+                            )
                             ref_lines.append(
-                                f"From \"{ref['title']}\" (ID: {ref['todo_id']}, score: {ref['score']}):\n{learnings.strip()}"
+                                f'From "{ref["title"]}" (ID: {ref["todo_id"]}, score: {ref["score"]}):\n{learnings.strip()}'
                             )
                         else:
                             ref_lines.append(
-                                f"From \"{ref['title']}\" (ID: {ref['todo_id']}, score: {ref['score']}): {ref.get('snippet', '')[:200]}"
+                                f'From "{ref["title"]}" (ID: {ref["todo_id"]}, score: {ref["score"]}): {ref.get("snippet", "")[:200]}'
                             )
                 except Exception:
-                    ref_lines.append(f"From \"{ref['title']}\" (ID: {ref['todo_id']}): {ref.get('snippet', '')[:200]}")
+                    ref_lines.append(
+                        f'From "{ref["title"]}" (ID: {ref["todo_id"]}): {ref.get("snippet", "")[:200]}'
+                    )
             if ref_lines:
                 reference_context = "\n\n## Past References\n" + "\n\n".join(ref_lines)
                 try:
@@ -191,13 +207,21 @@ async def create_tracked_todo(
                     )
                     await tracked_todo_service.reindex_canvas(result.id, user_id)
                 except Exception as e:
-                    log.warning("tracked_todo.append_reference_context_failed", error=str(e))
+                    log.warning(
+                        "tracked_todo.append_reference_context_failed", error=str(e)
+                    )
     except Exception as e:
-        log.warning("tracked_todo.find_similar_past_work_failed", todo_id=result.id, error=str(e))
+        log.warning(
+            "tracked_todo.find_similar_past_work_failed",
+            todo_id=result.id,
+            error=str(e),
+        )
 
     ref_msg = ""
     if reference_ids:
-        ref_msg = f"\nReferences: {len(reference_ids)} similar past todo(s) found and linked"
+        ref_msg = (
+            f"\nReferences: {len(reference_ids)} similar past todo(s) found and linked"
+        )
 
     return (
         f"Tracked todo created: {result.id}\n"
@@ -214,7 +238,10 @@ async def search_todo_context(
     config: RunnableConfig,
     query: Annotated[str, "Search query to find relevant tracked todo context"],
     top_k: Annotated[int, "Max results to return"] = 5,
-    include_completed: Annotated[bool, "Include completed todos in search results (default True for full history)"] = True,
+    include_completed: Annotated[
+        bool,
+        "Include completed todos in search results (default True for full history)",
+    ] = True,
 ) -> str:
     """
     Semantic search across all tracked todo canvases for the current user.
@@ -428,7 +455,11 @@ async def update_tracked_todo(
         return "No fields to update. Provide at least one field to change."
 
     # Guard: cannot clear scheduled_at while recurrence is still being set in the same call
-    if update_fields.get("recurrence") and update_fields.get("scheduled_at") is None and "scheduled_at" in update_fields:
+    if (
+        update_fields.get("recurrence")
+        and update_fields.get("scheduled_at") is None
+        and "scheduled_at" in update_fields
+    ):
         return "Error: cannot clear scheduled_at while recurrence is set. Clear recurrence first."
 
     update_fields["updated_at"] = datetime.now(timezone.utc)
@@ -473,13 +504,17 @@ async def list_tracked_todos(
     if not user_id:
         return "Error: user_id not found in config"
 
-    cursor = todos_collection.find(
-        {
-            "user_id": user_id,
-            "labels": "gaia-tracked",
-            "completed": False,
-        }
-    ).sort("updated_at", -1).limit(50)
+    cursor = (
+        todos_collection.find(
+            {
+                "user_id": user_id,
+                "labels": "gaia-tracked",
+                "completed": False,
+            }
+        )
+        .sort("updated_at", -1)
+        .limit(50)
+    )
 
     docs = await cursor.to_list(length=50)
     if not docs:
@@ -498,19 +533,25 @@ async def list_tracked_todos(
         last_update = (now - doc.get("updated_at", now)).days
 
         parts = [f'- "{title}"{labels_str} (ID: {todo_id})']
-        parts.append(f"  Priority: {priority} | Age: {age_days}d | Last updated: {last_update}d ago")
+        parts.append(
+            f"  Priority: {priority} | Age: {age_days}d | Last updated: {last_update}d ago"
+        )
 
         detail_parts: list[str] = []
         if doc.get("due_date"):
             days_until = (doc["due_date"] - now).days
-            detail_parts.append(f"Due: {'OVERDUE ' + str(-days_until) + 'd' if days_until < 0 else str(days_until) + 'd'}")
+            detail_parts.append(
+                f"Due: {'OVERDUE ' + str(-days_until) + 'd' if days_until < 0 else str(days_until) + 'd'}"
+            )
         if doc.get("scheduled_at"):
             detail_parts.append(f"Scheduled: {doc['scheduled_at'].isoformat()}")
         if doc.get("recurrence"):
             detail_parts.append(f"Recurrence: {doc['recurrence']}")
         if doc.get("expires_at"):
             expires_days = (doc["expires_at"] - now).days
-            detail_parts.append(f"Expires: {'EXPIRED ' + str(-expires_days) + 'd ago' if expires_days < 0 else 'in ' + str(expires_days) + 'd'}")
+            detail_parts.append(
+                f"Expires: {'EXPIRED ' + str(-expires_days) + 'd ago' if expires_days < 0 else 'in ' + str(expires_days) + 'd'}"
+            )
         if doc.get("gaia_retry_count", 0) > 0:
             detail_parts.append(f"Retries: {doc['gaia_retry_count']}")
 
@@ -523,4 +564,11 @@ async def list_tracked_todos(
     return f"Active tracked todos ({len(docs)}):\n\n" + "\n\n".join(lines)
 
 
-tools = [create_tracked_todo, search_todo_context, update_tracked_todo_canvas, complete_tracked_todo, update_tracked_todo, list_tracked_todos]
+tools = [
+    create_tracked_todo,
+    search_todo_context,
+    update_tracked_todo_canvas,
+    complete_tracked_todo,
+    update_tracked_todo,
+    list_tracked_todos,
+]

@@ -304,13 +304,17 @@ class TriggerHandler(ABC):
                 # Enrich context with tracked todos for signal matching
                 context: Dict[str, Any] = {"trigger_data": data}
                 try:
-                    todos_context = await tracked_todo_service.get_signal_matching_context(
-                        workflow.user_id
+                    todos_context = (
+                        await tracked_todo_service.get_signal_matching_context(
+                            workflow.user_id
+                        )
                     )
                     if todos_context:
                         context["tracked_todos_context"] = todos_context
                 except Exception as e:
-                    log.warning(f"Failed to fetch tracked todos for signal matching: {e}")
+                    log.warning(
+                        f"Failed to fetch tracked todos for signal matching: {e}"
+                    )
 
                 await WorkflowQueueService.queue_workflow_execution(
                     workflow.id,

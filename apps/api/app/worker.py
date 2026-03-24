@@ -56,7 +56,12 @@ WorkerSettings.cron_jobs = [
         second=0,
     ),
     cron(safety_net_check_orphaned_todos, minute={0, 30}, second=0),
-    cron(maintenance_sweep_tracked_todos, hour={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22}, minute=15, second=0),
+    cron(
+        maintenance_sweep_tracked_todos,
+        hour={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22},
+        minute=15,
+        second=0,
+    ),
 ]
 
 WorkerSettings.on_startup = startup

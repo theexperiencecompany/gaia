@@ -11,7 +11,7 @@ import {
   Notification01Icon,
 } from "@icons";
 import type React from "react";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { Gmail } from "@/components/shared/icons";
 import type { CardAction } from "@/features/chat/components/interface/BaseCardView";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";

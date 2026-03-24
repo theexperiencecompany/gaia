@@ -599,10 +599,7 @@ class TodoService:
             log.warning(f"Failed to update index: {str(e)}")
 
         # Trigger tracked todo completion lifecycle if marked complete and has VFS canvas
-        if (
-            update_dict.get("completed") is True
-            and updated.get("vfs_path")
-        ):
+        if update_dict.get("completed") is True and updated.get("vfs_path"):
             try:
                 # Deferred import to avoid circular dependency:
                 # tracked_todo_service -> TodoService -> tracked_todo_service

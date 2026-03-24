@@ -19,6 +19,7 @@ from bson import ObjectId
 from croniter import croniter
 from shared.py.wide_events import log, wide_task
 
+from app.agents.core.agent import call_agent_silent
 from app.db.mongodb.collections import todos_collection
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -29,7 +30,7 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.services.notification_service import notification_service
-from app.services.model_service import get_user_selected_model
+from app.services.model_service import get_default_model
 from app.services.user_service import get_user_by_id
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.redis_utils import RedisPoolManager
@@ -81,7 +82,9 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
 
     # Skip expired todos — let maintenance sweep handle gracefully
     if doc.get("expires_at") and doc["expires_at"] <= datetime.now(timezone.utc):
-        log.info(f"Todo {todo_id} has expired (expires_at={doc['expires_at']}), skipping execution")
+        log.info(
+            f"Todo {todo_id} has expired (expires_at={doc['expires_at']}), skipping execution"
+        )
         return f"expired:{todo_id}"
 
     # Skip failed todos — user must manually reset before re-execution
@@ -111,23 +114,37 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
             if next_run:
                 await todos_collection.update_one(
                     {"_id": ObjectId(todo_id)},
-                    {"$set": {"scheduled_at": next_run, "updated_at": datetime.now(timezone.utc)}},
+                    {
+                        "$set": {
+                            "scheduled_at": next_run,
+                            "updated_at": datetime.now(timezone.utc),
+                        }
+                    },
                 )
                 await pool.enqueue_job(
                     "execute_tracked_todo",
                     todo_id,
                     _defer_until=next_run,
                 )
-                log.info(f"_execute_todo_with_retry: re-enqueued todo {todo_id} at {next_run}")
+                log.info(
+                    f"_execute_todo_with_retry: re-enqueued todo {todo_id} at {next_run}"
+                )
 
         return f"success:{todo_id}"
 
     except Exception as exc:
-        log.exception(f"_execute_todo_with_retry: execution failed for todo {todo_id}: {exc}")
+        log.exception(
+            f"_execute_todo_with_retry: execution failed for todo {todo_id}: {exc}"
+        )
         new_retry_count = retry_count + 1
         await todos_collection.update_one(
             {"_id": ObjectId(todo_id)},
-            {"$set": {"gaia_retry_count": new_retry_count, "updated_at": datetime.now(timezone.utc)}},
+            {
+                "$set": {
+                    "gaia_retry_count": new_retry_count,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
         )
 
         if new_retry_count >= MAX_RETRY_ATTEMPTS:
@@ -166,9 +183,13 @@ async def _run_execution(doc: dict, user_id: str) -> None:
             "trigger_type": "scheduled_todo",
             "todo_id": str(doc["_id"]),
         }
-        success = await WorkflowQueueService.queue_workflow_execution(workflow_id, user_id, context)
+        success = await WorkflowQueueService.queue_workflow_execution(
+            workflow_id, user_id, context
+        )
         if not success:
-            raise RuntimeError(f"Failed to queue workflow {workflow_id} for todo {doc['_id']}")
+            raise RuntimeError(
+                f"Failed to queue workflow {workflow_id} for todo {doc['_id']}"
+            )
         log.info(f"_run_execution: queued workflow {workflow_id} for todo {doc['_id']}")
     else:
         await _execute_via_agent(doc, user_id)
@@ -180,9 +201,6 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
 
     Returns the first 200 chars of the agent response.
     """
-    # Deferred import to avoid circular dependency
-    from app.agents.core.agent import call_agent_silent
-
     todo_id = str(doc["_id"])
 
     # Fetch full user record for timezone and model config
@@ -202,7 +220,7 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
 
     user_model_config = None
     try:
-        user_model_config = await get_user_selected_model(user_id)
+        user_model_config = await get_default_model()
     except Exception as exc:
         log.warning(f"_execute_via_agent: could not get user model config: {exc}")
 
@@ -211,9 +229,13 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
     vfs_path: str | None = doc.get("vfs_path")
     if vfs_path:
         try:
-            canvas_content = await MongoVFS().read(path=f"{vfs_path}/canvas.md", user_id=user_id)
+            canvas_content = await MongoVFS().read(
+                path=f"{vfs_path}/canvas.md", user_id=user_id
+            )
         except Exception as exc:
-            log.warning(f"_execute_via_agent: could not read VFS canvas at {vfs_path}: {exc}")
+            log.warning(
+                f"_execute_via_agent: could not read VFS canvas at {vfs_path}: {exc}"
+            )
 
     # Read referenced canvases for institutional memory
     reference_context = ""
@@ -230,15 +252,24 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
                     if ref_canvas and "## Learnings" in ref_canvas:
                         learnings_start = ref_canvas.index("## Learnings")
                         next_section = ref_canvas.find("\n## ", learnings_start + 1)
-                        learnings = ref_canvas[learnings_start:next_section] if next_section != -1 else ref_canvas[learnings_start:]
+                        learnings = (
+                            ref_canvas[learnings_start:next_section]
+                            if next_section != -1
+                            else ref_canvas[learnings_start:]
+                        )
                         ref_parts.append(
-                            f"From past todo \"{ref_doc.get('title', 'Unknown')}\":\n{learnings.strip()}"
+                            f'From past todo "{ref_doc.get("title", "Unknown")}":\n{learnings.strip()}'
                         )
             except Exception as e:
-                log.debug("execute_todo.reference_read_failed", ref_id=ref_id, error=str(e))
+                log.debug(
+                    "execute_todo.reference_read_failed", ref_id=ref_id, error=str(e)
+                )
                 continue
         if ref_parts:
-            reference_context = "\n\nPast experience (from similar completed todos):\n" + "\n\n".join(ref_parts)
+            reference_context = (
+                "\n\nPast experience (from similar completed todos):\n"
+                + "\n\n".join(ref_parts)
+            )
 
     # Build prompt
     title: str = doc.get("title", "Untitled Todo")
@@ -279,7 +310,9 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
         trigger_context=trigger_context,
     )
 
-    if complete_message and complete_message.startswith("Error when calling silent agent:"):
+    if complete_message and complete_message.startswith(
+        "Error when calling silent agent:"
+    ):
         raise RuntimeError(complete_message)
 
     log.info(f"_execute_via_agent: agent completed for todo {todo_id}")
@@ -324,7 +357,9 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
             )
         )
     except Exception as notify_exc:
-        log.warning(f"_mark_todo_failed: could not send failure notification: {notify_exc}")
+        log.warning(
+            f"_mark_todo_failed: could not send failure notification: {notify_exc}"
+        )
 
 
 def _compute_next_run(recurrence: str) -> datetime | None:
@@ -360,7 +395,9 @@ def _compute_next_run(recurrence: str) -> datetime | None:
             next_dt = next_dt.replace(tzinfo=timezone.utc)
         return next_dt
     except Exception:
-        log.warning(f"_compute_next_run: unrecognised recurrence expression '{recurrence}'")
+        log.warning(
+            f"_compute_next_run: unrecognised recurrence expression '{recurrence}'"
+        )
         return None
 
 
@@ -409,7 +446,9 @@ async def safety_net_check_orphaned_todos(ctx: dict) -> str:
             run_at = now + timedelta(seconds=jitter_seconds)
             await pool.enqueue_job("execute_tracked_todo", todo_id, _defer_until=run_at)
             re_enqueued += 1
-            log.info(f"safety_net_check_orphaned_todos: re-enqueued todo {todo_id} at {run_at}")
+            log.info(
+                f"safety_net_check_orphaned_todos: re-enqueued todo {todo_id} at {run_at}"
+            )
 
         log.info(
             f"safety_net_check_orphaned_todos: done — re_enqueued={re_enqueued} skipped={skipped}"

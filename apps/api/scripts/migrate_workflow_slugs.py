@@ -44,7 +44,12 @@ async def migrate() -> None:
         # Ensure uniqueness by appending a counter suffix when collisions exist
         slug = base_slug
         counter = 1
-        while await workflows_collection.count_documents({"slug": slug, "_id": {"$ne": workflow_id}}) > 0:
+        while (
+            await workflows_collection.count_documents(
+                {"slug": slug, "_id": {"$ne": workflow_id}}
+            )
+            > 0
+        ):
             slug = f"{base_slug}-{counter}"
             counter += 1
 
