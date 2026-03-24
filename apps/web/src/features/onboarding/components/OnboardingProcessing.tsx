@@ -12,7 +12,7 @@ import { m } from "motion/react";
 import { useRouter } from "next/navigation";
 import type { FC } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 
 const TIMEOUT_MS = 90_000;
 

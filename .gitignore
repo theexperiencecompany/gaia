@@ -124,3 +124,5 @@ docs/plans/
 .coverage
 i18n.cache
 .worktrees/
+
+docs/superpowers

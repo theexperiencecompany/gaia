@@ -22,12 +22,8 @@ interface OnboardingState {
   contextMessage: string | null;
   phase: OnboardingPhase | null;
   isPhaseLoading: boolean;
-  /** Set when personalization completes — holo card can be shown after user activity */
-  holoCardReady: boolean;
   /** Whether the holo card has already been shown this session */
   holoCardShown: boolean;
-  /** Number of messages sent after onboarding completes */
-  messagesSentAfterOnboarding: number;
 }
 
 interface OnboardingActions {
@@ -35,9 +31,7 @@ interface OnboardingActions {
   setContextMessage: (message: string | null) => void;
   setPhase: (phase: OnboardingPhase | null) => void;
   setPhaseLoading: (loading: boolean) => void;
-  setHoloCardReady: (ready: boolean) => void;
   setHoloCardShown: (shown: boolean) => void;
-  incrementMessagesSent: () => void;
   reset: () => void;
 }
 
@@ -48,9 +42,7 @@ const initialState: OnboardingState = {
   contextMessage: null,
   phase: null,
   isPhaseLoading: false,
-  holoCardReady: false,
   holoCardShown: false,
-  messagesSentAfterOnboarding: 0,
 };
 
 export const useOnboardingStore = create<OnboardingStore>()(
@@ -61,12 +53,7 @@ export const useOnboardingStore = create<OnboardingStore>()(
       setContextMessage: (message) => set({ contextMessage: message }),
       setPhase: (phase) => set({ phase }),
       setPhaseLoading: (loading) => set({ isPhaseLoading: loading }),
-      setHoloCardReady: (ready) => set({ holoCardReady: ready }),
       setHoloCardShown: (shown) => set({ holoCardShown: shown }),
-      incrementMessagesSent: () =>
-        set((state) => ({
-          messagesSentAfterOnboarding: state.messagesSentAfterOnboarding + 1,
-        })),
       reset: () => set(initialState),
     }),
     { name: "onboarding-store" },

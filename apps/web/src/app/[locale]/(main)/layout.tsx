@@ -10,14 +10,12 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
 import { useUser } from "@/features/auth/hooks/useUser";
-import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
 import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
 import { isOnboardingPhaseUpdateMessage } from "@/features/onboarding/types/websocket";
 import { GlobalPricingModal } from "@/features/pricing/components/GlobalPricingModal";
 import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
-import { usePathname } from "@/i18n/navigation";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { apiService } from "@/lib/api/service";
@@ -25,9 +23,8 @@ import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { useChatStoreSync } from "@/stores/chatStore";
 import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
 import {
-  OnboardingPhase,
+  type OnboardingPhase,
   useOnboardingPhaseStore,
-  useOnboardingStore,
 } from "@/stores/onboardingStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
@@ -43,7 +40,6 @@ const HeaderSidebarTrigger = () => {
 };
 
 export default function MainLayout({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
   const user = useUser();
   const { isOpen, isMobileOpen, setOpen, setMobileOpen } = useUIStoreSidebar();
   const {
@@ -55,16 +51,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
-  const {
-    open: isHoloCardModalOpen,
-    openModal: openHoloCardModal,
-    closeModal: closeHoloCardModal,
-  } = useHoloCardModalStore();
-  const { phase: onboardingPhase, setPhase } = useOnboardingPhaseStore();
-  const holoCardReady = useOnboardingStore((s) => s.holoCardReady);
-  const holoCardShown = useOnboardingStore((s) => s.holoCardShown);
-  const messagesSent = useOnboardingStore((s) => s.messagesSentAfterOnboarding);
-  const setHoloCardShown = useOnboardingStore((s) => s.setHoloCardShown);
+  const { open: isHoloCardModalOpen, closeModal: closeHoloCardModal } =
+    useHoloCardModalStore();
+  const { setPhase } = useOnboardingPhaseStore();
 
   // Check if user needs onboarding
   useOnboardingGuard();
@@ -113,38 +102,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
       wsManager.off("onboarding_phase_update", handlePhaseUpdate);
     };
   }, [setPhase]);
-
-  // Visibility logic based on phase from store
-  const shouldShowPersonalizationCard =
-    hasCompletedInitialOnboarding &&
-    onboardingPhase &&
-    (onboardingPhase === OnboardingPhase.PERSONALIZATION_PENDING ||
-      onboardingPhase === OnboardingPhase.PERSONALIZATION_COMPLETE);
-
-  const shouldShowGettingStartedCard =
-    hasCompletedInitialOnboarding &&
-    onboardingPhase &&
-    (onboardingPhase === OnboardingPhase.GETTING_STARTED ||
-      onboardingPhase === OnboardingPhase.COMPLETED);
-
-  // Open holo card after user has sent enough messages post-onboarding
-  const HOLO_CARD_MESSAGE_THRESHOLD = 2;
-  useEffect(() => {
-    if (
-      holoCardReady &&
-      !holoCardShown &&
-      messagesSent >= HOLO_CARD_MESSAGE_THRESHOLD
-    ) {
-      setHoloCardShown(true);
-      openHoloCardModal();
-    }
-  }, [
-    holoCardReady,
-    holoCardShown,
-    messagesSent,
-    setHoloCardShown,
-    openHoloCardModal,
-  ]);
 
   useChatStoreSync();
 
@@ -251,16 +208,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             isOpen={isHoloCardModalOpen}
             onClose={closeHoloCardModal}
           />
-
-          {/* Onboarding assistance cards - shown after completing initial onboarding */}
-          {(shouldShowPersonalizationCard || shouldShowGettingStartedCard) && (
-            <div
-              className={`fixed z-40 w-70 space-y-3 overflow-hidden ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
-            >
-              {shouldShowPersonalizationCard && <ContextGatheringLoader />}
-              {/* {shouldShowGettingStartedCard && <OnboardingStepsCard />} */}
-            </div>
-          )}
         </SidebarProvider>
       </TooltipProvider>
     </ProvidersLayout>

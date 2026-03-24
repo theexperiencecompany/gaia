@@ -1,15 +1,16 @@
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
+import { useRouter } from "@/i18n/navigation";
 import {
   ANALYTICS_EVENTS,
   trackEvent,
   trackOnboardingComplete,
   trackOnboardingStep,
 } from "@/lib/analytics";
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 import { batchSyncConversations } from "@/services/syncService";
 
@@ -18,7 +19,7 @@ import type { Message, OnboardingState } from "../types";
 
 const ONBOARDING_STORAGE_KEY = "gaia-onboarding-state";
 
-export const useOnboarding = () => {
+export const useOnboarding = (skipAutoRedirect?: boolean) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useUser();
@@ -108,7 +109,6 @@ export const useOnboarding = () => {
           name: responses[FIELD_NAMES.NAME]?.trim() || "",
           profession: responses[FIELD_NAMES.PROFESSION] || "",
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          company_url: responses[FIELD_NAMES.COMPANY_URL] || undefined,
         };
 
         const response = await authApi.completeOnboarding(onboardingData);
@@ -239,8 +239,9 @@ export const useOnboarding = () => {
         const processingMsg: Message = {
           id: "processing",
           type: "bot",
-          content:
-            "Give me a moment. I'm going through your inbox and setting things up.",
+          content: gmailConnected
+            ? "Give me a moment. I'm going through your inbox and setting things up."
+            : "Give me a moment. I'm setting things up for you.",
         };
 
         // Clear session storage before entering processing phase
@@ -352,7 +353,7 @@ export const useOnboarding = () => {
 
   // Called when user skips Gmail
   const handleGmailSkip = useCallback(() => {
-    submitResponse("Skip for now", "skipped");
+    submitResponse("Continue without Gmail", "skipped");
   }, [submitResponse]);
 
   const handleChipSelect = useCallback(
@@ -459,11 +460,6 @@ export const useOnboarding = () => {
     ],
   );
 
-  // Skip optional field (company_url)
-  const handleSkip = useCallback(() => {
-    submitResponse("Skip", "");
-  }, [submitResponse]);
-
   // Called by processing component when intelligence is complete
   const handleConversationReady = useCallback(
     async (conversationId: string) => {
@@ -475,11 +471,13 @@ export const useOnboarding = () => {
         // non-blocking
       }
 
-      setTimeout(() => {
-        router.push(`/c/${conversationId}`);
-      }, 500);
+      if (!skipAutoRedirect) {
+        setTimeout(() => {
+          router.push(`/c/${conversationId}`);
+        }, 500);
+      }
     },
-    [router],
+    [router, skipAutoRedirect],
   );
 
   // Initialize — also handle resume if backend is already processing
@@ -581,7 +579,6 @@ export const useOnboarding = () => {
     handleProfessionInputChange,
     handleInputChange,
     handleSubmit,
-    handleSkip,
     handleGmailConnect,
     handleGmailSkip,
     handleConversationReady,
