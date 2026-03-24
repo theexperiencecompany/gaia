@@ -1,5 +1,6 @@
 "use client";
 
+import { m } from "motion/react";
 import { useRouter } from "next/navigation";
 import {
   OnboardingInput,
@@ -9,6 +10,7 @@ import {
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
 import { useOnboardingReveal } from "@/features/onboarding/hooks/useOnboardingReveal";
 import { useOnboardingWebSocket } from "@/features/onboarding/hooks/useOnboardingWebSocket";
+import { cn } from "@/lib/utils";
 
 export default function Onboarding() {
   const router = useRouter();
@@ -22,6 +24,8 @@ export default function Onboarding() {
     handleInputChange,
     handleSubmit,
     handleGmailSkip,
+    handleSkipSetup,
+    handleEditResponse,
     handleConversationReady,
     handleRestart,
   } = useOnboarding(true);
@@ -45,6 +49,12 @@ export default function Onboarding() {
         currentStep={onboardingState.currentQuestionIndex}
         totalSteps={4}
         onRestart={handleRestart}
+        onSkipSetup={
+          !onboardingState.isProcessingPhase &&
+          onboardingState.currentQuestionIndex > 0
+            ? handleSkipSetup
+            : undefined
+        }
         processingProgress={
           onboardingState.isProcessingPhase ? reveal.progress : undefined
         }
@@ -60,10 +70,18 @@ export default function Onboarding() {
             isIntelligenceComplete={reveal.isRevealComplete}
             intelligenceConversationId={reveal.intelligenceConversationId}
             onProcessingComplete={handleConversationReady}
+            processingProgress={
+              onboardingState.isProcessingPhase ? reveal.progress : undefined
+            }
+            onEditMessage={handleEditResponse}
           />
 
           {reveal.isRevealComplete && (
-            <div className="mt-6 flex justify-center">
+            <m.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="fixed bottom-8 left-1/2 -translate-x-1/2 z-10"
+            >
               <button
                 type="button"
                 onClick={() => {
@@ -72,11 +90,30 @@ export default function Onboarding() {
                   }
                 }}
                 disabled={!reveal.intelligenceConversationId}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-6 py-3 rounded-xl transition-colors disabled:opacity-50"
+                aria-label={
+                  reveal.intelligenceConversationId
+                    ? "Get started with GAIA"
+                    : "Preparing your first conversation"
+                }
+                className={cn(
+                  "rounded-xl px-6 py-3 font-medium transition-all text-sm",
+                  reveal.intelligenceConversationId
+                    ? "bg-blue-500 text-white hover:bg-blue-400 cursor-pointer"
+                    : "bg-zinc-800 text-zinc-500 cursor-wait",
+                )}
               >
-                Let's go →
+                {reveal.intelligenceConversationId ? (
+                  <>
+                    Let&apos;s go <span aria-hidden="true">→</span>
+                  </>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block size-3 rounded-full border-2 border-zinc-500 border-t-transparent animate-spin" />
+                    Preparing your conversation...
+                  </span>
+                )}
               </button>
-            </div>
+            </m.div>
           )}
         </div>
       </div>

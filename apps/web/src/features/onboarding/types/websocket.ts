@@ -68,6 +68,7 @@ export interface SocialProfilesResults {
 export interface TriageResults {
   total_scanned: number;
   total_unread: number;
+  email_count?: number;
   important_emails: Array<{
     sender: string;
     subject: string;
@@ -106,11 +107,19 @@ export interface PersonalizationProgressMessage {
   };
 }
 
+export interface IntelligenceCompleteMessage {
+  type: "onboarding_intelligence_complete";
+  data: {
+    conversation_id: string;
+  };
+}
+
 export type OnboardingWebSocketMessage =
   | PersonalizationCompleteMessage
   | BioStatusUpdateMessage
   | OnboardingPhaseUpdateMessage
-  | PersonalizationProgressMessage;
+  | PersonalizationProgressMessage
+  | IntelligenceCompleteMessage;
 
 /**
  * Type guard for PersonalizationCompleteMessage

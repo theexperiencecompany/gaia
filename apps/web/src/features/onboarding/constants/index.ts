@@ -1,5 +1,9 @@
 import type { ProfessionOption, Question } from "../types";
 
+/** Standard dimensions for the holo card across onboarding UI */
+export const HOLO_CARD_HEIGHT = 470;
+export const HOLO_CARD_WIDTH = 330;
+
 export const professionOptions: ProfessionOption[] = [
   { label: "Student", value: "student" },
   { label: "Teacher", value: "teacher" },
@@ -47,7 +51,7 @@ export const questions: Question[] = [
   {
     id: "3",
     question:
-      "Connect your Gmail. This is where I start working for you — I'll scan your inbox, draft replies in your voice, and turn action items into todos automatically.\n\nI never send anything without your approval. Your data stays private.",
+      "Last step — connect your Gmail and I'll scan your inbox, surface what matters, and set up your first action items.",
     placeholder: "",
     fieldName: FIELD_NAMES.GMAIL,
   },

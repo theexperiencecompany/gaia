@@ -46,8 +46,6 @@ export const usePersonalization = (
         { silent: true },
       );
 
-      console.log("[usePersonalization] Fetched data:", data);
-
       // Check if personalization is complete based on phase
       const isComplete =
         data.phase &&
@@ -76,8 +74,6 @@ export const usePersonalization = (
 
     const handlePersonalizationComplete = (message: unknown) => {
       if (!isPersonalizationCompleteMessage(message)) return;
-
-      console.log("[usePersonalization] WebSocket event received");
 
       const data: PersonalizationData = {
         ...message.data,

@@ -12,6 +12,10 @@ import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
+import {
+  HOLO_CARD_HEIGHT,
+  HOLO_CARD_WIDTH,
+} from "@/features/onboarding/constants";
 import { usePersonalization } from "@/features/onboarding/hooks/usePersonalization";
 import type { House } from "@/features/onboarding/types/websocket";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
@@ -208,8 +212,8 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                   <div
                     className="relative overflow-hidden rounded-2xl shadow-2xl bg-linear-to-br from-zinc-800 to-zinc-600"
                     style={{
-                      height: "470px",
-                      width: "330px",
+                      height: `${HOLO_CARD_HEIGHT}px`,
+                      width: `${HOLO_CARD_WIDTH}px`,
                     }}
                   >
                     {/* Shimmer effect */}
@@ -264,8 +268,8 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                 <div className="text-sm text-zinc-400">Click to flip card</div>
                 <HoloCardEditor
                   initialData={holoCardData}
-                  height={470}
-                  width={330}
+                  height={HOLO_CARD_HEIGHT}
+                  width={HOLO_CARD_WIDTH}
                 />
               </div>
             )}

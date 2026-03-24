@@ -8,7 +8,6 @@ from shared.py.wide_events import log
 from app.agents.prompts.onboarding_prompts import FIRST_MESSAGE_GENERATION_PROMPT
 from app.core.lazy_loader import providers
 from app.models.onboarding_models import (
-    CompanyProfile,
     InboxTriage,
     WritingStyleProfile,
 )
@@ -18,7 +17,6 @@ async def generate_first_message(
     user_id: str,
     name: str,
     profession: str,
-    company_profile: Optional[CompanyProfile],
     triage: Optional[InboxTriage],
     created_todos: list[dict],
     created_workflows: list[dict],
@@ -30,12 +28,6 @@ async def generate_first_message(
     Single LLM call with all Phase 1+2 context.
     """
     try:
-        company_description = (
-            f"{company_profile.name}: {company_profile.description}"
-            if company_profile
-            else "not provided"
-        )
-
         writing_style_summary = (
             writing_style.summary if writing_style else "not yet analyzed"
         )
@@ -75,7 +67,6 @@ async def generate_first_message(
         prompt = FIRST_MESSAGE_GENERATION_PROMPT.format(
             name=name,
             profession=profession,
-            company_description=company_description,
             writing_style_summary=writing_style_summary,
             social_profiles_text=social_profiles_text,
             total_scanned=total_scanned,

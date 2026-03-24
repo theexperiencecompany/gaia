@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import { useOnboardingStore } from "@/stores/onboardingStore";
+import { HOLO_CARD_HEIGHT, HOLO_CARD_WIDTH } from "../../constants";
 import type { PersonalizationData } from "../../types/websocket";
 
 interface HoloCardRevealProps {
@@ -31,7 +32,13 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
     account_number: personalizationData.account_number
       ? `#${personalizationData.account_number}`
       : "#00000",
-    member_since: personalizationData.member_since ?? "Nov 21, 2024",
+    member_since:
+      personalizationData.member_since ??
+      new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
     overlay_color: personalizationData.overlay_color ?? "rgba(0,0,0,0)",
     overlay_opacity: personalizationData.overlay_opacity ?? 40,
     holo_card_id: personalizationData.holo_card_id,
@@ -64,13 +71,22 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
       transition={{ duration: 0.35 }}
     >
       {revealState === "revealed" ? (
-        <div className="flex flex-col items-center gap-4">
+        <div
+          className="flex flex-col items-center gap-4"
+          role="img"
+          aria-label="Your personalized GAIA member card"
+        >
           <p className="text-sm text-zinc-400">Click to flip card</p>
-          <HoloCardEditor initialData={holoCardData} height={470} width={330} />
+          <HoloCardEditor
+            initialData={holoCardData}
+            height={HOLO_CARD_HEIGHT}
+            width={HOLO_CARD_WIDTH}
+          />
         </div>
       ) : (
         <m.button
           type="button"
+          aria-label="Click to reveal your personalized GAIA card"
           className="group relative cursor-pointer"
           onClick={revealState === "shimmer" ? handleShimmerClick : undefined}
           animate={
@@ -86,7 +102,7 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
           {/* Shimmer card placeholder */}
           <div
             className="relative overflow-hidden rounded-2xl shadow-2xl bg-gradient-to-br from-zinc-800 to-zinc-600"
-            style={{ height: 470, width: 330 }}
+            style={{ height: HOLO_CARD_HEIGHT, width: HOLO_CARD_WIDTH }}
           >
             {/* Shimmer sweep */}
             <m.div

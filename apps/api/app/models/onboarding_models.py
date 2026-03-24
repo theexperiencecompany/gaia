@@ -1,12 +1,4 @@
-from typing import Optional
-
 from pydantic import BaseModel
-
-
-class CompanyProfile(BaseModel):
-    name: str
-    description: str
-    industry: Optional[str] = None
 
 
 class WritingStyleProfile(BaseModel):

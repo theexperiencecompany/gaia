@@ -101,7 +101,7 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     }
   }, [onboardingState]);
 
-  const _submitOnboardingToBackend = useCallback(
+  const submitOnboardingToBackend = useCallback(
     async (responses: Record<string, string>) => {
       try {
         const onboardingData = {
@@ -156,29 +156,13 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
       processingStarted.current = true;
       const { responses } = pendingDataRef.current;
       pendingDataRef.current = null;
-      void _submitOnboardingToBackend(responses);
+      void submitOnboardingToBackend(responses);
     }
-  }, [onboardingState.isProcessingPhase, _submitOnboardingToBackend]);
+  }, [onboardingState.isProcessingPhase, submitOnboardingToBackend]);
 
   useEffect(() => {
     scrollToBottom();
   }, [onboardingState.messages]);
-
-  useEffect(() => {
-    if (
-      !onboardingState.isProcessing &&
-      !onboardingState.hasAnsweredCurrentQuestion &&
-      !onboardingState.isProcessingPhase
-    ) {
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 500);
-    }
-  }, [
-    onboardingState.isProcessing,
-    onboardingState.hasAnsweredCurrentQuestion,
-    onboardingState.isProcessingPhase,
-  ]);
 
   const getDisplayText = useCallback(
     (fieldName: string, value: string): string => {
@@ -233,6 +217,7 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
           id: `user-${Date.now()}`,
           type: "user",
           content: responseText,
+          questionFieldName: currentQuestion.fieldName,
         };
 
         const processingMsg: Message = {
@@ -268,6 +253,7 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
           id: `user-${Date.now()}`,
           type: "user",
           content: responseText,
+          questionFieldName: currentQuestion.fieldName,
         };
 
         const newResponses = {
@@ -336,59 +322,42 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     }
   }, [searchParams, refetchIntegrationStatus, submitResponse]);
 
-  // Called when Gmail OAuth succeeds
-  const handleGmailConnect = useCallback(() => {
-    const gmailIndex = questions.findIndex(
-      (q) => q.fieldName === FIELD_NAMES.GMAIL,
-    );
-    if (onboardingState.currentQuestionIndex !== gmailIndex) return;
-    if (onboardingState.hasAnsweredCurrentQuestion) return;
-    submitResponse("Connected", "connected");
-  }, [
-    onboardingState.currentQuestionIndex,
-    onboardingState.hasAnsweredCurrentQuestion,
-    submitResponse,
-  ]);
-
   // Called when user skips Gmail
   const handleGmailSkip = useCallback(() => {
     submitResponse("Continue without Gmail", "skipped");
   }, [submitResponse]);
 
-  const handleChipSelect = useCallback(
-    (questionId: string, chipValue: string) => {
-      if (
-        onboardingState.isProcessing ||
-        onboardingState.hasAnsweredCurrentQuestion
-      )
-        return;
+  const handleSkipSetup = useCallback(async () => {
+    if (!onboardingState.userResponses[FIELD_NAMES.NAME]) return;
 
-      const currentQuestion = questions[onboardingState.currentQuestionIndex];
+    const responses = { ...onboardingState.userResponses };
+    // Default skipped fields
+    if (!responses[FIELD_NAMES.PROFESSION])
+      responses[FIELD_NAMES.PROFESSION] = "";
+    if (!responses[FIELD_NAMES.GMAIL]) responses[FIELD_NAMES.GMAIL] = "skipped";
 
-      if (currentQuestion.id !== questionId) return;
+    pendingDataRef.current = { responses };
 
-      const selectedChip = currentQuestion.chipOptions?.find(
-        (option) => option.value === chipValue,
-      );
-      if (selectedChip) {
-        if (chipValue === "skip") {
-          trackEvent(ANALYTICS_EVENTS.ONBOARDING_SKIPPED, {
-            step: onboardingState.currentQuestionIndex,
-            question_id: questionId,
-          });
-          submitResponse("Skipped", "");
-        } else {
-          submitResponse(selectedChip.label, chipValue);
-        }
-      }
-    },
-    [
-      onboardingState.isProcessing,
-      onboardingState.currentQuestionIndex,
-      onboardingState.hasAnsweredCurrentQuestion,
-      submitResponse,
-    ],
-  );
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    }
+
+    setOnboardingState((prev) => ({
+      ...prev,
+      messages: [
+        ...prev.messages,
+        {
+          id: "processing",
+          type: "bot" as const,
+          content: "Give me a moment. I'm setting things up for you.",
+        },
+      ],
+      currentQuestionIndex: questions.length,
+      isProcessingPhase: true,
+      hasAnsweredCurrentQuestion: true,
+      hasGmail: false,
+    }));
+  }, [onboardingState.userResponses]);
 
   const handleProfessionSelect = useCallback(
     (professionKey: React.Key | null) => {
@@ -535,6 +504,47 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     user.onboarding,
   ]);
 
+  const handleEditResponse = useCallback(
+    (questionFieldName: string) => {
+      const questionIndex = questions.findIndex(
+        (q) => q.fieldName === questionFieldName,
+      );
+      if (questionIndex === -1) return;
+
+      const messageIndex = onboardingState.messages.findIndex(
+        (m) => m.questionFieldName === questionFieldName,
+      );
+
+      setOnboardingState((prev) => ({
+        ...prev,
+        messages:
+          messageIndex >= 0
+            ? prev.messages.slice(0, messageIndex)
+            : prev.messages,
+        currentQuestionIndex: questionIndex,
+        userResponses: Object.fromEntries(
+          Object.entries(prev.userResponses).filter(([key]) => {
+            const keyIdx = questions.findIndex((q) => q.fieldName === key);
+            return keyIdx < questionIndex;
+          }),
+        ),
+        currentInputs: {
+          text:
+            questionFieldName !== FIELD_NAMES.PROFESSION
+              ? (prev.userResponses[questionFieldName] ?? "")
+              : "",
+          selectedProfession:
+            questionFieldName === FIELD_NAMES.PROFESSION
+              ? (prev.userResponses[questionFieldName] ?? null)
+              : null,
+        },
+        hasAnsweredCurrentQuestion: false,
+        isProcessingPhase: false,
+      }));
+    },
+    [onboardingState.messages, onboardingState.userResponses],
+  );
+
   const handleRestart = useCallback(() => {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
@@ -573,13 +583,13 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     onboardingState,
     messagesEndRef,
     inputRef,
-    handleChipSelect,
     handleProfessionSelect,
     handleProfessionInputChange,
     handleInputChange,
     handleSubmit,
-    handleGmailConnect,
     handleGmailSkip,
+    handleSkipSetup,
+    handleEditResponse,
     handleConversationReady,
     handleRestart,
   };

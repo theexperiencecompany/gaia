@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Message } from "@/features/onboarding/types";
 import type { PersonalizationData } from "@/features/onboarding/types/websocket";
 
@@ -26,7 +26,6 @@ interface UseOnboardingRevealReturn {
 }
 
 const ORDERED_STAGES = [
-  "scanning_inbox",
   "learning_style",
   "finding_profiles",
   "triaging",
@@ -34,11 +33,11 @@ const ORDERED_STAGES = [
   "creating_workflows",
 ];
 
-let messageCounter = 0;
-
-function generateRevealMessageId(): string {
-  messageCounter += 1;
-  return `reveal-${messageCounter}-${Date.now()}`;
+function generateRevealMessageId(
+  messageCounterRef: React.MutableRefObject<number>,
+): string {
+  messageCounterRef.current += 1;
+  return `reveal-${messageCounterRef.current}-${Date.now()}`;
 }
 
 function isStageResultEmpty(
@@ -46,10 +45,6 @@ function isStageResultEmpty(
   results: Record<string, unknown>,
 ): boolean {
   switch (stage) {
-    case "scanning_inbox": {
-      const emailCount = results.email_count;
-      return typeof emailCount === "number" && emailCount === 0;
-    }
     case "learning_style": {
       const styleSummary = results.style_summary;
       return !styleSummary || styleSummary === "";
@@ -78,9 +73,10 @@ function isStageResultEmpty(
 function buildRevealMessage(
   stage: string,
   results: Record<string, unknown>,
+  messageCounterRef: React.MutableRefObject<number>,
 ): Message {
   return {
-    id: generateRevealMessageId(),
+    id: generateRevealMessageId(messageCounterRef),
     type: "reveal",
     content: "",
     revealStage: stage,
@@ -90,14 +86,23 @@ function buildRevealMessage(
 
 function buildHoloCardMessage(
   personalizationData: PersonalizationData,
+  messageCounterRef: React.MutableRefObject<number>,
 ): Message {
   return {
-    id: generateRevealMessageId(),
+    id: generateRevealMessageId(messageCounterRef),
     type: "reveal",
     content: "",
     revealStage: "holo_card",
     revealData: { personalizationData },
   };
+}
+
+function sortByStageOrder(stages: PendingStage[]): PendingStage[] {
+  return stages.sort((a, b) => {
+    const indexA = ORDERED_STAGES.indexOf(a.stage);
+    const indexB = ORDERED_STAGES.indexOf(b.stage);
+    return indexA - indexB;
+  });
 }
 
 export function useOnboardingReveal(): UseOnboardingRevealReturn {
@@ -111,11 +116,13 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
     null,
   );
 
+  const messageCounterRef = useRef(0);
   const pendingStagesRef = useRef<PendingStage[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const intelligenceCompleteRef = useRef<boolean>(false);
   const holoCardDataRef = useRef<PersonalizationData | null>(null);
   const shownStagesRef = useRef<Set<string>>(new Set());
+  const inboxEmailCountRef = useRef<number | null>(null);
 
   const stopInterval = useCallback(() => {
     if (intervalRef.current !== null) {
@@ -124,23 +131,29 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
     }
   }, []);
 
+  useEffect(() => {
+    return () => stopInterval();
+  }, [stopInterval]);
+
   const drainAndFinish = useCallback(() => {
     stopInterval();
 
-    const remaining = pendingStagesRef.current.splice(0);
+    const remaining = sortByStageOrder(pendingStagesRef.current.splice(0));
     const drainedMessages: Message[] = [];
 
     for (const pending of remaining) {
       if (!shownStagesRef.current.has(pending.stage)) {
         shownStagesRef.current.add(pending.stage);
         drainedMessages.push(
-          buildRevealMessage(pending.stage, pending.results),
+          buildRevealMessage(pending.stage, pending.results, messageCounterRef),
         );
       }
     }
 
     const holoData = holoCardDataRef.current;
-    const holoMessage = holoData ? buildHoloCardMessage(holoData) : null;
+    const holoMessage = holoData
+      ? buildHoloCardMessage(holoData, messageCounterRef)
+      : null;
 
     if (drainedMessages.length > 0 || holoMessage !== null) {
       setRevealMessages((prev) => {
@@ -164,10 +177,15 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
       const pending = pendingStagesRef.current;
 
       if (pending.length > 0) {
+        sortByStageOrder(pending);
         const next = pending.shift();
         if (next !== undefined && !shownStagesRef.current.has(next.stage)) {
           shownStagesRef.current.add(next.stage);
-          const message = buildRevealMessage(next.stage, next.results);
+          const message = buildRevealMessage(
+            next.stage,
+            next.results,
+            messageCounterRef,
+          );
           setRevealMessages((prev) => [...prev, message]);
         }
         return;
@@ -186,9 +204,22 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
       progressValue: number,
       results?: Record<string, unknown>,
     ) => {
-      setProgress(progressValue);
+      setProgress((prev) => Math.max(prev, progressValue));
 
-      if (!results || !ORDERED_STAGES.includes(stage)) {
+      if (!results) {
+        return;
+      }
+
+      // Capture email_count from scanning_inbox but don't show it as a separate card
+      if (stage === "scanning_inbox") {
+        const emailCount = results.email_count;
+        if (typeof emailCount === "number" && emailCount > 0) {
+          inboxEmailCountRef.current = emailCount;
+        }
+        return;
+      }
+
+      if (!ORDERED_STAGES.includes(stage)) {
         return;
       }
 
@@ -207,7 +238,13 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
         return;
       }
 
-      pendingStagesRef.current.push({ stage, results });
+      // Inject stored email_count into triage results
+      const enrichedResults =
+        stage === "triaging" && inboxEmailCountRef.current !== null
+          ? { ...results, email_count: inboxEmailCountRef.current }
+          : results;
+
+      pendingStagesRef.current.push({ stage, results: enrichedResults });
 
       startIntervalIfNeeded();
     },

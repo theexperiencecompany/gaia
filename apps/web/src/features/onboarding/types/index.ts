@@ -6,6 +6,7 @@ export interface Message {
   content: string;
   revealStage?: string;
   revealData?: Record<string, unknown>;
+  questionFieldName?: string;
 }
 
 export interface Question {

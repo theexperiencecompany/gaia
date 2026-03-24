@@ -30,42 +30,58 @@ interface OnboardingMessagesProps {
   isIntelligenceComplete?: boolean;
   intelligenceConversationId?: string | null;
   onProcessingComplete?: (conversationId: string) => void;
+  processingProgress?: number;
+  onEditMessage?: (fieldName: string) => void;
 }
 
 function renderRevealCard(
   revealStage: string,
   revealData: Record<string, unknown>,
 ): React.ReactNode {
+  // Single cast to unknown so individual branches can narrow safely
+  const data: unknown = revealData;
+
   switch (revealStage) {
     case "scanning_inbox":
-      return (
-        <InboxRevealCard {...(revealData as unknown as InboxScanResults)} />
-      );
+      if ("email_count" in revealData) {
+        return <InboxRevealCard {...(data as InboxScanResults)} />;
+      }
+      return null;
     case "learning_style":
-      return (
-        <WritingStyleRevealCard
-          {...(revealData as unknown as WritingStyleResults)}
-        />
-      );
+      if ("style_summary" in revealData) {
+        return <WritingStyleRevealCard {...(data as WritingStyleResults)} />;
+      }
+      return null;
     case "finding_profiles":
-      return (
-        <SocialProfilesRevealCard
-          {...(revealData as unknown as SocialProfilesResults)}
-        />
-      );
+      if ("profiles" in revealData) {
+        return (
+          <SocialProfilesRevealCard {...(data as SocialProfilesResults)} />
+        );
+      }
+      return null;
     case "triaging":
-      return <TriageRevealCard {...(revealData as unknown as TriageResults)} />;
+      if ("important_emails" in revealData) {
+        return <TriageRevealCard {...(data as TriageResults)} />;
+      }
+      return null;
     case "creating_todos":
-      return <TodosRevealCard {...(revealData as unknown as TodoResults)} />;
+      if ("todos" in revealData) {
+        return <TodosRevealCard {...(data as TodoResults)} />;
+      }
+      return null;
     case "creating_workflows":
-      return (
-        <WorkflowsRevealCard {...(revealData as unknown as WorkflowResults)} />
-      );
+      if ("workflows" in revealData) {
+        return <WorkflowsRevealCard {...(data as WorkflowResults)} />;
+      }
+      return null;
     case "holo_card": {
-      const { personalizationData } = revealData as unknown as {
-        personalizationData: PersonalizationData;
-      };
-      return <HoloCardReveal personalizationData={personalizationData} />;
+      if ("personalizationData" in revealData) {
+        const { personalizationData } = data as {
+          personalizationData: PersonalizationData;
+        };
+        return <HoloCardReveal personalizationData={personalizationData} />;
+      }
+      return null;
     }
     default:
       return null;
@@ -80,6 +96,8 @@ export const OnboardingMessages = ({
   isIntelligenceComplete = false,
   intelligenceConversationId = null,
   onProcessingComplete,
+  processingProgress,
+  onEditMessage,
 }: OnboardingMessagesProps) => {
   const revealMessages = messages.filter((msg) => msg.type === "reveal");
 
@@ -172,30 +190,56 @@ export const OnboardingMessages = ({
                       isIntelligenceComplete={isIntelligenceComplete}
                       intelligenceConversationId={intelligenceConversationId}
                       onComplete={onProcessingComplete ?? (() => {})}
+                      processingProgress={processingProgress}
                     />
                   </m.div>
                 )}
             </ChatBubbleBot>
           ) : (
-            <ChatBubbleUser
-              text={message.content}
-              message_id={""}
-              date={undefined}
-              pinned={undefined}
-              fileIds={undefined}
-              fileData={undefined}
-              selectedTool={undefined}
-              toolCategory={undefined}
-              todo_progress={undefined}
-              selectedWorkflow={undefined}
-              selectedCalendarEvent={undefined}
-              isConvoSystemGenerated={undefined}
-              follow_up_actions={undefined}
-              image_data={undefined}
-              memory_data={undefined}
-              replyToMessage={undefined}
-              disableActions={true}
-            />
+            <div className="group flex items-end justify-end gap-0">
+              {message.questionFieldName &&
+                onEditMessage &&
+                !isProcessingPhase && (
+                  <button
+                    type="button"
+                    onClick={() => onEditMessage(message.questionFieldName!)}
+                    className="ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-600 hover:text-zinc-400 shrink-0 self-end mb-1"
+                    aria-label="Edit this response"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </button>
+                )}
+              <ChatBubbleUser
+                text={message.content}
+                message_id={""}
+                date={undefined}
+                pinned={undefined}
+                fileIds={undefined}
+                fileData={undefined}
+                selectedTool={undefined}
+                toolCategory={undefined}
+                todo_progress={undefined}
+                selectedWorkflow={undefined}
+                selectedCalendarEvent={undefined}
+                isConvoSystemGenerated={undefined}
+                follow_up_actions={undefined}
+                image_data={undefined}
+                memory_data={undefined}
+                replyToMessage={undefined}
+                disableActions={true}
+              />
+            </div>
           )}
         </m.div>
       ))}

@@ -6,7 +6,12 @@ import type { WorkflowResults } from "../../types/websocket";
 
 type WorkflowsRevealCardProps = WorkflowResults;
 
+const MAX_DISPLAY_ITEMS = 5;
+
 export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
+  const displayedWorkflows = workflows.slice(0, MAX_DISPLAY_ITEMS);
+  const remainingCount = workflows.length - displayedWorkflows.length;
+
   return (
     <m.div
       className="overflow-hidden rounded-2xl bg-zinc-800/60 p-4"
@@ -19,9 +24,9 @@ export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
         <span className="font-medium text-zinc-300">{workflows.length}</span>{" "}
         {workflows.length === 1 ? "workflow" : "workflows"}
       </p>
-      {workflows.length > 0 && (
+      {displayedWorkflows.length > 0 && (
         <div className="flex flex-col gap-2">
-          {workflows.map((workflow, index) => (
+          {displayedWorkflows.map((workflow, index) => (
             <div
               key={workflow.id ?? `workflow-${index}`}
               className="flex items-start gap-2"
@@ -37,6 +42,9 @@ export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
               </div>
             </div>
           ))}
+          {remainingCount > 0 && (
+            <p className="text-xs text-zinc-500">+ {remainingCount} more</p>
+          )}
         </div>
       )}
     </m.div>

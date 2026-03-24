@@ -113,10 +113,19 @@ export const OnboardingInput = ({
             <button
               type="button"
               onClick={onGmailSkip}
+              aria-label="Continue onboarding without connecting Gmail"
               className="cursor-pointer text-center text-sm text-zinc-500 transition-colors hover:text-zinc-300"
             >
               Continue without Gmail
             </button>
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-center text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+            >
+              How we use your data →
+            </a>
           </div>
         );
 

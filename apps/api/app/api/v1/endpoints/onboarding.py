@@ -136,9 +136,9 @@ async def update_onboarding_phase(
             },
         )
 
-        if result.modified_count == 0:
+        if result.matched_count == 0:
             log.warning(
-                f"[update_onboarding_phase] No document modified for user {user_id}"
+                f"[update_onboarding_phase] No document found for user {user_id}"
             )
             raise HTTPException(status_code=404, detail="User not found")
 
@@ -256,24 +256,31 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                 created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
             )
 
-        # Fetch full workflow objects
+        # Fetch full workflow objects in a single batch query
         workflow_ids = onboarding.get("suggested_workflows", [])
         workflows = []
-        for wf_id in workflow_ids:
+        if workflow_ids:
             try:
-                query_id = ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id
-                wf = await workflows_collection.find_one({"_id": query_id})
-                if wf:
-                    workflows.append(
-                        {
-                            "id": str(wf["_id"]),
-                            "title": wf.get("title", ""),
-                            "description": wf.get("description", ""),
-                            "steps": wf.get("steps", []),
-                        }
-                    )
+                query_ids = [
+                    ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id
+                    for wf_id in workflow_ids
+                ]
+                cursor = workflows_collection.find({"_id": {"$in": query_ids}})
+                wf_docs = {str(wf["_id"]): wf async for wf in cursor}
+                # Preserve original order from workflow_ids
+                for wf_id in workflow_ids:
+                    wf = wf_docs.get(str(wf_id))
+                    if wf:
+                        workflows.append(
+                            {
+                                "id": str(wf["_id"]),
+                                "title": wf.get("title", ""),
+                                "description": wf.get("description", ""),
+                                "steps": wf.get("steps", []),
+                            }
+                        )
             except Exception as e:
-                log.error(f"Error fetching workflow {wf_id}: {str(e)}", exc_info=True)
+                log.error(f"Error fetching workflows: {str(e)}", exc_info=True)
 
         # Determine what bio to show based on bio_status
         bio_status = onboarding.get("bio_status", "pending")

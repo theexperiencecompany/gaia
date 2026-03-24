@@ -55,7 +55,6 @@ Write your first message to them.
 User context:
 - Name: {name}
 - Profession: {profession}
-- Company: {company_description}
 - Writing style learned: {writing_style_summary}
 - Social profiles found: {social_profiles_text}
 

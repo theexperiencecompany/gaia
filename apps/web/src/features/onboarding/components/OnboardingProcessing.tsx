@@ -14,7 +14,8 @@ import type { FC } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiService } from "@/lib/api/service";
 
-const TIMEOUT_MS = 90_000;
+const TIMEOUT_MS = 45_000;
+const SOFT_ESCAPE_MS = 15_000;
 
 interface ProcessingStep {
   icon: FC<IconProps>;
@@ -68,6 +69,7 @@ interface OnboardingProcessingProps {
   isIntelligenceComplete: boolean;
   intelligenceConversationId: string | null;
   onComplete: (conversationId: string) => void;
+  processingProgress?: number;
 }
 
 export const OnboardingProcessing = ({
@@ -75,9 +77,11 @@ export const OnboardingProcessing = ({
   isIntelligenceComplete,
   intelligenceConversationId,
   onComplete,
+  processingProgress,
 }: OnboardingProcessingProps) => {
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
   const [timedOut, setTimedOut] = useState(false);
+  const [showSoftEscape, setShowSoftEscape] = useState(false);
   const router = useRouter();
   const completedRef = useRef(false);
 
@@ -93,13 +97,24 @@ export const OnboardingProcessing = ({
     }
   }, [isIntelligenceComplete, intelligenceConversationId, onComplete]);
 
-  // Timeout — if intelligence pipeline hasn't completed in 90s, show fallback
+  // Timeout — if intelligence pipeline hasn't completed in 45s, show fallback
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!completedRef.current) {
         setTimedOut(true);
       }
     }, TIMEOUT_MS);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Soft escape — show "Skip to chat" after 15s if not yet complete
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!completedRef.current) {
+        setShowSoftEscape(true);
+      }
+    }, SOFT_ESCAPE_MS);
 
     return () => clearTimeout(timer);
   }, []);
@@ -121,28 +136,36 @@ export const OnboardingProcessing = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
     >
+      {isIntelligenceComplete && (
+        <p className="sr-only" aria-live="assertive" aria-atomic="true">
+          Setup complete. You can now start using GAIA.
+        </p>
+      )}
+
       {timedOut ? (
-        <m.div
-          className="flex flex-col gap-3"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-        >
-          <span className="text-sm text-zinc-400">
-            This is taking longer than expected. Let&apos;s get you started —
-            I&apos;ll finish setting things up in the background.
-          </span>
-          <button
-            type="button"
-            onClick={handleSkipToChat}
-            className="cursor-pointer rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+        <div role="alert" aria-live="assertive">
+          <m.div
+            className="flex flex-col gap-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
           >
-            Get started
-          </button>
-        </m.div>
+            <span className="text-sm text-zinc-400">
+              This is taking longer than expected. Let&apos;s get you started —
+              I&apos;ll finish setting things up in the background.
+            </span>
+            <button
+              type="button"
+              onClick={handleSkipToChat}
+              className="cursor-pointer rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            >
+              Get started
+            </button>
+          </m.div>
+        </div>
       ) : (
         <>
-          <div className="flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2.5" aria-live="polite">
             {steps.map((step, i) => {
               const Icon = step.icon;
               return (
@@ -166,17 +189,27 @@ export const OnboardingProcessing = ({
             })}
           </div>
 
-          <div className="h-0.5 w-full overflow-hidden rounded-full bg-zinc-700">
+          {processingProgress !== undefined && processingProgress > 0 && (
+            <p className="mt-3 text-xs text-zinc-600">
+              {Math.round(processingProgress)}% complete
+            </p>
+          )}
+
+          {showSoftEscape && !timedOut && (
             <m.div
-              className="h-full rounded-full bg-primary"
-              animate={{ width: ["0%", "85%", "85%"] }}
-              transition={{
-                duration: 3,
-                ease: "easeOut",
-                times: [0, 0.7, 1],
-              }}
-            />
-          </div>
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5 }}
+            >
+              <button
+                type="button"
+                onClick={handleSkipToChat}
+                className="mt-4 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                Skip to chat →
+              </button>
+            </m.div>
+          )}
         </>
       )}
     </m.div>

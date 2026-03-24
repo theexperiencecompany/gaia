@@ -84,15 +84,22 @@ async def triage_inbox(
 
         result_data = json.loads(content)
 
-        important = [
-            EmailSummary(
-                sender=e["sender"],
-                subject=e["subject"],
-                snippet=e.get("snippet", ""),
-                why_important=e["why_important"],
-            )
-            for e in result_data.get("important_emails", [])
-        ]
+        important = []
+        for e in result_data.get("important_emails", []):
+            try:
+                important.append(
+                    EmailSummary(
+                        sender=e["sender"],
+                        subject=e["subject"],
+                        snippet=e.get("snippet", ""),
+                        why_important=e["why_important"],
+                    )
+                )
+            except (KeyError, TypeError) as parse_err:
+                log.warning(
+                    f"[inbox_triage] Skipping malformed email entry for user {user_id}: {parse_err}"
+                )
+                continue
 
         triage = InboxTriage(
             total_scanned=len(emails),

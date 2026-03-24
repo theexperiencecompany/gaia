@@ -287,26 +287,30 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             overlay_opacity,
         )
 
-        # Fetch full workflow objects
+        # Fetch full workflow objects in a single batch query
         workflows = []
-        for wf_id in workflow_ids:
+        if workflow_ids:
             try:
-                # Handle both ObjectId and string IDs (some system workflows might use string IDs)
-                query_id = ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id
-                wf = await workflows_collection.find_one({"_id": query_id})
-
-                if wf:
-                    workflows.append(
-                        {
-                            "id": str(wf["_id"]),
-                            "title": wf.get("title", ""),
-                            "description": wf.get("description", ""),
-                            "steps": wf.get("steps", []),
-                        }
-                    )
+                query_ids = [
+                    ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id
+                    for wf_id in workflow_ids
+                ]
+                cursor = workflows_collection.find({"_id": {"$in": query_ids}})
+                wf_docs = {str(wf["_id"]): wf async for wf in cursor}
+                # Preserve original order from workflow_ids
+                for wf_id in workflow_ids:
+                    wf = wf_docs.get(str(wf_id))
+                    if wf:
+                        workflows.append(
+                            {
+                                "id": str(wf["_id"]),
+                                "title": wf.get("title", ""),
+                                "description": wf.get("description", ""),
+                                "steps": wf.get("steps", []),
+                            }
+                        )
             except Exception as e:
-                log.warning(f"Error fetching workflow {wf_id}: {e}")
-                continue
+                log.warning(f"Error fetching workflows: {e}")
 
         # Emit house assignment progress
         await emit_progress(

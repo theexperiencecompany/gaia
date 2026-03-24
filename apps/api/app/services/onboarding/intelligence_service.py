@@ -4,7 +4,6 @@ OnboardingIntelligenceService — orchestrates the new onboarding pipeline.
 Phase 1 (parallel, 5-45%):
   - fetch_emails_for_onboarding (1 month received)
   - learn_writing_style (last 100 sent)
-  - parse_company_url (if provided)
   - process_gmail_emails_to_memory (existing pipeline)
   - process_post_onboarding_personalization (existing — holo card, bio, house)
 
@@ -32,7 +31,6 @@ from app.agents.memory.email_processor import (
     process_gmail_to_memory,
 )
 from app.models.onboarding_models import (
-    CompanyProfile,
     InboxTriage,
     SocialProfile,
     WritingStyleProfile,
@@ -40,7 +38,6 @@ from app.models.onboarding_models import (
 from app.models.todo_models import Priority, TodoModel
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.composio.composio_service import get_composio_service
-from app.services.onboarding.company_parser_service import parse_company_url
 from app.services.onboarding.first_message_service import generate_first_message
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.post_onboarding_service import (
@@ -94,8 +91,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     onboarding = user_doc.get("onboarding", {})
     name = user_doc.get("name", "there")
     profession = onboarding.get("preferences", {}).get("profession", "") or ""
-    company_url: Optional[str] = onboarding.get("company_url")
-
     # Check Gmail availability
     composio_service = get_composio_service()
     connection_status = await composio_service.check_connection_status(
@@ -109,7 +104,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     emails: list[dict] = []
     writing_style: Optional[WritingStyleProfile] = None
-    company_profile: Optional[CompanyProfile] = None
     social_profiles: list[SocialProfile] = []
 
     phase1_tasks: list[Coroutine[Any, Any, None]] = []
@@ -151,24 +145,18 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
         phase1_tasks.extend([_fetch_emails(), _learn_style(), _store_to_memory()])
 
-    if company_url:
-
-        async def _parse_company() -> None:
-            nonlocal company_profile
-            await _emit_progress(
-                user_id, "parsing_company", "Reading your company site", 30
-            )
-            company_profile = await parse_company_url(company_url)  # type: ignore[arg-type]
-
-        phase1_tasks.append(_parse_company())
-
     # Always run personalization (holo card, bio, house) in parallel
     async def _run_personalization() -> None:
         await process_post_onboarding_personalization(user_id)
 
     phase1_tasks.append(_run_personalization())
 
-    await asyncio.gather(*phase1_tasks, return_exceptions=True)
+    phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
+    for i, result in enumerate(phase1_results):
+        if isinstance(result, Exception):
+            log.error(
+                f"[intelligence] Phase 1 task {i} failed: {result}", exc_info=result
+            )
 
     # Extract social profiles from fetched emails (CPU-only, no I/O)
     if emails:
@@ -247,7 +235,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         user_id=user_id,
         name=name,
         profession=profession,
-        company_profile=company_profile,
         triage=triage,
         created_todos=created_todos,
         created_workflows=created_workflows,
@@ -260,12 +247,10 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         first_message=first_message,
     )
 
-    # Persist writing style and company profile to user doc
+    # Persist writing style and social profiles to user doc
     update_fields: dict = {}
     if writing_style:
         update_fields["onboarding.writing_style"] = writing_style.model_dump()
-    if company_profile:
-        update_fields["onboarding.company_profile"] = company_profile.model_dump()
     if social_profiles:
         update_fields["onboarding.social_profiles"] = [
             p.model_dump() for p in social_profiles
