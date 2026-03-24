@@ -1,8 +1,9 @@
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { useFetchIntegrationStatus } from "@/features/integrations";
+import { useRouter } from "@/i18n/navigation";
 import {
   ANALYTICS_EVENTS,
   trackEvent,
@@ -18,7 +19,7 @@ import type { Message, OnboardingState } from "../types";
 
 const ONBOARDING_STORAGE_KEY = "gaia-onboarding-state";
 
-export const useOnboarding = () => {
+export const useOnboarding = (skipAutoRedirect?: boolean) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useUser();
@@ -238,8 +239,9 @@ export const useOnboarding = () => {
         const processingMsg: Message = {
           id: "processing",
           type: "bot",
-          content:
-            "Give me a moment. I'm going through your inbox and setting things up.",
+          content: gmailConnected
+            ? "Give me a moment. I'm going through your inbox and setting things up."
+            : "Give me a moment. I'm setting things up for you.",
         };
 
         // Clear session storage before entering processing phase
@@ -469,11 +471,13 @@ export const useOnboarding = () => {
         // non-blocking
       }
 
-      setTimeout(() => {
-        router.push(`/c/${conversationId}`);
-      }, 500);
+      if (!skipAutoRedirect) {
+        setTimeout(() => {
+          router.push(`/c/${conversationId}`);
+        }, 500);
+      }
     },
-    [router],
+    [router, skipAutoRedirect],
   );
 
   // Initialize — also handle resume if backend is already processing
