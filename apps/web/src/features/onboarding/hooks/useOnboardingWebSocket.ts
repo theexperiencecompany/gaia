@@ -19,6 +19,16 @@ const POLL_INTERVAL_MS = 5000;
 
 export const useOnboardingWebSocket = (
   enabled: boolean = true,
+  callbacks?: {
+    onProgress?: (
+      stage: string,
+      message: string,
+      progress: number,
+      results?: Record<string, unknown>,
+    ) => void;
+    onPersonalizationComplete?: (data: PersonalizationData) => void;
+    onIntelligenceComplete?: (conversationId: string) => void;
+  },
 ): UseOnboardingWebSocketReturn => {
   const [personalizationData, setPersonalizationData] =
     useState<PersonalizationData | null>(null);
@@ -31,6 +41,13 @@ export const useOnboardingWebSocket = (
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const doneRef = useRef(false);
+  const callbacksRef = useRef(callbacks);
+
+  // Keep callbacksRef in sync so message handlers always use the latest callbacks
+  // without requiring the effect to re-run
+  useEffect(() => {
+    callbacksRef.current = callbacks;
+  });
 
   // Keep ref in sync so callbacks can check without stale closures
   useEffect(() => {
@@ -114,18 +131,33 @@ export const useOnboardingWebSocket = (
           try {
             const message = JSON.parse(event.data) as {
               type: string;
-              data: PersonalizationData & { conversation_id?: string };
+              data: PersonalizationData & {
+                conversation_id?: string;
+                stage?: string;
+                message?: string;
+                progress?: number;
+                results?: Record<string, unknown>;
+              };
             };
 
-            if (message.type === "onboarding_personalization_complete") {
+            if (message.type === "personalization_progress") {
+              callbacksRef.current?.onProgress?.(
+                message.data.stage ?? "",
+                message.data.message ?? "",
+                message.data.progress ?? 0,
+                message.data.results as Record<string, unknown> | undefined,
+              );
+            } else if (message.type === "onboarding_personalization_complete") {
               setPersonalizationData(message.data);
               setIsLoading(false);
               toast.success("Your personalized card is ready!");
+              callbacksRef.current?.onPersonalizationComplete?.(message.data);
             } else if (message.type === "onboarding_intelligence_complete") {
               const conversationId = message.data.conversation_id;
               if (conversationId) {
                 setIntelligenceConversationId(conversationId);
                 stopPolling();
+                callbacksRef.current?.onIntelligenceComplete?.(conversationId);
               }
             }
           } catch (error) {
