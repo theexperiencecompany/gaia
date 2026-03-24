@@ -1,25 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PersonalizationData } from "@/features/onboarding/types/websocket";
 import { apiService } from "@/lib/api";
 import { toast } from "@/lib/toast";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
-
-export interface PersonalizationData {
-  has_personalization?: boolean;
-  house: House;
-  personality_phrase: string;
-  user_bio: string;
-  account_number: number;
-  member_since: string;
-  overlay_color?: string;
-  overlay_opacity?: number;
-  suggested_workflows: Array<{
-    id: string;
-    title: string;
-    description: string;
-    steps: Array<{ category: string }>;
-  }>;
-}
 
 interface UseOnboardingWebSocketReturn {
   personalizationData: PersonalizationData | null;

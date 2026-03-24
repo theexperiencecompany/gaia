@@ -46,12 +46,56 @@ export interface OnboardingPhaseUpdateMessage {
   };
 }
 
+export interface InboxScanResults {
+  email_count: number;
+}
+
+export interface WritingStyleResults {
+  style_summary: string;
+}
+
+export interface SocialProfileResult {
+  platform: string;
+  url: string;
+}
+
+export interface SocialProfilesResults {
+  profiles: SocialProfileResult[];
+}
+
+export interface TriageResults {
+  total_scanned: number;
+  total_unread: number;
+  important_emails: Array<{
+    sender: string;
+    subject: string;
+    why_important: string;
+  }>;
+}
+
+export interface TodoResults {
+  todos: Array<{ id: string; title: string }>;
+}
+
+export interface WorkflowResults {
+  workflows: Array<{ id?: string; title: string; description?: string }>;
+}
+
+export type ProgressResults =
+  | InboxScanResults
+  | WritingStyleResults
+  | SocialProfilesResults
+  | TriageResults
+  | TodoResults
+  | WorkflowResults;
+
 export interface PersonalizationProgressMessage {
   type: "personalization_progress";
   data: {
     stage: string;
     message: string;
     progress: number; // 0-100
+    results?: ProgressResults;
     details?: {
       current?: number;
       total?: number;
