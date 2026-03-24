@@ -55,7 +55,8 @@ scrape_configs:
         refresh_interval: 5s
     relabel_configs:
       # Only keep application containers — drop infra (postgres, redis, loki, etc.)
-      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+      - source_labels:
+          ["__meta_docker_container_label_com_docker_compose_service"]
         regex: "gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|voice-agent-worker"
         action: keep
       # Strip the leading slash from container name (e.g. /gaia-backend -> gaia-backend)
@@ -65,12 +66,15 @@ scrape_configs:
       # Use the compose service name as the primary service label.
       # service_name mirrors service for OTel/Grafana Explore compatibility —
       # without it Grafana Explore shows everything as "unknown_service".
-      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+      - source_labels:
+          ["__meta_docker_container_label_com_docker_compose_service"]
         target_label: "service"
-      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+      - source_labels:
+          ["__meta_docker_container_label_com_docker_compose_service"]
         target_label: "service_name"
       # Track which compose project the container belongs to
-      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+      - source_labels:
+          ["__meta_docker_container_label_com_docker_compose_project"]
         target_label: "compose_project"
       # stdout vs stderr
       - source_labels: ["__meta_docker_container_log_stream"]

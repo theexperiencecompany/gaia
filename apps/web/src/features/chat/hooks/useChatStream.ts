@@ -38,6 +38,10 @@ export const useChatStream = () => {
   // Add ref to track if a stream is already in progress
   const streamInProgressRef = useRef(false);
 
+  // Guard against double invocation of handleStreamClose — it's called from both
+  // onmessage (on [DONE]) and onclose (on connection close) in chatApi.ts.
+  const streamCloseHandledRef = useRef(false);
+
   // Unified ref storage
   const refs = useRef({
     convoMessages,
@@ -79,6 +83,11 @@ export const useChatStream = () => {
     conversationId: string,
     description: string | null,
   ) => {
+    console.log(
+      "[useChatStream] handleConversationCreation:",
+      conversationId,
+      description,
+    );
     // Check if conversation already exists in store
     const existing = useChatStore
       .getState()
@@ -325,6 +334,12 @@ export const useChatStream = () => {
       stream_id,
     } = data;
 
+    console.log(
+      "[useChatStream] handleNewConversation:",
+      conversation_id,
+      "desc:",
+      conversation_description,
+    );
     refs.current.newConversation.id = conversation_id;
     refs.current.newConversation.description = conversation_description;
 
@@ -387,24 +402,25 @@ export const useChatStream = () => {
       );
     }
 
-    // Atomically persist both messages in a single transaction
-    // Events are emitted by persistMessagePair to update the store
-    try {
-      await db.persistMessagePair(userIMessage, botIMessage);
-    } catch (error) {
-      console.error("Failed to persist message pair:", error);
-      // On persistence failure, clear optimistic UI and abort
-      useChatStore.getState().clearOptimisticMessage();
-      return;
+    // CRITICAL: Update the Zustand store SYNCHRONOUSLY first so that
+    // useConversation immediately returns messages and subsequent streaming
+    // events can render in real-time. DB writes happen in the background.
+    if (userIMessage) {
+      useChatStore.getState().addOrUpdateMessage(userIMessage);
     }
-
-    // Clear optimistic message now that real messages are in the store via events
+    if (botIMessage) {
+      useChatStore.getState().addOrUpdateMessage(botIMessage);
+    }
     useChatStore.getState().clearOptimisticMessage();
     window.history.replaceState({}, "", `/c/${conversation_id}`);
     useChatStore.getState().setActiveConversationId(conversation_id);
-
-    // Set streaming indicator for sidebar
     useChatStore.getState().setStreamingConversationId(conversation_id);
+
+    // Persist to IndexedDB in the background — the store already has the data
+    // so streaming can proceed while this writes.
+    db.persistMessagePair(userIMessage, botIMessage).catch((error) => {
+      console.error("Failed to persist message pair:", error);
+    });
   };
 
   const handleExistingConversationMessages = async (data: {
@@ -527,7 +543,7 @@ export const useChatStream = () => {
       conversationId,
       content: refs.current.accumulatedResponse,
       role: "assistant",
-      status: "sending",
+      status: refs.current.botMessage.loading === false ? "sent" : "sending",
       createdAt,
       updatedAt: new Date(),
       messageId: refs.current.botMessage.message_id,
@@ -618,6 +634,10 @@ export const useChatStream = () => {
         }
 
         if (parsed.type === "conversation_initialized") {
+          console.log(
+            "[useChatStream] conversation_initialized event:",
+            parsed,
+          );
           const data = {
             conversation_id: parsed.conversation_id,
             conversation_description: parsed.conversation_description ?? null,
@@ -684,6 +704,13 @@ export const useChatStream = () => {
   };
 
   const handleStreamClose = async () => {
+    console.log("[useChatStream] handleStreamClose called");
+    // Prevent double invocation — handleStreamClose is called from both
+    // onmessage (on [DONE]) and onclose (on connection close) in chatApi.ts.
+    // Only the first call should execute; the second is a no-op.
+    if (streamCloseHandledRef.current) return;
+    streamCloseHandledRef.current = true;
+
     try {
       if (!refs.current.botMessage?.message_id) {
         // No valid bot message to persist - this can happen if stream closes
@@ -764,6 +791,9 @@ export const useChatStream = () => {
 
       // CRITICAL: End stream state AFTER all persistence is done
       // This prevents sync from running and overwriting messages during persistence
+      console.debug(
+        "[handleStreamClose] All persistence done, ending stream state now",
+      );
       streamState.endStream();
 
       // Reset stream state after successful completion
@@ -782,6 +812,11 @@ export const useChatStream = () => {
   };
 
   const handleStreamError = (error: Error) => {
+    console.error(
+      "[useChatStream] handleStreamError:",
+      error.name,
+      error.message,
+    );
     // Reset stream state immediately
     resetStreamState();
 
@@ -815,8 +850,13 @@ export const useChatStream = () => {
     } | null = null,
   ) => {
     if (streamInProgressRef.current) {
+      console.warn("[useChatStream] stream already in progress, skipping");
       return;
     }
+    console.log(
+      "[useChatStream] starting stream, activeConversationId:",
+      useChatStore.getState().activeConversationId,
+    );
 
     streamInProgressRef.current = true;
 
@@ -835,6 +875,7 @@ export const useChatStream = () => {
     try {
       refs.current.accumulatedResponse = "";
       refs.current.userPrompt = inputText;
+      streamCloseHandledRef.current = false; // Reset for new stream
 
       // Set up the complete message array for this streaming session
       refs.current.currentStreamingMessages = [
@@ -921,6 +962,14 @@ export const useChatStream = () => {
         // Note: Backend also saves - streamController.abort() schedules sync after 3s
       });
 
+      console.log(
+        "[useChatStream] calling chatApi.fetchChatStream, inputText:",
+        inputText,
+        "msgs:",
+        currentMessages.length,
+        "workflow:",
+        selectedWorkflow?.id,
+      );
       await chatApi.fetchChatStream(
         inputText,
         [...refs.current.convoMessages, ...currentMessages],
@@ -937,12 +986,21 @@ export const useChatStream = () => {
         replyToMessage,
       );
     } catch (error) {
-      console.error("Error initiating chat stream:", error);
-      resetStreamState(); // Reset state on any error
-    } finally {
-      streamInProgressRef.current = false;
-      streamState.endStream();
+      console.error("[useChatStream] Error initiating chat stream:", error);
+      // Only reset if handleStreamClose is NOT already handling cleanup.
+      // When the stream closes normally, handleStreamClose runs async (not awaited
+      // by the SSE library) and may still be persisting to IndexedDB. Calling
+      // resetStreamState here would clear refs it depends on and prematurely
+      // unblock the sync service.
+      if (!streamCloseHandledRef.current) {
+        resetStreamState();
+      }
     }
+    // NOTE: Do NOT reset streamInProgressRef or call streamState.endStream() here.
+    // With the eventQueue in chatApi.ts, events are processed AFTER fetchEventSource
+    // resolves. If we reset here, handleStreamEvent sees streamInProgressRef=false
+    // and returns "Stream was aborted" for every queued event.
+    // Both are already handled by handleStreamClose (normal) and resetStreamState (error).
   };
 
   return streamFunction;

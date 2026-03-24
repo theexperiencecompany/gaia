@@ -11,6 +11,7 @@ import {
 } from "@icons";
 import type React from "react";
 import { useRef, useState } from "react";
+import { twMerge } from "tailwind-merge";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,7 +27,13 @@ const DummyComposer: React.FC<{
   hideIntegrationBanner?: boolean;
   fullWidth?: boolean;
   onSend?: (message: string) => void;
-}> = ({ hideIntegrationBanner = false, fullWidth = false, onSend }) => {
+  className?: string;
+}> = ({
+  hideIntegrationBanner = false,
+  fullWidth = false,
+  onSend,
+  className,
+}) => {
   const [message, setMessage] = useState("");
   const [isSlashDropdownOpen, setIsSlashDropdownOpen] = useState(false);
 
@@ -65,7 +72,12 @@ const DummyComposer: React.FC<{
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col items-center">
+    <div
+      className={twMerge(
+        "mx-auto flex w-full max-w-7xl flex-col items-center",
+        className,
+      )}
+    >
       {/* Composer */}
       <div className="searchbar_container relative w-full pb-1">
         {/* Slash dropdown — absolute, overlays upward into messages area */}
@@ -126,7 +138,7 @@ const DummyComposer: React.FC<{
               autoFocus
               classNames={{
                 inputWrapper:
-                  "px-3 data-[hover=true]:bg-zinc-800 group-data-[focus-visible=true]:ring-zinc-800 group-data-[focus-visible=true]:ring-offset-0",
+                  "px-3 data-[hover=true]:bg-zinc-800 group-data-[focus-visible=true]:ring-zinc-800 group-data-[focus-visible=true]:ring-offset-0 shadow-none",
                 innerWrapper: "items-center",
                 input: "font-light",
               }}

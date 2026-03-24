@@ -15,7 +15,7 @@ import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
  * Sitemap IDs for different content types.
  * Each ID generates a separate sitemap file, accessible at /sitemap/{id}.xml
  */
-const SITEMAP_IDS = {
+export const SITEMAP_IDS = {
   STATIC: 0,
   BLOG: 1,
   EXPLORE: 2,
@@ -29,26 +29,19 @@ const SITEMAP_IDS = {
   NATIVE_INTEGRATIONS: 10,
 } as const;
 
-/**
- * Generate sitemap IDs for Next.js sitemap index.
- * This creates multiple sitemaps: /sitemap/0.xml, /sitemap/1.xml, etc.
- * The main /sitemap.xml serves as an index pointing to all child sitemaps.
- */
-export async function generateSitemaps() {
-  return [
-    { id: SITEMAP_IDS.STATIC },
-    { id: SITEMAP_IDS.BLOG },
-    { id: SITEMAP_IDS.EXPLORE },
-    { id: SITEMAP_IDS.COMMUNITY },
-    { id: SITEMAP_IDS.INTEGRATIONS },
-    { id: SITEMAP_IDS.COMPARISONS },
-    { id: SITEMAP_IDS.PERSONAS },
-    { id: SITEMAP_IDS.GLOSSARY },
-    { id: SITEMAP_IDS.ALTERNATIVES },
-    { id: SITEMAP_IDS.INTEGRATION_COMBOS },
-    { id: SITEMAP_IDS.NATIVE_INTEGRATIONS },
-  ];
-}
+export const ALL_SITEMAP_IDS = [
+  SITEMAP_IDS.STATIC,
+  SITEMAP_IDS.BLOG,
+  SITEMAP_IDS.EXPLORE,
+  SITEMAP_IDS.COMMUNITY,
+  SITEMAP_IDS.INTEGRATIONS,
+  SITEMAP_IDS.COMPARISONS,
+  SITEMAP_IDS.PERSONAS,
+  SITEMAP_IDS.GLOSSARY,
+  SITEMAP_IDS.ALTERNATIVES,
+  SITEMAP_IDS.INTEGRATION_COMBOS,
+  SITEMAP_IDS.NATIVE_INTEGRATIONS,
+] as const;
 
 function withLocaleUrls(
   entries: MetadataRoute.Sitemap,
@@ -82,11 +75,11 @@ type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 type StaticPage = { path: string; freq: ChangeFreq; priority: number };
 
 const TRANSLATED_STATIC_PAGES: Array<StaticPage> = [
-  { path: "/compare", freq: "weekly", priority: 0.5 },
-  { path: "/alternative-to", freq: "weekly", priority: 0.5 },
-  { path: "/automate", freq: "weekly", priority: 0.5 },
-  { path: "/for", freq: "weekly", priority: 0.5 },
-  { path: "/learn", freq: "weekly", priority: 0.5 },
+  { path: "/compare", freq: "weekly", priority: 0.9 },
+  { path: "/alternative-to", freq: "weekly", priority: 0.9 },
+  { path: "/automate", freq: "weekly", priority: 0.8 },
+  { path: "/for", freq: "weekly", priority: 0.9 },
+  { path: "/learn", freq: "weekly", priority: 0.8 },
 ];
 
 const UNTRANSLATED_STATIC_PAGES: Array<StaticPage> = [
@@ -131,8 +124,6 @@ async function getBlogPages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
 
 /**
  * Explore workflows (GAIA team curated)
- * Uses raw fetch with server API URL instead of authenticated axios client,
- * since sitemap generation runs at build time without auth credentials.
  */
 async function getExploreWorkflowPages(
   baseUrl: string,
@@ -141,7 +132,7 @@ async function getExploreWorkflowPages(
     const limit = isDevelopment() ? 50 : 1000;
     const exploreResp = await workflowApi.getExploreWorkflows(limit, 0);
     return exploreResp.workflows.map((wc) => ({
-      url: `${baseUrl}/use-cases/${wc.slug ?? wc.id}`,
+      url: `${baseUrl}/use-cases/${wc.id}`,
       lastModified: new Date(wc.created_at),
       changeFrequency: "weekly" as const,
       priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
@@ -154,8 +145,6 @@ async function getExploreWorkflowPages(
 
 /**
  * Community workflows
- * Uses raw fetch with server API URL instead of authenticated axios client,
- * since sitemap generation runs at build time without auth credentials.
  */
 async function getCommunityWorkflowPages(
   baseUrl: string,
@@ -164,87 +153,34 @@ async function getCommunityWorkflowPages(
     if (isDevelopment()) {
       const communityResponse = await workflowApi.getCommunityWorkflows(50, 0);
       return communityResponse.workflows.map((workflow) => ({
-        url: `${baseUrl}/use-cases/${workflow.slug ?? workflow.id}`,
+        url: `${baseUrl}/use-cases/${workflow.id}`,
         lastModified: new Date(workflow.created_at),
         changeFrequency: "weekly" as const,
         priority: 0.6,
       }));
     }
 
-    const apiBaseUrl = getServerApiBaseUrl();
-    if (!apiBaseUrl) {
-      console.warn(
-        "[Sitemap] No API base URL configured, skipping community workflows",
-      );
-      return [];
-    }
+    const allWorkflows = await fetchAllPaginated(async (limit, offset) => {
+      const resp = await workflowApi.getCommunityWorkflows(limit, offset);
+      return {
+        items: resp.workflows,
+        total: resp.total || 0,
+        hasMore: resp.workflows.length === limit,
+      };
+    }, 100);
 
-    type CommunityWorkflow = { id: string; slug?: string; created_at: string };
-
-    const allWorkflows = await fetchAllPaginated<CommunityWorkflow>(
-      async (limit, offset) => {
-        const response = await fetch(
-          `${apiBaseUrl}/workflows/community?limit=${limit}&offset=${offset}`,
-          { next: { revalidate: 3600 } },
-        );
-        if (!response.ok) return { items: [], total: 0, hasMore: false };
-
-        const data = await response.json();
-        return {
-          items: data.workflows || [],
-          total: data.total || 0,
-          hasMore: (data.workflows || []).length === limit,
-        };
-      },
-      100,
+    console.log(
+      `[Sitemap] Generated ${allWorkflows.length} community workflow pages`,
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.slug ?? workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.id}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,
     }));
   } catch (error) {
     console.error("Error fetching community workflows for sitemap:", error);
-    return [];
-  }
-}
-
-/**
- * Native/platform integration pages (Google Calendar, GitHub, Slack, etc.)
- * Uses the public /integrations/config endpoint — no auth required.
- */
-async function getNativeIntegrationPages(
-  baseUrl: string,
-): Promise<MetadataRoute.Sitemap> {
-  try {
-    const apiBaseUrl = getServerApiBaseUrl();
-    if (!apiBaseUrl) return [];
-
-    const response = await fetch(`${apiBaseUrl}/integrations/config`, {
-      next: { revalidate: 3600 },
-    });
-    if (!response.ok) {
-      console.error(
-        `[Sitemap] Native integrations config returned ${response.status}`,
-      );
-      return [];
-    }
-
-    const data = await response.json();
-    type NativeIntegration = { id: string; available: boolean };
-
-    return ((data.integrations as NativeIntegration[]) || [])
-      .filter((i) => i.available === true)
-      .map((i) => ({
-        url: `${baseUrl}/marketplace/${i.id}`,
-        lastModified: BUILD_DATE,
-        changeFrequency: "monthly" as const,
-        priority: 0.7,
-      }));
-  } catch (error) {
-    console.error("Error fetching native integrations for sitemap:", error);
     return [];
   }
 }
@@ -302,6 +238,10 @@ async function getIntegrationPages(
         hasMore: data.hasMore !== false,
       };
     }, 100);
+
+    console.log(
+      `[Sitemap] Generated ${allIntegrations.length} integration pages`,
+    );
 
     return allIntegrations.map(
       (integration: {
@@ -415,15 +355,11 @@ function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
 }
 
 /**
- * Generate dynamic sitemap for GAIA.
- * Uses sitemap index pattern with separate sitemaps for each content type.
- * Note: In Next.js 16.0.0+, the id is passed as a Promise that resolves to a string.
+ * Get sitemap entries for a given sitemap ID.
  */
-export default async function sitemap(props: {
-  id: Promise<string>;
-}): Promise<MetadataRoute.Sitemap> {
-  const idString = await props.id;
-  const id = Number(idString);
+export async function getSitemapEntries(
+  id: number,
+): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getSiteUrl();
 
   switch (id) {
@@ -432,7 +368,6 @@ export default async function sitemap(props: {
         ...withLocaleUrls(
           TRANSLATED_STATIC_PAGES.map((p) => ({
             url: `${baseUrl}${p.path}`,
-            lastModified: BUILD_DATE,
             changeFrequency: p.freq,
             priority: p.priority,
           })),
@@ -440,7 +375,6 @@ export default async function sitemap(props: {
         ),
         ...UNTRANSLATED_STATIC_PAGES.map((p) => ({
           url: `${baseUrl}${p.path}`,
-          lastModified: BUILD_DATE,
           changeFrequency: p.freq,
           priority: p.priority,
         })),
@@ -463,8 +397,6 @@ export default async function sitemap(props: {
       return withLocaleUrls(getAlternativePages(baseUrl), baseUrl);
     case SITEMAP_IDS.INTEGRATION_COMBOS:
       return withLocaleUrls(getIntegrationComboPages(baseUrl), baseUrl);
-    case SITEMAP_IDS.NATIVE_INTEGRATIONS:
-      return getNativeIntegrationPages(baseUrl);
     default:
       return [];
   }

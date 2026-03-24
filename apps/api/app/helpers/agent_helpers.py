@@ -774,7 +774,7 @@ async def execute_graph_streaming(
                                 }
                             )
                     except Exception as _e:
-                        log.warning("Failed to emit mcp_app event: %s", _e)
+                        log.warning(f"Failed to emit mcp_app event: {_e}")
             continue
 
         if stream_mode == "custom":
@@ -863,7 +863,7 @@ async def execute_graph_streaming(
                                 }
                             )
                     except Exception as _e:
-                        log.warning("Failed to emit mcp_app from subagent: %s", _e)
+                        log.warning(f"Failed to emit mcp_app from subagent: {_e}")
 
     # Yield complete message for DB storage
     yield f"nostream: {json.dumps({'complete_message': complete_message})}"

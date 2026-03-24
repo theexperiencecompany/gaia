@@ -1,9 +1,21 @@
-import { CalendarUpload01Icon } from "@icons";
+"use client";
+
+import {
+  Alert01Icon,
+  Brain02Icon,
+  CalendarUpload01Icon,
+  ChartLineData01Icon,
+  Edit02Icon,
+  Mail01Icon,
+  Target02Icon,
+} from "@icons";
 import type React from "react";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { GoogleCalendarIcon } from "@/components/shared/icons";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
+import type { CardAction } from "@/features/chat/components/interface/BaseCardView";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
+import { useAppendToInput } from "@/stores/composerStore";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 import { formatDate } from "@/utils/date/dateUtils";
@@ -23,6 +35,8 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   isConnected = true,
   onConnect,
 }) => {
+  const appendToInput = useAppendToInput();
+
   // Group all events by their date (show all events from API, grouped by day)
   const upcomingEventsByDay = useMemo(() => {
     const eventsByDay: { [key: string]: GoogleCalendarEvent[] } = {};
@@ -108,6 +122,75 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
 
   const hasEvents = Object.keys(upcomingEventsByDay).length > 0;
 
+  const actions: CardAction[] = useMemo(
+    () => [
+      {
+        key: "brief-today",
+        label: "Brief me on today",
+        description:
+          "Get context on each meeting — attendees, history, prep needed",
+        icon: <Brain02Icon className="size-4 text-zinc-400" />,
+        onPress: () =>
+          appendToInput(
+            "Give me a briefing for each of my meetings today. For each one, tell me who's attending, what we discussed last time if applicable, and what I should prepare or know before going in.",
+          ),
+      },
+      {
+        key: "prep-next-meeting",
+        label: "Prep next meeting",
+        description: "Generate an agenda and talking points for my next event",
+        icon: <Edit02Icon className="size-4 text-zinc-400" />,
+        onPress: () =>
+          appendToInput(
+            "Look at my next upcoming calendar event and generate a structured agenda with talking points and any questions I should raise.",
+          ),
+      },
+      {
+        key: "async-candidates",
+        label: "Which meetings can be emails?",
+        description: "Identify low-value meetings and draft async alternatives",
+        icon: <Mail01Icon className="size-4 text-zinc-400" />,
+        onPress: () =>
+          appendToInput(
+            "Review my upcoming meetings and identify which ones could be replaced with a short email or async update instead. For each candidate, draft the async message.",
+          ),
+      },
+      {
+        key: "focus-blocks",
+        label: "Find focus blocks",
+        description: "Spot gaps in my calendar and suggest deep-work slots",
+        icon: <Target02Icon className="size-4 text-zinc-400" />,
+        onPress: () =>
+          appendToInput(
+            "Look at my calendar for the next 7 days and identify the best gaps where I could block time for focused, deep work. Suggest specific slots with reasoning.",
+          ),
+      },
+      {
+        key: "conflicts",
+        label: "Detect back-to-backs",
+        description:
+          "Flag days with no breathing room and suggest what to reschedule",
+        icon: <Alert01Icon className="size-4 text-zinc-400" />,
+        onPress: () =>
+          appendToInput(
+            "Check my upcoming calendar for days with back-to-back meetings or no breaks. Flag the worst days and suggest which meetings I could move or decline.",
+          ),
+      },
+      {
+        key: "last-week-recap",
+        label: "Summarise last week",
+        description:
+          "Recap everything discussed in meetings over the past 7 days",
+        icon: <ChartLineData01Icon className="size-4 text-zinc-400" />,
+        onPress: () =>
+          appendToInput(
+            "Summarise everything I discussed and decided in my meetings over the past 7 days. Give me a concise recap by day.",
+          ),
+      },
+    ],
+    [appendToInput],
+  );
+
   return (
     <BaseCardView
       title="Upcoming events"
@@ -122,7 +205,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       connectTitle="Connect Your Calendar"
       connectDescription="Manage events and view your schedule"
       connectIcon={<GoogleCalendarIcon width={32} height={32} />}
-      path="/calendar"
+      actions={actions}
     >
       <div className="space-y-6 p-4">
         {Object.entries(upcomingEventsByDay).map(

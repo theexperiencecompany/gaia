@@ -1102,7 +1102,8 @@ class WorkflowService:
             if not workflow:
                 return
 
-            # Generate steps using structured LLM output
+            # Generate steps using structured LLM output.
+            # Raises RuntimeError on failure (no silent empty-list return).
             steps_data = await WorkflowGenerationService.generate_steps_with_llm(
                 workflow.effective_prompt,
                 workflow.title,
@@ -1110,21 +1111,31 @@ class WorkflowService:
                 description=workflow.description,
             )
 
-            if steps_data:
+            await workflows_collection.find_one_and_update(
+                {"_id": workflow_id, "user_id": user_id},
+                {
+                    "$set": {
+                        "steps": steps_data,
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+            )
+
+        except Exception as e:
+            log.error(f"Error generating workflow steps for {workflow_id}: {str(e)}")
+            # Persist the error message so the status endpoint can report why it failed
+            try:
                 await workflows_collection.find_one_and_update(
                     {"_id": workflow_id, "user_id": user_id},
                     {
                         "$set": {
-                            "steps": steps_data,
+                            "error_message": str(e),
                             "updated_at": datetime.now(timezone.utc),
                         }
                     },
                 )
-            else:
-                await handle_workflow_error(
-                    workflow_id, user_id, Exception("Failed to generate workflow steps")
+            except Exception as db_err:
+                log.error(
+                    f"Failed to persist error_message for {workflow_id}: {db_err}"
                 )
-
-        except Exception as e:
-            log.error(f"Error generating workflow steps for {workflow_id}: {str(e)}")
             await handle_workflow_error(workflow_id, user_id, e)

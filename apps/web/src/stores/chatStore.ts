@@ -1,8 +1,11 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 
+import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
+import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
+import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
 // Optimistic message for new conversations (before conversation ID is assigned)
@@ -18,6 +21,9 @@ interface OptimisticMessage {
   toolName?: string | null;
   toolCategory?: string | null;
   workflowId?: string | null;
+  selectedWorkflow?: WorkflowData | null;
+  selectedCalendarEvent?: SelectedCalendarEventData | null;
+  replyToMessage?: ReplyToMessageData | null;
   metadata?: Record<string, unknown>;
 }
 

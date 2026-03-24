@@ -112,7 +112,7 @@ const nextConfig = {
     return [
       {
         source: "/sitemap.xml",
-        destination: "/sitemap-index",
+        destination: "/api/sitemap-xml",
       },
       {
         source: "/ingest/static/:path*",

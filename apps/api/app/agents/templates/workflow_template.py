@@ -1,16 +1,11 @@
-"""Workflow generation template and parser."""
+"""Workflow generation template."""
 
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser
 
 from app.agents.prompts.workflow_prompts import WORKFLOW_GENERATION_SYSTEM_PROMPT
-from app.models.workflow_models import GeneratedWorkflow
 
-
-# Create parser using models from workflow_models
-workflow_parser = PydanticOutputParser(pydantic_object=GeneratedWorkflow)
-
-# Create template with partial_variables (like filter_service.py does)
+# Create template without format_instructions — structured output is handled
+# natively via llm.with_structured_output(GeneratedWorkflow) in generation_service.
 WORKFLOW_GENERATION_TEMPLATE = PromptTemplate(
     input_variables=[
         "description",
@@ -20,7 +15,4 @@ WORKFLOW_GENERATION_TEMPLATE = PromptTemplate(
         "categories",
     ],
     template=WORKFLOW_GENERATION_SYSTEM_PROMPT,
-    partial_variables={
-        "format_instructions": workflow_parser.get_format_instructions()
-    },
 )

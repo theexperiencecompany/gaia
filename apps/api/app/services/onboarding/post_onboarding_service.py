@@ -19,7 +19,6 @@ from app.utils.profile_card import (
 )
 from app.utils.seeding_utils import (
     seed_initial_conversation,
-    seed_initial_goal,
     seed_onboarding_todo,
 )
 from bson import ObjectId
@@ -363,18 +362,15 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
 
 async def seed_initial_user_data(user_id: str) -> None:
     """
-    Seed initial data for a new user (onboarding todo, goal with linked todo, and conversation).
+    Seed initial data for a new user (onboarding todo and conversation).
     Runs tasks in parallel to minimize background processing time.
     """
     try:
         log.info(f"Starting parallel data seeding for user {user_id}")
 
         # Run seeding tasks in parallel
-        # Note: Goal seeding automatically creates a comprehensive linked todo
-        # The onboarding todo is separate and demonstrates standalone todo features
         await asyncio.gather(
             seed_onboarding_todo(user_id),
-            seed_initial_goal(user_id),
             seed_initial_conversation(user_id),
         )
 

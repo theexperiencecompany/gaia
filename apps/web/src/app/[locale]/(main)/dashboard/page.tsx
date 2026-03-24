@@ -7,25 +7,50 @@ import {
   Calendar03Icon,
   CheckmarkCircle02Icon,
   Mail01Icon,
-  Target02Icon,
   ZapIcon,
 } from "@icons";
-import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEventsQuery";
 import { GridSection } from "@/features/chat/components/interface/sections/GridSection";
-import { useGoals } from "@/features/goals/hooks/useGoals";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { getSimpleTimeGreeting } from "@/utils/greetingUtils";
 
+function DashboardComposer() {
+  const router = useRouter();
+
+  return (
+    <div className="relative w-1/2 mb-10">
+      {/* Visual-only — inert so nothing is interactive */}
+      <div
+        className="pointer-events-none [&_.searchbar_container]:pt-0 px-4"
+        inert
+      >
+        <DummyComposer
+          hideIntegrationBanner
+          fullWidth
+          className="max-w-none mx-0 items-stretch"
+        />
+      </div>
+      {/* Invisible overlay captures all clicks → navigate to chat */}
+      <button
+        type="button"
+        className="absolute inset-0 z-10 w-full cursor-text border-0 bg-transparent p-0"
+        onClick={() => router.push("/c")}
+        aria-label="Start a conversation"
+      />
+    </div>
+  );
+}
+
 export default function HomePage() {
   const user = useUser();
   const { counts: todoCounts, loading: todosLoading } = useTodoData();
-  const { goals, loading: goalsLoading, fetchGoals } = useGoals();
   const { getIntegrationStatus } = useIntegrations();
 
   // Check integrations
@@ -43,18 +68,15 @@ export default function HomePage() {
   const { data: calendars, isLoading: calendarsLoading } = useCalendarsQuery({
     enabled: isCalendarConnected,
   });
-  const { data: unreadEmails, isLoading: emailsLoading } = useUnreadEmailsQuery(
-    100,
-    {
-      enabled: isGmailConnected,
-    },
-  );
+  const {
+    data: unreadEmailsData,
+    isLoading: emailsLoading,
+    fetchNextPage: fetchMoreEmails,
+    hasNextPage: hasMoreEmails,
+    isFetchingNextPage: emailsFetchingMore,
+  } = useUnreadEmailsQuery(10, { enabled: isGmailConnected });
+  const unreadEmails = unreadEmailsData?.pages.flatMap((p) => p.messages) ?? [];
   const { workflows, isLoading: workflowsLoading } = useWorkflows(true);
-
-  // Fetch goals on mount
-  useEffect(() => {
-    fetchGoals();
-  }, [fetchGoals]);
 
   // Calculate today's data
   const today = new Date().toDateString();
@@ -71,7 +93,6 @@ export default function HomePage() {
     workflows?.filter((w) => w.activated === true).length || 0;
   const tasksDue = todoCounts?.today || 0;
   const overdueTodosCount = todoCounts?.overdue || 0;
-  const totalGoals = goals?.length || 0;
   const unreadEmailsCount = unreadEmails?.length || 0;
 
   const simpleGreeting = getSimpleTimeGreeting();
@@ -80,18 +101,15 @@ export default function HomePage() {
     eventsLoading ||
     calendarsLoading ||
     workflowsLoading ||
-    goalsLoading ||
     emailsLoading;
 
   // Only show "today" if there are actual time-bound items (meetings or tasks due today)
-  // Overdue tasks, emails, workflows, and goals are NOT "today" items
   const hasTodayItems = todaysMeetings > 0 || tasksDue > 0;
   const hasData =
     hasTodayItems ||
     overdueTodosCount > 0 ||
     unreadEmailsCount > 0 ||
-    activeWorkflows > 0 ||
-    totalGoals > 0;
+    activeWorkflows > 0;
 
   // Build sections array for display
   const sections = [];
@@ -130,20 +148,13 @@ export default function HomePage() {
       label: activeWorkflows === 1 ? "workflow" : "workflows",
     });
   }
-  if (totalGoals > 0) {
-    sections.push({
-      icon: <Target02Icon className="w-7 h-7 text-indigo-500" />,
-      count: totalGoals,
-      label: totalGoals === 1 ? "goal" : "goals",
-    });
-  }
 
   const firstLineSections = sections.slice(0, 2);
   const secondLineSections = sections.slice(2);
 
   return (
     <div className="flex flex-col p-6 pt-0 min-h-screen h-fit overflow-y-scroll outline-none">
-      <div className="flex flex-col p-3 mb-10 space-y-1">
+      <div className="flex flex-col p-3 mb-6 space-y-1">
         <div className="flex items-center gap-3 mb-5">
           <h2 className="text-4xl font-medium text-zinc-700">
             {simpleGreeting}
@@ -225,14 +236,20 @@ export default function HomePage() {
           </p>
         )}
       </div>
+
+      <DashboardComposer />
+
       <GridSection
         events={events}
         calendars={calendars}
         unreadEmails={unreadEmails}
         workflows={workflows}
-        goals={goals}
         isCalendarConnected={isCalendarConnected}
         isGmailConnected={isGmailConnected}
+        emailsLoading={emailsLoading}
+        onLoadMoreEmails={fetchMoreEmails}
+        hasMoreEmails={hasMoreEmails}
+        emailsFetchingMore={emailsFetchingMore}
       />
     </div>
   );
