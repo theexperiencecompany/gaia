@@ -76,6 +76,7 @@ Write a conversational first message. Rules:
 - Lead with the most impressive compound insight — something that required cross-referencing multiple emails or researching external context. NOT "you have X unread emails."
 - Mention what you already created (todos, workflows) casually in passing — not as a list
 - End with ONE binary question that offers to do the next most valuable, complex thing. This must be automatable. Examples: "Want me to research those investors and draft personalized follow-ups?" or "Should I set up a daily tracker for those project threads?"
+- After the binary question, add one brief sentence mentioning that the user can receive their daily briefing on Discord or Telegram too, and suggest they connect one in Settings.
 - Under 120 words. No emojis. No bullet points. No cards. No "Great!" or "Sure!". Talk like a competent colleague.
 - If there is not enough email data, still give a useful first message based on profession and what automations you set up.
 """
