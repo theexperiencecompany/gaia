@@ -9,7 +9,6 @@ import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionS
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
 import { useLoadingStore } from "@/stores/loadingStore";
-import { useOnboardingStore } from "@/stores/onboardingStore";
 import {
   type ReplyToMessageData,
   useReplyToMessageStore,
@@ -71,12 +70,6 @@ export const useSendMessage = () => {
 
       // Track first message milestone (only fires once per user)
       trackFirstMessageIfNeeded();
-
-      // Track messages sent after onboarding for holo card timing
-      const onboardingState = useOnboardingStore.getState();
-      if (onboardingState.holoCardReady && !onboardingState.holoCardShown) {
-        onboardingState.incrementMessagesSent();
-      }
 
       const isoTimestamp = fetchDate();
       const createdAt = new Date(isoTimestamp);
