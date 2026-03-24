@@ -51,10 +51,8 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
-  const {
-    open: isHoloCardModalOpen,
-    closeModal: closeHoloCardModal,
-  } = useHoloCardModalStore();
+  const { open: isHoloCardModalOpen, closeModal: closeHoloCardModal } =
+    useHoloCardModalStore();
   const { setPhase } = useOnboardingPhaseStore();
 
   // Check if user needs onboarding
@@ -210,7 +208,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             isOpen={isHoloCardModalOpen}
             onClose={closeHoloCardModal}
           />
-
         </SidebarProvider>
       </TooltipProvider>
     </ProvidersLayout>

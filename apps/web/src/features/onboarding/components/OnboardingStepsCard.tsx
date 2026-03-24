@@ -19,7 +19,7 @@ import {
  *
  * This component handles the THIRD phase of user guidance:
  * 1. Initial Onboarding (name/profession/connections) - /onboarding page
- * 2. Personalization (house, bio) - ContextGatheringLoader component
+ * 2. Personalization (house, bio) - intelligence pipeline + HoloCard reveal
  * 3. Getting Started (create email, calendar, workflow, chat) - THIS COMPONENT ✓
  *
  * Shows when phase is GETTING_STARTED or COMPLETED.
