@@ -59,19 +59,20 @@ async def _emit_progress(
     stage: str,
     message: str,
     progress: int,
+    results: Optional[dict] = None,
 ) -> None:
     """Emit a WebSocket progress event to the user."""
     try:
+        payload: dict = {
+            "stage": stage,
+            "message": message,
+            "progress": progress,
+        }
+        if results is not None:
+            payload["results"] = results
         await websocket_manager.broadcast_to_user(
             user_id=user_id,
-            message={
-                "type": "personalization_progress",
-                "data": {
-                    "stage": stage,
-                    "message": message,
-                    "progress": progress,
-                },
-            },
+            message={"type": "personalization_progress", "data": payload},
         )
     except Exception as e:
         log.warning(f"[intelligence] Failed to emit progress: {e}")
@@ -122,12 +123,27 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             emails = fetched
             count = len(fetched)
             await _emit_progress(
-                user_id, "scanning_inbox", f"{count} emails scanned", 25
+                user_id,
+                "scanning_inbox",
+                f"{count} emails scanned",
+                25,
+                results={"email_count": count},
             )
 
         async def _learn_style() -> None:
             nonlocal writing_style
             writing_style = await learn_writing_style(user_id)
+            await _emit_progress(
+                user_id,
+                "learning_style",
+                "Writing style learned",
+                28,
+                results={
+                    "style_summary": writing_style.summary[:200]
+                    if writing_style and writing_style.summary
+                    else ""
+                },
+            )
 
         async def _store_to_memory() -> None:
             # Existing pipeline — store emails to mem0
@@ -157,6 +173,18 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     # Extract social profiles from fetched emails (CPU-only, no I/O)
     if emails:
         social_profiles = extract_social_profiles(emails)
+        await _emit_progress(
+            user_id,
+            "finding_profiles",
+            f"Found {len(social_profiles)} social profiles",
+            45,
+            results={
+                "profiles": [
+                    {"platform": p.platform, "url": p.url}
+                    for p in social_profiles[:8]
+                ]
+            },
+        )
 
     # ── Phase 2: Triage + todos + workflows ───────────────────────────────────
 
@@ -176,6 +204,18 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 "triaging",
                 f"{unread_count} unread, {important_count} need attention",
                 65,
+                results={
+                    "total_scanned": triage.total_scanned,
+                    "total_unread": triage.total_unread,
+                    "important_emails": [
+                        {
+                            "sender": e.sender,
+                            "subject": e.subject,
+                            "why_important": e.why_important,
+                        }
+                        for e in triage.important_emails[:5]
+                    ],
+                },
             )
 
             await _emit_progress(user_id, "creating_todos", "Creating action items", 68)
@@ -185,6 +225,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 "creating_todos",
                 f"{len(created_todos)} action items created",
                 72,
+                results={"todos": created_todos},
             )
 
     await _emit_progress(user_id, "creating_workflows", "Setting up automations", 75)
@@ -196,6 +237,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         "creating_workflows",
         f"{len(created_workflows)} automations ready",
         85,
+        results={"workflows": created_workflows},
     )
 
     # ── Phase 3: Generate first message + seed conversation ───────────────────
