@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -19,7 +19,6 @@ from shared.py.logging import (
     configure_file_logging,
     configure_loguru,
     get_contextual_logger,
-    logger,
 )
 
 
