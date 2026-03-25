@@ -67,9 +67,9 @@ describe("genericLibrary", () => {
     expect(typeof genericLibrary.components).toBe("object");
   });
 
-  it("contains exactly 35 components", () => {
+  it("contains exactly 37 components", () => {
     const count = Object.keys(genericLibrary.components).length;
-    expect(count).toBe(35);
+    expect(count).toBe(37);
   });
 
   it("has exactly 4 component groups", () => {
