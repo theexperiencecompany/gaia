@@ -70,7 +70,7 @@ class WhatsAppChannelAdapter(ExternalPlatformAdapter):
             payload = {
                 "messaging_product": "whatsapp",
                 "recipient_type": "individual",
-                "to": wa_id,
+                "to": f"+{wa_id}",
                 "type": "text",
                 "text": {"body": text, "preview_url": False},
             }

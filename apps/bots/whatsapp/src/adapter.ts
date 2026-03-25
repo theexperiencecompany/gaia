@@ -143,6 +143,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           resolve();
         },
       ) as Server;
+      this.httpServer.on("error", (err) => {
+        console.error("WhatsApp webhook server error:", err);
+      });
     });
   }
 
@@ -230,7 +233,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       return;
     }
 
-    const thinkingMsg = await this.sendWhatsAppText(waId, "Thinking...");
+    let thinkingMsg: SentMessage;
+    try {
+      thinkingMsg = await this.sendWhatsAppText(waId, "Thinking...");
+    } catch (err) {
+      console.error("WhatsApp: failed to send thinking message:", err);
+      return;
+    }
 
     let lastEditFn: ((t: string) => Promise<void>) | null = null;
 
