@@ -1,4 +1,4 @@
-import type { Library } from "@openuidev/react-lang";
+import { createLibrary, defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
@@ -7,12 +7,6 @@ import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import type { CalendarFetchData } from "@/types/features/calendarTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
 import type { WeatherData } from "@/types/features/weatherTypes";
-
-// We build the Library object manually instead of using defineComponent/createLibrary
-// because those functions call `schema.register(z.globalRegistry)` which requires
-// zod v4. The project uses zod@3.25 (v3 compat bridge) whose default import lacks
-// globalRegistry. The Renderer only needs `library.components[name].component` and
-// `library.components[name].props.shape` — both work with zod 3.25 schemas.
 
 // --- Zod Schemas ---
 
@@ -117,60 +111,47 @@ const searchResultsSchema = z.object({
 
 // --- Component Definitions ---
 
-const components = {
-  WeatherCard: {
-    name: "WeatherCard",
-    props: weatherDataSchema,
-    description:
-      "Displays current weather conditions with temperature, forecast, and details for a location.",
-    component: ({
-      props,
-    }: {
-      props: Record<string, unknown>;
-      renderNode: unknown;
-    }) => {
-      return React.createElement(WeatherCard, {
-        weatherData: props as unknown as WeatherData,
-      });
-    },
-  },
-  CalendarListCard: {
-    name: "CalendarListCard",
-    props: calendarListSchema,
-    description:
-      "Displays a list of calendar events with times, names, and calendar colors.",
-    component: ({
-      props,
-    }: {
-      props: Record<string, unknown>;
-      renderNode: unknown;
-    }) => {
-      const { events } = props as unknown as { events: CalendarFetchData[] };
-      return React.createElement(CalendarListCard, { events });
-    },
-  },
-  SearchResultsTabs: {
-    name: "SearchResultsTabs",
-    props: searchResultsSchema,
-    description:
-      "Displays search results in tabs: web results, image gallery, and news articles.",
-    component: ({
-      props,
-    }: {
-      props: Record<string, unknown>;
-      renderNode: unknown;
-    }) => {
-      return React.createElement(SearchResultsTabs, {
-        search_results: props as unknown as SearchResults,
-      });
-    },
-  },
-};
+const WeatherCardComponent = defineComponent({
+  name: "WeatherCard",
+  description:
+    "Displays current weather conditions with temperature, forecast, and details for a location.",
+  props: weatherDataSchema,
+  component: ({ props }) =>
+    React.createElement(WeatherCard, {
+      weatherData: props as unknown as WeatherData,
+    }),
+});
 
-// --- Library (manually constructed to avoid zod v4 globalRegistry dependency) ---
+const CalendarListCardComponent = defineComponent({
+  name: "CalendarListCard",
+  description:
+    "Displays a list of calendar events with times, names, and calendar colors.",
+  props: calendarListSchema,
+  component: ({ props }) => {
+    const { events } = props as unknown as { events: CalendarFetchData[] };
+    return React.createElement(CalendarListCard, { events });
+  },
+});
 
-export const gaiaLibrary: Library = {
-  components: components as unknown as Library["components"],
+const SearchResultsTabsComponent = defineComponent({
+  name: "SearchResultsTabs",
+  description:
+    "Displays search results in tabs: web results, image gallery, and news articles.",
+  props: searchResultsSchema,
+  component: ({ props }) =>
+    React.createElement(SearchResultsTabs, {
+      search_results: props as unknown as SearchResults,
+    }),
+});
+
+// --- Library ---
+
+export const gaiaLibrary = createLibrary({
+  components: [
+    WeatherCardComponent,
+    CalendarListCardComponent,
+    SearchResultsTabsComponent,
+  ],
   componentGroups: [
     {
       name: "Data Display",
@@ -178,16 +159,8 @@ export const gaiaLibrary: Library = {
       notes: [
         "Use these components to present tool results visually.",
         "Always pass the full data object from the tool result.",
+        "The agent should still write natural conversational text before/after the component.",
       ],
     },
   ],
-  root: undefined,
-  prompt() {
-    // We maintain the backend prompt manually in openui_prompts.py
-    // since the auto-generation requires zod v4 globalRegistry.
-    return "";
-  },
-  toJSONSchema() {
-    return {};
-  },
-};
+});
