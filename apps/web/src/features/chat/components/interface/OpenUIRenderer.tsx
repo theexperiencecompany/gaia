@@ -1,6 +1,8 @@
 import { type ActionEvent, Renderer } from "@openuidev/react-lang";
 import React from "react";
+import { dispatchOpenUIAction } from "@/features/chat/actions/openUIActionDispatcher";
 import { gaiaLibrary } from "@/config/openui/gaiaLibrary";
+import { useAppendToInput } from "@/stores/composerStore";
 
 interface OpenUIRendererProps {
   code: string;
@@ -8,15 +10,14 @@ interface OpenUIRendererProps {
 }
 
 function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
-  const handleAction = React.useCallback((event: ActionEvent) => {
-    if (event.type === "continue_conversation" && event.humanFriendlyMessage) {
-      // TODO: integrate with chat input to send follow-up messages
-      console.warn(
-        "[OpenUIRenderer] continue_conversation action not yet wired:",
-        event.humanFriendlyMessage,
-      );
-    }
-  }, []);
+  const appendToInput = useAppendToInput();
+
+  const handleAction = React.useCallback(
+    (event: ActionEvent) => {
+      dispatchOpenUIAction(event, appendToInput);
+    },
+    [appendToInput],
+  );
 
   return (
     <Renderer
@@ -42,7 +43,6 @@ class OpenUIErrorBoundary extends React.Component<
   }
 
   componentDidUpdate(prevProps: { fallbackText: string }) {
-    // Reset error state when content changes (e.g. during streaming)
     if (
       this.state.hasError &&
       prevProps.fallbackText !== this.props.fallbackText
