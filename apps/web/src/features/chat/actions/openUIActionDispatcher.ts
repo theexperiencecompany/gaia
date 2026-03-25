@@ -2,8 +2,9 @@ import type { ActionEvent } from "@openuidev/react-lang";
 
 /**
  * Direct action handlers for OpenUI write-action components.
- * Each is implemented when its Phase 2 component is built.
- * Until then they warn and fall back to continue_conversation.
+ * Each stub is replaced in Phase 2 with a real API call implementation.
+ * Stubs warn and return (they do NOT fall back to continue_conversation —
+ * the fallback only applies to actions not registered here at all).
  */
 type DirectActionHandler = (event: ActionEvent) => Promise<void>;
 
@@ -67,9 +68,7 @@ export async function dispatchOpenUIAction(
 
   // continue_conversation — append message to chat input
   if (type === "continue_conversation") {
-    if (event.humanFriendlyMessage) {
-      appendToInput(event.humanFriendlyMessage);
-    }
+    appendToInput(event.humanFriendlyMessage);
     return;
   }
 
@@ -97,7 +96,5 @@ export async function dispatchOpenUIAction(
   console.warn(
     `[OpenUI] Unknown action type: "${type}". Falling back to continue_conversation.`,
   );
-  if (event.humanFriendlyMessage) {
-    appendToInput(event.humanFriendlyMessage);
-  }
+  appendToInput(event.humanFriendlyMessage);
 }
