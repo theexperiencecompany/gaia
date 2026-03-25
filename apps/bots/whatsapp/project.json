@@ -1,0 +1,66 @@
+{
+  "name": "bot-whatsapp",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "root": "apps/bots/whatsapp",
+  "sourceRoot": "apps/bots/whatsapp/src",
+  "projectType": "application",
+  "release": {
+    "docker": {
+      "repositoryName": "theexperiencecompany/gaia-bot-whatsapp"
+    }
+  },
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsup",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsx watch src/index.ts",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome check src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome check --write src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm biome format --write src/",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsc --noEmit",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "docker:build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker build -f apps/bots/Dockerfile --build-arg BOT_NAME=whatsapp -t apps-bots-whatsapp:latest -t bot-whatsapp:latest -t ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest .",
+        "cwd": "."
+      },
+      "cache": true,
+      "inputs": ["production", "^production"]
+    }
+  }
+}
