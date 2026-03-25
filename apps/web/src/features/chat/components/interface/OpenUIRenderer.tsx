@@ -1,7 +1,7 @@
 import { type ActionEvent, Renderer } from "@openuidev/react-lang";
 import React from "react";
-import { dispatchOpenUIAction } from "@/features/chat/actions/openUIActionDispatcher";
 import { gaiaLibrary } from "@/config/openui/gaiaLibrary";
+import { dispatchOpenUIAction } from "@/features/chat/actions/openUIActionDispatcher";
 import { useAppendToInput } from "@/stores/composerStore";
 
 interface OpenUIRendererProps {
@@ -14,7 +14,9 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
 
   const handleAction = React.useCallback(
     (event: ActionEvent) => {
-      dispatchOpenUIAction(event, appendToInput);
+      dispatchOpenUIAction(event, appendToInput).catch((err) => {
+        console.error("[OpenUIRenderer] Action dispatch failed:", err);
+      });
     },
     [appendToInput],
   );
