@@ -72,7 +72,7 @@ class TestExcludedPaths:
 
     async def test_health_endpoint_bypasses_middleware(self, app: FastAPI) -> None:
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get("/health")
         assert resp.status_code == 200
 
@@ -80,7 +80,7 @@ class TestExcludedPaths:
         app = _build_app()
         # /docs should be excluded
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get("/docs")
         # FastAPI returns 404 for /docs when no OpenAPI UI is set up, but the
         # middleware should NOT block it — we just check it's not a 500/403
@@ -94,7 +94,7 @@ class TestExcludedPaths:
             return {"ok": "true"}
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get("/custom-path")
         assert resp.status_code == 200
 
@@ -130,7 +130,7 @@ class TestAlreadyAuthenticated:
             }
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get("/api/test")
 
         assert resp.status_code == 200
@@ -169,7 +169,7 @@ class TestJWTAuth:
         mock_platform.return_value = FAKE_USER_DATA
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={"Authorization": "Bearer valid-jwt-token"},
@@ -204,7 +204,7 @@ class TestJWTAuth:
         mock_get_cache.return_value = cached_user
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={"Authorization": "Bearer cached-jwt"},
@@ -227,7 +227,7 @@ class TestJWTAuth:
         mock_verify.side_effect = JWTError("expired")
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={"Authorization": "Bearer bad-jwt"},
@@ -253,7 +253,7 @@ class TestJWTAuth:
         }
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={"Authorization": "Bearer incomplete-jwt"},
@@ -288,7 +288,7 @@ class TestJWTAuth:
         mock_platform.return_value = FAKE_USER_DATA  # _id = "user_abc123"
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={"Authorization": "Bearer mismatch-jwt"},
@@ -316,7 +316,7 @@ class TestJWTAuth:
         mock_platform.return_value = None  # User not linked
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={"Authorization": "Bearer unlinked-jwt"},
@@ -352,12 +352,12 @@ class TestAPIKeyAuth:
         mock_get_cache: AsyncMock,
         app: FastAPI,
     ) -> None:
-        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
         mock_get_cache.return_value = None
         mock_platform.return_value = FAKE_USER_DATA
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={
@@ -383,7 +383,7 @@ class TestAPIKeyAuth:
         mock_get_cache: AsyncMock,
         app: FastAPI,
     ) -> None:
-        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
         cached_user = {
             "user_id": "user_abc123",
             "email": "bot@example.com",
@@ -395,7 +395,7 @@ class TestAPIKeyAuth:
         mock_get_cache.return_value = cached_user
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={
@@ -415,10 +415,10 @@ class TestAPIKeyAuth:
         mock_settings: MagicMock,
         app: FastAPI,
     ) -> None:
-        mock_settings.GAIA_BOT_API_KEY = "correct-key"
+        mock_settings.GAIA_BOT_API_KEY = "correct-key"  # pragma: allowlist secret
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={
@@ -443,7 +443,7 @@ class TestAPIKeyAuth:
         mock_settings.GAIA_BOT_API_KEY = None
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={
@@ -471,10 +471,10 @@ class TestAPIKeyAuth:
         app: FastAPI,
     ) -> None:
         """Valid API key but no platform/user_id headers: bot_api_key_valid=True but not authenticated."""
-        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={"X-Bot-API-Key": "secret-bot-key"},
@@ -500,12 +500,12 @@ class TestAPIKeyAuth:
         app: FastAPI,
     ) -> None:
         """Valid API key + platform headers, but user not linked in DB."""
-        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
         mock_get_cache.return_value = None
         mock_platform.return_value = None
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={
@@ -532,7 +532,7 @@ class TestNoAuthHeaders:
     async def test_request_without_any_auth(self) -> None:
         app = _build_app()
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get("/api/test")
 
         assert resp.status_code == 200
@@ -564,14 +564,14 @@ class TestAuthPrecedence:
         mock_get_cache: AsyncMock,
     ) -> None:
         """When both Bearer token and API key are present, JWT should win."""
-        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"
+        mock_settings.GAIA_BOT_API_KEY = "secret-bot-key"  # pragma: allowlist secret
         mock_verify.return_value = FAKE_JWT_PAYLOAD
         mock_get_cache.return_value = None
         mock_platform.return_value = FAKE_USER_DATA
 
         app = _build_app()
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             resp = await client.get(
                 "/api/test",
                 headers={
@@ -604,7 +604,7 @@ class TestVerifyApiKeyEdge:
         ):
             transport = ASGITransport(app=app)
             async with AsyncClient(
-                transport=transport, base_url="http://test"
+                transport=transport, base_url="https://test"
             ) as client:
                 resp = await client.get(
                     "/api/test",

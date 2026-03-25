@@ -58,7 +58,7 @@ def _make_store(
     index: dict | None = None,
 ) -> ChromaStore:
     client = AsyncMock()
-    store = ChromaStore(client, collection_name="test_col", index=index)
+    store = ChromaStore(client, collection_name="test_col", index=index)  # type: ignore[arg-type]
     if collection is not None:
         store._collection_cache = collection
     return store
@@ -76,7 +76,7 @@ class TestNoOpEmbeddingFunction:
         result = ef(["hello", "world"])
         assert len(result) == 2
         assert all(len(v) == 384 for v in result)
-        assert all(x == 0.0 for v in result for x in v)
+        assert all(x == pytest.approx(0.0) for v in result for x in v)
 
 
 # ---------------------------------------------------------------------------

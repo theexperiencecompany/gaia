@@ -62,7 +62,7 @@ def _make_integration_no_subagent(integration_id: str = "stripe"):
 
 
 def _make_ctx(**overrides) -> SubagentExecutionContext:
-    defaults = {
+    defaults: dict[str, object] = {
         "subagent_graph": AsyncMock(),
         "agent_name": "test_agent",
         "config": {"configurable": {"thread_id": "t1"}},
@@ -73,7 +73,7 @@ def _make_ctx(**overrides) -> SubagentExecutionContext:
         "stream_id": None,
     }
     defaults.update(overrides)
-    return SubagentExecutionContext(**defaults)
+    return SubagentExecutionContext(**defaults)  # type: ignore[arg-type]
 
 
 FAKE_INTEGRATIONS = [
@@ -454,9 +454,8 @@ class TestExecuteSubagentStream:
     @pytest.mark.asyncio
     async def test_empty_message_returns_default(self):
         async def _fake_astream(*args, **kwargs):
-            # yield nothing
             return
-            yield  # make it a generator
+            yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -617,7 +616,7 @@ class TestExecuteSubagentStream:
 
     @pytest.mark.asyncio
     async def test_integration_metadata_passed_to_extract(self):
-        metadata = {"icon_url": "http://icon.png", "name": "Custom MCP"}
+        metadata = {"icon_url": "https://icon.png", "name": "Custom MCP"}
 
         async def _fake_astream(*args, **kwargs):
             yield ("updates", {"node": {"messages": []}})
@@ -1008,7 +1007,7 @@ class TestCallSubagent:
 
         async def _fake_astream(*args, **kwargs):
             return
-            yield  # make generator
+            yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream
@@ -1170,7 +1169,7 @@ class TestCallSubagent:
     async def test_final_nostream_and_done_always_yielded(self):
         async def _fake_astream(*args, **kwargs):
             return
-            yield  # make generator
+            yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_graph = MagicMock()
         mock_graph.astream = _fake_astream

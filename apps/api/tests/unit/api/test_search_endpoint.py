@@ -45,7 +45,10 @@ class TestSearchMessages:
     ):
         mock_search.return_value = {"messages": [], "conversations": [], "notes": []}
         await client.get(f"{SEARCH_BASE}/search", params={"query": "test"})
-        mock_search.assert_awaited_once_with("test", "507f1f77bcf86cd799439011")
+        mock_search.assert_awaited_once_with(
+            "test",
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+        )
 
     async def test_search_missing_query_returns_422(self, client: AsyncClient):
         response = await client.get(f"{SEARCH_BASE}/search")
@@ -180,7 +183,7 @@ class TestFetchUrlMetadata:
             favicon="https://example.com/favicon.ico",
             website_name="Example",
             website_image=None,
-            url="https://example.com",
+            url="https://example.com",  # type: ignore[arg-type]
         )
         response = await client.post(
             f"{SEARCH_BASE}/fetch-url-metadata",
@@ -207,7 +210,7 @@ class TestFetchUrlMetadata:
             favicon=None,
             website_name=None,
             website_image=None,
-            url="https://a.com",
+            url="https://a.com",  # type: ignore[arg-type]
         )
         url2_resp = URLResponse(
             title="Site B",
@@ -215,7 +218,7 @@ class TestFetchUrlMetadata:
             favicon=None,
             website_name=None,
             website_image=None,
-            url="https://b.com",
+            url="https://b.com",  # type: ignore[arg-type]
         )
         mock_fetch.side_effect = [url1_resp, url2_resp]
         response = await client.post(
@@ -241,7 +244,7 @@ class TestFetchUrlMetadata:
             favicon=None,
             website_name=None,
             website_image=None,
-            url="https://good.com",
+            url="https://good.com",  # type: ignore[arg-type]
         )
         mock_fetch.side_effect = [good_resp, Exception("Timeout")]
         response = await client.post(

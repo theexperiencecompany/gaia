@@ -1509,7 +1509,7 @@ class TestCalculateStats:
         assert result.completed == 8
         assert result.pending == 12
         assert result.overdue == 2
-        assert result.completion_rate == 40.0
+        assert result.completion_rate == pytest.approx(40.0)
         assert result.by_priority == {"high": 5, "low": 15}
         assert result.labels is not None
         assert len(result.labels) == 2
@@ -1527,7 +1527,7 @@ class TestCalculateStats:
 
         result = await TodoService._calculate_stats(FAKE_USER_ID)
         assert result.total == 0
-        assert result.completion_rate == 0.0
+        assert result.completion_rate == pytest.approx(0.0)
 
     async def test_zero_total_no_division_error(
         self, mock_todos_collection, mock_cache
@@ -1551,7 +1551,7 @@ class TestCalculateStats:
 
         result = await TodoService._calculate_stats(FAKE_USER_ID)
         assert result.total == 0
-        assert result.completion_rate == 0.0
+        assert result.completion_rate == pytest.approx(0.0)
 
 
 # ===========================================================================

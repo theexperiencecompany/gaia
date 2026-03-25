@@ -198,7 +198,7 @@ class TestProcessPublicIntegrationResult:
         result = _process_public_integration_result(items, 0)
         assert len(result) == 2
         assert result[0]["id"] == "subagent:abc123 (My App)"
-        assert result[0]["score"] == 0.9
+        assert result[0]["score"] == pytest.approx(0.9)
         assert result[1]["id"] == "subagent:def456"
 
     def test_skips_missing_integration_id(self):

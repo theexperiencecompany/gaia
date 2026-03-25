@@ -555,7 +555,7 @@ class TestFindWorkflows:
     async def test_returns_empty_on_no_match(self, mock_coll: MagicMock) -> None:
         async def mock_cursor():
             return
-            yield  # empty async generator
+            yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_coll.find = MagicMock(return_value=mock_cursor())
 
@@ -610,7 +610,7 @@ class TestFindWorkflows:
     async def test_validates_new_sheet_event(self, mock_coll: MagicMock) -> None:
         async def mock_cursor():
             return
-            yield
+            yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_coll.find = MagicMock(return_value=mock_cursor())
 

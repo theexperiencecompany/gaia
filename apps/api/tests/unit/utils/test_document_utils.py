@@ -88,7 +88,7 @@ class TestCreateTempFile:
         with patch("tempfile.gettempdir", return_value=str(tmp_path)):
             async with proc.create_temp_file() as temp_path:
                 # Actually create the file so cleanup has something to remove
-                with open(temp_path, "w") as f:
+                with open(temp_path, "w") as f:  # NOSONAR
                     f.write("data")
                 assert os.path.exists(temp_path)
             # After exiting context, file should be cleaned up
@@ -109,7 +109,7 @@ class TestCreateTempFile:
         with patch("tempfile.gettempdir", return_value=str(tmp_path)):
             async with proc.create_temp_file() as temp_path:
                 # Create the file
-                with open(temp_path, "w") as f:
+                with open(temp_path, "w") as f:  # NOSONAR
                     f.write("content")
                 # Patch os.remove to fail
                 with patch("os.remove", side_effect=PermissionError("no perm")):
@@ -140,14 +140,14 @@ class TestWritePlainText:
         proc = DocumentProcessor(filename="hello", format="txt")
         file_path = str(tmp_path / "hello.txt")
         await proc._write_plain_text(file_path, "Hello World")
-        with open(file_path) as f:
+        with open(file_path) as f:  # NOSONAR
             assert f.read() == "Hello World"
 
     async def test_writes_empty_string(self, tmp_path):
         proc = DocumentProcessor(filename="empty", format="txt")
         file_path = str(tmp_path / "empty.txt")
         await proc._write_plain_text(file_path, "")
-        with open(file_path) as f:
+        with open(file_path) as f:  # NOSONAR
             assert f.read() == ""
 
     async def test_writes_unicode_content(self, tmp_path):
@@ -155,7 +155,7 @@ class TestWritePlainText:
         file_path = str(tmp_path / "unicode.txt")
         content = "Hello \u4e16\u754c \u00e9\u00e8\u00ea"
         await proc._write_plain_text(file_path, content)
-        with open(file_path, encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:  # NOSONAR
             assert f.read() == content
 
     async def test_writes_multiline_content(self, tmp_path):
@@ -163,7 +163,7 @@ class TestWritePlainText:
         file_path = str(tmp_path / "multi.txt")
         content = "Line 1\nLine 2\nLine 3"
         await proc._write_plain_text(file_path, content)
-        with open(file_path) as f:
+        with open(file_path) as f:  # NOSONAR
             assert f.read() == content
 
 
@@ -608,7 +608,7 @@ class TestCreateTempDocxFile:
                 result_path = await convert_fn("")
                 assert result_path == temp_path
                 # Empty content => plain text write, not pandoc
-                with open(temp_path) as f:
+                with open(temp_path) as f:  # NOSONAR
                     assert f.read() == ""
 
     async def test_cleanup_after_context_exit(self, tmp_path):

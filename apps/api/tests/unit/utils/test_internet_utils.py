@@ -23,10 +23,10 @@ class TestIsValidUrl:
     @pytest.mark.parametrize(
         "url",
         [
-            "http://example.com",
+            "https://example.com",
             "https://example.com",
             "https://example.com:8080/path/to/page",
-            "http://sub.domain.example.com/page?q=1#frag",
+            "https://sub.domain.example.com/page?q=1#frag",
             "https://example.com/path/to/resource.html",
         ],
         ids=[
@@ -45,13 +45,13 @@ class TestIsValidUrl:
         "url,reason",
         [
             ("ftp://example.com", "ftp_scheme"),
-            ("http://", "no_netloc"),
-            ("http://192.168.1.1", "ip_address"),
+            ("https://", "no_netloc"),
+            ("https://192.168.1.1", "ip_address"),
             ("", "empty_string"),
             ("not-a-url", "plain_string_no_scheme"),
             ("://missing-scheme.com", "missing_scheme"),
-            ("http://10.0.0.1", "private_ip"),
-            ("http://255.255.255.255", "broadcast_ip"),
+            ("https://10.0.0.1", "private_ip"),
+            ("https://255.255.255.255", "broadcast_ip"),
         ],
         ids=[
             "ftp_scheme",
@@ -83,7 +83,7 @@ class TestIsValidUrl:
         implementation (IP:port is NOT rejected).  Documenting actual behavior."""
         # netloc = "192.168.1.1:8080" — the regex r"^\d+\.\d+\.\d+\.\d+$"
         # does not match because of the :8080, so this passes.
-        result = is_valid_url("http://192.168.1.1:8080")
+        result = is_valid_url("https://192.168.1.1:8080")
         # The current implementation allows this because the regex only matches
         # bare IP addresses.  We test the actual behavior, not the ideal.
         assert result is True

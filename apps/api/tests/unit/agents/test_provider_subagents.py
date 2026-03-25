@@ -27,7 +27,7 @@ def _make_subagent_config(**overrides) -> SubAgentConfig:
         "disable_retrieve_tools": False,
     }
     defaults.update(overrides)
-    return SubAgentConfig(**defaults)
+    return SubAgentConfig(**defaults)  # type: ignore[arg-type]
 
 
 def _make_integration(
@@ -43,7 +43,7 @@ def _make_integration(
     if composio_config is None and managed_by == "composio":
         from app.models.mcp_config import ComposioConfig
 
-        composio_config = ComposioConfig(
+        composio_config = ComposioConfig(  # type: ignore[assignment]
             auth_config_id="test_auth",
             toolkit="test_toolkit",
         )
@@ -55,7 +55,7 @@ def _make_integration(
         category="test",
         provider=provider,
         scopes=[],
-        managed_by=managed_by,
+        managed_by=managed_by,  # type: ignore[arg-type]
         mcp_config=mcp_config,
         subagent_config=subagent_config,
         composio_config=composio_config,
@@ -135,7 +135,7 @@ class TestCreateSubagent:
     async def test_mcp_integration_no_auth(self):
         from app.agents.core.subagents.provider_subagents import create_subagent
 
-        mcp_config = MCPConfig(server_url="http://example.com", requires_auth=False)
+        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=False)
         integration = _make_integration(
             managed_by="mcp",
             mcp_config=mcp_config,
@@ -186,7 +186,7 @@ class TestCreateSubagent:
     async def test_mcp_requires_auth_raises(self):
         from app.agents.core.subagents.provider_subagents import create_subagent
 
-        mcp_config = MCPConfig(server_url="http://example.com", requires_auth=True)
+        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
         integration = _make_integration(
             managed_by="mcp",
             mcp_config=mcp_config,
@@ -212,7 +212,7 @@ class TestCreateSubagent:
     async def test_mcp_category_already_registered(self):
         from app.agents.core.subagents.provider_subagents import create_subagent
 
-        mcp_config = MCPConfig(server_url="http://example.com", requires_auth=False)
+        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=False)
         integration = _make_integration(
             managed_by="mcp",
             mcp_config=mcp_config,
@@ -345,7 +345,7 @@ class TestCreateSubagentForUser:
             create_subagent_for_user,
         )
 
-        mcp_config = MCPConfig(server_url="http://example.com", requires_auth=True)
+        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
         integration = _make_integration(
             managed_by="mcp",
             mcp_config=mcp_config,
@@ -400,7 +400,7 @@ class TestCreateSubagentForUser:
             create_subagent_for_user,
         )
 
-        mcp_config = MCPConfig(server_url="http://example.com", requires_auth=True)
+        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
         integration = _make_integration(
             managed_by="mcp",
             mcp_config=mcp_config,
@@ -439,7 +439,7 @@ class TestCreateSubagentForUser:
             create_subagent_for_user,
         )
 
-        mcp_config = MCPConfig(server_url="http://example.com", requires_auth=True)
+        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
         integration = _make_integration(
             managed_by="mcp",
             mcp_config=mcp_config,
@@ -478,7 +478,7 @@ class TestCreateSubagentForUser:
             create_subagent_for_user,
         )
 
-        mcp_config = MCPConfig(server_url="http://example.com", requires_auth=True)
+        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
         integration = _make_integration(
             managed_by="mcp",
             mcp_config=mcp_config,
@@ -541,7 +541,7 @@ class TestCreateCustomMcpSubagent:
 
         custom_doc = {
             "integration_id": "custom_abc",
-            "mcp_config": {"server_url": "http://custom.example.com"},
+            "mcp_config": {"server_url": "https://custom.example.com"},
         }
         mock_graph = MagicMock()
         mock_tools = [MagicMock() for _ in range(5)]
@@ -597,7 +597,7 @@ class TestCreateCustomMcpSubagent:
 
         custom_doc = {
             "integration_id": "custom_abc",
-            "mcp_config": {"server_url": "http://custom.example.com"},
+            "mcp_config": {"server_url": "https://custom.example.com"},
         }
         mock_graph = MagicMock()
         mock_tools = [MagicMock() for _ in range(3)]  # Small = direct tools
@@ -655,7 +655,7 @@ class TestCreateCustomMcpSubagent:
 
         custom_doc = {
             "integration_id": "custom_abc",
-            "mcp_config": {"server_url": "http://custom.example.com"},
+            "mcp_config": {"server_url": "https://custom.example.com"},
         }
         mock_graph = MagicMock()
         mock_tools = [MagicMock() for _ in range(15)]  # Large = retrieve tools
@@ -713,7 +713,7 @@ class TestCreateCustomMcpSubagent:
 
         custom_doc = {
             "integration_id": "custom_abc",
-            "mcp_config": {"server_url": "http://custom.example.com"},
+            "mcp_config": {"server_url": "https://custom.example.com"},
         }
 
         mock_registry = AsyncMock()
@@ -754,7 +754,7 @@ class TestCreateCustomMcpSubagent:
 
         custom_doc = {
             "integration_id": "custom_abc",
-            "mcp_config": {"server_url": "http://custom.example.com"},
+            "mcp_config": {"server_url": "https://custom.example.com"},
         }
 
         mock_registry = AsyncMock()
@@ -795,7 +795,7 @@ class TestCreateCustomMcpSubagent:
 
         custom_doc = {
             "integration_id": "custom_abc",
-            "mcp_config": {"server_url": "http://custom.example.com"},
+            "mcp_config": {"server_url": "https://custom.example.com"},
         }
         mock_graph = MagicMock()
         cached_cat = MagicMock()
@@ -913,7 +913,7 @@ class TestRegisterSubagentProviders:
             register_subagent_providers,
         )
 
-        mcp_config = MCPConfig(server_url="http://example.com", requires_auth=True)
+        mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
         integration = _make_integration(
             managed_by="mcp",
             mcp_config=mcp_config,

@@ -395,7 +395,7 @@ class TestFileContext:
     @pytest.mark.asyncio
     async def test_files_appended_to_content(self):
         files_data = [
-            FileData(fileId="f1", url="http://example.com/f1", filename="test.txt"),
+            FileData(fileId="f1", url="https://example.com/f1", filename="test.txt"),
         ]
         p = _patches(files_str="Uploaded Files:\n- Name: test.txt Id: f1")
         with (

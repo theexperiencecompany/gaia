@@ -19,7 +19,7 @@ from app.utils.weather_utils import (
 # Helpers / Factories
 # ---------------------------------------------------------------------------
 
-FAKE_API_KEY = "test-api-key-12345"
+FAKE_API_KEY = "test-api-key-12345"  # pragma: allowlist secret
 
 
 def _make_forecast_item(
@@ -109,8 +109,8 @@ class TestProcessForecastData:
         assert len(result) == 1
         day = result[0]
         assert day["date"] == "2024-01-15"
-        assert day["temp_min"] == 10.0
-        assert day["temp_max"] == 10.0
+        assert day["temp_min"] == pytest.approx(10.0)
+        assert day["temp_max"] == pytest.approx(10.0)
         assert day["humidity"] == 60
         assert day["weather"]["main"] == "Clear"
         assert day["weather"]["description"] == "clear sky"
@@ -131,8 +131,8 @@ class TestProcessForecastData:
         result = process_forecast_data(_make_forecast_data(items))
         assert len(result) == 1
         day = result[0]
-        assert day["temp_min"] == 5.0
-        assert day["temp_max"] == 12.0
+        assert day["temp_min"] == pytest.approx(5.0)
+        assert day["temp_max"] == pytest.approx(12.0)
         assert day["humidity"] == round((80 + 50 + 70) / 3)
         # "Clouds" appears twice, so it is the most common condition
         assert day["weather"]["main"] == "Clouds"
@@ -291,7 +291,7 @@ class TestGeocodeLocation:
         with patch("app.utils.weather_utils.http_async_client", mock_client):
             result = await geocode_location("London")
 
-        assert result["lat"] == 51.5074
+        assert result["lat"] == pytest.approx(51.5074)
         assert result["lon"] == -0.1278
         assert result["city"] == "London"
         assert result["country"] == "United Kingdom"
@@ -323,7 +323,7 @@ class TestGeocodeLocation:
         with patch("app.utils.weather_utils.http_async_client", mock_client):
             result = await geocode_location("New York")
 
-        assert result["lat"] == 40.7128
+        assert result["lat"] == pytest.approx(40.7128)
         assert result["lon"] == -74.006
         assert result["city"] is None
         assert result["country"] is None
@@ -382,7 +382,7 @@ class TestGetLocationData:
         ):
             result = await get_location_data(location_name="Paris")
 
-        assert result["lat"] == 48.8566
+        assert result["lat"] == pytest.approx(48.8566)
         assert result["lon"] == 2.3522
         assert result["city"] == "Paris"
         assert result["country"] == "France"
@@ -509,7 +509,7 @@ class TestFetchWeatherData:
 
     async def test_both_requests_succeed(self) -> None:
         weather_json = {"main": {"temp": 20}}
-        forecast_json = {"list": []}
+        forecast_json: dict[str, object] = {"list": []}
 
         weather_resp = _mock_httpx_response(weather_json)
         forecast_resp = _mock_httpx_response(forecast_json)

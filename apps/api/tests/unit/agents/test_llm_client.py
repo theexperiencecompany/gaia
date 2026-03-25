@@ -219,7 +219,7 @@ class TestGetOrderedProviders:
 class TestCreateConfigurableLlm:
     def test_no_alternatives_returns_primary_instance(self) -> None:
         primary = _make_llm_provider("gemini")
-        result = _create_configurable_llm(primary, [])
+        result = _create_configurable_llm(primary, [])  # type: ignore[arg-type]
 
         assert result is primary["instance"]
 
@@ -228,7 +228,7 @@ class TestCreateConfigurableLlm:
         alt1 = _make_llm_provider("openai")
         alt2 = _make_llm_provider("openrouter")
 
-        _create_configurable_llm(primary, [alt1, alt2])
+        _create_configurable_llm(primary, [alt1, alt2])  # type: ignore[arg-type, list-item]
 
         primary["instance"].configurable_alternatives.assert_called_once()
         call_args = primary["instance"].configurable_alternatives.call_args
@@ -253,7 +253,7 @@ class TestInitLlm:
     def test_use_free_returns_openrouter_model(
         self, mock_chat_openai: MagicMock, mock_settings: MagicMock, mock_log: MagicMock
     ) -> None:
-        mock_settings.OPENROUTER_API_KEY = "test-key"
+        mock_settings.OPENROUTER_API_KEY = "test-key"  # pragma: allowlist secret
         mock_settings.FRONTEND_URL = "http://localhost:3000"
         mock_chat_openai.return_value = MagicMock()
 
@@ -435,8 +435,8 @@ class TestGetFreeLlmChain:
         mock_chat_openai: MagicMock,
         mock_chat_google: MagicMock,
     ) -> None:
-        mock_settings.OPENROUTER_API_KEY = "or-key"
-        mock_settings.GOOGLE_API_KEY = "google-key"
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
         mock_settings.FRONTEND_URL = "http://localhost:3000"
         mock_chat_openai.return_value = MagicMock()
         mock_chat_google.return_value = MagicMock()
@@ -456,7 +456,7 @@ class TestGetFreeLlmChain:
         mock_chat_openai: MagicMock,
         mock_chat_google: MagicMock,
     ) -> None:
-        mock_settings.OPENROUTER_API_KEY = "or-key"
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_settings.GOOGLE_API_KEY = None
         mock_settings.FRONTEND_URL = "http://localhost:3000"
         mock_chat_openai.return_value = MagicMock()
@@ -477,7 +477,7 @@ class TestGetFreeLlmChain:
         mock_chat_google: MagicMock,
     ) -> None:
         mock_settings.OPENROUTER_API_KEY = None
-        mock_settings.GOOGLE_API_KEY = "google-key"
+        mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
         mock_chat_openai.return_value = MagicMock()
         mock_chat_google.return_value = MagicMock()
 
@@ -555,7 +555,7 @@ class TestInvokeWithFallback:
         llm.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
         config = {"configurable": {"thread_id": "t1"}}
 
-        await invoke_with_fallback([llm], [HumanMessage(content="hi")], config=config)
+        await invoke_with_fallback([llm], [HumanMessage(content="hi")], config=config)  # type: ignore[arg-type]
 
         llm.ainvoke.assert_called_once()
         _, kwargs = llm.ainvoke.call_args

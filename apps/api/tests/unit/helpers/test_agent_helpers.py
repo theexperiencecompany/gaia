@@ -123,12 +123,12 @@ class TestGetCustomIntegrationMetadata:
         mock_registry.get_category_of_tool.return_value = "mcp_custom_reposearch_abc123"
         mock_get_registry.return_value = mock_registry
         mock_get_cache.return_value = {
-            "icon_url": "http://icon.png",
+            "icon_url": "https://icon.png",
             "integration_id": "custom_reposearch_abc123",
         }
 
         result = await get_custom_integration_metadata("repo_search", USER_ID)
-        assert result["icon_url"] == "http://icon.png"
+        assert result["icon_url"] == "https://icon.png"
 
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
@@ -142,12 +142,12 @@ class TestGetCustomIntegrationMetadata:
         mock_get_registry.return_value = mock_registry
         mock_get_cache.return_value = None
         mock_col.find_one = AsyncMock(
-            return_value={"name": "Custom Tool", "icon_url": "http://img.png"}
+            return_value={"name": "Custom Tool", "icon_url": "https://img.png"}
         )
 
         result = await get_custom_integration_metadata("my_tool", USER_ID)
         assert result["integration_name"] == "Custom Tool"
-        assert result["icon_url"] == "http://img.png"
+        assert result["icon_url"] == "https://img.png"
         mock_set_cache.assert_called_once()
 
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
@@ -290,7 +290,7 @@ class TestGetHandoffMetadata:
         mock_col.find_one = AsyncMock(
             return_value={
                 "name": "MyMCP",
-                "icon_url": "http://icon.png",
+                "icon_url": "https://icon.png",
                 "integration_id": "custom_mymcp",
             }
         )
@@ -432,7 +432,7 @@ class TestBuildAgentConfig:
     @patch("app.helpers.agent_helpers.settings")
     def test_opik_tracer_added_in_production(self, mock_settings, mock_providers):
         mock_settings.ENV = "production"
-        mock_settings.OPIK_API_KEY = "key"
+        mock_settings.OPIK_API_KEY = "key"  # pragma: allowlist secret
         mock_settings.OPIK_WORKSPACE = "ws"
         mock_providers.get.return_value = None
 
@@ -682,7 +682,7 @@ class TestExecuteGraphSilent:
     @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
     async def test_updates_handoff_tool_calls(self, mock_handoff, mock_format):
         mock_handoff.return_value = {
-            "icon_url": "http://icon.png",
+            "icon_url": "https://icon.png",
             "integration_id": "github",
         }
         mock_format.return_value = {"tool_name": "handoff", "data": {}}

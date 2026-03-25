@@ -65,7 +65,7 @@ class _FakeIntegration:
 class TestHasIntegrationTriggers:
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_match_found(self, mock_integrations: List[object]) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "googlecalendar",
@@ -77,7 +77,7 @@ class TestHasIntegrationTriggers:
 
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_no_match(self, mock_integrations: List[object]) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "googlecalendar",
@@ -89,21 +89,21 @@ class TestHasIntegrationTriggers:
 
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_empty_integrations(self, mock_integrations: List[object]) -> None:
-        mock_integrations.__iter__ = lambda self: iter([])
+        mock_integrations.__iter__ = lambda self: iter([])  # type: ignore[method-assign, misc, assignment]
         assert has_integration_triggers("anything") is False
 
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_integration_with_no_triggers(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter([_FakeIntegration("slack", [])])
+        mock_integrations.__iter__ = lambda self: iter([_FakeIntegration("slack", [])])  # type: ignore[method-assign, misc, assignment]
         assert has_integration_triggers("slack_message") is False
 
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_trigger_without_schema_skipped(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "github",
@@ -117,7 +117,7 @@ class TestHasIntegrationTriggers:
     def test_multiple_integrations_match_in_second(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "slack",
@@ -135,7 +135,7 @@ class TestHasIntegrationTriggers:
     def test_multiple_triggers_per_integration(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "googlecalendar",
@@ -152,7 +152,7 @@ class TestHasIntegrationTriggers:
     def test_mixed_triggers_with_and_without_schema(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "github",
@@ -165,7 +165,7 @@ class TestHasIntegrationTriggers:
         )
         assert has_integration_triggers("real_trigger") is True
         # The one without schema should not match
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "github",
@@ -190,7 +190,7 @@ class TestGetIntegrationForTrigger:
     def test_match_returns_integration_id(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "googlecalendar",
@@ -202,7 +202,7 @@ class TestGetIntegrationForTrigger:
 
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_no_match_returns_none(self, mock_integrations: List[object]) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "slack",
@@ -216,14 +216,14 @@ class TestGetIntegrationForTrigger:
     def test_empty_integrations_returns_none(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter([])
+        mock_integrations.__iter__ = lambda self: iter([])  # type: ignore[method-assign, misc, assignment]
         assert get_integration_for_trigger("anything") is None
 
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_trigger_without_schema_returns_none(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "github",
@@ -238,7 +238,7 @@ class TestGetIntegrationForTrigger:
         self, mock_integrations: List[object]
     ) -> None:
         """When the same slug appears in multiple integrations, the first wins."""
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "integration_a",
@@ -256,7 +256,7 @@ class TestGetIntegrationForTrigger:
     def test_integration_with_empty_triggers(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration("slack", []),
                 _FakeIntegration(
@@ -277,7 +277,7 @@ class TestGetIntegrationForTrigger:
 class TestGetAllTriggerTypes:
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_non_empty_result(self, mock_integrations: List[object]) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "googlecalendar",
@@ -301,7 +301,7 @@ class TestGetAllTriggerTypes:
 
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_empty_integrations(self, mock_integrations: List[object]) -> None:
-        mock_integrations.__iter__ = lambda self: iter([])
+        mock_integrations.__iter__ = lambda self: iter([])  # type: ignore[method-assign, misc, assignment]
         result = get_all_trigger_types()
         assert result == set()
 
@@ -310,7 +310,7 @@ class TestGetAllTriggerTypes:
         self, mock_integrations: List[object]
     ) -> None:
         """Only triggers with a workflow_trigger_schema are included."""
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "github",
@@ -328,7 +328,7 @@ class TestGetAllTriggerTypes:
     def test_all_triggers_without_schemas(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "github",
@@ -346,7 +346,7 @@ class TestGetAllTriggerTypes:
     def test_integrations_with_no_triggers(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration("slack", []),
                 _FakeIntegration("notion", []),
@@ -359,7 +359,7 @@ class TestGetAllTriggerTypes:
     def test_duplicate_slugs_across_integrations_deduplicated(
         self, mock_integrations: List[object]
     ) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "integration_a",
@@ -377,7 +377,7 @@ class TestGetAllTriggerTypes:
 
     @patch("app.utils.trigger_utils.OAUTH_INTEGRATIONS")
     def test_returns_set_type(self, mock_integrations: List[object]) -> None:
-        mock_integrations.__iter__ = lambda self: iter(
+        mock_integrations.__iter__ = lambda self: iter(  # type: ignore[method-assign, misc, assignment]
             [
                 _FakeIntegration(
                     "github",

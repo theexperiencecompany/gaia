@@ -73,7 +73,7 @@ class TestGetPool:
     async def test_returns_cached_pool_on_second_call(self) -> None:
         """If _pool is already set, get_pool returns it immediately."""
         sentinel = AsyncMock()
-        RedisPoolManager._pool = sentinel
+        RedisPoolManager._pool = sentinel  # type: ignore[assignment]
 
         pool = await RedisPoolManager.get_pool()
         assert pool is sentinel
@@ -158,7 +158,7 @@ class TestClosePool:
     async def test_close_when_pool_exists(self) -> None:
         mock_pool = AsyncMock()
         mock_pool.close = AsyncMock()
-        RedisPoolManager._pool = mock_pool
+        RedisPoolManager._pool = mock_pool  # type: ignore[assignment]
 
         await RedisPoolManager.close_pool()
 
@@ -175,7 +175,7 @@ class TestClosePool:
         """If pool.close() raises, the pool reference is still cleared."""
         mock_pool = AsyncMock()
         mock_pool.close = AsyncMock(side_effect=RuntimeError("close failed"))
-        RedisPoolManager._pool = mock_pool
+        RedisPoolManager._pool = mock_pool  # type: ignore[assignment]
 
         # close_pool catches the exception internally and sets _pool to None
         await RedisPoolManager.close_pool()
@@ -185,7 +185,7 @@ class TestClosePool:
         """Calling close_pool twice does not raise."""
         mock_pool = AsyncMock()
         mock_pool.close = AsyncMock()
-        RedisPoolManager._pool = mock_pool
+        RedisPoolManager._pool = mock_pool  # type: ignore[assignment]
 
         await RedisPoolManager.close_pool()
         await RedisPoolManager.close_pool()
@@ -197,7 +197,7 @@ class TestClosePool:
         """After closing, get_pool should create a fresh pool."""
         old_pool = AsyncMock()
         old_pool.close = AsyncMock()
-        RedisPoolManager._pool = old_pool
+        RedisPoolManager._pool = old_pool  # type: ignore[assignment]
 
         await RedisPoolManager.close_pool()
         assert RedisPoolManager._pool is None
@@ -237,7 +237,7 @@ class TestClosePool:
             await asyncio.sleep(0.01)
 
         mock_pool.close = tracked_close
-        RedisPoolManager._pool = mock_pool
+        RedisPoolManager._pool = mock_pool  # type: ignore[assignment]
 
         await asyncio.gather(
             RedisPoolManager.close_pool(),

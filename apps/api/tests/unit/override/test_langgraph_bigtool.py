@@ -266,7 +266,7 @@ class TestCallModel:
         store = MagicMock()
 
         with pytest.raises(RuntimeError, match="sync execution was requested"):
-            agent_node.runnable.func(state, config, store=store)
+            agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
 
     def test_sync_call_model_without_middleware(self) -> None:
         """Sync call_model should work without middleware."""
@@ -286,7 +286,7 @@ class TestCallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = agent_node.runnable.func(state, config, store=store)
+        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
         assert "messages" in result
 
     def test_sync_call_model_empty_response_gets_default(self) -> None:
@@ -309,7 +309,7 @@ class TestCallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = agent_node.runnable.func(state, config, store=store)
+        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
         assert result["messages"][0].content == "Empty response from model."
 
     def test_sync_call_model_comms_agent_appends_breaker(self) -> None:
@@ -332,7 +332,7 @@ class TestCallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = agent_node.runnable.func(state, config, store=store)
+        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
         assert result["messages"][0].content.endswith(NEW_MESSAGE_BREAKER)
 
 
@@ -351,7 +351,7 @@ class TestAcallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = await agent_node.runnable.afunc(state, config, store=store)
+        result = await agent_node.runnable.afunc(state, config, store=store)  # type: ignore[union-attr]
         assert "messages" in result
 
     @pytest.mark.asyncio
@@ -381,7 +381,7 @@ class TestAcallModel:
             )
             agent_node = builder.nodes["agent"]
             state = _make_state()
-            result = await agent_node.runnable.afunc(
+            result = await agent_node.runnable.afunc(  # type: ignore[union-attr]
                 state, _make_config(), store=MagicMock()
             )
             assert "messages" in result
@@ -403,7 +403,7 @@ class TestAcallModel:
 
         agent_node = builder.nodes["agent"]
         state = _make_state()
-        result = await agent_node.runnable.afunc(
+        result = await agent_node.runnable.afunc(  # type: ignore[union-attr]
             state, _make_config(), store=MagicMock()
         )
         assert result["messages"][0].content == "Empty response from model."
@@ -425,7 +425,7 @@ class TestAcallModel:
 
         agent_node = builder.nodes["agent"]
         state = _make_state()
-        result = await agent_node.runnable.afunc(
+        result = await agent_node.runnable.afunc(  # type: ignore[union-attr]
             state, _make_config(), store=MagicMock()
         )
         assert result["messages"][0].content.endswith(NEW_MESSAGE_BREAKER)
@@ -451,7 +451,7 @@ class TestShouldContinue:
         store = MagicMock()
 
         branch = builder.branches["agent"]["should_continue"]
-        edge_fn = branch.path.func
+        edge_fn = branch.path.func  # type: ignore[attr-defined]
         result = edge_fn(state, store=store)
         assert result == END
 
@@ -476,7 +476,7 @@ class TestShouldContinue:
         store = MagicMock()
 
         branch = builder.branches["agent"]["should_continue"]
-        edge_fn = branch.path.func
+        edge_fn = branch.path.func  # type: ignore[attr-defined]
         result = edge_fn(state, store=store)
         assert result == "end_graph_hooks"
 
@@ -500,7 +500,7 @@ class TestShouldContinue:
         state = _make_state(messages=[msg])
         store = MagicMock()
 
-        edge_fn = builder.branches["agent"]["should_continue"].path.func
+        edge_fn = builder.branches["agent"]["should_continue"].path.func  # type: ignore[attr-defined]
         result = edge_fn(state, store=store)
         assert len(result) == 1
         assert result[0].node == "tools"
@@ -520,7 +520,7 @@ class TestShouldContinue:
         state = _make_state(messages=[msg])
         store = MagicMock()
 
-        edge_fn = builder.branches["agent"]["should_continue"].path.func
+        edge_fn = builder.branches["agent"]["should_continue"].path.func  # type: ignore[attr-defined]
         result = edge_fn(state, store=store)
         has_reject = any(
             getattr(s, "node", None) == "reject_unbound_tools" for s in result
@@ -546,7 +546,7 @@ class TestRejectUnboundTools:
         tool_calls = [{"id": "tc1", "name": "missing_tool"}]
         store = MagicMock()
 
-        result = reject_node.runnable.func(tool_calls, store=store)
+        result = reject_node.runnable.func(tool_calls, store=store)  # type: ignore[union-attr]
         assert len(result["messages"]) == 1
         assert "not bound" in result["messages"][0].content
 
@@ -563,7 +563,7 @@ class TestRejectUnboundTools:
         tool_calls = [{"id": "tc1", "name": "missing_tool"}]
         store = MagicMock()
 
-        result = await reject_node.runnable.afunc(tool_calls, store=store)
+        result = await reject_node.runnable.afunc(tool_calls, store=store)  # type: ignore[union-attr]
         assert len(result["messages"]) == 1
 
 
@@ -583,14 +583,14 @@ class TestSelectTools:
             """Retrieve tools."""
             return {"tools_to_bind": ["dummy_tool_a"], "response": ["dummy_tool_a"]}
 
-        builder = create_agent(llm, registry, retrieve_tools_function=my_func)
+        builder = create_agent(llm, registry, retrieve_tools_function=my_func)  # type: ignore[arg-type]
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {"query": "test"}}]
         config = _make_config()
         store = MagicMock()
 
-        result = select_node.runnable.func(tool_calls, config, store=store)
+        result = select_node.runnable.func(tool_calls, config, store=store)  # type: ignore[union-attr]
         assert "messages" in result
         assert "selected_tool_ids" in result
 
@@ -611,7 +611,7 @@ class TestSelectTools:
         config = _make_config()
         store = MagicMock()
 
-        result = select_node.runnable.func(tool_calls, config, store=store)
+        result = select_node.runnable.func(tool_calls, config, store=store)  # type: ignore[union-attr]
         assert "dummy_tool_a" in result["selected_tool_ids"]
 
     def test_select_tools_filters_subagent_prefix(self) -> None:
@@ -631,7 +631,7 @@ class TestSelectTools:
         config = _make_config(user_id="u1")
         store = MagicMock()
 
-        result = select_node.runnable.func(tool_calls, config, store=store)
+        result = select_node.runnable.func(tool_calls, config, store=store)  # type: ignore[union-attr]
         bind_ids = result["selected_tool_ids"]
         assert "subagent:gmail" not in bind_ids
 
@@ -653,7 +653,7 @@ class TestSelectTools:
         config = _make_config()
         store = MagicMock()
 
-        result = await select_node.runnable.afunc(tool_calls, config, store=store)
+        result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]
         assert "dummy_tool_a" in result["selected_tool_ids"]
 
     @pytest.mark.asyncio
@@ -667,12 +667,12 @@ class TestSelectTools:
             """Retrieve tools."""
             return {"tools_to_bind": ["dummy_tool_a"], "response": ["dummy_tool_a"]}
 
-        builder = create_agent(llm, registry, retrieve_tools_coroutine=my_coro)
+        builder = create_agent(llm, registry, retrieve_tools_coroutine=my_coro)  # type: ignore[arg-type]
 
         select_node = builder.nodes["select_tools"]
         tool_calls = [{"id": "tc1", "args": {}}]
         config = _make_config()
         store = MagicMock()
 
-        result = await select_node.runnable.afunc(tool_calls, config, store=store)
+        result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]
         assert "dummy_tool_a" in result["selected_tool_ids"]

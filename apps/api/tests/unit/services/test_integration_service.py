@@ -105,7 +105,7 @@ def _make_oauth_integration(
         provider=provider,
         scopes=[],
         available=available,
-        managed_by=managed_by,
+        managed_by=managed_by,  # type: ignore[arg-type]
         mcp_config=mcp_config,
         composio_config=composio_config,
         subagent_config=subagent_config,
@@ -1007,7 +1007,7 @@ class TestGetUserConnectedIntegrations:
     async def test_empty_list_when_no_integrations(self, mock_collection):
         async def aiter_empty(*args, **kwargs):
             return
-            yield
+            yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_cursor = MagicMock()
         mock_cursor.__aiter__ = aiter_empty
@@ -1642,7 +1642,7 @@ class TestDeleteCustomIntegration:
 
         async def aiter_empty(*args, **kwargs):
             return
-            yield
+            yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_cursor = MagicMock()
         mock_cursor.__aiter__ = aiter_empty

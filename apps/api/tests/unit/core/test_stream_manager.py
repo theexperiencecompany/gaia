@@ -6,7 +6,7 @@ and edge cases), cancel, is_cancelled, progress tracking, and error recording.
 
 import json
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -107,7 +107,7 @@ class TestStreamProgress:
 
 class TestStartStream:
     @pytest.fixture(autouse=True)
-    def _patch_redis(self) -> None:
+    def _patch_redis(self) -> Generator[None, None, None]:
         self.mock_set = AsyncMock()
         patcher = patch(
             "app.core.stream_manager.redis_cache",
@@ -141,7 +141,7 @@ class TestStartStream:
 
 class TestCompleteStream:
     @pytest.fixture(autouse=True)
-    def _patch_redis(self) -> None:
+    def _patch_redis(self) -> Generator[None, None, None]:
         self.stored: Dict[str, Any] = {}
         self.mock_get = AsyncMock(return_value=_progress_dict())
         self.mock_set = AsyncMock()
@@ -191,7 +191,7 @@ class TestCompleteStream:
 
 class TestCleanup:
     @pytest.fixture(autouse=True)
-    def _patch_redis(self) -> None:
+    def _patch_redis(self) -> Generator[None, None, None]:
         self.mock_delete = AsyncMock()
         patcher = patch(
             "app.core.stream_manager.redis_cache",
@@ -216,7 +216,7 @@ class TestCleanup:
 
 class TestPublishChunk:
     @pytest.fixture(autouse=True)
-    def _patch_redis(self) -> None:
+    def _patch_redis(self) -> Generator[None, None, None]:
         self.mock_redis_client = MagicMock()
         self.mock_redis_client.publish = AsyncMock()
         patcher = patch(
@@ -486,7 +486,7 @@ class TestSubscribeStream:
 
 class TestCancelStream:
     @pytest.fixture(autouse=True)
-    def _patch_redis(self) -> None:
+    def _patch_redis(self) -> Generator[None, None, None]:
         self.mock_set = AsyncMock()
         self.mock_get = AsyncMock(return_value=_progress_dict())
         self.mock_redis_client = MagicMock()
@@ -583,7 +583,7 @@ class TestIsCancelled:
 
 class TestUpdateProgress:
     @pytest.fixture(autouse=True)
-    def _patch_redis(self) -> None:
+    def _patch_redis(self) -> Generator[None, None, None]:
         self.progress = _progress_dict()
         self.mock_get = AsyncMock(return_value=self.progress)
         self.mock_set = AsyncMock()
@@ -673,7 +673,7 @@ class TestGetProgress:
 
 class TestSetError:
     @pytest.fixture(autouse=True)
-    def _patch_redis(self) -> None:
+    def _patch_redis(self) -> Generator[None, None, None]:
         self.progress = _progress_dict()
         self.mock_get = AsyncMock(return_value=self.progress)
         self.mock_set = AsyncMock()

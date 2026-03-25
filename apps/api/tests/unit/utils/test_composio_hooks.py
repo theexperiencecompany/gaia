@@ -15,6 +15,8 @@ Covers:
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from composio.types import ToolExecuteParams
+
 import pytest
 from langchain_core.tools import ToolException
 
@@ -47,16 +49,16 @@ def _make_tool_schema(**overrides: Any) -> MagicMock:
     return schema
 
 
-def _make_params(arguments: dict | None = None, **extra: Any) -> dict:
+def _make_params(arguments: dict | None = None, **extra: Any) -> ToolExecuteParams:
     """Create a ToolExecuteParams-like dict."""
     params: dict[str, Any] = {"arguments": arguments or {}}
     params.update(extra)
-    return params
+    return params  # type: ignore[return-value]
 
 
 def _make_response(
-    data: dict, successful: bool = True, error: str | None = None
-) -> dict:
+    data: dict[str, Any] | list[Any], successful: bool = True, error: str | None = None
+) -> dict[str, Any]:
     """Create a ToolExecutionResponse-like dict."""
     resp: dict[str, Any] = {"data": data, "successful": successful}
     if error is not None:
@@ -84,7 +86,7 @@ class TestComposioHookRegistry:
             params["arguments"]["x"] = params["arguments"].get("x", 0) * 2
             return params
 
-        registry.register_before_hook(double_value)
+        registry.register_before_hook(double_value)  # type: ignore[arg-type]
         result = registry.execute_before_hooks("TOOL", "KIT", _make_params({"x": 5}))
         assert result["arguments"]["x"] == 10
 
@@ -122,8 +124,8 @@ class TestComposioHookRegistry:
             call_order.append("second")
             return params
 
-        registry.register_before_hook(first)
-        registry.register_before_hook(second)
+        registry.register_before_hook(first)  # type: ignore[arg-type]
+        registry.register_before_hook(second)  # type: ignore[arg-type]
         registry.execute_before_hooks("T", "K", _make_params())
         assert call_order == ["first", "second"]
 
@@ -138,8 +140,8 @@ class TestComposioHookRegistry:
             params["arguments"]["b"] = 2
             return params
 
-        registry.register_before_hook(add_a)
-        registry.register_before_hook(add_b)
+        registry.register_before_hook(add_a)  # type: ignore[arg-type]
+        registry.register_before_hook(add_b)  # type: ignore[arg-type]
         result = registry.execute_before_hooks("T", "K", _make_params())
         assert result["arguments"] == {"a": 1, "b": 2}
 
@@ -153,8 +155,8 @@ class TestComposioHookRegistry:
             params["arguments"]["ok"] = True
             return params
 
-        registry.register_before_hook(bad_hook)
-        registry.register_before_hook(good_hook)
+        registry.register_before_hook(bad_hook)  # type: ignore[arg-type]
+        registry.register_before_hook(good_hook)  # type: ignore[arg-type]
         result = registry.execute_before_hooks("T", "K", _make_params())
         assert result["arguments"]["ok"] is True
 
@@ -1487,7 +1489,7 @@ class TestTwitterAfterHooks:
                             "id": "u1",
                             "username": "testuser",
                             "name": "Test User",
-                            "profile_image_url": "http://img.com/pic.jpg",
+                            "profile_image_url": "https://img.com/pic.jpg",
                             "verified": True,
                             "description": "Bio",
                             "public_metrics": {"followers_count": 100},
@@ -1557,7 +1559,7 @@ class TestTwitterAfterHooks:
                     "verified": True,
                     "public_metrics": {"followers_count": 1000, "following_count": 200},
                     "description": "Dev",
-                    "profile_image_url": "http://img.com/pic.jpg",
+                    "profile_image_url": "https://img.com/pic.jpg",
                     "created_at": "2020-01-01",
                     "location": "NYC",
                     "url": "https://example.com",
@@ -1628,7 +1630,7 @@ class TestTwitterAfterHooks:
                             "id": "u1",
                             "username": "testuser",
                             "name": "Test",
-                            "profile_image_url": "http://img.com",
+                            "profile_image_url": "https://img.com",
                             "verified": False,
                         }
                     ]
@@ -1655,7 +1657,7 @@ class TestTwitterAfterHooks:
                         "id": "u1",
                         "username": "follower1",
                         "name": "Follower 1",
-                        "profile_image_url": "http://img.com",
+                        "profile_image_url": "https://img.com",
                         "verified": False,
                         "description": "Bio",
                         "public_metrics": {"followers_count": 50},

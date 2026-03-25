@@ -80,7 +80,7 @@ def _error_response(
 ) -> httpx.Response:
     """Build a real httpx.Response that raises on .raise_for_status()."""
     return httpx.Response(
-        status_code=status_code, text=text, request=httpx.Request("GET", "http://test")
+        status_code=status_code, text=text, request=httpx.Request("GET", "https://test")
     )
 
 
@@ -538,7 +538,7 @@ class TestGoogleMapsGatherContext:
         result = fn(
             GatherContextInput(),
             EXECUTE_REQUEST,
-            {"api_key": "test-key"},
+            {"api_key": "test-key"},  # pragma: allowlist secret
         )
 
         assert result["api_connected"] is True
@@ -678,7 +678,7 @@ class TestRedditGatherContext:
                     "link_karma": 100,
                     "comment_karma": 200,
                     "total_karma": 300,
-                    "icon_img": "http://img.jpg",
+                    "icon_img": "https://img.jpg",
                     "is_gold": False,
                 }
             ),

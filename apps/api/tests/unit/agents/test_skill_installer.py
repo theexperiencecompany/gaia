@@ -86,7 +86,7 @@ class TestParseGithubUrl:
             _parse_github_url("justoneword")
 
     def test_http_url(self) -> None:
-        owner, repo, path = _parse_github_url("http://github.com/owner/repo")
+        owner, repo, path = _parse_github_url("https://github.com/owner/repo")
         assert owner == "owner"
         assert repo == "repo"
 

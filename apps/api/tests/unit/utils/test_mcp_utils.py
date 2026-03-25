@@ -188,7 +188,7 @@ class TestWrapToolWithNullFilter:
         async def async_callback() -> None:
             pass
 
-        wrapped = wrap_tool_with_null_filter(tool, on_connection_error=async_callback)
+        wrapped = wrap_tool_with_null_filter(tool, on_connection_error=async_callback)  # type: ignore[arg-type]
         with pytest.raises(TypeError, match="synchronous callable"):
             await wrapped._arun()
 
@@ -293,12 +293,12 @@ class TestExtractTypeFromField:
         assert is_optional is False
 
     def test_unknown_type_returns_any(self) -> None:
-        field = {"type": "custom_unknown"}
+        field: dict[str, object] = {"type": "custom_unknown"}
         python_type, _, _ = extract_type_from_field(field)
         assert python_type is Any
 
     def test_missing_type_defaults_to_string(self) -> None:
-        field = {}
+        field: dict[str, object] = {}
         python_type, _, _ = extract_type_from_field(field)
         assert python_type is str
 

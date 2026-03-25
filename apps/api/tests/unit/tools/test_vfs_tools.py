@@ -408,7 +408,7 @@ class TestVfsRead:
     async def test_read_no_user_id(self, mock_ctx: MagicMock):
         from app.agents.tools.vfs_tools import vfs_read
 
-        mock_ctx.return_value = self._make_ctx(user_id=None)
+        mock_ctx.return_value = self._make_ctx(user_id=None)  # type: ignore[arg-type]
 
         result = await vfs_read.ainvoke(
             {"path": "notes/a.txt"},
@@ -503,7 +503,7 @@ class TestVfsWrite:
     async def test_write_no_user_id(self, mock_ctx: MagicMock):
         from app.agents.tools.vfs_tools import vfs_write
 
-        mock_ctx.return_value = self._make_ctx(user_id=None)
+        mock_ctx.return_value = self._make_ctx(user_id=None)  # type: ignore[arg-type]
 
         result = await vfs_write.ainvoke(
             {"path": "a.txt", "content": "x"},
@@ -600,7 +600,7 @@ class TestVfsCmd:
     async def test_cmd_no_user_id(self, mock_ctx: MagicMock):
         from app.agents.tools.vfs_tools import vfs_cmd
 
-        mock_ctx.return_value = self._make_ctx(user_id=None)
+        mock_ctx.return_value = self._make_ctx(user_id=None)  # type: ignore[arg-type]
 
         result = await vfs_cmd.ainvoke(
             {"command": "ls"},

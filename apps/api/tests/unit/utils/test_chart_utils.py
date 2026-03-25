@@ -85,7 +85,7 @@ class TestUploadChartToCloudinary:
 
     async def test_missing_secure_url_returns_none(self):
         chart_bytes = b"data"
-        mock_result = {"url": "http://example.com/img.png"}  # no secure_url
+        mock_result = {"url": "https://example.com/img.png"}  # no secure_url
 
         with patch(
             "app.utils.chart_utils.cloudinary.uploader.upload", return_value=mock_result

@@ -315,7 +315,7 @@ class TestAddPublicIntegration:
             "name": "Bearer Integ",
             "is_public": True,
             "mcp_config": {
-                "server_url": "http://example.com",
+                "server_url": "https://example.com",
                 "requires_auth": True,
                 "auth_type": "bearer",
             },
@@ -353,7 +353,7 @@ class TestAddPublicIntegration:
             "integration_id": "integ3",
             "name": "New Integ",
             "is_public": True,
-            "mcp_config": {"server_url": "http://mcp.example.com"},
+            "mcp_config": {"server_url": "https://mcp.example.com"},
         }
 
         connect_result = MagicMock()
@@ -400,7 +400,7 @@ class TestAddPublicIntegration:
             "integration_id": "integ4",
             "name": "Retry Integ",
             "is_public": True,
-            "mcp_config": {"server_url": "http://mcp.example.com"},
+            "mcp_config": {"server_url": "https://mcp.example.com"},
         }
         existing = {"user_id": "u1", "integration_id": "integ4", "status": "error"}
 
@@ -540,7 +540,7 @@ class TestSearchIntegrations:
             "category": "ai",
             "clone_count": 10,
             "tools": [{"name": "t1"}, {"name": "t2"}],
-            "icon_url": "http://icon.png",
+            "icon_url": "https://icon.png",
             "is_public": True,
         }
         doc2 = {

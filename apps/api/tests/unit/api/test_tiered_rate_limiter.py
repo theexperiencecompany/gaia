@@ -24,28 +24,28 @@ class TestRateLimitExceededException:
     def test_basic_exception(self) -> None:
         exc = RateLimitExceededException("file_upload")
         assert exc.status_code == 429
-        assert exc.detail["error"] == "rate_limit_exceeded"
-        assert exc.detail["feature"] == "file_upload"
-        assert "plan_required" not in exc.detail
-        assert "reset_time" not in exc.detail
+        assert exc.detail["error"] == "rate_limit_exceeded"  # type: ignore[index]
+        assert exc.detail["feature"] == "file_upload"  # type: ignore[index]
+        assert "plan_required" not in exc.detail  # type: ignore[operator]
+        assert "reset_time" not in exc.detail  # type: ignore[operator]
 
     def test_with_plan_required(self) -> None:
         exc = RateLimitExceededException("file_upload", plan_required="pro")
-        assert exc.detail["plan_required"] == "pro"
-        assert "PRO" in exc.detail["message"]
+        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]
+        assert "PRO" in exc.detail["message"]  # type: ignore[index]
 
     def test_with_reset_time(self) -> None:
         reset = datetime(2026, 4, 1, tzinfo=timezone.utc)
         exc = RateLimitExceededException("file_upload", reset_time=reset)
-        assert exc.detail["reset_time"] == reset.isoformat()
+        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]
 
     def test_with_all_fields(self) -> None:
         reset = datetime(2026, 4, 1, tzinfo=timezone.utc)
         exc = RateLimitExceededException(
             "file_upload", plan_required="pro", reset_time=reset
         )
-        assert exc.detail["plan_required"] == "pro"
-        assert exc.detail["reset_time"] == reset.isoformat()
+        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]
+        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +388,7 @@ class TestSyncUsageRealTime:
         mock_save: AsyncMock,
     ) -> None:
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
-        self.limiter._collect_feature_usage = AsyncMock(return_value=[])
+        self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
         await self.limiter._sync_usage_real_time(
             "user1", "chat_messages", PlanType.PRO, credits_used=1.5
@@ -397,14 +397,14 @@ class TestSyncUsageRealTime:
         mock_save.assert_called_once()
         snapshot = mock_save.call_args[0][0]
         assert len(snapshot.credits) == 1
-        assert snapshot.credits[0].credits_used == 1.5
+        assert snapshot.credits[0].credits_used == pytest.approx(1.5)
 
     @patch(
         "app.api.v1.middleware.tiered_rate_limiter.UsageService.save_usage_snapshot",
         new_callable=AsyncMock,
     )
     async def test_syncs_without_credits(self, mock_save: AsyncMock) -> None:
-        self.limiter._collect_feature_usage = AsyncMock(return_value=[])
+        self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
         await self.limiter._sync_usage_real_time(
             "user1", "chat_messages", PlanType.PRO, credits_used=0.0
@@ -415,7 +415,7 @@ class TestSyncUsageRealTime:
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.log")
     async def test_error_logged_not_raised(self, mock_log: MagicMock) -> None:
-        self.limiter._collect_feature_usage = AsyncMock(
+        self.limiter._collect_feature_usage = AsyncMock(  # type: ignore[method-assign]
             side_effect=RuntimeError("boom")
         )
 
@@ -554,7 +554,7 @@ class TestTieredRateLimitDecorator:
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:
+        async def my_endpoint(user: dict = None) -> str:  # type: ignore[assignment]
             return "ok"
 
         result = await my_endpoint(user={"user_id": "u1"})
@@ -593,7 +593,7 @@ class TestTieredRateLimitDecorator:
         from fastapi import HTTPException
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:
+        async def my_endpoint(user: dict = None) -> str:  # type: ignore[assignment]
             return "ok"
 
         with pytest.raises(HTTPException) as exc_info:
@@ -619,7 +619,7 @@ class TestTieredRateLimitDecorator:
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:
+        async def my_endpoint(user: dict = None) -> str:  # type: ignore[assignment]
             return "ok"
 
         await my_endpoint(user={"user_id": "u1"})

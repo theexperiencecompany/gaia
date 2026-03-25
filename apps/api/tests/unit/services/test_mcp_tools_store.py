@@ -95,7 +95,7 @@ class TestStoreTools:
         mock_coll.update_one = AsyncMock()
         store = MCPToolsStore()
         # Mock _refresh_cache to avoid real DB call
-        store._refresh_cache = AsyncMock()
+        store._refresh_cache = AsyncMock()  # type: ignore[method-assign]
 
         await store.store_tools("int-1", [{"name": "tool_a", "description": "d"}])
 
@@ -147,7 +147,7 @@ class TestStoreToolsBatch:
     ):
         mock_coll.bulk_write = AsyncMock()
         store = MCPToolsStore()
-        store._refresh_cache = AsyncMock()
+        store._refresh_cache = AsyncMock()  # type: ignore[method-assign]
 
         items = [
             ("int-1", [{"name": "t1", "description": "d1"}]),
@@ -186,7 +186,7 @@ class TestStoreToolsBatch:
     ):
         mock_coll.bulk_write = AsyncMock()
         store = MCPToolsStore()
-        store._refresh_cache = AsyncMock()
+        store._refresh_cache = AsyncMock()  # type: ignore[method-assign]
 
         items = [
             ("int-1", [{"name": "t1", "description": "d1"}]),
@@ -277,7 +277,7 @@ class TestGetAllMcpTools:
                 "integration_id": "int-1",
                 "tools": [{"name": "t1"}],
                 "name": "Integration 1",
-                "icon_url": "http://icon.png",
+                "icon_url": "https://icon.png",
             },
             {
                 "integration_id": "int-2",

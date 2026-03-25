@@ -854,8 +854,7 @@ class TestGenerateRoadmapWithLlmStream:
 
         async def fake_astream(messages):
             raise RuntimeError("LLM API down")
-            # Make this a generator that never yields
-            yield  # pragma: no cover
+            yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
         mock_llm.astream = fake_astream
 

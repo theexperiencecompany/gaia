@@ -49,7 +49,7 @@ def _make_config(**overrides: Any) -> RunnableConfig:
         },
     }
     cfg.update(overrides)
-    return cfg
+    return cfg  # type: ignore[return-value]
 
 
 class _NoOpMiddleware(AgentMiddleware):

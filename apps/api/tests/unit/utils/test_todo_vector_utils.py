@@ -1,7 +1,7 @@
 """Unit tests for app.utils.todo_vector_utils."""
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Generator, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -172,7 +172,7 @@ class TestStoreTodoEmbedding:
     """Async tests — ChromaDB and log are mocked."""
 
     @pytest.fixture(autouse=True)
-    def _patch_chroma_and_log(self) -> None:
+    def _patch_chroma_and_log(self) -> Generator[None, None, None]:
         self.mock_collection = MagicMock()
         self.mock_collection.add_texts = MagicMock()
 
@@ -380,7 +380,7 @@ class TestDeleteTodoEmbedding:
 @pytest.mark.unit
 class TestSemanticSearchTodos:
     @pytest.fixture(autouse=True)
-    def _patch_deps(self) -> None:
+    def _patch_deps(self) -> Generator[None, None, None]:
         self.mock_collection = MagicMock()
         patcher_chroma = patch(
             "app.utils.todo_vector_utils.ChromaClient.get_langchain_client",
@@ -590,7 +590,7 @@ class TestSemanticSearchTodos:
 @pytest.mark.unit
 class TestBulkIndexTodos:
     @pytest.fixture(autouse=True)
-    def _patch_deps(self) -> None:
+    def _patch_deps(self) -> Generator[None, None, None]:
         patcher_log = patch("app.utils.todo_vector_utils.log", new_callable=MagicMock)
         self.mock_log = patcher_log.start()
         yield
@@ -718,7 +718,7 @@ class TestBulkIndexTodos:
 @pytest.mark.unit
 class TestHybridSearchTodos:
     @pytest.fixture(autouse=True)
-    def _patch_log(self) -> None:
+    def _patch_log(self) -> Generator[None, None, None]:
         patcher = patch("app.utils.todo_vector_utils.log", new_callable=MagicMock)
         self.mock_log = patcher.start()
         yield

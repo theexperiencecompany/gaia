@@ -441,7 +441,7 @@ class TestPatchToolSchema:
 
         # The constructor of the tool's type should return a new tool
         new_tool = MagicMock()
-        type(tool).__call__ = MagicMock(return_value=new_tool)
+        type(tool).__call__ = MagicMock(return_value=new_tool)  # type: ignore[method-assign]
         # Patch: type(tool)(**tool_dict) creates a new tool instance
         type(tool).return_value = new_tool
 

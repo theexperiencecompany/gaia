@@ -996,7 +996,7 @@ class TestCreateCalendarEvent:
             "calendar_id": "primary",
         }
         defaults.update(overrides)
-        return EventCreateRequest(**defaults)
+        return EventCreateRequest(**defaults)  # type: ignore[arg-type]
 
     def test_time_specific_event_201(self, mock_http_client: MagicMock) -> None:
         response_data = {"id": "new_evt", "summary": "Test Event"}
@@ -1065,7 +1065,7 @@ class TestCreateCalendarEvent:
         mock_http_client.post.return_value = _make_response(201, {"id": "rec1"})
 
         recurrence = RecurrenceData(
-            rrule=RecurrenceRule(frequency="WEEKLY", by_day=["MO", "WE", "FR"])
+            rrule=RecurrenceRule(frequency="WEEKLY", by_day=["MO", "WE", "FR"])  # type: ignore[call-arg]
         )
         event = self._make_create_request(recurrence=recurrence)
         create_calendar_event(event, ACCESS_TOKEN)
@@ -1311,7 +1311,7 @@ class TestDeleteCalendarEvent:
         """calendar_id defaults to 'primary'."""
         mock_http_client.delete.return_value = _make_response(204)
 
-        event = EventDeleteRequest(event_id="evt1")
+        event = EventDeleteRequest(event_id="evt1")  # type: ignore[call-arg]
         delete_calendar_event(event, ACCESS_TOKEN)
 
         call_url = mock_http_client.delete.call_args[0][0]
@@ -1329,7 +1329,7 @@ class TestUpdateCalendarEvent:
     def _make_update_request(self, **overrides) -> EventUpdateRequest:
         defaults = {"event_id": "evt1", "calendar_id": "primary"}
         defaults.update(overrides)
-        return EventUpdateRequest(**defaults)
+        return EventUpdateRequest(**defaults)  # type: ignore[arg-type]
 
     def _existing_event(self) -> Dict[str, Any]:
         return {
@@ -1386,7 +1386,7 @@ class TestUpdateCalendarEvent:
         mock_http_client.get.return_value = _make_response(200, self._existing_event())
         mock_http_client.put.return_value = _make_response(200, {"id": "evt1"})
 
-        recurrence = RecurrenceData(rrule=RecurrenceRule(frequency="DAILY", interval=2))
+        recurrence = RecurrenceData(rrule=RecurrenceRule(frequency="DAILY", interval=2))  # type: ignore[call-arg]
         event = self._make_update_request(recurrence=recurrence)
         update_calendar_event(event, ACCESS_TOKEN)
 
@@ -1891,7 +1891,7 @@ class TestFindEventForAction:
                 "matching_events": [_make_event()],
             }
 
-            lookup = EventLookupRequest(query="standup")
+            lookup = EventLookupRequest(query="standup")  # type: ignore[call-arg]
             result = find_event_for_action(ACCESS_TOKEN, lookup, USER_ID)
 
             assert result is not None
@@ -1903,7 +1903,7 @@ class TestFindEventForAction:
         ) as mock_search:
             mock_search.return_value = {"matching_events": []}
 
-            lookup = EventLookupRequest(query="nonexistent")
+            lookup = EventLookupRequest(query="nonexistent")  # type: ignore[call-arg]
             result = find_event_for_action(ACCESS_TOKEN, lookup, USER_ID)
 
             assert result is None
@@ -1911,7 +1911,7 @@ class TestFindEventForAction:
     def test_find_by_calendar_and_event_id(self, mock_http_client: MagicMock) -> None:
         mock_http_client.get.return_value = _make_response(200, _make_event())
 
-        lookup = EventLookupRequest(event_id="evt1", calendar_id="cal1")
+        lookup = EventLookupRequest(event_id="evt1", calendar_id="cal1")  # type: ignore[call-arg]
         result = find_event_for_action(ACCESS_TOKEN, lookup, USER_ID)
 
         assert result is not None
@@ -1920,7 +1920,7 @@ class TestFindEventForAction:
     def test_find_by_id_not_found(self, mock_http_client: MagicMock) -> None:
         mock_http_client.get.return_value = _make_response(404, {})
 
-        lookup = EventLookupRequest(event_id="evt1", calendar_id="cal1")
+        lookup = EventLookupRequest(event_id="evt1", calendar_id="cal1")  # type: ignore[call-arg]
         result = find_event_for_action(ACCESS_TOKEN, lookup, USER_ID)
 
         assert result is None

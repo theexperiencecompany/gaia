@@ -130,7 +130,7 @@ def _error_response(
 ) -> httpx.Response:
     """Build a real httpx.Response that will raise on .raise_for_status()."""
     resp = httpx.Response(
-        status_code=status_code, text=text, request=httpx.Request("GET", "http://test")
+        status_code=status_code, text=text, request=httpx.Request("GET", "https://test")
     )
     return resp
 
@@ -1474,7 +1474,7 @@ class TestLinearGetActiveSprint:
 
         result = fn(GetActiveSprintInput(), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["sprint_count"] == 1
-        assert result["sprints"][0]["progress"] == 50.0
+        assert result["sprints"][0]["progress"] == pytest.approx(50.0)
 
     @patch(f"{LINEAR_MODULE}.graphql_request")
     def test_get_active_sprint_filtered_by_team(self, mock_gql: MagicMock) -> None:
@@ -1773,7 +1773,7 @@ class TestGoogleSheetsShareSpreadsheet:
 
         request = ShareSpreadsheetInput(
             spreadsheet_id="sheet-1",
-            recipients=[ShareRecipient(email="bob@test.com", role="writer")],
+            recipients=[ShareRecipient(email="bob@test.com", role="writer")],  # type: ignore[call-arg]
         )
         result = fn(request, EXECUTE_REQUEST, AUTH_CREDS)
         assert result["total_shared"] == 1
@@ -1784,7 +1784,7 @@ class TestGoogleSheetsShareSpreadsheet:
         error_resp = _error_response(403, "Forbidden")
         mock_client.post.side_effect = httpx.HTTPStatusError(
             "Forbidden",
-            request=httpx.Request("POST", "http://test"),
+            request=httpx.Request("POST", "https://test"),
             response=error_resp,
         )
 
@@ -1799,7 +1799,7 @@ class TestGoogleSheetsShareSpreadsheet:
             fn(
                 ShareSpreadsheetInput(
                     spreadsheet_id="sheet-1",
-                    recipients=[ShareRecipient(email="bob@test.com")],
+                    recipients=[ShareRecipient(email="bob@test.com")],  # type: ignore[call-arg]
                 ),
                 EXECUTE_REQUEST,
                 AUTH_CREDS,
@@ -1812,7 +1812,7 @@ class TestGoogleSheetsShareSpreadsheet:
         error_resp = _error_response(403, "Forbidden")
         exc = httpx.HTTPStatusError(
             "Forbidden",
-            request=httpx.Request("POST", "http://test"),
+            request=httpx.Request("POST", "https://test"),
             response=error_resp,
         )
         mock_client.post.side_effect = [ok, exc]
@@ -1828,8 +1828,8 @@ class TestGoogleSheetsShareSpreadsheet:
             ShareSpreadsheetInput(
                 spreadsheet_id="sheet-1",
                 recipients=[
-                    ShareRecipient(email="alice@test.com"),
-                    ShareRecipient(email="bob@test.com"),
+                    ShareRecipient(email="alice@test.com"),  # type: ignore[call-arg]
+                    ShareRecipient(email="bob@test.com"),  # type: ignore[call-arg]
                 ],
             ),
             EXECUTE_REQUEST,
@@ -1863,7 +1863,7 @@ class TestGoogleSheetsSetDataValidation:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_SET_DATA_VALIDATION"]
 
-        request = DataValidationInput(
+        request = DataValidationInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             range="A2:A100",
@@ -1884,7 +1884,7 @@ class TestGoogleSheetsSetDataValidation:
 
         with pytest.raises(ValueError, match="not found"):
             fn(
-                DataValidationInput(
+                DataValidationInput(  # type: ignore[call-arg]
                     spreadsheet_id="s1",
                     sheet_name="Missing",
                     range="A1:A10",
@@ -1918,7 +1918,7 @@ class TestGoogleSheetsSetDataValidation:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_SET_DATA_VALIDATION"]
 
-        request = DataValidationInput(
+        request = DataValidationInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             range="A1",
@@ -1952,7 +1952,7 @@ class TestGoogleSheetsSetDataValidation:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_SET_DATA_VALIDATION"]
 
-        request = DataValidationInput(
+        request = DataValidationInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             range="A1",
@@ -1984,7 +1984,7 @@ class TestGoogleSheetsSetDataValidation:
 
         with pytest.raises(ValueError, match="values required"):
             fn(
-                DataValidationInput(
+                DataValidationInput(  # type: ignore[call-arg]
                     spreadsheet_id="s1",
                     sheet_name="Sheet1",
                     range="A1",
@@ -2016,7 +2016,7 @@ class TestGoogleSheetsSetDataValidation:
 
         with pytest.raises(ValueError, match="min_value or max_value required"):
             fn(
-                DataValidationInput(
+                DataValidationInput(  # type: ignore[call-arg]
                     spreadsheet_id="s1",
                     sheet_name="Sheet1",
                     range="A1",
@@ -2049,7 +2049,7 @@ class TestGoogleSheetsSetDataValidation:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_SET_DATA_VALIDATION"]
 
-        request = DataValidationInput(
+        request = DataValidationInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             range="A1",
@@ -2082,7 +2082,7 @@ class TestGoogleSheetsSetDataValidation:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_SET_DATA_VALIDATION"]
 
-        request = DataValidationInput(
+        request = DataValidationInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             range="A1",
@@ -2118,7 +2118,7 @@ class TestGoogleSheetsConditionalFormat:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_ADD_CONDITIONAL_FORMAT"]
 
-        request = ConditionalFormatInput(
+        request = ConditionalFormatInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             range="A1:A10",
@@ -2152,7 +2152,7 @@ class TestGoogleSheetsConditionalFormat:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_ADD_CONDITIONAL_FORMAT"]
 
-        request = ConditionalFormatInput(
+        request = ConditionalFormatInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             range="B1:B10",
@@ -2188,7 +2188,7 @@ class TestGoogleSheetsConditionalFormat:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_ADD_CONDITIONAL_FORMAT"]
 
-        request = ConditionalFormatInput(
+        request = ConditionalFormatInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             range="A1:A10",
@@ -2221,7 +2221,7 @@ class TestGoogleSheetsConditionalFormat:
 
         with pytest.raises(ValueError, match="condition required"):
             fn(
-                ConditionalFormatInput(
+                ConditionalFormatInput(  # type: ignore[call-arg]
                     spreadsheet_id="s1",
                     sheet_name="Sheet1",
                     range="A1:A10",
@@ -2242,7 +2242,7 @@ class TestGoogleSheetsConditionalFormat:
 
         with pytest.raises(ValueError, match="not found"):
             fn(
-                ConditionalFormatInput(
+                ConditionalFormatInput(  # type: ignore[call-arg]
                     spreadsheet_id="s1",
                     sheet_name="Missing",
                     range="A1",
@@ -2281,7 +2281,7 @@ class TestGoogleSheetsCreateChart:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_CREATE_CHART"]
 
-        request = ChartInput(
+        request = ChartInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             data_range="A1:B10",
@@ -2320,7 +2320,7 @@ class TestGoogleSheetsCreateChart:
         tools = _capture_tools(register_google_sheets_custom_tools)
         fn = tools["CUSTOM_CREATE_CHART"]
 
-        request = ChartInput(
+        request = ChartInput(  # type: ignore[call-arg]
             spreadsheet_id="s1",
             sheet_name="Sheet1",
             data_range="A1:B10",
@@ -2340,7 +2340,7 @@ class TestGoogleSheetsCreateChart:
 
         with pytest.raises(ValueError, match="not found"):
             fn(
-                ChartInput(
+                ChartInput(  # type: ignore[call-arg]
                     spreadsheet_id="s1",
                     sheet_name="Missing",
                     data_range="A1:B10",
@@ -2419,7 +2419,9 @@ class TestTwitterBatchFollow:
         fn = tools["CUSTOM_BATCH_FOLLOW"]
 
         result = fn(
-            BatchFollowInput(user_ids=["u1", "u2"]), EXECUTE_REQUEST, AUTH_CREDS
+            BatchFollowInput(user_ids=["u1", "u2"]),
+            EXECUTE_REQUEST,
+            AUTH_CREDS,  # type: ignore[call-arg]
         )
         assert result["followed_count"] == 2
 
@@ -2446,7 +2448,7 @@ class TestTwitterBatchFollow:
         tools = _capture_tools(register_twitter_custom_tools)
         fn = tools["CUSTOM_BATCH_FOLLOW"]
 
-        result = fn(BatchFollowInput(usernames=["alice"]), EXECUTE_REQUEST, AUTH_CREDS)
+        result = fn(BatchFollowInput(usernames=["alice"]), EXECUTE_REQUEST, AUTH_CREDS)  # type: ignore[call-arg]
         assert result["followed_count"] == 1
 
     @patch(f"{TWITTER_MODULE}.get_stream_writer", return_value=MagicMock())
@@ -2463,7 +2465,7 @@ class TestTwitterBatchFollow:
         fn = tools["CUSTOM_BATCH_FOLLOW"]
 
         with pytest.raises(ValueError, match="Either usernames or user_ids"):
-            fn(BatchFollowInput(), EXECUTE_REQUEST, AUTH_CREDS)
+            fn(BatchFollowInput(), EXECUTE_REQUEST, AUTH_CREDS)  # type: ignore[call-arg]
 
     @patch(f"{TWITTER_MODULE}.get_stream_writer", return_value=MagicMock())
     @patch(f"{TWITTER_MODULE}.get_my_user_id", return_value=None)
@@ -2479,7 +2481,7 @@ class TestTwitterBatchFollow:
         fn = tools["CUSTOM_BATCH_FOLLOW"]
 
         with pytest.raises(ValueError, match="Could not get authenticated user"):
-            fn(BatchFollowInput(user_ids=["u1"]), EXECUTE_REQUEST, AUTH_CREDS)
+            fn(BatchFollowInput(user_ids=["u1"]), EXECUTE_REQUEST, AUTH_CREDS)  # type: ignore[call-arg]
 
     @patch(f"{TWITTER_MODULE}.get_stream_writer", return_value=MagicMock())
     @patch(
@@ -2503,7 +2505,7 @@ class TestTwitterBatchFollow:
         fn = tools["CUSTOM_BATCH_FOLLOW"]
 
         with pytest.raises(RuntimeError, match="Failed to follow all users"):
-            fn(BatchFollowInput(user_ids=["u1"]), EXECUTE_REQUEST, AUTH_CREDS)
+            fn(BatchFollowInput(user_ids=["u1"]), EXECUTE_REQUEST, AUTH_CREDS)  # type: ignore[call-arg]
 
     @patch(f"{TWITTER_MODULE}.get_stream_writer", return_value=MagicMock())
     @patch(f"{TWITTER_MODULE}.lookup_user_by_username", return_value=None)
@@ -2524,7 +2526,7 @@ class TestTwitterBatchFollow:
         fn = tools["CUSTOM_BATCH_FOLLOW"]
 
         with pytest.raises(RuntimeError, match="Failed to follow all users"):
-            fn(BatchFollowInput(usernames=["nonexistent"]), EXECUTE_REQUEST, AUTH_CREDS)
+            fn(BatchFollowInput(usernames=["nonexistent"]), EXECUTE_REQUEST, AUTH_CREDS)  # type: ignore[call-arg]
 
 
 class TestTwitterBatchUnfollow:
@@ -2546,7 +2548,7 @@ class TestTwitterBatchUnfollow:
         tools = _capture_tools(register_twitter_custom_tools)
         fn = tools["CUSTOM_BATCH_UNFOLLOW"]
 
-        result = fn(BatchUnfollowInput(user_ids=["u1"]), EXECUTE_REQUEST, AUTH_CREDS)
+        result = fn(BatchUnfollowInput(user_ids=["u1"]), EXECUTE_REQUEST, AUTH_CREDS)  # type: ignore[call-arg]
         assert result["unfollowed_count"] == 1
 
     @patch(f"{TWITTER_MODULE}.get_stream_writer", return_value=MagicMock())
@@ -2563,7 +2565,7 @@ class TestTwitterBatchUnfollow:
         fn = tools["CUSTOM_BATCH_UNFOLLOW"]
 
         with pytest.raises(ValueError, match="Either usernames or user_ids"):
-            fn(BatchUnfollowInput(), EXECUTE_REQUEST, AUTH_CREDS)
+            fn(BatchUnfollowInput(), EXECUTE_REQUEST, AUTH_CREDS)  # type: ignore[call-arg]
 
 
 class TestTwitterCreateThread:
@@ -2593,7 +2595,7 @@ class TestTwitterCreateThread:
         fn = tools["CUSTOM_CREATE_THREAD"]
 
         result = fn(
-            CreateThreadInput(tweets=["Hello", "World"]),
+            CreateThreadInput(tweets=["Hello", "World"]),  # type: ignore[call-arg]
             EXECUTE_REQUEST,
             AUTH_CREDS,
         )
@@ -2619,7 +2621,7 @@ class TestTwitterCreateThread:
 
         with pytest.raises(RuntimeError, match="Failed at tweet 1"):
             fn(
-                CreateThreadInput(tweets=["Hello", "World"]),
+                CreateThreadInput(tweets=["Hello", "World"]),  # type: ignore[call-arg]
                 EXECUTE_REQUEST,
                 AUTH_CREDS,
             )
@@ -2657,7 +2659,7 @@ class TestTwitterSearchUsers:
         tools = _capture_tools(register_twitter_custom_tools)
         fn = tools["CUSTOM_SEARCH_USERS"]
 
-        result = fn(SearchUsersInput(query="alice"), EXECUTE_REQUEST, AUTH_CREDS)
+        result = fn(SearchUsersInput(query="alice"), EXECUTE_REQUEST, AUTH_CREDS)  # type: ignore[call-arg]
         assert result["count"] == 1
 
     @patch(f"{TWITTER_MODULE}.get_stream_writer", return_value=MagicMock())
@@ -2677,7 +2679,7 @@ class TestTwitterSearchUsers:
         fn = tools["CUSTOM_SEARCH_USERS"]
 
         with pytest.raises(RuntimeError, match="Search failed"):
-            fn(SearchUsersInput(query="alice"), EXECUTE_REQUEST, AUTH_CREDS)
+            fn(SearchUsersInput(query="alice"), EXECUTE_REQUEST, AUTH_CREDS)  # type: ignore[call-arg]
 
 
 class TestTwitterScheduleTweet:
@@ -2694,7 +2696,7 @@ class TestTwitterScheduleTweet:
         fn = tools["CUSTOM_SCHEDULE_TWEET"]
 
         result = fn(
-            ScheduleTweetInput(text="Hello!", scheduled_time="2024-12-25T10:00:00Z"),
+            ScheduleTweetInput(text="Hello!", scheduled_time="2024-12-25T10:00:00Z"),  # type: ignore[call-arg]
             EXECUTE_REQUEST,
             AUTH_CREDS,
         )
@@ -2788,7 +2790,9 @@ class TestLinkedInCreatePost:
         fn = tools["CUSTOM_CREATE_POST"]
 
         result = fn(
-            CreatePostInput(commentary="Hello LinkedIn!"), EXECUTE_REQUEST, AUTH_CREDS
+            CreatePostInput(commentary="Hello LinkedIn!"),
+            EXECUTE_REQUEST,
+            AUTH_CREDS,  # type: ignore[call-arg]
         )
         assert result["post_id"] == "urn:li:share:456"
         assert result["media_type"] == "text"
@@ -2820,7 +2824,7 @@ class TestLinkedInCreatePost:
         fn = tools["CUSTOM_CREATE_POST"]
 
         result = fn(
-            CreatePostInput(
+            CreatePostInput(  # type: ignore[call-arg]
                 commentary="Photo!", image_url="https://example.com/img.jpg"
             ),
             EXECUTE_REQUEST,
@@ -2855,7 +2859,7 @@ class TestLinkedInCreatePost:
         fn = tools["CUSTOM_CREATE_POST"]
 
         result = fn(
-            CreatePostInput(
+            CreatePostInput(  # type: ignore[call-arg]
                 commentary="Doc!",
                 document_url="https://example.com/doc.pdf",
                 document_title="My Doc",
@@ -2883,7 +2887,7 @@ class TestLinkedInCreatePost:
 
         with pytest.raises(ValueError, match="document_title is required"):
             fn(
-                CreatePostInput(
+                CreatePostInput(  # type: ignore[call-arg]
                     commentary="Doc!", document_url="https://example.com/doc.pdf"
                 ),
                 EXECUTE_REQUEST,
@@ -2915,7 +2919,7 @@ class TestLinkedInCreatePost:
         fn = tools["CUSTOM_CREATE_POST"]
 
         result = fn(
-            CreatePostInput(
+            CreatePostInput(  # type: ignore[call-arg]
                 commentary="Read this!", article_url="https://blog.example.com/post"
             ),
             EXECUTE_REQUEST,
@@ -2951,7 +2955,7 @@ class TestLinkedInAddComment:
         fn = tools["CUSTOM_ADD_COMMENT"]
 
         result = fn(
-            AddCommentInput(post_urn="urn:li:share:123", comment_text="Nice post!"),
+            AddCommentInput(post_urn="urn:li:share:123", comment_text="Nice post!"),  # type: ignore[call-arg]
             EXECUTE_REQUEST,
             AUTH_CREDS,
         )
@@ -2991,7 +2995,7 @@ class TestLinkedInGetPostComments:
         fn = tools["CUSTOM_GET_POST_COMMENTS"]
 
         result = fn(
-            GetPostCommentsInput(post_urn="urn:li:share:123"),
+            GetPostCommentsInput(post_urn="urn:li:share:123"),  # type: ignore[call-arg]
             EXECUTE_REQUEST,
             AUTH_CREDS,
         )
@@ -3094,7 +3098,7 @@ class TestLinkedInGetPostReactions:
         fn = tools["CUSTOM_GET_POST_REACTIONS"]
 
         result = fn(
-            GetPostReactionsInput(post_urn="urn:li:share:123"),
+            GetPostReactionsInput(post_urn="urn:li:share:123"),  # type: ignore[call-arg]
             EXECUTE_REQUEST,
             AUTH_CREDS,
         )
@@ -3385,7 +3389,7 @@ class TestNotionFetchData:
         error_resp = _error_response(500, "Internal Server Error")
         mock_httpx.post.side_effect = httpx.HTTPStatusError(
             "Server error",
-            request=httpx.Request("POST", "http://test"),
+            request=httpx.Request("POST", "https://test"),
             response=error_resp,
         )
         mock_httpx.HTTPStatusError = httpx.HTTPStatusError
@@ -3614,7 +3618,7 @@ class TestCalendarGetEvent:
         error_resp = _error_response(404, "Not Found")
         mock_client.get.side_effect = httpx.HTTPStatusError(
             "Not Found",
-            request=httpx.Request("GET", "http://test"),
+            request=httpx.Request("GET", "https://test"),
             response=error_resp,
         )
 
@@ -3667,7 +3671,7 @@ class TestCalendarDeleteEvent:
         error_resp = _error_response(404, "Not Found")
         mock_client.delete.side_effect = httpx.HTTPStatusError(
             "Not Found",
-            request=httpx.Request("DELETE", "http://test"),
+            request=httpx.Request("DELETE", "https://test"),
             response=error_resp,
         )
 
@@ -4506,15 +4510,15 @@ class TestGoogleDocsShareDoc:
         mock_client.post.side_effect = [
             ok_resp,
             httpx.HTTPStatusError(
-                "err", request=httpx.Request("POST", "http://test"), response=err_resp
+                "err", request=httpx.Request("POST", "https://test"), response=err_resp
             ),
         ]
 
         request = ShareDocInput(
             document_id="doc-1",
             recipients=[
-                ShareRecipient(email="ok@test.com", role="writer"),
-                ShareRecipient(email="fail@test.com", role="reader"),
+                ShareRecipient(email="ok@test.com", role="writer"),  # type: ignore[call-arg]
+                ShareRecipient(email="fail@test.com", role="reader"),  # type: ignore[call-arg]
             ],
         )
         result = fn(request, EXECUTE_REQUEST, AUTH_CREDS)
@@ -4531,12 +4535,12 @@ class TestGoogleDocsShareDoc:
 
         err_resp = _error_response(403, "Forbidden")
         mock_client.post.side_effect = httpx.HTTPStatusError(
-            "err", request=httpx.Request("POST", "http://test"), response=err_resp
+            "err", request=httpx.Request("POST", "https://test"), response=err_resp
         )
 
         request = ShareDocInput(
             document_id="doc-1",
-            recipients=[ShareRecipient(email="fail@test.com", role="reader")],
+            recipients=[ShareRecipient(email="fail@test.com", role="reader")],  # type: ignore[call-arg]
         )
         with pytest.raises(RuntimeError, match="Failed to share document"):
             fn(request, EXECUTE_REQUEST, AUTH_CREDS)
@@ -4676,7 +4680,7 @@ class TestGoogleDocsDeleteDoc:
 
         err_resp = _error_response(404, "Not Found")
         mock_client.delete.side_effect = httpx.HTTPStatusError(
-            "err", request=httpx.Request("DELETE", "http://test"), response=err_resp
+            "err", request=httpx.Request("DELETE", "https://test"), response=err_resp
         )
 
         request = DeleteDocInput(document_id="doc-1")
@@ -4699,7 +4703,7 @@ class TestGoogleDocsGatherContext:
                         "id": "f1",
                         "name": "Doc 1",
                         "modifiedTime": "2024-01-01",
-                        "webViewLink": "http://link",
+                        "webViewLink": "https://link",
                     },
                 ]
             }

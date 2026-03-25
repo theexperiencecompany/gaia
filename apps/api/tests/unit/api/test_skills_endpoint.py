@@ -43,7 +43,7 @@ _UNINSTALL_SKILL = "app.api.v1.endpoints.skills.uninstall_skill_full"
 def _make_skill_mock(**overrides) -> "Skill":
     from app.agents.skills.models import Skill
 
-    base = {
+    base: dict[str, object] = {
         "id": "sk_abc123",
         "user_id": "507f1f77bcf86cd799439011",
         "name": "my-skill",
@@ -63,7 +63,7 @@ def _make_skill_mock(**overrides) -> "Skill":
         "files": ["SKILL.md"],
     }
     base.update(overrides)
-    return Skill(**base)
+    return Skill(**base)  # type: ignore[arg-type]
 
 
 def _make_discovered_skill(**overrides) -> MagicMock:

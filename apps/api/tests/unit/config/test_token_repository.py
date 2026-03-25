@@ -107,7 +107,7 @@ class TestTokenRepositoryInit:
         from app.config.token_repository import TokenRepository
 
         mock_settings.GOOGLE_CLIENT_ID = "client_id"
-        mock_settings.GOOGLE_CLIENT_SECRET = "client_secret"
+        mock_settings.GOOGLE_CLIENT_SECRET = "client_secret"  # pragma: allowlist secret
         mock_oauth_instance = MagicMock()
         mock_oauth_cls.return_value = mock_oauth_instance
 
@@ -117,7 +117,10 @@ class TestTokenRepositoryInit:
         call_kwargs = mock_oauth_instance.register.call_args
         assert call_kwargs[1]["name"] == "google"
         assert call_kwargs[1]["client_id"] == "client_id"
-        assert call_kwargs[1]["client_secret"] == "client_secret"
+        assert (
+            call_kwargs[1]["client_secret"]
+            == "client_secret"  # pragma: allowlist secret
+        )
         assert repo.oauth is mock_oauth_instance
 
     @patch("app.config.token_repository.get_db_session")
@@ -228,10 +231,8 @@ class TestGetTokenExpiration:
                 "expires_in": "also-bad",
             }
         )
-        after = datetime.now(timezone.utc)
         # Fallback is 3600 seconds from utcnow
         expected_min = before + timedelta(seconds=3600)
-        after + timedelta(seconds=3600)
         # Allow some tolerance because the production code may use utc vs local
         assert abs((result - expected_min).total_seconds()) < 5
 
@@ -548,7 +549,7 @@ class TestRefreshGoogleToken:
     async def test_refresh_google_success(self) -> None:
         mock_client = MagicMock()
         mock_client.client_id = "cid"
-        mock_client.client_secret = "csec"
+        mock_client.client_secret = "csec"  # pragma: allowlist secret
         self.repo.oauth = MagicMock()
         self.repo.oauth.google = mock_client
         self.mock_settings.GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -580,7 +581,7 @@ class TestRefreshGoogleToken:
     async def test_refresh_google_http_error(self) -> None:
         mock_client = MagicMock()
         mock_client.client_id = "cid"
-        mock_client.client_secret = "csec"
+        mock_client.client_secret = "csec"  # pragma: allowlist secret
         self.repo.oauth = MagicMock()
         self.repo.oauth.google = mock_client
         self.mock_settings.GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -604,7 +605,7 @@ class TestRefreshGoogleToken:
     async def test_refresh_google_exception_returns_none(self) -> None:
         mock_client = MagicMock()
         mock_client.client_id = "cid"
-        mock_client.client_secret = "csec"
+        mock_client.client_secret = "csec"  # pragma: allowlist secret
         self.repo.oauth = MagicMock()
         self.repo.oauth.google = mock_client
         self.mock_settings.GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -1175,7 +1176,7 @@ class TestGetTokenByAuthToken:
                     "access_123", renew_if_expired=True
                 )
 
-        assert result["access_token"] == "refreshed"
+        assert result["access_token"] == "refreshed"  # type: ignore[index]
 
     async def test_expired_refresh_fails_raises_401(self) -> None:
         record = _make_expired_record()

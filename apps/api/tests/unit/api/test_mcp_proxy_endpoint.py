@@ -121,7 +121,7 @@ class TestProxyResourcesList:
         assert data["next_cursor"] == "cur1"
 
     async def test_resources_list_with_cursor(self, client: AsyncClient) -> None:
-        mock_result = {"resources": [], "nextCursor": None}
+        mock_result: dict[str, object] = {"resources": [], "nextCursor": None}
         with patch(
             "app.api.v1.endpoints.mcp_proxy.get_mcp_client",
             new_callable=AsyncMock,

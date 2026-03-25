@@ -123,7 +123,7 @@ class TestListIntegrations:
 
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg())
+        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]
         assert result["connected"] == []
         assert result["available"] == []
 
@@ -153,7 +153,7 @@ class TestListIntegrations:
 
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg())
+        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]
         assert len(result["connected"]) == 1
         assert result["connected"][0]["id"] == "gmail"
         assert len(result["available"]) == 1
@@ -164,7 +164,7 @@ class TestListIntegrations:
     async def test_no_user_id(self, mock_gsw: MagicMock) -> None:
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg_no_user())
+        result = await list_integrations.coroutine(config=_cfg_no_user())  # type: ignore[attr-defined]
         assert "Error" in result
 
     @patch(f"{MODULE}.get_stream_writer")
@@ -181,7 +181,7 @@ class TestListIntegrations:
 
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg())
+        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]
         assert "Error" in result
 
     @patch(f"{MODULE}.integrations_collection")
@@ -207,7 +207,7 @@ class TestListIntegrations:
 
         from app.agents.tools.integration_tool import list_integrations
 
-        result = await list_integrations.coroutine(config=_cfg())
+        result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]
         assert result["connected"] == []
         assert result["available"] == []
 
@@ -237,7 +237,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["gmail"]
         )
         assert "Connection initiated" in result
@@ -264,7 +264,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["gmail"]
         )
         assert "already connected" in result
@@ -276,7 +276,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["nonexistent"]
         )
         assert "not found" in result
@@ -291,7 +291,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["gmail"]
         )
         assert "not available yet" in result
@@ -299,7 +299,7 @@ class TestConnectIntegration:
     async def test_no_user_id(self) -> None:
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
             config=_cfg_no_user(), integration_names=["gmail"]
         )
         assert "Error" in result
@@ -311,7 +311,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=[]
         )
         assert result == "No integrations to connect."
@@ -333,7 +333,7 @@ class TestConnectIntegration:
 
         from app.agents.tools.integration_tool import connect_integration
 
-        result = await connect_integration.coroutine(
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["gmail"]
         )
         assert "Error connecting" in result
@@ -358,7 +358,7 @@ class TestCheckIntegrationsStatus:
     async def test_connected(self, mock_check: AsyncMock) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["gmail"]
         )
         assert "Connected" in result
@@ -375,7 +375,7 @@ class TestCheckIntegrationsStatus:
     async def test_not_connected(self, mock_check: AsyncMock) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["gmail"]
         )
         assert "Not Connected" in result
@@ -384,7 +384,7 @@ class TestCheckIntegrationsStatus:
     async def test_not_found(self) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["nonexistent"]
         )
         assert "Not found" in result
@@ -392,7 +392,7 @@ class TestCheckIntegrationsStatus:
     async def test_no_user_id(self) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
             config=_cfg_no_user(), integration_names=["gmail"]
         )
         assert "Error" in result
@@ -409,7 +409,7 @@ class TestCheckIntegrationsStatus:
     async def test_service_error(self, mock_check: AsyncMock) -> None:
         from app.agents.tools.integration_tool import check_integrations_status
 
-        result = await check_integrations_status.coroutine(
+        result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]
             config=_cfg(), integration_names=["gmail"]
         )
         assert "Error checking status" in result
@@ -430,7 +430,7 @@ class TestSuggestIntegrations:
 
         from app.agents.tools.integration_tool import suggest_integrations
 
-        await suggest_integrations.coroutine(config=_cfg(), query="email tools")
+        await suggest_integrations.coroutine(config=_cfg(), query="email tools")  # type: ignore[attr-defined]
         mock_list.ainvoke.assert_awaited_once()
         # Check it passed search_public_query
         call_args = mock_list.ainvoke.call_args

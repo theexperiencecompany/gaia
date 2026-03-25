@@ -53,8 +53,8 @@ class TestWeatherMain:
             pressure=1013,
             humidity=65,
         )
-        assert m.temp == 20.5
-        assert m.feels_like == 19.0
+        assert m.temp == pytest.approx(20.5)
+        assert m.feels_like == pytest.approx(19.0)
         assert m.pressure == 1013
         assert m.humidity == 65
 
@@ -105,7 +105,7 @@ class TestWeatherMain:
 class TestWeatherWind:
     def test_valid(self):
         m = WeatherWind(speed=5.5, deg=180)
-        assert m.speed == 5.5
+        assert m.speed == pytest.approx(5.5)
         assert m.deg == 180
 
     def test_missing_speed(self):
@@ -118,7 +118,7 @@ class TestWeatherWind:
 
     def test_zero_values(self):
         m = WeatherWind(speed=0.0, deg=0)
-        assert m.speed == 0.0
+        assert m.speed == pytest.approx(0.0)
         assert m.deg == 0
 
 
@@ -228,8 +228,8 @@ class TestForecastDay:
         m = ForecastDay(**self._base_data())
         assert m.date == "2025-06-01"
         assert m.timestamp == 1748736000
-        assert m.temp_min == 18.0
-        assert m.temp_max == 28.0
+        assert m.temp_min == pytest.approx(18.0)
+        assert m.temp_max == pytest.approx(28.0)
         assert m.humidity == 55
         assert isinstance(m.weather, ForecastDayWeather)
         assert m.weather.main == "Clouds"
@@ -317,7 +317,7 @@ class TestWeatherData:
         assert m.name == "London"
         assert m.cod == 200
         assert len(m.weather) == 1  # type: ignore[arg-type]
-        assert m.main.temp == 15.0  # type: ignore[union-attr]
+        assert m.main.temp == pytest.approx(15.0)  # type: ignore[union-attr]
         assert len(m.forecast) == 1  # type: ignore[arg-type]
 
     def test_cod_can_be_string(self):
@@ -360,7 +360,7 @@ class TestWeatherData:
     def test_coord_dict(self):
         m = WeatherData(coord={"lon": -73.99, "lat": 40.73})
         assert m.coord["lon"] == -73.99  # type: ignore[index]
-        assert m.coord["lat"] == 40.73  # type: ignore[index]
+        assert m.coord["lat"] == pytest.approx(40.73)  # type: ignore[index]
 
     def test_location_nested(self):
         m = WeatherData(

@@ -81,7 +81,7 @@ class TestGetIntegrationsConfig:
     async def test_config_success(self, client: AsyncClient) -> None:
         from app.schemas.integrations.responses import IntegrationsConfigResponse
 
-        mock_response = IntegrationsConfigResponse(integrations=[_config_item()])
+        mock_response = IntegrationsConfigResponse(integrations=[_config_item()])  # type: ignore[list-item]
         with patch(
             "app.api.v1.endpoints.integrations.config.build_integrations_config",
             return_value=mock_response,
@@ -157,7 +157,9 @@ class TestDisconnectIntegration:
         from app.schemas.integrations.responses import IntegrationSuccessResponse
 
         mock_result = IntegrationSuccessResponse(
-            success=True, message="Disconnected", integration_id="github"
+            success=True,
+            message="Disconnected",
+            integration_id="github",  # type: ignore[call-arg]
         )
         with patch(
             "app.api.v1.endpoints.integrations.config.disconnect_integration",

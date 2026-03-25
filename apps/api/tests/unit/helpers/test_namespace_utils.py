@@ -1,6 +1,6 @@
 """Tests for app.helpers.namespace_utils — ChromaDB namespace derivation."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -41,7 +41,7 @@ class TestDeriveIntegrationNamespace:
     @patch("app.helpers.namespace_utils.get_tool_namespace_from_url")
     def test_custom_with_url_delegates_to_namespace_from_url(
         self,
-        mock_get_ns: patch,
+        mock_get_ns: MagicMock,
     ) -> None:
         mock_get_ns.return_value = "api.example.com/v1"
         result = derive_integration_namespace(
@@ -56,7 +56,7 @@ class TestDeriveIntegrationNamespace:
         )
 
     @patch("app.helpers.namespace_utils.get_tool_namespace_from_url")
-    def test_custom_url_fallback_used_on_bad_url(self, mock_get_ns: patch) -> None:
+    def test_custom_url_fallback_used_on_bad_url(self, mock_get_ns: MagicMock) -> None:
         """If get_tool_namespace_from_url falls back, integration_id is returned."""
         mock_get_ns.return_value = "int_456"
         result = derive_integration_namespace(
@@ -70,7 +70,7 @@ class TestDeriveIntegrationNamespace:
     @patch("app.helpers.namespace_utils.get_tool_namespace_from_url")
     def test_custom_with_different_urls_produce_different_namespaces(
         self,
-        mock_get_ns: patch,
+        mock_get_ns: MagicMock,
     ) -> None:
         """Different URLs should yield different namespaces."""
         mock_get_ns.side_effect = lambda url, fallback: {
@@ -121,7 +121,7 @@ class TestDeriveIntegrationNamespace:
     @patch("app.helpers.namespace_utils.get_tool_namespace_from_url")
     def test_custom_with_url_and_empty_integration_id(
         self,
-        mock_get_ns: patch,
+        mock_get_ns: MagicMock,
     ) -> None:
         mock_get_ns.return_value = "example.com"
         result = derive_integration_namespace(
@@ -147,7 +147,7 @@ class TestDeriveIntegrationNamespace:
         assert derive_integration_namespace(integration_id) == integration_id
 
     @patch("app.helpers.namespace_utils.get_tool_namespace_from_url")
-    def test_log_debug_called_for_custom(self, mock_get_ns: patch) -> None:
+    def test_log_debug_called_for_custom(self, mock_get_ns: MagicMock) -> None:
         """Verify the debug log path is exercised (no assertion on log content)."""
         mock_get_ns.return_value = "mcp.example.com/tools"
         # Should not raise

@@ -5,6 +5,9 @@ Covers:
 - Roundtrip consistency and data integrity
 """
 
+from typing import Any
+
+import pytest
 from bson import ObjectId
 
 from app.db.utils import serialize_document
@@ -133,7 +136,7 @@ class TestSerializeDocumentObjectIdFields:
         assert result["name"] == "test"
         assert result["count"] == 42
         assert result["active"] is True
-        assert result["score"] == 3.14
+        assert result["score"] == pytest.approx(3.14)
         assert result["tags"] is None
 
 
@@ -176,7 +179,7 @@ class TestSerializeDocumentNestedDicts:
 
     def test_empty_nested_dict(self) -> None:
         """Empty nested dict should remain empty."""
-        doc = {"metadata": {}}
+        doc: dict[str, Any] = {"metadata": {}}
 
         result = serialize_document(doc)
 
@@ -248,7 +251,7 @@ class TestSerializeDocumentLists:
 
     def test_empty_list(self) -> None:
         """Empty list should remain empty."""
-        doc = {"items": []}
+        doc: dict[str, Any] = {"items": []}
 
         result = serialize_document(doc)
 
@@ -369,7 +372,7 @@ class TestSerializeDocumentEdgeCases:
         result = serialize_document(doc)
 
         assert result["int_val"] == 42
-        assert result["float_val"] == 3.14
+        assert result["float_val"] == pytest.approx(3.14)
         assert result["neg_val"] == -7
         assert result["zero"] == 0
 
@@ -403,7 +406,7 @@ class TestSerializeDocumentEdgeCases:
     def test_large_document(self) -> None:
         """Should handle documents with many fields efficiently."""
         oid = ObjectId()
-        doc = {"_id": oid}
+        doc: dict[str, object] = {"_id": oid}
         for i in range(100):
             doc[f"field_{i}"] = f"value_{i}"
 

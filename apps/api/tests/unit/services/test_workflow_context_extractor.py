@@ -153,17 +153,17 @@ class TestBuildContext:
     def _make_human_msg(self, content: str) -> MagicMock:
         from langchain_core.messages import HumanMessage
 
-        return HumanMessage(content=content)
+        return HumanMessage(content=content)  # type: ignore[return-value]
 
     def _make_ai_msg(self, tool_calls: list) -> MagicMock:
         from langchain_core.messages import AIMessage
 
-        return AIMessage(content="", tool_calls=tool_calls)
+        return AIMessage(content="", tool_calls=tool_calls)  # type: ignore[return-value]
 
     def _make_tool_msg(self, content: str, tool_call_id: str) -> MagicMock:
         from langchain_core.messages import ToolMessage
 
-        return ToolMessage(content=content, tool_call_id=tool_call_id)
+        return ToolMessage(content=content, tool_call_id=tool_call_id)  # type: ignore[return-value]
 
     @patch(
         "app.services.workflow.context_extractor.get_toolkit_to_integration_map",
@@ -282,10 +282,10 @@ class TestBuildContext:
         from langchain_core.messages import HumanMessage
 
         content = [
-            {"type": "image", "url": "http://example.com/img.png"},
+            {"type": "image", "url": "https://example.com/img.png"},
             {"type": "text", "text": "Describe this image"},
         ]
-        msgs = [HumanMessage(content=content)]
+        msgs = [HumanMessage(content=content)]  # type: ignore[arg-type]
         result = WorkflowContextExtractor._build_context(msgs, 100)
         assert result.suggested_title == "Describe this image"
 

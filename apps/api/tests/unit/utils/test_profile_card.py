@@ -104,7 +104,7 @@ class TestGenerateRandomColor:
         # Find a seed that produces a gradient (random.random() > 0.5)
         for seed in range(200):
             random.seed(seed)
-            if random.random() > 0.5:
+            if random.random() > 0.5:  # NOSONAR
                 # Re-seed and call the function
                 random.seed(seed)
                 color, _ = generate_random_color()
@@ -117,7 +117,7 @@ class TestGenerateRandomColor:
         """Force random.random() <= 0.5 to produce a solid color."""
         for seed in range(200):
             random.seed(seed)
-            if random.random() <= 0.5:
+            if random.random() <= 0.5:  # NOSONAR
                 random.seed(seed)
                 color, _ = generate_random_color()
                 assert color.startswith("rgba(")
@@ -136,7 +136,7 @@ class TestGenerateRandomColor:
         """Solid color must be valid rgba(r, g, b, 1)."""
         for seed in range(200):
             random.seed(seed)
-            if random.random() <= 0.5:
+            if random.random() <= 0.5:  # NOSONAR
                 random.seed(seed)
                 color, _ = generate_random_color()
                 assert color.startswith("rgba(")
@@ -148,7 +148,7 @@ class TestGenerateRandomColor:
         """Gradient string should contain two rgba colors."""
         for seed in range(200):
             random.seed(seed)
-            if random.random() > 0.5:
+            if random.random() > 0.5:  # NOSONAR
                 random.seed(seed)
                 color, _ = generate_random_color()
                 assert color.count("rgba(") == 2
@@ -208,7 +208,9 @@ class TestGetUserMetadata:
         mock_collection.count_documents = AsyncMock(return_value=5)
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata("507f1f77bcf86cd799439011")
+            result = await get_user_metadata(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
         assert result["account_number"] == 6
         assert result["member_since"] == "Jun 15, 2025"
@@ -219,7 +221,9 @@ class TestGetUserMetadata:
         mock_collection.find_one = AsyncMock(return_value=None)
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata("507f1f77bcf86cd799439011")
+            result = await get_user_metadata(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
         assert result == {"account_number": 1, "member_since": "Nov 21, 2024"}
 
@@ -229,7 +233,9 @@ class TestGetUserMetadata:
         mock_collection.find_one = AsyncMock(return_value={"created_at": None})
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata("507f1f77bcf86cd799439011")
+            result = await get_user_metadata(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
         assert result["account_number"] == 1
         assert result["member_since"] == "Nov 21, 2024"
@@ -240,7 +246,9 @@ class TestGetUserMetadata:
         mock_collection.find_one = AsyncMock(return_value={"created_at": "2025-01-01"})
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata("507f1f77bcf86cd799439011")
+            result = await get_user_metadata(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
         assert result["account_number"] == 1
         assert result["member_since"] == "Nov 21, 2024"
@@ -253,7 +261,9 @@ class TestGetUserMetadata:
         )
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata("507f1f77bcf86cd799439011")
+            result = await get_user_metadata(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
         assert result == {"account_number": 1, "member_since": "Nov 21, 2024"}
 
@@ -265,7 +275,9 @@ class TestGetUserMetadata:
         mock_collection.count_documents = AsyncMock(return_value=0)
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata("507f1f77bcf86cd799439011")
+            result = await get_user_metadata(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
         mock_collection.count_documents.assert_awaited_once_with(
             {"created_at": {"$lt": dt}}
@@ -280,7 +292,9 @@ class TestGetUserMetadata:
         mock_collection.find_one = AsyncMock(return_value={"name": "Test"})
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata("507f1f77bcf86cd799439011")
+            result = await get_user_metadata(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
         assert result["account_number"] == 1
         assert result["member_since"] == "Nov 21, 2024"
@@ -517,7 +531,10 @@ class TestGenerateUserBio:
         mock_collection.find_one = AsyncMock(return_value=None)
 
         with patch("app.utils.profile_card.users_collection", mock_collection):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", [])
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                [],
+            )
 
         assert bio == "Welcome to GAIA!"
         assert status == BioStatus.NO_GMAIL
@@ -546,7 +563,10 @@ class TestGenerateUserBio:
                 return_value="A developer bio for Alice",
             ) as mock_bio_fn,
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", [])
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                [],
+            )
 
         assert bio == "A developer bio for Alice"
         assert status == BioStatus.COMPLETED
@@ -568,7 +588,10 @@ class TestGenerateUserBio:
                 return_value=mock_composio,
             ),
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", [])
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                [],
+            )
 
         assert bio == "Processing your insights... Please check back in a moment."
         assert status == BioStatus.PROCESSING
@@ -593,7 +616,10 @@ class TestGenerateUserBio:
                 return_value="A default bio for Bob",
             ) as mock_bio_fn,
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", [])
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                [],
+            )
 
         assert bio == "A default bio for Bob"
         assert status == BioStatus.NO_GMAIL
@@ -625,7 +651,10 @@ class TestGenerateUserBio:
             ),
             patch("app.utils.profile_card.init_llm", return_value=mock_llm),
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", memories)
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                memories,
+            )
 
         assert bio == "Carol is a creative force."
         assert status == BioStatus.COMPLETED
@@ -656,7 +685,10 @@ class TestGenerateUserBio:
             ),
             patch("app.utils.profile_card.init_llm", return_value=mock_llm),
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", memories)
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                memories,
+            )
 
         assert isinstance(bio, str)
         assert status == BioStatus.COMPLETED
@@ -686,7 +718,10 @@ class TestGenerateUserBio:
             ),
             patch("app.utils.profile_card.init_llm", return_value=mock_llm),
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", memories)
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                memories,
+            )
 
         assert status == BioStatus.PROCESSING
         assert "Processing" in bio
@@ -714,7 +749,10 @@ class TestGenerateUserBio:
             ),
             patch("app.utils.profile_card.init_llm", return_value=mock_llm),
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", memories)
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                memories,
+            )
 
         assert status == BioStatus.NO_GMAIL
         assert "Connect your Gmail" in bio
@@ -758,7 +796,10 @@ class TestGenerateUserBio:
             ),
             patch("app.utils.profile_card.init_llm", return_value=mock_llm),
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", memories)
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                memories,
+            )
 
         assert status == BioStatus.NO_GMAIL
         assert "Connect your Gmail" in bio
@@ -781,7 +822,10 @@ class TestGenerateUserBio:
                 return_value=mock_composio,
             ),
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", [])
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                [],
+            )
 
         assert status == BioStatus.NO_GMAIL
 
@@ -813,7 +857,10 @@ class TestGenerateUserBio:
             ),
             patch("app.utils.profile_card.init_llm", return_value=mock_llm),
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", memories)
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                memories,
+            )
 
         assert bio == "Hank is prolific."
         assert status == BioStatus.COMPLETED
@@ -847,7 +894,10 @@ class TestGenerateUserBio:
                 "app.utils.profile_card.init_llm", return_value=mock_llm
             ) as mock_init,
         ):
-            await generate_user_bio("507f1f77bcf86cd799439011", memories)
+            await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                memories,
+            )
 
         mock_init.assert_called_once_with(preferred_provider="gemini")
 
@@ -873,7 +923,10 @@ class TestGenerateUserBio:
             ) as mock_bio_fn,
         ):
             user["email_memory_processed"] = True
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", [])
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                [],
+            )
 
         mock_bio_fn.assert_called_once_with("Jack", "other")
         assert status == BioStatus.COMPLETED
@@ -899,7 +952,10 @@ class TestGenerateUserBio:
                 return_value="Default bio for Kara",
             ) as mock_bio_fn,
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", [])
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                [],
+            )
 
         # profession defaults to "" -> "other"
         mock_bio_fn.assert_called_once_with("Kara", "other")
@@ -929,7 +985,10 @@ class TestGenerateUserBio:
                 return_value="Chef bio for User",
             ) as mock_bio_fn,
         ):
-            bio, status = await generate_user_bio("507f1f77bcf86cd799439011", [])
+            bio, status = await generate_user_bio(
+                "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+                [],
+            )
 
         mock_bio_fn.assert_called_once_with("User", "chef")
         assert status == BioStatus.NO_GMAIL

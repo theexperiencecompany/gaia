@@ -120,7 +120,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="subagent output")
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="send me a summary every morning",
                 mode="new",
@@ -146,7 +146,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="output")
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="create a workflow",
                 mode="new",
@@ -170,7 +170,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="output")
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="create workflow",
                 mode="new",
@@ -186,7 +186,7 @@ class TestCreateWorkflow:
         with patch(f"{MODULE}.get_stream_writer") as mock_writer_factory:
             mock_writer_factory.return_value = _writer_mock()
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="",
                 mode="new",
@@ -202,7 +202,7 @@ class TestCreateWorkflow:
         with patch(f"{MODULE}.get_stream_writer") as mock_writer_factory:
             mock_writer_factory.return_value = _writer_mock()
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="test",
                 mode="invalid",
@@ -221,7 +221,7 @@ class TestCreateWorkflow:
         with patch(f"{MODULE}.get_stream_writer") as mock_writer_factory:
             mock_writer_factory.return_value = _writer_mock()
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=config,
                 user_request="save this",
                 mode="from_conversation",
@@ -241,7 +241,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_extractor.extract_from_thread = AsyncMock(return_value=None)
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="save this",
                 mode="from_conversation",
@@ -261,7 +261,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(side_effect=Exception("Runner crashed"))
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="make a workflow",
                 mode="new",
@@ -292,7 +292,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_runner.execute = AsyncMock(return_value="output")
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="run daily at 9am",
                 mode="new",
@@ -322,7 +322,7 @@ class TestCreateWorkflow:
             mock_writer_factory.return_value = writer
             mock_runner.execute = AsyncMock(return_value="output")
 
-            result = await create_workflow.coroutine(
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 user_request="run daily",
                 mode="new",
@@ -356,7 +356,7 @@ class TestGetWorkflow:
             mock_writer_factory.return_value = writer
             mock_service.get_workflow = AsyncMock(return_value=workflow)
 
-            result = await get_workflow.coroutine(
+            result = await get_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 workflow_id="wf-1",
             )
@@ -374,7 +374,7 @@ class TestGetWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_service.get_workflow = AsyncMock(return_value=None)
 
-            result = await get_workflow.coroutine(
+            result = await get_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 workflow_id="wf-nonexistent",
             )
@@ -393,7 +393,7 @@ class TestGetWorkflow:
             mock_writer_factory.return_value = _writer_mock()
             mock_service.get_workflow = AsyncMock(side_effect=Exception("DB timeout"))
 
-            result = await get_workflow.coroutine(
+            result = await get_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 workflow_id="wf-1",
             )
@@ -427,7 +427,7 @@ class TestExecuteWorkflow:
             mock_writer_factory.return_value = writer
             mock_service.execute_workflow = AsyncMock(return_value=exec_result)
 
-            result = await execute_workflow.coroutine(
+            result = await execute_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 workflow_id="wf-1",
             )
@@ -448,7 +448,7 @@ class TestExecuteWorkflow:
                 side_effect=Exception("Workflow disabled")
             )
 
-            result = await execute_workflow.coroutine(
+            result = await execute_workflow.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 workflow_id="wf-1",
             )
@@ -478,7 +478,7 @@ class TestSearchTriggers:
                 ]
             )
 
-            result = await search_triggers.coroutine(
+            result = await search_triggers.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 query="when I get a calendar event",
             )
@@ -496,7 +496,7 @@ class TestSearchTriggers:
                 side_effect=Exception("ChromaDB unavailable")
             )
 
-            result = await search_triggers.coroutine(
+            result = await search_triggers.coroutine(  # type: ignore[attr-defined]
                 config=_make_config(),
                 query="test",
             )
@@ -528,7 +528,7 @@ class TestListWorkflows:
             mock_writer_factory.return_value = writer
             mock_service.list_workflows = AsyncMock(return_value=[workflow])
 
-            result = await list_workflows.coroutine(config=_make_config())
+            result = await list_workflows.coroutine(config=_make_config())  # type: ignore[attr-defined]
 
         assert result["success"] is True
         assert result["data"]["total"] == 1
@@ -547,7 +547,7 @@ class TestListWorkflows:
                 side_effect=Exception("Connection refused")
             )
 
-            result = await list_workflows.coroutine(config=_make_config())
+            result = await list_workflows.coroutine(config=_make_config())  # type: ignore[attr-defined]
 
         assert result["success"] is False
         assert result["error"] == "fetch_failed"

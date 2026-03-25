@@ -1,6 +1,7 @@
 """Tests for app.helpers.email_helpers — email processing and storage utilities."""
 
 from datetime import datetime, timezone
+from typing import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -63,7 +64,7 @@ class TestBuildUserContext:
     ) -> None:
         result = _build_user_context(name, email)
         if should_contain_email:
-            assert email in result
+            assert email in result  # type: ignore[operator]
         else:
             assert result == f"The user's name is {name}."
 
@@ -412,7 +413,7 @@ class TestStoreEmailsToMem0:
     """Tests for store_emails_to_mem0()."""
 
     @pytest.fixture
-    def mock_memory_service(self) -> AsyncMock:
+    def mock_memory_service(self) -> Generator[AsyncMock, None, None]:
         with patch("app.helpers.email_helpers.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
             yield mock_svc
@@ -606,12 +607,17 @@ class TestMarkEmailProcessingComplete:
     @patch("app.helpers.email_helpers.users_collection")
     async def test_updates_user_document(self, mock_collection: MagicMock) -> None:
         mock_collection.update_one = AsyncMock()
-        await mark_email_processing_complete("507f1f77bcf86cd799439011", 42)
+        await mark_email_processing_complete(
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+            42,
+        )
         mock_collection.update_one.assert_called_once()
         call_args = mock_collection.update_one.call_args
         # First positional arg is the filter
         filter_doc = call_args[0][0]
-        assert str(filter_doc["_id"]) == "507f1f77bcf86cd799439011"
+        assert (
+            str(filter_doc["_id"]) == "507f1f77bcf86cd799439011"
+        )  # pragma: allowlist secret
         # Second positional arg is the update
         update_doc = call_args[0][1]
         assert update_doc["$set"]["email_memory_processed"] is True
@@ -621,14 +627,20 @@ class TestMarkEmailProcessingComplete:
     @patch("app.helpers.email_helpers.users_collection")
     async def test_zero_memory_count(self, mock_collection: MagicMock) -> None:
         mock_collection.update_one = AsyncMock()
-        await mark_email_processing_complete("507f1f77bcf86cd799439011", 0)
+        await mark_email_processing_complete(
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+            0,
+        )
         update_doc = mock_collection.update_one.call_args[0][1]
         assert update_doc["$set"]["email_memory_count"] == 0
 
     @patch("app.helpers.email_helpers.users_collection")
     async def test_timestamp_is_utc(self, mock_collection: MagicMock) -> None:
         mock_collection.update_one = AsyncMock()
-        await mark_email_processing_complete("507f1f77bcf86cd799439011", 1)
+        await mark_email_processing_complete(
+            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
+            1,
+        )
         update_doc = mock_collection.update_one.call_args[0][1]
         ts = update_doc["$set"]["email_memory_processed_at"]
         assert isinstance(ts, datetime)
@@ -644,7 +656,7 @@ class TestStoreSingleProfile:
     """Tests for store_single_profile()."""
 
     @pytest.fixture
-    def mock_memory_service(self) -> AsyncMock:
+    def mock_memory_service(self) -> Generator[AsyncMock, None, None]:
         with patch("app.helpers.email_helpers.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
             yield mock_svc

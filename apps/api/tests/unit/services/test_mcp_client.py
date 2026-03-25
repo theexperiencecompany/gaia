@@ -131,7 +131,7 @@ class TestMCPClientSanitizeConfig:
                 "srv1": {
                     "url": "https://example.com",
                     "transport": "streamable-http",
-                    "auth": "super_secret_token",
+                    "auth": "super_secret_token",  # NOSONAR
                     "headers": {"Authorization": "Bearer secret"},
                 }
             }

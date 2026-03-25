@@ -34,7 +34,7 @@ def _make_request(**overrides) -> MessageRequestWithHistory:
         "replyToMessage": None,
     }
     defaults.update(overrides)
-    return MessageRequestWithHistory(**defaults)
+    return MessageRequestWithHistory(**defaults)  # type: ignore[arg-type]
 
 
 def _make_user(**overrides) -> dict:

@@ -84,7 +84,7 @@ def _make_tool_message(
 class TestVFSCompactionInit:
     def test_defaults(self) -> None:
         mw = VFSCompactionMiddleware()
-        assert mw.compaction_threshold == 0.65
+        assert mw.compaction_threshold == pytest.approx(0.65)
         assert mw.max_output_chars == 20000
         assert mw.always_persist_tools == []
         assert mw.context_window == 128000
@@ -98,7 +98,7 @@ class TestVFSCompactionInit:
             context_window=200000,
             excluded_tools={"small_tool"},
         )
-        assert mw.compaction_threshold == 0.5
+        assert mw.compaction_threshold == pytest.approx(0.5)
         assert mw.max_output_chars == 10000
         assert mw.always_persist_tools == ["search_tool"]
         assert mw.context_window == 200000
@@ -157,7 +157,7 @@ class TestGetContextUsage:
         mw = VFSCompactionMiddleware(context_window=100000)
         request = MagicMock(spec=ToolCallRequest)
         request.state = None
-        assert mw._get_context_usage(request) == 0.0
+        assert mw._get_context_usage(request) == pytest.approx(0.0)
 
     def test_empty_messages(self) -> None:
         mw = VFSCompactionMiddleware(context_window=100000)
@@ -165,7 +165,7 @@ class TestGetContextUsage:
         state = MagicMock()
         state.get.return_value = []
         request.state = state
-        assert mw._get_context_usage(request) == 0.0
+        assert mw._get_context_usage(request) == pytest.approx(0.0)
 
     def test_calculates_usage(self) -> None:
         mw = VFSCompactionMiddleware(context_window=1000)
@@ -185,14 +185,14 @@ class TestGetContextUsage:
         state = MagicMock()
         state.get.return_value = msgs
         request.state = state
-        assert mw._get_context_usage(request) == 1.0
+        assert mw._get_context_usage(request) == pytest.approx(1.0)
 
     def test_exception_returns_zero(self) -> None:
         mw = VFSCompactionMiddleware()
         request = MagicMock(spec=ToolCallRequest)
         request.state = MagicMock()
         request.state.get.side_effect = RuntimeError("boom")
-        assert mw._get_context_usage(request) == 0.0
+        assert mw._get_context_usage(request) == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +442,7 @@ class TestAwrapToolCall:
         request = _make_tool_request()
 
         result = await mw.awrap_tool_call(request, handler)
-        assert "stored at:" in result.content
+        assert "stored at:" in result.content  # type: ignore[union-attr]
         mock_vfs.write.assert_called_once()
 
     async def test_always_persist_tool_compacted(self) -> None:
@@ -455,7 +455,7 @@ class TestAwrapToolCall:
         request = _make_tool_request(tool_name="special_tool")
 
         result = await mw.awrap_tool_call(request, handler)
-        assert result.additional_kwargs.get("compacted") is True
+        assert result.additional_kwargs.get("compacted") is True  # type: ignore[union-attr]
 
     async def test_excluded_tool_never_compacted(self) -> None:
         mw = VFSCompactionMiddleware(
@@ -507,7 +507,7 @@ class TestAwrapToolCall:
         request = _make_tool_request(context_messages=context_msgs)
 
         result = await mw.awrap_tool_call(request, handler)
-        assert result.additional_kwargs.get("compacted") is True
+        assert result.additional_kwargs.get("compacted") is True  # type: ignore[union-attr]
 
     async def test_tool_call_as_dict(self) -> None:
         """tool_call is a dict — exercise the dict branch of name extraction."""
@@ -519,7 +519,7 @@ class TestAwrapToolCall:
         request = _make_tool_request(tool_name="dict_tool")
 
         result = await mw.awrap_tool_call(request, handler)
-        assert result.additional_kwargs.get("compacted") is True
+        assert result.additional_kwargs.get("compacted") is True  # type: ignore[union-attr]
 
     async def test_tool_call_as_object(self) -> None:
         """tool_call is an object with .name attribute."""
@@ -538,4 +538,4 @@ class TestAwrapToolCall:
         request.tool_call = tc_obj
 
         result = await mw.awrap_tool_call(request, handler)
-        assert result.additional_kwargs.get("compacted") is True
+        assert result.additional_kwargs.get("compacted") is True  # type: ignore[union-attr]

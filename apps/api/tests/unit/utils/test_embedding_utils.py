@@ -38,7 +38,7 @@ def _make_tool(
         del tool.func
     # By default tools are callable; override when needed
     if not callable_self:
-        tool.__call__ = None
+        tool.__call__ = None  # type: ignore[method-assign, assignment]
         tool.configure_mock(**{"__call__": None})
     return tool
 
@@ -330,7 +330,7 @@ class TestSearchBySimilarity:
 
         assert len(results) == 1
         assert results[0]["id"] == "abc123"
-        assert results[0]["similarity_score"] == 0.25
+        assert results[0]["similarity_score"] == pytest.approx(0.25)
         assert results[0]["content"] == "my note content"
         assert results[0]["user_id"] == "user1"
 

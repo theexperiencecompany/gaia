@@ -10,6 +10,8 @@ Tests cover:
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 
 from app.config.model_pricing import (
     DEFAULT_PRICING,
@@ -46,14 +48,14 @@ class TestModelPricing:
 
     def test_construction(self) -> None:
         pricing = ModelPricing(input_cost_per_1k=0.005, output_cost_per_1k=0.015)
-        assert pricing.input_cost_per_1k == 0.005
-        assert pricing.output_cost_per_1k == 0.015
+        assert pricing.input_cost_per_1k == pytest.approx(0.005)
+        assert pricing.output_cost_per_1k == pytest.approx(0.015)
 
     def test_is_tuple(self) -> None:
         pricing = ModelPricing(input_cost_per_1k=0.001, output_cost_per_1k=0.002)
         assert isinstance(pricing, tuple)
-        assert pricing[0] == 0.001
-        assert pricing[1] == 0.002
+        assert pricing[0] == pytest.approx(0.001)
+        assert pricing[1] == pytest.approx(0.002)
 
     def test_equality(self) -> None:
         a = ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.02)
@@ -75,8 +77,8 @@ class TestDefaultPricing:
     """Tests for the default fallback pricing constant."""
 
     def test_default_values(self) -> None:
-        assert DEFAULT_PRICING.input_cost_per_1k == 0.001
-        assert DEFAULT_PRICING.output_cost_per_1k == 0.002
+        assert DEFAULT_PRICING.input_cost_per_1k == pytest.approx(0.001)
+        assert DEFAULT_PRICING.output_cost_per_1k == pytest.approx(0.002)
 
     def test_default_is_model_pricing(self) -> None:
         assert isinstance(DEFAULT_PRICING, ModelPricing)
@@ -229,9 +231,9 @@ class TestCalculateTokenCost:
         # input: (1000/1000) * 0.01 = 0.01
         # output: (500/1000) * 0.03 = 0.015
         # total: 0.025
-        assert result["input_cost"] == 0.01
-        assert result["output_cost"] == 0.015
-        assert result["total_cost"] == 0.025
+        assert result["input_cost"] == pytest.approx(0.01)
+        assert result["output_cost"] == pytest.approx(0.015)
+        assert result["total_cost"] == pytest.approx(0.025)
 
     @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
     async def test_zero_tokens(self, mock_pricing: AsyncMock) -> None:
@@ -242,9 +244,9 @@ class TestCalculateTokenCost:
 
         result = await calculate_token_cost("gpt-4o", input_tokens=0, output_tokens=0)
 
-        assert result["input_cost"] == 0.0
-        assert result["output_cost"] == 0.0
-        assert result["total_cost"] == 0.0
+        assert result["input_cost"] == pytest.approx(0.0)
+        assert result["output_cost"] == pytest.approx(0.0)
+        assert result["total_cost"] == pytest.approx(0.0)
 
     @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
     async def test_only_input_tokens(self, mock_pricing: AsyncMock) -> None:
@@ -258,9 +260,9 @@ class TestCalculateTokenCost:
         )
 
         # input: (2500/1000) * 0.01 = 0.025
-        assert result["input_cost"] == 0.025
-        assert result["output_cost"] == 0.0
-        assert result["total_cost"] == 0.025
+        assert result["input_cost"] == pytest.approx(0.025)
+        assert result["output_cost"] == pytest.approx(0.0)
+        assert result["total_cost"] == pytest.approx(0.025)
 
     @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
     async def test_only_output_tokens(self, mock_pricing: AsyncMock) -> None:
@@ -274,9 +276,9 @@ class TestCalculateTokenCost:
         )
 
         # output: (3000/1000) * 0.03 = 0.09
-        assert result["input_cost"] == 0.0
-        assert result["output_cost"] == 0.09
-        assert result["total_cost"] == 0.09
+        assert result["input_cost"] == pytest.approx(0.0)
+        assert result["output_cost"] == pytest.approx(0.09)
+        assert result["total_cost"] == pytest.approx(0.09)
 
     @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
     async def test_rounding_precision(self, mock_pricing: AsyncMock) -> None:
@@ -292,9 +294,9 @@ class TestCalculateTokenCost:
 
         # input: (1/1000) * 0.000001 = 0.000000001 -> rounds to 0.0
         # output: (1/1000) * 0.000002 = 0.000000002 -> rounds to 0.0
-        assert result["input_cost"] == 0.0
-        assert result["output_cost"] == 0.0
-        assert result["total_cost"] == 0.0
+        assert result["input_cost"] == pytest.approx(0.0)
+        assert result["output_cost"] == pytest.approx(0.0)
+        assert result["total_cost"] == pytest.approx(0.0)
 
     @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
     async def test_large_token_count(self, mock_pricing: AsyncMock) -> None:
@@ -309,9 +311,9 @@ class TestCalculateTokenCost:
 
         # input: (1_000_000 / 1000) * 0.01 = 10.0
         # output: (500_000 / 1000) * 0.03 = 15.0
-        assert result["input_cost"] == 10.0
-        assert result["output_cost"] == 15.0
-        assert result["total_cost"] == 25.0
+        assert result["input_cost"] == pytest.approx(10.0)
+        assert result["output_cost"] == pytest.approx(15.0)
+        assert result["total_cost"] == pytest.approx(25.0)
 
     @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
     async def test_result_keys(self, mock_pricing: AsyncMock) -> None:
@@ -357,9 +359,9 @@ class TestCalculateTokenCost:
 
         # input: (100/1000) * 0.01 = 0.001
         # output: (200/1000) * 0.03 = 0.006
-        assert result["input_cost"] == 0.001
-        assert result["output_cost"] == 0.006
-        assert result["total_cost"] == 0.007
+        assert result["input_cost"] == pytest.approx(0.001)
+        assert result["output_cost"] == pytest.approx(0.006)
+        assert result["total_cost"] == pytest.approx(0.007)
 
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
     async def test_end_to_end_with_default_pricing(
@@ -375,6 +377,6 @@ class TestCalculateTokenCost:
         # DEFAULT_PRICING: input=0.001, output=0.002
         # input: (5000/1000) * 0.001 = 0.005
         # output: (2000/1000) * 0.002 = 0.004
-        assert result["input_cost"] == 0.005
-        assert result["output_cost"] == 0.004
-        assert result["total_cost"] == 0.009
+        assert result["input_cost"] == pytest.approx(0.005)
+        assert result["output_cost"] == pytest.approx(0.004)
+        assert result["total_cost"] == pytest.approx(0.009)

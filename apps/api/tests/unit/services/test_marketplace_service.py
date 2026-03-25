@@ -330,16 +330,16 @@ class TestGetIntegrationDetails:
             f"{MODULE}.IntegrationResponse.from_oauth_integration"
         ) as mock_from_oauth:
             resp = MagicMock()
-            resp.created_by = "507f1f77bcf86cd799439011"
+            resp.created_by = "507f1f77bcf86cd799439011"  # pragma: allowlist secret
             resp.tools = []
             mock_from_oauth.return_value = resp
             mock_users.find_one = AsyncMock(
-                return_value={"name": "Creator", "picture": "http://pic.com"}
+                return_value={"name": "Creator", "picture": "https://pic.com"}
             )
 
             result = await get_integration_details("gmail")
 
-        assert result.creator == {"name": "Creator", "picture": "http://pic.com"}
+        assert result.creator == {"name": "Creator", "picture": "https://pic.com"}  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.users_collection")

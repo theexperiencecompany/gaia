@@ -197,7 +197,9 @@ class TestAuthenticateWorkosSession:
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass_32chars_long_enough"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass_32chars_long_enough"  # NOSONAR  # pragma: allowlist secret
+            )
             mock_col.find_one = AsyncMock(return_value=db_doc)
 
             user_info, new_session = await authenticate_workos_session(
@@ -221,7 +223,9 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with patch(_PATCH_LOG), patch(_PATCH_SETTINGS) as mock_settings:
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -241,7 +245,9 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with patch(_PATCH_LOG), patch(_PATCH_SETTINGS) as mock_settings:
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -277,7 +283,9 @@ class TestAuthenticateWorkosSession:
             patch(_PATCH_SETTINGS) as mock_settings,
             patch.object(builtins, "hasattr", side_effect=patched_hasattr),
         ):
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -318,7 +326,9 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with patch(_PATCH_LOG) as mock_log, patch(_PATCH_SETTINGS) as mock_settings:
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -368,7 +378,9 @@ class TestAuthenticateWorkosSession:
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
             mock_col.find_one = AsyncMock(return_value=None)
 
             user_info, new_session = await authenticate_workos_session(
@@ -388,7 +400,9 @@ class TestAuthenticateWorkosSession:
         )
 
         with patch(_PATCH_LOG) as mock_log, patch(_PATCH_SETTINGS) as mock_settings:
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -407,7 +421,9 @@ class TestAuthenticateWorkosSession:
         client.user_management.load_sealed_session = AsyncMock(return_value=session)
 
         with patch(_PATCH_LOG), patch(_PATCH_SETTINGS) as mock_settings:
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -456,7 +472,9 @@ class TestAuthenticateWorkosSession:
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
             mock_col.find_one = AsyncMock(side_effect=Exception("timeout"))
 
             user_info, new_session = await authenticate_workos_session(
@@ -502,15 +520,17 @@ class TestAuthenticateWorkosSession:
             patch(_PATCH_WORKOS_CLIENT, return_value=mock_client) as mock_cls,
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
-            mock_settings.WORKOS_API_KEY = "sk_test_key"
-            mock_settings.WORKOS_CLIENT_ID = "client_id_123"
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_API_KEY = "sk_test_key"  # pragma: allowlist secret
+            mock_settings.WORKOS_CLIENT_ID = "client_id_123"  # pragma: allowlist secret
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
             mock_col.find_one = AsyncMock(return_value=db_doc)
 
             await authenticate_workos_session(session_token="tok", workos_client=None)
 
         mock_cls.assert_called_once_with(
-            api_key="sk_test_key",
+            api_key="sk_test_key",  # pragma: allowlist secret
             client_id="client_id_123",
         )
 
@@ -576,7 +596,9 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with patch(_PATCH_LOG) as mock_log, patch(_PATCH_SETTINGS) as mock_settings:
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -608,7 +630,9 @@ class TestAuthenticateWorkosSession:
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
             mock_col.find_one = AsyncMock(return_value=db_doc)
 
             user_info, new_session = await authenticate_workos_session(
@@ -647,7 +671,9 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with patch(_PATCH_LOG) as mock_log, patch(_PATCH_SETTINGS) as mock_settings:
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
 
             await authenticate_workos_session(session_token="tok", workos_client=client)
 
@@ -663,7 +689,9 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with patch(_PATCH_LOG) as mock_log, patch(_PATCH_SETTINGS) as mock_settings:
-            mock_settings.WORKOS_COOKIE_PASSWORD = "cookie_pass"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "cookie_pass"  # NOSONAR  # pragma: allowlist secret
+            )
 
             await authenticate_workos_session(session_token="tok", workos_client=client)
 
@@ -680,11 +708,15 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with patch(_PATCH_LOG), patch(_PATCH_SETTINGS) as mock_settings:
-            mock_settings.WORKOS_COOKIE_PASSWORD = "my_secret_cookie_pw"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "my_secret_cookie_pw"  # NOSONAR  # pragma: allowlist secret
+            )
 
             await authenticate_workos_session(session_token="tok", workos_client=client)
 
-        session.refresh.assert_awaited_once_with(cookie_password="my_secret_cookie_pw")
+        session.refresh.assert_awaited_once_with(
+            cookie_password="my_secret_cookie_pw"  # pragma: allowlist secret
+        )  # NOSONAR
 
     async def test_sealed_session_and_cookie_password_forwarded(self) -> None:
         """Verify correct args passed to load_sealed_session."""
@@ -699,7 +731,9 @@ class TestAuthenticateWorkosSession:
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
-            mock_settings.WORKOS_COOKIE_PASSWORD = "pw_123"
+            mock_settings.WORKOS_COOKIE_PASSWORD = (
+                "pw_123"  # NOSONAR  # pragma: allowlist secret
+            )
             mock_col.find_one = AsyncMock(return_value=db_doc)
 
             await authenticate_workos_session(
@@ -708,5 +742,5 @@ class TestAuthenticateWorkosSession:
 
         client.user_management.load_sealed_session.assert_awaited_once_with(
             sealed_session="my_sealed_token",
-            cookie_password="pw_123",
+            cookie_password="pw_123",  # pragma: allowlist secret
         )

@@ -199,7 +199,7 @@ class TestTrackSubscriptionEvent:
         props = call_args[0][2]
         assert props["subscription_id"] == "sub123"
         assert props["plan_name"] == "pro"
-        assert props["amount"] == 9.99
+        assert props["amount"] == pytest.approx(9.99)
         assert props["currency"] == "USD"
 
     def test_removes_none_values(self, mock_posthog):
@@ -283,7 +283,7 @@ class TestTrackPaymentEvent:
         assert call_args[0][1] == AnalyticsEvents.PAYMENT_SUCCEEDED
         props = call_args[0][2]
         assert props["payment_id"] == "pay123"
-        assert props["amount"] == 29.99
+        assert props["amount"] == pytest.approx(29.99)
         assert props["currency"] == "USD"
 
     def test_removes_none_values(self, mock_posthog):

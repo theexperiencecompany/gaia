@@ -90,7 +90,7 @@ class TestDeepResearch:
     ) -> None:
         cached = {
             "query": "test",
-            "sources": [{"url": "http://a.com"}],
+            "sources": [{"url": "https://a.com"}],
             "source_count": 1,
         }
         mock_get_cache.return_value = cached
@@ -157,10 +157,10 @@ class TestDeepResearch:
         _mock_uid: MagicMock,
     ) -> None:
         mock_decompose.return_value = ["sub-q1", "sub-q2"]
-        mock_ddg.return_value = {"results": [{"url": "http://example.com"}]}
+        mock_ddg.return_value = {"results": [{"url": "https://example.com"}]}
         mock_rank.return_value = [
-            {"url": "http://example.com", "snippet": "A snippet"},
-            {"url": "http://example2.com", "snippet": "Another snippet"},
+            {"url": "https://example.com", "snippet": "A snippet"},
+            {"url": "https://example2.com", "snippet": "Another snippet"},
         ]
         mock_crawl4ai.return_value = "Full page content"
 
@@ -210,8 +210,8 @@ class TestDeepResearch:
         _mock_uid: MagicMock,
     ) -> None:
         mock_decompose.return_value = ["sub-q1"]
-        mock_ddg.return_value = {"results": [{"url": "http://a.com"}]}
-        mock_rank.return_value = [{"url": "http://a.com", "snippet": "snip"}]
+        mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
+        mock_rank.return_value = [{"url": "https://a.com", "snippet": "snip"}]
         mock_httpx.return_value = "httpx content"
 
         from app.agents.tools.research_tool import deep_research
@@ -254,9 +254,9 @@ class TestDeepResearch:
         _mock_uid: MagicMock,
     ) -> None:
         mock_decompose.return_value = ["sub-q1"]
-        mock_ddg.return_value = {"results": [{"url": "http://a.com"}]}
+        mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
         mock_rank.return_value = [
-            {"url": "http://a.com", "snippet": "Search snippet text"}
+            {"url": "https://a.com", "snippet": "Search snippet text"}
         ]
 
         from app.agents.tools.research_tool import deep_research
@@ -300,8 +300,8 @@ class TestDeepResearch:
         _mock_uid: MagicMock,
     ) -> None:
         mock_decompose.return_value = ["sub-q1"]
-        mock_ddg.return_value = {"results": [{"url": "http://a.com"}]}
-        mock_rank.return_value = [{"url": "http://a.com", "snippet": ""}]
+        mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
+        mock_rank.return_value = [{"url": "https://a.com", "snippet": ""}]
 
         from app.agents.tools.research_tool import deep_research
 
@@ -362,8 +362,8 @@ class TestDeepResearch:
     ) -> None:
         """Depth 3 should pass max_urls=20 to rank_and_deduplicate_urls."""
         mock_decompose.return_value = ["q1"]
-        mock_ddg.return_value = {"results": [{"url": "http://a.com"}]}
-        mock_rank.return_value = [{"url": "http://a.com", "snippet": "s"}]
+        mock_ddg.return_value = {"results": [{"url": "https://a.com"}]}
+        mock_rank.return_value = [{"url": "https://a.com", "snippet": "s"}]
         mock_crawl4ai.return_value = "content"
 
         from app.agents.tools.research_tool import deep_research
@@ -400,11 +400,11 @@ class TestDeepResearch:
         """When some searches raise exceptions, successful_searches count is correct."""
         mock_decompose.return_value = ["q1", "q2", "q3"]
         mock_ddg.side_effect = [
-            {"results": [{"url": "http://a.com"}]},
+            {"results": [{"url": "https://a.com"}]},
             RuntimeError("search failed"),
             {"results": []},
         ]
-        mock_rank.return_value = [{"url": "http://a.com", "snippet": "s"}]
+        mock_rank.return_value = [{"url": "https://a.com", "snippet": "s"}]
         mock_crawl4ai.return_value = "content"
 
         from app.agents.tools.research_tool import deep_research

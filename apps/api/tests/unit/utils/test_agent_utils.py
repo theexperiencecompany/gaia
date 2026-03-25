@@ -1,6 +1,7 @@
 """Tests for app/utils/agent_utils.py"""
 
 import json
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -71,14 +72,14 @@ class TestLookupCustomIntegrationName:
     async def test_found(self) -> None:
         with patch("app.utils.agent_utils.integrations_collection") as mock_coll:
             mock_coll.find_one = AsyncMock(return_value={"name": "My Custom Tool"})
-            result = await _lookup_custom_integration_name.__wrapped__("custom_id_123")
+            result = await _lookup_custom_integration_name.__wrapped__("custom_id_123")  # type: ignore[attr-defined]
         assert result == "My Custom Tool"
 
     @pytest.mark.asyncio
     async def test_not_found(self) -> None:
         with patch("app.utils.agent_utils.integrations_collection") as mock_coll:
             mock_coll.find_one = AsyncMock(return_value=None)
-            result = await _lookup_custom_integration_name.__wrapped__("unknown_id")
+            result = await _lookup_custom_integration_name.__wrapped__("unknown_id")  # type: ignore[attr-defined]
         assert result is None
 
 
@@ -149,14 +150,14 @@ class TestResolveHandoffDisplayName:
 class TestFormatToolCallEntry:
     @pytest.mark.asyncio
     async def test_missing_tool_name_returns_none(self) -> None:
-        tool_call = {"name": None, "args": {}, "id": "tc1"}
+        tool_call: dict[str, Any] = {"name": None, "args": {}, "id": "tc1"}
         mock_registry = MagicMock()
         with patch(
             "app.utils.agent_utils.get_tool_registry",
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
         assert result is None
 
     @pytest.mark.asyncio
@@ -169,7 +170,7 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
 
         assert result is not None
         assert result["data"]["message"] == "Retrieving tools"
@@ -189,7 +190,7 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
 
         assert result is not None
         assert "Calendar" in result["data"]["message"]
@@ -206,7 +207,8 @@ class TestFormatToolCallEntry:
             return_value=mock_registry,
         ):
             result = await format_tool_call_entry(
-                tool_call, integration_id="gmail_integration"
+                tool_call,  # type: ignore[arg-type]
+                integration_id="gmail_integration",
             )
 
         assert result is not None
@@ -226,7 +228,7 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
 
         assert result is not None
         assert result["data"]["tool_category"] == "my_integration"
@@ -242,7 +244,7 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
 
         assert result is not None
         assert result["data"]["tool_category"] == "some_server"
@@ -254,7 +256,7 @@ class TestFormatToolCallEntry:
         mock_registry_tool.name = "ui_tool"
         mock_registry_tool.tool.metadata = {
             "mcp_ui": {"type": "form"},
-            "mcp_server_url": "http://mcp.example.com",
+            "mcp_server_url": "https://mcp.example.com",
         }
 
         mock_registry = MagicMock()
@@ -266,11 +268,11 @@ class TestFormatToolCallEntry:
             new_callable=AsyncMock,
             return_value=mock_registry,
         ):
-            result = await format_tool_call_entry(tool_call)
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]
 
         assert result is not None
         assert result["mcp_ui"] == {"type": "form"}
-        assert result["mcp_server_url"] == "http://mcp.example.com"
+        assert result["mcp_server_url"] == "https://mcp.example.com"
 
     @pytest.mark.asyncio
     async def test_integration_name_passed_through(self) -> None:
@@ -285,13 +287,13 @@ class TestFormatToolCallEntry:
             return_value=mock_registry,
         ):
             result = await format_tool_call_entry(
-                tool_call,
-                icon_url="http://icon.png",
+                tool_call,  # type: ignore[arg-type]
+                icon_url="https://icon.png",
                 integration_name="My Service",
             )
 
-        assert result["data"]["icon_url"] == "http://icon.png"
-        assert result["data"]["integration_name"] == "My Service"
+        assert result["data"]["icon_url"] == "https://icon.png"  # type: ignore[index]
+        assert result["data"]["integration_name"] == "My Service"  # type: ignore[index]
 
 
 # ---------------------------------------------------------------------------
@@ -403,7 +405,7 @@ class TestStoreAgentProgress:
 
     @pytest.mark.asyncio
     async def test_with_legacy_tool_data(self) -> None:
-        tool_data = {"calendar_options": {"events": []}}
+        tool_data: dict[str, Any] = {"calendar_options": {"events": []}}
         with patch(
             "app.utils.agent_utils.update_messages",
             new_callable=AsyncMock,

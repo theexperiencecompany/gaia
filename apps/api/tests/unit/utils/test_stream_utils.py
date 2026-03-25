@@ -106,7 +106,7 @@ class TestExtractToolEntriesFromUpdate:
         new_callable=AsyncMock,
     )
     async def test_tool_call_without_id_skipped(self, mock_format: AsyncMock) -> None:
-        tc = {"id": None, "name": "search", "args": {}}
+        tc: dict[str, object] = {"id": None, "name": "search", "args": {}}
         msg = _make_ai_message([tc])
 
         result = await extract_tool_entries_from_update({"messages": [msg]}, set())

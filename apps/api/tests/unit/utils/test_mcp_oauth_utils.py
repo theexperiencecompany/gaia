@@ -783,7 +783,7 @@ class TestRevokeToken:
                 "https://auth.example.com/revoke",
                 token="test_token",
                 client_id="my_client",
-                client_secret="my_secret",
+                client_secret="my_secret",  # pragma: allowlist secret
             )
 
         # Verify Basic auth header was set
@@ -958,7 +958,7 @@ class TestIntrospectToken:
                 "https://auth.example.com/introspect",
                 token="test_token",
                 client_id="my_client",
-                client_secret="my_secret",
+                client_secret="my_secret",  # pragma: allowlist secret
             )
 
         call_kwargs = mock_client.post.call_args
@@ -1147,12 +1147,12 @@ class TestValidatePkceSupport:
         validate_pkce_support(config, "test-integration")
 
     def test_empty_list_raises(self) -> None:
-        config = {"code_challenge_methods_supported": []}
+        config: dict[str, object] = {"code_challenge_methods_supported": []}
         with pytest.raises(ValueError, match="does not advertise PKCE support"):
             validate_pkce_support(config, "test-integration")
 
     def test_missing_key_raises(self) -> None:
-        config = {}
+        config: dict[str, object] = {}
         with pytest.raises(ValueError, match="does not advertise PKCE support"):
             validate_pkce_support(config, "test-integration")
 

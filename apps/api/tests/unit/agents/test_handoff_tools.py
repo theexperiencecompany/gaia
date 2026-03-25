@@ -181,8 +181,8 @@ class TestGetSubagentById:
             "name": "My MCP",
             "source": "custom",
             "managed_by": "mcp",
-            "mcp_config": {"url": "http://example.com"},
-            "icon_url": "http://example.com/icon.png",
+            "mcp_config": {"url": "https://example.com"},
+            "icon_url": "https://example.com/icon.png",
         }
         with (
             patch(

@@ -962,7 +962,7 @@ class TestBlocksToMarkdown:
                 },
             },
         ]
-        assert blocks_to_markdown(blocks) == "Visible"
+        assert blocks_to_markdown(blocks) == "Visible"  # type: ignore[arg-type]
 
     def test_nesting(self) -> None:
         blocks = [
