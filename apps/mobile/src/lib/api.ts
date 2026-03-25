@@ -1,4 +1,4 @@
-import { getUserTimezone } from "@gaia/shared/api";
+import { getUserTimezone } from "@gaia/shared/api/timezone";
 import {
   clearAuthData,
   getAuthToken,

@@ -1,4 +1,4 @@
-import { getUserTimezone } from "@shared/api";
+import { getUserTimezone } from "@shared/api/timezone";
 import axios, { type InternalAxiosRequestConfig } from "axios";
 
 /**
