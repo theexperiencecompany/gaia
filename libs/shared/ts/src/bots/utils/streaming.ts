@@ -2,7 +2,7 @@
  * Shared streaming chat handler for all bot platforms.
  *
  * This module eliminates ~250 lines of duplicated streaming logic across
- * Discord, Slack, and Telegram bots. Each bot provides thin callbacks:
+ * Discord, Slack, Telegram, and WhatsApp bots. Each bot provides thin callbacks:
  *
  *   editMessage   - Update the "Thinking..." message with new content
  *   onAuthError   - Show auth URL when user isn't linked
