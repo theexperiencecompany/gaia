@@ -154,10 +154,10 @@ openUIActionDispatcher(event) → lookup DIRECT_HANDLERS[type] → call API dire
 
 Currently: backend sends `tool_data: [{tool_name: "todo_data", data: [...]}]` in SSE alongside the text response.
 
-Target: backend agent generates ONE unified response where structured data is embedded as OpenUI blocks inline with the text:
+Target: backend agent generates ONE unified response where structured data is embedded as OpenUI blocks inline with the text. **The agent's conversational tone and personality must not change.** OpenUI is additive — the agent still talks naturally, the UI appears as part of the response.
 
 ```
-Here are your todos for today:
+Sure! Here are your todos for today:
 
 :::openui
 root = TodoListCard(
@@ -169,8 +169,10 @@ root = TodoListCard(
 )
 :::
 
-You have 2 pending high-priority tasks.
+You've got a dentist call due today — want me to set a reminder?
 ```
+
+The text before and after the block keeps the agent's natural voice. The `:::openui` block is just structured data rendered as a component, not a replacement for the response.
 
 ### 3.3 Action Architecture (Hybrid — Option C)
 
@@ -532,8 +534,9 @@ else:
 - All optional fields must use `z.optional()`
 - Component must handle empty / partial data (empty array, null values) with a graceful empty state
 - No `useEffect` for data fetching — all data comes via props from OpenUI parser
-- "See more" or "Load more" buttons: use `continue_conversation` action with an explicit human-friendly message (e.g., `"Show more emails"`)
-- Max items to display: show top 10 by default. If dataset exceeds 10, show a "See all N" continue_conversation button. Do not stream 50+ item blocks.
+- **Large datasets use scrollable overflow** — if a list has many items, scroll within the component. No "See all N" buttons, no pagination. The LLM receives all data and formats it into the component; render everything as-is.
+- **Email list shows previews only** — same as the current `EmailComposeSection` display: subject, sender, snippet, date. Clicking triggers `continue_conversation` to fetch the full thread.
+- Data renders as it streams — components should show partial data gracefully during streaming (isStreaming=true) without layout shifts.
 
 ### 8.2 Write-Action Component Requirements
 
@@ -589,14 +592,18 @@ Every component must handle:
 
 ---
 
-## 11. Open Questions
+## 11. Resolved Decisions
 
-1. **Component granularity:** Should `EmailListCard` show a list of previews only (read-only), or should clicking one inline-expand the full thread? Inline expansion requires nested OpenUI state (non-trivial). Recommendation: keep it flat for Phase 1; clicking triggers `continue_conversation` to fetch the thread.
+The following were open questions, now resolved:
 
-2. **Multi-component responses:** Can one response have both `EmailListCard` AND a `CalendarListCard`? The fence parser supports multiple blocks. Backend prompt needs explicit guidance on when to combine vs. separate responses.
+1. **EmailListCard granularity:** Preview-only, same as current display. Subject, sender, snippet, date. Clicking triggers `continue_conversation` to let the agent fetch the full thread.
 
-3. **openuiChatLibrary evaluation:** The pre-built `openuiChatLibrary` from `@openuidev/react-ui` provides `FollowUpBlock`, `ListBlock`, `SectionBlock`. These could augment or partially replace the current `follow_up_actions` text button system. Worth evaluating before Phase 1 starts.
+2. **Multi-component responses:** Supported. Same way tool_data currently allows multiple entries per response (e.g., weather + calendar in the same message), a single response can have multiple `:::openui` blocks. The fence parser already handles this. Backend prompt should guide the LLM on when it's appropriate to combine.
 
-4. **Form field persistence:** If the user is editing an email compose form and the stream ends or they navigate away, the form state lives only in React. Should OpenUI form state be checkpointed to the chat store / IndexedDB?
+3. **Follow-up actions architecture:** Keep as-is. `follow_up_actions` text buttons remain the system for suggesting next steps. Do NOT replace with `openuiChatLibrary`'s `FollowUpBlock`.
 
-5. **Token budget for large datasets:** Decision needed before `TodoListCard` is shipped: cap at 10 items by default? How does the LLM know how many it received vs. how many it should show?
+4. **OpenUI form state persistence:** No changes needed. Tool data (including write-action form data passed as props) continues to be persisted in MongoDB (backend) and IndexedDB (frontend) exactly as it is today. No new persistence layer.
+
+5. **Token budget / large datasets:** No frontend cap. The LLM receives all data and decides what to format into the component. Components handle large lists with **scrollable overflow** — not pagination or truncation.
+
+6. **Agent personality:** CRITICAL constraint. The agent's natural, human conversational text must be preserved. OpenUI blocks appear **alongside** the text, not replacing it. The LLM should still talk naturally ("Here are your emails for today:") and the UI component follows inline — same as how tool_data currently renders below the text response. Never sacrifice the conversational quality of the response just to inject UI.
