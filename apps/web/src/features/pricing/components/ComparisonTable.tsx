@@ -248,6 +248,8 @@ export function ComparisonTable({
     },
   ];
 
+
+
   return (
     <div className="mx-auto w-full max-w-6xl py-16">
       <div className="mb-10 flex w-full flex-col items-center justify-center gap-2 text-white">

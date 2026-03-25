@@ -1,12 +1,16 @@
 """Unit tests for workflow_tasks ARQ worker."""
 
+from datetime import datetime, timezone
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from bson import ObjectId
 
+from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.workers.tasks.workflow_tasks import (
+    create_workflow_completion_notification,
     execute_workflow_by_id,
     execute_workflow_as_chat,
     process_workflow_generation_task,
@@ -749,7 +753,6 @@ class TestExecuteWorkflowAsChat:
 
     I/O boundaries mocked:
       - get_user_by_id
-      - get_user_selected_model
       - get_or_create_workflow_conversation
       - call_agent_silent  (the core agent invocation)
     """
@@ -772,7 +775,6 @@ class TestExecuteWorkflowAsChat:
     def _patch_io(
         self,
         user_data=None,
-        model_config=None,
         conversation_id="conv_abc",
         agent_response=("All done.", {}),
     ):
@@ -782,11 +784,6 @@ class TestExecuteWorkflowAsChat:
                 "app.workers.tasks.workflow_tasks.get_user_by_id",
                 new_callable=AsyncMock,
                 return_value=user_data or {"user_id": "user_abc", "timezone": "UTC"},
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=model_config,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
@@ -810,11 +807,6 @@ class TestExecuteWorkflowAsChat:
                 "app.workers.tasks.workflow_tasks.get_user_by_id",
                 new_callable=AsyncMock,
                 return_value={"user_id": workflow.user_id, "timezone": "UTC"},
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
@@ -860,11 +852,6 @@ class TestExecuteWorkflowAsChat:
                 return_value={"user_id": workflow.user_id, "timezone": "UTC"},
             ),
             patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
                 return_value={"conversation_id": "conv_1"},
@@ -896,11 +883,6 @@ class TestExecuteWorkflowAsChat:
                 "app.workers.tasks.workflow_tasks.get_user_by_id",
                 new_callable=AsyncMock,
                 return_value={"user_id": workflow.user_id, "timezone": "UTC"},
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
@@ -935,11 +917,6 @@ class TestExecuteWorkflowAsChat:
                 "app.workers.tasks.workflow_tasks.get_user_by_id",
                 new_callable=AsyncMock,
                 side_effect=ConnectionError("DB unreachable"),
-            ),
-            patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
@@ -977,11 +954,6 @@ class TestExecuteWorkflowAsChat:
                 return_value={"user_id": workflow.user_id, "timezone": "UTC"},
             ),
             patch(
-                "app.workers.tasks.workflow_tasks.get_user_selected_model",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
                 return_value={"conversation_id": "conv_steps"},
@@ -1001,3 +973,1135 @@ class TestExecuteWorkflowAsChat:
         step_ids = [s["id"] for s in request_arg.selectedWorkflow.steps]
         assert "s1" in step_ids
         assert "s2" in step_ids
+
+    async def test_user_data_none_falls_back_to_utc(self):
+        """When get_user_by_id returns None, the function uses a minimal
+        user_data dict and UTC timezone."""
+        workflow = self._make_workflow()
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": "conv_none"},
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=("None user result", {}),
+            ) as mock_call_agent,
+        ):
+            messages = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+        assert len(messages) == 2
+        assert messages[1].response == "None user result"
+        call_user = mock_call_agent.call_args.kwargs["user"]
+        assert call_user["user_id"] == workflow.user_id
+
+    async def test_tool_data_from_agent_included_in_bot_message(self):
+        """Tool data returned by call_agent_silent is unpacked into the bot message."""
+        workflow = self._make_workflow()
+        tool_entry = {
+            "tool_name": "search",
+            "data": {"query": "test"},
+            "timestamp": "2026-03-20T10:00:00Z",
+        }
+        agent_tool_data = {"tool_data": [tool_entry]}
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": workflow.user_id, "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": "conv_tools"},
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=("With tools", agent_tool_data),
+            ),
+        ):
+            messages = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+        bot_msg = messages[1]
+        assert bot_msg.tool_data is not None
+        assert len(bot_msg.tool_data) == 1
+        assert bot_msg.tool_data[0]["tool_name"] == "search"
+
+    async def test_user_message_has_selected_workflow(self):
+        """The user message carries the selectedWorkflow data."""
+        workflow = self._make_workflow()
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": workflow.user_id, "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": "conv_usermsg"},
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=("OK", {}),
+            ),
+        ):
+            messages = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+        user_msg = messages[0]
+        assert user_msg.type == "user"
+        assert user_msg.selectedWorkflow is not None
+        assert user_msg.selectedWorkflow.id == workflow.id
+
+    async def test_bot_message_timestamp_after_user_message(self):
+        """Bot message timestamp must be strictly after user message timestamp."""
+        workflow = self._make_workflow()
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": workflow.user_id, "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": "conv_ts"},
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=("Timestamped", {}),
+            ),
+        ):
+            messages = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+        user_date = datetime.fromisoformat(messages[0].date)
+        bot_date = datetime.fromisoformat(messages[1].date)
+        assert bot_date > user_date
+
+
+# ---------------------------------------------------------------------------
+# create_workflow_completion_notification
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCreateWorkflowCompletionNotification:
+    """Tests for create_workflow_completion_notification."""
+
+    def _make_workflow(self, workflow_id=None, title="Test Workflow"):
+        wf = MagicMock()
+        wf.id = workflow_id or str(uuid4())
+        wf.title = title
+        return wf
+
+    def _make_messages(self, bot_response="All done."):
+        user_msg = MagicMock()
+        user_msg.type = "user"
+        bot_msg = MagicMock()
+        bot_msg.type = "bot"
+        bot_msg.response = bot_response
+        return [user_msg, bot_msg]
+
+    async def test_stores_messages_and_returns_conversation(self):
+        """Happy path: messages stored, notification sent, conversation returned."""
+        workflow = self._make_workflow()
+        messages = self._make_messages()
+        conv = {"conversation_id": "conv_123"}
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value=conv,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ) as mock_store,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_notif.create_notification = AsyncMock()
+            result = await create_workflow_completion_notification(
+                workflow, messages, "user_abc"
+            )
+
+        assert result == conv
+        mock_store.assert_awaited_once_with(
+            conversation_id="conv_123",
+            workflow_execution_messages=messages,
+            user_id="user_abc",
+        )
+        mock_notif.create_notification.assert_awaited_once()
+
+    async def test_empty_execution_messages_skips_storage(self):
+        """When execution_messages is empty, storage is skipped."""
+        workflow = self._make_workflow()
+        conv = {"conversation_id": "conv_empty"}
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value=conv,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ) as mock_store,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_notif.create_notification = AsyncMock()
+            result = await create_workflow_completion_notification(
+                workflow, [], "user_abc"
+            )
+
+        assert result == conv
+        mock_store.assert_not_awaited()
+
+    async def test_none_execution_messages_skips_storage(self):
+        """When execution_messages is None (falsy), storage is skipped."""
+        workflow = self._make_workflow()
+        conv = {"conversation_id": "conv_none"}
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value=conv,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ) as mock_store,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_notif.create_notification = AsyncMock()
+            result = await create_workflow_completion_notification(
+                workflow, None, "user_abc"
+            )
+
+        assert result == conv
+        mock_store.assert_not_awaited()
+
+    async def test_storage_failure_re_raises(self):
+        """If message storage fails, the exception is re-raised."""
+        workflow = self._make_workflow()
+        messages = self._make_messages()
+        conv = {"conversation_id": "conv_fail"}
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value=conv,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("MongoDB write error"),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="MongoDB write error"):
+                await create_workflow_completion_notification(
+                    workflow, messages, "user_abc"
+                )
+
+    async def test_notification_failure_does_not_raise(self):
+        """Notification sending is best-effort — failures are swallowed."""
+        workflow = self._make_workflow()
+        messages = self._make_messages()
+        conv = {"conversation_id": "conv_notif_fail"}
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value=conv,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_notif.create_notification = AsyncMock(
+                side_effect=RuntimeError("Notification service down")
+            )
+            result = await create_workflow_completion_notification(
+                workflow, messages, "user_abc"
+            )
+
+        # Should still return the conversation despite notification failure
+        assert result == conv
+
+    async def test_bot_response_split_into_message_parts(self):
+        """Bot response with <NEW_MESSAGE_BREAK> gets split into parts
+        for the notification rich_content."""
+        workflow = self._make_workflow()
+        messages = self._make_messages(
+            "Part 1<NEW_MESSAGE_BREAK>Part 2<NEW_MESSAGE_BREAK>Part 3"
+        )
+        conv = {"conversation_id": "conv_parts"}
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value=conv,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_notif.create_notification = AsyncMock()
+            await create_workflow_completion_notification(
+                workflow, messages, "user_abc"
+            )
+
+        notif_call = mock_notif.create_notification.call_args[0][0]
+        assert notif_call.content.rich_content["messages"] == [
+            "Part 1",
+            "Part 2",
+            "Part 3",
+        ]
+
+    async def test_no_bot_messages_uses_empty_response(self):
+        """When there are no bot messages, the notification uses empty string."""
+        workflow = self._make_workflow()
+        user_msg = MagicMock()
+        user_msg.type = "user"
+        messages = [user_msg]
+        conv = {"conversation_id": "conv_nobot"}
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value=conv,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_notif.create_notification = AsyncMock()
+            await create_workflow_completion_notification(
+                workflow, messages, "user_abc"
+            )
+
+        notif_call = mock_notif.create_notification.call_args[0][0]
+        assert notif_call.content.rich_content["messages"] == []
+
+    async def test_notification_contains_redirect_to_conversation(self):
+        """Notification includes a redirect action to the conversation URL."""
+        workflow = self._make_workflow()
+        messages = self._make_messages()
+        conv_id = "conv_redirect_test"
+        conv = {"conversation_id": conv_id}
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value=conv,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_notif.create_notification = AsyncMock()
+            await create_workflow_completion_notification(
+                workflow, messages, "user_abc"
+            )
+
+        notif_call = mock_notif.create_notification.call_args[0][0]
+        action = notif_call.content.actions[0]
+        assert f"/c/{conv_id}" in action.config.redirect.url
+
+
+# ---------------------------------------------------------------------------
+# execute_workflow_by_id — additional coverage for error notification branches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestExecuteWorkflowByIdNotifications:
+    """Additional tests covering the error notification branches in execute_workflow_by_id."""
+
+    @pytest.fixture
+    def ctx(self) -> dict:
+        return {}
+
+    def _make_error_patches(self, workflow, error):
+        """Build the common with-block patches for an error scenario.
+
+        Returns individual patch objects so they can be used in a `with (...):`
+        block without needing iterable unpacking.
+        """
+        mock_scheduler_cls = MagicMock()
+        mock_scheduler = AsyncMock()
+        mock_scheduler.get_task = AsyncMock(return_value=workflow)
+        mock_scheduler_cls.return_value = mock_scheduler
+
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        p_scheduler = patch(
+            "app.workers.tasks.workflow_tasks.WorkflowScheduler",
+            mock_scheduler_cls,
+        )
+        p_chat = patch(
+            "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+            AsyncMock(side_effect=error),
+        )
+        p_create = patch(
+            "app.services.workflow.execution_service.create_execution",
+            AsyncMock(return_value=mock_execution),
+        )
+        p_complete = patch(
+            "app.services.workflow.execution_service.complete_execution",
+            AsyncMock(),
+        )
+        return p_scheduler, p_chat, p_create, p_complete
+
+    async def test_rate_limit_with_reset_time_sends_upgrade_notification(self, ctx):
+        """RateLimitExceededException with reset_time sends a notification
+        mentioning when the limit resets and prompting upgrade."""
+        workflow = _make_workflow()
+        reset_time = datetime(2026, 3, 21, 12, 0, 0, tzinfo=timezone.utc)
+        error = RateLimitExceededException(
+            feature="trigger_workflow_executions",
+            plan_required="pro",
+            reset_time=reset_time,
+        )
+
+        p_sched, p_chat, p_create, p_complete = self._make_error_patches(
+            workflow, error
+        )
+
+        with (
+            p_sched,
+            p_chat,
+            p_create,
+            p_complete,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            mock_notif.create_notification = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "Error executing workflow" in result
+        mock_notif.create_notification.assert_awaited_once()
+        notif_req = mock_notif.create_notification.call_args[0][0]
+        assert "Resets" in notif_req.content.body
+        assert "PRO" in notif_req.content.body
+        # Should include an upgrade action
+        assert notif_req.content.actions is not None
+        assert len(notif_req.content.actions) == 1
+        assert "Upgrade" in notif_req.content.actions[0].label
+
+    async def test_rate_limit_without_reset_time_sends_plan_gated_notification(
+        self, ctx
+    ):
+        """RateLimitExceededException without reset_time sends a plan-gated message."""
+        workflow = _make_workflow()
+        error = RateLimitExceededException(
+            feature="trigger_workflow_executions",
+            plan_required="pro",
+        )
+
+        p_sched, p_chat, p_create, p_complete = self._make_error_patches(
+            workflow, error
+        )
+
+        with (
+            p_sched,
+            p_chat,
+            p_create,
+            p_complete,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            mock_notif.create_notification = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "Error executing workflow" in result
+        notif_req = mock_notif.create_notification.call_args[0][0]
+        assert "not available on your current plan" in notif_req.content.body
+        assert "PRO" in notif_req.content.body
+
+    async def test_rate_limit_with_invalid_reset_time_format_falls_back(self, ctx):
+        """When reset_time string in the detail dict is unparseable,
+        the fallback body is used (no Resets line)."""
+        workflow = _make_workflow()
+        # Create a RateLimitExceededException and manually set an invalid reset_time
+        error = RateLimitExceededException(
+            feature="trigger_workflow_executions",
+            plan_required="pro",
+        )
+        # Manually inject an invalid reset_time string into the detail dict
+        error.detail["reset_time"] = "not-a-valid-date"
+
+        p_sched, p_chat, p_create, p_complete = self._make_error_patches(
+            workflow, error
+        )
+
+        with (
+            p_sched,
+            p_chat,
+            p_create,
+            p_complete,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            mock_notif.create_notification = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "Error executing workflow" in result
+        notif_req = mock_notif.create_notification.call_args[0][0]
+        # Falls back to the version without the reset time formatting
+        assert "you've used all your workflow executions" in notif_req.content.body
+
+    async def test_generic_error_sends_plain_failure_notification(self, ctx):
+        """Non-rate-limit errors produce a plain failure notification."""
+        workflow = _make_workflow()
+        error = ValueError("Something broke")
+
+        p_sched, p_chat, p_create, p_complete = self._make_error_patches(
+            workflow, error
+        )
+
+        with (
+            p_sched,
+            p_chat,
+            p_create,
+            p_complete,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            mock_notif.create_notification = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "Error executing workflow" in result
+        notif_req = mock_notif.create_notification.call_args[0][0]
+        assert "encountered an error" in notif_req.content.body
+        # No upgrade action for generic errors
+        assert notif_req.content.actions is None
+
+    async def test_notification_failure_during_error_is_swallowed(self, ctx):
+        """If notification_service.create_notification fails during error handling,
+        the exception is swallowed and the error result is still returned."""
+        workflow = _make_workflow()
+        error = ValueError("Original error")
+
+        p_sched, p_chat, p_create, p_complete = self._make_error_patches(
+            workflow, error
+        )
+
+        with (
+            p_sched,
+            p_chat,
+            p_create,
+            p_complete,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service",
+            ) as mock_notif,
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            mock_notif.create_notification = AsyncMock(
+                side_effect=RuntimeError("Notification service down")
+            )
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "Error executing workflow" in result
+
+    async def test_complete_execution_failure_during_error_is_swallowed(self, ctx):
+        """If complete_execution fails during error handling, it doesn't crash."""
+        workflow = _make_workflow()
+
+        mock_scheduler_cls = MagicMock()
+        mock_scheduler = AsyncMock()
+        mock_scheduler.get_task = AsyncMock(return_value=workflow)
+        mock_scheduler_cls.return_value = mock_scheduler
+
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
+                mock_scheduler_cls,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(side_effect=RuntimeError("LLM crash")),
+            ),
+            patch(
+                "app.services.workflow.execution_service.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.services.workflow.execution_service.complete_execution",
+                AsyncMock(side_effect=RuntimeError("DB write failure")),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service"
+            ) as mock_notif,
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            mock_notif.create_notification = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "Error executing workflow" in result
+
+    async def test_increment_execution_count_failure_during_error_is_swallowed(
+        self, ctx
+    ):
+        """If increment_execution_count fails during error handling, it doesn't crash."""
+        workflow = _make_workflow()
+
+        mock_scheduler_cls = MagicMock()
+        mock_scheduler = AsyncMock()
+        mock_scheduler.get_task = AsyncMock(return_value=workflow)
+        mock_scheduler_cls.return_value = mock_scheduler
+
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
+                mock_scheduler_cls,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(side_effect=RuntimeError("LLM crash")),
+            ),
+            patch(
+                "app.services.workflow.execution_service.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.services.workflow.execution_service.complete_execution",
+                AsyncMock(),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service"
+            ) as mock_notif,
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock(
+                side_effect=RuntimeError("Stats DB down")
+            )
+            mock_notif.create_notification = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "Error executing workflow" in result
+
+    async def test_no_execution_id_skips_complete_execution_on_error(self, ctx):
+        """When create_execution itself fails, execution_id is None
+        and complete_execution is not called."""
+        workflow = _make_workflow()
+
+        mock_scheduler_cls = MagicMock()
+        mock_scheduler = AsyncMock()
+        mock_scheduler.get_task = AsyncMock(return_value=workflow)
+        mock_scheduler_cls.return_value = mock_scheduler
+
+        mock_complete_exec = AsyncMock()
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
+                mock_scheduler_cls,
+            ),
+            patch(
+                "app.services.workflow.execution_service.create_execution",
+                AsyncMock(side_effect=RuntimeError("DB unavailable")),
+            ),
+            patch(
+                "app.services.workflow.execution_service.complete_execution",
+                mock_complete_exec,
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.notification_service"
+            ) as mock_notif,
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            mock_notif.create_notification = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "Error executing workflow" in result
+        # complete_execution should NOT have been called since execution_id is None
+        mock_complete_exec.assert_not_awaited()
+
+    async def test_conversation_id_none_when_completion_notification_returns_none(
+        self, ctx
+    ):
+        """When create_workflow_completion_notification returns None,
+        complete_execution receives conversation_id=None."""
+        workflow = _make_workflow()
+
+        mock_scheduler_cls = MagicMock()
+        mock_scheduler = AsyncMock()
+        mock_scheduler.get_task = AsyncMock(return_value=workflow)
+        mock_scheduler_cls.return_value = mock_scheduler
+
+        mock_execution = MagicMock()
+        mock_execution.execution_id = str(uuid4())
+
+        mock_complete_exec = AsyncMock()
+
+        bot_msg = MagicMock()
+        bot_msg.type = "bot"
+        bot_msg.response = "Done"
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.WorkflowScheduler",
+                mock_scheduler_cls,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(return_value=[bot_msg]),
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.create_workflow_completion_notification",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.services.workflow.execution_service.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.services.workflow.execution_service.complete_execution",
+                mock_complete_exec,
+            ),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id)
+
+        assert "executed successfully" in result
+        mock_complete_exec.assert_awaited_once()
+        call_kwargs = mock_complete_exec.call_args.kwargs
+        assert call_kwargs["conversation_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# process_workflow_generation_task — additional coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestProcessWorkflowGenerationTaskAdditional:
+    """Additional edge-case tests for process_workflow_generation_task."""
+
+    @pytest.fixture
+    def ctx(self) -> dict:
+        return {}
+
+    async def test_workflow_created_with_no_steps_raises_value_error(self, ctx):
+        """If workflow is created but has zero steps, a ValueError is raised."""
+        todo_id = str(ObjectId())
+        user_id = "user_abc"
+        workflow = _make_workflow(user_id=user_id)
+        # Override steps to empty list directly (the helper uses `or` which
+        # would replace [] with a default step)
+        workflow.steps = []
+        workflow.error_message = "LLM returned empty plan"
+
+        with (
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager"
+            ) as mock_ws_mgr,
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
+            mock_ws = AsyncMock()
+            mock_ws.broadcast_to_user = AsyncMock()
+            mock_ws_mgr.return_value = mock_ws
+
+            with pytest.raises(ValueError, match="has no steps"):
+                await process_workflow_generation_task(
+                    ctx, todo_id, user_id, "Empty Workflow"
+                )
+
+    async def test_workflow_created_no_steps_error_message_none(self, ctx):
+        """If workflow has no steps and error_message is None, 'unknown error' is used."""
+        todo_id = str(ObjectId())
+        user_id = "user_abc"
+        workflow = _make_workflow(user_id=user_id)
+        workflow.steps = []
+        workflow.error_message = None
+
+        with (
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager"
+            ) as mock_ws_mgr,
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
+            mock_ws = AsyncMock()
+            mock_ws.broadcast_to_user = AsyncMock()
+            mock_ws_mgr.return_value = mock_ws
+
+            with pytest.raises(ValueError, match="unknown error"):
+                await process_workflow_generation_task(
+                    ctx, todo_id, user_id, "No Steps"
+                )
+
+    async def test_websocket_broadcast_failure_on_success_does_not_raise(self, ctx):
+        """When the websocket broadcast fails during the success path,
+        the function still returns success."""
+        todo_id = "507f1f77bcf86cd799439014"
+        user_id = "user_abc"
+        workflow = _make_workflow(user_id=user_id)
+
+        mock_todo_result = MagicMock()
+        mock_todo_result.modified_count = 1
+
+        mock_ws = MagicMock()
+        mock_ws.broadcast_to_user = AsyncMock(
+            side_effect=RuntimeError("WebSocket error")
+        )
+
+        with (
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
+            patch("app.workers.tasks.workflow_tasks.TodoService") as mock_todo_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager",
+                return_value=mock_ws,
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
+            mock_todos.update_one = AsyncMock(return_value=mock_todo_result)
+            mock_todo_svc._invalidate_cache = AsyncMock()
+
+            result = await process_workflow_generation_task(
+                ctx, todo_id, user_id, "Test Todo"
+            )
+
+        assert "Successfully generated" in result
+
+    async def test_clear_flag_failure_on_exception_does_not_mask_error(self, ctx):
+        """When clear_workflow_generating_flag fails during exception handling,
+        the original exception is still raised."""
+        todo_id = str(ObjectId())
+        user_id = "user_abc"
+
+        with (
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager"
+            ) as mock_ws_mgr,
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
+                AsyncMock(side_effect=RuntimeError("Redis down")),
+            ),
+        ):
+            mock_wf_svc.create_workflow = AsyncMock(
+                side_effect=ValueError("Original error")
+            )
+            mock_ws = AsyncMock()
+            mock_ws.broadcast_to_user = AsyncMock()
+            mock_ws_mgr.return_value = mock_ws
+
+            with pytest.raises(ValueError, match="Original error"):
+                await process_workflow_generation_task(
+                    ctx, todo_id, user_id, "Failing Todo"
+                )
+
+    async def test_websocket_failure_event_broadcast_fails_gracefully(self, ctx):
+        """When the failure websocket broadcast itself fails, the original
+        exception is still raised."""
+        todo_id = str(ObjectId())
+        user_id = "user_abc"
+
+        mock_ws = MagicMock()
+        mock_ws.broadcast_to_user = AsyncMock(
+            side_effect=RuntimeError("WS broadcast error")
+        )
+
+        with (
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager",
+                return_value=mock_ws,
+            ),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.create_workflow = AsyncMock(
+                side_effect=RuntimeError("DB error")
+            )
+
+            with pytest.raises(RuntimeError, match="DB error"):
+                await process_workflow_generation_task(
+                    ctx, todo_id, user_id, "Todo title"
+                )
+
+    async def test_description_with_content_includes_details_section(self, ctx):
+        """When description is provided, the prompt contains a **Details:** section."""
+        todo_id = "507f1f77bcf86cd799439015"
+        user_id = "user_abc"
+        workflow = _make_workflow(user_id=user_id)
+
+        mock_todo_result = MagicMock()
+        mock_todo_result.modified_count = 1
+
+        captured_requests = []
+
+        async def capture_create(request, uid, **kwargs):
+            captured_requests.append(request)
+            return workflow
+
+        with (
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
+            patch("app.workers.tasks.workflow_tasks.TodoService") as mock_todo_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager"
+            ) as mock_ws_mgr,
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.create_workflow = AsyncMock(side_effect=capture_create)
+            mock_todos.update_one = AsyncMock(return_value=mock_todo_result)
+            mock_todo_svc._invalidate_cache = AsyncMock()
+            mock_ws = AsyncMock()
+            mock_ws.broadcast_to_user = AsyncMock()
+            mock_ws_mgr.return_value = mock_ws
+
+            await process_workflow_generation_task(
+                ctx, todo_id, user_id, "Buy groceries", description="Milk, eggs, bread"
+            )
+
+        assert len(captured_requests) == 1
+        assert "**Details:** Milk, eggs, bread" in captured_requests[0].prompt
+
+    async def test_workflow_with_no_id_raises(self, ctx):
+        """If workflow.id is falsy after creation, it raises ValueError."""
+        todo_id = str(ObjectId())
+        user_id = "user_abc"
+        workflow = MagicMock()
+        workflow.id = None
+
+        with (
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager"
+            ) as mock_ws_mgr,
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
+                AsyncMock(),
+            ),
+        ):
+            mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
+            mock_ws = AsyncMock()
+            mock_ws.broadcast_to_user = AsyncMock()
+            mock_ws_mgr.return_value = mock_ws
+
+            with pytest.raises(ValueError, match="Workflow generation failed"):
+                await process_workflow_generation_task(
+                    ctx, todo_id, user_id, "Todo title"
+                )
+
+
+# ---------------------------------------------------------------------------
+# generate_workflow_steps — additional coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGenerateWorkflowStepsAdditional:
+    """Additional tests for generate_workflow_steps."""
+
+    @pytest.fixture
+    def ctx(self) -> dict:
+        return {}
+
+    async def test_get_workflow_returns_none_no_websocket_sent(self, ctx):
+        """When get_workflow returns None, no websocket event is sent."""
+        workflow_id = str(uuid4())
+        user_id = "user_abc"
+
+        mock_ws = AsyncMock()
+        mock_ws.broadcast_to_user = AsyncMock()
+
+        with (
+            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager",
+                return_value=mock_ws,
+            ),
+        ):
+            mock_wf_svc._generate_workflow_steps = AsyncMock()
+            mock_wf_svc.get_workflow = AsyncMock(return_value=None)
+
+            result = await generate_workflow_steps(ctx, workflow_id, user_id)
+
+        assert "Successfully generated steps" in result
+        mock_ws.broadcast_to_user.assert_not_awaited()
+
+    async def test_todo_workflow_without_source_todo_id_no_websocket(self, ctx):
+        """A todo workflow with source_todo_id=None does not trigger websocket."""
+        workflow_id = str(uuid4())
+        user_id = "user_abc"
+        workflow = _make_workflow(
+            workflow_id=workflow_id,
+            is_todo_workflow=True,
+            source_todo_id=None,
+        )
+
+        mock_ws = AsyncMock()
+        mock_ws.broadcast_to_user = AsyncMock()
+
+        with (
+            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager",
+                return_value=mock_ws,
+            ),
+        ):
+            mock_wf_svc._generate_workflow_steps = AsyncMock()
+            mock_wf_svc.get_workflow = AsyncMock(return_value=workflow)
+
+            result = await generate_workflow_steps(ctx, workflow_id, user_id)
+
+        assert "Successfully generated steps" in result
+        mock_ws.broadcast_to_user.assert_not_awaited()
+
+    async def test_websocket_failure_on_todo_workflow_does_not_raise(self, ctx):
+        """When the WebSocket broadcast fails for a todo workflow,
+        the function still returns success."""
+        workflow_id = str(uuid4())
+        user_id = "user_abc"
+        todo_id = str(uuid4())
+        workflow = _make_workflow(
+            workflow_id=workflow_id,
+            is_todo_workflow=True,
+            source_todo_id=todo_id,
+        )
+
+        mock_ws = AsyncMock()
+        mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("WS error"))
+
+        with (
+            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_websocket_manager",
+                return_value=mock_ws,
+            ),
+        ):
+            mock_wf_svc._generate_workflow_steps = AsyncMock()
+            mock_wf_svc.get_workflow = AsyncMock(return_value=workflow)
+
+            result = await generate_workflow_steps(ctx, workflow_id, user_id)
+
+        assert "Successfully generated steps" in result
+
+
+# ---------------------------------------------------------------------------
+# regenerate_workflow_steps — additional coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRegenerateWorkflowStepsAdditional:
+    """Additional tests for regenerate_workflow_steps."""
+
+    @pytest.fixture
+    def ctx(self) -> dict:
+        return {}
+
+    async def test_force_different_tools_false_passed_through(self, ctx):
+        """When force_different_tools=False, the service gets False."""
+        workflow_id = str(uuid4())
+        user_id = "user_abc"
+
+        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
+            mock_wf_svc.regenerate_workflow_steps = AsyncMock()
+            await regenerate_workflow_steps(
+                ctx, workflow_id, user_id, "reason", force_different_tools=False
+            )
+
+        mock_wf_svc.regenerate_workflow_steps.assert_awaited_once_with(
+            workflow_id, user_id, "reason", False
+        )

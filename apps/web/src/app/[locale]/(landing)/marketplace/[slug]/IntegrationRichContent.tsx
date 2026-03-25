@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ArrowRight02Icon, ArrowRightIcon, CheckmarkCircleIcon } from "@icons";
+import { ArrowRight02Icon, CheckmarkCircleIcon } from "@icons";
 import Link from "next/link";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";

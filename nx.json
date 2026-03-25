@@ -26,7 +26,7 @@
     },
     "lint": {
       "cache": true,
-      "inputs": ["default", "^production"]
+      "inputs": ["default", "{workspaceRoot}/biome.json"]
     },
     "lint:fix": {
       "cache": false

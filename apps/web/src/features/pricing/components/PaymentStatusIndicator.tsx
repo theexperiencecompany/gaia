@@ -149,13 +149,7 @@ export function PaymentStatusSteps({
             <React.Fragment key={step.id}>
               <div className="flex flex-col items-center gap-2">
                 <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                    step.isCompleted
-                      ? "bg-green-500 text-white"
-                      : step.isActive
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200 text-gray-500"
-                  }`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${step.isCompleted ? "bg-green-500 text-white" : step.isActive ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-500"}`}
                 >
                   {step.isActive && !step.isCompleted ? (
                     <Spinner size="sm" className="h-4 w-4" />
@@ -164,22 +158,14 @@ export function PaymentStatusSteps({
                   )}
                 </div>
                 <span
-                  className={`text-center text-xs font-medium ${
-                    step.isCompleted
-                      ? "text-green-600"
-                      : step.isActive
-                        ? "text-blue-600"
-                        : "text-gray-500"
-                  }`}
+                  className={`text-center text-xs font-medium ${step.isCompleted ? "text-green-600" : step.isActive ? "text-blue-600" : "text-gray-500"}`}
                 >
                   {step.label}
                 </span>
               </div>
               {index < steps.length - 1 && (
                 <div
-                  className={`mx-2 h-0.5 flex-1 ${
-                    step.isCompleted ? "bg-green-500" : "bg-gray-200"
-                  }`}
+                  className={`mx-2 h-0.5 flex-1 ${step.isCompleted ? "bg-green-500" : "bg-gray-200"}`}
                 />
               )}
             </React.Fragment>

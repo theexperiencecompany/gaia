@@ -208,7 +208,11 @@ const identifyDeletedConversations = (
 
 export const batchSyncConversations = async (): Promise<void> => {
   // CRITICAL: Skip sync if there's an active stream to prevent data corruption
-  if (streamState.isStreaming()) return;
+  if (streamState.isStreaming()) {
+    console.debug("[SyncService] Skipped — stream in progress");
+    return;
+  }
+  console.debug("[SyncService] Starting batch sync (stream not active)");
 
   try {
     const [remoteConversations, localConversations] = await Promise.all([
@@ -276,6 +280,33 @@ export const batchSyncConversations = async (): Promise<void> => {
           await db.getMessagesForConversation(conversationId);
         const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
 
+        // DEBUG: detect sync overwriting bot messages with empty content
+        for (const merged of mergedMessages) {
+          if (merged.role === "assistant") {
+            const local = localMessages.find((m) => m.id === merged.id);
+            if (local?.content && !merged.content) {
+              console.warn(
+                `[SyncService] ⚠️ SYNC OVERWRITING bot message ${merged.id} — local has content (${local.content.length} chars), merged is EMPTY. This is the bug!`,
+                {
+                  conversationId,
+                  localStatus: local.status,
+                  mergedStatus: merged.status,
+                },
+              );
+            }
+            if (
+              local?.content &&
+              merged.content &&
+              local.content.length > merged.content.length
+            ) {
+              console.warn(
+                `[SyncService] ⚠️ SYNC SHRINKING bot message ${merged.id} — local: ${local.content.length} chars, merged: ${merged.content.length} chars`,
+                { conversationId },
+              );
+            }
+          }
+        }
+
         await Promise.allSettled([
           db.putConversation(mappedConversation),
           messages.length > 0
@@ -296,6 +327,11 @@ export const batchSyncConversations = async (): Promise<void> => {
 export const syncSingleConversation = async (
   conversationId: string,
 ): Promise<void> => {
+  // Skip sync if streaming or pending save to prevent overwriting in-flight data
+  if (streamState.shouldBlockSync(conversationId)) {
+    return;
+  }
+
   try {
     // Use batch sync with a single conversation item
     // Sending undefined for last_updated forces backend to return the full conversation

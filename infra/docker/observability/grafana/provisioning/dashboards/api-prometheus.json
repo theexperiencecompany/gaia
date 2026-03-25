@@ -161,7 +161,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "100 * sum(rate(http_requests_total{job=\"gaia-api\", status_code=~\"5..\"}[$__rate_interval])) / sum(rate(http_requests_total{job=\"gaia-api\"}[$__rate_interval]))",
+          "expr": "100 * sum(rate(http_requests_total{job=\"gaia-api\", status=~\"5..\"}[$__rate_interval])) / sum(rate(http_requests_total{job=\"gaia-api\"}[$__rate_interval]))",
           "legendFormat": "5xx %",
           "refId": "A"
         }
@@ -297,7 +297,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(http_requests_total{job=\"gaia-api\", status_code=~\"4..\"}[$__rate_interval]))",
+          "expr": "sum(rate(http_requests_total{job=\"gaia-api\", status=~\"4..\"}[$__rate_interval]))",
           "legendFormat": "4xx/s",
           "refId": "A"
         }
@@ -389,8 +389,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (status_code) (rate(http_requests_total{job=\"gaia-api\"}[$__rate_interval]))",
-          "legendFormat": "{{status_code}}",
+          "expr": "sum by (status) (rate(http_requests_total{job=\"gaia-api\"}[$__rate_interval]))",
+          "legendFormat": "{{status}}",
           "refId": "A"
         }
       ],
@@ -623,7 +623,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (handler) (rate(http_requests_total{job=\"gaia-api\"}[$__range])))",
+          "expr": "topk(10, sum by (handler) (rate(http_requests_total{job=\"gaia-api\", handler!~\"/metrics|/health|/favicon.ico\"}[$__range])))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{handler}}",
@@ -730,7 +730,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, histogram_quantile(0.95, sum by (handler, le) (rate(http_request_duration_seconds_bucket{job=\"gaia-api\"}[$__range]))))",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (handler, le) (rate(http_request_duration_seconds_bucket{job=\"gaia-api\", handler!~\"/metrics|/health|/favicon.ico\"}[$__range]))))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{handler}}",
@@ -835,7 +835,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(5, histogram_quantile(0.95, sum by (handler, le) (rate(http_request_duration_seconds_bucket{job=\"gaia-api\"}[$__rate_interval]))))",
+          "expr": "topk(5, histogram_quantile(0.95, sum by (handler, le) (rate(http_request_duration_seconds_bucket{job=\"gaia-api\", handler!~\"/metrics|/health|/favicon.ico\"}[$__rate_interval]))))",
           "legendFormat": "{{handler}}",
           "refId": "A"
         }

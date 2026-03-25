@@ -5,9 +5,9 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { inAppNotificationsApi } from "@/features/notifications/api/inapp-notifications-api";
 import { wsManager } from "@/lib/websocket-client";
 import { WS_EVENTS } from "@/lib/websocket-events";
-import { inAppNotificationsApi } from "../api";
 import {
   type InAppNotification,
   InAppNotificationStatus,

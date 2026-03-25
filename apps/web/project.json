@@ -48,7 +48,7 @@
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "inputs": ["default", "{workspaceRoot}/biome.json", "^production"]
+      "inputs": ["default", "{workspaceRoot}/biome.json"]
     },
     "lint:fix": {
       "executor": "nx:run-commands",

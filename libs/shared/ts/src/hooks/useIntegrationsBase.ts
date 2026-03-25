@@ -12,8 +12,7 @@ export const IntegrationQueryKeys = {
     params
       ? ([...IntegrationQueryKeys.all, "community", params] as const)
       : ([...IntegrationQueryKeys.all, "community"] as const),
-  userIntegrations: () =>
-    [...IntegrationQueryKeys.all, "user"] as const,
+  userIntegrations: () => [...IntegrationQueryKeys.all, "user"] as const,
 };
 
 export interface IntegrationStatusDisplay {
@@ -79,4 +78,3 @@ export function getIntegrationDisplayStatus(
       return { label: "Unknown", color: "gray" };
   }
 }
-

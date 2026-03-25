@@ -21,13 +21,11 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatInput } from "@/components/ui/chat-input";
 import { Text } from "@/components/ui/text";
-import {
-  ChatLayout,
-  ChatMessage,
-  type Message,
-  useChat,
-  useChatContext,
-} from "@/features/chat";
+import type { Message } from "@/features/chat/api/chat-api";
+import { ChatMessage } from "@/features/chat/components/chat/chat-message";
+import { ChatLayout } from "@/features/chat/components/chat-layout";
+import { useChat } from "@/features/chat/hooks/use-chat";
+import { useChatContext } from "@/features/chat/hooks/use-chat-context";
 import { useResponsive } from "@/lib/responsive";
 import { useChatStore } from "@/stores/chat-store";
 

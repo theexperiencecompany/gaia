@@ -29,7 +29,8 @@ import {
 } from "@/stores/composerStore";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
-import type { FileData, SearchMode } from "@/types/shared";
+import type { FileData } from "@/types/shared/fileTypes";
+import type { SearchMode } from "@/types/shared/searchTypes";
 
 import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";
@@ -115,9 +116,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
     return integration?.iconUrl ?? null;
   }, [selectedToolCategory, integrations]);
 
-  // Ref to prevent duplicate execution in StrictMode
-  const autoSendExecutedRef = useRef(false);
-
   // Set up input focus callback for reply-to-message functionality
   useEffect(() => {
     setInputFocusCallback(() => {
@@ -130,56 +128,10 @@ const Composer: React.FC<MainSearchbarProps> = ({
     return () => setInputFocusCallback(null);
   }, [inputRef, setInputFocusCallback]);
 
-  // When workflow is selected, handle auto-send with a brief delay to allow UI to update
-  useEffect(() => {
-    if (!(selectedWorkflow && autoSend)) return;
-
-    // Prevent duplicate execution in React StrictMode
-    if (autoSendExecutedRef.current) {
-      console.warn("Auto-send already executed, preventing duplicate");
-      return;
-    }
-    autoSendExecutedRef.current = true;
-
-    // Clear state immediately to prevent any race conditions
-    // Note: clearSelectedWorkflow() already sets autoSend to false
-    clearSelectedWorkflow();
-
-    setIsLoading(true);
-    sendMessage("Run this workflow", {
-      files: uploadedFileData,
-      selectedWorkflow,
-      selectedTool: selectedTool ?? null,
-      selectedToolCategory: selectedToolCategory ?? null,
-    });
-
-    if (inputRef.current) inputRef.current.focus();
-
-    // Scroll to show the composer instead of bottom when workflow runs
-    setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      }
-    }, 200); // Small delay to allow message to render
-  }, [
-    inputRef,
-    selectedWorkflow,
-    selectedTool,
-    selectedToolCategory,
-    uploadedFileData,
-    autoSend,
-    clearSelectedWorkflow,
-    sendMessage,
-    setIsLoading,
-  ]);
-
-  // Reset the auto-send guard when state changes
-  useEffect(() => {
-    if (!selectedWorkflow || !autoSend) autoSendExecutedRef.current = false;
-  }, [selectedWorkflow, autoSend]);
+  // NOTE: Workflow auto-send logic lives in ChatPage, NOT here.
+  // ChatPage never remounts, so its useChatStream refs survive the
+  // NewChatLayout → ChatWithMessages layout switch that happens when
+  // the optimistic message makes hasMessages toggle to true.
 
   // Expose file upload functions to parent component via ref
   useImperativeHandle(

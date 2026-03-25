@@ -362,7 +362,6 @@ class TestUserUpdateResponse:
             email="alice@example.com",
         )
         assert r.picture is None
-        assert r.selected_model is None
 
 
 @pytest.mark.unit

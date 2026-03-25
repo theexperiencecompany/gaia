@@ -607,10 +607,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -642,10 +638,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=_done_only_stream()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -682,10 +674,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -715,10 +703,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -745,10 +729,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=_done_only_stream()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -780,10 +760,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(side_effect=RuntimeError("agent exploded")),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -831,10 +807,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(side_effect=RuntimeError("network timeout")),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -876,10 +848,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(side_effect=RuntimeError("agent down")),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
@@ -916,10 +884,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=agent_with_nostream()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -964,10 +928,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=agent_with_nostream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -1002,10 +962,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=agent_that_yields_many()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -1051,10 +1007,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=agent_with_tool_data()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -1109,10 +1061,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=agent_with_output()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
@@ -1162,10 +1110,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=agent_with_follow_up()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -1210,10 +1154,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=partial_agent()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -1261,10 +1201,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -1298,10 +1234,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=_done_only_stream()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",

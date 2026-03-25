@@ -1,15 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { execa, type ResultPromise } from "execa";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("execa", () => ({
   execa: vi.fn(),
 }));
 
-import {
-  getContainerStatuses,
-  isDockerRunning,
-} from "../../src/lib/docker.js";
-import type { ContainerStatus } from "../../src/lib/docker.js";
+import { getContainerStatuses, isDockerRunning } from "../../src/lib/docker.js";
 
 const mockedExeca = vi.mocked(execa);
 

@@ -4,19 +4,11 @@ global:
 
 scrape_configs:
   - job_name: gaia-api
-    # Two targets: one for Docker (gaia-backend container), one for local dev
-    # (host.docker.internal lets Prometheus reach the host machine's port 8000).
-    # Whichever isn't running will show as DOWN in Prometheus — that's fine.
     # Bearer token must match METRICS_TOKEN in the API's environment.
     authorization:
       credentials_file: /etc/prometheus/metrics_token
     static_configs:
       - targets: ["gaia-backend:80"]
-        labels:
-          env: docker
-      - targets: ["host.docker.internal:8000"]
-        labels:
-          env: local
     metrics_path: /metrics
 
   - job_name: postgres

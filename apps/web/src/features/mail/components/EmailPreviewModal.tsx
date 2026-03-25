@@ -210,9 +210,7 @@ export function EmailPreviewModal({
                 To <span className="text-danger">*</span>
               </div>
               <div
-                className={`min-h-[56px] rounded-xl border-2 bg-default-100 p-3 transition-colors focus-within:border-primary ${
-                  errors.recipients ? "border-danger" : "border-default-200"
-                }`}
+                className={`min-h-[56px] rounded-xl border-2 bg-default-100 p-3 transition-colors focus-within:border-primary ${errors.recipients ? "border-danger" : "border-default-200"}`}
               >
                 <div className="flex flex-wrap gap-2">
                   {/* Email Chips */}

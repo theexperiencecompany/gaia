@@ -12,7 +12,7 @@ import {
   type HoloCardData,
   holoCardApi,
 } from "@/features/onboarding/api/holoCardApi";
-import { SettingsPage } from "@/features/settings/components/ui";
+import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { toast } from "@/lib/toast";
 
 export default function ProfileCardSettings() {

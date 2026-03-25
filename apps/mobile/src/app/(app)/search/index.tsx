@@ -1,3 +1,3 @@
-import { SearchScreen } from "@/features/search";
+import { SearchScreen } from "@/features/search/components/SearchScreen";
 
 export default SearchScreen;

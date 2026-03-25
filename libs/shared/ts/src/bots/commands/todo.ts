@@ -10,13 +10,14 @@
  *
  * @module
  */
+
+import type { BotCommand, CommandExecuteParams } from "../types";
+import { parseTextArgs, truncateResponse } from "../utils";
 import {
   dispatchTodoSubcommand,
   handleTodoCreate,
   handleTodoList,
 } from "../utils/commands";
-import { truncateResponse, parseTextArgs } from "../utils";
-import type { BotCommand, CommandExecuteParams } from "../types";
 
 /** `/todo` command definition with subcommands. */
 export const todoCommand: BotCommand = {

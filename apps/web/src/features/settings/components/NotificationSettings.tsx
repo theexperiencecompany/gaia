@@ -3,12 +3,10 @@
 import { Switch } from "@heroui/switch";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import {
-  SettingsPage,
-  SettingsRow,
-  SettingsSection,
-} from "@/features/settings/components/ui";
-import { apiService } from "@/lib/api";
+import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
+import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
+import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import type { PlatformLink } from "@/types/platform";

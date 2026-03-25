@@ -11,8 +11,8 @@ import {
   Tooltip,
   useDisclosure,
 } from "@heroui/react";
-import { PlusSignIcon } from "@icons";
-import { useEffect, useMemo } from "react";
+import { PlusSignIcon, TaskAddIcon } from "@icons";
+import { useCallback, useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
@@ -258,7 +258,7 @@ export default function TodoModal({
           color="primary"
           size="sm"
           variant="flat"
-          startContent={<PlusSignIcon className="h-4 w-4 outline-0" />}
+          startContent={<TaskAddIcon className="h-4 w-4 outline-0" />}
           onPress={onOpen}
           data-keyboard-shortcut="create-todo"
         >

@@ -12,12 +12,17 @@ Talk to GAIA, manage todos, and run workflows directly inside Telegram. The bot 
 
 Search for the GAIA bot on Telegram and open a private chat — no group or server needed.
 
-<Card title="Message GAIA on Telegram" icon="telegram" href="https://t.me/heygaia_bot">
+<Card
+  title="Message GAIA on Telegram"
+  icon="telegram"
+  href="https://t.me/heygaia_bot"
+>
   Open a private chat with GAIA on Telegram
 </Card>
 
 <Tip>
-  Telegram DMs are fully private — only you and GAIA see the conversation. You can send free-text messages at any time without using a command prefix.
+  Telegram DMs are fully private — only you and GAIA see the conversation. You
+  can send free-text messages at any time without using a command prefix.
 </Tip>
 
 ## Getting Started (Users)
@@ -52,40 +57,40 @@ You can also send a free-text message directly — the bot will forward it to GA
 
 #### Chat
 
-| Command | Description |
-|---|---|
-| `/start` | Start the bot and see the welcome message |
-| `/gaia <message>` | Send a message to GAIA |
-| `/help` | Show all available commands |
+| Command           | Description                               |
+| ----------------- | ----------------------------------------- |
+| `/start`          | Start the bot and see the welcome message |
+| `/gaia <message>` | Send a message to GAIA                    |
+| `/help`           | Show all available commands               |
 
 #### Todos
 
-| Command | Description |
-|---|---|
-| `/todo list` | Show all active todos |
-| `/todo add <title>` | Create a new todo |
-| `/todo complete <id>` | Mark a todo as done |
-| `/todo delete <id>` | Delete a todo |
+| Command               | Description           |
+| --------------------- | --------------------- |
+| `/todo list`          | Show all active todos |
+| `/todo add <title>`   | Create a new todo     |
+| `/todo complete <id>` | Mark a todo as done   |
+| `/todo delete <id>`   | Delete a todo         |
 
 #### Workflows
 
-| Command | Description |
-|---|---|
-| `/workflow list` | List all your workflows |
-| `/workflow get <id>` | View workflow details |
+| Command                  | Description                 |
+| ------------------------ | --------------------------- |
+| `/workflow list`         | List all your workflows     |
+| `/workflow get <id>`     | View workflow details       |
 | `/workflow execute <id>` | Trigger a workflow manually |
 
 #### Conversations & Utilities
 
-| Command | Description |
-|---|---|
-| `/conversations` | Browse your GAIA conversation history |
-| `/new` | Start a fresh conversation |
-| `/stop` | Stop the current response and start fresh |
-| `/status` | Check bot and API status |
-| `/settings` | View your GAIA settings and integrations |
-| `/auth` | Link your Telegram account to GAIA |
-| `/unlink` | Disconnect your account from GAIA |
+| Command          | Description                               |
+| ---------------- | ----------------------------------------- |
+| `/conversations` | Browse your GAIA conversation history     |
+| `/new`           | Start a fresh conversation                |
+| `/stop`          | Stop the current response and start fresh |
+| `/status`        | Check bot and API status                  |
+| `/settings`      | View your GAIA settings and integrations  |
+| `/auth`          | Link your Telegram account to GAIA        |
+| `/unlink`        | Disconnect your account from GAIA         |
 
 ### Notes
 
@@ -157,8 +162,8 @@ The bot uses **long polling** — no webhook or public URL is required.
 
 ### Troubleshooting
 
-| Problem | Solution |
-|---|---|
-| Bot doesn't respond | Check the bot token is correct and the process is running |
-| Commands not showing autocomplete | Run `/setcommands` with BotFather |
-| Authentication fails | Ensure `GAIA_BOT_API_KEY` matches the API config and the API is reachable |
+| Problem                           | Solution                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------- |
+| Bot doesn't respond               | Check the bot token is correct and the process is running                 |
+| Commands not showing autocomplete | Run `/setcommands` with BotFather                                         |
+| Authentication fails              | Ensure `GAIA_BOT_API_KEY` matches the API config and the API is reachable |

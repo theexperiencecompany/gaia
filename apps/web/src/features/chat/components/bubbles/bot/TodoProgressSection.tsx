@@ -68,11 +68,7 @@ function TaskRow({
         <StatusIcon className={`size-4 ${STATUS_COLOR[todo.status]}`} />
       </div>
       <span
-        className={`text-xs leading-relaxed ${
-          todo.status === "cancelled"
-            ? "line-through text-zinc-600"
-            : "text-zinc-300"
-        }`}
+        className={`text-xs leading-relaxed ${todo.status === "cancelled" ? "line-through text-zinc-600" : "text-zinc-300"}`}
       >
         {todo.content}
       </span>

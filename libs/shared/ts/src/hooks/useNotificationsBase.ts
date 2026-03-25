@@ -1,5 +1,5 @@
-import { NotificationStatus } from "../types/notification";
 import type { InAppNotification } from "../types/notification";
+import { NotificationStatus } from "../types/notification";
 
 export const NotificationQueryKeys = {
   all: ["notifications"] as const,
@@ -9,8 +9,7 @@ export const NotificationQueryKeys = {
       : ([...NotificationQueryKeys.all, "list"] as const),
   unread: () => [...NotificationQueryKeys.all, "unread"] as const,
   archived: () => [...NotificationQueryKeys.all, "archived"] as const,
-  detail: (id: string) =>
-    [...NotificationQueryKeys.all, "detail", id] as const,
+  detail: (id: string) => [...NotificationQueryKeys.all, "detail", id] as const,
 };
 
 export interface NotificationFilter {
@@ -104,4 +103,3 @@ export function getNotificationIcon(type: string): string {
   const normalizedType = type.toLowerCase();
   return iconMap[normalizedType] ?? "Bell";
 }
-

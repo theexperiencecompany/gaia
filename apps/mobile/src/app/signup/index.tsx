@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Alert } from "react-native";
-import { fetchUserInfo, startOAuthFlow } from "@/features/auth";
+import { fetchUserInfo, startOAuthFlow } from "@/features/auth/api/auth-api";
 import { AuthScreen } from "@/features/auth/components/auth-screen";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import {

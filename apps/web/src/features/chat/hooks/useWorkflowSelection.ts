@@ -26,14 +26,32 @@ export const useWorkflowSelection = () => {
       workflow: Workflow | SelectedWorkflowData,
       options?: WorkflowSelectionOptions,
     ) => {
+      console.log(
+        "[useWorkflowSelection] selectWorkflow called, pathname:",
+        pathname,
+        "options:",
+        options,
+      );
       // Use store to persist the workflow selection
       storeSelectWorkflow(workflow, options);
+      console.log(
+        "[useWorkflowSelection] storeSelectWorkflow done, store state:",
+        {
+          selectedWorkflow: workflow.id,
+          autoSend: options?.autoSend,
+        },
+      );
 
       // Track first workflow use as feature discovery
       trackFeatureDiscovery("workflows", { workflow_title: workflow.title });
 
       // Navigate to chat page if not already there
-      if (pathname !== "/c") router.push("/c");
+      if (pathname !== "/c") {
+        console.log("[useWorkflowSelection] navigating to /c");
+        router.push("/c");
+      } else {
+        console.log("[useWorkflowSelection] already on /c, no navigation");
+      }
     },
     [storeSelectWorkflow, pathname, router],
   );

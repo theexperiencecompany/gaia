@@ -13,8 +13,8 @@ import Spinner from "@/components/ui/spinner";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useInfiniteConversations } from "@/features/chat/hooks/useInfiniteConversations";
 import { useSyncStatus } from "@/hooks/useBackgroundSync";
-import { cn } from "@/lib";
 import type { IConversation } from "@/lib/db/chatDb";
+import { cn } from "@/lib/utils";
 import { ChatTab } from "./ChatTab";
 import { accordionItemStyles } from "./constants";
 
@@ -195,13 +195,7 @@ export default function ChatsList() {
     return () => {
       scrollContainer?.removeEventListener("scroll", handleScroll);
     };
-  }, [
-    isLoading,
-    hasMore,
-    isLoadingMore,
-    loadMoreConversations,
-    conversations.length,
-  ]);
+  }, [isLoading, hasMore, isLoadingMore, loadMoreConversations]);
 
   return (
     <>

@@ -116,12 +116,16 @@ async def get_onboarding_status(user: dict = Depends(get_current_user)):
         user={"id": user["user_id"]},
         onboarding={"operation": "get_status"},
     )
-    status = await get_user_onboarding_status(user["user_id"])
-    is_complete = (
-        status.get("is_complete", False) if isinstance(status, dict) else False
-    )
-    log.set(onboarding={"operation": "get_status", "is_complete": is_complete})
-    return status
+    try:
+        status = await get_user_onboarding_status(user["user_id"])
+        is_complete = (
+            status.get("is_complete", False) if isinstance(status, dict) else False
+        )
+        log.set(onboarding={"operation": "get_status", "is_complete": is_complete})
+        return status
+    except Exception as e:
+        log.error(f"Error getting onboarding status: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get onboarding status")
 
 
 @router.post("/phase", response_model=dict)

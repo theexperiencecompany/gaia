@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 
-import { wsManager } from "@/lib/websocket";
+import { wsManager } from "@/lib/websocket/WebSocketManager";
 import type { Workflow } from "@/types/features/workflowTypes";
 
 interface WorkflowGeneratedMessage {

@@ -351,14 +351,14 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
                     file_data = file_data_map[file_id]
                     included_files.append(
                         {
-                            "file_id": file_data["file_id"],
+                            "file_id": file_data["fileId"],
                             "url": file_data["url"],
                             "filename": file_data["filename"],
-                            "description": file_data.get("deskcription", ""),
-                            "content_type": file_data.get("content_type", ""),
+                            "description": file_data.get("description", ""),
+                            "content_type": file_data.get("type", ""),
                             "_id": file_data[
-                                "file_id"
-                            ],  # Use file_id as _id for consistency
+                                "fileId"
+                            ],  # Use fileId as _id for consistency
                         }
                     )
 

@@ -114,10 +114,10 @@ async def search_messages(query: str, user_id: str) -> dict:
             # Convert legacy tool data in the message
             if "message" in message:
                 message["message"] = convert_legacy_tool_data(message["message"])
-            # Add snippet for search highlighting
-            message["snippet"] = get_context_window(
-                message["message"]["response"], query, chars_before=30
-            )
+                # Add snippet for search highlighting
+                message["snippet"] = get_context_window(
+                    message["message"]["response"], query, chars_before=30
+                )
 
         notes_with_snippets = [
             {

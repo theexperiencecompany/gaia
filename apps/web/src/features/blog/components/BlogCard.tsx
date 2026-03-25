@@ -76,9 +76,7 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
             </span>
           </div>
           <h3
-            className={`font-medium text-white transition-colors ${
-              isLarge ? "text-lg" : "line-clamp-2 text-sm"
-            }`}
+            className={`font-medium text-white transition-colors ${isLarge ? "text-lg" : "line-clamp-2 text-sm"}`}
           >
             {blog.title}
           </h3>

@@ -1,8 +1,8 @@
 import { Redirect, Stack } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { useAuth } from "@/features/auth";
-import { SidebarProvider } from "@/features/chat";
+import { useAuth } from "@/features/auth/hooks/use-auth";
+import { SidebarProvider } from "@/features/chat/hooks/sidebar-context";
 import { NotificationProvider } from "@/features/notifications/components/notification-provider";
 import { getOnboardingStatus } from "@/features/onboarding/api/onboarding-api";
 import { wsManager } from "@/lib/websocket-client";

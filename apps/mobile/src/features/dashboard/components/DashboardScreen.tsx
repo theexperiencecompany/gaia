@@ -406,9 +406,9 @@ export function DashboardScreen() {
                     style={{ marginTop: 2 }}
                   />
                 ) : (
-                  <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-                    {`${activeWorkflowCount} active`}
-                  </Text>
+                  <Text
+                    style={{ fontSize: fontSize.xs, color: "#71717a" }}
+                  >{`${activeWorkflowCount} active`}</Text>
                 )
               }
               onPress={() => {

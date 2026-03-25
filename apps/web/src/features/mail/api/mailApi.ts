@@ -1,4 +1,4 @@
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import type { EmailActionResponse } from "@/types/api/mailApiTypes";
 import type {
   EmailData,
@@ -12,9 +12,7 @@ export const mailApi = {
   // Fetch emails with pagination
   fetchEmails: async (pageToken?: string): Promise<EmailsResponse> => {
     const maxResults = 20;
-    const url = `/gmail/messages?maxResults=${maxResults}${
-      pageToken ? `&pageToken=${pageToken}` : ""
-    }`;
+    const url = `/gmail/messages?maxResults=${maxResults}${pageToken ? `&pageToken=${pageToken}` : ""}`;
     const data = await apiService.get<{
       messages: EmailData[];
       nextPageToken?: string;

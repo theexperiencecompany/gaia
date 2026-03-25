@@ -141,9 +141,7 @@ export interface TestConnectionParams {
   integrationId: string;
 }
 
-type IntegrationEndpointValue =
-  | string
-  | ((id: string) => string);
+type IntegrationEndpointValue = string | ((id: string) => string);
 
 /**
  * Resolve an INTEGRATION_ENDPOINTS value to a URL string.

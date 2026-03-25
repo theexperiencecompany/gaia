@@ -121,9 +121,7 @@ function TodoItemRow({
         />
         <View className="flex-1">
           <Text
-            className={`text-sm font-medium ${
-              todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"
-            }`}
+            className={`text-sm font-medium ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
             numberOfLines={2}
           >
             {todo.title}

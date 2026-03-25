@@ -1,18 +1,18 @@
-import { describe, it, expect, vi, afterAll } from "vitest";
+import type { Conversation, Todo, Workflow } from "@gaia/shared";
 import {
-  formatWorkflow,
-  formatWorkflowList,
-  formatTodo,
-  formatTodoList,
-  formatConversation,
-  formatConversationList,
-  convertToTelegramMarkdown,
   convertToSlackMrkdwn,
+  convertToTelegramMarkdown,
   formatAuthRequiredMessage,
   formatBotError,
+  formatConversation,
+  formatConversationList,
+  formatTodo,
+  formatTodoList,
+  formatWorkflow,
+  formatWorkflowList,
   GaiaApiError,
 } from "@gaia/shared";
-import type { Workflow, Todo, Conversation } from "@gaia/shared";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // formatWorkflow
@@ -160,10 +160,7 @@ describe("formatConversation", () => {
   });
 
   it('shows "Untitled Conversation" when title is missing', () => {
-    const result = formatConversation(
-      { ...base, title: undefined },
-      baseUrl,
-    );
+    const result = formatConversation({ ...base, title: undefined }, baseUrl);
     expect(result).toContain("Untitled Conversation");
   });
 
@@ -215,9 +212,7 @@ describe("formatConversationList", () => {
 // ---------------------------------------------------------------------------
 describe("convertToTelegramMarkdown", () => {
   it("converts **bold** to *bold*", () => {
-    expect(convertToTelegramMarkdown("Hello **world**")).toBe(
-      "Hello *world*",
-    );
+    expect(convertToTelegramMarkdown("Hello **world**")).toBe("Hello *world*");
   });
 
   it("converts ***bold italic*** to *bold*", () => {

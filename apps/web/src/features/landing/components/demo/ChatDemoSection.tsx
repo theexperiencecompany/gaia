@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { appConfig } from "@/config";
+import { appConfig } from "@/config/appConfig";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import DemoCalendarView from "./calendar-demo/DemoCalendarView";

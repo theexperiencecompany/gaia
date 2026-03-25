@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 

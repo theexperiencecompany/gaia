@@ -27,7 +27,6 @@ def sample_user_doc():
         "email": "alice@example.com",
         "name": "Alice",
         "picture": "https://example.com/alice.jpg",
-        "selected_model": "gpt-4",
     }
 
 
@@ -165,7 +164,7 @@ class TestUpdateUserProfile:
         updated_doc = {
             **sample_user_doc,
             "_id": oid_str,
-            "selected_model": "claude-3",
+            "timezone": "America/New_York",
         }
 
         mock_users_collection.find_one = AsyncMock(return_value=sample_user_doc)
@@ -177,10 +176,10 @@ class TestUpdateUserProfile:
             return_value=updated_doc,
         ):
             result = await update_user_profile(
-                oid_str, data={"selected_model": "claude-3"}
+                oid_str, data={"timezone": "America/New_York"}
             )
 
-        assert result["selected_model"] == "claude-3"
+        assert result["name"] == "Alice"
 
     async def test_raises_500_on_picture_upload_failure(
         self, mock_users_collection, sample_user_doc

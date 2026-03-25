@@ -45,16 +45,13 @@ sys.path.insert(0, str(backend_dir))
 # Import app modules after path setup  # noqa: E402
 from app.db.mongodb.collections import (  # noqa: E402
     ai_models_collection,
-    users_collection,
 )
 from app.db.redis import delete_cache_by_pattern  # noqa: E402
 from app.models.models_models import ModelProvider, PlanType  # noqa: E402
 
 # Redis cache key patterns for chat models (from model_service.py)
 CHAT_MODELS_CACHE_PATTERNS = [
-    "chat_models:available_models:*",
     "chat_models:model_by_id:*",
-    "chat_models:selected_model:*",
     "chat_models:default_model",
 ]
 
@@ -65,62 +62,81 @@ def get_models_configuration() -> List[Dict[str, Any]]:
     This is the single source of truth for what models should exist.
     """
     return [
-        # Google Gemini 3 Models (preview - latest generation)
+        # Default model — available to all users, model selector is disabled.
         {
-            "model_id": "gemini-3-flash",
-            "name": "Gemini 3 Flash",
+            "model_id": "gemini-3.1-flash-lite-preview",
+            "name": "Gemini 3.1 Flash Lite",
             "model_provider": ModelProvider.GEMINI.value,
             "inference_provider": ModelProvider.GEMINI.value,
-            "provider_model_name": "gemini-3-flash-preview",
-            "description": "Google's most balanced model built for speed, scale, and frontier intelligence with 1M context",
+            "provider_model_name": "gemini-3.1-flash-lite-preview",
+            "description": "Google's fast and efficient Gemini model optimised for speed and cost",
             "logo_url": "/images/icons/gemini.webp",
             "max_tokens": 1_000_000,
-            "supports_streaming": True,
-            "supports_function_calling": True,
-            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
-            "lowest_tier": PlanType.FREE.value,
-            "is_active": True,
-            "is_default": False,
-            "pricing_per_1k_input_tokens": 0.0005,
-            "pricing_per_1k_output_tokens": 0.003,
-        },
-        {
-            "model_id": "gemini-3-pro",
-            "name": "Gemini 3 Pro",
-            "model_provider": ModelProvider.GEMINI.value,
-            "inference_provider": ModelProvider.GEMINI.value,
-            "provider_model_name": "gemini-3-pro-preview",
-            "description": "Google's most intelligent model with state-of-the-art reasoning for complex multimodal tasks",
-            "logo_url": "/images/icons/gemini.webp",
-            "max_tokens": 1_000_000,
-            "supports_streaming": True,
-            "supports_function_calling": True,
-            "available_in_plans": [PlanType.PRO.value],
-            "lowest_tier": PlanType.PRO.value,
-            "is_active": True,
-            "is_default": False,
-            "pricing_per_1k_input_tokens": 0.002,
-            "pricing_per_1k_output_tokens": 0.012,
-        },
-        # Grok Models (via OpenRouter)
-        {
-            "model_id": "x-ai/grok-4.1-fast",
-            "name": "Grok 4.1 Fast",
-            "model_provider": ModelProvider.GROK.value,
-            "inference_provider": ModelProvider.OPENROUTER.value,
-            "provider_model_name": "x-ai/grok-4.1-fast",
-            "description": "xAI's fast Grok model with strong reasoning capabilities",
-            "logo_url": "/images/icons/grok.webp",
-            "max_tokens": 128_000,
             "supports_streaming": True,
             "supports_function_calling": True,
             "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
             "lowest_tier": PlanType.FREE.value,
             "is_active": True,
             "is_default": True,
-            "pricing_per_1k_input_tokens": 0.0004,
-            "pricing_per_1k_output_tokens": 0.001,
+            "pricing_per_1k_input_tokens": 0.0001,
+            "pricing_per_1k_output_tokens": 0.0004,
         },
+        # Google Gemini 3 Models (preview - latest generation)
+        # {
+        #     "model_id": "gemini-3-flash",
+        #     "name": "Gemini 3 Flash",
+        #     "model_provider": ModelProvider.GEMINI.value,
+        #     "inference_provider": ModelProvider.GEMINI.value,
+        #     "provider_model_name": "gemini-3-flash-preview",
+        #     "description": "Google's most balanced model built for speed, scale, and frontier intelligence with 1M context",
+        #     "logo_url": "/images/icons/gemini.webp",
+        #     "max_tokens": 1_000_000,
+        #     "supports_streaming": True,
+        #     "supports_function_calling": True,
+        #     "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
+        #     "lowest_tier": PlanType.FREE.value,
+        #     "is_active": True,
+        #     "is_default": False,
+        #     "pricing_per_1k_input_tokens": 0.0005,
+        #     "pricing_per_1k_output_tokens": 0.003,
+        # },
+        # {
+        #     "model_id": "gemini-3-pro",
+        #     "name": "Gemini 3 Pro",
+        #     "model_provider": ModelProvider.GEMINI.value,
+        #     "inference_provider": ModelProvider.GEMINI.value,
+        #     "provider_model_name": "gemini-3-pro-preview",
+        #     "description": "Google's most intelligent model with state-of-the-art reasoning for complex multimodal tasks",
+        #     "logo_url": "/images/icons/gemini.webp",
+        #     "max_tokens": 1_000_000,
+        #     "supports_streaming": True,
+        #     "supports_function_calling": True,
+        #     "available_in_plans": [PlanType.PRO.value],
+        #     "lowest_tier": PlanType.PRO.value,
+        #     "is_active": True,
+        #     "is_default": False,
+        #     "pricing_per_1k_input_tokens": 0.002,
+        #     "pricing_per_1k_output_tokens": 0.012,
+        # },
+        # Grok Models (via OpenRouter)
+        # {
+        #     "model_id": "x-ai/grok-4.1-fast",
+        #     "name": "Grok 4.1 Fast",
+        #     "model_provider": ModelProvider.GROK.value,
+        #     "inference_provider": ModelProvider.OPENROUTER.value,
+        #     "provider_model_name": "x-ai/grok-4.1-fast",
+        #     "description": "xAI's fast Grok model with strong reasoning capabilities",
+        #     "logo_url": "/images/icons/grok.webp",
+        #     "max_tokens": 128_000,
+        #     "supports_streaming": True,
+        #     "supports_function_calling": True,
+        #     "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
+        #     "lowest_tier": PlanType.FREE.value,
+        #     "is_active": True,
+        #     "is_default": True,
+        #     "pricing_per_1k_input_tokens": 0.0004,
+        #     "pricing_per_1k_output_tokens": 0.001,
+        # },
     ]
 
 
@@ -325,21 +341,6 @@ async def sync_models(
 
         # Remove obsolete models
         if models_to_remove:
-            # First, reset users who have selected a model being removed
-            default_model = next(
-                (m["model_id"] for m in desired_models if m.get("is_default")),
-                desired_models[0]["model_id"] if desired_models else None,
-            )
-            if default_model:
-                reset_result = await users_collection.update_many(
-                    {"selected_model": {"$in": list(models_to_remove)}},
-                    {"$set": {"selected_model": default_model}},
-                )
-                if reset_result.modified_count > 0:
-                    print(
-                        f"✅ Reset {reset_result.modified_count} users' selected model to {default_model}"
-                    )
-
             result = await ai_models_collection.delete_many(
                 {"model_id": {"$in": list(models_to_remove)}}
             )

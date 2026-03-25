@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
-import { notificationsApi } from "../api";
+import { notificationsApi } from "@/features/notifications/api/notifications-api";
 
 // Check if running in Expo Go
 const isExpoGo = Constants.appOwnership === "expo";

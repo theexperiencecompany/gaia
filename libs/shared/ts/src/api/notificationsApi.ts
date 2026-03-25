@@ -7,7 +7,8 @@
 export const NOTIFICATION_ENDPOINTS = {
   list: "/notifications",
   get: (notificationId: string) => `/notifications/${notificationId}`,
-  markAsRead: (notificationId: string) => `/notifications/${notificationId}/read`,
+  markAsRead: (notificationId: string) =>
+    `/notifications/${notificationId}/read`,
   snooze: (notificationId: string) => `/notifications/${notificationId}/snooze`,
   executeAction: (notificationId: string, actionId: string) =>
     `/notifications/${notificationId}/actions/${actionId}/execute`,

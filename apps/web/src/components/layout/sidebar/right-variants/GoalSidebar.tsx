@@ -25,9 +25,7 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
           {/* Title Section */}
           <div className="space-y-3">
             <h1
-              className={`text-2xl leading-tight font-medium transition-colors ${
-                node.isComplete ? "text-zinc-500 line-through" : "text-zinc-100"
-              }`}
+              className={`text-2xl leading-tight font-medium transition-colors ${node.isComplete ? "text-zinc-500 line-through" : "text-zinc-100"}`}
             >
               {node.label || node.title}
             </h1>
@@ -35,9 +33,7 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
             {/* Details */}
             {node.details && node.details.length > 0 && (
               <p
-                className={`text-sm leading-relaxed ${
-                  node.isComplete ? "text-zinc-600" : "text-zinc-400"
-                }`}
+                className={`text-sm leading-relaxed ${node.isComplete ? "text-zinc-600" : "text-zinc-400"}`}
               >
                 {node.details.join(", ")}
               </p>
@@ -94,10 +90,7 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
                   <li key={resource}>
                     <a
                       className="underline decoration-zinc-600 underline-offset-4 transition-colors hover:text-primary hover:decoration-primary"
-                      href={`https://www.google.com/search?q=${resource.replace(
-                        / /g,
-                        "+",
-                      )}`}
+                      href={`https://www.google.com/search?q=${resource.replace(/ /g, "+")}`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

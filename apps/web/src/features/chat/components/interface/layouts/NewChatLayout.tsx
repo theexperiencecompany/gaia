@@ -2,8 +2,8 @@ import { Button } from "@heroui/button";
 import type React from "react";
 import { useState } from "react";
 import { ChevronUp } from "@/components/shared/icons";
+import { NewChatSection } from "@/features/chat/components/interface/sections/NewChatSection";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
-import { NewChatSection } from "../sections";
 
 interface NewChatLayoutProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;

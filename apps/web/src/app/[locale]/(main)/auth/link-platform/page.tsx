@@ -10,7 +10,7 @@ import {
   WhatsappIcon,
 } from "@/components/shared/icons";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 
 const PLATFORM_CONFIG: Record<

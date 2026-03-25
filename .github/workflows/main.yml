@@ -99,20 +99,12 @@ jobs:
         run: bash scripts/dead-code-check.sh
         # Temporarily disable --strict flag.
 
-      # Execute only checks impacted by the current change-set.
-      - name: Run affected quality checks
-        run: npx nx affected -t lint type-check build test --parallel=3
-        env:
-          NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
-          # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
-
-      # Run API unit tests (excludes integration tests that need live credentials).
-      - name: Run API tests
-        run: |
-          cd apps/api
-          uv run pytest -m "not integration and not composio" --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30
-        env:
-          ENV: test
+      # Run all quality checks via Dagger (lint, type-check, build, test, pytest).
+      - name: Run quality checks
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: "0.20.2"
+          call: quality-checks
 
   # Only trigger image build/deploy planning on master after quality gate passes.
   trigger-build:

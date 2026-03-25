@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 
 function decodeJwtPayload(token: string) {
   if (!token) return {};

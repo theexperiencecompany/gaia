@@ -18,7 +18,6 @@ import {
   Settings01Icon,
   TaskDailyIcon,
 } from "@/components/icons";
-import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
 type IconComponent = React.ComponentType<{

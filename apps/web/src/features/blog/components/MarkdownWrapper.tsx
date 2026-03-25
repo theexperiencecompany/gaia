@@ -14,7 +14,7 @@ import remarkSupersub from "remark-supersub";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
-import { cn } from "@/lib";
+import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
 
 import { slugifyHeading } from "../utils/parseHeadings";

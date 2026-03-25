@@ -26,11 +26,13 @@ Before you can use GAIA in Slack, link your Slack identity to your GAIA account.
     ```
 
     GAIA sends you an ephemeral link — only you can see it.
+
   </Step>
 
-  <Step title="Log in and authorize">
-    Click the link, sign in to your GAIA account in the browser, and authorize the connection. You'll be redirected back automatically.
-  </Step>
+<Step title="Log in and authorize">
+  Click the link, sign in to your GAIA account in the browser, and authorize the
+  connection. You'll be redirected back automatically.
+</Step>
 
   <Step title="Confirm the link">
     Back in Slack, run `/status` to check that your account is connected. You should see a confirmation that the bot and API are online and your account is linked.
@@ -86,40 +88,40 @@ Here are the most useful commands available in Slack. For the full list, see the
 
 ### Conversations
 
-| Command | What it does |
-|---|---|
-| `/gaia <message>` | Send a message to GAIA and get a streamed response |
-| `/new` | Start a fresh conversation (previous ones are saved in the web app) |
-| `/stop` | Cancel the current response and reset |
-| `/conversations` | List your recent conversations with links to the web app |
+| Command           | What it does                                                        |
+| ----------------- | ------------------------------------------------------------------- |
+| `/gaia <message>` | Send a message to GAIA and get a streamed response                  |
+| `/new`            | Start a fresh conversation (previous ones are saved in the web app) |
+| `/stop`           | Cancel the current response and reset                               |
+| `/conversations`  | List your recent conversations with links to the web app            |
 
 ### Todos
 
-| Command | What it does |
-|---|---|
-| `/todo list` | Show all active todos |
-| `/todo add "Buy groceries"` | Create a new todo |
+| Command                          | What it does                                      |
+| -------------------------------- | ------------------------------------------------- |
+| `/todo list`                     | Show all active todos                             |
+| `/todo add "Buy groceries"`      | Create a new todo                                 |
 | `/todo add "Fix login bug" high` | Create a todo with a priority (low, medium, high) |
-| `/todo complete <id>` | Mark a todo as done |
-| `/todo delete <id>` | Permanently remove a todo |
+| `/todo complete <id>`            | Mark a todo as done                               |
+| `/todo delete <id>`              | Permanently remove a todo                         |
 
 ### Workflows
 
-| Command | What it does |
-|---|---|
-| `/workflow list` | Show all your workflows and their status |
-| `/workflow get <id>` | Get details about a specific workflow |
-| `/workflow execute <id>` | Manually trigger a workflow |
+| Command                  | What it does                             |
+| ------------------------ | ---------------------------------------- |
+| `/workflow list`         | Show all your workflows and their status |
+| `/workflow get <id>`     | Get details about a specific workflow    |
+| `/workflow execute <id>` | Manually trigger a workflow              |
 
 ### Account
 
-| Command | What it does |
-|---|---|
-| `/auth` | Link your Slack account to GAIA |
-| `/unlink` | Disconnect your Slack account from GAIA |
-| `/status` | Check if the bot and API are online |
+| Command     | What it does                                        |
+| ----------- | --------------------------------------------------- |
+| `/auth`     | Link your Slack account to GAIA                     |
+| `/unlink`   | Disconnect your Slack account from GAIA             |
+| `/status`   | Check if the bot and API are online                 |
 | `/settings` | View your connected integrations and selected model |
-| `/help` | Show all available commands |
+| `/help`     | Show all available commands                         |
 
 ## DMs vs Channels
 
@@ -155,9 +157,9 @@ GAIA gets more useful with every integration you connect. Link Google Calendar, 
 ```
 
 <Tip>
-  Each team member needs to link their own GAIA account with `/auth` and
-  connect their own integrations. GAIA respects individual permissions — it
-  only accesses what each user has authorized.
+  Each team member needs to link their own GAIA account with `/auth` and connect
+  their own integrations. GAIA respects individual permissions — it only
+  accesses what each user has authorized.
 </Tip>
 
 ### Keep conversations organized
@@ -166,13 +168,13 @@ Use `/new` to start a fresh conversation when you switch topics. GAIA carries co
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---|---|
-| GAIA doesn't respond | Run `/status` to check if the bot is online. If not, contact your workspace admin. |
-| "Account not linked" error | Run `/auth` to connect your Slack identity to your GAIA account. |
-| Slash command not found | The GAIA app may not be installed in your workspace. Ask your Slack admin to install it. |
+| Problem                               | Solution                                                                                            |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| GAIA doesn't respond                  | Run `/status` to check if the bot is online. If not, contact your workspace admin.                  |
+| "Account not linked" error            | Run `/auth` to connect your Slack identity to your GAIA account.                                    |
+| Slash command not found               | The GAIA app may not be installed in your workspace. Ask your Slack admin to install it.            |
 | Response seems stuck on "Thinking..." | Run `/stop` to cancel, then try again. If the issue persists, start a new conversation with `/new`. |
-| Integration not working | Verify the integration is connected in the GAIA web app under **Settings > Integrations**. |
+| Integration not working               | Verify the integration is connected in the GAIA web app under **Settings > Integrations**.          |
 
 <Note>
   For developer setup and self-hosting instructions, see the [Slack bot

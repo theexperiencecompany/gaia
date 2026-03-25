@@ -4,12 +4,10 @@ import { Button } from "@heroui/button";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { TelegramIcon } from "@/components/shared/icons";
-import {
-  SettingsPage,
-  SettingsRow,
-  SettingsSection,
-} from "@/features/settings/components/ui";
-import { apiService } from "@/lib/api";
+import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
+import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
+import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 import type { PlatformLink } from "@/types/platform";
 

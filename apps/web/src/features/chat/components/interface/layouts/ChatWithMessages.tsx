@@ -2,7 +2,7 @@ import type React from "react";
 
 import Composer from "@/features/chat/components/composer/Composer";
 
-import { ChatSection } from "../sections";
+import { ChatSection } from "@/features/chat/components/interface/sections/ChatSection";
 
 interface ChatWithMessagesProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;

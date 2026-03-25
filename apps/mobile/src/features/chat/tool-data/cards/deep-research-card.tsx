@@ -364,9 +364,7 @@ function OriginalSearchSection({ search }: { search: SearchResults }) {
             <PressableFeedback
               key={result.url || result.title || String(index)}
               onPress={() => result.url && Linking.openURL(result.url)}
-              className={`py-3 ${
-                index < visible.length - 1 ? "border-b border-white/8" : ""
-              }`}
+              className={`py-3 ${index < visible.length - 1 ? "border-b border-white/8" : ""}`}
             >
               <View className="flex-row items-start gap-2.5">
                 <View className="mt-0.5">

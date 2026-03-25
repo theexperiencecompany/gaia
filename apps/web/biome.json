@@ -7,7 +7,8 @@
       "**/*.{js,jsx,ts,tsx,json,md,mdx,yml,yaml,html,css,scss,sass}",
       "!public",
       "!src/config/iconPaths.generated.ts",
-      "!src/config/iconPaths.generated.json"
+      "!src/config/iconPaths.generated.json",
+      "!src/**/i18n/*.json"
     ]
   },
   "linter": {

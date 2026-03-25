@@ -92,9 +92,7 @@ export const NotificationItem = ({
                   key={action.id}
                   variant={action.style === "primary" ? "solid" : "flat"}
                   size="sm"
-                  className={`h-7 bg-zinc-800/50 text-xs text-zinc-200 hover:bg-zinc-800/70 ${
-                    isExecuted ? "cursor-not-allowed opacity-50" : ""
-                  }`}
+                  className={`h-7 bg-zinc-800/50 text-xs text-zinc-200 hover:bg-zinc-800/70 ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
                   disabled={isDisabled}
                   onPress={() => executeAction(notification.id, action)}
                 >

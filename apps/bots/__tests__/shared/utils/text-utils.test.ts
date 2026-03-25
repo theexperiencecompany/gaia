@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
 import { parseTextArgs, truncateResponse } from "@gaia/shared";
+import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------
 // parseTextArgs

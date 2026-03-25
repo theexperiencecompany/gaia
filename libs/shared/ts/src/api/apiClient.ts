@@ -19,9 +19,7 @@ export class ApiError extends Error {
 /**
  * Build the standard request headers, including Authorization if a token is present.
  */
-export function createApiHeaders(
-  token: string | null,
-): Record<string, string> {
+export function createApiHeaders(token: string | null): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
