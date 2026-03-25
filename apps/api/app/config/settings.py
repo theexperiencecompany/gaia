@@ -291,6 +291,8 @@ class ProductionSettings(CommonSettings):
     SLACK_SIGNING_SECRET: Optional[str] = None
     SLACK_APP_TOKEN: Optional[str] = None
     TELEGRAM_BOT_TOKEN: Optional[str] = None
+    KAPSO_API_KEY: Optional[str] = None
+    KAPSO_PHONE_NUMBER_ID: Optional[str] = None
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
@@ -452,6 +454,8 @@ class DevelopmentSettings(CommonSettings):
     SLACK_SIGNING_SECRET: Optional[str] = None
     SLACK_APP_TOKEN: Optional[str] = None
     TELEGRAM_BOT_TOKEN: Optional[str] = None
+    KAPSO_API_KEY: Optional[str] = None
+    KAPSO_PHONE_NUMBER_ID: Optional[str] = None
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
