@@ -1,5 +1,6 @@
 import { type ActionEvent, Renderer } from "@openuidev/react-lang";
 import React from "react";
+import { genericLibrary } from "@/config/openui/genericLibrary";
 import { dispatchOpenUIAction } from "@/features/chat/actions/openUIActionDispatcher";
 import { useAppendToInput } from "@/stores/composerStore";
 
@@ -23,7 +24,7 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
   return (
     <Renderer
       response={code}
-
+      library={genericLibrary}
       isStreaming={isStreaming}
       onAction={handleAction}
     />
