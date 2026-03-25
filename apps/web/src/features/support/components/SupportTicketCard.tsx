@@ -23,7 +23,7 @@ import type { SupportTicketData } from "@/types/features/supportTypes";
 // Support ticket validation schema
 const supportTicketSchema = z.object({
   type: z.enum(["support", "feature"], {
-    required_error: "Support type is required",
+    error: "Support type is required",
   }),
   title: z
     .string()
@@ -155,7 +155,7 @@ export default function SupportTicketCard({
     } catch (error) {
       if (error instanceof z.ZodError) {
         const newErrors: Record<string, string> = {};
-        error.errors.forEach((err) => {
+        error.issues.forEach((err) => {
           if (err.path[0]) {
             newErrors[err.path[0] as string] = err.message;
           }
