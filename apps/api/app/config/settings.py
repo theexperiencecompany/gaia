@@ -293,6 +293,7 @@ class ProductionSettings(CommonSettings):
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     KAPSO_API_KEY: Optional[str] = None
     KAPSO_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_PHONE_NUMBER: Optional[str] = None  # E.164 without +, e.g. "15551234567" — used for wa.me links
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
@@ -456,6 +457,7 @@ class DevelopmentSettings(CommonSettings):
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     KAPSO_API_KEY: Optional[str] = None
     KAPSO_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_PHONE_NUMBER: Optional[str] = None  # E.164 without +, e.g. "15551234567" — used for wa.me links
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
