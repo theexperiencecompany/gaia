@@ -1,6 +1,5 @@
 import { type ActionEvent, Renderer } from "@openuidev/react-lang";
 import React from "react";
-import { gaiaLibrary } from "@/config/openui/gaiaLibrary";
 import { dispatchOpenUIAction } from "@/features/chat/actions/openUIActionDispatcher";
 import { useAppendToInput } from "@/stores/composerStore";
 
@@ -24,7 +23,7 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
   return (
     <Renderer
       response={code}
-      library={gaiaLibrary}
+
       isStreaming={isStreaming}
       onAction={handleAction}
     />
