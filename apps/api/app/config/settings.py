@@ -94,6 +94,10 @@ class CommonSettings(BaseAppSettings):
     # Feature Flags
     # ----------------------------------------------
     ENABLE_OPENUI: bool = False  # Enable OpenUI Lang component rendering in LLM responses
+    # Tools that have been migrated to emit :::openui blocks instead of tool_data entries.
+    # Only active when ENABLE_OPENUI=True. Add tool names as they are migrated.
+    # Env var format (JSON array): MIGRATED_TOOLS='["todo_data","email_fetch_data"]'
+    MIGRATED_TOOLS: set[str] = set()
 
     # ----------------------------------------------
     # Observability
