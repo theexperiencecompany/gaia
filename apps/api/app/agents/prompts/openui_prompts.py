@@ -39,38 +39,40 @@ Available Components:
    - query: string (optional, search query)
 
 4. EmailListCard(emails)
-   - Displays a list of email previews (subject, sender, snippet, date).
-   - emails: [{id: string, subject?: string, from?: string, snippet?: string, date?: string, is_read?: boolean}]
-   - Pass the full emails array from email_fetch_data tool result.
+   - Displays a list of emails with sender, subject, and time.
+   - emails: [{id: string, from: string, subject: string, time: string, thread_id?: string (optional)}]
+   - Pass the emails array from email_fetch_data tool result.
 
-5. EmailThreadCard(thread)
-   - Displays a full email thread with all messages.
-   - thread: {thread_id: string, messages: [{id: string, subject?: string, from?: string, to?: string[], body?: string, date?: string}]}
-   - Pass the thread object from email_thread_data tool result.
+5. EmailThreadCard(thread_id, messages, messages_count)
+   - Displays a full email thread with all messages expanded in an accordion.
+   - thread_id: string
+   - messages: [{id: string, from: string, subject: string, time: string, snippet: string, body: string, content?: {text: string, html: string} (optional)}]
+   - messages_count: number
+   - Pass the thread object directly (not wrapped in a "thread" key) from email_thread_data tool result.
 
 6. ContactListCard(contacts)
-   - Displays a list of contacts with name, email, and photo.
-   - contacts: [{name?: string, email?: string, photo?: string, job_title?: string, company?: string}]
+   - Displays a list of contacts with name, email, and phone number.
+   - contacts: [{name: string, email: string, resource_name: string, phone?: string (optional)}]
    - Pass the contacts array from contacts_data tool result.
 
 7. PeopleSearchCard(people)
-   - Displays people search results with profile details.
-   - people: [{name?: string, email?: string, photo?: string, job_title?: string, company?: string}]
+   - Displays people search results with name, email, and phone number.
+   - people: [{name: string, email: string, resource_name: string, phone?: string (optional)}]
    - Pass the people array from people_search_data tool result.
 
 8. TodoListCard(todos?, projects?, stats?, action?, message?)
-   - Displays todo items, projects, and task statistics.
-   - todos: [{id: string, content: string, is_completed?: boolean, priority?: number, due_date?: string, project_id?: string}] (optional)
-   - projects: [{id: string, name: string, color?: string}] (optional)
-   - stats: {total?: number, completed?: number, overdue?: number} (optional)
-   - action: string (optional, the action that was performed)
-   - message: string (optional, status message)
+   - Displays todos, projects, and task statistics in an interactive card.
+   - todos: [{id: string, title: string, completed: boolean, priority: string, labels: [string], created_at: string, updated_at: string, description?: string (optional), due_date?: string (optional), project_id?: string (optional), project?: {id, name, ...} (optional), subtasks: [{id: string, title: string, completed: boolean}], workflow?: any (optional)}] (optional)
+   - projects: [{id: string, name: string, description?: string (optional), color?: string (optional), is_default?: boolean (optional), todo_count?: number (optional), completion_percentage?: number (optional)}] (optional)
+   - stats: {total: number, completed: number, pending: number, overdue: number, today: number, upcoming: number} (optional)
+   - action: string (optional)
+   - message: string (optional)
    - Pass all fields from todo_data tool result.
 
 9. GoalCard(goals?, stats?, action?, message?, goal_id?, deleted_goal_id?, error?)
-   - Displays goal tracking data with progress statistics.
-   - goals: [{id: string, title: string, description?: string, status?: string, progress?: number}] (optional)
-   - stats: {total?: number, completed?: number, in_progress?: number} (optional)
+   - Displays goals with progress, roadmap nodes, and statistics.
+   - goals: [{id: string, title: string, description?: string (optional), progress?: number (optional), roadmap?: {nodes: [...], edges: [...]} (optional), created_at?: string (optional), todo_project_id?: string (optional), todo_id?: string (optional)}] (optional)
+   - stats: {total_goals: number, goals_with_roadmaps: number, total_tasks: number, completed_tasks: number, overall_completion_rate: number, active_goals: [{id, title, progress}], active_goals_count: number} (optional)
    - action: string (optional)
    - message: string (optional)
    - goal_id: string (optional)
@@ -78,39 +80,40 @@ Available Components:
    - error: string (optional)
    - Pass all fields from goal_data tool result.
 
-10. NotificationCard(notifications)
-    - Displays a list of notifications.
-    - notifications: [{id?: string, title?: string, body?: string, type?: string, timestamp?: string, is_read?: boolean}]
-    - Pass the notifications array from notification_data.notifications field.
+10. NotificationCard(notifications, title?)
+    - Displays a list of notifications with type, status, and actions.
+    - notifications: [{id: string, user_id: string, status: string, type: string, created_at: string, source: string, content: {title: string, body: string, actions?: any (optional), rich_content?: any (optional)}, channels: [{channel_type: string, status: string, delivered_at?: string (optional), error_message?: string (optional), retry_count?: number (optional)}], delivered_at?: string (optional), read_at?: string (optional), metadata?: object (optional)}]
+    - title: string (optional)
+    - Pass the notifications array and optional title from notification_data tool result.
 
-11. IntegrationListCard(suggested?)
-    - Displays available integrations the user can connect.
-    - suggested: [{id: string, name?: string, description?: string, icon?: string, category?: string}] (optional)
-    - Pass the suggested array from integration_list_data tool result.
+11. IntegrationListCard(suggestedIntegrations?)
+    - Displays available and suggested integrations with connect actions.
+    - suggestedIntegrations: [{id: string, name: string, description: string, category: string, relevanceScore: number, slug: string, iconUrl?: string (optional), authType?: string (optional)}] (optional)
+    - Pass the suggestedIntegrations array from integration_list_data tool result.
 
 12. DocumentCard(document_data)
-    - Displays a document with title, content, and metadata.
-    - document_data: {title?: string, content?: string, url?: string, type?: string, created_at?: string}
+    - Displays a document card with file info and a download button.
+    - document_data: {filename: string, url: string, is_plain_text: boolean, title: string, metadata: object}
     - Pass the document_data object from document_data tool result.
 
 13. GoogleDocsCard(google_docs_data)
-    - Displays a Google Doc with title, content preview, and link.
-    - google_docs_data: {title?: string, content?: string, url?: string, doc_id?: string, last_modified?: string}
+    - Displays a Google Docs document with title, action, and a link to open it.
+    - google_docs_data: {document: {id: string, title: string, url: string, created_time: string, modified_time: string, type: string}, query?: string|null (optional), action: string, message: string, type: string}
     - Pass the google_docs_data object from google_docs_data tool result.
 
 14. DeepResearchCard(deep_research_results)
-    - Displays comprehensive deep research results with sources.
-    - deep_research_results: {query?: string, answer?: string, sources?: [{title: string, url: string, content?: string}], images?: [string]}
+    - Displays deep research results with enhanced web results, original search, and metadata tabs.
+    - deep_research_results: {original_search?: {web?, images?, news?, answer?, query?} (optional), enhanced_results?: [{title: string, url: string, content: string, score: number, raw_content?: string (optional), favicon?: string (optional), full_content?: string (optional), screenshot_url?: string (optional)}] (optional), screenshots_taken?: boolean (optional), metadata?: {total_content_size?: number (optional), elapsed_time?: number (optional), query?: string (optional)} (optional)}
     - Pass the deep_research_results object from deep_research_results tool result.
 
 15. CalendarListFetchCard(calendars)
-    - Displays a list of Google Calendar calendars with names and colors.
-    - calendars: [{calendar_id?: string, name?: string, color?: string, is_primary?: boolean}]
+    - Displays a list of fetched calendars with names, descriptions, and color indicators.
+    - calendars: [{name: string, id: string, description: string, backgroundColor?: string (optional)}]
     - Pass the calendars array from calendar_list_fetch_data tool result.
 
 16. TwitterSearchCard(twitter_search_data)
-    - Displays Twitter/X search results with tweets and metadata.
-    - twitter_search_data: {tweets: [{id: string, text: string, author?: string, created_at?: string, likes?: number, retweets?: number}], result_count?: number}
+    - Displays Twitter search results as tweet cards with author info and engagement metrics.
+    - twitter_search_data: {tweets: [{id: string, text: string, author: {id: string, username: string, name: string, description?: string (optional), profile_image_url?: string (optional), verified?: boolean (optional), public_metrics?: object (optional), created_at?: string (optional), location?: string (optional), url?: string (optional)}, created_at?: string (optional), public_metrics?: {retweet_count?, reply_count?, like_count?, quote_count?, bookmark_count?, impression_count?} (optional), conversation_id?: string (optional)}], result_count?: number (optional), next_token?: string (optional)}
     - Pass the twitter_search_data object from twitter_search_data tool result.
 """
 
