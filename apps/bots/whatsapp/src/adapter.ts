@@ -77,6 +77,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   protected async initialize(): Promise<void> {
     this.waConfig = loadWhatsAppConfig();
     this.waClient = new WhatsAppClient({
+      baseUrl: "https://api.kapso.ai/meta/whatsapp",
       kapsoApiKey: this.waConfig.kapsoApiKey,
     });
     console.log("WhatsApp client initialized via Kapso");
@@ -124,7 +125,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
       if (text) {
         // Fire-and-forget — do not await so webhook returns 200 quickly
-        void this.handleIncomingMessage(waId, text);
+        this.handleIncomingMessage(waId, text).catch((err) =>
+          console.error("Error handling WhatsApp message:", err),
+        );
       }
 
       return c.json({ status: "ok" });
@@ -179,10 +182,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     if (text.startsWith("/")) {
       const withoutSlash = text.slice(1);
       const spaceIndex = withoutSlash.indexOf(" ");
-      const commandName =
-        spaceIndex === -1
-          ? withoutSlash
-          : withoutSlash.slice(0, spaceIndex);
+      const commandName = (
+        spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
+      ).toLowerCase();
       const rest =
         spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim();
 
@@ -220,6 +222,14 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     waId: string,
     text: string,
   ): Promise<void> {
+    if (!text.trim()) {
+      await this.sendWhatsAppText(
+        waId,
+        "Hi! Send me a message and I'll help you. Type /help for available commands.",
+      );
+      return;
+    }
+
     const thinkingMsg = await this.sendWhatsAppText(waId, "Thinking...");
 
     let lastEditFn: ((t: string) => Promise<void>) | null = null;
@@ -249,13 +259,14 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         },
         // onAuthError
         async (authUrl: string) => {
-          await thinkingMsg.edit(
-            `Please authenticate first.\n\nOpen this link to sign in:\n${authUrl}`,
+          await this.sendWhatsAppText(
+            waId,
+            `To use GAIA on WhatsApp, link your account first:\n${authUrl}`,
           );
         },
         // onGenericError
         async (errMsg: string) => {
-          await thinkingMsg.edit(errMsg);
+          await this.sendWhatsAppText(waId, errMsg);
         },
         STREAMING_DEFAULTS.whatsapp,
       );
