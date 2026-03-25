@@ -223,12 +223,9 @@ Refer to them by their first name naturally, like a friend would.
 """
 
 
-def get_comms_agent_prompt(enable_openui: bool = False) -> str:
-    """Build the comms agent prompt, optionally including OpenUI Lang instructions."""
-    prompt = COMMS_AGENT_PROMPT
-    if enable_openui:
-        prompt += "\n" + OPENUI_INSTRUCTIONS
-    return prompt
+def get_comms_agent_prompt() -> str:
+    """Build the comms agent prompt with OpenUI Lang instructions."""
+    return COMMS_AGENT_PROMPT + "\n" + OPENUI_INSTRUCTIONS
 
 
 EXECUTOR_AGENT_PROMPT = """
