@@ -18,6 +18,7 @@ import {
   FileTreeView,
   GaugeChartView,
   ImageBlockView,
+  ImageGalleryView,
   JsonViewerView,
   KbdBlockView,
   LineChartView,
@@ -579,6 +580,36 @@ export default function OpenUIPreview() {
           src="https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=800&q=80"
           alt="AI visualization"
           caption="A visualization of neural network activations during inference."
+        />
+      </section>
+
+      {/* ImageGallery */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-zinc-300">ImageGallery</h2>
+        <code className="text-xs text-zinc-500">ImageGallery(images)</code>
+        <ImageGalleryView
+          images={[
+            {
+              src: "https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=400&q=80",
+              alt: "Neural network visualization",
+              caption: "Neural network activations",
+            },
+            {
+              src: "https://images.unsplash.com/photo-1676299081847-824916de030a?w=400&q=80",
+              alt: "AI generated art",
+              caption: "Generative AI output",
+            },
+            {
+              src: "https://images.unsplash.com/photo-1675271591211-126ad94e495d?w=400&q=80",
+              alt: "Code on screen",
+              caption: "Source code review",
+            },
+            {
+              src: "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=400&q=80",
+              alt: "Robot and human",
+              caption: "Human-AI collaboration",
+            },
+          ]}
         />
       </section>
 

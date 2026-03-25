@@ -85,7 +85,7 @@ OpenUI primitives are for **MCP tools, third-party integrations, and any unknown
 
 ### File location
 
-`apps/web/src/config/openui/genericLibrary.ts`
+`apps/web/src/config/openui/genericLibrary.tsx`
 
 ### Pattern
 
