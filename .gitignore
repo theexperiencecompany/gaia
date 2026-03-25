@@ -124,3 +124,8 @@ docs/plans/
 .coverage
 i18n.cache
 .worktrees/
+
+# dagger
+.dagger/sdk
+
+bin/dagger
