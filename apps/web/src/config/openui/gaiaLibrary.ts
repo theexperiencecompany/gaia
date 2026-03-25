@@ -5,8 +5,7 @@ import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import type { CalendarFetchData } from "@/types/features/calendarTypes";
-import type { SearchResults } from "@/types/features/searchTypes";
-import type { WeatherData } from "@/types/features/weatherTypes";
+import type { SearchResults, WeatherData } from "@/types/features/convoTypes";
 
 // --- Zod Schemas ---
 
