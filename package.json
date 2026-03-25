@@ -25,15 +25,17 @@
     ],
     "onlyBuiltDependencies": [
       "@heroui/shared-utils",
-      "@modelcontextprotocol/ext-apps",
       "@parcel/watcher",
       "@sentry/cli",
+      "@swc/core",
       "canvas",
       "core-js",
       "electron",
       "esbuild",
       "nx",
-      "sharp"
+      "sharp",
+      "unrs-resolver",
+      "workerd"
     ],
     "overrides": {
       "react": "19.1.0",
