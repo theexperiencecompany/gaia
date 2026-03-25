@@ -15,26 +15,26 @@
  * @module
  */
 
-import { serve } from "@hono/node-server";
+import type { Server } from "node:http";
 import {
   BaseBotAdapter,
   type BotCommand,
   handleStreamingChat,
-  parseTextArgs,
   type PlatformName,
+  parseTextArgs,
   type RichMessage,
-  richMessageToMarkdown,
   type RichMessageTarget,
+  richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
 } from "@gaia/shared";
+import { serve } from "@hono/node-server";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import { Hono } from "hono";
-import type { Server } from "node:http";
 import {
-  type KapsoMessageEvent,
   extractTextBody,
   extractWaId,
+  type KapsoMessageEvent,
   verifyKapsoSignature,
 } from "./webhook";
 
@@ -104,7 +104,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       const signature = c.req.header("x-kapso-signature") ?? null;
 
       if (
-        !verifyKapsoSignature(rawBody, signature, this.waConfig.kapsoWebhookSecret)
+        !verifyKapsoSignature(
+          rawBody,
+          signature,
+          this.waConfig.kapsoWebhookSecret,
+        )
       ) {
         return c.json({ error: "Invalid signature" }, 401);
       }
@@ -179,7 +183,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * - Other `/command` messages invoke the unified command dispatcher
    * - Plain text messages are treated as implicit `/gaia` chat
    */
-  private async handleIncomingMessage(waId: string, text: string): Promise<void> {
+  private async handleIncomingMessage(
+    waId: string,
+    text: string,
+  ): Promise<void> {
     const target = this.createWaTarget(waId);
 
     if (text.startsWith("/")) {
@@ -338,7 +345,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * Returns a {@link SentMessage} whose `edit` function sends a NEW message
    * (WhatsApp does not support editing existing messages).
    */
-  private async sendWhatsAppText(waId: string, text: string): Promise<SentMessage> {
+  private async sendWhatsAppText(
+    waId: string,
+    text: string,
+  ): Promise<SentMessage> {
     const response = await this.waClient.messages.sendText({
       phoneNumberId: this.waConfig.kapsoPhoneNumberId,
       to: `+${waId}`,

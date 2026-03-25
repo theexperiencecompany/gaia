@@ -44,8 +44,8 @@ export interface KapsoMessageEvent {
   type: string; // "whatsapp.message.received"
   data: {
     id: string;
-    from: string;          // wa_id (phone number without +)
-    type: string;          // "text" | "image" | "audio" | "document" | ...
+    from: string; // wa_id (phone number without +)
+    type: string; // "text" | "image" | "audio" | "document" | ...
     timestamp: string;
     text?: { body: string };
     phone_number_id: string;
