@@ -21,19 +21,18 @@ export const DeckSlidesCard: React.FC<DeckSlidesCardProps> = ({
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Fan offsets: alternate left/right with increasing offset
   const getFanOffset = (index: number, total: number) => {
     const center = (total - 1) / 2;
-    const offset = (index - center) * 120;
-    const rotation = (index - center) * 6;
+    const offset = (index - center) * 160;
+    const rotation = (index - center) * 5;
     return { offsetX: offset, rotation };
   };
 
   return (
     <div
       style={{
-        width: 900,
-        height: 520,
+        width: 1600,
+        height: 700,
         position: "relative",
         display: "flex",
         alignItems: "center",
@@ -41,11 +40,11 @@ export const DeckSlidesCard: React.FC<DeckSlidesCardProps> = ({
       }}
     >
       {slides.map((slide, i) => {
-        const slideDelay = enterDelay + i * 6;
+        const slideDelay = enterDelay + i * 8;
         const slideP = spring({
           frame: frame - slideDelay,
           fps,
-          config: { damping: 22, stiffness: 100 },
+          config: { damping: 8, stiffness: 180 },
         });
         const slideOpacity = interpolate(slideP, [0, 0.1], [0, 1], {
           extrapolateRight: "clamp",
@@ -59,29 +58,30 @@ export const DeckSlidesCard: React.FC<DeckSlidesCardProps> = ({
             key={i}
             style={{
               position: "absolute",
-              width: 400,
-              height: 280,
-              borderRadius: 20,
+              width: 600,
+              height: 420,
+              borderRadius: 24,
               background: slide.highlight ? COLORS.zinc900 : COLORS.surface,
-              border: slide.highlight ? `2px solid ${COLORS.primary}` : "none",
-              boxShadow: slide.highlight ? "0 0 40px rgba(0,187,255,0.2)" : "none",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              padding: "24px 28px",
+              padding: "32px 36px",
               transform: `translateX(${currentX}px) rotate(${currentRot}deg)`,
               opacity: slideOpacity,
               zIndex: slide.highlight ? slides.length + 1 : i,
+              boxShadow: slide.highlight
+                ? "0 0 80px rgba(0,187,255,0.18)"
+                : "none",
             }}
           >
             <div
               style={{
                 fontFamily: FONTS.body,
-                fontSize: 22,
+                fontSize: 30,
                 fontWeight: 600,
                 color: slide.highlight ? COLORS.primary : COLORS.zinc400,
-                marginBottom: slide.metric ? 12 : 0,
+                marginBottom: slide.metric ? 16 : 0,
                 textAlign: "center",
               }}
             >
@@ -92,8 +92,8 @@ export const DeckSlidesCard: React.FC<DeckSlidesCardProps> = ({
                 <div
                   style={{
                     fontFamily: FONTS.display,
-                    fontSize: 72,
-                    fontWeight: 700,
+                    fontSize: 120,
+                    fontWeight: 800,
                     color: COLORS.textDark,
                     lineHeight: 1,
                   }}
@@ -104,9 +104,9 @@ export const DeckSlidesCard: React.FC<DeckSlidesCardProps> = ({
                   <div
                     style={{
                       fontFamily: FONTS.body,
-                      fontSize: 22,
+                      fontSize: 28,
                       color: COLORS.zinc400,
-                      marginTop: 8,
+                      marginTop: 10,
                     }}
                   >
                     {slide.metricLabel}

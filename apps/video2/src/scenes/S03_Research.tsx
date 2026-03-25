@@ -8,76 +8,148 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { COLORS } from "../constants";
+import { COLORS, FONTS } from "../constants";
 import { SFX } from "../sfx";
-import { ChatThread } from "../components/ChatThread";
-import { ResearchCard } from "../components/ResearchCard";
+
+const ITEMS = [
+  { label: "Recent deals", value: "Notion, Linear, Loom" },
+  { label: "Thesis", value: "Removes friction from knowledge work" },
+  { label: "Portfolio overlap", value: "3 companies adjacent to you" },
+  { label: "Avg check size", value: "$10M, leads the round" },
+];
 
 export const S03_Research: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const scaleP = spring({
-    frame: frame - 40,
+  const nameP = spring({
+    frame: frame - 8,
     fps,
-    config: { damping: 22, stiffness: 100 },
+    config: { damping: 200 },
   });
-  const cardScale = interpolate(scaleP, [0, 1], [1, 1.08]);
+  const nameOpacity = interpolate(nameP, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
+  });
+  const nameX = interpolate(nameP, [0, 1], [-50, 0]);
 
   return (
     <AbsoluteFill
       style={{
-        background: COLORS.bgLight,
+        background: COLORS.bg,
         display: "flex",
-        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 36,
       }}
     >
-      {/* SFX */}
       <Sequence from={8}>
-        <Audio src={SFX.whoosh} volume={0.25} />
-      </Sequence>
-      <Sequence from={40}>
-        <Audio src={SFX.uiSwitch} volume={0.25} />
+        <Audio src={SFX.whoosh} volume={0.2} />
       </Sequence>
 
-      <ChatThread
-        messages={[
-          {
-            message: "Looked her up. Found what she cares about.",
-            timestamp: "11:58 PM",
-            delay: 8,
-          },
-        ]}
-      />
+      <div
+        style={{
+          display: "flex",
+          width: 1700,
+          gap: 80,
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            transform: `translateX(${nameX}px)`,
+            opacity: nameOpacity,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: FONTS.display,
+              fontSize: 96,
+              fontWeight: 800,
+              color: COLORS.textDark,
+              lineHeight: 1,
+              marginBottom: 16,
+            }}
+          >
+            Sarah Chen
+          </div>
+          <div
+            style={{
+              fontFamily: FONTS.display,
+              fontSize: 52,
+              fontWeight: 700,
+              color: COLORS.primary,
+              marginBottom: 12,
+            }}
+          >
+            Sequoia Capital
+          </div>
+          <div
+            style={{
+              fontFamily: FONTS.body,
+              fontSize: 34,
+              color: COLORS.zinc400,
+            }}
+          >
+            Series A · B2B SaaS · $8–15M
+          </div>
+        </div>
 
-      <div style={{ transform: `scale(${cardScale})` }}>
-        <ResearchCard
-          vcName="Sarah Chen"
-          fund="Sequoia Capital"
-          focus="Series A · B2B SaaS · $8–15M rounds"
-          items={[
-            {
-              label: "Recent deals",
-              value: "Notion, Linear, Loom — all productivity-layer SaaS",
-            },
-            {
-              label: "Thesis",
-              value: "Bets on tools that remove friction from knowledge work",
-            },
-            {
-              label: "Portfolio overlap",
-              value: "3 companies adjacent to your space",
-            },
-            {
-              label: "Avg check size",
-              value: "$10M, typically leads the round",
-            },
-          ]}
-          enterDelay={30}
-        />
+        <div
+          style={{
+            flex: 1,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 20,
+          }}
+        >
+          {ITEMS.map((item, i) => {
+            const cardDelay = 18 + i * 12;
+            const cardP = spring({
+              frame: frame - cardDelay,
+              fps,
+              config: { damping: 8, stiffness: 180 },
+            });
+            const cardOpacity = interpolate(cardP, [0, 0.1], [0, 1], {
+              extrapolateRight: "clamp",
+            });
+            const cardScale = interpolate(cardP, [0, 1], [0.84, 1]);
+
+            return (
+              <div
+                key={i}
+                style={{
+                  background: COLORS.surface,
+                  borderRadius: 24,
+                  padding: "36px 38px",
+                  transform: `scale(${cardScale})`,
+                  opacity: cardOpacity,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: FONTS.body,
+                    fontSize: 24,
+                    color: COLORS.zinc400,
+                    marginBottom: 10,
+                  }}
+                >
+                  {item.label}
+                </div>
+                <div
+                  style={{
+                    fontFamily: FONTS.body,
+                    fontSize: 30,
+                    fontWeight: 700,
+                    color: COLORS.textDark,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {item.value}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </AbsoluteFill>
   );

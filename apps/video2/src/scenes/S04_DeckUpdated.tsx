@@ -8,70 +8,67 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { COLORS } from "../constants";
+import { COLORS, FONTS } from "../constants";
 import { SFX } from "../sfx";
-import { ChatThread } from "../components/ChatThread";
 import { DeckSlidesCard } from "../components/DeckSlidesCard";
 
 export const S04_DeckUpdated: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const scaleP = spring({
-    frame: frame - 40,
+  const labelP = spring({
+    frame: frame - 8,
     fps,
-    config: { damping: 22, stiffness: 100 },
+    config: { damping: 200 },
   });
-  const cardScale = interpolate(scaleP, [0, 1], [1, 1.08]);
+  const labelOpacity = interpolate(labelP, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
+  });
+  const labelY = interpolate(labelP, [0, 1], [20, 0]);
 
   return (
     <AbsoluteFill
       style={{
-        background: COLORS.bgLight,
+        background: COLORS.bg,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 36,
+        gap: 32,
       }}
     >
-      {/* SFX */}
       <Sequence from={8}>
-        <Audio src={SFX.whoosh} volume={0.25} />
+        <Audio src={SFX.whoosh} volume={0.2} />
       </Sequence>
-      <Sequence from={40}>
-        <Audio src={SFX.uiSwitch} volume={0.25} />
-      </Sequence>
-      <Sequence from={80}>
-        <Audio src={SFX.whip} volume={0.5} />
+      <Sequence from={60}>
+        <Audio src={SFX.whip} volume={0.45} />
       </Sequence>
 
-      <ChatThread
-        messages={[
+      <DeckSlidesCard
+        enterDelay={8}
+        slides={[
+          { title: "Company Overview" },
+          { title: "Market Opportunity" },
           {
-            message:
-              "Updated your deck. Metrics current, narrative tailored to her thesis.",
-            timestamp: "12:20 AM",
-            delay: 8,
+            title: "Traction",
+            highlight: true,
+            metric: "$47K",
+            metricLabel: "MRR · +18% MoM",
           },
+          { title: "The Ask" },
         ]}
       />
 
-      <div style={{ transform: `scale(${cardScale})` }}>
-        <DeckSlidesCard
-          enterDelay={30}
-          slides={[
-            { title: "Company Overview" },
-            { title: "Market Opportunity" },
-            {
-              title: "Traction",
-              highlight: true,
-              metric: "$47K",
-              metricLabel: "MRR · +18% MoM",
-            },
-            { title: "The Ask" },
-          ]}
-        />
+      <div
+        style={{
+          opacity: labelOpacity,
+          transform: `translateY(${labelY}px)`,
+          fontFamily: FONTS.body,
+          fontSize: 32,
+          color: COLORS.zinc500,
+        }}
+      >
+        Deck updated · narrative tailored to Sarah's thesis
       </div>
     </AbsoluteFill>
   );

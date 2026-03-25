@@ -28,15 +28,13 @@ export const EmailComposeCard: React.FC<EmailComposeCardProps> = ({
   const cardP = spring({
     frame: frame - enterDelay,
     fps,
-    config: { damping: 22, stiffness: 100 },
+    config: { damping: 8, stiffness: 180 },
   });
   const cardOpacity = interpolate(cardP, [0, 0.1], [0, 1], {
     extrapolateRight: "clamp",
   });
-  const cardY = interpolate(cardP, [0, 1], [40, 0]);
-  const cardScale = interpolate(cardP, [0, 1], [0.95, 1]);
+  const cardScale = interpolate(cardP, [0, 1], [0.88, 1]);
 
-  // Attachments appear after body finishes typing
   const attachmentStart = bodyTypingDelay + Math.ceil(body.length * 0.5) + 10;
   const crmStart = attachmentStart + attachments.length * 6 + 8;
 
@@ -52,19 +50,18 @@ export const EmailComposeCard: React.FC<EmailComposeCardProps> = ({
   return (
     <div
       style={{
-        width: 860,
+        width: 1500,
         background: COLORS.surface,
-        borderRadius: 28,
+        borderRadius: 32,
         overflow: "hidden",
-        transform: `translateY(${cardY}px) scale(${cardScale})`,
+        transform: `scale(${cardScale})`,
         opacity: cardOpacity,
       }}
     >
-      {/* Header */}
       <div
         style={{
-          padding: "18px 28px",
-          borderBottom: `1px solid ${COLORS.zinc700}`,
+          padding: "26px 44px",
+          background: COLORS.zinc900,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -73,7 +70,7 @@ export const EmailComposeCard: React.FC<EmailComposeCardProps> = ({
         <span
           style={{
             fontFamily: FONTS.body,
-            fontSize: 26,
+            fontSize: 38,
             fontWeight: 700,
             color: COLORS.textDark,
           }}
@@ -83,12 +80,11 @@ export const EmailComposeCard: React.FC<EmailComposeCardProps> = ({
         {crmStatus && (
           <div
             style={{
-              background: "rgba(34, 197, 94, 0.13)",
-              border: "1px solid #22c55e",
+              background: "rgba(34, 197, 94, 0.15)",
               borderRadius: 999,
-              padding: "4px 14px",
+              padding: "6px 20px",
               fontFamily: FONTS.body,
-              fontSize: 20,
+              fontSize: 26,
               color: "#22c55e",
               opacity: crmOpacity,
             }}
@@ -98,38 +94,69 @@ export const EmailComposeCard: React.FC<EmailComposeCardProps> = ({
         )}
       </div>
 
-      {/* Fields */}
-      <div style={{ padding: "16px 28px 0" }}>
-        {/* To */}
+      <div style={{ padding: "24px 44px 0" }}>
         <div
           style={{
             display: "flex",
-            gap: 12,
-            marginBottom: 12,
-            borderBottom: `1px solid ${COLORS.zinc700}`,
-            paddingBottom: 12,
+            gap: 16,
+            marginBottom: 18,
+            paddingBottom: 18,
+            borderBottom: `1px solid ${COLORS.zinc800}`,
           }}
         >
-          <span style={{ fontFamily: FONTS.body, fontSize: 22, color: COLORS.zinc500, width: 80 }}>To</span>
-          <span style={{ fontFamily: FONTS.body, fontSize: 24, color: COLORS.textDark }}>{to}</span>
+          <span
+            style={{
+              fontFamily: FONTS.body,
+              fontSize: 30,
+              color: COLORS.zinc500,
+              width: 100,
+            }}
+          >
+            To
+          </span>
+          <span
+            style={{
+              fontFamily: FONTS.body,
+              fontSize: 32,
+              color: COLORS.textDark,
+            }}
+          >
+            {to}
+          </span>
         </div>
 
-        {/* Subject */}
         <div
           style={{
             display: "flex",
-            gap: 12,
-            marginBottom: 16,
-            borderBottom: `1px solid ${COLORS.zinc700}`,
-            paddingBottom: 12,
+            gap: 16,
+            marginBottom: 24,
+            paddingBottom: 18,
+            borderBottom: `1px solid ${COLORS.zinc800}`,
           }}
         >
-          <span style={{ fontFamily: FONTS.body, fontSize: 22, color: COLORS.zinc500, width: 80 }}>Subject</span>
-          <span style={{ fontFamily: FONTS.body, fontSize: 24, fontWeight: 600, color: COLORS.textDark }}>{subject}</span>
+          <span
+            style={{
+              fontFamily: FONTS.body,
+              fontSize: 30,
+              color: COLORS.zinc500,
+              width: 100,
+            }}
+          >
+            Subject
+          </span>
+          <span
+            style={{
+              fontFamily: FONTS.body,
+              fontSize: 32,
+              fontWeight: 600,
+              color: COLORS.textDark,
+            }}
+          >
+            {subject}
+          </span>
         </div>
 
-        {/* Body */}
-        <div style={{ padding: "0 0 16px" }}>
+        <div style={{ padding: "0 0 24px" }}>
           <TypingText
             text={body}
             framesPerChar={0.5}
@@ -137,21 +164,20 @@ export const EmailComposeCard: React.FC<EmailComposeCardProps> = ({
             showCursor={false}
             style={{
               fontFamily: FONTS.body,
-              fontSize: 24,
+              fontSize: 30,
               color: COLORS.textDark,
-              lineHeight: 1.65,
+              lineHeight: 1.7,
               whiteSpace: "pre-wrap",
             }}
           />
         </div>
       </div>
 
-      {/* Attachments */}
       <div
         style={{
-          padding: "0 28px 20px",
+          padding: "0 44px 28px",
           display: "flex",
-          gap: 10,
+          gap: 12,
           flexWrap: "wrap",
         }}
       >
@@ -172,20 +198,20 @@ export const EmailComposeCard: React.FC<EmailComposeCardProps> = ({
               key={i}
               style={{
                 background: COLORS.zinc900,
-                borderRadius: 12,
-                padding: "8px 14px",
+                borderRadius: 14,
+                padding: "10px 20px",
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
+                gap: 10,
                 opacity: attOpacity,
                 transform: `scale(${attScale})`,
               }}
             >
               <div
                 style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 2,
+                  width: 10,
+                  height: 10,
+                  borderRadius: 3,
                   background: COLORS.primary,
                   flexShrink: 0,
                 }}
@@ -193,7 +219,7 @@ export const EmailComposeCard: React.FC<EmailComposeCardProps> = ({
               <span
                 style={{
                   fontFamily: FONTS.body,
-                  fontSize: 20,
+                  fontSize: 26,
                   color: COLORS.zinc400,
                 }}
               >

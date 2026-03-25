@@ -9,7 +9,7 @@ export const RemotionRoot: React.FC = () => {
     <Composition
       id="GaiaFounders"
       component={GaiaFounders}
-      durationInFrames={2228}
+      durationInFrames={1152}
       fps={FPS}
       width={WIDTH}
       height={HEIGHT}

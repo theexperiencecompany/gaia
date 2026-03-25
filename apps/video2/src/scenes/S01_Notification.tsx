@@ -16,55 +16,52 @@ export const S01_Notification: React.FC = () => {
   const { fps } = useVideoConfig();
 
   const notifP = spring({
-    frame: frame - 15,
+    frame: frame - 12,
     fps,
-    config: { damping: 18, stiffness: 120 },
+    config: { damping: 12, stiffness: 160 },
   });
   const notifOpacity = interpolate(notifP, [0, 0.1], [0, 1], {
     extrapolateRight: "clamp",
   });
-  const notifY = interpolate(notifP, [0, 1], [-200, 0]);
+  const notifY = interpolate(notifP, [0, 1], [-180, 0]);
 
   return (
     <AbsoluteFill
       style={{
-        background: COLORS.bgLight,
+        background: COLORS.bg,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
       }}
     >
-      {/* SFX */}
-      <Sequence from={15}>
+      <Sequence from={12}>
         <Audio src={SFX.uiSwitch} volume={0.35} />
       </Sequence>
 
-      {/* Notification card */}
       <div
         style={{
-          width: 860,
+          width: 1200,
           background: "rgba(30, 30, 32, 0.97)",
-          borderRadius: 35,
-          padding: "30px 40px 30px 25px",
+          borderRadius: 40,
+          padding: "40px 52px 40px 36px",
           display: "flex",
           alignItems: "flex-start",
-          gap: 20,
+          gap: 28,
           transform: `translateY(${notifY}px)`,
           opacity: notifOpacity,
         }}
       >
-        {/* Telegram icon */}
         <div
           style={{
-            width: 96,
-            height: 96,
-            borderRadius: 20,
+            width: 120,
+            height: 120,
+            borderRadius: 28,
             background: "#229ed9",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             fontFamily: FONTS.display,
-            fontSize: 36,
+            fontSize: 52,
             fontWeight: 700,
             color: "#fff",
             flexShrink: 0,
@@ -73,20 +70,19 @@ export const S01_Notification: React.FC = () => {
           T
         </div>
 
-        <div style={{ flex: 1, paddingTop: 4 }}>
-          {/* App label + timestamp */}
+        <div style={{ flex: 1, paddingTop: 6 }}>
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: 10,
+              marginBottom: 12,
             }}
           >
             <span
               style={{
                 fontFamily: FONTS.body,
-                fontSize: 26,
+                fontSize: 34,
                 color: COLORS.zinc400,
                 fontWeight: 500,
               }}
@@ -96,7 +92,7 @@ export const S01_Notification: React.FC = () => {
             <span
               style={{
                 fontFamily: FONTS.body,
-                fontSize: 22,
+                fontSize: 30,
                 color: COLORS.zinc500,
               }}
             >
@@ -104,24 +100,22 @@ export const S01_Notification: React.FC = () => {
             </span>
           </div>
 
-          {/* Title */}
           <div
             style={{
-              fontFamily: FONTS.body,
-              fontSize: 40,
+              fontFamily: FONTS.display,
+              fontSize: 56,
               fontWeight: 700,
               color: COLORS.textDark,
-              marginBottom: 6,
+              marginBottom: 8,
             }}
           >
             The VC replied.
           </div>
 
-          {/* Body */}
           <div
             style={{
               fontFamily: FONTS.body,
-              fontSize: 30,
+              fontSize: 38,
               color: COLORS.zinc400,
               lineHeight: 1.4,
             }}

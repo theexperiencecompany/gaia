@@ -27,58 +27,52 @@ export const SpreadsheetCard: React.FC<SpreadsheetCardProps> = ({
   const cardP = spring({
     frame: frame - enterDelay,
     fps,
-    config: { damping: 22, stiffness: 100 },
+    config: { damping: 8, stiffness: 180 },
   });
   const cardOpacity = interpolate(cardP, [0, 0.1], [0, 1], {
     extrapolateRight: "clamp",
   });
-  const cardY = interpolate(cardP, [0, 1], [40, 0]);
-  const cardScale = interpolate(cardP, [0, 1], [0.95, 1]);
+  const cardScale = interpolate(cardP, [0, 1], [0.88, 1]);
 
   return (
     <div
       style={{
-        width: 860,
+        width: 1600,
         background: COLORS.surface,
-        borderRadius: 28,
+        borderRadius: 32,
         overflow: "hidden",
-        transform: `translateY(${cardY}px) scale(${cardScale})`,
+        transform: `scale(${cardScale})`,
         opacity: cardOpacity,
       }}
     >
-      {/* Title */}
       <div
         style={{
-          padding: "22px 28px",
-          fontFamily: FONTS.body,
-          fontSize: 26,
+          padding: "32px 44px",
+          fontFamily: FONTS.display,
+          fontSize: 52,
           fontWeight: 700,
           color: COLORS.textDark,
-          borderBottom: `1px solid ${COLORS.zinc700}`,
+          background: COLORS.zinc900,
         }}
       >
         {title}
       </div>
 
-      {/* Header row */}
       <div
         style={{
           display: "flex",
-          background: COLORS.zinc900,
-          borderBottom: `1px solid ${COLORS.zinc700}`,
-          padding: "12px 28px",
+          background: "rgba(0,0,0,0.25)",
+          padding: "18px 44px",
         }}
       >
-        <div style={{ width: 220, fontFamily: FONTS.body, fontSize: 20, fontWeight: 600, color: COLORS.zinc400 }}>
-          {/* empty label column */}
-        </div>
+        <div style={{ flex: 2 }} />
         {headers.map((h, i) => (
           <div
             key={i}
             style={{
-              width: 180,
+              flex: 1,
               fontFamily: FONTS.body,
-              fontSize: 20,
+              fontSize: 30,
               fontWeight: 600,
               color: COLORS.zinc400,
               textAlign: "right",
@@ -89,31 +83,35 @@ export const SpreadsheetCard: React.FC<SpreadsheetCardProps> = ({
         ))}
       </div>
 
-      {/* Data rows */}
       {rows.map((row, rowIdx) => (
         <div
           key={rowIdx}
           style={{
             display: "flex",
-            padding: "12px 28px",
-            background: row.highlight ? "rgba(0, 187, 255, 0.06)" : "transparent",
-            borderBottom: `1px solid ${COLORS.zinc700}`,
-            borderLeft: row.highlight ? "3px solid rgba(0,187,255,0.4)" : "none",
+            padding: "20px 44px",
+            background: row.highlight
+              ? "rgba(0, 187, 255, 0.07)"
+              : rowIdx % 2 === 0
+                ? "transparent"
+                : "rgba(255,255,255,0.02)",
+            borderLeft: row.highlight
+              ? `5px solid rgba(0,187,255,0.5)`
+              : "5px solid transparent",
           }}
         >
           <div
             style={{
-              width: 220,
+              flex: 2,
               fontFamily: FONTS.body,
-              fontSize: 24,
+              fontSize: 36,
               color: row.highlight ? COLORS.primary : COLORS.zinc400,
-              fontWeight: row.highlight ? 600 : 400,
+              fontWeight: row.highlight ? 700 : 400,
             }}
           >
             {row.label}
           </div>
           {row.values.map((val, colIdx) => {
-            const cellDelay = (enterDelay + 15) + rowIdx * 8 + colIdx * 4;
+            const cellDelay = enterDelay + 15 + rowIdx * 8 + colIdx * 4;
             const cellP = spring({
               frame: frame - cellDelay,
               fps,
@@ -127,9 +125,9 @@ export const SpreadsheetCard: React.FC<SpreadsheetCardProps> = ({
               <div
                 key={colIdx}
                 style={{
-                  width: 180,
+                  flex: 1,
                   fontFamily: FONTS.mono,
-                  fontSize: 24,
+                  fontSize: 36,
                   color: row.highlight ? COLORS.primary : COLORS.textDark,
                   fontWeight: row.highlight ? 700 : 400,
                   textAlign: "right",

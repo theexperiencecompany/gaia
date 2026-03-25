@@ -27,16 +27,15 @@ export const EmailThreadCard: React.FC<EmailThreadCardProps> = ({
   const cardP = spring({
     frame: frame - enterDelay,
     fps,
-    config: { damping: 22, stiffness: 100 },
+    config: { damping: 8, stiffness: 180 },
   });
   const opacity = interpolate(cardP, [0, 0.1], [0, 1], {
     extrapolateRight: "clamp",
   });
-  const y = interpolate(cardP, [0, 1], [40, 0]);
-  const scale = interpolate(cardP, [0, 1], [0.95, 1]);
+  const scale = interpolate(cardP, [0, 1], [0.88, 1]);
 
   const highlightP = spring({
-    frame: frame - (enterDelay + 10),
+    frame: frame - (enterDelay + 6),
     fps,
     config: { damping: 200 },
   });
@@ -47,20 +46,19 @@ export const EmailThreadCard: React.FC<EmailThreadCardProps> = ({
   return (
     <div
       style={{
-        width: 860,
+        width: 1400,
         background: COLORS.surface,
-        borderRadius: 28,
+        borderRadius: 32,
         overflow: "hidden",
-        transform: `translateY(${y}px) scale(${scale})`,
+        transform: `scale(${scale})`,
         opacity,
       }}
     >
-      {/* Reply row — highlighted */}
       <div
         style={{
-          borderLeft: `4px solid ${COLORS.primary}`,
-          background: `rgba(0, 187, 255, 0.06)`,
-          padding: "20px 28px",
+          borderLeft: `6px solid ${COLORS.primary}`,
+          background: `rgba(0, 187, 255, 0.07)`,
+          padding: "32px 44px",
           opacity: highlightOpacity,
         }}
       >
@@ -69,14 +67,14 @@ export const EmailThreadCard: React.FC<EmailThreadCardProps> = ({
             display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-start",
-            marginBottom: 6,
+            marginBottom: 10,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <span
               style={{
                 fontFamily: FONTS.body,
-                fontSize: 26,
+                fontSize: 42,
                 fontWeight: 700,
                 color: COLORS.textDark,
               }}
@@ -88,9 +86,9 @@ export const EmailThreadCard: React.FC<EmailThreadCardProps> = ({
                 background: COLORS.primary,
                 color: "#000",
                 borderRadius: 999,
-                padding: "3px 12px",
+                padding: "4px 18px",
                 fontFamily: FONTS.body,
-                fontSize: 18,
+                fontSize: 24,
                 fontWeight: 700,
               }}
             >
@@ -100,7 +98,7 @@ export const EmailThreadCard: React.FC<EmailThreadCardProps> = ({
           <span
             style={{
               fontFamily: FONTS.body,
-              fontSize: 22,
+              fontSize: 30,
               color: COLORS.zinc500,
             }}
           >
@@ -110,10 +108,10 @@ export const EmailThreadCard: React.FC<EmailThreadCardProps> = ({
         <div
           style={{
             fontFamily: FONTS.body,
-            fontSize: 24,
+            fontSize: 36,
             fontWeight: 600,
             color: COLORS.textDark,
-            marginBottom: 4,
+            marginBottom: 8,
           }}
         >
           {replySubject}
@@ -121,7 +119,7 @@ export const EmailThreadCard: React.FC<EmailThreadCardProps> = ({
         <div
           style={{
             fontFamily: FONTS.body,
-            fontSize: 22,
+            fontSize: 30,
             color: COLORS.zinc500,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -132,18 +130,16 @@ export const EmailThreadCard: React.FC<EmailThreadCardProps> = ({
         </div>
       </div>
 
-      {/* Divider */}
-      <div style={{ height: 1, background: COLORS.zinc700 }} />
+      <div style={{ height: 1, background: COLORS.zinc800 }} />
 
-      {/* Original email — muted */}
-      <div style={{ padding: "16px 28px", opacity: 0.4 }}>
+      <div style={{ padding: "24px 44px", opacity: 0.35 }}>
         <div
           style={{
             fontFamily: FONTS.body,
-            fontSize: 24,
+            fontSize: 34,
             fontWeight: 600,
             color: COLORS.textDark,
-            marginBottom: 4,
+            marginBottom: 6,
           }}
         >
           {originalSubject}
@@ -151,7 +147,7 @@ export const EmailThreadCard: React.FC<EmailThreadCardProps> = ({
         <div
           style={{
             fontFamily: FONTS.body,
-            fontSize: 22,
+            fontSize: 28,
             color: COLORS.zinc500,
             overflow: "hidden",
             textOverflow: "ellipsis",

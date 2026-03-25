@@ -23,42 +23,38 @@ export const SlackMessageCard: React.FC<SlackMessageCardProps> = ({
   const cardP = spring({
     frame: frame - enterDelay,
     fps,
-    config: { damping: 22, stiffness: 100 },
+    config: { damping: 8, stiffness: 180 },
   });
   const cardOpacity = interpolate(cardP, [0, 0.1], [0, 1], {
     extrapolateRight: "clamp",
   });
-  const cardY = interpolate(cardP, [0, 1], [40, 0]);
-  const cardScale = interpolate(cardP, [0, 1], [0.94, 1]);
+  const cardScale = interpolate(cardP, [0, 1], [0.88, 1]);
 
   return (
     <div
       style={{
-        width: 760,
+        width: 1300,
         background: "#1a1d21",
-        borderRadius: 28,
-        border: "1px solid #2d2d2d",
+        borderRadius: 32,
         overflow: "hidden",
-        transform: `translateY(${cardY}px) scale(${cardScale})`,
+        transform: `scale(${cardScale})`,
         opacity: cardOpacity,
       }}
     >
-      {/* Workspace header */}
       <div
         style={{
           background: "#19171d",
-          padding: "16px 24px",
+          padding: "22px 36px",
           display: "flex",
           alignItems: "center",
-          gap: 12,
-          borderBottom: "1px solid #2d2d2d",
+          gap: 16,
         }}
       >
         <div
           style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
+            width: 40,
+            height: 40,
+            borderRadius: 10,
             background: "#4a154b",
             flexShrink: 0,
           }}
@@ -66,7 +62,7 @@ export const SlackMessageCard: React.FC<SlackMessageCardProps> = ({
         <span
           style={{
             fontFamily: FONTS.body,
-            fontSize: 24,
+            fontSize: 34,
             fontWeight: 700,
             color: "#d1d2d3",
           }}
@@ -76,7 +72,7 @@ export const SlackMessageCard: React.FC<SlackMessageCardProps> = ({
         <span
           style={{
             fontFamily: FONTS.body,
-            fontSize: 20,
+            fontSize: 28,
             color: "#6b6f76",
             marginLeft: 4,
           }}
@@ -85,26 +81,24 @@ export const SlackMessageCard: React.FC<SlackMessageCardProps> = ({
         </span>
       </div>
 
-      {/* Message */}
       <div
         style={{
-          padding: "20px 24px",
+          padding: "32px 36px",
           display: "flex",
-          gap: 14,
+          gap: 20,
         }}
       >
-        {/* GAIA avatar */}
         <div
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 8,
+            width: 60,
+            height: 60,
+            borderRadius: 12,
             background: COLORS.primary,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             fontFamily: FONTS.display,
-            fontSize: 18,
+            fontSize: 26,
             fontWeight: 700,
             color: "#000",
             flexShrink: 0,
@@ -114,11 +108,18 @@ export const SlackMessageCard: React.FC<SlackMessageCardProps> = ({
         </div>
 
         <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 14,
+              marginBottom: 10,
+            }}
+          >
             <span
               style={{
                 fontFamily: FONTS.body,
-                fontSize: 24,
+                fontSize: 34,
                 fontWeight: 700,
                 color: "#d1d2d3",
               }}
@@ -128,7 +129,7 @@ export const SlackMessageCard: React.FC<SlackMessageCardProps> = ({
             <span
               style={{
                 fontFamily: FONTS.body,
-                fontSize: 18,
+                fontSize: 26,
                 color: "#6b6f76",
               }}
             >
@@ -138,9 +139,9 @@ export const SlackMessageCard: React.FC<SlackMessageCardProps> = ({
           <div
             style={{
               fontFamily: FONTS.body,
-              fontSize: 24,
+              fontSize: 32,
               color: "#d1d2d3",
-              lineHeight: 1.5,
+              lineHeight: 1.55,
             }}
           >
             {message}

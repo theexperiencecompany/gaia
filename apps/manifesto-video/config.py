@@ -15,16 +15,16 @@ CLIPS = [
     {
         "id": "apollo_control",
         "url": "https://archive.org/download/76494NASALaunchOfSaturnV/76494%20NASA%20Launch%20Of%20Saturn%20V.mp4",
-        "start": "00:02:55",
+        "start": "00:03:05",
         "duration": 3,
-        "desc": "Saturn V rocket launch — engines firing, liftoff",
+        "desc": "Saturn V rocket launch — full liftoff, ascending through smoke",
     },
     {
         "id": "einstein",
         "url": "https://ia600303.us.archive.org/0/items/capsca_00009/capsca_00009_access.HD.mp4",
-        "start": "00:01:20",
+        "start": "00:01:40",
         "duration": 3,
-        "desc": "Einstein at Caltech — face visible, candid 1932 footage",
+        "desc": "Einstein at Caltech — three-quarter face, iconic hair, warm expression",
     },
     {
         "id": "jfk_moon",
@@ -190,13 +190,11 @@ TEXT_TIMELINE = [
     # [47.5–49.8]  over armstrong_moon
     {"time": 47.5, "dur": 2.3, "text": "They weren\u2019t more talented than you."},
     # [50.5–53.3]  over city_night
-    {"time": 50.5, "dur": 2.8, "text": "The world got louder."},
+    {"time": 50.5, "dur": 2.8, "text": "Someone protected their time."},
     # [54.2–56.8]  over earth_orbit_2
-    {"time": 54.2, "dur": 2.6, "text": "Yours doesn\u2019t have to."},
-    # [60.0–62.5]  gaia_black — let black breathe first
-    {"time": 60.0, "dur": 2.5, "text": "GAIA"},
-    # [63.5–66.5]  gaia_black
-    {"time": 63.5, "dur": 3.0, "text": "Do the work."},
+    {"time": 54.2, "dur": 2.6, "text": "Who protects yours?"},
+    # [59–67]  gaia_black — logo overlay (no drawtext), then tagline
+    {"time": 63.0, "dur": 3.5, "text": "Protect the hours."},
 ]
 
 # ---------------------------------------------------------------------------

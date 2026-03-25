@@ -21,97 +21,82 @@ export const PrepDocCard: React.FC<PrepDocCardProps> = ({
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const cardP = spring({
+  const titleP = spring({
     frame: frame - enterDelay,
     fps,
-    config: { damping: 22, stiffness: 100 },
+    config: { damping: 200 },
   });
-  const cardOpacity = interpolate(cardP, [0, 0.1], [0, 1], {
+  const titleOpacity = interpolate(titleP, [0, 0.1], [0, 1], {
     extrapolateRight: "clamp",
   });
-  const cardY = interpolate(cardP, [0, 1], [40, 0]);
-  const cardScale = interpolate(cardP, [0, 1], [0.95, 1]);
+  const titleY = interpolate(titleP, [0, 1], [20, 0]);
 
   return (
-    <div
-      style={{
-        width: 860,
-        background: COLORS.zinc900,
-        borderRadius: 28,
-        border: `1px solid ${COLORS.zinc700}`,
-        overflow: "hidden",
-        transform: `translateY(${cardY}px) scale(${cardScale})`,
-        opacity: cardOpacity,
-      }}
-    >
-      {/* Doc header */}
+    <div style={{ width: 1500 }}>
       <div
         style={{
-          background: COLORS.surface,
-          padding: "20px 28px",
+          fontFamily: FONTS.display,
+          fontSize: 44,
+          fontWeight: 700,
+          color: COLORS.zinc400,
+          marginBottom: 28,
+          opacity: titleOpacity,
+          transform: `translateY(${titleY}px)`,
           display: "flex",
           alignItems: "center",
-          gap: 14,
-          borderBottom: `1px solid ${COLORS.zinc700}`,
+          gap: 16,
         }}
       >
         <div
           style={{
-            width: 32,
-            height: 32,
+            width: 36,
+            height: 36,
             borderRadius: 8,
             background: "#4285f4",
             flexShrink: 0,
           }}
         />
-        <span
-          style={{
-            fontFamily: FONTS.body,
-            fontSize: 24,
-            fontWeight: 600,
-            color: COLORS.textDark,
-          }}
-        >
-          {title}
-        </span>
+        {title}
       </div>
 
-      {/* Questions */}
-      <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 24,
+        }}
+      >
         {questions.map((q, i) => {
-          const qDelay = enterDelay + 15 + i * 18;
-          const tpDelay = qDelay + 8;
-
-          const qP = spring({
-            frame: frame - qDelay,
+          const cardDelay = enterDelay + 12 + i * 14;
+          const cardP = spring({
+            frame: frame - cardDelay,
             fps,
-            config: { damping: 200 },
+            config: { damping: 8, stiffness: 180 },
           });
-          const qOpacity = interpolate(qP, [0, 0.1], [0, 1], {
+          const cardOpacity = interpolate(cardP, [0, 0.1], [0, 1], {
             extrapolateRight: "clamp",
           });
-          const qY = interpolate(qP, [0, 1], [12, 0]);
-
-          const tpP = spring({
-            frame: frame - tpDelay,
-            fps,
-            config: { damping: 200 },
-          });
-          const tpOpacity = interpolate(tpP, [0, 0.1], [0, 1], {
-            extrapolateRight: "clamp",
-          });
+          const cardScale = interpolate(cardP, [0, 1], [0.88, 1]);
 
           return (
-            <div key={i}>
+            <div
+              key={i}
+              style={{
+                background: COLORS.surface,
+                borderRadius: 28,
+                padding: "40px 44px",
+                transform: `scale(${cardScale})`,
+                opacity: cardOpacity,
+              }}
+            >
               <div
                 style={{
                   fontFamily: FONTS.body,
-                  fontSize: 24,
+                  fontSize: 30,
                   fontWeight: 700,
                   color: COLORS.textDark,
-                  marginBottom: 8,
-                  transform: `translateY(${qY}px)`,
-                  opacity: qOpacity,
+                  marginBottom: 16,
+                  lineHeight: 1.3,
                 }}
               >
                 {i + 1}. {q.question}
@@ -119,12 +104,9 @@ export const PrepDocCard: React.FC<PrepDocCardProps> = ({
               <div
                 style={{
                   fontFamily: FONTS.body,
-                  fontSize: 22,
+                  fontSize: 26,
                   color: COLORS.zinc400,
-                  paddingLeft: 20,
-                  borderLeft: `3px solid ${COLORS.zinc700}`,
-                  lineHeight: 1.5,
-                  opacity: tpOpacity,
+                  lineHeight: 1.55,
                 }}
               >
                 {q.talkingPoint}
