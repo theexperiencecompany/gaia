@@ -1468,18 +1468,24 @@ export function JsonViewerView(props: z.infer<typeof jsonViewerSchema>) {
   );
 }
 
-const ALERT_STYLES: Record<string, { bg: string; text: string; accent: string }> = {
-  info: { bg: "bg-blue-400/10", text: "text-blue-400", accent: "text-blue-300" },
-  success: { bg: "bg-emerald-400/10", text: "text-emerald-400", accent: "text-emerald-300" },
-  warning: { bg: "bg-amber-400/10", text: "text-amber-400", accent: "text-amber-300" },
-  error: { bg: "bg-red-400/10", text: "text-red-400", accent: "text-red-300" },
+const ALERT_STYLES: Record<string, { bg: string; text: string; accent: string; dot: string }> = {
+  info: { bg: "bg-blue-400/10", text: "text-blue-400", accent: "text-blue-300", dot: "bg-blue-400" },
+  success: { bg: "bg-emerald-400/10", text: "text-emerald-400", accent: "text-emerald-300", dot: "bg-emerald-400" },
+  warning: { bg: "bg-amber-400/10", text: "text-amber-400", accent: "text-amber-300", dot: "bg-amber-400" },
+  error: { bg: "bg-red-400/10", text: "text-red-400", accent: "text-red-300", dot: "bg-red-400" },
 };
 
 export function AlertBannerView(props: z.infer<typeof alertBannerSchema>) {
   const style = ALERT_STYLES[props.variant] ?? ALERT_STYLES.info;
   return (
-    <div className={`rounded-2xl p-4 ${style.bg}`}>
-      <p className={`text-sm font-semibold ${style.text}`}>{props.title}</p>
+    <div className="rounded-2xl bg-zinc-800 p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`h-2 w-2 rounded-full ${style.dot}`} />
+        <p className="text-sm font-semibold text-zinc-100">{props.title}</p>
+        <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${style.bg} ${style.text}`}>
+          {props.variant}
+        </span>
+      </div>
       {props.description && (
         <p className={`text-xs mt-1 ${style.accent}`}>{props.description}</p>
       )}
