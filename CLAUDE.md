@@ -288,6 +288,10 @@ nx docker:build api
 nx docker:build voice-agent
 ```
 
+## Task Tracking
+
+When the `bd` CLI is available, use it for task tracking instead of built-in TodoWrite/TaskCreate tools. Check availability with `bd --help` or `which bd`.
+
 ## Implementation Plans
 
 When creating implementation plans, store them in `.agents/plans/` directory. This folder is gitignored and used for planning documents before execution.

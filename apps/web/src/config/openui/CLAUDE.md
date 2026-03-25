@@ -1,0 +1,1 @@
+../../features/chat/components/bubbles/bot/CLAUDE.md
