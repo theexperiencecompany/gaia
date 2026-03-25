@@ -2,13 +2,14 @@
 
 ## Overview
 
-This workspace contains three GAIA bot integrations (Discord, Slack, Telegram) plus a shared end-to-end test suite. Each bot is an independent npm package that connects to the GAIA backend by extending `BaseBotAdapter` from `@gaia/shared`.
+This workspace contains four GAIA bot integrations (Discord, Slack, Telegram, WhatsApp) plus a shared end-to-end test suite. Each bot is an independent npm package that connects to the GAIA backend by extending `BaseBotAdapter` from `@gaia/shared`.
 
 ```
 apps/bots/
   discord/     - @gaia/bot-discord  (discord.js v14)
   slack/       - @gaia/bot-slack    (@slack/bolt v4, Socket Mode)
   telegram/    - @gaia/bot-telegram (grammY v1)
+  whatsapp/    - @gaia/bot-whatsapp (Kapso + Hono webhook)
   __tests__/   - Vitest e2e/unit tests (run from apps/bots/)
 ```
 
@@ -103,6 +104,20 @@ Each adapter creates a `RichMessageTarget` from its native context (Discord `Int
 - `hasTelegramMention` / `stripTelegramMention` are exported from `adapter.ts` for testability (case-sensitive string matching, not regex).
 - Bot username is fetched once on startup via `bot.api.getMe()` and cached to avoid repeated API calls.
 - Required env vars: `TELEGRAM_BOT_TOKEN`
+
+### WhatsApp (`whatsapp/`)
+
+- Runs as an **HTTP webhook server** (Hono + `@hono/node-server`) — Kapso calls `POST /webhook`
+- Webhook signature verified via HMAC-SHA256 on raw body against `KAPSO_WEBHOOK_SECRET`
+- No slash-command registry step needed — commands matched by text prefix (`/command`)
+- Non-command messages (plain text) are treated as chat messages (like Telegram DMs)
+- WhatsApp does **not** support message editing — `SentMessage.edit()` sends a new message instead
+- `sendEphemeral` falls back to `send` (no ephemeral concept in WhatsApp)
+- `sendRich` renders `RichMessage` as plain text with WhatsApp bold (`*text*`) and italic (`_text_`)
+- Typing indicator: no standard WhatsApp typing API — `startTyping()` returns a no-op
+- Streaming is **disabled** (`streaming: false`) — full response sent once complete
+- `platform_user_id` = wa_id (phone number without leading `+`, e.g. `"15551234567"`)
+- Required env vars: `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID`, `KAPSO_WEBHOOK_SECRET`, `WHATSAPP_WEBHOOK_PORT`
 
 ## Testing
 
