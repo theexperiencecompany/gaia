@@ -25,6 +25,9 @@ import {
 } from "@icons";
 import { CalendarDate } from "@internationalized/date";
 import { createLibrary, defineComponent } from "@openuidev/react-lang";
+import { parseDiffFromFile } from "@pierre/diffs";
+import type { FileDiffMetadata } from "@pierre/diffs/react";
+import { FileDiff } from "@pierre/diffs/react";
 import { motion } from "motion/react";
 import React from "react";
 import {
@@ -1974,44 +1977,40 @@ export function TimelineView(props: z.infer<typeof timelineSchema>) {
 
 const ALERT_STYLES: Record<
   string,
-  { bg: string; text: string; accent: string; border: string }
+  { inner: string; text: string; accent: string }
 > = {
   info: {
-    bg: "bg-blue-400/5",
+    inner: "bg-blue-400/10",
     text: "text-blue-400",
     accent: "text-blue-300",
-    border: "border-l-4 border-blue-400",
   },
   success: {
-    bg: "bg-emerald-400/5",
+    inner: "bg-emerald-400/10",
     text: "text-emerald-400",
     accent: "text-emerald-300",
-    border: "border-l-4 border-emerald-400",
   },
   warning: {
-    bg: "bg-amber-400/5",
+    inner: "bg-amber-400/10",
     text: "text-amber-400",
     accent: "text-amber-300",
-    border: "border-l-4 border-amber-400",
   },
   error: {
-    bg: "bg-red-400/5",
+    inner: "bg-red-400/10",
     text: "text-red-400",
     accent: "text-red-300",
-    border: "border-l-4 border-red-400",
   },
 };
 
 export function AlertBannerView(props: z.infer<typeof alertBannerSchema>) {
   const style = ALERT_STYLES[props.variant] ?? ALERT_STYLES.info;
   return (
-    <div
-      className={`rounded-r-2xl rounded-l-sm px-4 py-3 w-full min-w-fit max-w-xl ${style.bg} ${style.border}`}
-    >
-      <p className={`text-sm font-semibold ${style.text}`}>{props.title}</p>
-      {props.description && (
-        <p className={`text-xs mt-1 ${style.accent}`}>{props.description}</p>
-      )}
+    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-xl">
+      <div className={`rounded-xl ${style.inner} p-3`}>
+        <p className={`text-sm font-semibold ${style.text}`}>{props.title}</p>
+        {props.description && (
+          <p className={`text-xs mt-1 ${style.accent}`}>{props.description}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -2096,6 +2095,58 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CodeDiff schema + view
+// ---------------------------------------------------------------------------
+
+const codeDiffSchema = z.object({
+  filename: z.string(),
+  oldCode: z.string(),
+  newCode: z.string(),
+  diffStyle: z.enum(["unified", "split"]).optional(),
+  title: z.string().optional(),
+});
+
+export function CodeDiffView(props: z.infer<typeof codeDiffSchema>) {
+  const [fileDiff, setFileDiff] = React.useState<FileDiffMetadata | null>(null);
+
+  React.useEffect(() => {
+    const diff = parseDiffFromFile(
+      { name: props.filename, contents: props.oldCode },
+      { name: props.filename, contents: props.newCode },
+    );
+    setFileDiff(diff);
+  }, [props.filename, props.oldCode, props.newCode]);
+
+  return (
+    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-2xl">
+      {props.title && (
+        <p className="text-sm font-semibold text-zinc-100 mb-3">
+          {props.title}
+        </p>
+      )}
+      <div className="rounded-xl overflow-hidden">
+        {fileDiff ? (
+          <FileDiff
+            fileDiff={fileDiff}
+            options={{
+              diffStyle: props.diffStyle ?? "unified",
+              theme: { dark: "github-dark", light: "github-light" },
+              themeType: "dark",
+              disableLineNumbers: false,
+              overflow: "scroll",
+            }}
+          />
+        ) : (
+          <div className="bg-zinc-900 p-3 text-xs text-zinc-500">
+            Loading diff…
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2356,6 +2407,13 @@ const stepsDef = defineComponent({
   component: ({ props }) => React.createElement(StepsView, props),
 });
 
+const codeDiffDef = defineComponent({
+  name: "CodeDiff",
+  description: "Side-by-side or unified code diff with syntax highlighting.",
+  props: codeDiffSchema,
+  component: ({ props }) => React.createElement(CodeDiffView, props),
+});
+
 // ---------------------------------------------------------------------------
 // Library
 // ---------------------------------------------------------------------------
@@ -2397,6 +2455,7 @@ export const genericLibrary = createLibrary({
     timelineDef,
     alertBannerDef,
     stepsDef,
+    codeDiffDef,
   ],
   componentGroups: [
     {
@@ -2466,6 +2525,13 @@ export const genericLibrary = createLibrary({
         "Timeline for event sequences",
         "AlertBanner for inline notices",
         "Steps for ordered instructions",
+      ],
+    },
+    {
+      name: "Code",
+      components: ["CodeDiff"],
+      notes: [
+        "CodeDiff for before/after code comparisons with syntax highlighting",
       ],
     },
   ],

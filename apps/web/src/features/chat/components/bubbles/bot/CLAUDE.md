@@ -1,211 +1,278 @@
-# Bot Bubble Component Styling Guide
+# OpenUI System — Maintenance Guide
 
-Derived from reading: TodoSection, NotificationListSection, SearchResultsTabs, RedditPostSection,
-EmailComposeSection, EmailThreadCard, SupportTicketSection, CalendarEventSection.
+This file explains the full lifecycle of OpenUI components: how they're built, how the LLM
+generates them, and how to keep everything in sync.
 
 ---
 
-## 1. Styling Contract
+## 1. What OpenUI Is
 
-| Role | Exact Tailwind Classes |
+OpenUI is a lightweight DSL (domain-specific language) that lets the backend LLM emit rich
+React components directly inside its text response.
+
+**Flow:**
+
+```
+Backend LLM                Frontend (TextBubble)
+──────────────────────     ──────────────────────────────────────────────
+response text with         parseOpenUISegments() splits text at :::openui
+:::openui fences     →     OpenUIRenderer passes code to @openuidev/react-lang
+                           Renderer() parses the code, maps positional args
+                           to named props, renders the React component from
+                           genericLibrary.tsx
+```
+
+**Example backend output:**
+
+```
+Here are the results:
+
+:::openui
+root = ResultList([{"title": "Item A", "badge": "new"}, {"title": "Item B"}])
+:::
+
+Let me know if you need more detail.
+```
+
+**What the user sees:** "Here are the results:" in a chat bubble → ResultList card rendered
+outside the bubble → "Let me know if you need more detail." in another chat bubble.
+
+---
+
+## 2. Why OpenUI Segments Render OUTSIDE the Bubble
+
+`imessage-bubble imessage-from-them` has `background: #27272a` (zinc-800). All OpenUI
+components use `bg-zinc-800` for their outer container — same color = invisible.
+
+The fix (in `TextBubble.tsx`): mixed parts (markdown + openui) are split so that:
+- Markdown segments → wrapped in `imessage-bubble`
+- OpenUI segments → rendered at the same DOM level as TOOL_RENDERERS (outside any bubble)
+
+**Never** render OpenUI components inside an `imessage-bubble` wrapper.
+
+---
+
+## 3. Two Rendering Paths — Know Which One You Need
+
+```
+Is this tool output already handled by a dedicated GAIA tool?
+  YES → TOOL_RENDERERS path (native tool card)
+        Files: TextBubble.tsx, apps/api/app/models/chat_models.py (tool_fields)
+        The LLM will NEVER emit :::openui for suppressed tools.
+
+  NO  → OpenUI path (generic component in genericLibrary.tsx)
+        Files: genericLibrary.tsx, openui_prompts.py
+        The LLM will emit :::openui and pick a component from the library.
+```
+
+A tool can only be in ONE path. Adding it to `tool_fields` (Python) automatically adds it to
+`OPENUI_SUPPRESSED_TOOLS` and the LLM is told not to emit openui for it.
+
+---
+
+## 4. Styling Contract
+
+All OpenUI components must follow the same card contract as native tool cards:
+
+| Role                  | Exact Tailwind Classes                          |
 |---|---|
-| Outer card container | `rounded-2xl bg-zinc-800 p-4` |
-| Outer card (accordion variant) | `rounded-2xl bg-zinc-800 p-3 py-0` |
-| Inner row / item | `rounded-2xl bg-zinc-900 p-3` |
-| Inner row (compact) | `rounded-xl bg-zinc-900 p-3` |
-| Section header text | `text-sm font-semibold text-zinc-100 mb-3` |
-| Item title | `text-sm font-medium text-zinc-200` |
-| Item title (prominent) | `text-sm font-medium text-zinc-100` |
-| Secondary / body text | `text-xs text-zinc-400` |
-| Meta / timestamp | `text-xs text-zinc-500` |
-| Item spacing | `space-y-2` |
-| Flex / grid gap | `gap-2` |
-| Width (default) | `w-fit min-w-[400px]` (or `w-full`) |
-| Border radius only | `rounded-2xl` — never `rounded-lg`, `rounded-xl` at card level |
-| Borders | NONE — never `border-`, `ring-`, `outline-` |
-| Status: success | `bg-emerald-400/10 text-emerald-400` |
-| Status: warning | `bg-amber-400/10 text-amber-400` |
-| Status: error/danger | `bg-red-400/10 text-red-400` |
-| Status: info | `bg-blue-400/10 text-blue-400` |
-| Status: pending | `bg-zinc-700/50 text-zinc-400` |
-| Priority high (TodoSection) | `bg-red-500/10 text-red-500` |
-| Priority medium (TodoSection) | `bg-yellow-500/10 text-yellow-500` |
-| Priority low (TodoSection) | `bg-blue-500/10 text-blue-500` |
-| Badge / pill (inline) | `rounded-full px-2 py-0.5 text-xs` + status color |
-| Chart colors (recharts) | `["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]` |
-
-**Rules extracted from source:**
-- `rounded-2xl` on all outer cards, `rounded-xl` acceptable only on inner items
-- `bg-zinc-800` outer, `bg-zinc-900` inner — this two-level depth is consistent everywhere
-- No borders or outlines anywhere in the card tree (confirmed across all 8 components)
-- `w-fit` + `min-w-[...]` pattern for sizing (TodoSection uses `min-w-[400px]`, `min-w-[450px]`)
-- HeroUI `Chip`, `Button`, `Accordion`, `AccordionItem`, `Progress`, `Tabs`, `Tab`, `Avatar` are all used
-- `Chip variant="flat"` is the standard chip style throughout
-- `Button variant="flat"` or `variant="solid"` for actions
-- `ScrollShadow` wraps any list that might overflow
+| Outer card container  | `rounded-2xl bg-zinc-800 p-4`                   |
+| Inner row / item      | `rounded-2xl bg-zinc-900 p-3`                   |
+| Section header        | `text-sm font-semibold text-zinc-100 mb-3`      |
+| Item title            | `text-sm font-medium text-zinc-200`             |
+| Secondary text        | `text-xs text-zinc-400`                         |
+| Item spacing          | `space-y-2`                                     |
+| Width                 | `w-full min-w-fit max-w-lg` (or `max-w-xl`)     |
+| Borders               | NONE — never `border-`, `ring-`, `outline-`     |
+| Status: success       | `bg-emerald-400/10 text-emerald-400`            |
+| Status: warning       | `bg-amber-400/10 text-amber-400`                |
+| Status: error/danger  | `bg-red-400/10 text-red-400`                    |
+| Status: info          | `bg-blue-400/10 text-blue-400`                  |
 
 ---
 
-## 2. How to Add a Native Tool Card (TOOL_RENDERERS path)
+## 5. Adding a New OpenUI Component (End-to-End Checklist)
 
-Native tool cards are for **known GAIA tools with structured backend data** (e.g. calendar, email, todos).
-
-### Files to create / modify
-
-1. **Create a section component** in this directory:
-   `apps/web/src/features/chat/components/bubbles/bot/MyToolSection.tsx`
-
-   Follow the styling contract above. Use `bg-zinc-800` outer, `bg-zinc-900` inner.
-
-2. **Register it in TOOL_RENDERERS** — find the renderer map:
-   `apps/web/src/features/chat/components/bubbles/bot/ToolDataRenderer.tsx` (or similar)
-
-   Add an entry: `my_tool_data: (data) => <MyToolSection {...data} />`
-
-3. **Add the tool name to `tool_fields`** in:
-   `apps/api/app/models/chat_models.py`
-
-   This prevents the backend from stripping the field before it reaches the frontend.
-
-4. **Do NOT add an OpenUI component** for this tool. Once it is in `tool_fields`, it is on the suppression list and the LLM will never emit `:::openui` for it.
-
-### Styling rules for native tool cards
-
-- Outer container: `rounded-2xl bg-zinc-800 p-4`
-- Inner items: `rounded-2xl bg-zinc-900 p-3` (use `space-y-2` between items)
-- Header: `text-sm font-semibold text-zinc-100 mb-3`
-- Never add `border-`, `ring-`, or `outline-` classes
-- Use `w-fit min-w-[400px]` unless the card should be full-width (`w-full`)
-
----
-
-## 3. How to Add a genericLibrary OpenUI Primitive
-
-OpenUI primitives are for **MCP tools, third-party integrations, and any unknown tool output**.
-
-### File location
-
-`apps/web/src/config/openui/genericLibrary.tsx`
-
-### Pattern
+### Step 1 — Define the Zod schema in `genericLibrary.tsx`
 
 ```typescript
-// 1. Define a Zod schema
 const myComponentSchema = z.object({
   title: z.string(),
   items: z.array(z.object({ label: z.string(), value: z.string() })),
+  // Optional fields must use .optional()
 });
+```
 
-// 2. Define the React component (exported with View suffix for preview page)
+Prop ORDER in the schema is the positional argument order the LLM will use.
+Example: `root = MyComponent("Title", [{"label": "k", "value": "v"}])`
+
+### Step 2 — Write the React component (export with `View` suffix)
+
+```typescript
 export function MyComponentView(props: z.infer<typeof myComponentSchema>) {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4">
+    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
       <p className="text-sm font-semibold text-zinc-100 mb-3">{props.title}</p>
       <div className="space-y-2">
         {props.items.map((item, i) => (
           <div key={i} className="rounded-2xl bg-zinc-900 p-3">
-            <span className="text-sm font-medium text-zinc-200">{item.label}</span>
-            <span className="text-xs text-zinc-400 ml-2">{item.value}</span>
+            <span className="text-xs text-zinc-500">{item.label}</span>
+            <span className="text-sm font-medium text-zinc-200 ml-2">
+              {item.value}
+            </span>
           </div>
         ))}
       </div>
     </div>
   );
 }
+```
 
-// 3. Call defineComponent
+### Step 3 — Register with `defineComponent`
+
+```typescript
 const myComponentDef = defineComponent({
-  name: "MyComponent",
-  description: "Short description for the LLM",
-  schema: myComponentSchema,
+  name: "MyComponent",           // MUST match the name the LLM will use
+  description: "Short description",
+  props: myComponentSchema,
   component: ({ props }) => React.createElement(MyComponentView, props),
 });
-
-// 4. Add to the appropriate componentGroup in createLibrary(...)
 ```
 
-### Adding to the component group
+### Step 4 — Add to `createLibrary`
 
-In `createLibrary({ components: [...], componentGroups: [...] })`, add the name to the
-correct group array and export the definition in `components: [...]`.
+In `genericLibrary.tsx` at the bottom, add to:
+1. `components: [...]` array
+2. Appropriate `componentGroups[*].components` array
 
-### Updating the LLM prompt
+### Step 5 — Document in the backend prompt
 
-Add a documentation entry in `apps/api/app/agents/prompts/openui_prompts.py` under
-`OPENUI_COMPONENT_LIBRARY_PROMPT` following the format of existing entries.
+In `apps/api/app/agents/prompts/openui_prompts.py`, add to `OPENUI_COMPONENT_LIBRARY_PROMPT`:
+
+```
+MyComponent(title, items)
+  title: string; items: {label: string, value: string}[]
+  Use for: <when the LLM should pick this component>
+```
+
+Format: `ComponentName(arg1, arg2, optionalArg?)` — positional order must match schema order.
+Use `?` for optional args.
+
+### Step 6 — Update the test file
+
+In `apps/api/tests/test_openui_prompts.py`, add `"MyComponent"` to the components list in
+`test_instructions_contains_all_component_names`.
+
+### Step 7 — Verify
+
+Run: `cd apps/api && uv run pytest tests/test_openui_prompts.py`
 
 ---
 
-## 4. Decision Rule: Native Tool Card vs OpenUI Primitive
+## 6. The Stack Layout Wrapper
+
+`Stack([c1, c2, ...])` is a special container that renders multiple components vertically:
 
 ```
-Does the backend already emit a structured field for this tool?
-  YES → tool is (or should be) in tool_fields in chat_models.py
-       → Build a native tool card in this directory
-       → Register in TOOL_RENDERERS
-       → NEVER add an OpenUI component for it
-       → LLM suppression list (OPENUI_SUPPRESSED_TOOLS) is auto-generated from tool_fields
-
-  NO  → MCP tool, third-party integration, or unknown output
-       → Add a generic component to genericLibrary.ts
-       → Document it in openui_prompts.py
-       → LLM will emit :::openui for it automatically
+:::openui
+root = Stack([gauge, card])
+gauge = GaugeChart(73, "CPU Usage", 0, 100)
+card = DataCard("Server", [{"label": "Status", "value": "healthy"}])
+:::
 ```
 
-**Key constraint:** A tool cannot be in both paths. If it is in `tool_fields`, it must never
-have a corresponding OpenUI component — the suppression list enforces this at the LLM level.
+Rules:
+- `root` must always be defined first (or use forward reference)
+- Variables are resolved before rendering
+- Stack items can be any other component
 
 ---
 
-## 5. Copy-Paste Example of a Correctly-Styled Component
+## 7. LLM Prompt Rules (from `OPENUI_INSTRUCTIONS`)
 
-```tsx
-"use client";
+The LLM follows these rules when emitting openui:
 
-import React from "react";
+- First line MUST be `root = ComponentName(...)`
+- Arguments are positional — never `name=value` syntax
+- Use `null` to skip an optional middle argument
+- Only emit openui for tool outputs NOT in the suppressed list
+- Do NOT emit openui for greetings, opinions, or conversational text
 
-interface ExampleCardProps {
-  title: string;
-  items: Array<{ label: string; value: string; meta?: string }>;
-  badge?: string;
-}
+**Suppressed tools** (auto-generated from `tool_fields` in `chat_models.py`) are listed at the
+top of the `OPENUI_INSTRUCTIONS` string. The LLM is told to use the TOOL_RENDERERS for these.
 
-export default function ExampleCard({ title, items, badge }: ExampleCardProps) {
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-semibold text-zinc-100">{title}</p>
-        {badge && (
-          <span className="rounded-full bg-zinc-700/50 px-2 py-0.5 text-xs text-zinc-400">
-            {badge}
-          </span>
-        )}
-      </div>
-      <div className="space-y-2">
-        {items.map((item, i) => (
-          <div key={i} className="rounded-2xl bg-zinc-900 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium text-zinc-200">
-                {item.label}
-              </span>
-              <span className="text-sm text-zinc-400">{item.value}</span>
-            </div>
-            {item.meta && (
-              <p className="text-xs text-zinc-500 mt-1">{item.meta}</p>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+---
+
+## 8. Keeping Frontend and Backend in Sync
+
+The most common drift: adding a component to `genericLibrary.tsx` but forgetting the backend
+prompt (or vice versa).
+
+**The test `test_instructions_contains_all_component_names` catches this.** If you add a
+component to the frontend but forget to document it in `openui_prompts.py`, the test will fail.
+
+Run tests after every component addition:
+```bash
+cd apps/api && uv run pytest tests/test_openui_prompts.py -v
+```
+
+**Checklist for keeping in sync:**
+
+| Change | Frontend | Backend |
+|---|---|---|
+| New component | Add schema + view + def to `genericLibrary.tsx` | Document in `OPENUI_COMPONENT_LIBRARY_PROMPT` |
+| Rename component | Update `defineComponent.name` + `componentGroups` | Update component name in prompt |
+| Change arg order | Update schema field order | Update prompt signature |
+| Remove component | Remove from `components[]` + `componentGroups` | Remove from prompt |
+| Any of the above | — | Update test component list |
+
+---
+
+## 9. Async / External Data in Components
+
+Some components need async initialization (e.g., `CodeDiff` loading Shiki via `@pierre/diffs`).
+Use `useState` + `useEffect` pattern:
+
+```typescript
+export function CodeDiffView(props: z.infer<typeof codeDiffSchema>) {
+  const [data, setData] = React.useState<SomeType | null>(null);
+
+  React.useEffect(() => {
+    // async work here
+    setData(result);
+  }, [props.relevantProp]);
+
+  return data ? <ActualComponent data={data} /> : <LoadingPlaceholder />;
 }
 ```
 
-**Checklist before committing any card component:**
-- [ ] Outer container: `rounded-2xl bg-zinc-800 p-4`
-- [ ] Inner items: `rounded-2xl bg-zinc-900 p-3`
-- [ ] Header: `text-sm font-semibold text-zinc-100 mb-3`
-- [ ] No `border-`, `ring-`, or `outline-` classes anywhere
-- [ ] `space-y-2` between items
-- [ ] Status colors use `/10` opacity backgrounds with matching text color
-- [ ] Width: `w-fit min-w-[...]` or `w-full` depending on context
+The component must render something during loading — never return `null` from the view.
+
+---
+
+## 10. Error Handling
+
+The `OpenUIRenderer` wraps everything in an `OpenUIErrorBoundary`. If the React tree throws,
+the boundary shows the raw openui code as a `<pre>` fallback.
+
+However, if the **parser** fails silently (returns `result.root = null`), nothing is shown.
+This happens when:
+- A required argument is missing or null
+- A component name in the openui code doesn't match any name in `genericLibrary.tsx`
+- The code has syntax errors
+
+To debug: open the browser console and look for `[openui] Parse error:` or
+`[OpenUIRenderer] Render error:` logs.
+
+---
+
+## 11. Component Groups Reference
+
+| Group              | Components                                                                                     |
+|---|---|
+| Layout & Data      | DataCard, ResultList, DataTable, ComparisonTable, StatusCard, ActionCard, TagGroup, FileTree, Accordion, TabsBlock, ProgressList, SelectableList, AvatarList, KbdBlock |
+| Analytics          | StatRow, BarChart, LineChart, AreaChart, PieChart, ScatterChart, RadarChart, GaugeChart       |
+| Content            | ImageBlock, ImageGallery, VideoBlock, AudioPlayer, MapBlock, CalendarMini, NumberTicker, Carousel, TreeView |
+| Timeline           | Timeline, AlertBanner, Steps                                                                   |
+| Code               | CodeDiff                                                                                       |
+| Layout (internal)  | Stack (used in :::openui code only, not LLM-visible as a standalone)                         |

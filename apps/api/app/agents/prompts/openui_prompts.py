@@ -146,6 +146,15 @@ AlertBanner(variant, title, description?)
 Steps(items, title?)
   items: {title: string, description?: string, status?: "complete"|"active"|"pending"}[]
   Use for: ordered instructions, onboarding, migration guides
+
+--- Code ---
+CodeDiff(filename, oldCode, newCode, diffStyle?, title?)
+  filename: string (e.g. "src/utils.ts" — used for header and language detection)
+  oldCode: string (before content)
+  newCode: string (after content)
+  diffStyle?: "unified" | "split" — defaults to "unified"
+  title?: string
+  Use for: before/after code changes, patch previews, refactoring summaries
 """
 
 _escaped_component_library = OPENUI_COMPONENT_LIBRARY_PROMPT.replace("{", "{{").replace(
