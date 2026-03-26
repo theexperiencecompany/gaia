@@ -11,7 +11,7 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 
 import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from shared.py.wide_events import log
 
@@ -30,11 +30,11 @@ from app.db.redis import redis_cache
 
 async def run_executor_background(
     task: str,
-    configurable: dict,
+    configurable: dict[str, Any],
     user_time: datetime,
     stream_id: str,
     conversation_id: str,
-    comms_inbox: Optional[asyncio.Queue] = None,
+    comms_inbox: Optional[asyncio.Queue[Any]] = None,
 ) -> None:
     """Run executor agent in background and push result to comms inbox.
 

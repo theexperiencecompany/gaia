@@ -1,9 +1,13 @@
 """Pre-model hook that drains the executor inbox at each turn boundary.
 
 Runs before every executor LLM invocation. If subagents have pushed
-progress updates or results via notify_executor or background handoffs,
-they are injected into the executor's state so the LLM can process them
-and optionally call notify_comms to forward to the user.
+progress updates via notify_executor, they are injected into the
+executor's state so the LLM can process them and optionally call
+notify_comms to forward to the user.
+
+Only drains subagent_update messages. subagent_result messages are
+left in the queue for wait_for_subagents() to collect — this prevents
+the hook from consuming results that wait_for_subagents expects to see.
 
 This is the GAIA equivalent of Claude Code's turn-boundary inbox check.
 """
@@ -24,7 +28,7 @@ async def check_subagent_inbox(
     config: RunnableConfig,
     store: BaseStore,
 ) -> Any:
-    """Drain executor inbox and inject subagent messages into state."""
+    """Drain subagent_update messages from executor inbox into state."""
     configurable = config.get("configurable", {})
     stream_id = configurable.get("stream_id")
 
@@ -35,8 +39,11 @@ async def check_subagent_inbox(
     if not queue:
         return state
 
-    # Non-blocking drain: get all available messages
-    updates = []
+    # Non-blocking drain: consume only subagent_update messages.
+    # Defer subagent_result so wait_for_subagents() can collect them.
+    updates: list[str] = []
+    deferred: list[Any] = []
+
     while True:
         try:
             item = queue.get_nowait()
@@ -44,18 +51,22 @@ async def check_subagent_inbox(
             agent = item.get("agent", "subagent")
             message = item.get("message", "")
             if msg_type == "subagent_result":
-                updates.append(f"[SUBAGENT_RESULT from {agent}]\n{message}")
+                deferred.append(item)
             else:
                 updates.append(f"[SUBAGENT_UPDATE from {agent}]\n{message}")
         except asyncio.QueueEmpty:
             break
 
+    # Put result items back so wait_for_subagents() still sees them
+    for item in deferred:
+        await queue.put(item)
+
     if not updates:
         return state
 
     update_text = "\n\n".join(updates)
-    messages = state.get("messages", [])
-    messages.append(SystemMessage(content=f"Subagent messages:\n{update_text}"))
+    new_message = SystemMessage(content=f"Subagent updates:\n{update_text}")
 
-    log.info(f"Injected {len(updates)} subagent message(s) into executor state")
-    return state
+    log.info(f"Injected {len(updates)} subagent update(s) into executor state")
+    # Return new state dict — pre-model hooks must not mutate state in-place
+    return {**state, "messages": [*state.get("messages", []), new_message]}

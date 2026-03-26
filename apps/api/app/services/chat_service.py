@@ -19,6 +19,7 @@ from app.agents.core.agent import call_agent
 from app.agents.core.background.comms_notifier import run_comms_notifier
 from app.agents.core.background.inbox import (
     deregister_comms_inbox,
+    deregister_executor_inbox,
     deregister_pending_subagents,
     register_comms_inbox,
 )
@@ -346,8 +347,8 @@ async def _run_chat_stream(
         # ── Background executor + comms notifier ──────────────────────────
         # If call_executor was used, it spawned a background task and pushed
         # items to comms_inbox. Run the comms notifier to process them.
-        # If no executor was used, comms_inbox is empty — we try a short
-        # timeout window in case the executor just started.
+        # If the inbox is empty but the executor lock exists, the executor is
+        # still initialising — wait up to 30s for the first message to arrive.
         if not is_cancelled and not comms_inbox.empty():
             log.info(f"Comms notifier starting for stream {stream_id}")
             notifier_message = await run_comms_notifier(
@@ -366,12 +367,13 @@ async def _run_chat_stream(
         elif not is_cancelled and await redis_cache.get(
             f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
         ):
-            # Executor was dispatched but hasn't pushed anything yet — wait briefly
+            # Executor dispatched but hasn't pushed anything yet — wait for first item.
+            # 30s covers cold graph compilation + LLM warm-up; after that we give up.
             try:
-                item = await asyncio.wait_for(comms_inbox.get(), timeout=0.5)
+                item = await asyncio.wait_for(comms_inbox.get(), timeout=30.0)
                 if item is not None:
-                    # Executor did start — put the item back and run notifier
                     await comms_inbox.put(item)
+                    log.info(f"Comms notifier starting (deferred) for stream {stream_id}")
                     notifier_message = await run_comms_notifier(
                         comms_inbox=comms_inbox,
                         conversation_id=conversation_id,
@@ -386,7 +388,9 @@ async def _run_chat_stream(
                     if notifier_message:
                         complete_message = notifier_message
             except asyncio.TimeoutError:
-                pass  # Executor dispatched but hasn't responded yet — continue normally
+                log.warning(
+                    f"Timed out waiting for executor first message on stream {stream_id}"
+                )
         # ── End background executor phase ─────────────────────────────────
 
         # Await description task if still pending
@@ -415,6 +419,7 @@ async def _run_chat_stream(
         await stream_manager.set_error(stream_id, str(e))
     finally:
         deregister_comms_inbox(stream_id)
+        deregister_executor_inbox(stream_id)
         deregister_pending_subagents(stream_id)
 
         # On cancellation, complete_message may be empty because nostream: marker

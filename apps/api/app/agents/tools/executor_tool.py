@@ -22,7 +22,7 @@ from app.decorators.rate_limiting import LangChainRateLimitException
 from shared.py.wide_events import log
 
 # Prevent GC of background tasks
-_executor_tasks: set[asyncio.Task] = set()
+_executor_tasks: set[asyncio.Task[None]] = set()
 
 
 @tool
@@ -43,22 +43,26 @@ async def call_executor(
     configurable = config.get("configurable", {})
     conversation_id = configurable.get("thread_id", "")
 
+    if not conversation_id:
+        log.error("call_executor: missing thread_id in configurable")
+        return "Internal error: conversation context unavailable. Please try again."
+
     try:
         log.set(tool={"name": "call_executor", "action": "dispatch"})
         user_id = configurable.get("user_id")
         stream_id = configurable.get("stream_id")
 
-        # Check executor lock
+        # Atomically acquire executor lock (SET NX EX) to eliminate TOCTOU gap
         lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-        if await redis_cache.get(lock_key):
+        acquired = await redis_cache.redis.set(
+            lock_key, "1", nx=True, ex=EXECUTOR_BUSY_TTL
+        )
+        if not acquired:
             log.info(f"Executor already busy for conversation {conversation_id}")
             return (
                 "I'm already working on a task for this conversation. "
                 "I'll let you know when it's done before starting something new."
             )
-
-        # Set executor lock
-        await redis_cache.set(lock_key, "1", ttl=EXECUTOR_BUSY_TTL)
 
         # Load user's MCP tools
         if user_id:

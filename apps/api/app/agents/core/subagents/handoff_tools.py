@@ -501,9 +501,15 @@ async def handoff(
         if background:
             executor_inbox = get_executor_inbox(stream_id) if stream_id else None
             if not executor_inbox:
+                # Do NOT fall back to blocking — the caller expects to call
+                # wait_for_subagents() later, so silently running synchronously
+                # would leave wait_for_subagents() returning confusing empty results.
                 log.warning(
-                    f"handoff background=True but no executor inbox for stream {stream_id}; "
-                    "falling back to blocking execution"
+                    f"handoff background=True but no executor inbox for stream {stream_id}"
+                )
+                return (
+                    f"Cannot dispatch {agent_name} in background mode: "
+                    "no active stream context. Retry without background=True."
                 )
             else:
                 increment_pending_subagents(stream_id)

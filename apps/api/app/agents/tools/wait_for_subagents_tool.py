@@ -74,9 +74,6 @@ async def wait_for_subagents(
                 break
             continue
 
-        if item is None:
-            break
-
         agent = item.get("agent", "subagent")
         message = item.get("message", "")
         msg_type = item.get("type", "")
@@ -105,8 +102,6 @@ def _drain_remaining(queue: asyncio.Queue[Any], results: list[str]) -> None:
     while True:
         try:
             item = queue.get_nowait()
-            if item is None:
-                break
             agent = item.get("agent", "subagent")
             message = item.get("message", "")
             msg_type = item.get("type", "")

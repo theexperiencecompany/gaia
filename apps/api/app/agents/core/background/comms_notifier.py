@@ -73,6 +73,16 @@ async def run_comms_notifier(
         log.error("run_comms_notifier: comms graph not available")
         return complete_message
 
+    # Build config once — thread_id/stream_id don't change across iterations
+    config = build_agent_config(
+        conversation_id=conversation_id,
+        user=user,
+        user_time=user_time,
+        thread_id=conversation_id,
+        agent_name="comms_agent",
+    )
+    config.setdefault("configurable", {})["stream_id"] = stream_id
+
     while True:
         try:
             item = await asyncio.wait_for(comms_inbox.get(), timeout=300.0)
@@ -92,16 +102,6 @@ async def run_comms_notifier(
 
         log.info(f"Comms notifier processing {msg_type} for stream {stream_id}")
 
-        # Build config for this comms invocation (same thread_id = full history)
-        config = build_agent_config(
-            conversation_id=conversation_id,
-            user=user,
-            user_time=user_time,
-            thread_id=conversation_id,
-            agent_name="comms_agent",
-        )
-        config.setdefault("configurable", {})["stream_id"] = stream_id
-
         # Inject message as HumanMessage into the comms thread
         initial_state = {"messages": [HumanMessage(content=f"{prefix}\n{msg_text}")]}
 
@@ -118,7 +118,7 @@ async def run_comms_notifier(
 
                 # Process nostream marker (internal complete_message)
                 if chunk.startswith("nostream: "):
-                    nostream_json = json.loads(chunk.replace("nostream: ", ""))
+                    nostream_json = json.loads(chunk.removeprefix("nostream: "))
                     if (
                         isinstance(nostream_json, dict)
                         and "complete_message" in nostream_json
