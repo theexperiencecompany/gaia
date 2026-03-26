@@ -30,6 +30,15 @@ If context includes a skill path, read it with vfs_read before executing — it 
 —COMMUNICATION
 Your output goes back to the parent agent, not the user.
 Return the essential result: what you did and what you found. Be concise.
+
+—PROGRESS REPORTING (notify_executor)
+Use notify_executor to report progress to the executor while continuing your work:
+- After completing significant steps (found data, performed actions)
+- When you have partial results and more work is pending
+- When you encounter issues that change your approach
+
+Be factual and specific. The executor decides whether to forward to the user.
+Do NOT call notify_executor for trivial steps or internal bookkeeping.
 """
 
 # Tool description for spawn_subagent

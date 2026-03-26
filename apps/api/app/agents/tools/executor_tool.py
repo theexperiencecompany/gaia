@@ -1,20 +1,28 @@
-"""Executor tool for comms agent to delegate tasks to executor agent."""
+"""Executor tool for comms agent to delegate tasks to executor agent.
+
+Non-blocking: spawns executor as a background asyncio task and returns
+immediately. The executor communicates progress via notify_comms tool,
+and its final result is pushed to comms_inbox for the notifier loop.
+"""
 
 import asyncio
 from datetime import datetime
 from typing import Annotated
 
-from app.agents.core.subagents.subagent_runner import (
-    execute_subagent_stream,
-    prepare_executor_execution,
-)
-from app.agents.tools.core.registry import get_tool_registry
-from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
-from shared.py.wide_events import log
-from app.decorators.rate_limiting import LangChainRateLimitException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+
+from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.inbox import get_comms_inbox
+from app.agents.tools.core.registry import get_tool_registry
+from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
+from app.db.redis import redis_cache
+from app.decorators.rate_limiting import LangChainRateLimitException
+from shared.py.wide_events import log
+
+# Prevent GC of background tasks
+_executor_tasks: set[asyncio.Task] = set()
 
 
 @tool
@@ -29,15 +37,30 @@ async def call_executor(
     (creating todos, checking calendar, sending emails, searching, etc.)
     or when you need context from your capabilities.
 
-    The executor has access to all tools and integrations.
+    The executor runs in the background. You will receive progress updates
+    and the final result via [EXECUTOR_UPDATE] and [EXECUTOR_RESULT] messages.
     """
-    try:
-        log.set(tool={"name": "call_executor", "action": "delegate"})
-        configurable = config.get("configurable", {})
-        user_id = configurable.get("user_id")
-        stream_id = configurable.get("stream_id")  # Extract stream_id for cancellation
+    configurable = config.get("configurable", {})
+    conversation_id = configurable.get("thread_id", "")
 
-        # Load user's MCP tools if they have any connected
+    try:
+        log.set(tool={"name": "call_executor", "action": "dispatch"})
+        user_id = configurable.get("user_id")
+        stream_id = configurable.get("stream_id")
+
+        # Check executor lock
+        lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+        if await redis_cache.get(lock_key):
+            log.info(f"Executor already busy for conversation {conversation_id}")
+            return (
+                "I'm already working on a task for this conversation. "
+                "I'll let you know when it's done before starting something new."
+            )
+
+        # Set executor lock
+        await redis_cache.set(lock_key, "1", ttl=EXECUTOR_BUSY_TTL)
+
+        # Load user's MCP tools
         if user_id:
             try:
                 tool_registry = await get_tool_registry()
@@ -55,28 +78,26 @@ async def call_executor(
             datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
         )
 
-        # Prepare execution context using shared function
-        ctx, error = await prepare_executor_execution(
-            task=task,
-            configurable=configurable,
-            user_time=user_time,
-            stream_id=stream_id,
+        # Get comms inbox for this stream
+        comms_inbox = get_comms_inbox(stream_id) if stream_id else None
+
+        # Spawn executor in background
+        bg_task = asyncio.create_task(
+            run_executor_background(
+                task=task,
+                configurable=configurable,
+                user_time=user_time,
+                stream_id=stream_id or "",
+                conversation_id=conversation_id,
+                comms_inbox=comms_inbox,
+            )
         )
+        _executor_tasks.add(bg_task)
+        bg_task.add_done_callback(_executor_tasks.discard)
 
-        if error or ctx is None:
-            log.error(error or "Failed to prepare executor execution")
-            return f"Error: {error or 'Executor agent not available'}"
+        log.info(f"Executor dispatched to background for stream {stream_id}")
+        return "Task accepted. I'm on it — you'll get progress updates as I work."
 
-        # Execute with streaming using shared function
-        writer = get_stream_writer()
-        return await execute_subagent_stream(
-            ctx=ctx,
-            stream_writer=writer,
-        )
-
-    except asyncio.CancelledError:
-        log.info("Executor call cancelled")
-        raise
     except (LangChainRateLimitException, RateLimitExceededException) as e:
         if isinstance(e, LangChainRateLimitException):
             feature = e.feature
@@ -86,8 +107,9 @@ async def call_executor(
         log.warning(f"Rate limit exceeded for executor task: {feature}")
         return f"Rate limit exceeded for {feature or 'this feature'}. The user has been shown an upgrade prompt."
     except Exception as e:
-        log.error(f"Error calling executor: {e}")
-        return f"Error executing task: {str(e)}"
+        log.error(f"Error dispatching executor: {e}")
+        await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+        return f"Error starting task: {str(e)}"
 
 
 tools = [call_executor]
