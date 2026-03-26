@@ -5,6 +5,7 @@ Allows GAIA's executor to create tracked todos with VFS canvas
 and search across canvas context via ChromaDB.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
@@ -19,6 +20,14 @@ from app.models.todo_models import Priority
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import search_canvas_context
+
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @tool
@@ -153,83 +162,12 @@ async def create_tracked_todo(
                 f"The todo exists but will NOT execute automatically."
             )
 
-    # Search for similar past work and attach references
-    reference_ids: list[str] = []
-    reference_context = ""
-    try:
-        similar = await tracked_todo_service.find_similar_past_work(
-            query=f"{title} {description or ''}", user_id=user_id, top_k=3
-        )
-        if similar:
-            reference_ids = [s["todo_id"] for s in similar]
-            await todos_collection.update_one(
-                {"_id": ObjectId(result.id)},
-                {"$set": {"references": reference_ids}},
-            )
-            # Read referenced canvases for learnings
-            ref_lines: list[str] = []
-            vfs = MongoVFS()
-            for ref in similar:
-                try:
-                    ref_todo = await todos_collection.find_one(
-                        {"_id": ObjectId(ref["todo_id"])}
-                    )
-                    if ref_todo and ref_todo.get("vfs_path"):
-                        ref_canvas = await vfs.read(
-                            path=f"{ref_todo['vfs_path']}/canvas.md", user_id=user_id
-                        )
-                        if ref_canvas and "## Learnings" in ref_canvas:
-                            learnings_start = ref_canvas.index("## Learnings")
-                            next_section = ref_canvas.find("\n## ", learnings_start + 1)
-                            learnings = (
-                                ref_canvas[learnings_start:next_section]
-                                if next_section != -1
-                                else ref_canvas[learnings_start:]
-                            )
-                            ref_lines.append(
-                                f'From "{ref["title"]}" (ID: {ref["todo_id"]}, score: {ref["score"]}):\n{learnings.strip()}'
-                            )
-                        else:
-                            ref_lines.append(
-                                f'From "{ref["title"]}" (ID: {ref["todo_id"]}, score: {ref["score"]}): {ref.get("snippet", "")[:200]}'
-                            )
-                except Exception:
-                    ref_lines.append(
-                        f'From "{ref["title"]}" (ID: {ref["todo_id"]}): {ref.get("snippet", "")[:200]}'
-                    )
-            if ref_lines:
-                reference_context = "\n\n## Past References\n" + "\n\n".join(ref_lines)
-                try:
-                    await vfs.append(
-                        path=f"{result.vfs_path}/canvas.md",
-                        content=f"\n{reference_context}",
-                        user_id=user_id,
-                    )
-                    await tracked_todo_service.reindex_canvas(result.id, user_id)
-                except Exception as e:
-                    log.warning(
-                        "tracked_todo.append_reference_context_failed", error=str(e)
-                    )
-    except Exception as e:
-        log.warning(
-            "tracked_todo.find_similar_past_work_failed",
-            todo_id=result.id,
-            error=str(e),
-        )
-
-    ref_msg = ""
-    if reference_ids:
-        ref_msg = (
-            f"\nReferences: {len(reference_ids)} similar past todo(s) found and linked"
-        )
-
     return (
         f"Tracked todo created: {result.id}\n"
         f"Title: {result.title}\n"
         f"VFS: {result.vfs_path}\n"
         f"Canvas: {result.vfs_path}/canvas.md\n"
         f"Log: {result.vfs_path}/log.md"
-        f"{ref_msg}"
     )
 
 
@@ -277,17 +215,44 @@ async def search_todo_context(
 async def update_tracked_todo_canvas(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the tracked todo"],
-    canvas_content: Annotated[str, "Full markdown content to write to canvas.md"],
+    content: Annotated[
+        str,
+        "Content to write. "
+        "For mode='replace': full canvas markdown. "
+        "For mode='append': only the new content to add at the end. "
+        "For mode='section': only the new body of the target section (without the heading line).",
+    ],
+    mode: Annotated[
+        str,
+        "How to write: "
+        "'append' (default) — add content at the end of the canvas. Use for activity log entries, timeline events, new notes. No read needed. "
+        "'section' — replace a specific ## Section by name. Use for targeted updates (e.g. Current State). Tool reads and patches internally — no read needed. "
+        "'replace' — overwrite the entire canvas. Only use for initial setup or full restructure.",
+    ] = "append",
+    section: Annotated[
+        Optional[str],
+        "Section heading to replace when mode='section'. "
+        "Exact heading text without ## (e.g. 'Current State', 'Key Details', 'Learnings'). "
+        "If the section does not exist, it is appended as a new section.",
+    ] = None,
 ) -> str:
-    """Write updated canvas.md for a tracked todo and re-index in ChromaDB for search.
+    """Update canvas.md for a tracked todo.
 
-    Call after every significant action on a tracked todo. Include full canvas content
-    (not just the changed section) — Key Details, Current State, Timeline, Context.
-    The system log is updated automatically.
+    Three modes — pick the right one to avoid unnecessary reads:
+
+    append  → Add activity log entries, timeline events, new context. No read needed.
+    section → Update a single named section (e.g. Current State). Tool patches internally. No read needed.
+    replace → Full rewrite. Only use when restructuring the entire canvas.
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
         return "Error: user_id not found in config"
+
+    if mode not in ("replace", "append", "section"):
+        return f"Error: invalid mode '{mode}'. Use 'replace', 'append', or 'section'."
+
+    if mode == "section" and not section:
+        return "Error: 'section' mode requires a section name."
 
     vfs = MongoVFS()
 
@@ -300,19 +265,48 @@ async def update_tracked_todo_canvas(
     if not vfs_path:
         return f"Error: todo {todo_id} has no vfs_path"
 
-    await vfs.write(
-        path=f"{vfs_path}/canvas.md",
-        content=canvas_content,
-        user_id=user_id,
-    )
-    await tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id)
+    canvas_path = f"{vfs_path}/canvas.md"
+
+    if mode == "replace":
+        await vfs.write(path=canvas_path, content=content, user_id=user_id)
+
+    elif mode == "append":
+        suffix = content if content.startswith("\n") else f"\n{content}"
+        await vfs.append(path=canvas_path, content=suffix, user_id=user_id)
+
+    else:  # section
+        current = await vfs.read(path=canvas_path, user_id=user_id) or ""
+        heading = f"## {section}"
+        heading_pos = current.find(f"\n{heading}")
+        if heading_pos == -1:
+            # Section does not exist — append it
+            new_canvas = current.rstrip() + f"\n\n{heading}\n{content}"
+        else:
+            # Find where the section body starts and where the next ## heading begins
+            body_start = heading_pos + len(f"\n{heading}") + 1
+            next_section = current.find("\n## ", body_start)
+            if next_section == -1:
+                new_canvas = current[: heading_pos + len(f"\n{heading}")] + "\n" + content
+            else:
+                new_canvas = (
+                    current[: heading_pos + len(f"\n{heading}")]
+                    + "\n"
+                    + content.rstrip()
+                    + "\n"
+                    + current[next_section:]
+                )
+        await vfs.write(path=canvas_path, content=new_canvas, user_id=user_id)
+
+    _fire_and_forget(tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id))
     await tracked_todo_service.system_log(
         todo_id=todo_id,
         user_id=user_id,
         event_type="CANVAS_UPDATED",
-        details="Agent updated canvas",
+        details=f"Agent updated canvas (mode={mode}"
+        + (f", section={section}" if section else "")
+        + ")",
     )
-    return "Canvas updated and re-indexed."
+    return f"Canvas updated (mode={mode}" + (f", section={section}" if section else "") + ")."
 
 
 @tool
