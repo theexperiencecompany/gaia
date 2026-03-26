@@ -49,61 +49,12 @@ jobs:
             }
             core.info(`Master PR policy passed: ${pr.head.ref} -> ${pr.base.ref}`);
 
-      # Compute NX_BASE/NX_HEAD for affected-task execution.
-      - name: Set Nx SHAs
-        uses: nrwl/nx-set-shas@v4
-        with:
-          main-branch-name: master
-
-      # Toolchain bootstrap for Node + Python quality checks.
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      # Install workspace dependencies once for all checks.
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Guard against release manifest/version drift before releases are cut.
-      - name: Validate release manifest versions
-        run: node scripts/ci/validate-release-manifest.mjs
-
-      - name: Sync Python dependencies (Nx cached)
-        run: npx nx sync api
-        # env:
-        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
-
-      - name: Install prek
-        run: uv tool install prek
-
-      - name: Install mypy types
-        run: uv run mypy --install-types --non-interactive
-        working-directory: apps/api
-
-      - name: Install vulture
-        run: uv tool install vulture
-
-      - name: Dead code check
-        run: bash scripts/dead-code-check.sh
-        # Temporarily disable --strict flag.
-
-      # Run all quality checks via Dagger (lint, type-check, build, test, pytest).
+      # Run all quality checks via Dagger (lint, type-check, build, test, dead-code, release validation).
+      # Everything runs inside the Dagger container -- no host toolchain setup needed.
       - name: Run quality checks
         uses: dagger/dagger-for-github@v8.4.1
         with:
-          version: "0.20.2"
+          version: "0.20.3"
           call: quality-checks
 
   # Only trigger image build/deploy planning on master after quality gate passes.

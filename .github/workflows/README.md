@@ -100,9 +100,8 @@ flowchart TD
 ### `.github/workflows/main.yml`
 1. Enter from PRs targeting `develop`/`master` and pushes to `master`.
 2. Run master promotion policy guard (`develop` or `release-please--*` to `master`).
-3. Install toolchains and run host-level pre-flight checks: validate release manifest, dead code scan.
-4. Delegate the full quality gate (lint, type-check, build, test, pytest) to the Dagger module via `dagger call quality-checks`.
-5. If run is a successful push on `master`, call `build.yml`.
+3. Delegate the full quality gate to the Dagger module via `dagger call quality-checks`. All toolchain setup, dependency installation, linting, type-checking, building, testing, dead code detection, and release manifest validation run inside the Dagger container. No host-level pre-flight steps.
+4. If run is a successful push on `master`, call `build.yml`.
 
 ### `.github/workflows/build.yml`
 1. Start two build lanes: `docker-release` and `docker-web`.

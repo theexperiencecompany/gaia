@@ -323,6 +323,72 @@ run = "nx affected:graph"
 # CI/CD COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── Dagger (containerized CI, identical locally and in GitHub Actions) ──
+
+[tasks."ci:dagger"]
+description = "Run full quality gate via Dagger (same as CI)"
+run = "dagger call quality-checks"
+
+[tasks."ci:dagger:lint"]
+description = "Run lint checks via Dagger"
+run = "dagger call lint"
+
+[tasks."ci:dagger:type-check"]
+description = "Run type-check via Dagger"
+run = "dagger call type-check"
+
+[tasks."ci:dagger:build"]
+description = "Run build via Dagger"
+run = "dagger call build"
+
+[tasks."ci:dagger:test"]
+description = "Run tests via Dagger"
+run = "dagger call test"
+
+[tasks."ci:dagger:dead-code"]
+description = "Run dead code detection via Dagger"
+run = "dagger call dead-code"
+
+[tasks."ci:dagger:integration"]
+description = "Run integration tests via Dagger (with live Postgres, Redis, MongoDB)"
+run = "dagger call integration-test"
+
+[tasks."ci:dagger:debug"]
+description = "Run full quality gate with interactive debugging on failure"
+run = "dagger call quality-checks --interactive"
+
+# ── Dagger Docker image builds ──
+
+[tasks."ci:docker"]
+description = "Build all Docker images via Dagger"
+run = "dagger call docker-build-all"
+
+[tasks."ci:docker:api"]
+description = "Build API Docker image via Dagger"
+run = "dagger call docker-build --app api"
+
+[tasks."ci:docker:web"]
+description = "Build web Docker image via Dagger"
+run = "dagger call docker-build --app web"
+
+[tasks."ci:docker:voice-agent"]
+description = "Build voice-agent Docker image via Dagger"
+run = "dagger call docker-build --app voice-agent"
+
+[tasks."ci:docker:bot-discord"]
+description = "Build Discord bot Docker image via Dagger"
+run = "dagger call docker-build --app bot-discord"
+
+[tasks."ci:docker:bot-slack"]
+description = "Build Slack bot Docker image via Dagger"
+run = "dagger call docker-build --app bot-slack"
+
+[tasks."ci:docker:bot-telegram"]
+description = "Build Telegram bot Docker image via Dagger"
+run = "dagger call docker-build --app bot-telegram"
+
+# ── GitHub Actions simulation (via act) ──
+
 [tasks."ci:desktop"]
 description = "Test desktop-release workflow locally with act (dry-run)"
 run = "act release --job build -n --eventpath .github/test-events/release.json"
