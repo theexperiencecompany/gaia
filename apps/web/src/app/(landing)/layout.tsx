@@ -25,19 +25,13 @@ export default function LandingLayout({ children }: { children: ReactNode }) {
   return (
     <LandingProvidersLayout>
       <div className="relative ">
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-9999 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-black focus:shadow-lg"
-        >
-          Skip to main content
-        </a>
         <div
           id="navbar-backdrop"
           className="pointer-events-none fixed inset-0 z-40 bg-black/20 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-in-out"
         />
 
         <BlurStack
-          className="fixed h-[100px] w-screen z-1000 bottom-0 pointer-events-none"
+          className="fixed h-25 w-screen z-1000 bottom-0 pointer-events-none"
           config={ORIGINAL_BLUR_CONFIG}
         />
 

@@ -188,7 +188,7 @@ Multi-component (Stack):
   :::openui
   root = Stack([gauge, info])
   gauge = GaugeChart(73, "CPU", 0, 100)
-  info = DataCard("prod-01", [{{"label": "Status", "value": "healthy"}}])
+  info = DataCard("prod-01", [{{{{"label": "Status", "value": "healthy"}}}}])
   :::
 
 Skipping an optional middle argument with null:

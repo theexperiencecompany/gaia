@@ -117,6 +117,7 @@ function Carousel(
         orientation,
       }}
     >
+      {/* biome-ignore lint/a11y/useSemanticElements: WAI-ARIA carousel pattern requires role="region" */}
       <div
         ref={ref}
         className={className}
@@ -164,6 +165,7 @@ function CarouselItem({
 }: React.HTMLAttributes<HTMLDivElement>) {
   const { orientation } = useCarousel();
   return (
+    // biome-ignore lint/a11y/useSemanticElements: WAI-ARIA carousel slide pattern
     <div
       role="group"
       aria-roledescription="slide"

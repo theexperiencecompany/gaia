@@ -423,9 +423,9 @@ export function DataCardView(props: z.infer<typeof dataCardSchema>) {
     <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
       <p className="text-sm font-semibold text-zinc-100 mb-3">{props.title}</p>
       <div className="space-y-2">
-        {props.fields.map((field, i) => (
+        {props.fields.map((field) => (
           <div
-            key={i}
+            key={field.label}
             className="rounded-2xl bg-zinc-900 p-3 flex items-center justify-between gap-4"
           >
             <span className="text-xs text-zinc-500">{field.label}</span>
@@ -448,8 +448,8 @@ export function ResultListView(props: z.infer<typeof resultListSchema>) {
         </p>
       )}
       <div className="space-y-2">
-        {props.items.map((item, i) => (
-          <div key={i} className="rounded-2xl bg-zinc-900 p-3">
+        {props.items.map((item) => (
+          <div key={item.title} className="rounded-2xl bg-zinc-900 p-3">
             <div className="flex items-start justify-between gap-2">
               <span className="text-sm font-medium text-zinc-200">
                 {item.title}
@@ -493,9 +493,9 @@ export function DataTableView(props: z.infer<typeof dataTableSchema>) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-800">
-              {props.columns.map((col, i) => (
+              {props.columns.map((col) => (
                 <th
-                  key={i}
+                  key={col}
                   className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500"
                 >
                   {col}
@@ -506,15 +506,15 @@ export function DataTableView(props: z.infer<typeof dataTableSchema>) {
           <tbody>
             {props.rows.map((row, ri) => (
               <tr
-                key={ri}
+                key={row.join("-")}
                 className={
                   ri % 2 === 0
                     ? "bg-zinc-900 hover:bg-zinc-800/40 transition-colors"
                     : "bg-transparent hover:bg-zinc-800/40 transition-colors"
                 }
               >
-                {row.map((cell, ci) => (
-                  <td key={ci} className="px-3 py-2 text-xs text-zinc-300">
+                {row.map((cell) => (
+                  <td key={cell} className="px-3 py-2 text-xs text-zinc-300">
                     {cell}
                   </td>
                 ))}
@@ -551,9 +551,9 @@ export function ComparisonTableView(
             </tr>
           </thead>
           <tbody>
-            {props.rows.map((row, i) => (
+            {props.rows.map((row) => (
               <tr
-                key={i}
+                key={row.label}
                 className={
                   row.highlight
                     ? "bg-[#00bbff]/5"
@@ -664,9 +664,9 @@ export function ActionCardView(props: z.infer<typeof actionCardSchema>) {
       )}
       {props.actions && props.actions.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-3">
-          {props.actions.map((action, i) => (
+          {props.actions.map((action) => (
             <button
-              key={i}
+              key={action.value}
               type="button"
               onClick={() => handleClick(action.value)}
               className="rounded-full bg-zinc-700/60 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors cursor-pointer"
@@ -689,17 +689,17 @@ export function TagGroupView(props: z.infer<typeof tagGroupSchema>) {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        {props.tags.map((tag, i) =>
+        {props.tags.map((tag) =>
           tag.color === "primary" ? (
             <span
-              key={i}
+              key={tag.label}
               className="inline-flex items-center rounded-full bg-[#00bbff]/10 px-2 py-0.5 text-xs font-medium text-[#00bbff]"
             >
               {tag.label}
             </span>
           ) : (
             <Chip
-              key={i}
+              key={tag.label}
               size="sm"
               variant="flat"
               color={tag.color ?? "default"}
@@ -829,9 +829,9 @@ export function AccordionView(props: z.infer<typeof accordionSchema>) {
         </p>
       )}
       <HeroAccordion variant="light">
-        {props.items.map((item, i) => (
+        {props.items.map((item) => (
           <AccordionItem
-            key={i}
+            key={item.label}
             aria-label={item.label}
             title={
               <span className="text-sm font-medium text-zinc-200">
@@ -850,8 +850,11 @@ export function AccordionView(props: z.infer<typeof accordionSchema>) {
 export function TabsBlockView(props: z.infer<typeof tabsBlockSchema>) {
   return (
     <Tabs variant="solid" size="sm">
-      {props.tabs.map((tab, i) => (
-        <Tab key={i} title={<span className="text-sm">{tab.label}</span>}>
+      {props.tabs.map((tab) => (
+        <Tab
+          key={tab.label}
+          title={<span className="text-sm">{tab.label}</span>}
+        >
           <div className="rounded-2xl bg-zinc-800/50 p-4">
             <p className="text-sm text-zinc-300 whitespace-pre-wrap">
               {tab.content}
@@ -872,11 +875,11 @@ export function ProgressListView(props: z.infer<typeof progressListSchema>) {
         </p>
       )}
       <div className="space-y-2">
-        {props.items.map((item, i) => {
+        {props.items.map((item) => {
           const max = item.max ?? 100;
           const pct = Math.min(100, Math.round((item.value / max) * 100));
           return (
-            <div key={i} className="rounded-2xl bg-zinc-900 p-3">
+            <div key={item.label} className="rounded-2xl bg-zinc-900 p-3">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-sm font-medium text-zinc-200">
                   {item.label}
@@ -933,9 +936,9 @@ export function SelectableListView(
         orientation="vertical"
         classNames={{ wrapper: "space-y-2" }}
       >
-        {props.options.map((option, i) => (
+        {props.options.map((option) => (
           <Radio
-            key={i}
+            key={option.value}
             value={option.value}
             classNames={{
               base: [
@@ -976,8 +979,8 @@ export function AvatarListView(props: z.infer<typeof avatarListSchema>) {
       )}
       {hasDetails ? (
         <div className="space-y-2">
-          {props.items.map((item, i) => (
-            <div key={i} className="flex items-center gap-3">
+          {props.items.map((item) => (
+            <div key={item.name} className="flex items-center gap-3">
               <Avatar
                 name={item.initials ?? item.name}
                 size="sm"
@@ -1000,9 +1003,9 @@ export function AvatarListView(props: z.infer<typeof avatarListSchema>) {
         </div>
       ) : (
         <AvatarGroup max={7} size="sm">
-          {props.items.map((item, i) => (
+          {props.items.map((item) => (
             <Avatar
-              key={i}
+              key={item.name}
               name={item.initials ?? item.name}
               className="shrink-0"
               style={item.color ? { backgroundColor: item.color } : undefined}
@@ -1023,17 +1026,17 @@ export function KbdBlockView(props: z.infer<typeof kbdBlockSchema>) {
         </p>
       )}
       <div className="space-y-2">
-        {props.shortcuts.map((shortcut, i) => (
+        {props.shortcuts.map((shortcut) => (
           <div
-            key={i}
+            key={shortcut.description}
             className="rounded-2xl bg-zinc-900 p-3 flex items-center justify-between gap-4"
           >
             <span className="text-xs text-zinc-400 flex-1">
               {shortcut.description}
             </span>
             <div className="flex items-center gap-1 shrink-0">
-              {shortcut.keys.map((key, ki) => (
-                <Kbd key={ki}>{key}</Kbd>
+              {shortcut.keys.map((key) => (
+                <Kbd key={key}>{key}</Kbd>
               ))}
             </div>
           </div>
@@ -1300,8 +1303,11 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
             innerRadius={40}
             strokeWidth={0}
           >
-            {props.data.map((_entry, i) => (
-              <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+            {props.data.map((entry, i) => (
+              <Cell
+                key={String(entry[props.nameKey])}
+                fill={PIE_COLORS[i % PIE_COLORS.length]}
+              />
             ))}
           </Pie>
           <ChartTooltip
@@ -1450,6 +1456,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
 export function ImageBlockView(props: z.infer<typeof imageBlockSchema>) {
   return (
     <div className="rounded-2xl overflow-hidden">
+      {/* biome-ignore lint/performance/noImgElement: external user-provided URLs */}
       <img
         src={props.src}
         alt={props.alt ?? ""}
@@ -1476,6 +1483,7 @@ function GalleryImage({
       className="relative overflow-hidden rounded-xl cursor-pointer"
       style={{ aspectRatio: "3/2" }}
     >
+      {/* biome-ignore lint/performance/noImgElement: external user-provided URLs */}
       <img
         src={img.src}
         alt={img.alt ?? ""}
@@ -1503,8 +1511,8 @@ export function ImageGalleryView(props: z.infer<typeof imageGallerySchema>) {
   if (count === 2) {
     return (
       <div className="grid grid-cols-2 gap-1.5">
-        {images.map((img, i) => (
-          <GalleryImage key={i} img={img} />
+        {images.map((img) => (
+          <GalleryImage key={img.src} img={img} />
         ))}
       </div>
     );
@@ -1525,8 +1533,8 @@ export function ImageGalleryView(props: z.infer<typeof imageGallerySchema>) {
   if (count === 4) {
     return (
       <div className="grid grid-cols-2 gap-1.5">
-        {images.map((img, i) => (
-          <GalleryImage key={i} img={img} />
+        {images.map((img) => (
+          <GalleryImage key={img.src} img={img} />
         ))}
       </div>
     );
@@ -1539,16 +1547,16 @@ export function ImageGalleryView(props: z.infer<typeof imageGallerySchema>) {
   return (
     <div className="space-y-1.5">
       <div className="grid grid-cols-3 gap-1.5">
-        {topRow.map((img, i) => (
-          <GalleryImage key={i} img={img} />
+        {topRow.map((img) => (
+          <GalleryImage key={img.src} img={img} />
         ))}
       </div>
       {bottomRow.length > 0 && (
         <div
           className={`grid grid-cols-${Math.min(bottomRow.length, 3)} gap-1.5`}
         >
-          {bottomRow.map((img, i) => (
-            <GalleryImage key={i} img={img} />
+          {bottomRow.map((img) => (
+            <GalleryImage key={img.src} img={img} />
           ))}
         </div>
       )}
@@ -1598,7 +1606,9 @@ export function VideoBlockView(props: z.infer<typeof videoBlockSchema>) {
           poster={props.poster}
           controls
           className="w-full rounded-2xl aspect-video object-cover"
-        />
+        >
+          <track kind="captions" />
+        </video>
       )}
     </div>
   );
@@ -1615,7 +1625,9 @@ export function AudioPlayerView(props: z.infer<typeof audioPlayerSchema>) {
       {props.description && (
         <p className="text-xs text-zinc-400 mb-3">{props.description}</p>
       )}
-      <audio src={props.src} controls className="w-full mt-2" />
+      <audio src={props.src} controls className="w-full mt-2">
+        <track kind="captions" />
+      </audio>
     </div>
   );
 }
@@ -1686,8 +1698,8 @@ export function CalendarMiniView(props: z.infer<typeof calendarMiniSchema>) {
         <div className="mt-2 space-y-1">
           {props.markedDates
             .filter((d) => d.label)
-            .map((d, i) => (
-              <div key={i} className="flex items-center gap-2">
+            .map((d) => (
+              <div key={d.date} className="flex items-center gap-2">
                 <span
                   className="h-2 w-2 rounded-full shrink-0"
                   style={{
@@ -1730,8 +1742,9 @@ function CarouselDotIndicators() {
   if (scrollSnaps.length <= 1) return null;
   return (
     <div className="flex items-center justify-center gap-1.5">
-      {scrollSnaps.map((_, index) => (
+      {scrollSnaps.map((_snap, index) => (
         <button
+          // biome-ignore lint/suspicious/noArrayIndexKey: scroll snap dots have no stable identifier
           key={index}
           type="button"
           aria-label={`Go to slide ${index + 1}`}
@@ -1763,10 +1776,11 @@ export function CarouselView(props: z.infer<typeof carouselSchema>) {
     <div>
       <Carousel opts={{ align: "start", loop: true }}>
         <CarouselContent className="-ml-0">
-          {props.items.map((item, i) => (
-            <CarouselItem key={i} className="pl-0 h-full">
+          {props.items.map((item) => (
+            <CarouselItem key={item.title} className="pl-0 h-full">
               <div className="rounded-2xl bg-zinc-800 p-4 min-h-full flex flex-col">
                 {item.image && (
+                  /* biome-ignore lint/performance/noImgElement: external user-provided URLs */
                   <img
                     src={item.image}
                     alt={item.title}
@@ -1794,9 +1808,9 @@ export function CarouselView(props: z.infer<typeof carouselSchema>) {
                 )}
                 {item.actions && item.actions.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-auto pt-3">
-                    {item.actions.map((action, j) => (
+                    {item.actions.map((action) => (
                       <Button
-                        key={j}
+                        key={action.value}
                         size="sm"
                         variant="flat"
                         onPress={() => handleAction(action.value)}
@@ -1939,7 +1953,7 @@ export function TimelineView(props: z.infer<typeof timelineSchema>) {
           const dotColor = TIMELINE_DOT[item.status ?? "neutral"];
           const isLast = i === props.items.length - 1;
           return (
-            <div key={i} className="flex gap-3">
+            <div key={item.time ?? item.title} className="flex gap-3">
               {/* Time column */}
               <div className="w-16 shrink-0 pt-0.5 text-right">
                 <span className="text-[10px] text-zinc-600 leading-tight">
@@ -2065,7 +2079,7 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
           const isComplete = status === "complete";
           return (
             <div
-              key={i}
+              key={item.title}
               className={`rounded-2xl p-3 flex items-start gap-3 ${
                 isActive
                   ? "bg-primary/10 border-1 border-primary/50"
@@ -2112,6 +2126,7 @@ const stackDef = defineComponent({
   component: ({ props, renderNode }) => (
     <div className="flex flex-col gap-3">
       {(props.items as unknown[]).map((item, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: generic opaque items have no stable key
         <React.Fragment key={i}>{renderNode(item)}</React.Fragment>
       ))}
     </div>
