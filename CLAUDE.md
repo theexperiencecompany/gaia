@@ -218,30 +218,11 @@ The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the re
 
 ## Code Style Guidelines
 
-### TypeScript/JavaScript
-
-- Use Biome for linting and formatting (configured in `biome.json`)
-- **No inline imports** - all imports must be at the top of the file
-- **Never use `any` type** - always provide proper type definitions
-- Line width: 80 characters
-- Indentation: 2 spaces
-- Use strict TypeScript configuration
-- No unnecessarily verbose comments - code should be self-documenting
-
-### Python
-
-- Use Ruff for linting and formatting (configured in `ruff.toml` or `pyproject.toml`)
-- **No inline imports** - all imports must be at the top of the file
-- **Use strict types** - always provide type annotations for function parameters and return values
-- Follow PEP 8 style guide
-- Use type hints extensively (enforced by mypy)
-- No unnecessarily verbose comments - code should be self-documenting
-
-### General
-
-- Follow feature-based organization - group related files by feature, not by type
-- Use absolute imports with path aliases (`@/` for web/desktop, configured in tsconfig)
-- Keep components small and focused on a single responsibility
+Rules are enforced via auto-loaded rule files — see `.claude/rules/`:
+- **TypeScript/React**: `.claude/rules/typescript.md` — Biome, strict types, component/hook patterns, Zustand, API layer
+- **Python/Backend**: `.claude/rules/python.md` — Ruff, mypy, FastAPI patterns, services, logging, caching
+- **Design system**: `.claude/rules/design.md` — card contract, colors, icons, animations, OpenUI
+- **General engineering**: `.claude/rules/general.md` — DRY, dead code, constants, feature-based org
 
 ## Key Technologies
 
@@ -307,7 +288,7 @@ nx docker:build voice-agent
 
 ## Task Tracking
 
-Only use the `bd` CLI for task tracking when the user explicitly asks to use it. Otherwise, use built-in TodoWrite/TaskCreate tools.
+Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-internal CLI for task tracking and dolt database sync — **never invoke it automatically**. Otherwise, use built-in TodoWrite/TaskCreate tools.
 
 ## Implementation Plans
 
@@ -320,7 +301,6 @@ When creating implementation plans, store them in `.agents/plans/` directory. Th
 - Session close sequence (mandatory when code changed):
   ```bash
   git pull --rebase
-  bd dolt push
   git push
   git status  # must show "up to date with origin"
   ```
