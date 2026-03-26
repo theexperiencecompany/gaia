@@ -27,6 +27,7 @@ from app.agents.tools.executor_tool import call_executor
 from app.agents.tools.notify_comms_tool import notify_comms as notify_comms_tool
 from app.agents.tools.notify_executor_tool import notify_executor as notify_executor_tool
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
+from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
 from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
@@ -56,12 +57,13 @@ async def build_executor_graph(
     tool_dict.update({t.name: t for t in todo_tools})
     tool_dict.update({"notify_comms": notify_comms_tool})
     tool_dict.update({"notify_executor": notify_executor_tool})
+    tool_dict.update({"wait_for_subagents": wait_for_subagents_tool})
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
-    # Build excluded tool names for spawn_subagent: handoff + notify_comms
+    # Build excluded tool names for spawn_subagent: handoff + notify_comms + wait_for_subagents
     # notify_executor is NOT excluded — spawned subagents should use it
-    excluded_subagent_tools = {"handoff", "notify_comms"}
+    excluded_subagent_tools = {"handoff", "notify_comms", "wait_for_subagents"}
 
     middleware = create_executor_middleware(
         subagent_excluded_tools=excluded_subagent_tools,
@@ -102,6 +104,7 @@ async def build_executor_graph(
             "vfs_cmd",
             "deep_research",
             "notify_comms",
+            "wait_for_subagents",
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,

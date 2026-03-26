@@ -1,9 +1,9 @@
 """Pre-model hook that drains the executor inbox at each turn boundary.
 
 Runs before every executor LLM invocation. If subagents have pushed
-progress updates via notify_executor, they are injected into the
-executor's state as [SUBAGENT_UPDATE] messages so the LLM can process
-them and optionally call notify_comms to forward to the user.
+progress updates or results via notify_executor or background handoffs,
+they are injected into the executor's state so the LLM can process them
+and optionally call notify_comms to forward to the user.
 
 This is the GAIA equivalent of Claude Code's turn-boundary inbox check.
 """
@@ -24,7 +24,7 @@ async def check_subagent_inbox(
     config: RunnableConfig,
     store: BaseStore,
 ) -> Any:
-    """Drain executor inbox and inject subagent updates into state."""
+    """Drain executor inbox and inject subagent messages into state."""
     configurable = config.get("configurable", {})
     stream_id = configurable.get("stream_id")
 
@@ -42,19 +42,22 @@ async def check_subagent_inbox(
             item = queue.get_nowait()
             if item is None:
                 break
-            updates.append(item.get("message", ""))
+            msg_type = item.get("type", "subagent_update")
+            agent = item.get("agent", "subagent")
+            message = item.get("message", "")
+            if msg_type == "subagent_result":
+                updates.append(f"[SUBAGENT_RESULT from {agent}]\n{message}")
+            else:
+                updates.append(f"[SUBAGENT_UPDATE from {agent}]\n{message}")
         except asyncio.QueueEmpty:
             break
 
     if not updates:
         return state
 
-    # Inject as SystemMessage so executor LLM sees them
-    update_text = "\n\n".join(f"[SUBAGENT_UPDATE] {u}" for u in updates)
+    update_text = "\n\n".join(updates)
     messages = state.get("messages", [])
-    messages.append(
-        SystemMessage(content=f"Subagent progress updates:\n{update_text}")
-    )
+    messages.append(SystemMessage(content=f"Subagent messages:\n{update_text}"))
 
-    log.info(f"Injected {len(updates)} subagent updates into executor state")
+    log.info(f"Injected {len(updates)} subagent message(s) into executor state")
     return state

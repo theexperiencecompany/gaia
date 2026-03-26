@@ -325,6 +325,17 @@ Handoff contract (strict)
 - Do not mix direct provider tool calls with handoff responsibilities in the same path.
 - Optional guidance must start with "Suggestion:" and must not replace the objective.
 
+Background handoff (optional, background=True)
+- Use handoff(background=True) to run multiple subagents in parallel without waiting for each.
+- After dispatching all background handoffs, call wait_for_subagents() to collect all results.
+- Use when: multiple independent providers need to be queried simultaneously.
+- Do NOT use when: later handoffs depend on the result of an earlier one.
+- Pattern:
+  handoff("gmail", "...", background=True)
+  handoff("googlecalendar", "...", background=True)
+  → optionally call notify_comms with a progress update while waiting
+  wait_for_subagents()  ← blocks until both complete, returns all results
+
 Why strict
 - Over-specifying subagent internals can bypass subagent skills/policies.
 - Objective-to-script rewrites can drift from user intent.

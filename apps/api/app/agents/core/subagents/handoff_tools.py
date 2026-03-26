@@ -9,10 +9,16 @@ Subagents are lazy-loaded on first invocation via providers.aget().
 All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 """
 
+import asyncio
 import re
 from datetime import datetime
 from typing import Annotated, Optional
 
+from app.agents.core.background.inbox import (
+    get_executor_inbox,
+    increment_pending_subagents,
+)
+from app.agents.core.background.subagent_runner import run_subagent_background
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.subagent_helpers import (
     create_subagent_system_message,
@@ -338,6 +344,9 @@ async def _resolve_subagent(
     return subagent_graph, agent_name, int_id, False
 
 
+_background_subagent_tasks: set[asyncio.Task] = set()
+
+
 @tool
 async def handoff(
     subagent_id: Annotated[
@@ -350,6 +359,12 @@ async def handoff(
         "Detailed description of the task for the subagent, including all relevant context.",
     ],
     config: RunnableConfig,
+    background: Annotated[
+        bool,
+        "If True, run the subagent in the background and return immediately. "
+        "Use for parallel subagent dispatch — call wait_for_subagents() after "
+        "all background handoffs to collect results. Default False (blocking).",
+    ] = False,
 ) -> str:
     """Delegate a task to a specialized subagent.
 
@@ -360,9 +375,13 @@ async def handoff(
     1. Process the task using its specialized tools
     2. Return the result of the completed task
 
+    For parallel execution, set background=True on multiple handoff calls, then
+    call wait_for_subagents() to collect all results once.
+
     Args:
         subagent_id: ID of the subagent from retrieve_tools (e.g., 'subagent:gmail', 'gmail')
         task: Complete task description with all necessary context
+        background: If True, run non-blocking and return immediately
     """
     try:
         configurable = config.get("configurable", {})
@@ -459,8 +478,6 @@ async def handoff(
             stream_id=stream_id,
         )
 
-        writer = get_stream_writer()
-
         integration_metadata = None
         if is_custom:
             integration = await _get_subagent_by_id(int_id)
@@ -478,6 +495,35 @@ async def handoff(
                     "integration_id": int_id,
                     "name": platform_integ.name,
                 }
+
+        # Background mode: spawn subagent as asyncio task and return immediately.
+        # Caller must use wait_for_subagents() to collect results.
+        if background:
+            executor_inbox = get_executor_inbox(stream_id) if stream_id else None
+            if not executor_inbox:
+                log.warning(
+                    f"handoff background=True but no executor inbox for stream {stream_id}; "
+                    "falling back to blocking execution"
+                )
+            else:
+                increment_pending_subagents(stream_id)
+                bg_task = asyncio.create_task(
+                    run_subagent_background(
+                        ctx=ctx,
+                        stream_id=stream_id or "",
+                        executor_inbox=executor_inbox,
+                        integration_metadata=integration_metadata,
+                    )
+                )
+                _background_subagent_tasks.add(bg_task)
+                bg_task.add_done_callback(_background_subagent_tasks.discard)
+                log.info(
+                    f"Subagent {agent_name} dispatched to background for stream {stream_id}"
+                )
+                return f"Subagent {agent_name} started in background. Call wait_for_subagents() when ready to collect results."
+
+        # Blocking (default): execute synchronously and return result
+        writer = get_stream_writer()
 
         # Execute using shared streaming function
         # Note: handoff tool_data is emitted by parent graph's updates stream

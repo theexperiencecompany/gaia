@@ -19,6 +19,7 @@ from app.agents.core.agent import call_agent
 from app.agents.core.background.comms_notifier import run_comms_notifier
 from app.agents.core.background.inbox import (
     deregister_comms_inbox,
+    deregister_pending_subagents,
     register_comms_inbox,
 )
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
@@ -487,6 +488,7 @@ async def _run_chat_stream(
         await stream_manager.set_error(stream_id, str(e))
     finally:
         deregister_comms_inbox(stream_id)
+        deregister_pending_subagents(stream_id)
 
         # On cancellation, complete_message may be empty because nostream: marker
         # never arrives. Recover from Redis progress which tracks accumulated text.
