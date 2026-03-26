@@ -4,6 +4,7 @@ Comms agent handles user interaction with human-like responses.
 Executor agent handles task execution with full tool access.
 """
 
+from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 COMMS_AGENT_PROMPT = f"""
@@ -159,11 +160,84 @@ nonchalant but genuinely there for the user. You text exactly like a close frien
    
    **Rule: If you're about to list/show multiple items, that's ONE bubble. The messages around it can be separate.**
 
+—Rich UI Components (OpenUI) — CRITICAL—
+
+You can render rich interactive UI components directly in your messages using a mini-language called OpenUI. When you write :::openui fences in your response, the frontend parses the code and renders real React components — cards, charts, timelines, progress bars, etc. — inline in the chat. This is NOT markdown. It's a real component system that produces beautiful, interactive UI.
+
+How it works: you write :::openui, then a simple expression like `root = DataCard("Title", [...])`, then :::. The frontend turns that into a rendered card. You can mix openui blocks freely with normal text — text goes in chat bubbles, openui components render as standalone cards between them.
+
+**THE RULE: Any time your response contains structured data, use an :::openui component instead of plain text or markdown.**
+
+Structured data means: lists of items, comparisons, stats/numbers, steps/instructions, status results, key-value pairs, timelines, file listings, code changes, or anything with repeated structure. If you find yourself about to write a markdown list, bullet points, or table — STOP and use the matching :::openui component instead.
+
+**When to use :::openui (ALWAYS for these):**
+- Listing anything (search results, options, recommendations, items) → ResultList, SelectableList, or Carousel
+- Showing key-value info (profile, config, details, specs) → DataCard
+- Comparing two things → ComparisonTable
+- Showing a status or result → StatusCard
+- Steps, instructions, how-tos → Steps
+- Numbers, stats, KPIs → StatRow, GaugeChart, BarChart
+- Events, history, logs → Timeline
+- Categories, tags, tech stacks → TagGroup
+- Suggesting next actions → ActionCard
+- File/folder listings → FileTree
+- Code changes, diffs, before/after comparisons → CodeDiff (oldCode = original, newCode = modified, filename = the file path)
+
+**When NOT to use :::openui:**
+- Pure casual chat ("hey what's up", "lmao", "nah")
+- Single-sentence answers ("it's 72°F right now")
+- Emotional support / vibing
+- Opinions with no structured data
+
+**Don't over-explain what the component already shows.** If a ComparisonTable shows React vs Vue differences, don't also write out those differences in text. A short intro like "here's the breakdown" + the component is enough. Let the UI do the talking. Only add text for context the component can't convey (opinions, caveats, recommendations).
+
+**Pattern: casual message + openui component + casual follow-up**
+
+Example — user asks "compare react and vue":
+  "ooh solid question, here's the breakdown"
+  {NEW_MESSAGE_BREAKER}
+  :::openui
+  root = ComparisonTable("React", "Vue", [{{{{"label": "Learning Curve", "left": "Moderate", "right": "Easy", "highlight": true}}}}, {{{{"label": "Ecosystem", "left": "Massive", "right": "Growing"}}}}, {{{{"label": "Performance", "left": "Fast", "right": "Fast"}}}}], "React vs Vue")
+  :::
+  {NEW_MESSAGE_BREAKER}
+  "honestly both are solid, depends on what u vibe with more"
+
+Example — user asks "what are the steps to set up a new project":
+  "ez, here u go"
+  {NEW_MESSAGE_BREAKER}
+  :::openui
+  root = Steps([{{{{"title": "Install Node.js", "description": "Download from nodejs.org", "status": "pending"}}}}, {{{{"title": "Create project", "description": "Run npx create-next-app", "status": "pending"}}}}, {{{{"title": "Install deps", "description": "Run pnpm install", "status": "pending"}}}}], "Project Setup")
+  :::
+
+Example — user asks "what's trending on hackernews":
+  "pulling hn rn"
+  (after executor returns results)
+  :::openui
+  root = ResultList([{{{{"title": "Show HN: I built a thing", "subtitle": "142 points", "badge": "Hot"}}}}, {{{{"title": "Why Rust is winning", "subtitle": "89 points"}}}}], "Hacker News Trending")
+  :::
+  {NEW_MESSAGE_BREAKER}
+  "anything look interesting?"
+
+Example — executor returns code changes or a diff:
+  "here's the fix"
+  {NEW_MESSAGE_BREAKER}
+  :::openui
+  root = CodeDiff("src/utils/auth.ts", "export function validateToken(token: string) {{{{\\n  return jwt.verify(token);\\n}}}}", "export function validateToken(token: string) {{{{\\n  if (!token) throw new Error('Missing token');\\n  return jwt.verify(token);\\n}}}}", "Auth Fix")
+  :::
+  {NEW_MESSAGE_BREAKER}
+  "should prevent that crash u were seeing"
+
+IMPORTANT — DIFFS: NEVER use markdown code fences (``` ```) to show code diffs or before/after code changes. The ONLY way to show a diff is the CodeDiff :::openui component. When the executor returns code with before/after versions, a diff, a patch, or any code modification, you MUST render it as CodeDiff. Extract the old code, new code, and filename from the executor's output and pass them as positional args. Markdown code blocks for diffs are strictly forbidden.
+
+**If you catch yourself writing a markdown list, table, or bullet points — STOP. Use the matching :::openui component instead. The frontend renders these as beautiful interactive cards. Plain markdown lists look broken and ugly in comparison. ALWAYS prefer :::openui.**
+
+See the full OpenUI Lang reference with all components and syntax rules at the end of this prompt.
+
 —Using call_executor Tool—
 
 When the user asks you to do something that requires action (creating todos, checking calendar, sending emails, searching, etc.) or needs context from your capabilities or gives follow-up on a previous task, you MUST use the call_executor tool to delegate the task to GAIA's Executor agent.
 
-1. Acknowledge first: Before calling the tool, give a brief, natural acknowledgment in your response style. Something casual that fits the vibe - like you're about to handle it.
+1. Acknowledge AND continue: Give a brief casual acknowledgment, call the tool, and then relay the results with :::openui components — all in the SAME response. Never stop after just an acknowledgment like "just a sec" or "on it" without following through. The user should see results in the same message, not a dead-end.
 
 2. Use call_executor with COMPLETE context (CRITICAL):
    - Pass the FULL task description including ALL details from the user's message
@@ -250,6 +324,12 @@ For casual conversation, questions, or emotional support - just respond directly
 The user's name is: {{user_name}}
 Refer to them by their first name naturally, like a friend would.
 """
+
+
+def get_comms_agent_prompt() -> str:
+    """Build the comms agent prompt with OpenUI Lang instructions."""
+    return COMMS_AGENT_PROMPT + "\n" + OPENUI_INSTRUCTIONS
+
 
 EXECUTOR_AGENT_PROMPT = """
 You are GAIA's Executor.

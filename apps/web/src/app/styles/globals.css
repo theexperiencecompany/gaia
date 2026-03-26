@@ -479,16 +479,22 @@
     width: 100%;
   }
 
+  /* biome-ignore lint/style/noDescendingSpecificity: MCP override needs higher specificity */
   .mcp-app-surface > div {
-    display: block;
-    height: 100%;
-    width: 100%;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    display: block !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    height: 100% !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    width: 100% !important;
   }
 
   .mcp-app-surface iframe {
     display: block;
-    height: 100%;
-    width: 100%;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    height: 100% !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    width: 100% !important;
   }
 
   .chat_bubble {

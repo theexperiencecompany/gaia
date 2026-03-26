@@ -1,9 +1,12 @@
-from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT, EXECUTOR_AGENT_PROMPT
+from app.agents.prompts.comms_prompts import (
+    EXECUTOR_AGENT_PROMPT,
+    get_comms_agent_prompt,
+)
 from langchain_core.prompts import PromptTemplate
 
 COMMS_PROMPT_TEMPLATE = PromptTemplate(
     input_variables=["user_name"],
-    template=COMMS_AGENT_PROMPT,
+    template=get_comms_agent_prompt(),
 )
 
 EXECUTOR_PROMPT_TEMPLATE = PromptTemplate(

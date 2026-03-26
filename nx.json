@@ -113,5 +113,6 @@
         "develop": "develop-{shortCommitSha}"
       }
     }
-  }
+  },
+  "analytics": true
 }

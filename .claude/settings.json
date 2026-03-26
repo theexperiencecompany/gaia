@@ -1,5 +1,24 @@
 {
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_NEW_INIT": "true"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] && exit 0; root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); case \"$f\" in *.ts|*.tsx|*.js|*.jsx) \"$root/node_modules/.bin/biome\" check --write \"$f\" 2>&1 || true;; *.py) uvx ruff format \"$f\" && uvx ruff check --fix \"$f\" || true;; esac",
+            "timeout": 30,
+            "statusMessage": "Formatting..."
+          }
+        ]
+      }
+    ]
   }
 }

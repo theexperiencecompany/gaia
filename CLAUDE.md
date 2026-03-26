@@ -50,6 +50,120 @@ nx build api
 cd apps/api && uv run pytest
 ```
 
+### Project Management
+
+```bash
+# Clean build artifacts
+nx clean web
+nx clean api
+
+# Run multiple targets in parallel (max 3 by default)
+nx run-many -t build lint type-check
+
+# View task graph
+nx graph
+```
+
+## Architecture
+
+### Monorepo Structure
+
+```
+apps/
+  web/          - Next.js web application
+  desktop/      - Electron desktop app
+  mobile/       - React Native mobile app
+  api/          - FastAPI backend with LangGraph agents
+  voice-agent/  - Voice processing worker
+  bots/
+    discord/    - Discord bot
+    slack/      - Slack bot
+    telegram/   - Telegram bot
+  docs/         - Documentation site
+
+libs/
+  shared/       - Shared Python utilities (gaia-shared package)
+    py/         - Python shared code
+    ts/         - TypeScript shared code
+```
+
+### Frontend (Web/Desktop)
+
+**Tech Stack**: Next.js 16, React 19, TypeScript, Zustand, TailwindCSS, Biome
+
+**Key Directories**:
+
+- `src/app/` - Next.js App Router pages (organized by route groups)
+- `src/features/` - Feature modules (chat, todo, calendar, workflows, integrations, etc.)
+- `src/stores/` - Zustand state management stores
+- `src/components/` - Reusable React components
+- `src/lib/` - Utility functions and configurations
+- `src/types/` - TypeScript type definitions
+
+**State Management**: Uses Zustand for global state. Each feature can have its own store in `src/stores/` or `src/features/{feature}/stores/`.
+
+**Styling**: TailwindCSS with custom configuration. Uses Biome for linting/formatting instead of ESLint/Prettier.
+
+**Desktop App**: The Electron app uses the Next.js standalone build output to bundle the web app for desktop.
+
+### Backend (API)
+
+**Tech Stack**: FastAPI, LangGraph, Python 3.11+, PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ
+
+**Key Directories**:
+
+- `app/main.py` - Application entry point
+- `app/core/` - Core application logic (app factory, middleware, lifespan)
+- `app/api/v1/` - API routes and endpoints
+- `app/agents/` - LangGraph agent system
+  - `core/` - Core agent logic (agent.py, state.py, graph_manager.py, nodes/, subagents/)
+  - `tools/` - Agent tools
+  - `prompts/` - Agent prompts
+  - `memory/` - Agent memory management
+  - `llm/` - LLM integrations
+- `app/models/` - Database models
+- `app/schemas/` - Pydantic schemas
+- `app/services/` - Business logic services
+- `app/db/` - Database clients (postgresql, mongodb, redis, chroma, rabbitmq)
+- `app/workers/` - Background task workers
+- `app/config/` - Configuration and settings
+- `app/utils/` - Utility functions
+
+**Database Setup**: The API depends on PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ. Use Docker Compose for local development.
+
+**Background Tasks**: Uses ARQ (Redis-based task queue) for async job processing. Run with `nx worker api`.
+
+**Dependency Management**: Uses `uv` for Python package management. Run `nx run api:sync` to install dependencies.
+
+### Mobile App
+
+**Tech Stack**: React Native, Expo, TypeScript
+
+Similar structure to web app with React Native components. Uses React Navigation for routing.
+
+### Shared Libraries
+
+**Python Shared (`libs/shared/`)**: Common utilities used across Python apps (API, voice-agent, bots). Includes logging, config, and Pydantic models.
+
+**Install**: The `gaia-shared` package is automatically available to Python apps via workspace dependencies.
+
+## Design System
+
+The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the repo root. It covers:
+- Color tokens, zinc scale, semantic status colors, dark/light CSS variables
+- Typography (Inter, PP Editorial New, Anonymous Pro) and heading scale
+- Spacing, border radius decision table, shadows
+- Icon library usage (`@icons` — never raw SVGs)
+- Animation tokens, Framer Motion conventions, easing functions
+- Toast/notification system (Sileo — never sonner or react-hot-toast)
+- Chat bubble architecture and the TextBubble/TOOL_RENDERERS system
+- **Chat tool card styling contract** (outer `rounded-2xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`, no borders)
+- Adding new tool cards vs OpenUI primitives (decision tree)
+- Copy-paste card template and pre-commit checklist
+
+**Claude rules** for design consistency are in `.claude/rules/design.md` (auto-loaded).
+**Chat bubble rules** are in `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`.
+
 ## Code Style
 
 ### TypeScript/JavaScript
@@ -66,6 +180,13 @@ cd apps/api && uv run pytest
 - **No inline imports** — all imports at the top of the file
 - **Full type annotations required** on all functions and methods (enforced by mypy)
 - **Ruff** for linting/formatting — not black/flake8/isort
+
+Rules are also enforced via auto-loaded rule files — see `.claude/rules/`:
+- **TypeScript/React**: `.claude/rules/typescript.md` — Biome, strict types, component/hook patterns, Zustand, API layer
+- **Python/Backend**: `.claude/rules/python.md` — Ruff, mypy, FastAPI patterns, services, logging, caching
+- **Design system**: `.claude/rules/design.md` — card contract, colors, icons, animations, OpenUI
+- **General engineering**: `.claude/rules/general.md` — DRY, dead code, constants, feature-based org
+- **Linear**: `.claude/rules/linear.md` — issue titles, descriptions, priorities, cycle hygiene, writing style
 
 ## DRY Principles
 
@@ -130,10 +251,69 @@ nx run-many -t type-check --projects=web,desktop
 nx run-many -t lint --projects=web,desktop
 ```
 
+## Environment Variables
+
+Each app has its own `.env` file:
+
+- `apps/api/.env` - Backend configuration
+- `apps/web/.env.local` - Web app configuration
+
+Refer to `.env.example` files in each directory for required variables.
+
+## Docker
+
+Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`:
+
+- `docker-compose.yml` - Development environment
+- `docker-compose.prod.yml` - Production environment
+
+## Release Management
+
+The project uses Nx release with Docker support. Release groups are configured in `nx.json`:
+
+- **apps group**: `api`, `voice-agent` (published to ghcr.io)
+
+Build Docker images:
+
+```bash
+nx docker:build api
+nx docker:build voice-agent
+```
+
+## Task Tracking
+
+Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-internal CLI for task tracking and dolt database sync — **never invoke it automatically**. Otherwise, use built-in TodoWrite/TaskCreate tools.
+
+## Implementation Plans
+
+When creating implementation plans, store them in `.agents/plans/` directory. This folder is gitignored and used for planning documents before execution.
+
+## Markdown Files
+
+**Never create `.md` files** outside of `.agents/plans/` (gitignored) unless explicitly asked. Do not create `REVIEW.md`, `CONSISTENCY_REPORT.md`, `ANALYSIS.md`, spec files, or any other agent-generated documentation in the source tree. Planning and review artifacts belong only in `.agents/plans/` and only when absolutely necessary.
+
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
 - **`develop` is the base branch, not `master`.** All feature branches are created from and merged into `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `develop` as the base — not `master` or `main`.
+- Work is **not complete until `git push` succeeds.** Always push before ending a session.
+- Session close sequence (mandatory when code changed):
+  ```bash
+  git pull --rebase
+  git push
+  git status  # must show "up to date with origin"
+  ```
+
+## Shell Commands
+
+Always use non-interactive flags to avoid hanging on prompts (shell aliases may add `-i` by default):
+
+```bash
+cp -f source dest      # NOT: cp source dest
+mv -f source dest      # NOT: mv source dest
+rm -f file             # NOT: rm file
+rm -rf directory       # NOT: rm -r directory
+```
 
 ## Common Issues
 

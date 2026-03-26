@@ -2,6 +2,6 @@
   "database": "dolt",
   "backend": "dolt",
   "dolt_mode": "server",
-  "dolt_database": "RBP",
-  "project_id": "52b677f6-a0cb-4514-af59-1b835815dffb"
+  "dolt_database": "project",
+  "project_id": "edb96886-6a83-420c-90f4-c1558b5a8f6d"
 }
