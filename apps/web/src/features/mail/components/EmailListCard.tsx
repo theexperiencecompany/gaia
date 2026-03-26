@@ -3,7 +3,6 @@ import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import { useEffect, useRef } from "react";
 
-
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { Gmail } from "@/components/shared/icons";
 import { useAppendToInput } from "@/stores/composerStore";

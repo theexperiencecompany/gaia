@@ -5,7 +5,6 @@ import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks/useGitHubStars";
 
-
 export default function DesktopMenu({ scrolled }: { scrolled: boolean }) {
   const user = useUser();
   const isAuthenticated = user?.email; // Check if user has email to determine auth status
