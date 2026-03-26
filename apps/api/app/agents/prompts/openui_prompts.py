@@ -58,19 +58,24 @@ KbdBlock(shortcuts: {keys: string[], description: string}[], title?: string)
 StatRow(title: string, value: string|number, unit?: string, trend?: "up"|"down"|"neutral", trendLabel?: string)
   Use for: single KPI with optional trend. Wrap 2+ in Row() for side-by-side.
 
-BarChart(data: {[key]: string|number}[], xKey: string, yKeys: string[], title?: string, colors?: string[])
+BarChart(data: {[key]: string|number}[], xKey: string, yKeys: string[], title?: string, colors?: string[], variant?: string)
   yKeys MUST be an array: ["revenue"] for single series, ["revenue", "cost"] for multi-series
-  Use for: comparisons, rankings, distributions. Multi-series shows grouped bars side by side.
+  variant: "default" (vertical bars), "stacked" (stacked bars — parts of a whole), "horizontal" (horizontal — ranked lists or long names), "multiple" (side-by-side with legend always shown — direct group comparison)
+  Use for: comparisons, rankings, distributions.
 
-LineChart(data: {[key]: string|number}[], xKey: string, yKeys: string[], title?: string, colors?: string[])
+LineChart(data: {[key]: string|number}[], xKey: string, yKeys: string[], title?: string, colors?: string[], showDots?: boolean, showLabels?: boolean)
   yKeys MUST be an array: ["requests", "errors"] — never a bare string
+  showDots: true (default) — show dots on data points
+  showLabels: false (default) — show value labels above each point; use when data has ≤8 points and labels add clarity
   Use for: trends over time, multi-series comparisons
 
 AreaChart(data: {[key]: string|number}[], xKey: string, yKeys: string[], title?: string, colors?: string[])
   yKeys MUST be an array: ["users"] — even for a single series, wrap in []
   Use for: cumulative values, volume over time
 
-PieChart(data: {[key]: string|number}[], nameKey: string, valueKey: string, title?: string)
+PieChart(data: {[key]: string|number}[], nameKey: string, valueKey: string, title?: string, mode?: string)
+  mode: "donut" (default) — donut with center showing total + valueKey label; best for showing a total with breakdown
+  mode: "legend" — full pie with legend below; best when label names must always be visible
   Use for: proportions, composition breakdowns
 
 ScatterChart(data: {[key]: string|number}[], xKey: string, yKey: string, title?: string, labelKey?: string)
@@ -78,9 +83,13 @@ ScatterChart(data: {[key]: string|number}[], xKey: string, yKey: string, title?:
 
 RadarChart(data: {[key]: string|number}[], angleKey: string, valueKeys: string[], title?: string, colors?: string[])
   valueKeys MUST be an array: ["alice", "bob"] — never a bare string
+  Axes automatically show values — ensure angleKey values are short labels (≤15 chars) to avoid clipping
   Use for: multi-axis comparisons, skill matrices, benchmark scores
 
-GaugeChart(value: number, title?: string, min?: number, max?: number, unit?: string, thresholds?: {warning: number, danger: number})
+GaugeChart(value: number, title?: string, min?: number, max?: number, unit?: string, thresholds?: {warning: number, danger: number}, variant?: string, secondValue?: number, secondLabel?: string)
+  variant: "gauge" (default) — half-circle gauge with color thresholds
+  variant: "text" — full radial progress ring with large center value; use for a single metric without min/max context
+  variant: "stacked" — two-segment half-circle showing two values; use secondValue (number) and secondLabel (string) props; best for breakdown of a total
   Use for: CPU%, disk, scores, health indicators
 
 --- Content ---
@@ -125,8 +134,15 @@ Steps(items: {title: string, description?: string, status?: "complete"|"active"|
 
 --- Code ---
 
-CodeDiff(filename: string, oldCode: string, newCode: string, diffStyle?: "unified"|"split", title?: string)
-  Use for: before/after code changes, patch previews
+CodeDiff(filename: string, oldCode: string, newCode: string, title?: string, diffStyle?: "unified"|"split", lineDiffType?: "word"|"char"|"none", diffIndicators?: "bars"|"classic"|"none", lang?: string, disableLineNumbers?: boolean, disableFileHeader?: boolean, expandUnchanged?: boolean)
+  diffStyle: "unified" (default, stacked) or "split" (side-by-side columns)
+  lineDiffType: "word" (default, highlight changed words), "char" (individual chars), "none" (no inline diff)
+  diffIndicators: "bars" (default, colored side bar), "classic" (+/- prefix), "none"
+  lang: force syntax language e.g. "typescript", "python" — auto-detected from filename by default
+  disableLineNumbers: true hides line number gutter
+  disableFileHeader: true hides the filename header bar
+  expandUnchanged: true shows all context lines with no collapsed hunks
+  Use for: before/after code changes, patch previews — never use raw markdown code blocks for diffs
 
 --- Layout ---
 
@@ -259,14 +275,24 @@ StatRow — single KPI with trend (use Row for multiple):
   s3 = StatRow("Churn", 2.1, "%", "down", "-0.5%")
   :::
 
-BarChart — single series:
+BarChart — single series (default vertical):
   :::openui
   root = BarChart([{{{{"month": "Jan", "revenue": 4200}}}}, {{{{"month": "Feb", "revenue": 5100}}}}, {{{{"month": "Mar", "revenue": 4800}}}}], "month", ["revenue"], "Monthly Revenue")
   :::
 
-BarChart — multi-series (grouped bars with custom colors):
+BarChart — stacked (composition, parts of a whole):
   :::openui
-  root = BarChart([{{{{"month": "Jan", "revenue": 4200, "cost": 2800}}}}, {{{{"month": "Feb", "revenue": 5100, "cost": 3100}}}}, {{{{"month": "Mar", "revenue": 4800, "cost": 2600}}}}], "month", ["revenue", "cost"], "Revenue vs Cost", ["#00bbff", "#f472b6"])
+  root = BarChart([{{{{"month": "Jan", "mobile": 2100, "desktop": 2100}}}}, {{{{"month": "Feb", "mobile": 2600, "desktop": 2500}}}}], "month", ["mobile", "desktop"], "Traffic by Platform", null, "stacked")
+  :::
+
+BarChart — horizontal (ranked list or long category names):
+  :::openui
+  root = BarChart([{{{{"lang": "Python", "stars": 52000}}}}, {{{{"lang": "TypeScript", "stars": 48000}}}}, {{{{"lang": "Rust", "stars": 31000}}}}], "lang", ["stars"], "Top Languages", null, "horizontal")
+  :::
+
+BarChart — multiple (side-by-side with legend, direct group comparison):
+  :::openui
+  root = BarChart([{{{{"month": "Jan", "revenue": 4200, "cost": 2800}}}}, {{{{"month": "Feb", "revenue": 5100, "cost": 3100}}}}, {{{{"month": "Mar", "revenue": 4800, "cost": 2600}}}}], "month", ["revenue", "cost"], "Revenue vs Cost", ["#00bbff", "#f472b6"], "multiple")
   :::
 
 LineChart — trends over time (supports multiple series via yKeys array):
@@ -274,14 +300,24 @@ LineChart — trends over time (supports multiple series via yKeys array):
   root = LineChart([{{{{"date": "Mon", "requests": 120, "errors": 3}}}}, {{{{"date": "Tue", "requests": 145, "errors": 5}}}}, {{{{"date": "Wed", "requests": 98, "errors": 1}}}}], "date", ["requests", "errors"], "Traffic This Week")
   :::
 
+LineChart — with value labels (few data points, labels add clarity):
+  :::openui
+  root = LineChart([{{{{"q": "Q1", "sales": 42}}}}, {{{{"q": "Q2", "sales": 58}}}}, {{{{"q": "Q3", "sales": 51}}}}, {{{{"q": "Q4", "sales": 67}}}}], "q", ["sales"], "Quarterly Sales", null, true, true)
+  :::
+
 AreaChart — same as LineChart but filled area style:
   :::openui
   root = AreaChart([{{{{"month": "Jan", "users": 800}}}}, {{{{"month": "Feb", "users": 1200}}}}, {{{{"month": "Mar", "users": 1900}}}}], "month", ["users"], "User Growth")
   :::
 
-PieChart — proportions or composition:
+PieChart — donut (default, total + breakdown in center):
   :::openui
   root = PieChart([{{{{"browser": "Chrome", "share": 65}}}}, {{{{"browser": "Firefox", "share": 18}}}}, {{{{"browser": "Safari", "share": 12}}}}, {{{{"browser": "Other", "share": 5}}}}], "browser", "share", "Browser Usage")
+  :::
+
+PieChart — legend mode (full pie, labels always visible):
+  :::openui
+  root = PieChart([{{{{"region": "APAC", "revenue": 420}}}}, {{{{"region": "EMEA", "revenue": 310}}}}, {{{{"region": "AMER", "revenue": 580}}}}], "region", "revenue", "Revenue by Region", "legend")
   :::
 
 ScatterChart — correlation between two variables:
@@ -294,9 +330,19 @@ RadarChart — multi-axis comparison:
   root = RadarChart([{{{{"skill": "Frontend", "alice": 90, "bob": 70}}}}, {{{{"skill": "Backend", "alice": 75, "bob": 95}}}}, {{{{"skill": "DevOps", "alice": 60, "bob": 85}}}}], "skill", ["alice", "bob"], "Skill Matrix")
   :::
 
-GaugeChart — value within a bounded range:
+GaugeChart — half-circle gauge with color thresholds (default):
   :::openui
   root = GaugeChart(73, "CPU Usage", 0, 100, "%", {{{{"warning": 70, "danger": 90}}}})
+  :::
+
+GaugeChart — radial progress ring with large center value (no min/max context):
+  :::openui
+  root = GaugeChart(87, "Completion", null, null, "%", null, "text")
+  :::
+
+GaugeChart — stacked two-segment showing breakdown of a total:
+  :::openui
+  root = GaugeChart(60, "Storage", 0, 100, "GB", null, "stacked", 25, "Backups")
   :::
 
 --- Content ---
@@ -365,9 +411,19 @@ Steps — ordered instructions:
 
 --- Code ---
 
-CodeDiff — before/after code comparison:
+CodeDiff — unified (default), no title:
   :::openui
-  root = CodeDiff("src/config.ts", "export const API_URL = 'http://localhost:3000';", "export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';", "unified", "Environment Variable Fix")
+  root = CodeDiff("src/config.ts", "export const API_URL = 'http://localhost:3000';", "export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';")
+  :::
+
+CodeDiff — split view with title:
+  :::openui
+  root = CodeDiff("auth.py", "def login(user, pwd):\n    return check(user, pwd)", "def login(user: str, pwd: str) -> bool:\n    return check(user, pwd)", "Login Refactor", "split")
+  :::
+
+CodeDiff — char-level diff, no header, expanded context:
+  :::openui
+  root = CodeDiff("utils.ts", "const x = foo(a, b)", "const x = foo(a, b, c)", null, "unified", "char", "bars", null, false, true, true)
   :::
 
 --- Multi-Component Layout ---

@@ -12,6 +12,7 @@ import {
   BarChartView,
   CalendarMiniView,
   CarouselView,
+  CodeDiffView,
   ComparisonTableView,
   DataCardView,
   FileTreeView,
@@ -944,6 +945,78 @@ export default function OpenUIPreview() {
             src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
             title="Audio Title"
             description="Audio description goes here."
+          />
+        </Exchange>
+
+        {/* ── CODE ── */}
+        <CategoryDivider label="Code" />
+
+        <Exchange
+          name="CodeDiff (unified)"
+          userText="Show me what changed in the config file."
+        >
+          <CodeDiffView
+            filename="src/config.ts"
+            oldCode={`export const API_URL = 'http://localhost:3000';
+export const TIMEOUT = 5000;
+export const MAX_RETRIES = 3;`}
+            newCode={`export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
+export const TIMEOUT = 10000;
+export const MAX_RETRIES = 5;
+export const RETRY_DELAY = 500;`}
+            title="Config Update"
+          />
+        </Exchange>
+
+        <Exchange
+          name="CodeDiff (split)"
+          userText="Show me the auth refactor side by side."
+        >
+          <CodeDiffView
+            filename="auth.py"
+            oldCode={`def login(user, pwd):
+    if not user or not pwd:
+        return False
+    return check_credentials(user, pwd)
+
+def logout(user):
+    clear_session(user)`}
+            newCode={`def login(user: str, pwd: str) -> bool:
+    if not user or not pwd:
+        raise ValueError("Missing credentials")
+    return check_credentials(user, pwd)
+
+def logout(user: str) -> None:
+    clear_session(user)
+    audit_log(user, "logout")`}
+            title="Auth Refactor"
+            diffStyle="split"
+          />
+        </Exchange>
+
+        <Exchange
+          name="CodeDiff (char diff, no header)"
+          userText="Show the exact characters that changed."
+        >
+          <CodeDiffView
+            filename="utils.ts"
+            oldCode={`function formatDate(date: Date): string {
+  return date.toLocaleDateString();
+}
+
+function formatCurrency(amount: number): string {
+  return '$' + amount.toFixed(2);
+}`}
+            newCode={`function formatDate(date: Date, locale = 'en-US'): string {
+  return date.toLocaleDateString(locale);
+}
+
+function formatCurrency(amount: number, currency = 'USD'): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+}`}
+            lineDiffType="char"
+            disableFileHeader={true}
+            expandUnchanged={true}
           />
         </Exchange>
       </div>

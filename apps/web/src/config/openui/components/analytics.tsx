@@ -6,10 +6,13 @@ import {
   Area,
   Bar,
   Cell,
+  Label,
+  LabelList,
   Line,
   Pie,
   PolarAngleAxis,
   PolarGrid,
+  PolarRadiusAxis,
   Radar,
   RadialBar,
   RadialBarChart,
@@ -69,6 +72,7 @@ export const barChartSchema = z.object({
   description: z.string().optional(),
   footer: z.string().optional(),
   colors: z.array(z.string()).optional(),
+  variant: z.enum(["default", "stacked", "horizontal", "multiple"]).optional(),
 });
 
 export const lineChartSchema = z.object({
@@ -79,6 +83,8 @@ export const lineChartSchema = z.object({
   description: z.string().optional(),
   footer: z.string().optional(),
   colors: z.array(z.string()).optional(),
+  showDots: z.boolean().optional(),
+  showLabels: z.boolean().optional(),
 });
 
 export const areaChartSchema = z.object({
@@ -98,6 +104,7 @@ export const pieChartSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   footer: z.string().optional(),
+  mode: z.enum(["donut", "legend", "label"]).optional(),
 });
 
 export const scatterChartSchema = z.object({
@@ -127,6 +134,9 @@ export const gaugeChartSchema = z.object({
   max: z.number().optional(),
   unit: z.string().optional(),
   thresholds: z.object({ warning: z.number(), danger: z.number() }).optional(),
+  variant: z.enum(["gauge", "text", "stacked"]).optional(),
+  secondValue: z.number().optional(),
+  secondLabel: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -233,7 +243,12 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
       { label: key, color: colors[i % colors.length] },
     ]),
   );
-  const showLegend = keys.length > 1;
+
+  const isStacked = props.variant === "stacked";
+  const isHorizontal = props.variant === "horizontal";
+  const alwaysLegend = props.variant === "multiple";
+  const showLegend = alwaysLegend || keys.length > 1;
+
   return (
     <ChartCard
       title={props.title}
@@ -242,18 +257,42 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
       dataPoints={props.data.length}
     >
       <ChartContainer config={chartConfig} className="h-50 w-full">
-        <RechartsBarChart data={props.data}>
-          <XAxis
-            dataKey={props.xKey}
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: "#71717a", fontSize: 11 }}
-          />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: "#71717a", fontSize: 11 }}
-          />
+        <RechartsBarChart
+          data={props.data}
+          layout={isHorizontal ? "vertical" : "horizontal"}
+        >
+          {isHorizontal ? (
+            <>
+              <YAxis
+                dataKey={props.xKey}
+                type="category"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#71717a", fontSize: 11 }}
+                width={80}
+              />
+              <XAxis
+                type="number"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#71717a", fontSize: 11 }}
+              />
+            </>
+          ) : (
+            <>
+              <XAxis
+                dataKey={props.xKey}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#71717a", fontSize: 11 }}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: "#71717a", fontSize: 11 }}
+              />
+            </>
+          )}
           <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
           {showLegend && <ChartLegend content={<ChartLegendContent />} />}
           {keys.map((key) => (
@@ -263,6 +302,7 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
               fill={`var(--color-${key})`}
               radius={8}
               maxBarSize={40}
+              {...(isStacked ? { stackId: "stack" } : {})}
             />
           ))}
         </RechartsBarChart>
@@ -289,7 +329,12 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
       dataPoints={props.data.length}
     >
       <ChartContainer config={chartConfig} className="h-50 w-full">
-        <RechartsLineChart data={props.data}>
+        <RechartsLineChart
+          data={props.data}
+          {...(props.showLabels === true
+            ? { margin: { top: 24, left: 12, right: 12 } }
+            : {})}
+        >
           <XAxis
             dataKey={props.xKey}
             axisLine={false}
@@ -310,8 +355,22 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
               dataKey={key}
               stroke={`var(--color-${key})`}
               strokeWidth={2}
-              dot={false}
-            />
+              dot={
+                props.showDots !== false
+                  ? { fill: `var(--color-${key})` }
+                  : false
+              }
+            >
+              {props.showLabels === true && (
+                <LabelList
+                  position="top"
+                  offset={12}
+                  fontSize={12}
+                  fill="#a1a1aa"
+                  dataKey={props.xKey}
+                />
+              )}
+            </Line>
           ))}
         </RechartsLineChart>
       </ChartContainer>
@@ -391,11 +450,20 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
 }
 
 export function PieChartView(props: z.infer<typeof pieChartSchema>) {
+  const mode = props.mode ?? "donut";
   const chartConfig: ChartConfig = Object.fromEntries(
     props.data.map((entry, i) => {
       const name = String(entry[props.nameKey] ?? i);
       return [name, { label: name, color: PIE_COLORS[i % PIE_COLORS.length] }];
     }),
+  );
+  const total = React.useMemo(
+    () =>
+      props.data.reduce((sum, entry) => {
+        const val = entry[props.valueKey];
+        return sum + (typeof val === "number" ? val : 0);
+      }, 0),
+    [props.data, props.valueKey],
   );
   return (
     <ChartCard
@@ -404,31 +472,104 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
       footer={props.footer}
       dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-50 w-full">
+      <ChartContainer
+        config={chartConfig}
+        className={`h-50 w-full ${mode === "label" ? "[&_.recharts-pie-label-text]:fill-foreground" : ""}`}
+      >
         <RechartsPieChart>
-          <Pie
-            data={props.data}
-            dataKey={props.valueKey}
-            nameKey={props.nameKey}
-            cx="50%"
-            cy="50%"
-            outerRadius={70}
-            innerRadius={40}
-            strokeWidth={0}
-          >
-            {props.data.map((entry, i) => (
-              <Cell
-                key={String(entry[props.nameKey])}
-                fill={PIE_COLORS[i % PIE_COLORS.length]}
+          {mode === "donut" ? (
+            <Pie
+              data={props.data}
+              dataKey={props.valueKey}
+              nameKey={props.nameKey}
+              cx="50%"
+              cy="50%"
+              outerRadius={80}
+              innerRadius={60}
+              strokeWidth={0}
+            >
+              {props.data.map((entry, i) => (
+                <Cell
+                  key={String(entry[props.nameKey])}
+                  fill={PIE_COLORS[i % PIE_COLORS.length]}
+                />
+              ))}
+              <Label
+                content={({ viewBox }) => {
+                  if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                    return (
+                      <text
+                        x={viewBox.cx}
+                        y={viewBox.cy}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                      >
+                        <tspan
+                          x={viewBox.cx}
+                          y={viewBox.cy}
+                          className="fill-foreground text-2xl font-bold"
+                        >
+                          {total}
+                        </tspan>
+                        <tspan
+                          x={viewBox.cx}
+                          y={(viewBox.cy || 0) + 20}
+                          fontSize={12}
+                          fill="#71717a"
+                        >
+                          {props.valueKey}
+                        </tspan>
+                      </text>
+                    );
+                  }
+                }}
               />
-            ))}
-          </Pie>
+            </Pie>
+          ) : mode === "label" ? (
+            <Pie
+              data={props.data}
+              dataKey={props.valueKey}
+              nameKey={props.nameKey}
+              cx="50%"
+              cy="50%"
+              outerRadius={70}
+              strokeWidth={0}
+              label
+            >
+              {props.data.map((entry, i) => (
+                <Cell
+                  key={String(entry[props.nameKey])}
+                  fill={PIE_COLORS[i % PIE_COLORS.length]}
+                />
+              ))}
+            </Pie>
+          ) : (
+            <Pie
+              data={props.data}
+              dataKey={props.valueKey}
+              nameKey={props.nameKey}
+              cx="50%"
+              cy="50%"
+              outerRadius={70}
+              strokeWidth={0}
+            >
+              {props.data.map((entry, i) => (
+                <Cell
+                  key={String(entry[props.nameKey])}
+                  fill={PIE_COLORS[i % PIE_COLORS.length]}
+                />
+              ))}
+            </Pie>
+          )}
           <ChartTooltip
             content={<ChartTooltipContent nameKey={props.nameKey} />}
           />
-          <ChartLegend
-            content={<ChartLegendContent nameKey={props.nameKey} />}
-          />
+          {mode === "legend" && (
+            <ChartLegend
+              content={<ChartLegendContent nameKey={props.nameKey} />}
+              className="-translate-y-2 flex-wrap gap-2"
+            />
+          )}
         </RechartsPieChart>
       </ChartContainer>
     </ChartCard>
@@ -490,7 +631,27 @@ export function RadarChartView(props: z.infer<typeof radarChartSchema>) {
           <PolarGrid stroke="#3f3f46" />
           <PolarAngleAxis
             dataKey={props.angleKey}
-            tick={{ fill: "#71717a", fontSize: 11 }}
+            tick={({ x, y, textAnchor, index, ...tickProps }) => {
+              const d = props.data[index] as Record<string, string | number>;
+              const yNum = typeof y === "number" ? y : 0;
+              const vals = keys.map((k) => d[k]).join(" / ");
+              return (
+                <text
+                  x={x}
+                  y={yNum + (index === 0 ? -10 : 0)}
+                  textAnchor={textAnchor}
+                  fontSize={12}
+                  {...tickProps}
+                >
+                  <tspan fill="#e4e4e7" fontWeight={500}>
+                    {vals}
+                  </tspan>
+                  <tspan x={x} dy="1.1em" fontSize={11} fill="#71717a">
+                    {String(d[props.angleKey])}
+                  </tspan>
+                </text>
+              );
+            }}
           />
           <ChartTooltip content={<ChartTooltipContent />} />
           {keys.map((key) => (
@@ -522,48 +683,221 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
   const color =
     pct >= danger ? "#f87171" : pct >= warning ? "#fbbf24" : "#34d399";
 
-  const chartConfig: ChartConfig = {
+  const variant = props.variant ?? "gauge";
+
+  if (variant === "text") {
+    const textChartConfig: ChartConfig = {
+      value: { label: props.title ?? "Value", color },
+    };
+    const textData = [{ name: "value", value: pct, fill: color }];
+    return (
+      <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+        <ChartContainer config={textChartConfig} className="mx-auto">
+          <RadialBarChart
+            data={textData}
+            startAngle={0}
+            endAngle={250}
+            outerRadius={90}
+            innerRadius={70}
+            className="mx-auto h-[160px] w-[160px]"
+          >
+            <PolarGrid
+              gridType="circle"
+              radialLines={false}
+              stroke="none"
+              className="first:fill-muted last:fill-background"
+              polarRadius={[90, 70]}
+            />
+            <RadialBar dataKey="value" background cornerRadius={10} />
+            <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
+              <Label
+                content={({ viewBox }) => {
+                  if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                    return (
+                      <text
+                        x={viewBox.cx}
+                        y={viewBox.cy}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                      >
+                        <tspan
+                          x={viewBox.cx}
+                          y={viewBox.cy}
+                          fontSize={28}
+                          fontWeight="bold"
+                          fill={color}
+                        >
+                          {props.value}
+                          {props.unit ?? ""}
+                        </tspan>
+                        {props.title && (
+                          <tspan
+                            x={viewBox.cx}
+                            y={(viewBox.cy ?? 0) + 22}
+                            fontSize={12}
+                            fill="#71717a"
+                          >
+                            {props.title}
+                          </tspan>
+                        )}
+                      </text>
+                    );
+                  }
+                }}
+              />
+            </PolarRadiusAxis>
+          </RadialBarChart>
+        </ChartContainer>
+      </div>
+    );
+  }
+
+  if (variant === "stacked") {
+    const total = props.value + (props.secondValue ?? 0);
+    const stackData = [
+      { primary: props.value, secondary: props.secondValue ?? 0 },
+    ];
+    const stackChartConfig: ChartConfig = {
+      primary: { label: props.title ?? "Primary", color },
+      secondary: {
+        label: props.secondLabel ?? "Secondary",
+        color: CHART_COLORS[1],
+      },
+    };
+    return (
+      <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+        <ChartContainer config={stackChartConfig} className="mx-auto">
+          <RadialBarChart
+            data={stackData}
+            endAngle={180}
+            innerRadius={80}
+            outerRadius={110}
+            className="mx-auto h-[140px] w-[200px]"
+          >
+            <RadialBar
+              dataKey="secondary"
+              fill={CHART_COLORS[1]}
+              stackId="a"
+              cornerRadius={5}
+              className="stroke-transparent stroke-2"
+            />
+            <RadialBar
+              dataKey="primary"
+              fill={color}
+              stackId="a"
+              cornerRadius={5}
+              className="stroke-transparent stroke-2"
+            />
+            <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
+              <Label
+                content={({ viewBox }) => {
+                  if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                    return (
+                      <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle">
+                        <tspan
+                          x={viewBox.cx}
+                          y={(viewBox.cy ?? 0) - 12}
+                          fontSize={22}
+                          fontWeight="bold"
+                          fill="#e4e4e7"
+                        >
+                          {total.toLocaleString()}
+                        </tspan>
+                        <tspan
+                          x={viewBox.cx}
+                          y={(viewBox.cy ?? 0) + 8}
+                          fontSize={12}
+                          fill="#71717a"
+                        >
+                          {props.title ?? "Total"}
+                        </tspan>
+                      </text>
+                    );
+                  }
+                }}
+              />
+            </PolarRadiusAxis>
+          </RadialBarChart>
+        </ChartContainer>
+      </div>
+    );
+  }
+
+  // Default: "gauge" variant — radial chart with PolarGrid track ring
+  // PolarGrid draws the full ring as background track; endAngle is proportional to fill
+  const maxArc = 250;
+  const valueAngle = Math.max(1, (pct / 100) * maxArc);
+  const outerR = 65;
+  const innerR = 55;
+
+  const gaugeConfig: ChartConfig = {
     value: { label: props.title ?? "Value", color },
   };
-  const data = [{ name: "value", value: pct, fill: color }];
+  const gaugeData = [{ name: "value", value: 1, fill: color }];
 
   return (
     <div
       className="rounded-2xl bg-zinc-800 p-4 text-center"
-      style={{ width: 180 }}
+      style={{ width: 200 }}
     >
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-1">
-          {props.title}
-        </p>
-      )}
       <ChartContainer
-        config={chartConfig}
-        className="mx-auto h-[120px] w-[150px]"
+        config={gaugeConfig}
+        className="mx-auto h-[160px] w-[160px]"
       >
         <RadialBarChart
-          innerRadius={45}
-          outerRadius={65}
-          data={data}
-          startAngle={180}
-          endAngle={180 - (pct / 100) * 180}
-          barSize={10}
+          data={gaugeData}
+          startAngle={0}
+          endAngle={valueAngle}
+          outerRadius={outerR}
+          innerRadius={innerR}
         >
-          <RadialBar
-            dataKey="value"
-            background={{ fill: "#27272a" }}
-            cornerRadius={10}
+          <PolarGrid
+            gridType="circle"
+            radialLines={false}
+            stroke="none"
+            className="first:fill-zinc-700 last:fill-zinc-800"
+            polarRadius={[outerR, innerR]}
           />
+          <RadialBar dataKey="value" cornerRadius={10} />
+          <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
+            <Label
+              content={({ viewBox }) => {
+                if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                  return (
+                    <text
+                      x={viewBox.cx}
+                      y={viewBox.cy}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                    >
+                      <tspan
+                        x={viewBox.cx}
+                        y={viewBox.cy}
+                        fontSize={28}
+                        fontWeight="bold"
+                        fill={color}
+                      >
+                        {props.value}
+                        {props.unit ?? ""}
+                      </tspan>
+                      {props.title && (
+                        <tspan
+                          x={viewBox.cx}
+                          y={(viewBox.cy ?? 0) + 22}
+                          fontSize={12}
+                          fill="#71717a"
+                        >
+                          {props.title}
+                        </tspan>
+                      )}
+                    </text>
+                  );
+                }
+              }}
+            />
+          </PolarRadiusAxis>
         </RadialBarChart>
       </ChartContainer>
-      <div className="-mt-10">
-        <span className="text-2xl font-semibold leading-none" style={{ color }}>
-          {props.value}
-        </span>
-        {props.unit && (
-          <span className="text-xs text-zinc-500 ml-0.5">{props.unit}</span>
-        )}
-      </div>
     </div>
   );
 }

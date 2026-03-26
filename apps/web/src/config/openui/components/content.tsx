@@ -393,19 +393,29 @@ export function AudioPlayerView(props: z.infer<typeof audioPlayerSchema>) {
 
 export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
   const { lat, lng } = props;
-  const bbox = `${lng - 0.01},${lat - 0.01},${lng + 0.01},${lat + 0.01}`;
+  const zoom = props.zoom ?? 14;
+  const bbox = (() => {
+    // Calculate bbox from zoom — higher zoom = smaller area
+    const span = 0.5 / 2 ** (zoom - 10);
+    return `${lng - span},${lat - span},${lng + span},${lat + span}`;
+  })();
   const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+
   return (
-    <div>
+    <div className="rounded-2xl bg-zinc-800 p-3 w-full max-w-lg">
       {props.label && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.label}
-        </p>
+        <div className="flex items-center gap-2 px-1 mb-2">
+          <div className="h-2 w-2 rounded-full bg-primary" />
+          <p className="text-sm font-medium text-zinc-100">{props.label}</p>
+          <span className="text-xs text-zinc-500 ml-auto tabular-nums">
+            {lat.toFixed(4)}, {lng.toFixed(4)}
+          </span>
+        </div>
       )}
       <iframe
         src={src}
-        className="w-full rounded-2xl"
-        style={{ height: "200px", border: "none" }}
+        className="w-full rounded-xl"
+        style={{ height: 220, border: "none" }}
         title={props.label ?? "map"}
       />
     </div>
@@ -466,11 +476,9 @@ export function CalendarMiniView(props: z.infer<typeof calendarMiniSchema>) {
 export function NumberTickerView(props: z.infer<typeof numberTickerSchema>) {
   const isDecimal = props.value % 1 !== 0;
   return (
-    <div className="py-1 text-center">
+    <div className="rounded-2xl bg-zinc-800 p-4 text-center min-w-28">
       {props.label && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.label}
-        </p>
+        <p className="text-xs text-zinc-500 mb-2">{props.label}</p>
       )}
       <div className="flex items-end justify-center gap-1">
         <span className="text-3xl font-semibold text-zinc-100">

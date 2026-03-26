@@ -15,6 +15,19 @@ interface OpenUIRendererProps {
   isStreaming: boolean;
 }
 
+function OpenUIShimmer() {
+  return (
+    <div className="w-full max-w-lg animate-pulse rounded-2xl bg-zinc-800 p-4">
+      <div className="space-y-2.5">
+        <div className="h-3 w-full rounded-lg bg-zinc-700/70" />
+        <div className="h-3 w-5/6 rounded-lg bg-zinc-700/70" />
+        <div className="h-3 w-2/3 rounded-lg bg-zinc-700/70" />
+      </div>
+      <div className="mt-4 h-24 w-full rounded-xl bg-zinc-700/50" />
+    </div>
+  );
+}
+
 function OpenUIErrorCard({ code, error }: { code: string; error?: string }) {
   return (
     <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-lg">
@@ -41,6 +54,7 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
 
   const [failedForCode, setFailedForCode] = React.useState<string | null>(null);
   const [failureReason, setFailureReason] = React.useState<string>("");
+  const [hasRendered, setHasRendered] = React.useState(false);
   const parseFailed = !isStreaming && failedForCode === normalizedCode;
 
   const handleAction = React.useCallback(
@@ -55,6 +69,9 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
   const handleParseResult = React.useCallback(
     (result: ParseResult | null) => {
       if (!result) return;
+      if (result.root !== null && !hasRendered) {
+        setHasRendered(true);
+      }
       const failed = result.root === null && !isStreaming;
       if (failed) {
         const errors = result.meta?.validationErrors;
@@ -78,21 +95,28 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
         setFailureReason("");
       }
     },
-    [code, normalizedCode, isStreaming],
+    [code, normalizedCode, isStreaming, hasRendered],
   );
 
   if (parseFailed) {
     return <OpenUIErrorCard code={code} error={failureReason} />;
   }
 
+  const showShimmer = isStreaming && !hasRendered;
+
   return (
-    <Renderer
-      response={normalizedCode}
-      library={genericLibrary}
-      isStreaming={isStreaming}
-      onAction={handleAction}
-      onParseResult={handleParseResult}
-    />
+    <>
+      {showShimmer && <OpenUIShimmer />}
+      <div className={showShimmer ? "hidden" : undefined}>
+        <Renderer
+          response={normalizedCode}
+          library={genericLibrary}
+          isStreaming={isStreaming}
+          onAction={handleAction}
+          onParseResult={handleParseResult}
+        />
+      </div>
+    </>
   );
 }
 

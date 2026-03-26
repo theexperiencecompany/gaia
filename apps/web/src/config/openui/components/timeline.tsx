@@ -40,11 +40,34 @@ export const stepsSchema = z.object({
 // Helpers
 // ---------------------------------------------------------------------------
 
-const TIMELINE_DOT: Record<string, string> = {
-  success: "bg-emerald-400",
-  error: "bg-red-400",
-  warning: "bg-amber-400",
-  neutral: "bg-zinc-500",
+const TIMELINE_STATUS: Record<
+  string,
+  { dot: string; ring: string; label: string; labelColor: string }
+> = {
+  success: {
+    dot: "bg-emerald-400",
+    ring: "ring-emerald-400/25",
+    label: "Success",
+    labelColor: "text-emerald-400 bg-emerald-400/10",
+  },
+  error: {
+    dot: "bg-red-400",
+    ring: "ring-red-400/25",
+    label: "Failed",
+    labelColor: "text-red-400 bg-red-400/10",
+  },
+  warning: {
+    dot: "bg-amber-400",
+    ring: "ring-amber-400/25",
+    label: "Warning",
+    labelColor: "text-amber-400 bg-amber-400/10",
+  },
+  neutral: {
+    dot: "bg-zinc-500",
+    ring: "ring-zinc-500/20",
+    label: "",
+    labelColor: "",
+  },
 };
 
 const ALERT_STYLES: Record<
@@ -131,42 +154,57 @@ function StepDot({
 
 export function TimelineView(props: z.infer<typeof timelineSchema>) {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
+    <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-lg">
       {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
+        <p className="text-sm font-semibold text-zinc-100 mb-4">
           {props.title}
         </p>
       )}
-      <div className="space-y-0">
-        {props.items.map((item, i) => {
-          const dotColor = TIMELINE_DOT[item.status ?? "neutral"];
-          const isLast = i === props.items.length - 1;
-          return (
-            <div key={item.time ?? item.title} className="flex gap-3">
-              <div className="w-16 shrink-0 pt-0.5 text-right">
-                <span className="text-[10px] text-zinc-600 leading-tight">
-                  {formatTimelineTime(item.time)}
-                </span>
-              </div>
-              <div className="flex flex-col items-center">
+      <div className="relative">
+        {/* Continuous connector line */}
+        <div className="absolute left-[5px] top-3 bottom-3 w-px bg-zinc-700/50" />
+        <div className="space-y-0">
+          {props.items.map((item, i) => {
+            const st = TIMELINE_STATUS[item.status ?? "neutral"];
+            const isLast = i === props.items.length - 1;
+            return (
+              <div
+                key={`${item.time}-${item.title}`}
+                className={`flex gap-4 relative ${!isLast ? "pb-5" : ""}`}
+              >
+                {/* Dot */}
                 <span
-                  className={`h-2 w-2 rounded-full shrink-0 mt-1.5 ${dotColor}`}
+                  className={`h-2.5 w-2.5 rounded-full shrink-0 mt-1.5 z-10 ring-4 ring-offset-0 ${st.dot} ${st.ring}`}
                 />
-                {!isLast && <div className="w-px flex-1 my-1 bg-zinc-700" />}
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium text-zinc-100 leading-tight">
+                      {item.title}
+                    </p>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {item.status && item.status !== "neutral" && (
+                        <span
+                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${st.labelColor}`}
+                        >
+                          {st.label}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-zinc-500 tabular-nums">
+                        {formatTimelineTime(item.time)}
+                      </span>
+                    </div>
+                  </div>
+                  {item.description && (
+                    <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                      {item.description}
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="pb-4 flex-1 min-w-0">
-                <p className="text-sm font-medium text-zinc-200">
-                  {item.title}
-                </p>
-                {item.description && (
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    {item.description}
-                  </p>
-                )}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
