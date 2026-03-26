@@ -92,6 +92,10 @@ const stackSchema = z.object({
   items: z.array(z.unknown()),
 });
 
+const rowSchema = z.object({
+  items: z.array(z.unknown()),
+});
+
 // ---------------------------------------------------------------------------
 // defineComponent calls
 // ---------------------------------------------------------------------------
@@ -110,6 +114,22 @@ const stackDef = defineComponent({
   ),
 });
 
+const rowDef = defineComponent({
+  name: "Row",
+  description: "Horizontal row of equal-width components.",
+  props: rowSchema,
+  component: ({ props, renderNode }) => (
+    <div className="flex flex-row gap-3 items-stretch">
+      {(props.items as unknown[]).map((item, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: generic opaque items have no stable key
+        <div key={i} className="flex-1 min-w-0 aspect-video *:h-full">
+          {renderNode(item)}
+        </div>
+      ))}
+    </div>
+  ),
+});
+
 // ---------------------------------------------------------------------------
 // Library assembly
 // ---------------------------------------------------------------------------
@@ -117,6 +137,7 @@ const stackDef = defineComponent({
 export const genericLibrary = createLibrary({
   components: [
     stackDef,
+    rowDef,
     dataCardDef,
     resultListDef,
     comparisonTableDef,

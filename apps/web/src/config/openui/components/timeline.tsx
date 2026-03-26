@@ -87,9 +87,11 @@ function formatTimelineTime(raw: string): string {
 function StepDot({
   status,
   index,
+  dimmed,
 }: {
   status: "complete" | "active" | "pending";
   index: number;
+  dimmed: boolean;
 }) {
   if (status === "complete") {
     return (
@@ -109,8 +111,16 @@ function StepDot({
     );
   }
   return (
-    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-700 relative top-1">
-      <span className="text-xs font-medium text-zinc-500">{index + 1}</span>
+    <span
+      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full relative top-1 ${
+        dimmed ? "bg-zinc-700" : "bg-zinc-600"
+      }`}
+    >
+      <span
+        className={`text-xs font-medium ${dimmed ? "text-zinc-500" : "text-zinc-300"}`}
+      >
+        {index + 1}
+      </span>
     </span>
   );
 }
@@ -177,6 +187,9 @@ export function AlertBannerView(props: z.infer<typeof alertBannerSchema>) {
 }
 
 export function StepsView(props: z.infer<typeof stepsSchema>) {
+  const hasActiveItem = props.items.some((item) => item.status === "active");
+  const activeIndex = props.items.findIndex((item) => item.status === "active");
+
   return (
     <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-sm">
       {props.title && (
@@ -192,6 +205,11 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
             | "pending";
           const isActive = status === "active";
           const isComplete = status === "complete";
+          // When no active item exists, pending items look normal (not dimmed).
+          // When an active item exists, only items after it look dimmed.
+          const isDimmed =
+            status === "pending" && hasActiveItem && i > activeIndex;
+
           return (
             <div
               key={item.title}
@@ -201,22 +219,22 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
                   : "bg-zinc-900"
               }`}
             >
-              <StepDot status={status} index={i} />
+              <StepDot status={status} index={i} dimmed={isDimmed} />
               <div className="flex-1 min-w-0 pt-0.5">
                 <p
                   className={`text-sm font-medium ${
                     isActive
                       ? "text-zinc-100"
-                      : isComplete
-                        ? "text-zinc-300"
-                        : "text-zinc-500"
+                      : isDimmed
+                        ? "text-zinc-500"
+                        : "text-zinc-200"
                   }`}
                 >
                   {item.title}
                 </p>
                 {item.description && (
                   <p
-                    className={`text-xs  ${isActive ? "text-zinc-300" : "text-zinc-500 "} mt-0.5`}
+                    className={`text-xs mt-0.5 ${isDimmed ? "text-zinc-600" : "text-zinc-400"}`}
                   >
                     {item.description}
                   </p>

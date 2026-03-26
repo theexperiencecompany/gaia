@@ -186,8 +186,8 @@ function ChartCard({
 export function StatRowView(props: z.infer<typeof statRowSchema>) {
   const trendStyle = props.trend ? TREND_STYLES[props.trend] : null;
   return (
-    <div className="rounded-2xl bg-zinc-800 p-5 flex-1 min-w-[160px]">
-      <p className="text-xs text-zinc-500 mb-1.5">{props.title}</p>
+    <div className="rounded-2xl bg-zinc-800 p-5 min-w-0 h-full flex flex-col justify-between">
+      <p className="text-xs text-zinc-500 truncate">{props.title}</p>
       <div className="flex items-end gap-1.5">
         <span className="text-4xl font-bold text-zinc-100 leading-none">
           {props.value}
@@ -196,15 +196,17 @@ export function StatRowView(props: z.infer<typeof statRowSchema>) {
           <span className="text-sm text-zinc-500 mb-0.5">{props.unit}</span>
         )}
       </div>
-      {trendStyle && props.trendLabel && props.trend && (
-        <div className={`flex items-center gap-1 mt-2 ${trendStyle.color}`}>
-          <TrendIcon
-            trend={props.trend}
-            className={`w-3.5 h-3.5 ${trendStyle.color}`}
-          />
-          <span className="text-xs font-medium">{props.trendLabel}</span>
-        </div>
-      )}
+      <div className="h-4 flex items-center">
+        {trendStyle && props.trendLabel && props.trend ? (
+          <div className={`flex items-center gap-1 ${trendStyle.color}`}>
+            <TrendIcon
+              trend={props.trend}
+              className={`w-3.5 h-3.5 ${trendStyle.color}`}
+            />
+            <span className="text-xs font-medium">{props.trendLabel}</span>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

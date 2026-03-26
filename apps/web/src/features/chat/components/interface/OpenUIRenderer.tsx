@@ -1,3 +1,4 @@
+import { Alert01Icon } from "@icons";
 import {
   type ActionEvent,
   type ParseResult,
@@ -14,18 +15,32 @@ interface OpenUIRendererProps {
   isStreaming: boolean;
 }
 
+function OpenUIErrorCard({ code, error }: { code: string; error?: string }) {
+  return (
+    <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-lg">
+      <div className="flex items-center gap-2 mb-2">
+        <Alert01Icon className="h-4 w-4 text-red-400 shrink-0" />
+        <p className="text-sm font-medium text-red-400">
+          Component failed to render
+        </p>
+      </div>
+      {error && <p className="text-xs text-zinc-500 mb-2">{error}</p>}
+      <pre className="rounded-xl bg-zinc-900 p-3 text-xs text-zinc-400 overflow-x-auto whitespace-pre-wrap break-all">
+        {code}
+      </pre>
+    </div>
+  );
+}
+
 function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
   const appendToInput = useAppendToInput();
-  // Normalize named args (key=value) to positional before the parser sees them.
-  // The @openuidev/react-lang parser only understands positional arguments.
   const normalizedCode = React.useMemo(
     () => normalizeOpenUICode(code, genericLibrary),
     [code],
   );
 
-  // Track the normalized code that caused the last parse failure.
-  // parseFailed is derived — no useEffect needed, no extra render on code change.
   const [failedForCode, setFailedForCode] = React.useState<string | null>(null);
+  const [failureReason, setFailureReason] = React.useState<string>("");
   const parseFailed = !isStreaming && failedForCode === normalizedCode;
 
   const handleAction = React.useCallback(
@@ -42,26 +57,32 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
       if (!result) return;
       const failed = result.root === null && !isStreaming;
       if (failed) {
-        console.error(
-          "[OpenUIRenderer] Parse produced no root — component will not render.",
-          {
-            rawCode: code,
-            normalizedCode,
-            validationErrors: result.meta?.validationErrors,
-            unresolved: result.meta?.unresolved,
-            statementCount: result.meta?.statementCount,
-          },
-        );
+        const errors = result.meta?.validationErrors;
+        const reason = errors?.length
+          ? errors
+              .map((e: unknown) =>
+                typeof e === "string" ? e : JSON.stringify(e),
+              )
+              .join("; ")
+          : "Parse produced no root node";
+        console.error("[OpenUIRenderer] " + reason, {
+          rawCode: code,
+          normalizedCode,
+          unresolved: result.meta?.unresolved,
+          statementCount: result.meta?.statementCount,
+        });
         setFailedForCode(normalizedCode);
+        setFailureReason(reason);
       } else {
         setFailedForCode(null);
+        setFailureReason("");
       }
     },
     [code, normalizedCode, isStreaming],
   );
 
   if (parseFailed) {
-    return null;
+    return <OpenUIErrorCard code={code} error={failureReason} />;
   }
 
   return (
@@ -77,20 +98,20 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
 
 class OpenUIErrorBoundary extends React.Component<
   { children: React.ReactNode; code: string },
-  { hasError: boolean; errorCode: string }
+  { hasError: boolean; errorMessage: string }
 > {
   constructor(props: { children: React.ReactNode; code: string }) {
     super(props);
-    this.state = { hasError: false, errorCode: "" };
+    this.state = { hasError: false, errorMessage: "" };
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMessage: error.message };
   }
 
   componentDidUpdate(prevProps: { code: string }) {
     if (this.state.hasError && prevProps.code !== this.props.code) {
-      this.setState({ hasError: false, errorCode: "" });
+      this.setState({ hasError: false, errorMessage: "" });
     }
   }
 
@@ -102,7 +123,12 @@ class OpenUIErrorBoundary extends React.Component<
 
   render() {
     if (this.state.hasError) {
-      return null;
+      return (
+        <OpenUIErrorCard
+          code={this.props.code}
+          error={this.state.errorMessage}
+        />
+      );
     }
     return this.props.children;
   }
@@ -114,7 +140,9 @@ export default function OpenUIRenderer({
 }: OpenUIRendererProps) {
   return (
     <OpenUIErrorBoundary code={code}>
-      <OpenUIRendererInner code={code} isStreaming={isStreaming} />
+      <div className="my-1">
+        <OpenUIRendererInner code={code} isStreaming={isStreaming} />
+      </div>
     </OpenUIErrorBoundary>
   );
 }
