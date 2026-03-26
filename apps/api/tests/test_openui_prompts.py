@@ -1,54 +1,98 @@
 """Tests for openui_prompts — spec-driven, independent of implementation details."""
+
 import pytest
 
 
 def test_suppressed_tools_match_tool_fields():
     from app.models.chat_models import tool_fields
     from app.agents.prompts.openui_prompts import OPENUI_SUPPRESSED_TOOLS
+
     for tool in tool_fields:
-        assert tool in OPENUI_SUPPRESSED_TOOLS, f"{tool} missing from OPENUI_SUPPRESSED_TOOLS"
+        assert tool in OPENUI_SUPPRESSED_TOOLS, (
+            f"{tool} missing from OPENUI_SUPPRESSED_TOOLS"
+        )
 
 
 def test_no_extra_suppressed_tools():
     from app.models.chat_models import tool_fields
     from app.agents.prompts.openui_prompts import OPENUI_SUPPRESSED_TOOLS
+
     tool_fields_set = set(tool_fields)
     for tool in OPENUI_SUPPRESSED_TOOLS:
-        assert tool in tool_fields_set, f"{tool} in OPENUI_SUPPRESSED_TOOLS but not in tool_fields"
+        assert tool in tool_fields_set, (
+            f"{tool} in OPENUI_SUPPRESSED_TOOLS but not in tool_fields"
+        )
 
 
 def test_instructions_contains_each_suppressed_tool():
-    from app.agents.prompts.openui_prompts import OPENUI_SUPPRESSED_TOOLS, OPENUI_INSTRUCTIONS
+    from app.agents.prompts.openui_prompts import (
+        OPENUI_SUPPRESSED_TOOLS,
+        OPENUI_INSTRUCTIONS,
+    )
+
     for tool in OPENUI_SUPPRESSED_TOOLS:
-        assert tool in OPENUI_INSTRUCTIONS, f"Tool {tool} not mentioned in OPENUI_INSTRUCTIONS"
+        assert tool in OPENUI_INSTRUCTIONS, (
+            f"Tool {tool} not mentioned in OPENUI_INSTRUCTIONS"
+        )
 
 
 def test_instructions_contains_all_component_names():
     from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
+
     components = [
-        "DataCard", "ResultList", "DataTable", "ComparisonTable",
-        "StatusCard", "ActionCard", "TagGroup", "FileTree",
-        "Accordion", "TabsBlock", "ProgressList", "StatRow",
-        "SelectableList", "AvatarList", "KbdBlock",
-        "MetricCard", "BarChart", "LineChart", "AreaChart",
-        "PieChart", "ScatterChart", "RadarChart", "GaugeChart",
-        "ImageBlock", "ImageGallery", "VideoBlock", "AudioPlayer",
-        "DiffBlock", "MapBlock", "CalendarMini", "NumberTicker",
-        "Carousel", "TreeView",
-        "Timeline", "JsonViewer", "AlertBanner", "Steps",
+        "DataCard",
+        "ResultList",
+        "DataTable",
+        "ComparisonTable",
+        "StatusCard",
+        "ActionCard",
+        "TagGroup",
+        "FileTree",
+        "Accordion",
+        "TabsBlock",
+        "ProgressList",
+        "StatRow",
+        "SelectableList",
+        "AvatarList",
+        "KbdBlock",
+        "MetricCard",
+        "BarChart",
+        "LineChart",
+        "AreaChart",
+        "PieChart",
+        "ScatterChart",
+        "RadarChart",
+        "GaugeChart",
+        "ImageBlock",
+        "ImageGallery",
+        "VideoBlock",
+        "AudioPlayer",
+        "MapBlock",
+        "CalendarMini",
+        "NumberTicker",
+        "Carousel",
+        "TreeView",
+        "Timeline",
+        "JsonViewer",
+        "AlertBanner",
+        "Steps",
     ]
     for name in components:
-        assert name in OPENUI_INSTRUCTIONS, f"Component {name} not documented in OPENUI_INSTRUCTIONS"
+        assert name in OPENUI_INSTRUCTIONS, (
+            f"Component {name} not documented in OPENUI_INSTRUCTIONS"
+        )
 
 
 def test_instructions_is_nonempty_string():
     from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
+
     assert isinstance(OPENUI_INSTRUCTIONS, str)
     assert len(OPENUI_INSTRUCTIONS) > 500
 
 
 def test_suppressed_tools_is_list_of_strings():
     from app.agents.prompts.openui_prompts import OPENUI_SUPPRESSED_TOOLS
+
     assert isinstance(OPENUI_SUPPRESSED_TOOLS, list)
     for item in OPENUI_SUPPRESSED_TOOLS:
         assert isinstance(item, str)
@@ -64,10 +108,7 @@ def test_enable_openui_removed_from_settings():
     import pathlib
 
     settings_path = (
-        pathlib.Path(__file__).parent.parent
-        / "app"
-        / "config"
-        / "settings.py"
+        pathlib.Path(__file__).parent.parent / "app" / "config" / "settings.py"
     )
     source = settings_path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(settings_path))

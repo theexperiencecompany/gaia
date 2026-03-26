@@ -290,7 +290,7 @@ nx docker:build voice-agent
 
 ## Task Tracking
 
-When the `bd` CLI is available, use it for task tracking instead of built-in TodoWrite/TaskCreate tools. Check availability with `bd --help` or `which bd`.
+Only use the `bd` CLI for task tracking when the user explicitly asks to use it. Otherwise, use built-in TodoWrite/TaskCreate tools.
 
 ## Implementation Plans
 
