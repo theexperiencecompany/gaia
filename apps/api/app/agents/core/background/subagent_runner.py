@@ -9,7 +9,7 @@ subagents complete and collect their results.
 """
 
 import asyncio
-from typing import Optional
+from typing import Any, Optional
 
 from shared.py.wide_events import log
 
@@ -24,7 +24,7 @@ from app.agents.core.subagents.subagent_runner import (
 async def run_subagent_background(
     ctx: SubagentExecutionContext,
     stream_id: str,
-    executor_inbox: asyncio.Queue,
+    executor_inbox: asyncio.Queue[Any],
     integration_metadata: Optional[dict] = None,
 ) -> None:
     """Run a provider subagent in the background and push result to executor_inbox.

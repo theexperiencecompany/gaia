@@ -344,7 +344,7 @@ async def _resolve_subagent(
     return subagent_graph, agent_name, int_id, False
 
 
-_background_subagent_tasks: set[asyncio.Task] = set()
+_background_subagent_tasks: set[asyncio.Task[None]] = set()
 
 
 @tool
