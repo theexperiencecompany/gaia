@@ -55,6 +55,7 @@ jobs:
         uses: dagger/dagger-for-github@v8.4.1
         with:
           version: "0.20.3"
+          dagger-flags: "--silent"
           call: quality-checks
 
   # Only trigger image build/deploy planning on master after quality gate passes.
