@@ -294,6 +294,10 @@ Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-in
 
 When creating implementation plans, store them in `.agents/plans/` directory. This folder is gitignored and used for planning documents before execution.
 
+## Markdown Files
+
+**Never create `.md` files** outside of `.agents/plans/` (gitignored) unless explicitly asked. Do not create `REVIEW.md`, `CONSISTENCY_REPORT.md`, `ANALYSIS.md`, spec files, or any other agent-generated documentation in the source tree. Planning and review artifacts belong only in `.agents/plans/` and only when absolutely necessary.
+
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.

@@ -1,53 +1,6 @@
 import type { ActionEvent } from "@openuidev/react-lang";
 
 /**
- * Direct action handlers for OpenUI write-action components.
- * Each stub is replaced in Phase 2 with a real API call implementation.
- * Stubs warn and return (they do NOT fall back to continue_conversation —
- * the fallback only applies to actions not registered here at all).
- */
-type DirectActionHandler = (event: ActionEvent) => Promise<void>;
-
-const DIRECT_HANDLERS: Record<string, DirectActionHandler> = {
-  send_email: async (event) => {
-    console.warn("[OpenUI] send_email handler not yet implemented", event);
-  },
-  delete_calendar_event: async (event) => {
-    console.warn(
-      "[OpenUI] delete_calendar_event handler not yet implemented",
-      event,
-    );
-  },
-  edit_calendar_event: async (event) => {
-    console.warn(
-      "[OpenUI] edit_calendar_event handler not yet implemented",
-      event,
-    );
-  },
-  create_calendar_event: async (event) => {
-    console.warn(
-      "[OpenUI] create_calendar_event handler not yet implemented",
-      event,
-    );
-  },
-  connect_integration: async (event) => {
-    console.warn(
-      "[OpenUI] connect_integration handler not yet implemented",
-      event,
-    );
-  },
-  create_todo: async (event) => {
-    console.warn("[OpenUI] create_todo handler not yet implemented", event);
-  },
-  delete_todo: async (event) => {
-    console.warn("[OpenUI] delete_todo handler not yet implemented", event);
-  },
-  complete_todo: async (event) => {
-    console.warn("[OpenUI] complete_todo handler not yet implemented", event);
-  },
-};
-
-/**
  * Dispatch an OpenUI ActionEvent to the appropriate handler.
  *
  * Strips both "action:" and "submit:" prefixes before routing.
@@ -83,12 +36,6 @@ export async function dispatchOpenUIAction(
 
   // cancel — noop dismiss button
   if (type === "cancel") {
-    return;
-  }
-
-  const handler = DIRECT_HANDLERS[type];
-  if (handler) {
-    await handler(event);
     return;
   }
 

@@ -22,9 +22,11 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
     () => normalizeOpenUICode(code, genericLibrary),
     [code],
   );
-  // Track whether the last parse produced a renderable root.
-  // Used to show a fallback when parsing silently fails post-streaming.
-  const [parseFailed, setParseFailed] = React.useState(false);
+
+  // Track the normalized code that caused the last parse failure.
+  // parseFailed is derived — no useEffect needed, no extra render on code change.
+  const [failedForCode, setFailedForCode] = React.useState<string | null>(null);
+  const parseFailed = !isStreaming && failedForCode === normalizedCode;
 
   const handleAction = React.useCallback(
     (event: ActionEvent) => {
@@ -38,8 +40,8 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
   const handleParseResult = React.useCallback(
     (result: ParseResult | null) => {
       if (!result) return;
-      const failed = result.root === null;
-      if (failed && !isStreaming) {
+      const failed = result.root === null && !isStreaming;
+      if (failed) {
         console.error(
           "[OpenUIRenderer] Parse produced no root — component will not render.",
           {
@@ -50,17 +52,13 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
             statementCount: result.meta?.statementCount,
           },
         );
+        setFailedForCode(normalizedCode);
+      } else {
+        setFailedForCode(null);
       }
-      setParseFailed(failed && !isStreaming);
     },
     [code, normalizedCode, isStreaming],
   );
-
-  // When the code or streaming state changes, reset the failure flag so
-  // a stale fallback doesn't linger while the new parse is in-flight.
-  React.useEffect(() => {
-    setParseFailed(false);
-  }, [code, isStreaming]);
 
   if (parseFailed) {
     return null;
