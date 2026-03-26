@@ -199,6 +199,23 @@ Similar structure to web app with React Native components. Uses React Navigation
 
 **Install**: The `gaia-shared` package is automatically available to Python apps via workspace dependencies.
 
+## Design System
+
+The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the repo root. It covers:
+- Color tokens, zinc scale, semantic status colors, dark/light CSS variables
+- Typography (Inter, PP Editorial New, Anonymous Pro) and heading scale
+- Spacing, border radius decision table, shadows
+- Icon library usage (`@icons` — never raw SVGs)
+- Animation tokens, Framer Motion conventions, easing functions
+- Toast/notification system (Sileo — never sonner or react-hot-toast)
+- Chat bubble architecture and the TextBubble/TOOL_RENDERERS system
+- **Chat tool card styling contract** (outer `rounded-2xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`, no borders)
+- Adding new tool cards vs OpenUI primitives (decision tree)
+- Copy-paste card template and pre-commit checklist
+
+**Claude rules** for design consistency are in `.claude/rules/design.md` (auto-loaded).
+**Chat bubble rules** are in `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`.
+
 ## Code Style Guidelines
 
 ### TypeScript/JavaScript
@@ -299,6 +316,25 @@ When creating implementation plans, store them in `.agents/plans/` directory. Th
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
+- Work is **not complete until `git push` succeeds.** Always push before ending a session.
+- Session close sequence (mandatory when code changed):
+  ```bash
+  git pull --rebase
+  bd dolt push
+  git push
+  git status  # must show "up to date with origin"
+  ```
+
+## Shell Commands
+
+Always use non-interactive flags to avoid hanging on prompts (shell aliases may add `-i` by default):
+
+```bash
+cp -f source dest      # NOT: cp source dest
+mv -f source dest      # NOT: mv source dest
+rm -f file             # NOT: rm file
+rm -rf directory       # NOT: rm -r directory
+```
 
 ## Common Issues
 
