@@ -266,6 +266,10 @@ export function formatBotError(error: unknown): string {
     return "⏳ Your request is taking longer than usual. Try a simpler question or wait a moment and try again.";
   }
 
+  if (message.includes("ECONNREFUSED") || message.includes("ETIMEDOUT")) {
+    return "🔌 The GAIA backend is unavailable. Please try again in a moment.";
+  }
+
   if (
     message.includes("Connection interrupted") ||
     message.includes("ECONNRESET") ||

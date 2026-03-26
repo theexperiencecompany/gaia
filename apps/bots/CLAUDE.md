@@ -114,7 +114,7 @@ Each adapter creates a `RichMessageTarget` from its native context (Discord `Int
 - WhatsApp does **not** support message editing — `SentMessage.edit()` sends a new message instead
 - `sendEphemeral` falls back to `send` (no ephemeral concept in WhatsApp)
 - `sendRich` renders `RichMessage` as plain text with WhatsApp bold (`*text*`) and italic (`_text_`)
-- Typing indicator: no standard WhatsApp typing API — `startTyping()` returns a no-op
+- Typing indicator: shown via `messages.markRead({ typingIndicator: { type: 'text' } })` at the start of every incoming message in `handleIncomingMessage`. Auto-dismisses after ~25s or when a reply is sent. `startTyping()` on the target is a no-op (typing already shown)
 - Streaming is **disabled** (`streaming: false`) — full response sent once complete
 - `platform_user_id` = wa_id (phone number without leading `+`, e.g. `"15551234567"`)
 - Required env vars: `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID`, `KAPSO_WEBHOOK_SECRET`, `WHATSAPP_WEBHOOK_PORT`

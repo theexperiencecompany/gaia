@@ -138,8 +138,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         const text = extractTextBody(event);
         if (text) {
           // Fire-and-forget — do not await so webhook returns 200 quickly
-          this.handleIncomingMessage(waId, text).catch((err) =>
-            console.error("Error handling WhatsApp message:", err),
+          this.handleIncomingMessage(waId, text, event.message.id).catch(
+            (err) => console.error("Error handling WhatsApp message:", err),
           );
         }
       }
@@ -188,6 +188,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   /**
    * Dispatches an incoming WhatsApp message to the appropriate handler.
    *
+   * Shows a typing indicator immediately (mark-as-read + typing via Kapso API),
+   * then routes:
    * - Messages starting with "/" are parsed as commands
    * - `/gaia <text>` invokes streaming chat
    * - Other `/command` messages invoke the unified command dispatcher
@@ -196,7 +198,20 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private async handleIncomingMessage(
     waId: string,
     text: string,
+    messageId: string,
   ): Promise<void> {
+    // Show typing indicator — mark message as read and display "typing..." bubble.
+    // Auto-dismisses after ~25s or when we send a reply. Fire-and-forget.
+    this.waClient.messages
+      .markRead({
+        phoneNumberId: this.waConfig.kapsoPhoneNumberId,
+        messageId,
+        typingIndicator: { type: "text" },
+      })
+      .catch((err) =>
+        console.error("WhatsApp: failed to show typing indicator:", err),
+      );
+
     const target = this.createWaTarget(waId);
 
     if (text.startsWith("/")) {
@@ -236,7 +251,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    *
    * WhatsApp streaming is disabled (STREAMING_DEFAULTS.whatsapp.streaming = false),
    * so the full response is accumulated and sent as a single message.
-   * A "Thinking..." message is sent first while the response is generated.
+   * The typing indicator shown by handleIncomingMessage stays visible until
+   * the reply is sent (auto-dismissed by WhatsApp on message delivery).
    */
   private async handleStreamingMessage(
     waId: string,
@@ -247,14 +263,6 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         waId,
         "Hi! Send me a message and I'll help you. Type /help for available commands.",
       );
-      return;
-    }
-
-    let thinkingMsg: SentMessage;
-    try {
-      thinkingMsg = await this.sendWhatsAppText(waId, "Thinking...");
-    } catch (err) {
-      console.error("WhatsApp: failed to send thinking message:", err);
       return;
     }
 
@@ -269,12 +277,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           platformUserId: waId,
           channelId: waId,
         },
-        // editMessage: update the last sent message (send new for WhatsApp)
+        // editMessage: no placeholder to edit — send as new message on first call
         async (updatedText: string) => {
           if (lastEditFn) {
             await lastEditFn(updatedText);
           } else {
-            await thinkingMsg.edit(updatedText);
+            const sent = await this.sendWhatsAppText(waId, updatedText);
+            lastEditFn = sent.edit;
           }
         },
         // sendNewMessage: send a new message and return its edit function
@@ -299,9 +308,12 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     } catch (err) {
       console.error("WhatsApp streaming error:", err);
       try {
-        await thinkingMsg.edit("An error occurred. Please try again.");
-      } catch (editErr) {
-        console.error("WhatsApp edit error:", editErr);
+        await this.sendWhatsAppText(
+          waId,
+          "An error occurred. Please try again.",
+        );
+      } catch (sendErr) {
+        console.error("WhatsApp send error:", sendErr);
       }
     }
   }
@@ -339,7 +351,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       },
 
       startTyping: async () => {
-        // WhatsApp has no standard typing indicator API
+        // Typing indicator is shown via markRead in handleIncomingMessage.
+        // Nothing additional to do here.
         return () => {};
       },
     };

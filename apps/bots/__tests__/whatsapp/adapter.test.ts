@@ -44,9 +44,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 const mockSendText = vi.fn();
+const mockMarkRead = vi.fn();
 const mockWaClientInstance = {
   messages: {
     sendText: mockSendText,
+    markRead: mockMarkRead,
   },
 };
 
@@ -207,7 +209,11 @@ type PrivateAdapter = {
     ) => Promise<{ id: string; edit: (t: string) => Promise<void> }>;
     startTyping: () => Promise<() => void>;
   };
-  handleIncomingMessage: (waId: string, text: string) => Promise<void>;
+  handleIncomingMessage: (
+    waId: string,
+    text: string,
+    messageId: string,
+  ) => Promise<void>;
   handleStreamingMessage: (waId: string, text: string) => Promise<void>;
   dispatchCommand: (
     name: string,
@@ -392,8 +398,26 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
     vi.clearAllMocks();
   });
 
+  it("shows typing indicator via markRead for every incoming message", async () => {
+    mockMarkRead.mockResolvedValue({});
+
+    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+
+    expect(mockMarkRead).toHaveBeenCalledWith({
+      phoneNumberId: "test-phone-id",
+      messageId: "wamid.001",
+      typingIndicator: { type: "text" },
+    });
+  });
+
   it("/gaia hello world routes to handleStreamingChat with message 'hello world'", async () => {
-    await priv.handleIncomingMessage("15551234567", "/gaia hello world");
+    mockMarkRead.mockResolvedValue({});
+
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "/gaia hello world",
+      "wamid.001",
+    );
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(),
@@ -412,7 +436,9 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   });
 
   it("/gaia with no text sends usage hint and does NOT call handleStreamingChat", async () => {
-    await priv.handleIncomingMessage("15551234567", "/gaia");
+    mockMarkRead.mockResolvedValue({});
+
+    await priv.handleIncomingMessage("15551234567", "/gaia", "wamid.001");
 
     expect(mockSendText).toHaveBeenCalledWith(
       expect.objectContaining({ body: "Usage: /gaia <your message>" }),
@@ -421,10 +447,11 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   });
 
   it("/todo list dispatches 'todo' command with subcommand arg", async () => {
+    mockMarkRead.mockResolvedValue({});
     const todoExecute = vi.fn().mockResolvedValue(undefined);
     priv.commands.set("todo", { execute: todoExecute });
 
-    await priv.handleIncomingMessage("15551234567", "/todo list");
+    await priv.handleIncomingMessage("15551234567", "/todo list", "wamid.001");
 
     expect(todoExecute).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -435,10 +462,11 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   });
 
   it("/help dispatches 'help' command with empty args", async () => {
+    mockMarkRead.mockResolvedValue({});
     const helpExecute = vi.fn().mockResolvedValue(undefined);
     priv.commands.set("help", { execute: helpExecute });
 
-    await priv.handleIncomingMessage("15551234567", "/help");
+    await priv.handleIncomingMessage("15551234567", "/help", "wamid.001");
 
     expect(helpExecute).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -448,7 +476,13 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   });
 
   it("plain text routes to handleStreamingChat with the full message text", async () => {
-    await priv.handleIncomingMessage("15551234567", "what is the weather?");
+    mockMarkRead.mockResolvedValue({});
+
+    await priv.handleIncomingMessage(
+      "15551234567",
+      "what is the weather?",
+      "wamid.001",
+    );
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(),
@@ -467,7 +501,9 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
   });
 
   it("/GAIA hello (uppercase command) still routes to streaming (command name is lowercased)", async () => {
-    await priv.handleIncomingMessage("15551234567", "/GAIA hello");
+    mockMarkRead.mockResolvedValue({});
+
+    await priv.handleIncomingMessage("15551234567", "/GAIA hello", "wamid.001");
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(),
@@ -525,13 +561,11 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
     expect(handleStreamingChat).not.toHaveBeenCalled();
   });
 
-  it("normal text sends 'Thinking...' before calling handleStreamingChat", async () => {
+  it("normal text calls handleStreamingChat without sending a placeholder message first", async () => {
     await priv.handleStreamingMessage("15551234567", "plan my week");
 
-    // The first sendText call must be the thinking message
-    expect(mockSendText.mock.calls[0][0]).toMatchObject({
-      body: "Thinking...",
-    });
+    // No "Thinking..." or any placeholder sent before handleStreamingChat
+    expect(mockSendText).not.toHaveBeenCalled();
     expect(handleStreamingChat).toHaveBeenCalled();
   });
 
@@ -612,24 +646,38 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
     expect(typeof editFn).toBe("function");
   });
 
-  it("when sendWhatsAppText('Thinking...') throws, returns early without calling handleStreamingChat", async () => {
-    mockSendText.mockRejectedValueOnce(new Error("Network error"));
-
-    await priv.handleStreamingMessage("15551234567", "hello");
-
-    expect(handleStreamingChat).not.toHaveBeenCalled();
-  });
-
-  it("when handleStreamingChat throws, edits thinkingMsg with 'An error occurred. Please try again.'", async () => {
+  it("when handleStreamingChat throws, sends 'An error occurred. Please try again.' as a new message", async () => {
     vi.mocked(handleStreamingChat).mockRejectedValueOnce(
       new Error("Streaming failure"),
     );
 
     await priv.handleStreamingMessage("15551234567", "hello");
 
-    // The second sendText call (after "Thinking...") should send the error fallback.
     const allCalls = mockSendText.mock.calls.map((c) => c[0].body as string);
     expect(allCalls).toContain("An error occurred. Please try again.");
+  });
+
+  it("editMessage callback sends a new message on the first call (no placeholder to edit)", async () => {
+    let capturedEditMsg: ((text: string) => Promise<void>) | undefined;
+
+    vi.mocked(handleStreamingChat).mockImplementation(
+      async (_gaia, _ctx, editMessage) => {
+        capturedEditMsg = editMessage as (text: string) => Promise<void>;
+      },
+    );
+
+    await priv.handleStreamingMessage("15551234567", "hello");
+
+    expect(capturedEditMsg).toBeDefined();
+
+    vi.clearAllMocks();
+    mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-reply" }] });
+
+    await capturedEditMsg!("Here is the response");
+
+    expect(mockSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ body: "Here is the response" }),
+    );
   });
 });
 
