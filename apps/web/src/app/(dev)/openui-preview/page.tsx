@@ -382,92 +382,168 @@ export default function OpenUIPreview() {
         {/* ── CHARTS ── */}
         <CategoryDivider label="Charts" />
 
-        <Exchange name="BarChart" userText="Show me a bar chart.">
+        <Exchange name="BarChart (single)" userText="Show monthly revenue.">
           <BarChartView
-            title="Bar Chart"
+            title="Monthly Revenue"
             data={[
-              { x: "A", y: 40 },
-              { x: "B", y: 80 },
-              { x: "C", y: 60 },
-              { x: "D", y: 90 },
-              { x: "E", y: 50 },
+              { month: "Jan", revenue: 4200 },
+              { month: "Feb", revenue: 5100 },
+              { month: "Mar", revenue: 4800 },
+              { month: "Apr", revenue: 6200 },
+              { month: "May", revenue: 5900 },
             ]}
-            xKey="x"
-            yKey="y"
+            xKey="month"
+            yKeys={["revenue"]}
           />
         </Exchange>
 
-        <Exchange name="LineChart" userText="Show me a line chart.">
+        <Exchange
+          name="BarChart (multi-series)"
+          userText="Compare revenue vs cost by quarter."
+        >
+          <BarChartView
+            title="Revenue vs Cost"
+            data={[
+              { quarter: "Q1", revenue: 14200, cost: 8800 },
+              { quarter: "Q2", revenue: 18100, cost: 10200 },
+              { quarter: "Q3", revenue: 16800, cost: 9400 },
+              { quarter: "Q4", revenue: 21500, cost: 11800 },
+            ]}
+            xKey="quarter"
+            yKeys={["revenue", "cost"]}
+            colors={["#00bbff", "#f472b6"]}
+          />
+        </Exchange>
+
+        <Exchange
+          name="LineChart (multi-series)"
+          userText="Show traffic and errors over the week."
+        >
           <LineChartView
-            title="Line Chart"
+            title="Traffic This Week"
             data={[
-              { x: "Jan", a: 40, b: 24 },
-              { x: "Feb", a: 30, b: 14 },
-              { x: "Mar", a: 60, b: 98 },
-              { x: "Apr", a: 80, b: 39 },
-              { x: "May", a: 50, b: 48 },
+              { day: "Mon", requests: 1200, errors: 23, latency: 145 },
+              { day: "Tue", requests: 1450, errors: 18, latency: 132 },
+              { day: "Wed", requests: 980, errors: 45, latency: 178 },
+              { day: "Thu", requests: 1680, errors: 12, latency: 121 },
+              { day: "Fri", requests: 2100, errors: 31, latency: 156 },
+              { day: "Sat", requests: 890, errors: 8, latency: 98 },
+              { day: "Sun", requests: 720, errors: 5, latency: 87 },
             ]}
-            xKey="x"
-            yKeys={["a", "b"]}
+            xKey="day"
+            yKeys={["requests", "errors", "latency"]}
+            colors={["#00bbff", "#f87171", "#fbbf24"]}
           />
         </Exchange>
 
-        <Exchange name="AreaChart" userText="Show me an area chart.">
+        <Exchange
+          name="AreaChart (multi-series)"
+          userText="Show user growth by platform."
+        >
           <AreaChartView
-            title="Area Chart"
+            title="User Growth by Platform"
             data={[
-              { x: "Jan", a: 120 },
-              { x: "Feb", a: 190 },
-              { x: "Mar", a: 280 },
-              { x: "Apr", a: 390 },
-              { x: "May", a: 530 },
+              { month: "Jan", web: 800, mobile: 400, desktop: 200 },
+              { month: "Feb", web: 1200, mobile: 650, desktop: 280 },
+              { month: "Mar", web: 1900, mobile: 980, desktop: 350 },
+              { month: "Apr", web: 2400, mobile: 1400, desktop: 420 },
+              { month: "May", web: 3100, mobile: 1900, desktop: 510 },
             ]}
-            xKey="x"
-            yKeys={["a"]}
+            xKey="month"
+            yKeys={["web", "mobile", "desktop"]}
+            colors={["#00bbff", "#34d399", "#a78bfa"]}
           />
         </Exchange>
 
-        <Exchange name="PieChart" userText="Show me a pie chart.">
+        <Exchange
+          name="AreaChart (single)"
+          userText="Show total signups over time."
+        >
+          <AreaChartView
+            title="Total Signups"
+            data={[
+              { month: "Jan", signups: 120 },
+              { month: "Feb", signups: 190 },
+              { month: "Mar", signups: 280 },
+              { month: "Apr", signups: 390 },
+              { month: "May", signups: 530 },
+              { month: "Jun", signups: 710 },
+            ]}
+            xKey="month"
+            yKeys={["signups"]}
+          />
+        </Exchange>
+
+        <Exchange name="PieChart" userText="Show browser usage breakdown.">
           <PieChartView
-            title="Pie Chart"
+            title="Browser Usage"
             data={[
-              { name: "Slice A", value: 35 },
-              { name: "Slice B", value: 25 },
-              { name: "Slice C", value: 20 },
-              { name: "Slice D", value: 20 },
+              { browser: "Chrome", share: 65 },
+              { browser: "Safari", share: 18 },
+              { browser: "Firefox", share: 10 },
+              { browser: "Edge", share: 5 },
+              { browser: "Other", share: 2 },
             ]}
-            nameKey="name"
-            valueKey="value"
+            nameKey="browser"
+            valueKey="share"
           />
         </Exchange>
 
-        <Exchange name="ScatterChart" userText="Show me a scatter chart.">
+        <Exchange
+          name="ScatterChart"
+          userText="Show correlation between study hours and scores."
+        >
           <ScatterChartView
-            title="Scatter Chart"
+            title="Study Hours vs Score"
             data={[
-              { x: 10, y: 45 },
-              { x: 25, y: 89 },
-              { x: 50, y: 134 },
-              { x: 80, y: 201 },
-              { x: 120, y: 312 },
+              { hours: 1, score: 42 },
+              { hours: 2, score: 58 },
+              { hours: 3, score: 65 },
+              { hours: 5, score: 78 },
+              { hours: 6, score: 82 },
+              { hours: 8, score: 91 },
+              { hours: 10, score: 95 },
             ]}
-            xKey="x"
-            yKey="y"
+            xKey="hours"
+            yKey="score"
           />
         </Exchange>
 
-        <Exchange name="RadarChart" userText="Show me a radar chart.">
+        <Exchange
+          name="RadarChart (multi-series)"
+          userText="Compare skill profiles for Alice and Bob."
+        >
           <RadarChartView
-            title="Radar Chart"
+            title="Skill Comparison"
             data={[
-              { axis: "Dim A", p1: 90, p2: 75 },
-              { axis: "Dim B", p1: 70, p2: 95 },
-              { axis: "Dim C", p1: 85, p2: 80 },
-              { axis: "Dim D", p1: 95, p2: 70 },
-              { axis: "Dim E", p1: 75, p2: 85 },
+              { skill: "Frontend", alice: 90, bob: 65 },
+              { skill: "Backend", alice: 70, bob: 95 },
+              { skill: "DevOps", alice: 55, bob: 85 },
+              { skill: "Design", alice: 80, bob: 40 },
+              { skill: "Testing", alice: 75, bob: 70 },
+              { skill: "Leadership", alice: 85, bob: 60 },
             ]}
-            angleKey="axis"
-            valueKeys={["p1", "p2"]}
+            angleKey="skill"
+            valueKeys={["alice", "bob"]}
+            colors={["#00bbff", "#f472b6"]}
+          />
+        </Exchange>
+
+        <Exchange
+          name="RadarChart (single)"
+          userText="Show my skill breakdown."
+        >
+          <RadarChartView
+            title="Your Skills"
+            data={[
+              { skill: "React", score: 92 },
+              { skill: "TypeScript", score: 88 },
+              { skill: "Python", score: 75 },
+              { skill: "SQL", score: 70 },
+              { skill: "Design", score: 60 },
+            ]}
+            angleKey="skill"
+            valueKeys={["score"]}
           />
         </Exchange>
 

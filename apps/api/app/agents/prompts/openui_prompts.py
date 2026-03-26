@@ -8,149 +8,133 @@ OPENUI_SUPPRESSED_TOOLS: list[str] = list(tool_fields)
 _suppression_list = "\n".join(f"  - {t}" for t in OPENUI_SUPPRESSED_TOOLS)
 
 OPENUI_COMPONENT_LIBRARY_PROMPT = """
-Available Generic Components:
+Available Generic Components (strict typed signatures):
+
+TYPE KEY: string = "text", number = 42, boolean = true/false, string[] = ["a", "b"] (ALWAYS an array, never a bare string)
 
 --- Layout & Data ---
-DataCard(title, fields)
-  title: string
-  fields: {label: string, value: string}[]
+
+DataCard(title: string, fields: {label: string, value: string}[])
   Use for: single record details, config values, profile data
 
-ResultList(items, title?)
-  items: {title: string, subtitle?: string, body?: string, url?: string, badge?: string}[]
-  title?: string
-  Use for: lists of results, search hits, records — overflow scroll, no truncation
+ResultList(items: {title: string, subtitle?: string, body?: string, url?: string, badge?: string}[], title?: string)
+  Use for: lists of results, search hits, records
 
-ComparisonTable(leftLabel, rightLabel, rows, title?)
-  leftLabel: string; rightLabel: string
-  rows: {label: string, left: string, right: string, highlight?: boolean}[]
-  Use for: A vs B comparisons — highlight: true gives accent treatment
+ComparisonTable(leftLabel: string, rightLabel: string, rows: {label: string, left: string, right: string, highlight?: boolean}[], title?: string)
+  Use for: A vs B comparisons
 
-StatusCard(title, status, message?, detail?)
-  status: "success" | "error" | "warning" | "info" | "pending"
-  Use for: operation results, confirmations, errors, API call outcomes
+StatusCard(title: string, status: "success"|"error"|"warning"|"info"|"pending", message?: string, detail?: string)
+  Use for: operation results, confirmations, errors
 
-ActionCard(title, description?, actions?)
-  actions?: {label: string, type: "continue_conversation", value: string}[]
+ActionCard(title: string, description?: string, actions?: {label: string, type: "continue_conversation", value: string}[])
   Use for: next-step prompts, follow-up suggestions
 
-TagGroup(tags, title?)
-  tags: {label: string, color?: "default"|"primary"|"success"|"warning"|"danger"}[]
-  Use for: keyword sets, categories, tech stacks — rendered as chips
+TagGroup(tags: {label: string, color?: "default"|"primary"|"success"|"warning"|"danger"}[], title?: string)
+  Use for: keyword sets, categories, tech stacks
 
-FileTree(items, title?)
-  items: {path: string, type: "file"|"dir", size?: string}[]
+FileTree(items: {path: string, type: "file"|"dir", size?: string}[], title?: string)
   Use for: directory listings, filesystem output
 
-Accordion(items, title?)
-  items: {label: string, content: string}[]
+Accordion(items: {label: string, content: string}[], title?: string)
   Use for: FAQs, grouped results, collapsible sections
 
-TabsBlock(tabs)
-  tabs: {label: string, content: string}[]
+TabsBlock(tabs: {label: string, content: string}[])
   Use for: multi-category output, results split by type
 
-ProgressList(items, title?)
-  items: {label: string, value: number, max?: number, color?: "default"|"primary"|"success"|"warning"|"danger"}[]
+ProgressList(items: {label: string, value: number, max?: number, color?: "default"|"primary"|"success"|"warning"|"danger"}[], title?: string)
   Use for: task completion, resource usage, batch status
 
-SelectableList(options, title?, description?)
-  options: {label: string, description?: string, value: string, badge?: string}[]
-  Use for: structured choices — server selection, plan choices, environment selection
+SelectableList(options: {label: string, description?: string, value: string, badge?: string}[], title?: string, description?: string)
+  Use for: structured choices
 
-AvatarList(items, title?)
-  items: {name: string, role?: string, description?: string, initials?: string, color?: string}[]
-  Use for: team rosters, assignees, contributors, attendees
+AvatarList(items: {name: string, role?: string, description?: string, initials?: string, color?: string}[], title?: string)
+  Use for: team rosters, assignees, contributors
 
-KbdBlock(shortcuts, title?)
-  shortcuts: {keys: string[], description: string}[]
-  Use for: keyboard shortcut references, CLI flag tables
+KbdBlock(shortcuts: {keys: string[], description: string}[], title?: string)
+  Use for: keyboard shortcut references
 
 --- Analytics ---
-StatRow(title, value, unit?, trend?, trendLabel?)
-  trend?: "up" | "down" | "neutral"
-  Use for: Single KPI with optional trend. Wrap 2+ StatRows in Row() for side-by-side display.
 
-BarChart(data, xKey, yKey, title?, color?)
-  data: {[key: string]: string|number}[]; xKey: string; yKey: string
-  Use for: comparisons, rankings, distributions
+StatRow(title: string, value: string|number, unit?: string, trend?: "up"|"down"|"neutral", trendLabel?: string)
+  Use for: single KPI with optional trend. Wrap 2+ in Row() for side-by-side.
 
-LineChart(data, xKey, yKeys, title?, colors?)
-  yKeys: string[] (multiple series)
+BarChart(data: {[key]: string|number}[], xKey: string, yKeys: string[], title?: string, colors?: string[])
+  yKeys MUST be an array: ["revenue"] for single series, ["revenue", "cost"] for multi-series
+  Use for: comparisons, rankings, distributions. Multi-series shows grouped bars side by side.
+
+LineChart(data: {[key]: string|number}[], xKey: string, yKeys: string[], title?: string, colors?: string[])
+  yKeys MUST be an array: ["requests", "errors"] — never a bare string
   Use for: trends over time, multi-series comparisons
 
-AreaChart(data, xKey, yKeys, title?, colors?)
-  Same as LineChart — filled area with gradient fill style. Use for: cumulative values, volume over time
+AreaChart(data: {[key]: string|number}[], xKey: string, yKeys: string[], title?: string, colors?: string[])
+  yKeys MUST be an array: ["users"] — even for a single series, wrap in []
+  Use for: cumulative values, volume over time
 
-PieChart(data, nameKey, valueKey, title?)
+PieChart(data: {[key]: string|number}[], nameKey: string, valueKey: string, title?: string)
   Use for: proportions, composition breakdowns
 
-ScatterChart(data, xKey, yKey, title?, labelKey?)
+ScatterChart(data: {[key]: string|number}[], xKey: string, yKey: string, title?: string, labelKey?: string)
   Use for: correlation between two numeric variables
 
-RadarChart(data, angleKey, valueKeys, title?, colors?)
-  angleKey: string (axis label field); valueKeys: string[]
+RadarChart(data: {[key]: string|number}[], angleKey: string, valueKeys: string[], title?: string, colors?: string[])
+  valueKeys MUST be an array: ["alice", "bob"] — never a bare string
   Use for: multi-axis comparisons, skill matrices, benchmark scores
 
-GaugeChart(value, title?, min?, max?, unit?, thresholds?)
-  thresholds?: {warning: number, danger: number}
-  Use for: CPU%, disk, scores, health indicators — value with bounds
+GaugeChart(value: number, title?: string, min?: number, max?: number, unit?: string, thresholds?: {warning: number, danger: number})
+  Use for: CPU%, disk, scores, health indicators
 
 --- Content ---
-ImageBlock(src, alt?, caption?)
+
+ImageBlock(src: string, alt?: string, caption?: string)
   Use for: single image results, previews, screenshots
 
-ImageGallery(images)
-  images: {src: string, alt?: string, caption?: string}[]
+ImageGallery(images: {src: string, alt?: string, caption?: string}[])
   Use for: photo sets, image search results
 
-VideoBlock(src, title?, poster?)
+VideoBlock(src: string, title?: string, poster?: string)
   src: YouTube/Vimeo URL (auto-embeds) or direct video URL
-  Use for: video results, tutorials, recordings
 
-AudioPlayer(src, title?, description?)
+AudioPlayer(src: string, title?: string, description?: string)
   Use for: podcast clips, voice memos, TTS output
 
-MapBlock(lat, lng, label?, zoom?)
-  Use for: location results, addresses, venues, any coordinates
+MapBlock(lat: number, lng: number, label?: string, zoom?: number)
+  Use for: location results, addresses, venues
 
-CalendarMini(markedDates, title?, mode?)
-  markedDates: {date: string, label?: string, color?: "success"|"warning"|"danger"|"default"}[]
-  mode?: "single" | "range"
-  Use for: availability views, event schedules, booking slots, free days
+CalendarMini(markedDates: {date: string, label?: string, color?: "success"|"warning"|"danger"|"default"}[], title?: string, mode?: "single"|"range")
+  Use for: availability views, event schedules, booking slots
 
-NumberTicker(value, label?, unit?, duration?)
-  Use for: single important stat with count-up animation — download count, score, uptime
+NumberTicker(value: number, label?: string, unit?: string, duration?: number)
+  Use for: single stat with count-up animation
 
-Carousel(items, autoPlay?)
-  items: {title: string, body?: string, image?: string, badge?: string, actions?: {label: string, value: string}[]}[]
-  Use for: recommendations, product options, photos — one card at a time
+Carousel(items: {title: string, body?: string, image?: string, badge?: string, actions?: {label: string, value: string}[]}[], autoPlay?: boolean)
+  Use for: recommendations, product options — one card at a time
 
-TreeView(nodes, title?)
-  nodes: {id: string, label: string, description?: string, children?: node[]}[] (recursive)
+TreeView(nodes: {id: string, label: string, description?: string, children?: node[]}[], title?: string)
   Use for: org charts, nested configs, category hierarchies
 
 --- Timeline & Notifications ---
-Timeline(items, title?)
-  items: {time: string, title: string, description?: string, status?: "success"|"error"|"warning"|"neutral"}[]
+
+Timeline(items: {time: string, title: string, description?: string, status?: "success"|"error"|"warning"|"neutral"}[], title?: string)
   Use for: git log, activity history, deployment events, audit trails
 
-AlertBanner(variant, title, description?)
-  variant: "info" | "success" | "warning" | "error"
-  Use for: important notices, inline warnings — lighter than StatusCard
+AlertBanner(variant: "info"|"success"|"warning"|"error", title: string, description?: string)
+  Use for: important notices, inline warnings
 
-Steps(items, title?)
-  items: {title: string, description?: string, status?: "complete"|"active"|"pending"}[]
+Steps(items: {title: string, description?: string, status?: "complete"|"active"|"pending"}[], title?: string)
   Use for: ordered instructions, onboarding, migration guides
 
 --- Code ---
-CodeDiff(filename, oldCode, newCode, diffStyle?, title?)
-  filename: string (e.g. "src/utils.ts" — used for header and language detection)
-  oldCode: string (before content)
-  newCode: string (after content)
-  diffStyle?: "unified" | "split" — defaults to "unified"
-  title?: string
-  Use for: before/after code changes, patch previews, refactoring summaries
+
+CodeDiff(filename: string, oldCode: string, newCode: string, diffStyle?: "unified"|"split", title?: string)
+  Use for: before/after code changes, patch previews
+
+--- Layout ---
+
+Row(items: component[])
+  Use for: placing components side-by-side (equal width). Best for StatRows, StatusCards, DataCards.
+
+Stack(items: component[])
+  Use for: placing components vertically. Nest Row inside Stack for mixed layouts.
 """
 
 _escaped_component_library = OPENUI_COMPONENT_LIBRARY_PROMPT.replace("{", "{{").replace(
@@ -275,9 +259,14 @@ StatRow — single KPI with trend (use Row for multiple):
   s3 = StatRow("Churn", 2.1, "%", "down", "-0.5%")
   :::
 
-BarChart — comparisons or rankings:
+BarChart — single series:
   :::openui
-  root = BarChart([{{{{"month": "Jan", "revenue": 4200}}}}, {{{{"month": "Feb", "revenue": 5100}}}}, {{{{"month": "Mar", "revenue": 4800}}}}], "month", "revenue", "Monthly Revenue")
+  root = BarChart([{{{{"month": "Jan", "revenue": 4200}}}}, {{{{"month": "Feb", "revenue": 5100}}}}, {{{{"month": "Mar", "revenue": 4800}}}}], "month", ["revenue"], "Monthly Revenue")
+  :::
+
+BarChart — multi-series (grouped bars with custom colors):
+  :::openui
+  root = BarChart([{{{{"month": "Jan", "revenue": 4200, "cost": 2800}}}}, {{{{"month": "Feb", "revenue": 5100, "cost": 3100}}}}, {{{{"month": "Mar", "revenue": 4800, "cost": 2600}}}}], "month", ["revenue", "cost"], "Revenue vs Cost", ["#00bbff", "#f472b6"])
   :::
 
 LineChart — trends over time (supports multiple series via yKeys array):
@@ -400,7 +389,7 @@ Stack — combine multiple components vertically:
   s1 = StatRow("Users", 12450, null, "up", "+8%")
   s2 = StatRow("Revenue", 48200, "$", "up", "+12%")
   s3 = StatRow("Churn", 2.1, "%", "down", "-0.5%")
-  chart = BarChart([{{{{"month": "Jan", "revenue": 4200}}}}, {{{{"month": "Feb", "revenue": 5100}}}}], "month", "revenue", "Monthly Revenue")
+  chart = BarChart([{{{{"month": "Jan", "revenue": 4200}}}}, {{{{"month": "Feb", "revenue": 5100}}}}], "month", ["revenue"], "Monthly Revenue")
   :::
 
   Nest Row inside Stack to combine horizontal groups with other components. Any combination works.

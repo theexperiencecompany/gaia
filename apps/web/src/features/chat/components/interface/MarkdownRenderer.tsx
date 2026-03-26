@@ -107,31 +107,36 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             <pre className="font-serif! text-wrap" {...props} />
           ),
           table: ({ ...props }) => (
-            <div className="overflow-x-auto">
+            <div className="markdown-table my-4 overflow-x-auto rounded-3xl bg-zinc-900 p-3">
+              <style>{`
+                .markdown-table table { border-separate: separate; border-spacing: 0; }
+                .markdown-table tbody tr:first-child td:first-child { border-top-left-radius: 0.75rem; }
+                .markdown-table tbody tr:first-child td:last-child { border-top-right-radius: 0.75rem; }
+                .markdown-table tbody tr:last-child td:first-child { border-bottom-left-radius: 0.75rem; }
+                .markdown-table tbody tr:last-child td:last-child { border-bottom-right-radius: 0.75rem; }
+                .markdown-table tbody tr:last-child td { border-bottom: none; }
+                .markdown-table tbody tr:hover td { background-color: #27272A80; }
+              `}</style>
               <table
-                className="min-w-full border-collapse border-zinc-600"
+                className="min-w-full border-separate border-spacing-0 text-sm"
                 {...props}
               />
             </div>
           ),
-          thead: ({ ...props }) => (
-            <thead
-              className="bg-opacity-20 border border-zinc-700 bg-zinc-700"
-              {...props}
-            />
-          ),
+          thead: ({ ...props }) => <thead {...props} />,
           tbody: ({ ...props }) => <tbody {...props} />,
-          tr: ({ ...props }) => (
-            <tr className="border-b border-zinc-600" {...props} />
-          ),
+          tr: ({ ...props }) => <tr className="transition-colors" {...props} />,
           th: ({ ...props }) => (
             <th
-              className="border border-zinc-600 px-4 py-2 text-left font-bold"
+              className="px-3 pb-3 pt-1 text-left text-xs font-medium tracking-wide text-zinc-500 bg-zinc-900"
               {...props}
             />
           ),
           td: ({ ...props }) => (
-            <td className="border border-zinc-700 px-4 py-2" {...props} />
+            <td
+              className="border-b border-zinc-700/50 bg-zinc-800 px-3 py-3 text-zinc-100"
+              {...props}
+            />
           ),
         }}
         remarkPlugins={[

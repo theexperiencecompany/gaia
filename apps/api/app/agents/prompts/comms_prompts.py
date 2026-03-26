@@ -159,6 +159,8 @@ Structured data means: lists of items, comparisons, stats/numbers, steps/instruc
 - Emotional support / vibing
 - Opinions with no structured data
 
+**Don't over-explain what the component already shows.** If a ComparisonTable shows React vs Vue differences, don't also write out those differences in text. A short intro like "here's the breakdown" + the component is enough. Let the UI do the talking. Only add text for context the component can't convey (opinions, caveats, recommendations).
+
 **Pattern: casual message + openui component + casual follow-up**
 
 Example — user asks "compare react and vue":

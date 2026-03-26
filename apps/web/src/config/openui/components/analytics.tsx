@@ -40,6 +40,11 @@ import {
 const CHART_COLORS = ["#00bbff", "#34d399", "#60a5fa", "#f472b6", "#fb923c"];
 const PIE_COLORS = ["#00bbff", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"];
 
+/** Coerce a string | string[] to string[] so charts never break on a bare string. */
+function toKeys(v: string | string[]): string[] {
+  return Array.isArray(v) ? v : [v];
+}
+
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
@@ -59,17 +64,17 @@ const chartDataSchema = z.array(
 export const barChartSchema = z.object({
   data: chartDataSchema,
   xKey: z.string(),
-  yKey: z.string(),
+  yKeys: z.union([z.array(z.string()), z.string()]),
   title: z.string().optional(),
   description: z.string().optional(),
   footer: z.string().optional(),
-  color: z.string().optional(),
+  colors: z.array(z.string()).optional(),
 });
 
 export const lineChartSchema = z.object({
   data: chartDataSchema,
   xKey: z.string(),
-  yKeys: z.array(z.string()),
+  yKeys: z.union([z.array(z.string()), z.string()]),
   title: z.string().optional(),
   description: z.string().optional(),
   footer: z.string().optional(),
@@ -79,7 +84,7 @@ export const lineChartSchema = z.object({
 export const areaChartSchema = z.object({
   data: chartDataSchema,
   xKey: z.string(),
-  yKeys: z.array(z.string()),
+  yKeys: z.union([z.array(z.string()), z.string()]),
   title: z.string().optional(),
   description: z.string().optional(),
   footer: z.string().optional(),
@@ -108,7 +113,7 @@ export const scatterChartSchema = z.object({
 export const radarChartSchema = z.object({
   data: chartDataSchema,
   angleKey: z.string(),
-  valueKeys: z.array(z.string()),
+  valueKeys: z.union([z.array(z.string()), z.string()]),
   title: z.string().optional(),
   description: z.string().optional(),
   footer: z.string().optional(),
@@ -151,14 +156,22 @@ function ChartCard({
   description,
   footer,
   children,
+  dataPoints = 0,
 }: {
   title?: string;
   description?: string;
   footer?: string;
   children: React.ReactNode;
+  dataPoints?: number;
 }) {
+  // Scale width to data: ~80px per point, min 300px, max 3xl (48rem)
+  const width =
+    dataPoints > 0 ? Math.min(768, Math.max(300, dataPoints * 80)) : undefined;
   return (
-    <Card className="bg-zinc-800 border-none shadow-none w-full min-w-fit max-w-lg">
+    <Card
+      className="bg-zinc-800 border-none shadow-none max-w-3xl"
+      style={width ? { width } : { width: "100%" }}
+    >
       {(title || description) && (
         <CardHeader className="pb-0 flex-col items-start">
           {title && (
@@ -186,7 +199,7 @@ function ChartCard({
 export function StatRowView(props: z.infer<typeof statRowSchema>) {
   const trendStyle = props.trend ? TREND_STYLES[props.trend] : null;
   return (
-    <div className="rounded-2xl bg-zinc-800 p-5 min-w-0 h-full flex flex-col justify-between">
+    <div className="rounded-2xl bg-zinc-800 p-5 w-fit min-w-50 h-full flex flex-col justify-between">
       <p className="text-xs text-zinc-500 truncate">{props.title}</p>
       <div className="flex items-end gap-1.5">
         <span className="text-4xl font-bold text-zinc-100 leading-none">
@@ -212,17 +225,23 @@ export function StatRowView(props: z.infer<typeof statRowSchema>) {
 }
 
 export function BarChartView(props: z.infer<typeof barChartSchema>) {
-  const color = props.color ?? CHART_COLORS[0];
-  const chartConfig: ChartConfig = {
-    [props.yKey]: { label: props.yKey, color },
-  };
+  const keys = toKeys(props.yKeys);
+  const colors = props.colors ?? CHART_COLORS;
+  const chartConfig: ChartConfig = Object.fromEntries(
+    keys.map((key, i) => [
+      key,
+      { label: key, color: colors[i % colors.length] },
+    ]),
+  );
+  const showLegend = keys.length > 1;
   return (
     <ChartCard
       title={props.title}
       description={props.description}
       footer={props.footer}
+      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-[200px] w-full">
+      <ChartContainer config={chartConfig} className="h-50 w-full">
         <RechartsBarChart data={props.data}>
           <XAxis
             dataKey={props.xKey}
@@ -235,15 +254,17 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
             tickLine={false}
             tick={{ fill: "#71717a", fontSize: 11 }}
           />
-          <ChartTooltip
-            cursor={false}
-            content={<ChartTooltipContent hideLabel />}
-          />
-          <Bar
-            dataKey={props.yKey}
-            fill={`var(--color-${props.yKey})`}
-            radius={8}
-          />
+          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+          {showLegend && <ChartLegend content={<ChartLegendContent />} />}
+          {keys.map((key) => (
+            <Bar
+              key={key}
+              dataKey={key}
+              fill={`var(--color-${key})`}
+              radius={8}
+              maxBarSize={40}
+            />
+          ))}
         </RechartsBarChart>
       </ChartContainer>
     </ChartCard>
@@ -251,20 +272,23 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
 }
 
 export function LineChartView(props: z.infer<typeof lineChartSchema>) {
+  const keys = toKeys(props.yKeys);
   const colors = props.colors ?? CHART_COLORS;
   const chartConfig: ChartConfig = Object.fromEntries(
-    props.yKeys.map((key, i) => [
+    keys.map((key, i) => [
       key,
       { label: key, color: colors[i % colors.length] },
     ]),
   );
+  const showLegend = keys.length > 1;
   return (
     <ChartCard
       title={props.title}
       description={props.description}
       footer={props.footer}
+      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-[200px] w-full">
+      <ChartContainer config={chartConfig} className="h-50 w-full">
         <RechartsLineChart data={props.data}>
           <XAxis
             dataKey={props.xKey}
@@ -278,8 +302,8 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
             tick={{ fill: "#71717a", fontSize: 11 }}
           />
           <ChartTooltip content={<ChartTooltipContent />} />
-          <ChartLegend content={<ChartLegendContent />} />
-          {props.yKeys.map((key) => (
+          {showLegend && <ChartLegend content={<ChartLegendContent />} />}
+          {keys.map((key) => (
             <Line
               key={key}
               type="monotone"
@@ -296,23 +320,26 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
 }
 
 export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
+  const keys = toKeys(props.yKeys);
   const colors = props.colors ?? CHART_COLORS;
   const chartConfig: ChartConfig = Object.fromEntries(
-    props.yKeys.map((key, i) => [
+    keys.map((key, i) => [
       key,
       { label: key, color: colors[i % colors.length] },
     ]),
   );
+  const showLegend = keys.length > 1;
   return (
     <ChartCard
       title={props.title}
       description={props.description}
       footer={props.footer}
+      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-[200px] w-full">
+      <ChartContainer config={chartConfig} className="h-50 w-full">
         <RechartsAreaChart data={props.data}>
           <defs>
-            {props.yKeys.map((key) => (
+            {keys.map((key) => (
               <linearGradient
                 key={key}
                 id={`gradient-${key}`}
@@ -346,7 +373,8 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
             tick={{ fill: "#71717a", fontSize: 11 }}
           />
           <ChartTooltip content={<ChartTooltipContent />} />
-          {props.yKeys.map((key) => (
+          {showLegend && <ChartLegend content={<ChartLegendContent />} />}
+          {keys.map((key) => (
             <Area
               key={key}
               type="natural"
@@ -374,8 +402,9 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
+      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-[200px] w-full">
+      <ChartContainer config={chartConfig} className="h-50 w-full">
         <RechartsPieChart>
           <Pie
             data={props.data}
@@ -415,8 +444,9 @@ export function ScatterChartView(props: z.infer<typeof scatterChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
+      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-[200px] w-full">
+      <ChartContainer config={chartConfig} className="h-50 w-full">
         <RechartsScatterChart>
           <XAxis
             dataKey={props.xKey}
@@ -439,20 +469,23 @@ export function ScatterChartView(props: z.infer<typeof scatterChartSchema>) {
 }
 
 export function RadarChartView(props: z.infer<typeof radarChartSchema>) {
+  const keys = toKeys(props.valueKeys);
   const colors = props.colors ?? CHART_COLORS;
   const chartConfig: ChartConfig = Object.fromEntries(
-    props.valueKeys.map((key, i) => [
+    keys.map((key, i) => [
       key,
       { label: key, color: colors[i % colors.length] },
     ]),
   );
+  const showLegend = keys.length > 1;
   return (
     <ChartCard
       title={props.title}
       description={props.description}
       footer={props.footer}
+      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-[220px] w-full">
+      <ChartContainer config={chartConfig} className="h-55 w-full">
         <RechartsRadarChart data={props.data}>
           <PolarGrid stroke="#3f3f46" />
           <PolarAngleAxis
@@ -460,7 +493,7 @@ export function RadarChartView(props: z.infer<typeof radarChartSchema>) {
             tick={{ fill: "#71717a", fontSize: 11 }}
           />
           <ChartTooltip content={<ChartTooltipContent />} />
-          {props.valueKeys.map((key) => (
+          {keys.map((key) => (
             <Radar
               key={key}
               dataKey={key}
@@ -470,7 +503,7 @@ export function RadarChartView(props: z.infer<typeof radarChartSchema>) {
               fillOpacity={0.2}
             />
           ))}
-          <ChartLegend content={<ChartLegendContent />} />
+          {showLegend && <ChartLegend content={<ChartLegendContent />} />}
         </RechartsRadarChart>
       </ChartContainer>
     </ChartCard>
