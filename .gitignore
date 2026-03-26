@@ -126,3 +126,9 @@ docs/superpowers
 .dolt/
 *.db
 .beads-credential-key
+# dagger
+.dagger/sdk
+
+bin/dagger
+
+.beads/

@@ -55,7 +55,6 @@ def test_instructions_contains_all_component_names():
         "SelectableList",
         "AvatarList",
         "KbdBlock",
-        "MetricCard",
         "BarChart",
         "LineChart",
         "AreaChart",
@@ -73,9 +72,9 @@ def test_instructions_contains_all_component_names():
         "Carousel",
         "TreeView",
         "Timeline",
-        "JsonViewer",
         "AlertBanner",
         "Steps",
+        "CodeDiff",
     ]
     for name in components:
         assert name in OPENUI_INSTRUCTIONS, (

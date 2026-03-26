@@ -22,13 +22,12 @@ const EXPECTED_GROUPS: Record<string, string[]> = {
     "Accordion",
     "TabsBlock",
     "ProgressList",
-    "StatRow",
     "SelectableList",
     "AvatarList",
     "KbdBlock",
   ],
   Analytics: [
-    "MetricCard",
+    "StatRow",
     "BarChart",
     "LineChart",
     "AreaChart",
@@ -48,12 +47,8 @@ const EXPECTED_GROUPS: Record<string, string[]> = {
     "Carousel",
     "TreeView",
   ],
-  "Timeline & Notifications": [
-    "Timeline",
-    "JsonViewer",
-    "AlertBanner",
-    "Steps",
-  ],
+  "Timeline & Notifications": ["Timeline", "AlertBanner", "Steps"],
+  Code: ["CodeDiff"],
 };
 
 const ALL_COMPONENT_NAMES = Object.values(EXPECTED_GROUPS).flat();
@@ -76,9 +71,9 @@ describe("genericLibrary", () => {
     expect(count).toBe(36);
   });
 
-  it("has exactly 4 component groups", () => {
+  it("has exactly 5 component groups", () => {
     expect(genericLibrary.componentGroups).toBeDefined();
-    expect(genericLibrary.componentGroups!.length).toBe(4);
+    expect(genericLibrary.componentGroups!.length).toBe(5);
   });
 
   it("has component groups with the exact expected names", () => {
@@ -87,6 +82,7 @@ describe("genericLibrary", () => {
     expect(groupNames).toContain("Analytics");
     expect(groupNames).toContain("Content");
     expect(groupNames).toContain("Timeline & Notifications");
+    expect(groupNames).toContain("Code");
   });
 
   it.each(

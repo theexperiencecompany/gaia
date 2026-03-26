@@ -199,32 +199,31 @@ Similar structure to web app with React Native components. Uses React Navigation
 
 **Install**: The `gaia-shared` package is automatically available to Python apps via workspace dependencies.
 
+## Design System
+
+The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the repo root. It covers:
+- Color tokens, zinc scale, semantic status colors, dark/light CSS variables
+- Typography (Inter, PP Editorial New, Anonymous Pro) and heading scale
+- Spacing, border radius decision table, shadows
+- Icon library usage (`@icons` — never raw SVGs)
+- Animation tokens, Framer Motion conventions, easing functions
+- Toast/notification system (Sileo — never sonner or react-hot-toast)
+- Chat bubble architecture and the TextBubble/TOOL_RENDERERS system
+- **Chat tool card styling contract** (outer `rounded-2xl bg-zinc-800 p-4`, inner `rounded-2xl bg-zinc-900 p-3`, no borders)
+- Adding new tool cards vs OpenUI primitives (decision tree)
+- Copy-paste card template and pre-commit checklist
+
+**Claude rules** for design consistency are in `.claude/rules/design.md` (auto-loaded).
+**Chat bubble rules** are in `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`.
+
 ## Code Style Guidelines
 
-### TypeScript/JavaScript
-
-- Use Biome for linting and formatting (configured in `biome.json`)
-- **No inline imports** - all imports must be at the top of the file
-- **Never use `any` type** - always provide proper type definitions
-- Line width: 80 characters
-- Indentation: 2 spaces
-- Use strict TypeScript configuration
-- No unnecessarily verbose comments - code should be self-documenting
-
-### Python
-
-- Use Ruff for linting and formatting (configured in `ruff.toml` or `pyproject.toml`)
-- **No inline imports** - all imports must be at the top of the file
-- **Use strict types** - always provide type annotations for function parameters and return values
-- Follow PEP 8 style guide
-- Use type hints extensively (enforced by mypy)
-- No unnecessarily verbose comments - code should be self-documenting
-
-### General
-
-- Follow feature-based organization - group related files by feature, not by type
-- Use absolute imports with path aliases (`@/` for web/desktop, configured in tsconfig)
-- Keep components small and focused on a single responsibility
+Rules are enforced via auto-loaded rule files — see `.claude/rules/`:
+- **TypeScript/React**: `.claude/rules/typescript.md` — Biome, strict types, component/hook patterns, Zustand, API layer
+- **Python/Backend**: `.claude/rules/python.md` — Ruff, mypy, FastAPI patterns, services, logging, caching
+- **Design system**: `.claude/rules/design.md` — card contract, colors, icons, animations, OpenUI
+- **General engineering**: `.claude/rules/general.md` — DRY, dead code, constants, feature-based org
+- **Linear**: `.claude/rules/linear.md` — issue titles, descriptions, priorities, cycle hygiene, writing style
 
 ## Key Technologies
 
@@ -290,15 +289,37 @@ nx docker:build voice-agent
 
 ## Task Tracking
 
-Only use the `bd` CLI for task tracking when the user explicitly asks to use it. Otherwise, use built-in TodoWrite/TaskCreate tools.
+Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-internal CLI for task tracking and dolt database sync — **never invoke it automatically**. Otherwise, use built-in TodoWrite/TaskCreate tools.
 
 ## Implementation Plans
 
 When creating implementation plans, store them in `.agents/plans/` directory. This folder is gitignored and used for planning documents before execution.
 
+## Markdown Files
+
+**Never create `.md` files** outside of `.agents/plans/` (gitignored) unless explicitly asked. Do not create `REVIEW.md`, `CONSISTENCY_REPORT.md`, `ANALYSIS.md`, spec files, or any other agent-generated documentation in the source tree. Planning and review artifacts belong only in `.agents/plans/` and only when absolutely necessary.
+
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
+- Work is **not complete until `git push` succeeds.** Always push before ending a session.
+- Session close sequence (mandatory when code changed):
+  ```bash
+  git pull --rebase
+  git push
+  git status  # must show "up to date with origin"
+  ```
+
+## Shell Commands
+
+Always use non-interactive flags to avoid hanging on prompts (shell aliases may add `-i` by default):
+
+```bash
+cp -f source dest      # NOT: cp source dest
+mv -f source dest      # NOT: mv source dest
+rm -f file             # NOT: rm file
+rm -rf directory       # NOT: rm -r directory
+```
 
 ## Common Issues
 
