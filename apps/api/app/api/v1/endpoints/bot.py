@@ -188,6 +188,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
             user=user,
             user_time=datetime.now(timezone.utc),
             conversation_id=conversation_id,
+            source=body.platform,
         )
     )
 

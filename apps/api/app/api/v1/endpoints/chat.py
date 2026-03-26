@@ -124,6 +124,7 @@ async def chat_stream_endpoint(
             user=user,
             user_time=tz_info[1],
             conversation_id=conversation_id,
+            source="web",
         )
     )
     _background_tasks.add(task)

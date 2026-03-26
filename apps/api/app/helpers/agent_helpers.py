@@ -242,6 +242,7 @@ def build_agent_config(
     tool_category: Optional[str] = None,
     subagent_id: Optional[str] = None,
     vfs_session_id: Optional[str] = None,
+    source: Optional[str] = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -331,6 +332,7 @@ def build_agent_config(
         tool_category = tool_category or base_configurable.get("tool_category")
         subagent_id = subagent_id or base_configurable.get("subagent_id")
         vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
+        source = source or base_configurable.get("conversation_source")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -347,6 +349,7 @@ def build_agent_config(
         "tool_category": tool_category,
         "subagent_id": subagent_id,
         "vfs_session_id": vfs_session_id,
+        "conversation_source": source,
     }
 
     config = {

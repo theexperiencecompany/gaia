@@ -173,6 +173,69 @@ async def get_memory_message(
         )
 
 
+def get_platform_context_message(
+    source: Optional[str] = None,
+) -> Optional[SystemMessage]:
+    """Create a system message informing the agent about the user's current platform.
+
+    This tells the LLM what output capabilities are available so it can adapt
+    its formatting. Text-only platforms (WhatsApp, Telegram, Discord, Slack)
+    cannot render HTML, interactive UI components, or artifacts.
+
+    Args:
+        source: The conversation source/platform identifier (e.g., "whatsapp", "web")
+
+    Returns:
+        SystemMessage with platform context, or None if source is web/unset
+    """
+    if not source or source in ("web", "mobile"):
+        return None
+
+    platform_info = {
+        "whatsapp": {
+            "name": "WhatsApp",
+            "formatting": "WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```code```",
+        },
+        "telegram": {
+            "name": "Telegram",
+            "formatting": "Telegram formatting: **bold**, _italic_, `code`, ```code blocks```",
+        },
+        "discord": {
+            "name": "Discord",
+            "formatting": "Discord formatting: **bold**, *italic*, ~~strikethrough~~, `code`, ```code blocks```, > quotes",
+        },
+        "slack": {
+            "name": "Slack",
+            "formatting": "Slack formatting: *bold*, _italic_, ~strikethrough~, `code`, ```code blocks```, > quotes",
+        },
+    }
+
+    info = platform_info.get(source)
+    if not info:
+        return None
+
+    content = f"""—Platform Context (IMPORTANT)—
+The user is messaging from **{info["name"]}**. This is a text-based messaging platform.
+
+OUTPUT RESTRICTIONS for this platform:
+- NO HTML, interactive UI components, artifacts, or rich cards — the user cannot see them
+- NO markdown links [text](url) — just paste URLs directly
+- NO tables — use simple lists instead
+- NO images or embedded media in your response
+- Keep formatting simple and compatible: {info["formatting"]}
+- The user CANNOT see tool_data UI, MCP apps, or any frontend components
+- When showing structured data (search results, calendar events, emails, etc.), format as clean text lists
+- Artifacts and HTML content blocks are invisible to the user — describe results in plain text instead
+
+WHAT TO DO INSTEAD:
+- Present all information as formatted text using the platform's native formatting
+- For data that would normally show as a card/component, write it out as a clear text summary
+- For content that would be an artifact, include it directly in your message as text
+- Keep messages concise — messaging platforms work best with shorter, focused messages"""
+
+    return SystemMessage(content=content)
+
+
 def format_tool_selection_message(
     selected_tool: str, existing_content: str, tool_category: Optional[str] = None
 ) -> str:

@@ -41,6 +41,7 @@ async def run_chat_stream_background(
     user: dict,
     user_time: datetime,
     conversation_id: str,
+    source: Optional[str] = None,
 ) -> None:
     """
     Run chat streaming in background, publishing chunks to Redis.
@@ -66,6 +67,7 @@ async def run_chat_stream_background(
             user=user,
             user_time=user_time,
             conversation_id=conversation_id,
+            source=source,
         )
 
 
@@ -304,6 +306,7 @@ async def _run_chat_stream(
     user: dict,
     user_time: datetime,
     conversation_id: str,
+    source: Optional[str] = None,
 ) -> None:
     complete_message = ""
     tool_data: Dict[str, Any] = {"tool_data": []}
@@ -354,6 +357,7 @@ async def _run_chat_stream(
             user_time=user_time,
             usage_metadata_callback=usage_metadata_callback,
             stream_id=stream_id,
+            source=source,
         ):
             if await stream_manager.is_cancelled(stream_id):
                 is_cancelled = True
