@@ -11,7 +11,8 @@ import {
   Tooltip,
   useDisclosure,
 } from "@heroui/react";
-import { PlusSignIcon, TaskAddIcon } from "@icons";
+import { AlertCircleIcon, TaskAddIcon } from "@icons";
+import { format } from "date-fns";
 import { useCallback, useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
@@ -25,6 +26,8 @@ import {
   type TodoCreate,
 } from "@/types/features/todoTypes";
 
+import RecurrenceFieldChip from "./fields/RecurrenceFieldChip";
+import ScheduledFieldChip from "./fields/ScheduledFieldChip";
 import SubtaskManager from "./shared/SubtaskManager";
 import TodoFieldsRow from "./shared/TodoFieldsRow";
 
@@ -92,6 +95,8 @@ export default function TodoModal({
         project_id: todo.project_id,
         due_date: todo.due_date,
         due_date_timezone: todo.due_date_timezone,
+        scheduled_at: todo.scheduled_at,
+        recurrence: todo.recurrence,
         subtasks: todo.subtasks || [],
       };
     }
@@ -102,6 +107,8 @@ export default function TodoModal({
       labels: [],
       priority: Priority.NONE,
       project_id: initialProjectId,
+      scheduled_at: undefined,
+      recurrence: undefined,
       subtasks: [],
     };
   }, [mode, todo, initialProjectId]);
@@ -191,6 +198,8 @@ export default function TodoModal({
         project_id: todo.project_id,
         due_date: todo.due_date,
         due_date_timezone: todo.due_date_timezone,
+        scheduled_at: todo.scheduled_at,
+        recurrence: todo.recurrence,
         subtasks: todo.subtasks || [],
       });
     }
@@ -355,6 +364,35 @@ export default function TodoModal({
                   onLabelsChange={(labels) => updateField("labels", labels)}
                   userTimezone={userTimezone}
                 />
+
+                {/* Scheduling Row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <ScheduledFieldChip
+                    value={formData.scheduled_at ?? undefined}
+                    onChange={(scheduledAt) =>
+                      updateField("scheduled_at", scheduledAt)
+                    }
+                    timezone={userTimezone}
+                  />
+                  <RecurrenceFieldChip
+                    value={formData.recurrence ?? undefined}
+                    onChange={(val) => updateField("recurrence", val)}
+                  />
+                </div>
+
+                {/* Expires At (read-only, set by the LLM) */}
+                {mode === "edit" && todo?.expires_at && (
+                  <div className="flex items-center gap-2 text-sm text-zinc-500">
+                    <AlertCircleIcon width={16} height={16} />
+                    <span>
+                      Expires{" "}
+                      {format(
+                        new Date(todo.expires_at),
+                        "EEE, MMM d 'at' h:mm a",
+                      )}
+                    </span>
+                  </div>
+                )}
 
                 {/* Subtasks Manager */}
                 <SubtaskManager

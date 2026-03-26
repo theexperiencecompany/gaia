@@ -182,6 +182,7 @@ class ToolRegistry:
             document_tool,
             file_tools,
             flowchart_tool,
+            tracked_todo_tools,
             goal_tool,
             image_tool,
             integration_tool,
@@ -213,6 +214,11 @@ class ToolRegistry:
         )
 
         self._add_category("notifications", tools=[*notification_tool.tools])
+        self._add_category(
+            "tracked_todos",
+            tools=[*tracked_todo_tools.tools],
+            space="tasks",
+        )
         self._add_category(
             "todos",
             tools=[*todo_tool.tools],

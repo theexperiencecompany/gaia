@@ -12,6 +12,7 @@ from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 
@@ -300,10 +301,25 @@ class TriggerHandler(ABC):
                 if workflow.id is None:
                     log.error("Workflow has no id, skipping")
                     continue
+                # Enrich context with tracked todos for signal matching
+                context: Dict[str, Any] = {"trigger_data": data}
+                try:
+                    todos_context = (
+                        await tracked_todo_service.get_signal_matching_context(
+                            workflow.user_id
+                        )
+                    )
+                    if todos_context:
+                        context["tracked_todos_context"] = todos_context
+                except Exception as e:
+                    log.warning(
+                        f"Failed to fetch tracked todos for signal matching: {e}"
+                    )
+
                 await WorkflowQueueService.queue_workflow_execution(
                     workflow.id,
                     workflow.user_id,
-                    context={"trigger_data": data},
+                    context=context,
                 )
                 queued_count += 1
                 log.info(f"Queued workflow {workflow.id} for event {event_type}")

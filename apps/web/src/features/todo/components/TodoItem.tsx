@@ -3,12 +3,16 @@
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import {
+  AiBrainIcon,
+  AlertCircleIcon,
   CalendarCheckOut01Icon,
   CheckmarkCircle02Icon,
+  Clock01Icon,
   Flag02Icon,
   Folder02Icon,
   Tag01Icon,
 } from "@icons";
+import { format, formatDistanceToNow } from "date-fns";
 import { memo, useMemo } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -136,6 +140,9 @@ export default memo(function TodoItem({
 
           {(todo.priority !== Priority.NONE ||
             todo.due_date ||
+            todo.scheduled_at ||
+            todo.expires_at ||
+            todo.vfs_path ||
             todo.labels.length > 0) && (
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {todo.due_date && (
@@ -154,6 +161,57 @@ export default memo(function TodoItem({
                   }
                 >
                   {formatDate(todo.due_date)}
+                </Chip>
+              )}
+
+              {todo.scheduled_at && (
+                <Chip
+                  className="flex items-center text-zinc-400 px-1"
+                  size="sm"
+                  radius="sm"
+                  color="primary"
+                  variant="flat"
+                  startContent={
+                    <Clock01Icon width={16} height={16} className="mx-1" />
+                  }
+                >
+                  {format(
+                    new Date(todo.scheduled_at),
+                    "EEE, MMM d 'at' h:mm a",
+                  )}
+                </Chip>
+              )}
+
+              {todo.expires_at && (
+                <Chip
+                  className="flex items-center text-zinc-400 px-1"
+                  size="sm"
+                  radius="sm"
+                  color="warning"
+                  variant="flat"
+                  startContent={
+                    <AlertCircleIcon width={16} height={16} className="mx-1" />
+                  }
+                >
+                  Expires{" "}
+                  {formatDistanceToNow(new Date(todo.expires_at), {
+                    addSuffix: true,
+                  })}
+                </Chip>
+              )}
+
+              {todo.vfs_path && (
+                <Chip
+                  className="flex items-center text-zinc-400 px-1"
+                  size="sm"
+                  radius="sm"
+                  color="secondary"
+                  variant="flat"
+                  startContent={
+                    <AiBrainIcon width={14} height={14} className="mx-1" />
+                  }
+                >
+                  Tracked
                 </Chip>
               )}
 

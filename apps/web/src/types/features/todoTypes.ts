@@ -30,6 +30,8 @@ export interface TodoCreate extends Record<string, unknown> {
   labels: string[];
   due_date?: string;
   due_date_timezone?: string;
+  scheduled_at?: string | null;
+  recurrence?: string | null;
   priority: SharedPriority;
   project_id?: string;
   subtasks?: SharedSubTask[];

@@ -7,6 +7,7 @@ from langchain_core.messages import SystemMessage
 
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
+    SIGNAL_MATCHING_INSTRUCTIONS,
     WORKFLOW_EXECUTION_PROMPT,
 )
 from app.agents.templates.agent_template import (
@@ -19,7 +20,9 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.db.redis import get_cache, set_cache
 from app.services.gaia_knowledge_service import gaia_knowledge_service
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.memory_service import memory_service
 from app.services.workflow import WorkflowService
 from shared.py.wide_events import log
@@ -97,6 +100,28 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     return ""
 
 
+async def _get_tracked_todos_section(user_id: str) -> str:
+    """Fetch active tracked-todo summary with 60s Redis cache."""
+    cache_key = f"tracked_todos:summary:{user_id}"
+
+    try:
+        cached = await get_cache(cache_key)
+        if cached:
+            return cached if isinstance(cached, str) else str(cached)
+    except Exception:
+        pass  # Cache miss is fine
+
+    summary = await tracked_todo_service.get_active_tracked_summary(user_id)
+
+    if summary:
+        try:
+            await set_cache(cache_key, summary, ttl=60)
+        except Exception:
+            pass
+
+    return summary
+
+
 async def get_memory_message(
     user_id: str,
     query: str,
@@ -152,14 +177,25 @@ async def get_memory_message(
             except Exception as e:
                 log.warning(f"Error formatting user local time: {e}")
 
-        # Search for conversation memories and GAIA knowledge in parallel
-        memories_section, gaia_knowledge_section = await asyncio.gather(
+        # Search for conversation memories, GAIA knowledge, and active tasks in parallel
+        (
+            memories_section,
+            gaia_knowledge_section,
+            tracked_todos_section,
+        ) = await asyncio.gather(
             _get_user_memories_section(query, user_id),
             _get_gaia_knowledge_section(query),
+            _get_tracked_todos_section(user_id),
         )
 
         # Combine all sections
-        content = "\n".join(context_parts) + memories_section + gaia_knowledge_section
+        tasks_block = f"\n\n{tracked_todos_section}" if tracked_todos_section else ""
+        content = (
+            "\n".join(context_parts)
+            + memories_section
+            + gaia_knowledge_section
+            + tasks_block
+        )
         return SystemMessage(content=content, memory_message=True)
 
     except Exception as e:
@@ -240,10 +276,22 @@ async def format_workflow_execution_message(
         workflow_title = selected_workflow.title
         workflow_description = selected_workflow.prompt or selected_workflow.description
 
+    # Build signal matching section from tracked todos
+    tracked_todos_ctx = ""
+    if trigger_context:
+        tracked_todos_ctx = trigger_context.get("tracked_todos_context", "")
+
+    signal_matching_section = ""
+    if tracked_todos_ctx:
+        signal_matching_section = "\n" + SIGNAL_MATCHING_INSTRUCTIONS.format(
+            tracked_todos_context=tracked_todos_ctx
+        )
+
     common_args = {
         "workflow_title": workflow_title,
         "workflow_description": workflow_description,
         "workflow_steps": steps_text,
+        "signal_matching_section": signal_matching_section,
     }
 
     # Email-triggered workflows get enhanced context

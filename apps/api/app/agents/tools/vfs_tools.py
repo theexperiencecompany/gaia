@@ -18,6 +18,7 @@ Folder Structure (per user):
 """
 
 import contextlib
+import re
 from typing import Annotated, Any, Dict
 
 from app.agents.tools.vfs_cmd_parser import get_vfs_command_parser
@@ -28,6 +29,7 @@ from app.agents.tools.vfs_constants import (
 )
 from shared.py.wide_events import log
 from app.decorators import with_rate_limiting
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import (
     get_agent_root,
@@ -319,16 +321,29 @@ async def vfs_write(
                 vfs=vfs,
                 fallback_size_bytes=len(content.encode("utf-8")),
             )
-            return f"Appended {len(content)} characters to: {resolved_path}"
+            result = f"Appended {len(content)} characters to: {resolved_path}"
+        else:
+            await vfs.write(resolved_path, content, ctx["user_id"], metadata)
+            await _emit_artifact_event(
+                path=resolved_path,
+                user_id=ctx["user_id"],
+                vfs=vfs,
+                fallback_size_bytes=len(content.encode("utf-8")),
+            )
+            result = f"Wrote {len(content)} characters to: {resolved_path}"
 
-        await vfs.write(resolved_path, content, ctx["user_id"], metadata)
-        await _emit_artifact_event(
-            path=resolved_path,
-            user_id=ctx["user_id"],
-            vfs=vfs,
-            fallback_size_bytes=len(content.encode("utf-8")),
-        )
-        return f"Wrote {len(content)} characters to: {resolved_path}"
+        # After successful write, check if this is a tracked todo canvas
+        if "/todos/" in resolved_path and resolved_path.endswith("/canvas.md"):
+            try:
+                # Extract todo_id from path: /users/{uid}/todos/{todo_id}/canvas.md
+                canvas_match = re.search(r"/todos/([^/]+)/canvas\.md$", resolved_path)
+                if canvas_match:
+                    todo_id = canvas_match.group(1)
+                    await tracked_todo_service.reindex_canvas(todo_id, ctx["user_id"])
+            except Exception as reindex_err:
+                log.debug(f"Canvas reindex skipped: {reindex_err}", path=resolved_path)
+
+        return result
 
     except Exception as e:
         log.error(f"VFS write error: {e}")
