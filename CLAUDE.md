@@ -223,6 +223,7 @@ Rules are enforced via auto-loaded rule files — see `.claude/rules/`:
 - **Python/Backend**: `.claude/rules/python.md` — Ruff, mypy, FastAPI patterns, services, logging, caching
 - **Design system**: `.claude/rules/design.md` — card contract, colors, icons, animations, OpenUI
 - **General engineering**: `.claude/rules/general.md` — DRY, dead code, constants, feature-based org
+- **Linear**: `.claude/rules/linear.md` — issue titles, descriptions, priorities, cycle hygiene, writing style
 
 ## Key Technologies
 
