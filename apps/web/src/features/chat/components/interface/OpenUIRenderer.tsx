@@ -63,11 +63,7 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
   }, [code, isStreaming]);
 
   if (parseFailed) {
-    return (
-      <pre className="rounded-xl bg-zinc-900 p-3 text-xs text-zinc-500 whitespace-pre-wrap overflow-x-auto max-w-xl">
-        {normalizedCode}
-      </pre>
-    );
+    return null;
   }
 
   return (
@@ -82,38 +78,33 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
 }
 
 class OpenUIErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallbackText: string },
-  { hasError: boolean }
+  { children: React.ReactNode; code: string },
+  { hasError: boolean; errorCode: string }
 > {
-  constructor(props: { children: React.ReactNode; fallbackText: string }) {
+  constructor(props: { children: React.ReactNode; code: string }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, errorCode: "" };
   }
 
   static getDerivedStateFromError() {
     return { hasError: true };
   }
 
-  componentDidUpdate(prevProps: { fallbackText: string }) {
-    if (
-      this.state.hasError &&
-      prevProps.fallbackText !== this.props.fallbackText
-    ) {
-      this.setState({ hasError: false });
+  componentDidUpdate(prevProps: { code: string }) {
+    if (this.state.hasError && prevProps.code !== this.props.code) {
+      this.setState({ hasError: false, errorCode: "" });
     }
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error("[OpenUIRenderer] Render error:", error, info);
+    console.error("[OpenUIRenderer] Render error:", error, info, {
+      code: this.props.code,
+    });
   }
 
   render() {
     if (this.state.hasError) {
-      return (
-        <pre className="rounded-xl bg-zinc-900 p-3 text-xs text-zinc-500 whitespace-pre-wrap overflow-x-auto max-w-xl">
-          {this.props.fallbackText}
-        </pre>
-      );
+      return null;
     }
     return this.props.children;
   }
@@ -124,7 +115,7 @@ export default function OpenUIRenderer({
   isStreaming,
 }: OpenUIRendererProps) {
   return (
-    <OpenUIErrorBoundary fallbackText={code}>
+    <OpenUIErrorBoundary code={code}>
       <OpenUIRendererInner code={code} isStreaming={isStreaming} />
     </OpenUIErrorBoundary>
   );
