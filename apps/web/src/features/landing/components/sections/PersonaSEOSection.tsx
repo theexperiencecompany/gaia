@@ -39,6 +39,7 @@ export default function PersonaSEOSection({
   painPoints,
   features,
   stats,
+  faqs,
   relatedRoles,
 }: PersonaSEOSectionProps) {
   return (
