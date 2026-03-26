@@ -22,15 +22,15 @@ from app.agents.core.background.inbox import (
     deregister_pending_subagents,
     register_comms_inbox,
 )
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.db.redis import redis_cache
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import (
     MessageModel,
-    ToolDataEntry,
     UpdateMessagesRequest,
-    tool_fields,
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
@@ -38,6 +38,7 @@ from app.services.conversation_service import update_messages
 from app.services.file_service import get_files
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
+from app.utils.stream_utils import process_data_chunk
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 
@@ -151,85 +152,9 @@ async def _process_data_chunk(
     todo_progress_accumulated: Dict[str, Any],
     follow_up_actions: List[str],
 ) -> tuple[List[str], bool]:
-    """
-    Process a 'data: ' prefixed agent chunk.
-
-    Extracts tool data, follow-up actions, todo progress, and tool outputs,
-    publishes appropriate sub-chunks to Redis, and updates stream progress.
-
-    Returns (follow_up_actions, published) where published indicates whether
-    the chunk was already sent (True) or should be sent as-is (False).
-    """
-    chunk_payload = chunk[6:]
-
-    chunk_json: Optional[Dict[str, Any]] = None
-    try:
-        chunk_json = json.loads(chunk_payload)
-    except json.JSONDecodeError:
-        chunk_json = None
-
-    if chunk_json and "todo_progress" in chunk_json:
-        snapshot = chunk_json["todo_progress"]
-        source = snapshot.get("source", "executor")
-        todo_progress_accumulated[source] = snapshot
-
-    new_data = extract_tool_data(chunk_payload)
-    if new_data:
-        if "other_data" in new_data:
-            other_data_dict = new_data["other_data"]
-            if "follow_up_actions" in other_data_dict:
-                follow_up_actions = other_data_dict["follow_up_actions"]
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
-                )
-
-        if "tool_data" in new_data:
-            for tool_entry in new_data["tool_data"]:
-                tool_data["tool_data"].append(tool_entry)
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
-                )
-
-        # Capture tool_output events for merging before save
-        # AND stream to frontend for real-time UI updates
-        if "tool_output" in new_data:
-            output_data = new_data["tool_output"]
-            tool_call_id = output_data.get("tool_call_id")
-            output = output_data.get("output")
-            if tool_call_id and output:
-                tool_outputs[tool_call_id] = output
-            await stream_manager.publish_chunk(
-                stream_id,
-                f"data: {json.dumps({'tool_output': output_data})}\n\n",
-            )
-
-        if chunk_json and "todo_progress" in chunk_json:
-            await stream_manager.publish_chunk(
-                stream_id,
-                f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
-            )
-
-        response_text = _extract_response_text(chunk)
-        if response_text or new_data:
-            await stream_manager.update_progress(
-                stream_id,
-                message_chunk=response_text,
-                tool_data=new_data,
-            )
-        return follow_up_actions, True
-
-    # No tool data — pass through as-is
-    await stream_manager.publish_chunk(stream_id, chunk)
-    response_text = _extract_response_text(chunk)
-    if response_text:
-        await stream_manager.update_progress(
-            stream_id,
-            message_chunk=response_text,
-            tool_data=None,
-        )
-    return follow_up_actions, True
+    return await process_data_chunk(
+        stream_id, chunk, tool_data, tool_outputs, todo_progress_accumulated, follow_up_actions
+    )
 
 
 def _aggregate_usage_metadata(
@@ -438,8 +363,10 @@ async def _run_chat_stream(
             )
             if notifier_message:
                 complete_message = notifier_message
-        elif not is_cancelled:
-            # Give a brief window for the background task to push to queue
+        elif not is_cancelled and await redis_cache.get(
+            f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+        ):
+            # Executor was dispatched but hasn't pushed anything yet — wait briefly
             try:
                 item = await asyncio.wait_for(comms_inbox.get(), timeout=0.5)
                 if item is not None:
@@ -459,7 +386,7 @@ async def _run_chat_stream(
                     if notifier_message:
                         complete_message = notifier_message
             except asyncio.TimeoutError:
-                pass  # No executor used — continue normally
+                pass  # Executor dispatched but hasn't responded yet — continue normally
         # ── End background executor phase ─────────────────────────────────
 
         # Await description task if still pending
@@ -556,18 +483,6 @@ async def _initialize_new_conversation(
     return f"data: {json.dumps(init_data)}\n\n"
 
 
-def _extract_response_text(chunk: str) -> str:
-    """Extract response text from a data chunk."""
-    try:
-        if chunk.startswith("data: "):
-            chunk = chunk[6:]
-        data = json.loads(chunk)
-        return data.get("response", "")
-    except (json.JSONDecodeError, KeyError):
-        pass
-    return ""
-
-
 async def _save_conversation_async(
     body: MessageRequestWithHistory,
     user: dict,
@@ -639,74 +554,6 @@ async def _save_conversation_async(
         ),
         user=user,
     )
-
-
-def extract_tool_data(json_str: str) -> Dict[str, Any]:
-    """
-    Parse and extract structured tool output from an agent's JSON response chunk.
-
-    Converts individual tool fields (e.g., calendar_options, search_results, etc.)
-    into unified ToolDataEntry array format for consistent frontend handling.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing:
-            - "tool_data": Array of ToolDataEntry objects (if any tool data found)
-            - "other_data": Dict with non-tool fields like follow_up_actions
-
-    Notes:
-        - This function converts legacy individual tool fields into the unified tool_data array structure
-        - If the JSON is malformed or does not match known tool structures, an empty dict is returned
-        - This function is tolerant to missing keys and safe for runtime use in an async stream
-    """
-    try:
-        data = json.loads(json_str)
-        timestamp = datetime.now(timezone.utc).isoformat()
-
-        # Step 1: Extract non-tool data (e.g., follow_up_actions)
-        other_data: Dict[str, Any] = {}
-        if data.get("follow_up_actions") is not None:
-            other_data["follow_up_actions"] = data["follow_up_actions"]
-
-        # Step 2: Extract tool_data from one of two sources (in priority order)
-        tool_data_entries: List[ToolDataEntry] = []
-
-        # Source A: Already in unified format (from backend tool_data emission)
-        if "tool_data" in data:
-            # Single entry or list
-            td = data["tool_data"]
-            if isinstance(td, list):
-                tool_data_entries = td
-            else:
-                tool_data_entries = [td]
-
-        # Source B: Legacy individual tool fields
-        else:
-            for field_name in tool_fields:
-                if data.get(field_name) is not None:
-                    tool_data_entries.append(
-                        {
-                            "tool_name": field_name,
-                            "data": data[field_name],
-                            "timestamp": timestamp,
-                        }
-                    )
-
-        # Step 3: Build result from collected data
-        result: Dict[str, Any] = {}
-
-        if tool_data_entries:
-            result["tool_data"] = tool_data_entries
-        if other_data:
-            result["other_data"] = other_data
-
-        # Step 4: Extract tool_output events (for merging into tool_data before save)
-        if "tool_output" in data:
-            result["tool_output"] = data["tool_output"]
-
-        return result
-
-    except json.JSONDecodeError:
-        return {}
 
 
 async def initialize_conversation(

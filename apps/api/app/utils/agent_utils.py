@@ -225,8 +225,8 @@ def process_custom_event_for_tools(payload) -> dict:
         extraction fails or no data is available
     """
     try:
-        # Import inside function to avoid circular imports
-        from app.services.chat_service import extract_tool_data
+        # Inline import avoids the stream_utils → agent_utils → stream_utils circular dep
+        from app.utils.stream_utils import extract_tool_data
 
         serialized = json.dumps(payload) if payload else "{}"
         new_data = extract_tool_data(serialized)

@@ -10,24 +10,24 @@ key handles cross-process safety for multi-worker deployments.
 """
 
 import asyncio
-from typing import Optional
+from typing import Any, Optional
 
 # stream_id → asyncio.Queue
-_comms_inboxes: dict[str, asyncio.Queue] = {}
-_executor_inboxes: dict[str, asyncio.Queue] = {}
+_comms_inboxes: dict[str, asyncio.Queue[Any]] = {}
+_executor_inboxes: dict[str, asyncio.Queue[Any]] = {}
 
 
 # ── Comms Inbox (executor pushes, comms notifier reads) ─────────────
 
 
-def register_comms_inbox(stream_id: str) -> asyncio.Queue:
+def register_comms_inbox(stream_id: str) -> asyncio.Queue[Any]:
     """Create and register a comms inbox queue for this stream."""
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue[Any] = asyncio.Queue()
     _comms_inboxes[stream_id] = queue
     return queue
 
 
-def get_comms_inbox(stream_id: str) -> Optional[asyncio.Queue]:
+def get_comms_inbox(stream_id: str) -> Optional[asyncio.Queue[Any]]:
     """Return the comms inbox for a stream, or None."""
     return _comms_inboxes.get(stream_id)
 
@@ -40,14 +40,14 @@ def deregister_comms_inbox(stream_id: str) -> None:
 # ── Executor Inbox (subagents push, executor pre_model_hook reads) ──
 
 
-def register_executor_inbox(stream_id: str) -> asyncio.Queue:
+def register_executor_inbox(stream_id: str) -> asyncio.Queue[Any]:
     """Create and register an executor inbox queue for this stream."""
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue[Any] = asyncio.Queue()
     _executor_inboxes[stream_id] = queue
     return queue
 
 
-def get_executor_inbox(stream_id: str) -> Optional[asyncio.Queue]:
+def get_executor_inbox(stream_id: str) -> Optional[asyncio.Queue[Any]]:
     """Return the executor inbox for a stream, or None."""
     return _executor_inboxes.get(stream_id)
 

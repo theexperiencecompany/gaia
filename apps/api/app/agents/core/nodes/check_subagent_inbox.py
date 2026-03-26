@@ -40,8 +40,6 @@ async def check_subagent_inbox(
     while True:
         try:
             item = queue.get_nowait()
-            if item is None:
-                break
             msg_type = item.get("type", "subagent_update")
             agent = item.get("agent", "subagent")
             message = item.get("message", "")

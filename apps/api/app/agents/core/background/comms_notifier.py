@@ -17,7 +17,7 @@ Message types:
 import asyncio
 import json
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 
@@ -26,6 +26,7 @@ from shared.py.wide_events import log
 from app.agents.core.graph_manager import GraphManager
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import build_agent_config, execute_graph_streaming
+from app.utils.stream_utils import process_data_chunk
 
 # Map message type to prefix the comms agent sees
 _TYPE_PREFIX = {
@@ -36,15 +37,15 @@ _TYPE_PREFIX = {
 
 
 async def run_comms_notifier(
-    comms_inbox: asyncio.Queue,
+    comms_inbox: asyncio.Queue[Any],
     conversation_id: str,
-    user: dict,
+    user: dict[str, Any],
     user_time: datetime,
     stream_id: str,
-    tool_data: Dict[str, Any],
-    tool_outputs: Dict[str, str],
-    todo_progress_accumulated: Dict[str, Any],
-    follow_up_actions: List[str],
+    tool_data: dict[str, Any],
+    tool_outputs: dict[str, str],
+    todo_progress_accumulated: dict[str, Any],
+    follow_up_actions: list[str],
 ) -> str:
     """Read comms inbox and invoke comms_graph for each executor message.
 
@@ -65,8 +66,6 @@ async def run_comms_notifier(
     Returns:
         The complete_message from the last comms graph invocation.
     """
-    from app.services.chat_service import _process_data_chunk
-
     complete_message = ""
 
     graph = await GraphManager.get_graph("comms_agent")
@@ -75,7 +74,13 @@ async def run_comms_notifier(
         return complete_message
 
     while True:
-        item = await comms_inbox.get()
+        try:
+            item = await asyncio.wait_for(comms_inbox.get(), timeout=300.0)
+        except asyncio.TimeoutError:
+            log.warning(
+                f"run_comms_notifier: timed out waiting for inbox item on stream {stream_id}"
+            )
+            break
 
         # Sentinel: executor done, exit loop
         if item is None:
@@ -124,7 +129,7 @@ async def run_comms_notifier(
                 # Process data chunks (tool_data, tool_output, etc.)
                 if chunk.startswith("data: "):
                     try:
-                        follow_up_actions, _ = await _process_data_chunk(
+                        follow_up_actions, _ = await process_data_chunk(
                             stream_id,
                             chunk,
                             tool_data,

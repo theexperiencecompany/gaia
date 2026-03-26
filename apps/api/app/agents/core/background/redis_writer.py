@@ -17,6 +17,9 @@ from shared.py.wide_events import log
 
 from app.core.stream_manager import stream_manager
 
+# Prevent GC of in-flight publish tasks (asyncio.create_task is weakly referenced)
+_publish_tasks: set[asyncio.Task[None]] = set()
+
 
 def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]:
     """Return a sync callable that publishes tool events directly to Redis.
@@ -28,7 +31,9 @@ def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]
     def writer(data: dict[str, Any]) -> None:
         chunk = f"data: {json.dumps(data)}\n\n"
         try:
-            asyncio.create_task(stream_manager.publish_chunk(stream_id, chunk))
+            task = asyncio.create_task(stream_manager.publish_chunk(stream_id, chunk))
+            _publish_tasks.add(task)
+            task.add_done_callback(_publish_tasks.discard)
         except RuntimeError:
             log.error(f"redis_writer: no event loop for stream {stream_id}")
 

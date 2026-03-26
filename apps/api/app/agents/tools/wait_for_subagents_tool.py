@@ -9,7 +9,7 @@ formulate its final answer without needing a separate hook invocation.
 """
 
 import asyncio
-from typing import Annotated
+from typing import Annotated, Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -57,10 +57,10 @@ async def wait_for_subagents(
     )
 
     results: list[str] = []
-    deadline = asyncio.get_event_loop().time() + timeout
+    deadline = asyncio.get_running_loop().time() + timeout
 
     while True:
-        remaining = deadline - asyncio.get_event_loop().time()
+        remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             log.warning(f"wait_for_subagents: timed out after {timeout}s")
             break
@@ -100,7 +100,7 @@ async def wait_for_subagents(
     return "\n\n---\n\n".join(results)
 
 
-def _drain_remaining(queue: asyncio.Queue, results: list[str]) -> None:
+def _drain_remaining(queue: asyncio.Queue[Any], results: list[str]) -> None:
     """Non-blocking drain of any remaining items already in the queue."""
     while True:
         try:
