@@ -12,14 +12,15 @@ import {
   PlusSignIcon,
   Tag01Icon,
 } from "@icons";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import { priorityTextColors } from "@/features/todo/components/TodoItem";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
-import { cn } from "@/lib";
+import { usePathname } from "@/i18n/navigation";
+import { cn } from "@/lib/utils";
 import { Priority } from "@/types/features/todoTypes";
 import { accordionItemStyles } from "../constants";
 
@@ -69,11 +70,7 @@ function SidebarSection({
                 <span className="ml-auto text-xs">{item.count}</span>
               )
             }
-            className={`justify-start px-2 text-start text-sm ${
-              activeItem === item.href
-                ? "bg-zinc-800 text-zinc-300"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
+            className={`justify-start px-2 text-start text-sm ${activeItem === item.href ? "bg-zinc-800 text-zinc-300" : "text-zinc-500 hover:text-zinc-300"}`}
             variant="light"
             radius="sm"
             size="sm"

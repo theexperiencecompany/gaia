@@ -141,7 +141,7 @@ class MemoryService:
             return None
 
         # Handle async mode response (PENDING status)
-        if result.get("status") == "PENDING" or is_async:
+        if result.get("status") == "PENDING" or (is_async and result.get("event_id")):
             event_id = result.get("event_id")
             message = result.get("message", "Memory processing queued")
 

@@ -46,7 +46,9 @@ async def create_subscription_endpoint(
         user={"id": user_id},
         payment={
             "operation": "create_checkout",
-            "plan_type": str(subscription_data.product_id) if subscription_data.product_id else None,
+            "plan_type": str(subscription_data.product_id)
+            if subscription_data.product_id
+            else None,
         },
     )
     return await payment_service.create_subscription(

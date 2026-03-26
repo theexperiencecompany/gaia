@@ -1,0 +1,25 @@
+{
+  "$schema": "https://lingo.dev/schema/i18n.json",
+  "version": "1.10",
+  "locale": {
+    "source": "en",
+    "targets": ["es", "fr", "de", "ja", "ko", "pt-BR"]
+  },
+  "provider": {
+    "id": "google",
+    "model": "gemini-2.5-flash-lite",
+    "prompt": "Translate from {source} to {target}. Keep brand names like GAIA, HeyGAIA, LangGraph, ChromaDB, and product names (Gmail, Slack, Notion, etc.) untranslated. Keep technical terms and URLs unchanged."
+  },
+  "buckets": {
+    "json": {
+      "include": [
+        "src/messages/[locale].json",
+        "src/features/alternatives/i18n/[locale].json",
+        "src/features/comparisons/i18n/[locale].json",
+        "src/features/glossary/i18n/[locale].json",
+        "src/features/integrations/i18n/[locale].json",
+        "src/features/personas/i18n/[locale].json"
+      ]
+    }
+  }
+}

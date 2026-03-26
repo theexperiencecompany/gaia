@@ -188,6 +188,7 @@ async def search_emails(
 ):
     """
     Search Gmail messages with advanced query parameters.
+    Note: max_results is capped at 20 to avoid Composio payload size limits.
 
     - **query**: Free text search query
     - **sender**: Filter by sender email
@@ -209,6 +210,9 @@ async def search_emails(
         user_id = current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
+
+        # Cap max_results to avoid Composio 413 payload-too-large errors
+        max_results = min(max_results, 20)
 
         # Build Gmail query string from parameters
         query_parts = []
@@ -1072,7 +1076,9 @@ async def list_drafts_route(
 
         log.set(
             operation="list_drafts",
-            result_count=len(drafts.get("drafts", [])) if isinstance(drafts, dict) else 0,
+            result_count=len(drafts.get("drafts", []))
+            if isinstance(drafts, dict)
+            else 0,
             outcome="success",
         )
         return drafts
@@ -1324,7 +1330,9 @@ async def get_bulk_email_importance_summaries(
             raise HTTPException(status_code=401, detail="User ID not found")
 
         # Use service function to get bulk email summaries
-        result = await get_bulk_importance_summaries_service(user_id, request.message_ids)
+        result = await get_bulk_importance_summaries_service(
+            user_id, request.message_ids
+        )
         log.set(
             operation="get_bulk_importance_summaries",
             result_count=len(request.message_ids),

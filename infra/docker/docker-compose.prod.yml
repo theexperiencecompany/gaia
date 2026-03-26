@@ -108,6 +108,12 @@ services:
   redis:
     image: redis:8-alpine
     container_name: redis
+    command: >
+      redis-server
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --appendonly yes
     ports:
       - "6379:6379"
     restart: always
@@ -128,8 +134,10 @@ services:
     ports:
       - "5672:5672" # AMQP protocol
       - "15672:15672" # Management UI
+      - "15692:15692" # Prometheus metrics
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
     restart: always
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
@@ -151,13 +159,7 @@ services:
       - PYTHONPATH=/app/apps/api
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
-    command:
-      [
-        "python",
-        "-m",
-        "arq",
-        "app.worker.WorkerSettings",
-      ]
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     depends_on:
       redis:
@@ -165,7 +167,13 @@ services:
     networks:
       - gaia_network
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('redis', 6379), timeout=5)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; socket.create_connection(('redis', 6379), timeout=5)",
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -246,7 +254,7 @@ services:
   # ---------------------------------------------------------------------------
 
   postgres_exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
+    image: prometheuscommunity/postgres-exporter:v0.17.0
     container_name: postgres_exporter
     environment:
       DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
@@ -269,11 +277,58 @@ services:
     networks:
       - gaia_network
 
+  # Container metrics (CPU, memory, network, disk I/O per container)
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=30s"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.25"
+
+  # Host machine metrics (CPU, memory, disk, network)
+  node_exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node_exporter
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # HTTP probe for services without native Prometheus metrics (e.g. ChromaDB)
+  blackbox_exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox_exporter
+    volumes:
+      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: prometheus
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./observability/metrics_token:/etc/prometheus/metrics_token:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -296,11 +351,17 @@ services:
       - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "127.0.0.1:${LOKI_HOST_PORT:-3100}:3100"
     restart: unless-stopped
     networks:
       - gaia_network
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -310,12 +371,22 @@ services:
   promtail:
     image: grafana/promtail:3.3.2
     container_name: promtail
+    # Run as root so Promtail can read the Docker socket (owned by root:docker).
+    # Promtail 3.x defaults to uid 10001 which lacks socket access.
+    user: root
+    # Disable Docker logging for Promtail itself — it collects other containers'
+    # logs via the Docker socket, so its own stdout should never be captured.
+    # Without this, a JSON parse error → debug log → Docker capture feedback
+    # loop can fill the disk (35 GB in one incident).
+    logging:
+      driver: "none"
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
-      # In prod the API always runs in Docker, so this mount is a no-op safety fallback
-      - ../../apps/api/logs:/var/log/gaia-api:ro
-    command: -config.file=/etc/promtail/config.yaml
+      - promtail_positions:/tmp
+    command: -config.file=/etc/promtail/config.yaml -config.expand-env=true
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}
     restart: unless-stopped
     depends_on:
       loki:
@@ -359,6 +430,7 @@ volumes:
   loki_data:
   grafana_data:
   prometheus_data:
+  promtail_positions:
 
 networks:
   gaia_network:

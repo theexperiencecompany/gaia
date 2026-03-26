@@ -1,0 +1,400 @@
+---
+title: "Testing"
+description: "How to run, write, and understand the GAIA test suite"
+icon: "flask"
+---
+
+## Overview
+
+GAIA has two test suites:
+
+- **API** (`apps/api/tests/`) — pytest + pytest-asyncio, ~918 tests, runs in ~15 seconds
+- **Bots** (`apps/bots/__tests__/`) — vitest, covers Discord and Slack adapters
+
+All tests run without external services — databases, Redis, and LLM APIs are mocked at their boundaries.
+
+---
+
+## Running Tests
+
+### With mise (recommended)
+
+<CodeGroup>
+
+```bash All tests
+mise test
+```
+
+```bash API tests only
+mise test:api
+```
+
+```bash API unit tests only
+mise test:api:unit
+```
+
+```bash API integration tests only
+mise test:api:integration
+```
+
+```bash API e2e tests (requires live services)
+mise test:api:e2e
+```
+
+```bash API with coverage report
+mise test:api:coverage
+```
+
+```bash Bot tests only
+mise test:bots
+```
+
+```bash CLI tests only
+mise test:cli
+```
+
+```bash Affected tests (based on git diff)
+mise test:affected
+```
+
+</CodeGroup>
+
+### Without mise
+
+<CodeGroup>
+
+```bash API — standard (unit + integration)
+cd apps/api
+uv run pytest
+```
+
+```bash API — with coverage report
+cd apps/api
+uv run pytest --cov=app --cov-report=term-missing
+```
+
+```bash API — unit tests only
+cd apps/api
+uv run pytest -m unit
+```
+
+```bash API — integration tests only
+cd apps/api
+uv run pytest -m integration
+```
+
+```bash API — e2e tests (requires live services)
+cd apps/api
+uv run pytest -m e2e
+```
+
+```bash API — composio tests (requires credentials)
+cd apps/api
+uv run pytest -m composio
+```
+
+```bash Bots
+cd apps/bots
+pnpm vitest run
+```
+
+</CodeGroup>
+
+<Tip>
+By default, `e2e` and `composio` tests are **deselected**. They require live external services and real API credentials. Run the default command for the full fast suite.
+</Tip>
+
+---
+
+## Test Layout
+
+### API
+
+```
+apps/api/tests/
+├── conftest.py                   # Root fixtures: test app, auth, fake users
+├── factories.py                  # Data factories for common models
+├── helpers.py                    # Shared test utilities
+│
+├── api/                          # HTTP endpoint tests (route + auth + response)
+│   ├── test_conversations.py
+│   ├── test_health.py
+│   ├── test_integrations.py
+│   ├── test_payments.py
+│   ├── test_todos.py
+│   └── test_user.py
+│
+├── unit/                         # Pure unit tests — real logic, mocked I/O
+│   ├── agents/                   # Agent routing, state, graph manager
+│   ├── middleware/               # Rate limiter, executor
+│   ├── models/                   # Schema validation
+│   ├── services/                 # Chat, conversation, mail, memory, user, workflow
+│   ├── skills/                   # Skills registry
+│   ├── tools/                    # Tool registry
+│   ├── utils/                    # Command parsing, markdown frontmatter
+│   └── workers/                  # ARQ background tasks
+│
+├── integration/                  # Integration tests — compiled graphs, real app
+│   ├── api/                      # Full FastAPI lifecycle with mocked services
+│   │   ├── test_chat_endpoints.py
+│   │   ├── test_conversation_endpoints.py
+│   │   ├── test_health_endpoints.py
+│   │   ├── test_integration_endpoints.py
+│   │   ├── test_mcp_endpoints.py
+│   │   └── test_tools_endpoints.py
+│   ├── agents/                   # Compiled LangGraph agent tests
+│   ├── db/                       # ChromaDB, Redis, lazy loader
+│   └── mcp/                      # MCP connection and token management
+│
+├── e2e/                          # End-to-end flows (deselected by default)
+│   ├── test_create_todo_flow.py
+│   ├── test_multi_tool_scenario.py
+│   ├── test_send_email_flow.py
+│   └── test_workflow_execution.py
+│
+├── composio/                     # Live Composio integration tests
+│   ├── test_calendar.py
+│   ├── test_gmail.py
+│   └── ...
+│
+├── services/                     # Additional service-layer tests
+│   ├── test_conversation_service.py
+│   ├── test_mcp_tools_store.py
+│   └── test_user_service.py
+│
+└── agents/                       # Tool infrastructure runtime
+    └── test_tool_infra_runtime.py
+```
+
+### Bots
+
+```
+apps/bots/__tests__/
+├── discord/
+│   ├── adapter.test.ts           # Discord message adapter
+│   └── embed.test.ts             # Discord embed formatting
+├── shared/
+│   ├── adapter/
+│   │   └── rich-renderer.test.ts # Rich text rendering
+│   └── utils/
+│       ├── commands.test.ts      # Command parsing
+│       ├── formatters.test.ts    # Message formatters
+│       └── text-utils.test.ts    # Text utilities
+└── slack/
+    ├── adapter.test.ts           # Slack message adapter
+    └── mention.test.ts           # Mention handling
+```
+
+---
+
+## Test Markers
+
+| Marker | What it covers | External deps? |
+|--------|---------------|----------------|
+| `unit` | Individual functions and classes with mocked I/O | None |
+| `integration` | Real FastAPI app lifecycle or compiled graphs, mocked services | None |
+| `e2e` | Full agent runs with near-real services | Redis, MongoDB |
+| `composio` | Live Composio API calls | Composio credentials |
+
+The default `pytest.ini` config runs everything **except** `e2e` and `composio`.
+
+---
+
+## What Gets Tested
+
+<AccordionGroup>
+
+<Accordion icon="route" title="API Endpoints (auth, routing, response contracts)">
+Tests in `tests/api/` and `tests/integration/api/` run the **real FastAPI app** via `httpx.AsyncClient`. They verify:
+
+- Correct HTTP status codes (200, 401, 403, 422)
+- Auth enforcement on every protected route
+- Response body shape and required fields
+- SSE content type (`text/event-stream`) and headers (`x-stream-id`, `cache-control`)
+- Error paths: Redis unavailable → `[STREAM_ERROR]` in SSE body
+- Pagination parameter validation
+
+Services are mocked at the boundary (`patch("app.api.v1.endpoints.conversations.create_conversation_service")`), so the routing and response logic is exercised without hitting a database.
+</Accordion>
+
+<Accordion icon="gear" title="Service Layer (core business logic)">
+Tests in `tests/unit/services/` import production functions directly and test real logic with mocked databases and LLM clients. Covered services:
+
+- **chat_service**: `run_chat_stream_background`, `_initialize_new_conversation`, `_save_conversation_async`, `extract_tool_data`, `_extract_response_text`
+- **conversation_service**: CRUD operations, pagination, read/unread state
+- **user_service**: User creation, lookup, preference management
+- **memory_service**: Memory extraction and persistence
+- **mail_service**: Email parsing, send logic
+- **workflow_service**: Workflow creation and trigger evaluation
+</Accordion>
+
+<Accordion icon="robot" title="Agent Routing and Graph Construction">
+Tests in `tests/unit/agents/` and `tests/integration/agents/` call the real `create_agent` factory and `build_comms_graph` / `build_executor_graph` builders. Verified behaviors:
+
+- Conditional edge `"agent"` is registered with routing targets
+- `"tools"` is always reachable from the agent node
+- `"select_tools"` appears only when `retrieve_tools` is enabled
+- `"end_graph_hooks"` appears only when hooks are provided
+- Plain text response → no ToolMessages (routes to END / end_graph_hooks)
+- Tool call response → ToolMessage produced with correct `tool_call_id`
+- Multiple tool calls → all produce ToolMessages
+- State accumulates across turns via InMemorySaver checkpointing
+- `add_memory` and `search_memory` are wired into the comms agent tool registry
+</Accordion>
+
+<Accordion icon="database" title="Workers and Background Tasks">
+Tests in `tests/unit/workers/` cover the ARQ background task functions:
+
+- `cleanup_tasks`: old conversation pruning, orphan cleanup
+- `memory_tasks`: background memory extraction scheduling
+- `reminder_tasks`: reminder triggering and delivery
+- `user_tasks`: user lifecycle operations
+- `workflow_tasks`: cron trigger evaluation
+</Accordion>
+
+<Accordion icon="plug" title="MCP and Tool Registry">
+Tests cover the MCP tool store, connection flows, and token management:
+
+- `ChromaStore` indexing with namespace metadata
+- Redis cache hit/miss paths
+- MCP server connection lifecycle
+- Token refresh and expiry handling
+</Accordion>
+
+<Accordion icon="message-bot" title="Bot Adapters (Discord and Slack)">
+Tests in `apps/bots/__tests__/` use **vitest** and run against production adapter code. They verify:
+
+- Discord message adapter formatting and embed rendering
+- Slack message adapter formatting and mention handling
+- Shared rich-text renderer output
+- Command parsing utilities
+- Text formatting helpers
+
+Run with `mise test:bots` or `cd apps/bots && pnpm vitest run`.
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Test Infrastructure
+
+### Root conftest.py
+
+The root `conftest.py` (at `tests/conftest.py`) sets up the test environment before any app modules load:
+
+```python
+# Prevents connections to real external services
+os.environ.setdefault("MONGO_DB", "mongodb://localhost:27017/gaia_test?...")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+
+# Patches that persist across all tests
+_patches = [
+    patch("app.config.secrets.inject_infisical_secrets", return_value=None),
+    patch("app.db.mongodb.mongodb.MongoDB.ping", return_value=None),
+    patch("app.decorators.rate_limiting.tiered_limiter.check_and_increment", ...),
+]
+```
+
+The test app is created once per session with a no-op lifespan (`_noop_lifespan`) so database connections are never attempted. Auth is bypassed via `app.dependency_overrides[get_current_user] = lambda: FAKE_USER`.
+
+### Key fixtures
+
+| Fixture | Scope | What it provides |
+|---------|-------|-----------------|
+| `test_app` | session | FastAPI app with no-op lifespan and auth override |
+| `client` | function | `AsyncClient` bound to the test app, authenticated |
+| `unauthed_client` | function | `AsyncClient` without auth override (gets 401) |
+| `fake_user` | function | Dict with test user data |
+| `mock_mongodb` | function | `AsyncMock()` for MongoDB operations |
+
+---
+
+## Writing New Tests
+
+### The Golden Rule
+
+> If you deleted the production function this test targets, would the test still fail?
+
+If the answer is "no", the test is worthless. Always import from `app.` directly.
+
+```python
+# WRONG — tests nothing about GAIA
+from langgraph.graph import StateGraph
+graph = StateGraph(SimpleState)  # your own graph, not GAIA's
+
+# RIGHT — tests GAIA's graph factory
+from app.override.langgraph_bigtool.create_agent import create_agent
+builder = create_agent(llm=mock_llm, tool_registry=registry, ...)
+```
+
+### Mock at the boundary
+
+Mock external I/O (databases, HTTP, Redis), never the logic under test.
+
+```python
+# WRONG — mocks the function being tested
+with patch("app.services.chat_service.run_chat_stream_background") as mock:
+    mock.return_value = "result"
+    result = run_chat_stream_background(...)  # calls the mock, tests nothing
+
+# RIGHT — mocks the LLM dependency, tests real service logic
+with patch("app.services.chat_service.agent.ainvoke") as mock_agent:
+    mock_agent.return_value = {"messages": [AIMessage(content="hello")]}
+    result = await run_chat_stream_background(body, user, stream_id)
+    assert result["status"] == "completed"
+```
+
+### Assert on behavior, not mock calls
+
+```python
+# WRONG — only proves your mock setup works
+mock_service.create.assert_called_once_with(data)
+
+# RIGHT — proves the endpoint returns what it should
+resp = await client.post("/api/v1/conversations", json=data)
+assert resp.status_code == 200
+assert resp.json()["id"] == data["conversation_id"]
+```
+
+### Cover error paths
+
+Production bugs cluster in error handling. Always test what happens when a dependency fails.
+
+```python
+async def test_handles_redis_unavailable(self, test_client):
+    """When Redis is down, SSE body should contain [STREAM_ERROR]."""
+    with patch("app.api.v1.endpoints.chat.redis_cache") as mock_redis:
+        mock_redis.redis = None  # simulate Redis down
+        response = await test_client.post("/api/v1/chat-stream", json=body)
+
+    assert response.status_code == 200
+    assert "[STREAM_ERROR]" in response.text
+```
+
+---
+
+## Coverage Configuration
+
+Coverage is configured in `pytest.ini`:
+
+```ini
+[coverage:run]
+source = app
+omit =
+    app/config/*
+    app/patches.py
+    app/static/*
+
+[coverage:report]
+show_missing = true
+fail_under = 3
+```
+
+The `fail_under = 3` threshold is intentionally low. Run coverage locally to track actual coverage:
+
+```bash
+cd apps/api
+uv run pytest --cov=app --cov-report=html
+open htmlcov/index.html
+```

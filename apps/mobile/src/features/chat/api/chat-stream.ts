@@ -1,5 +1,10 @@
 import { createSSEConnection, type SSEEvent } from "@/lib/sse-client";
-import type { ApiFileData, Message } from "./chat-api";
+import type {
+  ApiFileData,
+  ImageData,
+  Message,
+  ReplyToMessageData,
+} from "./chat-api";
 
 export interface StreamCallbacks {
   onChunk: (text: string) => void;
@@ -11,6 +16,8 @@ export interface StreamCallbacks {
   ) => void;
   onProgress?: (message: string, toolName?: string) => void;
   onFollowUpActions?: (actions: string[]) => void;
+  onImageGenerationStarted?: (prompt: string) => void;
+  onImageData?: (data: ImageData) => void;
   onDone: () => void;
   onError?: (error: Error) => void;
 }
@@ -23,6 +30,8 @@ export interface ChatStreamRequest {
   fileData?: ApiFileData[];
   selectedTool?: string | null;
   toolCategory?: string | null;
+  workflowId?: string | null;
+  replyToMessage?: ReplyToMessageData | null;
 }
 
 interface StreamEventData {
@@ -37,6 +46,13 @@ interface StreamEventData {
   user_message_id?: string;
   main_response_complete?: boolean;
   follow_up_actions?: string[];
+  status?: string;
+  prompt?: string;
+  image_data?: {
+    url: string;
+    prompt: string;
+    improvedPrompt?: string;
+  };
   progress?: {
     message: string;
     tool_name?: string;
@@ -68,6 +84,8 @@ export async function fetchChatStream(
     fileData = [],
     selectedTool = null,
     toolCategory = null,
+    workflowId = null,
+    replyToMessage = null,
   } = request;
 
   const formattedMessages = messages
@@ -85,6 +103,8 @@ export async function fetchChatStream(
     fileData,
     selectedTool,
     toolCategory,
+    workflow_id: workflowId || null,
+    replyToMessage: replyToMessage || null,
     messages: formattedMessages,
   };
 
@@ -132,6 +152,15 @@ export async function fetchChatStream(
 
         if (parsed.follow_up_actions && parsed.follow_up_actions.length > 0) {
           callbacks.onFollowUpActions?.(parsed.follow_up_actions);
+        }
+
+        if (parsed.image_data?.url) {
+          callbacks.onImageData?.(parsed.image_data);
+        }
+
+        if (parsed.status === "generating_image") {
+          callbacks.onProgress?.("Generating image...");
+          callbacks.onImageGenerationStarted?.(parsed.prompt ?? "");
         }
       },
       onError: (error) => {

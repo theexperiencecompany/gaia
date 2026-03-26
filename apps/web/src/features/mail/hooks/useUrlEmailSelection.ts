@@ -1,7 +1,8 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
+import { usePathname } from "@/i18n/navigation";
 
 /**
  * Custom hook for managing email selection via URL query parameters

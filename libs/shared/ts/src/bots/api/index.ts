@@ -2,18 +2,18 @@ import type { Readable } from "node:stream";
 import axios, { type AxiosInstance } from "axios";
 import type {
   AuthStatus,
+  BotConversation,
+  BotConversationListResponse,
+  BotCreateTodoRequest,
+  BotTodo,
+  BotTodoListResponse,
   BotUserContext,
+  BotWorkflow,
+  BotWorkflowExecutionRequest,
+  BotWorkflowExecutionResponse,
+  BotWorkflowListResponse,
   ChatRequest,
-  Conversation,
-  ConversationListResponse,
-  CreateTodoRequest,
   SettingsResponse,
-  Todo,
-  TodoListResponse,
-  Workflow,
-  WorkflowExecutionRequest,
-  WorkflowExecutionResponse,
-  WorkflowListResponse,
 } from "../types";
 
 export class GaiaApiError extends Error {
@@ -204,7 +204,7 @@ export class GaiaClient {
         }
 
         // Wait before retrying (exponential backoff)
-        const delayMs = Math.min(1000 * Math.pow(2, attempt), 5000);
+        const delayMs = Math.min(1000 * 2 ** attempt, 5000);
         attemptedRetries++;
         console.log(
           `Retrying stream (attempt ${attemptedRetries}/${maxRetries}) after ${delayMs}ms...`,
@@ -264,12 +264,10 @@ export class GaiaClient {
       let buffer = "";
       let finished = false;
       let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
-      let lastActivity = Date.now();
       let receivedKeepalive = false;
 
       const resetInactivityTimer = (resolve: () => void) => {
         if (inactivityTimer) clearTimeout(inactivityTimer);
-        lastActivity = Date.now();
         inactivityTimer = setTimeout(async () => {
           if (!finished) {
             finished = true;
@@ -510,8 +508,6 @@ export class GaiaClient {
         userName: data.user_name ?? null,
         accountCreatedAt: data.account_created_at ?? null,
         profileImageUrl: data.profile_image_url ?? null,
-        selectedModelName: data.selected_model_name ?? null,
-        selectedModelIconUrl: data.selected_model_icon_url ?? null,
         connectedIntegrations:
           data.connected_integrations?.map(
             (i: { name: string; logo_url?: string; status: string }) => ({
@@ -528,9 +524,9 @@ export class GaiaClient {
    * Lists all workflows for the authenticated user.
    * Uses the regular /api/v1/workflows endpoint via bot middleware auth.
    */
-  async listWorkflows(ctx: BotUserContext): Promise<WorkflowListResponse> {
+  async listWorkflows(ctx: BotUserContext): Promise<BotWorkflowListResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.get<WorkflowListResponse>(
+      const { data } = await this.client.get<BotWorkflowListResponse>(
         "/api/v1/workflows",
         { headers: this.userHeaders(ctx) },
       );
@@ -548,9 +544,9 @@ export class GaiaClient {
       steps?: Record<string, unknown>[];
     },
     ctx: BotUserContext,
-  ): Promise<Workflow> {
+  ): Promise<BotWorkflow> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post<{ workflow: Workflow }>(
+      const { data } = await this.client.post<{ workflow: BotWorkflow }>(
         "/api/v1/workflows",
         request,
         { headers: this.userHeaders(ctx) },
@@ -565,9 +561,9 @@ export class GaiaClient {
   async getWorkflow(
     workflowId: string,
     ctx: BotUserContext,
-  ): Promise<Workflow> {
+  ): Promise<BotWorkflow> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.get<{ workflow: Workflow }>(
+      const { data } = await this.client.get<{ workflow: BotWorkflow }>(
         `/api/v1/workflows/${encodeURIComponent(workflowId)}`,
         { headers: this.userHeaders(ctx) },
       );
@@ -579,11 +575,11 @@ export class GaiaClient {
    * Executes a workflow.
    */
   async executeWorkflow(
-    request: WorkflowExecutionRequest,
+    request: BotWorkflowExecutionRequest,
     ctx: BotUserContext,
-  ): Promise<WorkflowExecutionResponse> {
+  ): Promise<BotWorkflowExecutionResponse> {
     return this.requestWithAuth(async () => {
-      const { data } = await this.client.post<WorkflowExecutionResponse>(
+      const { data } = await this.client.post<BotWorkflowExecutionResponse>(
         `/api/v1/workflows/${encodeURIComponent(request.workflow_id)}/execute`,
         { inputs: request.inputs },
         { headers: this.userHeaders(ctx) },
@@ -616,7 +612,7 @@ export class GaiaClient {
       completed?: boolean;
       project_id?: string;
     },
-  ): Promise<TodoListResponse> {
+  ): Promise<BotTodoListResponse> {
     return this.requestWithAuth(async () => {
       const queryParams = new URLSearchParams();
       if (params?.completed !== undefined) {
@@ -643,9 +639,9 @@ export class GaiaClient {
    * Creates a new todo.
    */
   async createTodo(
-    request: CreateTodoRequest,
+    request: BotCreateTodoRequest,
     ctx: BotUserContext,
-  ): Promise<Todo> {
+  ): Promise<BotTodo> {
     return this.requestWithAuth(async () => {
       const { data } = await this.client.post("/api/v1/todos", request, {
         headers: this.userHeaders(ctx),
@@ -657,7 +653,7 @@ export class GaiaClient {
   /**
    * Gets a specific todo by ID.
    */
-  async getTodo(todoId: string, ctx: BotUserContext): Promise<Todo> {
+  async getTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
     return this.requestWithAuth(async () => {
       const { data } = await this.client.get(
         `/api/v1/todos/${encodeURIComponent(todoId)}`,
@@ -674,9 +670,9 @@ export class GaiaClient {
    */
   async updateTodo(
     todoId: string,
-    updates: Partial<CreateTodoRequest>,
+    updates: Partial<BotCreateTodoRequest>,
     ctx: BotUserContext,
-  ): Promise<Todo> {
+  ): Promise<BotTodo> {
     return this.requestWithAuth(async () => {
       const { data } = await this.client.put(
         `/api/v1/todos/${encodeURIComponent(todoId)}`,
@@ -690,7 +686,7 @@ export class GaiaClient {
   /**
    * Marks a todo as complete.
    */
-  async completeTodo(todoId: string, ctx: BotUserContext): Promise<Todo> {
+  async completeTodo(todoId: string, ctx: BotUserContext): Promise<BotTodo> {
     return this.updateTodo(todoId, { completed: true }, ctx);
   }
 
@@ -715,7 +711,7 @@ export class GaiaClient {
       page?: number;
       limit?: number;
     },
-  ): Promise<ConversationListResponse> {
+  ): Promise<BotConversationListResponse> {
     return this.requestWithAuth(async () => {
       const queryParams = new URLSearchParams();
       queryParams.set("page", String(params?.page || 1));
@@ -745,7 +741,7 @@ export class GaiaClient {
   async getConversation(
     conversationId: string,
     ctx: BotUserContext,
-  ): Promise<Conversation> {
+  ): Promise<BotConversation> {
     return this.requestWithAuth(async () => {
       const { data } = await this.client.get(
         `/api/v1/conversations/${encodeURIComponent(conversationId)}`,
@@ -850,7 +846,7 @@ export class GaiaClient {
 /**
  * Maps a todo response from the regular API format to the bot-expected format.
  */
-function mapTodoResponse(data: Record<string, unknown>): Todo {
+function mapTodoResponse(data: Record<string, unknown>): BotTodo {
   return {
     id: (data.id as string) || "",
     title: (data.title as string) || "",
@@ -865,7 +861,9 @@ function mapTodoResponse(data: Record<string, unknown>): Todo {
 /**
  * Maps a conversation response from the regular API format to the bot-expected format.
  */
-function mapConversationResponse(data: Record<string, unknown>): Conversation {
+function mapConversationResponse(
+  data: Record<string, unknown>,
+): BotConversation {
   return {
     conversation_id:
       (data.conversation_id as string) || (data.id as string) || "",

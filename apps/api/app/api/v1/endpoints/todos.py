@@ -1,5 +1,6 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Annotated, List, Optional
 import uuid
 
 from bson import ObjectId
@@ -26,30 +27,35 @@ from app.models.todo_models import (
     TodoModel,
     TodoResponse,
     TodoSearchParams,
-    TodoStats,
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
 from app.services.todos.sync_service import sync_subtask_to_goal_completion
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.workflow.service import WorkflowService
+from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.utils import serialize_document
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 
 router = APIRouter()
 
 
 # Counts endpoint for efficient dashboard data
 @router.get("/todos/counts")
-async def get_todo_counts(user: dict = Depends(get_current_user)):
+async def get_todo_counts(
+    response: Response, user: Annotated[dict, Depends(get_current_user)]
+):
     """
     Get all todo counts for dashboard/sidebar in a single efficient call.
     Returns inbox count, today count, upcoming count, and completed count.
     """
+    response.headers["Cache-Control"] = "private, max-age=10"
     log.set(user={"id": user["user_id"]}, todo={"operation": "counts"})
     try:
-        # Use the stats calculation to get counts efficiently
-        stats: TodoStats = await TodoService._calculate_stats(user["user_id"])
+        cache_key = f"counts:{user['user_id']}"
+        cached = await get_cache(cache_key)
+        if cached:
+            return cached
 
         # Get today's date for filtering
         today = datetime.now(timezone.utc).date()
@@ -115,6 +121,10 @@ async def get_todo_counts(user: dict = Depends(get_current_user)):
                         },
                         {"$count": "count"},
                     ],
+                    "completed": [
+                        {"$match": {"completed": True}},
+                        {"$count": "count"},
+                    ],
                 }
             },
         ]
@@ -126,19 +136,41 @@ async def get_todo_counts(user: dict = Depends(get_current_user)):
         def safe_get_count(facet_result):
             return facet_result[0].get("count", 0) if facet_result else 0
 
-        return {
+        result = {
             "inbox": safe_get_count(facets.get("inbox", [])),
             "today": safe_get_count(facets.get("today", [])),
             "upcoming": safe_get_count(facets.get("upcoming", [])),
-            "completed": stats.completed,
+            "completed": safe_get_count(facets.get("completed", [])),
             "overdue": safe_get_count(facets.get("overdue", [])),
         }
+        await set_cache(cache_key, result, ttl=30)
+        return result
 
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve counts: {e}",
         )
+
+
+# Labels endpoint — dedicated aggregation for most-used labels
+@router.get("/todos/labels")
+async def get_todo_labels(
+    user: Annotated[dict, Depends(get_current_user)],
+    limit: int = 10,
+) -> list[dict]:
+    """Get most-used labels for the current user's todos."""
+    user_id = user["user_id"]
+    pipeline = [
+        {"$match": {"user_id": user_id, "completed": False}},
+        {"$unwind": "$labels"},
+        {"$group": {"_id": "$labels", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": limit},
+        {"$project": {"name": "$_id", "count": 1, "_id": 0}},
+    ]
+    result: list[dict] = await todos_collection.aggregate(pipeline).to_list(limit)
+    return result
 
 
 # Main Todo CRUD Endpoints
@@ -244,7 +276,12 @@ async def list_todos(
 
     try:
         result = await TodoService.list_todos(user["user_id"], params)
-        log.set(todo={"operation": "list", "result_count": len(result.todos) if hasattr(result, "todos") else 0})
+        log.set(
+            todo={
+                "operation": "list",
+                "result_count": len(result.todos) if hasattr(result, "todos") else 0,
+            }
+        )
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -263,7 +300,11 @@ async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)):
         user={"id": user["user_id"]},
         todo={
             "operation": "create",
-            "priority": todo.priority.value if todo.priority and hasattr(todo.priority, "value") else str(todo.priority) if todo.priority else None,
+            "priority": todo.priority.value
+            if todo.priority and hasattr(todo.priority, "value")
+            else str(todo.priority)
+            if todo.priority
+            else None,
             "has_due_date": todo.due_date is not None,
             "project_id": todo.project_id if hasattr(todo, "project_id") else None,
         },
@@ -305,7 +346,9 @@ async def update_todo(
         todo={
             "operation": "update",
             "id": todo_id,
-            "completion_toggled": updates.completed is not None if hasattr(updates, "completed") else False,
+            "completion_toggled": updates.completed is not None
+            if hasattr(updates, "completed")
+            else False,
         },
     )
     try:
@@ -350,7 +393,10 @@ async def generate_workflow(
     """
     from app.services.workflow.queue_service import WorkflowQueueService
 
-    log.set(user={"id": user["user_id"]}, todo={"operation": "generate_workflow", "id": todo_id})
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "generate_workflow", "id": todo_id},
+    )
     try:
         todo: TodoResponse = await TodoService.get_todo(todo_id, user["user_id"])
 
@@ -359,12 +405,28 @@ async def generate_workflow(
             existing_workflow = await WorkflowService.get_workflow(
                 todo.workflow_id, user["user_id"]
             )
-            if existing_workflow:
+            if (
+                existing_workflow
+                and existing_workflow.steps
+                and len(existing_workflow.steps) > 0
+            ):
                 return {
                     "status": "exists",
                     "workflow": existing_workflow,
                     "message": "Workflow already exists for this todo",
                 }
+            # Empty or failed workflow — delete it and allow regeneration
+            if existing_workflow and existing_workflow.id:
+                await WorkflowService.delete_workflow(
+                    existing_workflow.id, user["user_id"]
+                )
+            await todos_collection.update_one(
+                {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
+                {"$unset": {"workflow_id": ""}},
+            )
+
+        # Invalidate cached workflow status so next poll reflects generating state
+        await delete_cache(f"workflow_status:{user['user_id']}:{todo_id}")
 
         # Queue background generation - will send WebSocket event when complete
         success = await WorkflowQueueService.queue_todo_workflow_generation(
@@ -398,7 +460,9 @@ async def generate_workflow(
 
 
 @router.get("/todos/{todo_id}/workflow-status")
-async def get_workflow_status(todo_id: str, user: dict = Depends(get_current_user)):
+async def get_workflow_status(
+    todo_id: str, response: Response, user: Annotated[dict, Depends(get_current_user)]
+):
     """
     Get the standalone workflow for a todo.
     Returns the workflow if it exists, otherwise returns None.
@@ -406,22 +470,33 @@ async def get_workflow_status(todo_id: str, user: dict = Depends(get_current_use
     - Workflow generation is queued (Redis flag)
     - Workflow exists but has no steps yet
     """
-    log.set(user={"id": user["user_id"]}, todo={"operation": "get_workflow_status", "id": todo_id})
+    response.headers["Cache-Control"] = "private, max-age=15"
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "get_workflow_status", "id": todo_id},
+    )
     try:
         from app.services.workflow.queue_service import WorkflowQueueService
         from app.services.workflow.service import WorkflowService
 
-        # Verify todo exists and get workflow_id
-        todo: TodoResponse = await TodoService.get_todo(todo_id, user["user_id"])
+        wf_cache_key = f"workflow_status:{user['user_id']}:{todo_id}"
+        cached_wf = await get_cache(wf_cache_key)
+        if cached_wf:
+            return cached_wf
+
+        # Parallelize independent fetch + generating check
+        todo, is_generating = await asyncio.gather(
+            TodoService.get_todo(todo_id, user["user_id"]),
+            WorkflowQueueService.is_workflow_generating(todo_id),
+        )
 
         # Get standalone workflow if workflow_id exists
         workflow = None
-        is_generating = False
+        has_workflow = False
         workflow_status = "not_started"
 
         # Check if workflow generation is queued/pending (Redis flag)
-        if await WorkflowQueueService.is_workflow_generating(todo_id):
-            is_generating = True
+        if is_generating:
             workflow_status = "generating"
         elif todo.workflow_id:
             workflow = await WorkflowService.get_workflow(
@@ -433,18 +508,24 @@ async def get_workflow_status(todo_id: str, user: dict = Depends(get_current_use
                 has_steps = workflow.steps and len(workflow.steps) > 0
                 if has_steps:
                     workflow_status = "completed"
-                else:
-                    # Workflow exists but no steps = still generating
+                    has_workflow = True
+                elif await WorkflowQueueService.is_workflow_generating(todo_id):
                     is_generating = True
                     workflow_status = "generating"
+                else:
+                    # Workflow exists but empty steps and not generating = failed
+                    workflow_status = "failed"
 
-        return {
+        wf_result = {
             "todo_id": todo_id,
-            "has_workflow": workflow is not None and not is_generating,
+            "has_workflow": has_workflow,
             "is_generating": is_generating,
             "workflow_status": workflow_status,
-            "workflow": workflow if not is_generating else None,
+            "workflow": workflow if has_workflow else None,
         }
+        if not is_generating:
+            await set_cache(wf_cache_key, wf_result, ttl=60)
+        return wf_result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception:
@@ -476,7 +557,10 @@ async def bulk_update_todos(
     """
     log.set(
         user={"id": user["user_id"]},
-        todo={"operation": "bulk_update", "bulk_count": len(request.todo_ids) if hasattr(request, "todo_ids") else 0},
+        todo={
+            "operation": "bulk_update",
+            "bulk_count": len(request.todo_ids) if hasattr(request, "todo_ids") else 0,
+        },
     )
     try:
         return await TodoService.bulk_update_todos(request, user["user_id"])
@@ -495,7 +579,11 @@ async def bulk_move_todos(
     """Move multiple todos to a different project."""
     log.set(
         user={"id": user["user_id"]},
-        todo={"operation": "bulk_move", "bulk_count": len(request.todo_ids), "project_id": request.project_id},
+        todo={
+            "operation": "bulk_move",
+            "bulk_count": len(request.todo_ids),
+            "project_id": request.project_id,
+        },
     )
     try:
         return await TodoService.bulk_move_todos(request, user["user_id"])
@@ -592,7 +680,10 @@ async def update_project(
     user: dict = Depends(get_current_user),
 ):
     """Update a project. Cannot update the default Inbox project."""
-    log.set(user={"id": user["user_id"]}, todo={"operation": "update_project", "project_id": project_id})
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "update_project", "project_id": project_id},
+    )
     try:
         return await ProjectService.update_project(project_id, updates, user["user_id"])
     except ValueError as e:
@@ -615,7 +706,10 @@ async def update_project(
 @tiered_rate_limit("todo_operations")
 async def delete_project(project_id: str, user: dict = Depends(get_current_user)):
     """Delete a project. All todos will be moved to Inbox. Cannot delete Inbox."""
-    log.set(user={"id": user["user_id"]}, todo={"operation": "delete_project", "project_id": project_id})
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "delete_project", "project_id": project_id},
+    )
     try:
         await ProjectService.delete_project(project_id, user["user_id"])
     except ValueError as e:
@@ -645,7 +739,10 @@ async def create_subtask(
     todo_id: str, subtask: SubtaskCreateRequest, user: dict = Depends(get_current_user)
 ):
     """Add a new subtask to a todo."""
-    log.set(user={"id": user["user_id"]}, todo={"operation": "create_subtask", "id": todo_id})
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "create_subtask", "id": todo_id},
+    )
     try:
         new_subtask = {
             "id": str(uuid.uuid4()),
@@ -693,7 +790,10 @@ async def update_subtask(
     user: dict = Depends(get_current_user),
 ):
     """Update a specific subtask."""
-    log.set(user={"id": user["user_id"]}, todo={"operation": "update_subtask", "id": todo_id})
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "update_subtask", "id": todo_id},
+    )
     try:
         # Build update operations
         from typing import Any
@@ -760,18 +860,11 @@ async def delete_subtask(
     todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
 ):
     """Delete a specific subtask."""
-    log.set(user={"id": user["user_id"]}, todo={"operation": "delete_subtask", "id": todo_id})
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "delete_subtask", "id": todo_id},
+    )
     try:
-        # Store original subtasks count to verify deletion
-        todo_before = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id), "user_id": user["user_id"]}, {"subtasks": 1}
-        )
-
-        if not todo_before:
-            raise ValueError(f"Todo {todo_id} not found")
-
-        original_count = len(todo_before.get("subtasks", []))
-
         # Atomic operation: verify ownership and remove subtask in one query
         updated_todo = await todos_collection.find_one_and_update(
             {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
@@ -785,9 +878,11 @@ async def delete_subtask(
         if not updated_todo:
             raise ValueError(f"Todo {todo_id} not found")
 
-        # Verify subtask was actually removed
-        new_count = len(updated_todo.get("subtasks", []))
-        if new_count == original_count:
+        # Verify subtask was actually removed by checking if it still exists in the result
+        subtask_still_exists = any(
+            s.get("id") == subtask_id for s in updated_todo.get("subtasks", [])
+        )
+        if subtask_still_exists:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found"
             )
@@ -818,7 +913,10 @@ async def toggle_subtask_completion(
     todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
 ):
     """Toggle the completion status of a subtask (convenience endpoint)."""
-    log.set(user={"id": user["user_id"]}, todo={"operation": "toggle_subtask", "id": todo_id})
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "toggle_subtask", "id": todo_id},
+    )
     try:
         # First, get current completion status to toggle and for goal sync
 

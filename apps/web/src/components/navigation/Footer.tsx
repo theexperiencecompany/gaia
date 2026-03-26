@@ -75,14 +75,14 @@ export default function Footer() {
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-[-1] h-[30vh] bg-linear-to-t from-background to-transparent" />
 
         <Image
-          src="/images/wallpapers/bands_Gradient_black.png"
+          src="/images/wallpapers/bands_gradient_black.png"
           alt=""
           fill={true}
           className="mt-10 z-[-1]"
         />
         <div className="flex h-fit w-full items-center justify-center px-6 sm:px-4">
-          <div className="grid w-full max-w-7xl grid-cols-2 lg:grid-cols-6 gap-6 sm:gap-3">
-            <div className="relative -top-1 col-span-2 lg:col-span-1 flex h-full flex-col gap-1 text-foreground-600 sm:-top-2">
+          <div className="grid w-full max-w-7xl grid-cols-2 md:grid-cols-6 gap-6 sm:gap-3">
+            <div className="relative -top-1 col-span-2 md:col-span-1 flex h-full flex-col gap-1 text-foreground-600 sm:-top-2">
               <div className="flex w-fit items-center justify-center rounded-xl p-1">
                 <iframe
                   src="https://status.heygaia.io/badge?theme=dark"

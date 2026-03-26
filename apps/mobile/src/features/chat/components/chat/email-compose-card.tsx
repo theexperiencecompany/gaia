@@ -1,13 +1,13 @@
-import { Image } from "expo-image";
-import { Button, Card } from "heroui-native";
-import { ScrollView, View } from "react-native";
-import { HugeiconsIcon, PencilEdit01Icon } from "@/components/icons";
+import { Button, Card, Chip, Divider, TextField } from "heroui-native";
+import { View } from "react-native";
+import { AppIcon, Mail01Icon, PencilEdit01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
-interface EmailComposeData {
+export interface EmailComposeData {
   to: string[];
   subject: string;
   body: string;
+  draft_id?: string;
   thread_id?: string;
   bcc?: string[];
   cc?: string[];
@@ -16,12 +16,8 @@ interface EmailComposeData {
 
 interface EmailComposeCardProps {
   data?: EmailComposeData;
-  onEdit?: (field: "to" | "subject" | "body") => void;
   onSend?: () => void;
 }
-
-const GMAIL_ICON =
-  "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Gmail_icon_%282020%29.svg/512px-Gmail_icon_%282020%29.svg.png";
 
 export const SAMPLE_EMAIL_COMPOSE: EmailComposeData = {
   to: ["sudarshan@gmail.com"],
@@ -33,88 +29,128 @@ export const SAMPLE_EMAIL_COMPOSE: EmailComposeData = {
   is_html: false,
 };
 
-function EditButton({ onPress }: { onPress?: () => void }) {
+function RecipientChips({ recipients }: { recipients: string[] }) {
   return (
-    <Button variant="ghost" isIconOnly size="sm" onPress={onPress}>
-      <HugeiconsIcon icon={PencilEdit01Icon} size={16} color="#6b6b6b" />
-    </Button>
-  );
-}
-
-function FieldRow({
-  label,
-  value,
-  onEdit,
-}: {
-  label: string;
-  value: string;
-  onEdit?: () => void;
-}) {
-  return (
-    <View className="flex-row items-center py-3 px-4 border-b border-muted/20">
-      <Text className="text-muted text-sm" style={{ width: 60 }}>
-        {label}
-      </Text>
-      <Text className="flex-1 text-foreground text-sm" numberOfLines={1}>
-        {value}
-      </Text>
-      <EditButton onPress={onEdit} />
+    <View className="flex-row flex-wrap gap-1">
+      {recipients.map((recipient) => (
+        <Chip key={recipient} size="sm" variant="soft" color="default">
+          <Chip.Label>{recipient}</Chip.Label>
+        </Chip>
+      ))}
     </View>
   );
 }
 
 export function EmailComposeCard({
   data = SAMPLE_EMAIL_COMPOSE,
-  onEdit,
   onSend,
 }: EmailComposeCardProps) {
+  const isDraft = !!data.draft_id;
+  const isReply = !!data.thread_id;
+
   return (
-    <Card variant="secondary" className="rounded-xl mx-4 my-2 overflow-hidden">
-      <View className="flex-row items-center gap-2 px-4 py-3 border-b border-muted/20">
-        <Image
-          source={{ uri: GMAIL_ICON }}
-          style={{ width: 18, height: 18 }}
-          contentFit="contain"
-        />
-        <Text className="text-foreground text-sm font-medium">
-          Compose Email
-        </Text>
-      </View>
+    <Card
+      variant="secondary"
+      className="mx-4 my-2 rounded-2xl overflow-hidden bg-[#171920]"
+    >
+      {/* Header */}
+      <Card.Body className="py-0 px-0">
+        <View className="flex-row items-center justify-between px-4 pt-3 pb-2">
+          <View className="flex-row items-center gap-2">
+            <AppIcon icon={Mail01Icon} size={18} color="#8e8e93" />
+            <Text className="text-sm font-medium text-foreground">
+              {isDraft ? "Email Draft" : "Compose Email"}
+            </Text>
+            {isReply && (
+              <Chip size="sm" variant="soft" color="accent">
+                <Chip.Label>Reply</Chip.Label>
+              </Chip>
+            )}
+          </View>
+          <AppIcon icon={PencilEdit01Icon} size={14} color="#8e8e93" />
+        </View>
 
-      <FieldRow
-        label="To:"
-        value={data.to.join(", ")}
-        onEdit={() => onEdit?.("to")}
-      />
+        <Divider className="bg-white/10" />
 
-      <FieldRow
-        label="Subject:"
-        value={data.subject}
-        onEdit={() => onEdit?.("subject")}
-      />
+        {/* To field */}
+        <View className="px-4 py-3">
+          <TextField>
+            <TextField.Label>To</TextField.Label>
+            <RecipientChips recipients={data.to} />
+          </TextField>
+        </View>
 
-      <View
-        className="flex-row items-start py-3 px-4"
-        style={{ maxHeight: 120 }}
-      >
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-          <Text className="text-foreground text-sm leading-relaxed">
-            {data.body}
-          </Text>
-        </ScrollView>
-        <EditButton onPress={() => onEdit?.("body")} />
-      </View>
+        <Divider className="bg-white/10" />
 
-      <View className="flex-row justify-end px-4 py-3">
-        <Button
-          variant="primary"
-          size="sm"
-          className="rounded-full"
-          onPress={onSend}
-        >
-          <Button.Label>Send</Button.Label>
-        </Button>
-      </View>
+        {/* CC field */}
+        {data.cc && data.cc.length > 0 && (
+          <>
+            <View className="px-4 py-3">
+              <TextField>
+                <TextField.Label>Cc</TextField.Label>
+                <RecipientChips recipients={data.cc} />
+              </TextField>
+            </View>
+            <Divider className="bg-white/10" />
+          </>
+        )}
+
+        {/* BCC field */}
+        {data.bcc && data.bcc.length > 0 && (
+          <>
+            <View className="px-4 py-3">
+              <TextField>
+                <TextField.Label>Bcc</TextField.Label>
+                <RecipientChips recipients={data.bcc} />
+              </TextField>
+            </View>
+            <Divider className="bg-white/10" />
+          </>
+        )}
+
+        {/* Subject field */}
+        <View className="px-4 py-3">
+          <TextField>
+            <TextField.Label>Subject</TextField.Label>
+            <TextField.Input
+              value={data.subject}
+              editable={false}
+              className="text-sm font-medium"
+            />
+          </TextField>
+        </View>
+
+        <Divider className="bg-white/10" />
+
+        {/* Body */}
+        <View className="px-4 py-3">
+          <TextField>
+            <TextField.Input
+              value={data.body}
+              editable={false}
+              multiline
+              numberOfLines={6}
+              style={{ maxHeight: 160 }}
+              scrollEnabled
+              showSoftInputOnFocus={false}
+            />
+          </TextField>
+        </View>
+
+        <Divider className="bg-white/10" />
+
+        {/* Send button */}
+        <View className="flex-row justify-end px-4 py-3">
+          <Button
+            variant="primary"
+            size="sm"
+            className="rounded-full px-5"
+            onPress={onSend}
+          >
+            <Button.Label>{isDraft ? "Send Draft" : "Send"}</Button.Label>
+          </Button>
+        </View>
+      </Card.Body>
     </Card>
   );
 }

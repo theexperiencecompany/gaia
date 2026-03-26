@@ -1,21 +1,8 @@
 """Integration-specific helper functions."""
 
-import re
+from typing import Any
 
-
-def _slugify(text: str, max_length: int = 50) -> str:
-    """Convert text to URL-safe slug."""
-    slug = text.lower()
-    slug = re.sub(r"[^\w\s-]", "", slug)
-    slug = re.sub(r"[\s_]+", "-", slug)
-    slug = slug.strip("-")
-    slug = re.sub(r"-+", "-", slug)
-
-    if len(slug) > max_length:
-        parts = slug[:max_length].rsplit("-", 1)
-        slug = parts[0] if parts else slug[:max_length]
-
-    return slug
+from app.helpers.slug_helpers import slugify
 
 
 def generate_integration_slug(
@@ -24,41 +11,71 @@ def generate_integration_slug(
     integration_id: str,
     max_length: int = 80,
 ) -> str:
-    """Generate canonical slug: {name}-mcp-{category}-{shortid}."""
-    name_slug = _slugify(name, max_length=40)
-    category_slug = _slugify(category, max_length=20)
-    shortid = integration_id[:6].lower() if integration_id else "000000"
+    """Generate canonical slug: {name}-mcp-{category}.
 
-    slug = f"{name_slug}-mcp-{category_slug}-{shortid}"
+    No longer appends a hash suffix — the slug is human-readable and
+    stored/indexed in MongoDB for direct lookup.
+    """
+    name_slug = slugify(name, max_length=40)
+    category_slug = slugify(category, max_length=20)
+
+    slug = f"{name_slug}-mcp-{category_slug}"
 
     if len(slug) > max_length:
-        suffix_len = 7
-        available_len = max_length - suffix_len
+        truncated = slug[:max_length]
+        last_hyphen = truncated.rfind("-")
+        if last_hyphen > 0:
+            slug = truncated[:last_hyphen]
+        else:
+            slug = truncated
 
-        base_slug = slug[:-(suffix_len)]
-        if len(base_slug) > available_len:
-            truncated = base_slug[:available_len]
-            last_hyphen = truncated.rfind("-")
-            if last_hyphen > 0:
-                base_slug = truncated[:last_hyphen]
-            else:
-                base_slug = truncated
+    return slug.rstrip("-")
 
-        slug = f"{base_slug}-{shortid}"
 
-    slug = slug.rstrip("-")
+async def generate_unique_integration_slug(
+    name: str,
+    category: str,
+    integration_id: str,
+    collection: Any,
+) -> str:
+    """Generate a slug that is unique across published integrations.
 
-    return slug
+    If the base slug is already taken by a different integration,
+    appends -2, -3, etc. until a free slug is found.
+    """
+    base_slug = generate_integration_slug(name, category, integration_id)
+
+    existing = await collection.find_one(
+        {"slug": base_slug, "integration_id": {"$ne": integration_id}}
+    )
+    if not existing:
+        return base_slug
+
+    suffix = 2
+    while suffix <= 100:
+        candidate = f"{base_slug}-{suffix}"
+        existing = await collection.find_one(
+            {"slug": candidate, "integration_id": {"$ne": integration_id}}
+        )
+        if not existing:
+            return candidate
+        suffix += 1
+
+    return f"{base_slug}-{integration_id[:6]}"
 
 
 def parse_integration_slug(slug: str) -> dict:
-    """Parse slug to extract: name_part, category, shortid."""
+    """Parse slug to extract: name_part, category, shortid.
+
+    Handles both new format (no hash) and legacy format (with 6-char hash).
+    """
     result: dict = {
         "name_part": slug,
         "category": None,
         "shortid": None,
     }
 
+    # Check for legacy 6-char hash suffix
     parts = slug.rsplit("-", 1)
     if len(parts) == 2 and len(parts[1]) == 6 and parts[1].isalnum():
         result["shortid"] = parts[1]
@@ -80,15 +97,9 @@ def parse_integration_slug(slug: str) -> dict:
     return result
 
 
-def build_public_integration_pipeline(short_id: str) -> list:
-    """Build MongoDB pipeline for fetching public integration with creator lookup."""
+def _creator_lookup_stages() -> list:
+    """Return the shared $lookup, $addFields, and $project stages for creator info."""
     return [
-        {
-            "$match": {
-                "integration_id": {"$regex": f"^{short_id}", "$options": "i"},
-                "is_public": True,
-            }
-        },
         {
             "$lookup": {
                 "from": "users",
@@ -124,6 +135,27 @@ def build_public_integration_pipeline(short_id: str) -> list:
     ]
 
 
+def build_public_integration_pipeline(short_id: str) -> list:
+    """Build MongoDB pipeline for fetching public integration with creator lookup."""
+    return [
+        {
+            "$match": {
+                "integration_id": {"$regex": f"^{short_id}", "$options": "i"},
+                "is_public": True,
+            }
+        },
+        *_creator_lookup_stages(),
+    ]
+
+
+def build_slug_lookup_pipeline(slug: str) -> list:
+    """Build MongoDB pipeline for slug-based integration lookup."""
+    return [
+        {"$match": {"slug": slug, "is_public": True}},
+        *_creator_lookup_stages(),
+    ]
+
+
 def format_public_integration_response(doc: dict) -> dict:
     """Format MongoDB integration doc to response dict.
 
@@ -147,7 +179,7 @@ def format_public_integration_response(doc: dict) -> dict:
         }
 
     tools = doc.get("tools", [])
-    slug = generate_integration_slug(
+    slug = doc.get("slug") or generate_integration_slug(
         name=doc.get("name", ""),
         category=doc.get("category", "custom"),
         integration_id=doc["integration_id"],
@@ -169,4 +201,5 @@ def format_public_integration_response(doc: dict) -> dict:
         "clone_count": doc.get("clone_count", 0),
         "tool_count": len(tools),
         "published_at": doc.get("published_at"),
+        "source": "custom",  # MongoDB integrations are always custom
     }

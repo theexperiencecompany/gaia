@@ -1,5 +1,5 @@
+import { Card } from "heroui-native";
 import type { ReactNode } from "react";
-import { View } from "react-native";
 
 interface AuthCardProps {
   children: ReactNode;
@@ -7,8 +7,12 @@ interface AuthCardProps {
 
 export function AuthCard({ children }: AuthCardProps) {
   return (
-    <View className="w-full max-w-[450px] bg-[#1a1a1a]/95 rounded-[20px] px-8 py-10 border border-white/10 shadow-2xl elevation-20">
-      {children}
-    </View>
+    <Card
+      variant="secondary"
+      animation="disable-all"
+      className="w-full max-w-[450px] rounded-[20px] px-8 py-10"
+    >
+      <Card.Body className="p-0">{children}</Card.Body>
+    </Card>
   );
 }

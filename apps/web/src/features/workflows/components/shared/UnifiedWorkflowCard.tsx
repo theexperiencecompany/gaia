@@ -18,7 +18,7 @@ import type {
 } from "@/types/features/workflowTypes";
 import { formatRunCount } from "@/utils/formatters";
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
-import { getTriggerDisplayInfo } from "../../triggers";
+import { getTriggerDisplayInfo } from "../../triggers/utils";
 import {
   ActivationStatus,
   CreatorAvatar,
@@ -265,13 +265,7 @@ export default function UnifiedWorkflowCard({
 
   const cardContent = (
     <div
-      className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${
-        useBlurEffect
-          ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg"
-          : "bg-zinc-800 outline-zinc-800/70"
-      } p-4 transition-all select-none ${
-        isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""
-      }`}
+      className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""}`}
       onClick={handleCardClick}
     >
       <div className="flex items-start justify-between">

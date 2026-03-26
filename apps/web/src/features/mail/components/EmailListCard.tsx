@@ -1,8 +1,10 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
+import { useEffect, useRef } from "react";
 
-import { Gmail } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { Gmail } from "@/components/shared/icons";
 import { useAppendToInput } from "@/stores/composerStore";
 import type { EmailFetchData } from "@/types/features/mailTypes";
 
@@ -11,6 +13,9 @@ interface EmailListProps {
   backgroundColor?: string;
   maxHeight?: string;
   isCollapsible?: boolean;
+  onLoadMore?: () => void;
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
 }
 
 function extractSenderName(from: string): string {
@@ -63,8 +68,31 @@ export default function EmailListCard({
   backgroundColor = "bg-zinc-800",
   maxHeight = "max-h-[300px]",
   isCollapsible = true,
+  onLoadMore,
+  hasNextPage,
+  isFetchingNextPage,
 }: EmailListProps) {
   const appendToInput = useAppendToInput();
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!onLoadMore || !hasNextPage) return;
+
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isFetchingNextPage) {
+          onLoadMore();
+        }
+      },
+      { rootMargin: "300px", threshold: 0 },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [onLoadMore, hasNextPage, isFetchingNextPage]);
 
   const handleEmailClick = (email: EmailFetchData) => {
     if (email.thread_id) {
@@ -119,6 +147,16 @@ export default function EmailListCard({
                 </div>
               </Tooltip>
             ))}
+
+          {/* Sentinel for infinite scroll */}
+          {hasNextPage && <div ref={sentinelRef} className="h-1" />}
+
+          {/* Loading spinner for next page */}
+          {isFetchingNextPage && (
+            <div className="flex items-center justify-center py-2">
+              <Spinner size="sm" color="default" />
+            </div>
+          )}
         </ScrollShadow>
       </div>
     );

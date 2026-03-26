@@ -43,6 +43,23 @@ import { Bot, type Context } from "grammy";
  * Manages the grammY `Bot` lifecycle and translates between
  * Telegram's command/message APIs and the unified command system.
  */
+// ---------------------------------------------------------------------------
+// Exported mention helpers (extracted for testability)
+// ---------------------------------------------------------------------------
+
+/** Returns true if the message text contains a @botUsername mention. */
+export function hasTelegramMention(text: string, botUsername: string): boolean {
+  return text.includes(`@${botUsername}`);
+}
+
+/** Removes all @botUsername mentions from text and trims whitespace. */
+export function stripTelegramMention(
+  text: string,
+  botUsername: string,
+): string {
+  return text.replaceAll(`@${botUsername}`, "").trim();
+}
+
 export class TelegramAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "telegram";
   private bot!: Bot;
@@ -156,11 +173,9 @@ export class TelegramAdapter extends BaseBotAdapter {
 
       // Group @mention handling — uses cached bot username
       if (!this.botUsername) return;
-      if (!ctx.message.text.includes(`@${this.botUsername}`)) return;
+      if (!hasTelegramMention(ctx.message.text, this.botUsername)) return;
 
-      const content = ctx.message.text
-        .replaceAll(`@${this.botUsername}`, "")
-        .trim();
+      const content = stripTelegramMention(ctx.message.text, this.botUsername);
 
       if (!content) {
         await ctx.reply("How can I help you?");

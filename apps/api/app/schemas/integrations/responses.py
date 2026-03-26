@@ -6,6 +6,7 @@ from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
+from app.models.oauth_models import IntegrationContent
 from app.schemas.common import SuccessResponse
 
 
@@ -210,6 +211,13 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     clone_count: int = 0
     tool_count: int = 0
     published_at: Optional[datetime] = None
+
+    # Source type (platform or custom)
+    source: Optional[Literal["platform", "custom"]] = None
+    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+
+    # Rich content — only present for native (platform) integrations
+    content: Optional[IntegrationContent] = None
 
 
 class AddIntegrationResponse(CamelModel):

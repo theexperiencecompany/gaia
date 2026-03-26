@@ -32,7 +32,7 @@ def register_airtable_custom_tools(composio: Composio) -> List[str]:
             data = execute_tool("AIRTABLE_LIST_BASES", {}, user_id)
             bases_raw = data.get("bases", [])
         except Exception as e:
-            log.debug("Airtable bases fetch failed: %s", e)
+            log.debug(f"Airtable bases fetch failed: {e}")
 
         bases: List[Dict[str, Any]] = []
         for base in bases_raw[:3]:
@@ -49,7 +49,7 @@ def register_airtable_custom_tools(composio: Composio) -> List[str]:
                     for t in schema_data.get("tables", [])
                 ]
             except Exception as e:
-                log.debug("Airtable tables fetch for %s failed: %s", base_id, e)
+                log.debug(f"Airtable tables fetch for {base_id} failed: {e}")
             bases.append(
                 {"id": base_id, "name": base.get("name", ""), "tables": tables}
             )

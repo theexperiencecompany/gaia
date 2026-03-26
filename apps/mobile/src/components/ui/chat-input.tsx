@@ -1,16 +1,26 @@
-import { Button } from "heroui-native";
+import { Button, PressableFeedback } from "heroui-native";
 import { useRef, useState } from "react";
 import { Keyboard, TextInput, View } from "react-native";
-import { ArrowUp02Icon, HugeiconsIcon, PlusSignIcon } from "@/components/icons";
-import { ConnectDrawerTrigger } from "@/features/integrations";
+import { AppIcon, ArrowUp02Icon, PlusSignIcon } from "@/components/icons";
+import { ConnectDrawerTrigger } from "@/features/integrations/components/connect-drawer";
 import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";
+import { Text } from "./text";
+
+const DEFAULT_COMMANDS = [
+  "new",
+  "integrations",
+  "notifications",
+  "settings",
+  "workflows",
+];
 
 interface ChatInputProps {
   onSend?: (message: string) => void;
   placeholder?: string;
   value?: string;
   onChangeText?: (text: string) => void;
+  onCommand?: (command: string) => boolean | undefined;
 }
 
 export function ChatInput({
@@ -18,6 +28,7 @@ export function ChatInput({
   placeholder = "Ask anything",
   value,
   onChangeText,
+  onCommand,
 }: ChatInputProps) {
   const [internalMessage, setInternalMessage] = useState("");
   const inputRef = useRef<TextInput>(null);
@@ -25,9 +36,30 @@ export function ChatInput({
 
   const message = value ?? internalMessage;
   const setMessage = onChangeText ?? setInternalMessage;
+  const trimmed = message.trim();
+  const isCommandMode = trimmed.startsWith("/");
+  const commandQuery = isCommandMode ? trimmed.slice(1).toLowerCase() : "";
+  const matchingCommands = DEFAULT_COMMANDS.filter((command) =>
+    command.startsWith(commandQuery),
+  );
+
+  const runCommand = (command: string) => {
+    const handled = onCommand?.(command) ?? false;
+    if (handled) {
+      setMessage("");
+      dismissKeyboard();
+    }
+  };
 
   const handleSend = () => {
     if (message.trim()) {
+      if (isCommandMode) {
+        const command = trimmed.split(/\s+/)[0]?.slice(1).toLowerCase();
+        if (command) {
+          runCommand(command);
+          return;
+        }
+      }
       onSend?.(message);
       setMessage("");
     }
@@ -86,7 +118,7 @@ export function ChatInput({
               className="rounded-full"
               onPress={dismissKeyboard}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={PlusSignIcon}
                 size={iconSize.md - 2}
                 color="#8e8e93"
@@ -114,7 +146,7 @@ export function ChatInput({
               onPress={handleSend}
               isDisabled={!message.trim()}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={ArrowUp02Icon}
                 size={iconSize.sm}
                 strokeWidth={2.5}
@@ -123,6 +155,38 @@ export function ChatInput({
             </Button>
           </View>
         </View>
+
+        {isCommandMode && matchingCommands.length > 0 && (
+          <View
+            style={{
+              marginHorizontal: spacing.md,
+              marginBottom: spacing.sm,
+              borderRadius: moderateScale(12, 0.5),
+              backgroundColor: "#111214",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.08)",
+              overflow: "hidden",
+            }}
+          >
+            {matchingCommands.map((command, index) => (
+              <PressableFeedback
+                key={command}
+                onPress={() => runCommand(command)}
+                style={{
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.sm,
+                  borderBottomWidth:
+                    index === matchingCommands.length - 1 ? 0 : 1,
+                  borderBottomColor: "rgba(255,255,255,0.05)",
+                }}
+              >
+                <Text style={{ color: "#ffffff", fontSize: fontSize.sm }}>
+                  /{command}
+                </Text>
+              </PressableFeedback>
+            ))}
+          </View>
+        )}
       </View>
     </View>
   );

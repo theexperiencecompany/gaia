@@ -32,10 +32,12 @@ from app.models.workflow_models import (
 )
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.services.workflow import WorkflowService
+from app.services.workflow.service import generate_unique_workflow_slug
 from app.services.workflow.generation_service import WorkflowGenerationService
 from app.services.workflow.execution_service import (
     get_workflow_executions as get_executions,
 )
+from app.helpers.slug_helpers import parse_workflow_slug
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import transform_workflow_document
@@ -448,16 +450,22 @@ async def publish_workflow(
                 detail="Workflow not found or access denied",
             )
 
+        # Generate slug if not already set
+        publish_set: dict = {
+            "is_public": True,
+            "created_by": user["user_id"],
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if not workflow.get("slug"):
+            publish_set["slug"] = await generate_unique_workflow_slug(
+                workflow.get("title", ""),
+                exclude_id=workflow_id,
+            )
+
         # Update workflow to be public
         await workflows_collection.update_one(
             {"_id": workflow_id},
-            {
-                "$set": {
-                    "is_public": True,
-                    "created_by": user["user_id"],
-                    "updated_at": datetime.now(timezone.utc),
-                }
-            },
+            {"$set": publish_set},
         )
 
         log.set(outcome="success")
@@ -563,15 +571,30 @@ async def get_public_workflows(
         )
 
 
-@router.get("/workflows/public/{workflow_id}", response_model=WorkflowResponse)
+@router.get("/workflows/public/{workflow_ref}", response_model=WorkflowResponse)
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
-async def get_public_workflow(request: Request, workflow_id: str):
-    """Get a public workflow by ID without authentication."""
+async def get_public_workflow(request: Request, workflow_ref: str):
+    """Get a public workflow by ID (wf_xxx) or slug."""
     try:
-        workflow_doc = await workflows_collection.find_one(
-            {"_id": workflow_id, "is_public": True}
-        )
+        # IDs always start with "wf_" — slugs never do
+        if workflow_ref.startswith("wf_"):
+            query: dict = {"_id": workflow_ref, "is_public": True}
+        else:
+            query = {"slug": workflow_ref, "is_public": True}
+
+        workflow_doc = await workflows_collection.find_one(query)
+
+        # Fallback: parse slug to extract 8-char ID prefix
+        if not workflow_doc:
+            short_id = parse_workflow_slug(workflow_ref)
+            if short_id:
+                workflow_doc = await workflows_collection.find_one(
+                    {
+                        "_id": {"$regex": f"^wf_{short_id}"},
+                        "is_public": True,
+                    }
+                )
 
         if not workflow_doc:
             raise HTTPException(
@@ -585,11 +608,10 @@ async def get_public_workflow(request: Request, workflow_id: str):
         return WorkflowResponse(
             workflow=workflow, message="Workflow retrieved successfully"
         )
-
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error getting public workflow {workflow_id}: {str(e)}")
+        log.error(f"Error getting public workflow {workflow_ref}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",

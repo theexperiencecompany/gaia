@@ -1,0 +1,1953 @@
+{
+  "software-developers": {
+    "title": "Asistente de IA para Desarrolladores de Software",
+    "role": "Desarrolladores de Software",
+    "metaTitle": "Asistente de IA para Desarrolladores de Software - Automatiza tu Flujo de Trabajo de Desarrollo",
+    "metaDescription": "GAIA ayuda a los desarrolladores de software a automatizar revisiones de código, gestionar issues de GitHub, rastrear tickets en Linear y agilizar los daily standups. Ahorra más de 10 horas por semana en trabajo repetitivo.",
+    "keywords": [
+      "asistente de IA para desarrolladores",
+      "herramienta de productividad para desarrolladores",
+      "automatización de GitHub",
+      "integración de IA con Linear",
+      "automatización del flujo de trabajo de programación",
+      "IA para automatizar la revisión de código",
+      "asistente de IA para GitHub",
+      "automatización de IA para Linear",
+      "automatización del flujo de trabajo para desarrolladores",
+      "mejor IA para desarrolladores de software",
+      "IA de código abierto para desarrolladores",
+      "herramienta de IA autoalojada para desarrolladores",
+      "generador de resúmenes de standup con IA",
+      "herramienta para cambiar de contexto para desarrolladores",
+      "automatización de Slack para desarrolladores"
+    ],
+    "intro": "Según el informe Octoverse 2024 de GitHub, los desarrolladores de software dedican aproximadamente el 58% de su tiempo a tareas que no son de programación. Cambiar de contexto entre hilos de Slack, notificaciones de GitHub, tickets de Linear y correos electrónicos consume el enfoque profundo necesario para escribir código de calidad. GAIA actúa como un asistente de IA proactivo que gestiona tu flujo de trabajo de desarrollo de principio a fin, desde clasificar notificaciones de GitHub hasta preparar resúmenes diarios para los standups, permitiéndote pasar más tiempo en tu editor y menos tiempo gestionando herramientas.",
+    "painPoints": [
+      "El cambio constante de contexto entre GitHub, Linear, Slack y el correo electrónico interrumpe las sesiones de trabajo profundo",
+      "Las notificaciones de revisión de código se acumulan, causando bloqueos de merge y PRs obsoletos",
+      "Los reportes manuales para los standups y actualizaciones de estado consumen más de 30 minutos al día",
+      "Rastrear dependencias entre repositorios y estados de despliegue en varias herramientas es tedioso"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Priorización Automática de GitHub y Linear",
+        "description": "GAIA supervisa tus notificaciones de GitHub y la bandeja de entrada de Linear, prioriza los problemas según su urgencia y solo te muestra lo que realmente requiere tu atención. Redacta respuestas para asuntos rutinarios y vincula automáticamente los PR relacionados con los tickets."
+      },
+      {
+        "title": "Resúmenes inteligentes de standup",
+        "description": "Todas las mañanas, GAIA recopila tus PR fusionados, tickets completados y el trabajo en progreso en una actualización de standup ya formateada. Publícalo directamente en Slack con un solo clic."
+      },
+      {
+        "title": "Preparación proactiva de reuniones y calendario",
+        "description": "GAIA revisa tu Google Calendar en busca de próximas reuniones, extrae tickets relevantes de Linear y discusiones de GitHub, y prepara notas de resumen para que llegues preparado a cada planificación de sprint y revisión de código."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo se integra GAIA con mi flujo de trabajo de desarrollo actual?",
+        "answer": "GAIA se conecta de forma nativa con GitHub, Linear, Slack y Google Calendar mediante integraciones MCP. Supervisa estas herramientas en segundo plano, aprende tus patrones y te ofrece información relevante de forma proactiva sin requerir que cambies tu forma de trabajar."
+      },
+      {
+        "question": "¿Puede GAIA ayudar con las revisiones de código?",
+        "answer": "GAIA rastrea los PR abiertos en tus repositorios, te avisa de las revisiones que requieren atención y resume los cambios en el código. Puede redactar comentarios iniciales para las revisiones y asegurarse de que ningún PR se quede estancado en tu bandeja."
+      },
+      {
+        "question": "¿Está seguro mi código con GAIA?",
+        "answer": "GAIA es completamente de código abierto y autohospedable. Puedes ejecutarlo en tu propia infraestructura y mantener el control total de tus datos. GAIA nunca entrena con tus datos ni los comparte con terceros."
+      }
+    ]
+  },
+  "product-managers": {
+    "title": "Asistente de IA para Product Managers",
+    "role": "Product Managers",
+    "metaTitle": "Asistente de IA para Product Managers - Optimiza el desarrollo de productos",
+    "metaDescription": "GAIA ayuda a los product managers a dar seguimiento a las solicitudes de funciones, automatizar actualizaciones para los stakeholders, gestionar roadmaps entre herramientas y prepararse para reuniones con resúmenes impulsados por IA.",
+    "keywords": [
+      "Asistente de IA para gestores de producto",
+      "automatización de gestión de productos",
+      "IA para gestión de roadmap",
+      "automatización de actualizaciones para stakeholders",
+      "herramienta de productividad para PM",
+      "IA para seguimiento de solicitudes de características",
+      "Linear AI para gestores de producto",
+      "automatización de roadmap en Notion",
+      "herramienta de flujo de trabajo para gestores de producto",
+      "mejor IA para gestores de producto",
+      "IA de código abierto para PMs",
+      "IA para planificación de sprints",
+      "herramienta de IA para informes a stakeholders",
+      "IA para preparación de reuniones de PM",
+      "Integración de Asana con IA para PMs"
+    ],
+    "intro": "Los gestores de producto operan en la intersección de ingeniería, diseño, negocios y éxito del cliente. Una encuesta de Productboard en 2024 reveló que los PM dedican más del 40% de su semana a actualizaciones de estado, preparación de reuniones y gestión de herramientas en lugar de pensar estratégicamente sobre el producto. GAIA actúa como tu copiloto de IA proactivo, sintetizando información de Linear, Slack, Gmail y Notion para que puedas centrarte en crear el producto adecuado en vez de solo gestionar el proceso.",
+    "painPoints": [
+      "Las actualizaciones para stakeholders requieren extraer datos manualmente de Linear, GitHub y canales de Slack",
+      "Las solicitudes de funciones se dispersan entre correos electrónicos, mensajes de Slack y tickets de soporte sin una visión unificada",
+      "El exceso de reuniones deja poco tiempo para investigación de usuarios y planificación estratégica",
+      "Mantener actualizada la documentación del roadmap en Notion y Linear es una tarea constante"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Informes automatizados para stakeholders",
+        "description": "GAIA recopila el progreso de los sprints desde Linear, actualizaciones de despliegue de GitHub y discusiones del equipo en Slack para generar informes semanales para los stakeholders. Los redacta en tu formato preferido y los envía por Gmail o Slack."
+      },
+      {
+        "title": "Agregación de solicitudes de características",
+        "description": "GAIA monitoriza Gmail, Slack y los canales de soporte para detectar solicitudes de funciones, las clasifica por tema y urgencia, y crea tickets organizados en Linear con todo el contexto adjunto."
+      },
+      {
+        "title": "Inteligencia para reuniones",
+        "description": "Antes de cada reunión, GAIA prepara documentos informativos con métricas relevantes, discusiones recientes y tareas pendientes. Después de las reuniones, recoge las decisiones tomadas y crea tareas de seguimiento en Todoist o Linear."
+      },
+      {
+        "title": "Sincronización de roadmap",
+        "description": "GAIA mantiene tus documentos de roadmap en Notion alineados con los estados de los proyectos en Linear, señalando discrepancias y sugiriendo actualizaciones cuando los hitos cambian."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA sustituir mi herramienta de gestión de proyectos?",
+        "answer": "GAIA complementa tus herramientas actuales como Linear, Asana o Notion en vez de sustituirlas. Funciona como una capa inteligente que conecta estas herramientas, automatiza el flujo de datos entre ellas y resalta información clave para que dediques menos tiempo a la gestión y más a la estrategia de producto."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA con la comunicación entre los involucrados?",
+        "answer": "GAIA recopila automáticamente datos de progreso de tus herramientas de ingeniería, redacta actualizaciones de estado en tu formato preferido y puede enviarlas por correo electrónico o Slack según un horario. Así, asegura que los involucrados estén informados sin que debas crear informes manualmente."
+      }
+    ]
+  },
+  "designers": {
+    "title": "Asistente de IA para diseñadores",
+    "role": "Diseñadores",
+    "metaTitle": "Asistente de IA para diseñadores - Optimiza la gestión del diseño",
+    "metaDescription": "GAIA ayuda a los diseñadores a gestionar ciclos de retroalimentación, realizar seguimiento de solicitudes de diseño, automatizar documentación de traspaso y mantener alineados a los involucrados en Slack, Notion y correo electrónico.",
+    "keywords": [
+      "asistente de IA para diseñadores",
+      "automatización del flujo de trabajo de diseño",
+      "IA para operaciones de diseño",
+      "gestión de feedback de diseño",
+      "herramienta de productividad creativa",
+      "IA para diseñadores UX",
+      "herramienta IA para operaciones de diseño",
+      "herramienta de productividad para diseñadores",
+      "IA para diseñadores de producto",
+      "IA para la programación de revisiones de diseño",
+      "automatización del flujo de trabajo en Figma",
+      "mejor IA para diseñadores",
+      "automatización del traspaso de diseño",
+      "IA para agregación de feedback de diseño",
+      "Herramienta de flujo de trabajo para diseñadores UX"
+    ],
+    "intro": "Los diseñadores dedican una cantidad desproporcionada de tiempo a operaciones en lugar de a su labor creativa. Una investigación de InVision reveló que los diseñadores emplean aproximadamente el 35% de su tiempo en actividades ajenas al diseño, como gestionar comentarios, redactar documentación y coordinarse con los interesados. GAIA automatiza la parte operativa del trabajo de diseño, gestionando la recopilación de feedback, programando revisiones y manteniendo la documentación de entrega actualizada, para que puedas centrarte en crear experiencias de usuario excepcionales.",
+    "painPoints": [
+      "La retroalimentación de diseño se dispersa en hilos de Slack, cadenas de correos y notas de reuniones sin una fuente única de verdad",
+      "La documentación de entrega queda obsoleta a medida que los diseños evolucionan, causando desalineación con ingeniería",
+      "Programar revisiones y críticas de diseño en diferentes zonas horarias consume horas de coordinación",
+      "El seguimiento de solicitudes de diseño desde producto e ingeniería carece de estructura"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Recopilación centralizada de feedback",
+        "description": "GAIA monitorea los canales de Slack y Gmail en busca de comentarios de diseño, organiza las observaciones por proyecto y pantalla, y crea resúmenes estructurados en Notion para que nada se pierda."
+      },
+      {
+        "title": "Programación automatizada de revisiones de diseño",
+        "description": "GAIA coordina sesiones de crítica de diseño encontrando los horarios óptimos en Google Calendar, enviando invitaciones con enlaces contextuales y preparando resúmenes previos con los cambios más recientes."
+      },
+      {
+        "title": "Gestión de solicitudes de trabajo",
+        "description": "Las solicitudes de diseño provenientes de mensajes de Slack y correos electrónicos se capturan de forma automática, se categorizan y se añaden a tu lista de pendientes en Todoist o Linear con el contexto relevante y el nivel de prioridad."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA ayudar a gestionar la documentación de los sistemas de diseño?",
+        "answer": "GAIA te ayuda a mantener tu documentación en Notion o Google Docs sincronizada con las actualizaciones del proyecto. Puede señalar cuándo es necesario actualizar la documentación según los cambios en los tickets de Linear y redactar resúmenes de actualización para tu revisión."
+      },
+      {
+        "question": "¿Cómo gestiona GAIA la retroalimentación de diseño desde múltiples canales?",
+        "answer": "GAIA supervisa Slack, Gmail y otros canales conectados para detectar conversaciones relacionadas con el diseño. Agrupa los comentarios por proyecto, identifica puntos de acción y crea resúmenes organizados para que tengas una vista unificada de toda la opinión de los interesados."
+      }
+    ]
+  },
+  "startup-founders": {
+    "title": "Asistente de IA para fundadores de startups",
+    "role": "Fundadores de startups",
+    "metaTitle": "Asistente de IA para fundadores de startups - Potencia tu desempeño con IA",
+    "metaDescription": "GAIA ayuda a los fundadores de startups a gestionar actualizaciones para inversionistas, automatizar flujos de contratación, rastrear métricas entre herramientas y manejar el caos operativo de construir una empresa.",
+    "keywords": [
+      "asistente de IA para fundadores de startups",
+      "herramienta de productividad para fundadores",
+      "automatización de startups",
+      "automatización de actualizaciones para inversionistas",
+      "IA para flujos de trabajo del fundador",
+      "IA para redactar actualizaciones para inversionistas",
+      "herramienta de gestión de correo para fundadores",
+      "automatización del proceso de contratación para startups",
+      "mejor IA para fundadores de startups",
+      "IA de código abierto para fundadores",
+      "IA autoalojada para startups",
+      "jefe de personal de IA para startups",
+      "IA para gestión de calendario de fundadores",
+      "Notion IA para operaciones de startups",
+      "automatización de Gmail para fundadores"
+    ],
+    "intro": "Los fundadores de startups tienen que asumir múltiples roles a la vez. Una encuesta de First Round Capital reveló que el 72 % de los fundadores considera la gestión del tiempo como su mayor desafío, y el fundador promedio cambia de contexto entre más de 12 herramientas al día. GAIA actúa como tu jefe de personal con IA, gestionando de forma proactiva la comunicación con inversionistas, los procesos de contratación, las actualizaciones de equipo y la carga operativa que crece con tu compañía, liberándote para enfocarte en las decisiones que solo tú puedes tomar.",
+    "painPoints": [
+      "Las actualizaciones para inversionistas requieren reunir métricas manualmente de múltiples paneles y herramientas",
+      "Desbordamiento del correo electrónico con cientos de mensajes diarios de candidatos, inversionistas, clientes y socios",
+      "La gestión del proceso de contratación en LinkedIn, correo electrónico y calendarios requiere mucho tiempo y es propensa a errores",
+      "La alineación del equipo se resiente cuando las actualizaciones y decisiones están dispersas en Slack, correo electrónico y reuniones"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Actualizaciones automatizadas para inversores",
+        "description": "GAIA recopila métricas clave, logros y aspectos destacados de tus herramientas y los convierte en borradores pulidos de actualizaciones para inversores. Revisa, personaliza y envía directamente por Gmail en el horario que prefieras."
+      },
+      {
+        "title": "Triado inteligente de correos electrónicos",
+        "description": "GAIA lee cada correo electrónico entrante, los clasifica por prioridad (inversores, clientes, contrataciones, operaciones), redacta respuestas para mensajes rutinarios y asegura que los asuntos prioritarios aparezcan enseguida."
+      },
+      {
+        "title": "Coordinación del proceso de selección",
+        "description": "GAIA hace seguimiento de los candidatos a través de Gmail y Google Calendar, agenda entrevistas automáticamente, envía recordatorios de seguimiento y mantiene actualizado tu registro de contrataciones en Notion o Google Sheets."
+      },
+      {
+        "title": "Automatización de la coordinación del equipo",
+        "description": "Informes matutinos con novedades clave de los canales de Slack, próximas reuniones y decisiones pendientes te llegarán antes de que abras tu portátil. GAIA se asegura de que nada se pase por alto."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo ayuda GAIA a los fundadores a ahorrar tiempo con los inversores?",
+        "answer": "GAIA recopila automáticamente información de tus herramientas conectadas, redacta correos de actualización para inversores en tu propio estilo y puede programar su envío. Lo que normalmente toma 2-3 horas al mes se convierte en un proceso rápido de revisión y envío."
+      },
+      {
+        "question": "¿Es GAIA suficientemente seguro para datos sensibles de startups?",
+        "answer": "GAIA es totalmente de código abierto y puede alojarse localmente. Puedes desplegarlo en tu propia infraestructura, garantizando soberanía total sobre tus datos. Nunca se comparte información con terceros ni se usa para entrenar modelos."
+      },
+      {
+        "question": "¿Puede GAIA gestionar mi calendario como fundador?",
+        "answer": "Sí. GAIA se integra con Google Calendar para optimizar tu agenda, reservar tiempo de concentración, preparar resúmenes de reuniones y coordinar varios calendarios a la vez. Te sugiere de forma proactiva ajustes cuando surgen conflictos de horario."
+      }
+    ]
+  },
+  "students": {
+    "title": "Asistente de IA para estudiantes",
+    "role": "Estudiantes",
+    "metaTitle": "Asistente de IA para estudiantes - Organiza tus estudios y potencia tu concentración",
+    "metaDescription": "GAIA ayuda a los estudiantes a organizar tareas, gestionar investigaciones, programar sesiones de estudio y cumplir con los plazos en todas sus herramientas académicas.",
+    "keywords": [
+      "Asistente de IA para estudiantes",
+      "herramienta de productividad para estudiantes",
+      "IA para gestión de tareas académicas",
+      "planificador de estudio con IA",
+      "automatización de seguimiento de tareas",
+      "IA para deberes",
+      "herramienta de productividad universitaria",
+      "IA para estudiantes universitarios",
+      "herramienta de IA para investigación estudiantil",
+      "seguimiento de fechas límite para estudiantes",
+      "mejor IA para estudiantes",
+      "programador de estudio con IA",
+      "IA para gestión de tareas universitarias",
+      "automatización del flujo de trabajo estudiantil",
+      "IA para productividad académica"
+    ],
+    "intro": "Los estudiantes equilibran cursos, investigaciones, actividades extracurriculares y compromisos sociales con tiempo y energía mental limitados. Estudios de la Encuesta Nacional de Compromiso Estudiantil muestran que una buena gestión del tiempo es el factor más fuerte para el éxito académico. GAIA ayuda a los estudiantes a organizar su vida académica gestionando tareas, programando sesiones de estudio, haciendo seguimiento de fechas límite y destacando investigaciones relevantes, funcionando como un asistente académico personal que mantiene todo en orden.",
+    "painPoints": [
+      "Las fechas límite de las tareas están repartidas entre los programas de las materias, correos electrónicos y plataformas educativas",
+      "El material de investigación se acumula sin organización, dificultando la redacción de trabajos",
+      "La planificación del horario de estudio suele ser reactiva en vez de proactiva, lo que lleva a estudiar a última hora"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Seguimiento de fechas límite y recordatorios",
+        "description": "GAIA monitoriza tu Gmail en busca de notificaciones de tareas, crea tareas en Todoist con fechas límite y envía recordatorios proactivos con suficiente antelación para trabajar con calidad."
+      },
+      {
+        "title": "Organización de la investigación",
+        "description": "GAIA utiliza integración con Perplexity para búsquedas de investigación, organiza los hallazgos en Notion o Google Docs y te ayuda a construir esquemas estructurados para trabajos y proyectos."
+      },
+      {
+        "title": "Programación inteligente de estudio",
+        "description": "GAIA analiza tu Google Calendar en busca de huecos libres, programa sesiones de estudio enfocadas alrededor de tus clases y compromisos, y se ajusta cuando cambian las fechas límite."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿GAIA es gratuito para estudiantes?",
+        "answer": "GAIA ofrece un plan gratuito con funciones principales que cubre la mayoría de las necesidades estudiantiles. También puedes autohospedar GAIA completamente gratis para tener control total sobre tus datos."
+      },
+      {
+        "question": "¿GAIA puede ayudar con trabajos de investigación?",
+        "answer": "GAIA se integra con Perplexity para investigaciones impulsadas por IA, organiza tus hallazgos en Notion o Google Docs y te ayuda a estructurar tu trabajo. Gestiona la parte logística de la investigación para que puedas concentrarte en el análisis y la redacción."
+      }
+    ]
+  },
+  "remote-workers": {
+    "title": "Asistente de IA para trabajadores remotos",
+    "role": "Trabajadores remotos",
+    "metaTitle": "Asistente de IA para trabajadores remotos - Domina la comunicación asíncrona",
+    "metaDescription": "GAIA ayuda a los trabajadores remotos a gestionar la comunicación asíncrona, organizar herramientas dispersas, automatizar actualizaciones de estado y mantener el equilibrio entre el trabajo y la vida personal con automatización inteligente.",
+    "keywords": [
+      "asistente de IA para trabajadores remotos",
+      "productividad en el trabajo remoto",
+      "IA para comunicación asíncrona",
+      "herramienta de colaboración en equipos remotos",
+      "asistente para trabajo desde casa",
+      "IA para trabajo remoto",
+      "herramienta de productividad para equipos distribuidos",
+      "IA para equipos remotos",
+      "automatización de actualizaciones asíncronas",
+      "IA para la productividad en trabajo desde casa",
+      "mejor IA para trabajadores remotos",
+      "automatización de Slack para equipos remotos",
+      "IA para programación de reuniones por zona horaria",
+      "herramienta de actualización de estado para trabajadores remotos",
+      "IA para gestión de notificaciones en trabajo remoto"
+    ],
+    "intro": "Los trabajadores remotos enfrentan una paradoja: más flexibilidad pero también más fragmentación. El informe de Buffer, \"State of Remote Work 2024\", reveló que el 23% de los trabajadores remotos sufren de soledad y el 21% considera la comunicación como su mayor desafío. Un trabajador remoto promedio revisa más de 8 herramientas a lo largo del día. GAIA cierra esas brechas centralizando la comunicación, automatizando actualizaciones de estado y evitando que se pierda información entre husos horarios y silos de herramientas.",
+    "painPoints": [
+      "Los silos de información entre Slack, correo electrónico, Notion y herramientas de gestión de proyectos hacen que cambiar de contexto sea agotador",
+      "Las brechas en la comunicación asíncrona provocan mensajes no vistos y respuestas demoradas entre zonas horarias diferentes.",
+      "Mantener la visibilidad en equipos distribuidos requiere actualizar manualmente el estado de forma constante.",
+      "Los límites entre el trabajo y la vida personal se difuminan cuando las notificaciones llegan a cualquier hora de parte de tu equipo global."
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Centro Unificado de Comunicación",
+        "description": "GAIA supervisa Slack, Gmail y Microsoft Teams en busca de mensajes importantes, los consolida en resúmenes priorizados y se asegura de que nunca pierdas actualizaciones cruciales asíncronas."
+      },
+      {
+        "title": "Actualizaciones Automáticas de Estado",
+        "description": "GAIA rastrea tu trabajo completado en distintas herramientas y publica resúmenes diarios en Slack o los envía por correo electrónico. Tu equipo se mantiene informado sin que tengas que escribir actualizaciones manuales."
+      },
+      {
+        "title": "Gestión Inteligente de Notificaciones",
+        "description": "GAIA aprende tu horario laboral, agrupa notificaciones no urgentes y solo muestra lo importante durante tus horas de concentración. Respeta tus límites mientras te mantiene informado."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo ayuda GAIA con la comunicación asíncrona?",
+        "answer": "GAIA monitoriza tus canales de Slack, correo electrónico y otras herramientas de comunicación continuamente. Resume conversaciones que no viste, resalta lo que requiere tu respuesta y puede redactar respuestas para mensajes rutinarios para que estés al día sin vigilar constantemente."
+      },
+      {
+        "question": "¿GAIA puede funcionar entre diferentes zonas horarias?",
+        "answer": "Sí. GAIA opera 24/7 y comprende los contextos de zonas horarias. Agenda reuniones considerando la disponibilidad de todos los participantes, agrupa notificaciones según corresponda y entrega resúmenes matutinos adaptados a tu hora local."
+      }
+    ]
+  },
+  "freelancers": {
+    "title": "Asistente de IA para Freelancers",
+    "role": "Freelancers",
+    "metaTitle": "Asistente de IA para Freelancers - Automatiza la gestión del negocio",
+    "metaDescription": "GAIA ayuda a los freelancers a gestionar la comunicación con clientes, seguimiento de proyectos, automatiza recordatorios de facturación y reduce la carga administrativa de manejar un negocio en solitario.",
+    "keywords": [
+      "asistente de IA para freelancers",
+      "herramienta de productividad para freelancers",
+      "automatización de gestión de clientes",
+      "flujo de trabajo de IA para freelancers",
+      "automatización para negocios individuales",
+      "facturación freelance con IA",
+      "automatización de cobros a clientes",
+      "gestión de correos freelance con IA",
+      "IA para gestionar clientes freelance",
+      "automatización del seguimiento de facturas",
+      "mejor IA para freelancers",
+      "herramienta de programación para freelancers",
+      "IA para recordatorio de pagos atrasados",
+      "automatización de Gmail para freelancers",
+      "IA para seguimiento de proyectos freelance"
+    ],
+    "intro": "Los freelancers son a la vez CEO, contable, gestor de proyectos y ejecutor. El estudio Freelance Forward 2024 de Upwork reveló que los freelancers dedican un 33% de sus horas laborales a tareas administrativas no facturables, como la comunicación con clientes, la facturación y la gestión de proyectos. GAIA se encarga del lado empresarial del trabajo freelance para que puedas maximizar tus horas facturables y ofrecer un trabajo excepcional a tus clientes.",
+    "painPoints": [
+      "Los correos y mensajes de Slack de los clientes exigen respuestas inmediatas a varios proyectos al mismo tiempo",
+      "El seguimiento de facturas y los cobros son tediosos pero fundamentales para la liquidez",
+      "Agendar reuniones con clientes en varios calendarios y zonas horarias requiere constante coordinación",
+      "El estado de los proyectos con los clientes carece de una visión unificada"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Gestión de comunicaciones con clientes",
+        "description": "GAIA clasifica los correos de clientes por proyecto y urgencia, redacta respuestas profesionales para consultas rutinarias y garantiza que ningún mensaje quede sin responder más allá de tu SLA de respuesta."
+      },
+      {
+        "title": "Orquestación de proyectos y tareas",
+        "description": "GAIA crea y gestiona tareas en Todoist o Asana para cada proyecto de cliente, supervisa los plazos y te envía recordatorios proactivos antes de entregar resultados."
+      },
+      {
+        "title": "Automatización de agendas",
+        "description": "GAIA administra tu Google Calendar a lo largo de todos los proyectos, sugiere automáticamente horarios de reunión y bloquea espacio para el trabajo de concentración en entregas."
+      },
+      {
+        "title": "Seguimiento de facturación y recordatorios",
+        "description": "GAIA lleva el seguimiento de las facturas enviadas a través de Gmail, te recuerda las facturas impagadas y redacta correos educados de seguimiento para pagos atrasados, de modo que mantengas tu flujo de caja sin conversaciones incómodas."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA gestionar varios proyectos de clientes al mismo tiempo?",
+        "answer": "Sí. GAIA organiza el trabajo por cliente y proyecto, controla los plazos en todos los compromisos y asegura que nada se te pase por alto. Te ofrece una vista unificada de todos tus proyectos activos sin importar qué herramientas use cada cliente."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA a los freelancers a cobrar más rápido?",
+        "answer": "GAIA rastrea el estado de tus facturas a través de Gmail, identifica pagos atrasados y redacta correos electrónicos profesionales de seguimiento para que los revises. Automatiza el tedioso proceso de seguimiento de pagos, permitiéndote enfocarte en el trabajo para tus clientes."
+      }
+    ]
+  },
+  "entrepreneurs": {
+    "title": "Asistente de IA para emprendedores",
+    "role": "Emprendedores",
+    "metaTitle": "Asistente de IA para emprendedores - Crece más rápido con la automatización IA",
+    "metaDescription": "GAIA ayuda a los emprendedores a automatizar operaciones, gestionar relaciones con clientes, coordinar equipos y tomar decisiones más rápidas mediante la automatización de flujos de trabajo impulsados por IA.",
+    "keywords": [
+      "asistente de IA para emprendedores",
+      "IA para automatización de negocios",
+      "productividad para emprendedores",
+      "herramienta de IA para pequeñas empresas",
+      "automatización de flujos de trabajo",
+      "IA para pequeños empresarios",
+      "IA para gestión del tiempo de emprendedores",
+      "automatización de operaciones para startups",
+      "herramienta de IA para operaciones de negocios",
+      "IA para hacer crecer un negocio",
+      "automatización de correos para emprendedores",
+      "mejor IA para emprendedores",
+      "automatización de seguimiento de clientes",
+      "asistente de IA para escalar negocios",
+      "IA como jefe de operaciones para fundadores"
+    ],
+    "intro": "Los emprendedores deben moverse rápido mientras gestionan una lista cada vez mayor de responsabilidades operativas. Un estudio de Harvard Business Review demuestra que aquellos que delegan y automatizan tareas operativas de manera efectiva tienen 3 veces más probabilidades de escalar con éxito. GAIA funciona como tu gestor de operaciones con IA, encargándose de filtrar correos, seguimientos a clientes, coordinación del equipo y la carga administrativa diaria para que puedas enfocarte en el crecimiento y la estrategia.",
+    "painPoints": [
+      "Las tareas operativas crecen más rápido que el equipo, generando cuellos de botella a nivel del fundador",
+      "Las relaciones con los clientes se resienten cuando los seguimientos se pierden en una bandeja de entrada saturada",
+      "La coordinación del equipo a través de Slack, correo y herramientas de proyectos requiere atención constante",
+      "La toma de decisiones se ralentiza cuando la información está dispersa en una docena de herramientas diferentes"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Gestión inteligente de correo electrónico y CRM",
+        "description": "GAIA organiza tu bandeja de entrada, identifica los correos de clientes y socios, redacta respuestas y garantiza que los seguimientos se realicen a tiempo. Se conecta con HubSpot para mantener tu CRM actualizado automáticamente."
+      },
+      {
+        "title": "Automatización de operaciones de equipo",
+        "description": "GAIA supervisa los canales de Slack y los tableros de Linear, detecta bloqueos, compila informes de estado del equipo y asegura que las tareas de las reuniones se sigan y se completen."
+      },
+      {
+        "title": "Inteligencia para la toma de decisiones",
+        "description": "GAIA reúne datos de tus herramientas conectadas en informes diarios, resalta anomalías y te muestra la información necesaria para tomar decisiones rápidas e informadas."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿En qué se diferencia GAIA de un asistente virtual?",
+        "answer": "A diferencia de los asistentes virtuales humanos, GAIA funciona 24/7 sin tiempos de espera, se integra directamente con tus herramientas y aprende tus preferencias con el tiempo gracias a una memoria basada en grafos. Gestiona tareas de manera instantánea y escala sin necesidad de contratar nuevo personal."
+      },
+      {
+        "question": "¿GAIA puede ayudar a gestionar las relaciones con los clientes?",
+        "answer": "Sí. GAIA se integra con HubSpot y Gmail para rastrear comunicaciones con clientes, asegurar seguimientos a tiempo y señalar interacciones importantes. Te ayuda a mantener relaciones sólidas incluso cuando tu base de clientes crece."
+      }
+    ]
+  },
+  "marketers": {
+    "title": "Asistente de IA para marketers",
+    "role": "Marketers",
+    "metaTitle": "Asistente de IA para marketers - Automatiza la gestión de marketing",
+    "metaDescription": "GAIA ayuda a los marketers a automatizar el seguimiento de campañas, gestionar flujos de trabajo en redes sociales, coordinar calendarios de contenido y simplificar los informes multicanal.",
+    "keywords": [
+      "asistente de IA para marketers",
+      "IA para automatización de marketing",
+      "asistente de marketing de contenidos",
+      "automatización de redes sociales",
+      "herramienta de productividad para marketing"
+    ],
+    "intro": "Según el informe Marketing Technology Landscape de ChiefMartec, los marketers modernos gestionan una media de 12 herramientas diferentes, desde plataformas de correo electrónico y programadores de redes sociales hasta paneles de analítica y CRMs. El peso operativo de coordinar campañas multicanal deja poco tiempo para la estrategia creativa. GAIA conecta tu stack de marketing, automatiza los reportes y gestiona la ejecución táctica para que puedas concentrarte en campañas que impulsan el crecimiento.",
+    "painPoints": [
+      "El reporte de campañas multicanal requiere recopilar datos manualmente de varias plataformas de análisis.",
+      "La gestión de redes sociales en Twitter, LinkedIn, Instagram y Reddit dispersa la atención.",
+      "La coordinación del calendario de contenido entre redactores, diseñadores y responsables es caótica.",
+      "El momento del seguimiento de leads es crucial, pero a menudo se retrasa por la saturación del correo."
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Reportes Automatizados de Campañas",
+        "description": "GAIA obtiene datos de rendimiento de PostHog y otras herramientas conectadas, elabora informes semanales de campañas y los distribuye por Slack o Gmail. Dedica minutos a revisar en vez de horas a crear reportes."
+      },
+      {
+        "title": "Monitoreo de Redes Sociales",
+        "description": "GAIA supervisa Twitter, LinkedIn, Reddit y HackerNews para detectar menciones de tu marca, tendencias de la industria y actividad de la competencia. Destaca insights accionables y sugiere respuestas."
+      },
+      {
+        "title": "Gestión de Flujos de Trabajo de Contenido",
+        "description": "GAIA rastrea el flujo de contenido en Notion o Asana, envía recordatorios de próximas fechas límite, coordina ciclos de revisión y garantiza que tu calendario de contenidos se mantenga al día."
+      },
+      {
+        "title": "Automatización del Nurturing de Leads",
+        "description": "GAIA monitoriza Gmail en busca de leads entrantes, los categoriza por fuente e intención, redacta respuestas personalizadas y garantiza seguimientos oportunos a través de HubSpot."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿GAIA puede reemplazar mi plataforma de automatización de marketing?",
+        "answer": "GAIA complementa tu stack de marketing existente en vez de reemplazarlo. Actúa como una capa inteligente de orquestación que conecta tus herramientas, automatiza el flujo de datos y se encarga de la carga operativa de manejar múltiples canales de marketing."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA en la gestión de redes sociales?",
+        "answer": "GAIA monitorea tus canales sociales en busca de menciones y tendencias, detecta oportunidades de engagement y redacta respuestas. Se integra con Twitter, LinkedIn, Instagram y Reddit para darte una vista unificada de tu presencia social."
+      },
+      {
+        "question": "¿GAIA permite el seguimiento analítico?",
+        "answer": "Sí. GAIA se integra con PostHog para análisis de producto y puede extraer datos de herramientas conectadas para generar reportes de marketing. Automatiza el proceso de reporte para que dediques más tiempo a la estrategia y menos a recolectar datos."
+      }
+    ]
+  },
+  "content-creators": {
+    "title": "Asistente de IA para creadores de contenido",
+    "role": "Creadores de contenido",
+    "metaTitle": "Asistente de IA para creadores de contenido - Optimiza tu flujo creativo",
+    "metaDescription": "GAIA ayuda a los creadores de contenido a gestionar calendarios de publicaciones, seguir la interacción de la audiencia, organizar investigaciones y automatizar la parte empresarial de la creación de contenido.",
+    "keywords": [
+      "asistente de IA para creadores de contenido",
+      "flujo de trabajo para creación de contenido",
+      "IA para la economía de creadores",
+      "automatización de publicaciones",
+      "calendario de contenido con IA",
+      "IA de productividad para YouTube",
+      "asistente de IA para newsletters",
+      "herramienta de flujo de trabajo para pódcast",
+      "herramienta de productividad para creadores de contenido",
+      "IA para programación de contenido",
+      "automatización de contenido para redes sociales",
+      "mejor IA para creadores de contenido",
+      "herramienta de investigación con IA para contenido",
+      "automatización del flujo de trabajo para creadores",
+      "IA para interacción con la audiencia"
+    ],
+    "intro": "Los creadores de contenido son empresas mediáticas de una sola persona. Ya sea que publiques newsletters, videos de YouTube, pódcasts o contenido en redes sociales, las exigencias operativas de la programación, la investigación, la interacción con la audiencia y la distribución multiplataforma consumen tiempo que deberías dedicar a crear. La economía de los creadores supera ya los 250 mil millones de dólares a nivel mundial, pero la mayoría carece del apoyo operativo que ofrecen los equipos de medios tradicionales. GAIA cubre esa necesidad como tu asistente de producción con IA.",
+    "painPoints": [
+      "La investigación y la generación de ideas consumen horas antes de empezar a crear contenido",
+      "Publicar y programar en múltiples redes sociales es repetitivo y propenso a errores",
+      "El seguimiento de la interacción con la audiencia en Twitter, LinkedIn, Instagram y Reddit no cuenta con un panel unificado",
+      "Las tareas operativas como correos de patrocinio, facturación y solicitudes de colaboración se acumulan"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Canal de investigación e ideación",
+        "description": "GAIA utiliza integraciones con Perplexity y HackerNews para mostrar temas en tendencia, compilar resúmenes de investigación y organizar ideas en Notion. Comienza cada sesión de creación de contenido con un brief estructurado en lugar de una página en blanco."
+      },
+      {
+        "title": "Seguimiento de interacción multiplataforma",
+        "description": "GAIA monitorea Twitter, LinkedIn, Reddit e Instagram para detectar comentarios, menciones y patrones de interacción. Identifica las conversaciones clave a las que unirse y sugiere respuestas."
+      },
+      {
+        "title": "Automatización de operaciones de negocio",
+        "description": "GAIA gestiona tu Gmail para consultas de patrocinio, solicitudes de colaboración y correos de negocios. Redacta respuestas profesionales, realiza el seguimiento de negociaciones y asegura que ninguna oportunidad se pierda."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA ayudarme a crear contenido más rápido?",
+        "answer": "GAIA acelera el proceso de creación de contenido automatizando la investigación, organizando ideas y gestionando la carga operativa alrededor de la publicación. Se encarga de la logística para que puedas enfocarte en el trabajo creativo que solo tú puedes hacer."
+      },
+      {
+        "question": "¿Cómo rastrea GAIA la interacción entre plataformas?",
+        "answer": "GAIA se integra con Twitter, LinkedIn, Instagram y Reddit para monitorear menciones, comentarios y métricas de interacción. Consolida los datos multiplataforma en resúmenes unificados y destaca las interacciones más relevantes."
+      }
+    ]
+  },
+  "data-scientists": {
+    "title": "Asistente de IA para científicos de datos",
+    "role": "Científicos de datos",
+    "metaTitle": "Asistente de IA para científicos de datos - Automatiza operaciones de flujos de trabajo de datos",
+    "metaDescription": "GAIA ayuda a los científicos de datos a gestionar el seguimiento de experimentos, automatizar informes para partes interesadas, organizar la documentación y reducir la carga operativa en los flujos de trabajo de datos.",
+    "keywords": [
+      "asistente de IA para científicos de datos",
+      "productividad en ciencia de datos",
+      "automatización de flujos de trabajo de ML",
+      "colaboración en equipos de datos",
+      "operaciones de ciencia de datos",
+      "IA para documentación de experimentos",
+      "GitHub IA para científicos de datos",
+      "Notion IA para proyectos de ML",
+      "herramienta de flujo de trabajo para científicos de datos",
+      "mejor IA para científicos de datos",
+      "IA de código abierto para ciencia de datos",
+      "IA para informes a partes interesadas en ciencia de datos",
+      "Perplexity AI para seguimiento de investigaciones",
+      "Herramienta de coordinación para equipos de ciencia de datos",
+      "IA para automatización de revisión de literatura científica"
+    ],
+    "intro": "Según el informe State of Data Science de Anaconda, los científicos de datos dedican aproximadamente el 45% de su tiempo a la preparación de datos y tareas operativas, lo que deja poco tiempo para el modelado y análisis. Entre gestionar expectativas de los interesados, documentar experimentos, coordinarse con equipos de ingeniería y presentar resultados, la carga operativa es considerable. GAIA automatiza los aspectos no analíticos del trabajo en ciencia de datos para que puedas concentrarte en extraer conocimientos.",
+    "painPoints": [
+      "La elaboración de informes para los interesados requiere traducir resultados técnicos al lenguaje de negocios una y otra vez",
+      "La documentación de experimentos se retrasa a medida que aumenta el ritmo de iteración",
+      "La coordinación con equipos de ingeniería sobre implementaciones y problemas en los pipelines de datos genera cuellos de botella",
+      "El seguimiento de artículos de investigación y las revisiones bibliográficas son procesos esenciales pero que consumen mucho tiempo"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Informes automatizados para interesados",
+        "description": "GAIA recopila resultados de experimentos desde tu documentación en Notion, traduce los hallazgos técnicos en resúmenes comprensibles para el negocio y los entrega a los interesados vía Slack o Gmail según tu programación."
+      },
+      {
+        "title": "Organización de la investigación",
+        "description": "GAIA utiliza Perplexity y DeepWiki para rastrear artículos relevantes y novedades de la industria. Organiza los hallazgos en Notion y te alerta sobre nueva investigación en tus áreas de interés."
+      },
+      {
+        "title": "Coordinación entre equipos",
+        "description": "GAIA monitorea Slack y Linear para detectar problemas en pipelines de datos, solicitudes de ingeniería y novedades de implementaciones. Te mantiene conectado con los equipos de ingeniería sin la necesidad de estar revisando los canales constantemente."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA integrarse con herramientas de ciencia de datos como Jupyter o MLflow?",
+        "answer": "GAIA se enfoca en la capa operativa que rodea el trabajo de ciencia de datos: comunicación, documentación, informes y coordinación. Se integra con GitHub para la gestión de código y con Notion para la documentación. Integraciones MCP personalizadas pueden ampliar GAIA para conectarse a herramientas especializadas de ciencia de datos."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA a organizar la investigación?",
+        "answer": "GAIA utiliza Perplexity para investigación impulsada por IA y DeepWiki para el descubrimiento de documentación. Organiza los hallazgos en Notion, crea listas de lectura estructuradas y te avisa cuando hay nuevas publicaciones relevantes en tus áreas de investigación."
+      }
+    ]
+  },
+  "project-managers": {
+    "title": "Asistente de IA para gestores de proyectos",
+    "role": "Gestores de proyectos",
+    "metaTitle": "Asistente de IA para gestores de proyectos - Automatiza las operaciones de proyectos",
+    "metaDescription": "GAIA ayuda a los gestores de proyectos a hacer seguimiento de entregables, automatizar informes de estado, gestionar comunicaciones con los interesados y mantener alineados a los equipos distribuidos en todas las herramientas.",
+    "keywords": [
+      "asistente de IA para gestores de proyectos",
+      "automatización en gestión de proyectos",
+      "automatización de informes de estado",
+      "coordinación de equipos con IA",
+      "automatización del seguimiento de proyectos",
+      "IA para PMs",
+      "herramienta de productividad para gestores de proyectos",
+      "automatización con Asana e IA",
+      "alternativa de IA a ClickUp AI",
+      "herramienta de IA para informes a interesados",
+      "mejor IA para gestores de proyectos",
+      "IA para monitoreo de riesgos en proyectos",
+      "IA para seguimiento de acciones en reuniones",
+      "coordinación de equipos distribuidos con IA",
+      "automatización de actualizaciones de estado de proyectos"
+    ],
+    "intro": "Los gestores de proyectos son el pegamento que mantiene unidos a los equipos, pero el informe PMI Pulse of the Profession muestra constantemente que los PM dedican más del 50% de su tiempo a tareas administrativas y de comunicación en vez de a la supervisión estratégica de proyectos. Hacer seguimiento de entregables en Asana, Linear o ClickUp, mientras se gestionan correos con los interesados y se programan reuniones, genera una carga de coordinación que crece con cada nuevo proyecto. GAIA automatiza la capa operativa de la gestión de proyectos.",
+    "painPoints": [
+      "La generación de informes de estado requiere recopilar datos de varias herramientas de proyectos cada semana",
+      "La comunicación con los interesados a través del correo electrónico y canales de Slack exige atención constante",
+      "La identificación de riesgos depende de monitorear manualmente los tableros de proyectos en busca de obstáculos y retrasos",
+      "La programación de reuniones y el seguimiento de tareas en equipos distribuidos consume mucho tiempo"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Informes de estado automatizados",
+        "description": "GAIA extrae datos de finalización de tareas de Asana, Linear o ClickUp, compila resúmenes sobre el estado del proyecto y los distribuye por Slack o correo electrónico. Informes semanales que antes llevaban horas ahora se revisan en minutos."
+      },
+      {
+        "title": "Monitoreo proactivo de riesgos",
+        "description": "GAIA vigila tus tableros de proyecto en busca de tareas atrasadas, elementos bloqueados y cambios en el alcance. Te alerta sobre riesgos potenciales antes de que se agraven y sugiere acciones de mitigación."
+      },
+      {
+        "title": "Gestión de reuniones y tareas de seguimiento",
+        "description": "GAIA prepara agendas de reuniones con puntos pendientes, realiza un seguimiento de las acciones asignadas durante las reuniones y da seguimiento a los responsables para asegurar que se cumplan los compromisos."
+      },
+      {
+        "title": "Comunicación con stakeholders",
+        "description": "GAIA redacta actualizaciones para los interesados, canaliza la información por los medios apropiados y asegura que los responsables de tomar decisiones tengan el contexto necesario sin que tengas que escribir cada mensaje manualmente."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿GAIA reemplaza Asana, Linear o ClickUp?",
+        "answer": "No. GAIA funciona junto a tus herramientas de gestión de proyectos existentes como una capa inteligente de automatización. Extrae datos de estas herramientas, automatiza la generación de informes, monitorea riesgos y gestiona la comunicación, para que puedas centrarte en decisiones estratégicas del proyecto."
+      },
+      {
+        "question": "¿Cómo gestiona GAIA los proyectos en varias herramientas a la vez?",
+        "answer": "GAIA se integra con Asana, Linear, ClickUp, Trello y otras herramientas de proyectos de manera simultánea. Ofrece una visión unificada del estado del proyecto y automatiza flujos de trabajo entre herramientas, como crear tareas a partir de correos electrónicos o mensajes de Slack."
+      },
+      {
+        "question": "¿GAIA puede ayudar con la coordinación de equipos distribuidos?",
+        "answer": "Sí. GAIA comprende los husos horarios, monitorea los canales de comunicación asíncronos, asegura transiciones fluidas entre miembros del equipo y recopila actualizaciones para mantener a los equipos alineados, sin importar la ubicación."
+      }
+    ]
+  },
+  "engineering-managers": {
+    "title": "Asistente de IA para responsables de ingeniería",
+    "role": "Gerentes de ingeniería",
+    "metaTitle": "Asistente de IA para Gerentes de Ingeniería - Potencia tu Liderazgo",
+    "metaDescription": "GAIA ayuda a los gerentes de ingeniería a automatizar reportes de sprints, rastrear la velocidad del equipo, preparar 1:1 y mantenerse conectados con el trabajo técnico sin microgestionar.",
+    "keywords": [
+      "asistente de IA para gerentes de ingeniería",
+      "automatización de gestión de ingeniería",
+      "IA para reportes de sprints",
+      "seguimiento de velocidad del equipo",
+      "herramienta de liderazgo en ingeniería",
+      "IA para preparación de 1:1",
+      "IA de GitHub para gerentes de ingeniería",
+      "IA de análisis de sprints en Linear",
+      "herramienta de productividad para gerentes de ingeniería",
+      "mejor IA para gerentes de ingeniería",
+      "IA de código abierto para liderazgo en ingeniería",
+      "IA para seguimiento del ciclo de PR",
+      "IA autohospedada para equipos de ingeniería",
+      "automatización de Slack para gerentes de ingeniería",
+      "IA para el seguimiento de dependencias entre equipos"
+    ],
+    "intro": "Los gerentes de ingeniería equilibran el liderazgo técnico con la gestión de personas, y esta división rara vez favorece el trabajo profundo. Un informe de Jellyfish sobre la gestión de ingeniería reveló que los EMs dedican en promedio 22 horas semanales a reuniones y comunicaciones. Mantenerse al tanto de la salud del equipo, la velocidad del sprint, los tiempos de revisión de PR y las dependencias entre equipos mientras se preparan 1:1s y reuniones con stakeholders crea una carga operativa constante. GAIA automatiza la recopilación y el reporte de datos para que puedas enfocarte en desbloquear a tu equipo.",
+    "painPoints": [
+      "La retrospectiva de sprints y el reporte de velocidad requieren recopilar datos manualmente de Linear y GitHub",
+      "Preparar 1:1s implica revisar los PR recientes, tickets y actividad en Slack de cada directo",
+      "El seguimiento de dependencias y la gestión de escalaciones entre equipos consumen horas de coordinación",
+      "Equilibrar el contexto técnico con las responsabilidades de gestión provoca una participación superficial en ambos aspectos"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Análisis y Reportes de Sprints",
+        "description": "GAIA agrupa datos de sprints de Linear y GitHub, incluyendo tendencias de velocidad, tiempos de ciclo de PR y tasas de finalización. Genera reportes formateados para stakeholders e identifica patrones relevantes para discutir en retrospectivas."
+      },
+      {
+        "title": "Preparación de 1:1",
+        "description": "Antes de cada 1:1, GAIA recopila un informe con los PR recientes del miembro del equipo, tickets completados, bloqueadores abiertos y cualquier discusión en Slack donde haya sido mencionado. Llega preparado a cada 1:1."
+      },
+      {
+        "title": "Seguimiento de dependencias y escalaciones",
+        "description": "GAIA monitoriza Linear y Slack en busca de bloqueadores entre equipos, señala dependencias en riesgo y te ayuda a escalar problemas antes de que afecten los plazos de entrega."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo ayuda GAIA con las métricas del equipo de ingeniería?",
+        "answer": "GAIA se integra con GitHub y Linear para rastrear el tiempo de ciclo de los PR, la velocidad de los sprints, la tasa de finalización de tickets y la frecuencia de despliegue. Compila estas métricas en informes periódicos y destaca tendencias que requieren atención."
+      },
+      {
+        "question": "¿Puede GAIA ayudarme a mantenerme técnico mientras gestiono?",
+        "answer": "Sí. GAIA resume las discusiones técnicas clave de Slack y GitHub, destaca decisiones arquitectónicas importantes y te ayuda a mantener el contexto técnico sin tener que leer todos los hilos. Te mantiene informado sin necesidad de monitorear constantemente los canales."
+      }
+    ]
+  },
+  "sales-professionals": {
+    "title": "Asistente de IA para profesionales de ventas",
+    "role": "Profesionales de ventas",
+    "metaTitle": "Asistente de IA para Profesionales de Ventas - Cierra Más Tratos con IA",
+    "metaDescription": "GAIA ayuda a los profesionales de ventas a automatizar la actualización del CRM, gestionar seguimientos, prepararse para llamadas y mantener el pipeline activo con asistencia de IA proactiva.",
+    "keywords": [
+      "asistente de IA para ventas",
+      "automatización de ventas con IA",
+      "herramienta de automatización de CRM",
+      "IA para productividad en ventas",
+      "automatización en la gestión de tratos",
+      "IA para automatización de seguimientos de ventas",
+      "automatización de IA en HubSpot",
+      "IA para preparación de llamadas de ventas",
+      "herramienta de flujo de trabajo para ventas",
+      "mejor IA para profesionales de ventas",
+      "IA de LinkedIn para investigación de prospectos",
+      "automatización de Gmail para ventas",
+      "IA para gestión de pipeline",
+      "IA para informes de actividades de ventas",
+      "Perplexity AI para investigación de prospectos"
+    ],
+    "intro": "Según el informe State of Sales de Salesforce, los profesionales de ventas dedican solo el 28% de su tiempo a vender realmente. El resto se invierte en ingresar datos en el CRM, dar seguimiento por correo, preparar reuniones y tareas administrativas. Cada minuto en tareas rutinarias es un minuto que no se dedica a crear relaciones y cerrar tratos. GAIA automatiza el lado operativo de las ventas para que tú puedas concentrarte en lo que genera ingresos: conversaciones significativas con prospectos y clientes.",
+    "painPoints": [
+      "El ingreso de datos en el CRM y la actualización del pipeline consumen horas que deberían emplearse vendiendo",
+      "El momento del seguimiento es crucial, pero fácil de pasar por alto al gestionar más de 50 oportunidades activas",
+      "Preparar reuniones requiere investigar a los prospectos manualmente en LinkedIn y en sitios web de empresas",
+      "Los informes diarios y semanales quitan tiempo que podría dedicarse a crear pipeline"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Automatización del CRM y actualizaciones al pipeline",
+        "description": "GAIA supervisa tu Gmail en busca de conversaciones relacionadas con acuerdos y registra automáticamente las interacciones en HubSpot. Actualiza las etapas de los acuerdos según las señales del correo electrónico y mantiene tu pipeline siempre al día."
+      },
+      {
+        "title": "Gestión inteligente del seguimiento",
+        "description": "GAIA rastrea cada interacción con prospectos, identifica el mejor momento para el seguimiento, redacta correos personalizados y se asegura de que ningún trato se enfríe por falta de contacto."
+      },
+      {
+        "title": "Resúmenes para la preparación de reuniones",
+        "description": "Antes de cada llamada de ventas, GAIA recopila investigación de prospectos de LinkedIn y Perplexity, historial reciente de correos, contexto de acuerdos de HubSpot y puntos clave adaptados a la etapa de la oportunidad."
+      },
+      {
+        "title": "Informes de actividad",
+        "description": "GAIA recopila automáticamente tus métricas diarias y semanales de actividad de correo, calendario y CRM en informes formateados para los gerentes, eliminando la carga de informes manuales."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿GAIA se integra con mi CRM?",
+        "answer": "GAIA se integra con HubSpot para la gestión del CRM, incluido el registro de interacciones, actualización de etapas de acuerdos y seguimiento de métricas del pipeline. También se conecta con Gmail y Google Calendar para capturar la actividad de ventas automáticamente."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA con la gestión de seguimiento?",
+        "answer": "GAIA rastrea todas las comunicaciones de prospectos, identifica cuándo vencen los seguimientos según tu cadencia de ventas, redacta correos electrónicos personalizados y te envía recordatorios. Asegura un alcance constante sin seguimiento manual."
+      },
+      {
+        "question": "¿Puede GAIA prepararme para las llamadas de ventas?",
+        "answer": "Sí. Antes de cada reunión, GAIA compila un documento de información con investigación de antecedentes del prospecto, historial de interacciones recientes, contexto de la etapa de la operación y puntos de conversación sugeridos. Entras en cada llamada preparado y con confianza."
+      }
+    ]
+  },
+  "customer-success": {
+    "title": "Asistente de IA para Gerentes de Éxito del Cliente",
+    "role": "Gerentes de Éxito del Cliente",
+    "metaTitle": "Asistente de IA para Éxito del Cliente - Gestión Proactiva de Cuentas",
+    "metaDescription": "GAIA ayuda a los gerentes de éxito del cliente a monitorear la salud de las cuentas, automatizar la programación de check-ins, rastrear los plazos de renovación y brindar soporte proactivo a través de todos los canales.",
+    "keywords": [
+      "asistente de IA para éxito del cliente",
+      "automatización de éxito del cliente",
+      "IA de gestión de cuentas",
+      "herramienta de gestión de renovaciones",
+      "automatización de operaciones de CS",
+      "IA de prevención de churn",
+      "IA de gestión de renovaciones",
+      "herramienta de productividad para gerentes de éxito del cliente",
+      "IA para CSM",
+      "IA de monitoreo de salud de cuentas",
+      "mejor IA para éxito del cliente",
+      "herramienta de IA para preparación de QBR",
+      "IA de detección de riesgo de churn de clientes",
+      "IA de alcance proactivo al cliente",
+      "automatización de flujos de trabajo de éxito del cliente"
+    ],
+    "intro": "Los gerentes de éxito del cliente poseen la relación crítica postventa que determina la retención y la expansión. El informe de CS de Gainsight de 2024 encontró que los CSM que gestionan más de 40 cuentas dedican más tiempo a tareas operativas que a conversaciones estratégicas. Monitorear las señales de salud de la cuenta a través de correo electrónico, canales de soporte y datos de uso, mientras se gestionan QBR y renovaciones, crea un acto de malabarismo constante. GAIA monitorea proactivamente tus cuentas y presenta las señales importantes antes de que se materialicen los riesgos de churn.",
+    "painPoints": [
+      "El monitoreo de la salud de la cuenta a través de correo electrónico, Slack y canales de soporte es intensivo manualmente",
+      "Los plazos de renovación se escabullen al gestionar más de 40 cuentas con diferentes fechas de contrato",
+      "La preparación de QBR requiere recopilar datos de uso, historial de soporte y métricas de éxito de múltiples fuentes",
+      "El alcance proactivo a menudo se vuelve reactivo cuando la sobrecarga operativa retrasa la participación"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Monitoreo de Salud de Cuentas",
+        "description": "GAIA monitorea Gmail y Slack en busca de señales de sentimiento, rastrea patrones de participación y marca las cuentas en riesgo antes de que escalen. Crea resúmenes de advertencia temprana para que puedas intervenir de manera proactiva."
+      },
+      {
+        "title": "Preparación para Renovaciones y QBR",
+        "description": "GAIA rastrea las fechas de renovación, compila datos de rendimiento de la cuenta y prepara materiales de presentación de QBR. Recopila datos de HubSpot, Gmail y Notion para construir revisiones completas de la cuenta."
+      },
+      {
+        "title": "Programación Proactiva de Check-ins",
+        "description": "GAIA programa check-ins regulares en Google Calendar, prepara agendas basadas en la actividad reciente de la cuenta y redacta correos electrónicos de alcance personalizados para mantener un compromiso constante con el cliente."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo identifica GAIA las cuentas en riesgo?",
+        "answer": "GAIA monitorea el sentimiento del correo electrónico, los tiempos de respuesta, los patrones de tickets de soporte y la frecuencia de participación en tus herramientas conectadas. Marca las cuentas que muestran señales de advertencia temprana, como disminución de la comunicación, sentimiento negativo o check-ins perdidos, para que puedas intervenir antes de que crezcan los riesgos de churn."
+      },
+      {
+        "question": "¿Puede GAIA ayudar con la preparación de QBR?",
+        "answer": "Sí. GAIA compila métricas de uso, historial de soporte, registros de comunicación y hitos de éxito de tus herramientas conectadas en documentos estructurados de QBR. Reduce el tiempo de preparación de horas a minutos."
+      }
+    ]
+  },
+  "researchers": {
+    "title": "Asistente de IA para Investigadores",
+    "role": "Investigadores",
+    "metaTitle": "Asistente de IA para Investigadores - Acelere Flujos de Trabajo Académicos",
+    "metaDescription": "GAIA ayuda a los investigadores a organizar la literatura, gestionar citas, coordinar colaboraciones y automatizar la carga administrativa de la investigación académica.",
+    "keywords": [
+      "asistente de IA para investigadores",
+      "automatización de flujos de trabajo de investigación",
+      "IA de productividad académica",
+      "automatización de revisión de literatura",
+      "herramienta de colaboración en investigación"
+    ],
+    "intro": "Los investigadores se enfrentan a una creciente presión para publicar, asegurar financiación y enseñar simultáneamente. Una encuesta de Nature encontró que el 84% de los investigadores sienten que la carga administrativa de la academia ha aumentado en la última década. Entre las solicitudes de subvenciones, el seguimiento de la literatura, la gestión de la revisión por pares y la coordinación de la colaboración, la carga operativa puede eclipsar el trabajo intelectual que impulsa el descubrimiento. GAIA ayuda a los investigadores a recuperar tiempo para lo que importa: el avance del conocimiento.",
+    "painPoints": [
+      "El seguimiento de la literatura en revistas, servidores de preimpresión y conferencias requiere una vigilancia constante",
+      "La coordinación de la colaboración entre instituciones y zonas horarias depende de cadenas de correo electrónico",
+      "Las fechas límite de las solicitudes de subvenciones y los requisitos de presentación de informes exigen un seguimiento meticuloso",
+      "Las solicitudes de revisión por pares y la correspondencia editorial compiten por una atención limitada"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Monitoreo y Organización de Literatura",
+        "description": "GAIA utiliza Perplexity y DeepWiki para rastrear nuevas publicaciones en tus áreas de investigación, organiza artículos en Notion y crea listas de lectura estructuradas con resúmenes de los hallazgos clave."
+      },
+      {
+        "title": "Gestión de Colaboración y Comunicación",
+        "description": "GAIA clasifica los correos electrónicos relacionados con la investigación, programa reuniones de coautores entre zonas horarias a través de Google Calendar y mantiene documentación compartida en Google Docs con las últimas actualizaciones del proyecto."
+      },
+      {
+        "title": "Seguimiento de Subvenciones y Fechas Límite",
+        "description": "GAIA rastrea las fechas límite de las subvenciones en Todoist, monitorea el correo electrónico para obtener confirmaciones de envío y notificaciones de revisión, y se asegura de que nunca te pierdas una fecha límite académica crítica."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA ayudar con las revisiones de literatura?",
+        "answer": "GAIA utiliza Perplexity para la investigación impulsada por IA y DeepWiki para la documentación técnica. Rastrea nuevas publicaciones en tu campo, organiza artículos en Notion, crea resúmenes estructurados y te ayuda a mantener una comprensión completa y actualizada de tu panorama de investigación."
+      },
+      {
+        "question": "¿Cómo maneja GAIA la colaboración académica?",
+        "answer": "GAIA coordina colaboraciones multiinstitucionales gestionando las comunicaciones por correo electrónico, programando reuniones entre zonas horarias, manteniendo documentos compartidos y rastreando los elementos de acción de las reuniones de investigación. Asegura una colaboración fluida sin coordinación manual constante."
+      }
+    ]
+  },
+  "consultants": {
+    "title": "Asistente de IA para Consultores",
+    "role": "Consultores",
+    "metaTitle": "Asistente de IA para Consultores - Maximice la Utilización Facturable",
+    "metaDescription": "GAIA ayuda a los consultores a gestionar compromisos con clientes, automatizar el seguimiento de entregables, prepararse para reuniones y reducir la sobrecarga administrativa no facturable.",
+    "keywords": [
+      "asistente de IA para consultores",
+      "herramienta de productividad para consultores",
+      "automatización de compromisos con clientes",
+      "IA de flujos de trabajo de consultoría",
+      "herramienta de utilización facturable",
+      "IA de consultoría de gestión",
+      "IA de gestión de correo electrónico de consultores",
+      "IA para consultores de gestión",
+      "herramienta de preparación de reuniones de consultores",
+      "IA de seguimiento de proyectos multi-cliente",
+      "mejor IA para consultores",
+      "automatización de entregables de consultoría",
+      "IA de comunicación con el cliente para consultores",
+      "automatización de flujos de trabajo de consultores",
+      "IA de reducción de tiempo no facturable"
+    ],
+    "intro": "Los consultores venden su experiencia por hora, lo que hace que el tiempo no facturable sea directamente costoso. La investigación de McKinsey sugiere que los consultores de gestión dedican hasta el 40% de su tiempo a operaciones internas, gestión de comunicación con el cliente y coordinación de entregables en lugar de trabajo de asesoramiento estratégico. GAIA maximiza tu utilización facturable automatizando la sobrecarga operativa de los compromisos de consultoría.",
+    "painPoints": [
+      "La comunicación con el cliente a través de correo electrónico y Slack para múltiples compromisos simultáneos es abrumadora",
+      "El seguimiento de entregables y la gestión de hitos requieren actualizaciones manuales constantes",
+      "La preparación de reuniones exige investigar el contexto del cliente a través de notas y documentos dispersos",
+      "Las tareas de redacción de propuestas e informes implican tareas repetitivas de formato y compilación de datos"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Gestión de Comunicación Multi-Cliente",
+        "description": "GAIA organiza mensajes de correo electrónico y Slack por cliente y compromiso, redacta respuestas para comunicaciones rutinarias y asegura que ningún mensaje del cliente supere tu tiempo de respuesta objetivo."
+      },
+      {
+        "title": "Seguimiento de Compromisos y Entregables",
+        "description": "GAIA rastrea los hitos de entregables en Todoist o Asana, monitorea las fechas límite y envía alertas proactivas cuando los entregables se acercan. Mantiene los plazos de los compromisos visibles y manejables."
+      },
+      {
+        "title": "Inteligencia de Reuniones con Clientes",
+        "description": "Antes de cada reunión con el cliente, GAIA compila una información con comunicaciones recientes, elementos de acción abiertos, estado de entregables e investigación relevante de Perplexity. Llegarás preparado para cada conversación."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo ayuda GAIA a los consultores a gestionar múltiples clientes?",
+        "answer": "GAIA organiza todas las comunicaciones y tareas por compromiso del cliente, proporciona paneles por cliente de actividad y estado de entregables, y asegura que mantengas una alta capacidad de respuesta en todos los compromisos sin dejar caer ninguna bola."
+      },
+      {
+        "question": "¿Puede GAIA rastrear el tiempo facturable versus el no facturable?",
+        "answer": "GAIA monitorea tu calendario y las finalizaciones de tareas para ayudar a categorizar el tiempo dedicado. Si bien no es una herramienta de seguimiento de tiempo, automatiza las tareas administrativas que típicamente consumen horas no facturables, aumentando efectivamente tu tasa de utilización."
+      }
+    ]
+  },
+  "agency-owners": {
+    "title": "Asistente de IA para Dueños de Agencias",
+    "role": "Dueños de Agencias",
+    "metaTitle": "Asistente de IA para Dueños de Agencias - Escalar Operaciones Eficientemente",
+    "metaDescription": "GAIA ayuda a los dueños de agencias a gestionar carteras de clientes, automatizar informes de proyectos, coordinar equipos distribuidos y optimizar el desarrollo de nuevos negocios.",
+    "keywords": [
+      "asistente de IA para dueños de agencias",
+      "automatización de gestión de agencias",
+      "IA de gestión de carteras de clientes",
+      "herramienta de operaciones de agencia",
+      "productividad de agencia digital",
+      "IA de agencia de marketing",
+      "herramienta de automatización de agencias creativas",
+      "herramienta de productividad para dueños de agencias",
+      "IA para operaciones de agencias",
+      "IA de automatización de informes a clientes",
+      "IA de desarrollo de negocio de agencia",
+      "mejor IA para dueños de agencias",
+      "IA de gestión multi-cliente",
+      "herramienta de coordinación de equipos de agencia",
+      "IA para agencias de marketing digital"
+    ],
+    "intro": "Los dueños de agencias gestionan la complejidad de múltiples relaciones con clientes, coordinación de equipos, desarrollo de negocios y supervisión financiera simultáneamente. Los datos del Agency Management Institute muestran que la mayoría de los dueños de agencias dedican menos del 20% de su tiempo a actividades que impulsan el crecimiento, ya que las demandas operativas consumen la mayor parte de su semana. GAIA actúa como tu gerente de operaciones de IA, automatizando informes de clientes, coordinación de equipos y tareas administrativas para que puedas concentrarte en hacer crecer tu agencia.",
+    "painPoints": [
+      "La elaboración de informes para clientes en una cartera de cuentas requiere compilar datos de diversas herramientas semanalmente",
+      "El seguimiento de la utilización del equipo y la asignación de recursos entre proyectos es un ejercicio manual de hojas de cálculo",
+      "El desarrollo de nuevos negocios sufre cuando la extinción de incendios operativa consume el tiempo disponible",
+      "La gestión de la comunicación inter-cliente a través de correo electrónico y Slack crea un cambio de contexto constante"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Informes de Clientes a Nivel de Portafolio",
+        "description": "GAIA agrega datos de proyectos de ClickUp, Asana o Trello de todas las cuentas de clientes y genera informes de estado formateados. Distribúyelos a través de Gmail o Slack en un horario constante."
+      },
+      {
+        "title": "Coordinación y Comunicación del Equipo",
+        "description": "GAIA monitorea los canales de Slack y los tableros de proyectos en busca de bloqueos, compila resúmenes diarios del equipo y asegura que los gerentes de proyecto tengan el contexto que necesitan para mantener los compromisos en marcha."
+      },
+      {
+        "title": "Soporte al Desarrollo de Negocios",
+        "description": "GAIA clasifica los leads entrantes a través de Gmail, investiga prospectos usando Perplexity y LinkedIn, y redacta respuestas iniciales de alcance. Asegura que tu pipeline se mantenga activo incluso durante períodos de entrega intensos."
+      },
+      {
+        "title": "Inteligencia Operativa",
+        "description": "GAIA proporciona resúmenes diarios de todos los compromisos activos, marca proyectos en riesgo y presenta la información que necesitas para tomar decisiones rápidas de asignación de recursos."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA manejar informes para múltiples clientes?",
+        "answer": "Sí. GAIA organiza proyectos por cliente y genera informes individuales de clientes extrayendo datos de tus herramientas de gestión de proyectos. Escala a cualquier número de cuentas de clientes y mantiene un contexto separado para cada compromiso."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA con el desarrollo de nuevos negocios?",
+        "answer": "GAIA clasifica los leads entrantes, investiga prospectos, redacta correos electrónicos iniciales de alcance y rastrea el pipeline de ventas a través de HubSpot. Asegura que las actividades de desarrollo de negocios continúen consistentemente incluso durante períodos de entrega intensos."
+      }
+    ]
+  },
+  "indie-hackers": {
+    "title": "Asistente de IA para Indie Hackers",
+    "role": "Indie Hackers",
+    "metaTitle": "Asistente de IA para Indie Hackers - Lanzar Más Rápido, Automatizar Operaciones",
+    "metaDescription": "GAIA ayuda a los indie hackers a automatizar el soporte al cliente, monitorear métricas de productos, gestionar lanzamientos y manejar la sobrecarga operativa de construir productos en solitario.",
+    "keywords": [
+      "asistente de IA para indie hackers",
+      "productividad de desarrollador individual",
+      "automatización de indie hackers",
+      "IA de startups bootstrapping",
+      "herramienta de IA para construir en público",
+      "IA para fundadores individuales",
+      "asistente de IA para constructores de SaaS",
+      "herramienta de productividad para indie hackers",
+      "IA para fundadores bootstrapping",
+      "automatización de operador SaaS individual",
+      "IA de automatización de lanzamientos de productos",
+      "mejor IA para indie hackers",
+      "automatización de soporte al cliente para indie hackers",
+      "herramienta de IA para micro-SaaS",
+      "automatización de flujos de trabajo de indie hackers"
+    ],
+    "intro": "Los indie hackers construyen, lanzan, comercializan, soportan y hacen crecer productos individualmente. Cada tarea operativa que manejas manualmente es tiempo que no dedicas a lanzar características o hablar con los usuarios. Los indie hackers más exitosos automatizan implacablemente. GAIA actúa como tu cofundador de IA, manejando correos electrónicos de clientes, monitoreando métricas de productos, gestionando tu presencia social y manteniendo en funcionamiento el lado operativo de tu negocio mientras te concentras en construir.",
+    "painPoints": [
+      "Los correos electrónicos de soporte al cliente compiten con el tiempo de desarrollo, y ambos sufren",
+      "La coordinación de lanzamientos en Product Hunt, Twitter, HackerNews y Reddit requiere atención simultánea",
+      "El monitoreo de análisis de productos y el seguimiento de métricas ocurren esporádicamente en lugar de sistemáticamente",
+      "El marketing y la participación comunitaria se sienten como trabajos a tiempo completo separados además de construir"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Automatización de Soporte al Cliente",
+        "description": "GAIA clasifica los correos electrónicos de soporte, redacta respuestas para preguntas comunes, marca problemas urgentes y asegura que cada cliente reciba una respuesta oportuna sin que usted monitoree Gmail constantemente."
+      },
+      {
+        "title": "Coordinación de Lanzamientos y Marketing",
+        "description": "GAIA monitorea Twitter, HackerNews y Reddit en busca de menciones de tu producto, te alerta sobre conversaciones que valen la pena unirse y ayuda a coordinar actividades de lanzamiento en todas las plataformas."
+      },
+      {
+        "title": "Monitoreo de Métricas y Salud",
+        "description": "GAIA se integra con PostHog para análisis de productos, compila resúmenes diarios de métricas y te alerta sobre cambios significativos en el comportamiento del usuario o tasas de conversión."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Es GAIA asequible para indie hackers bootstrapping?",
+        "answer": "GAIA ofrece un nivel gratuito con funciones principales, y puedes auto-alojar GAIA completamente gratis en tu propia infraestructura. Para constructores bootstrapping, la opción de auto-alojamiento proporciona funcionalidad completa sin costo alguno más allá del alojamiento."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA con los flujos de trabajo de 'construir en público'?",
+        "answer": "GAIA monitorea tu actividad de GitHub, métricas de productos y canales sociales. Puede ayudarte a compilar actualizaciones de progreso semanales, rastrear hitos públicos y participar con tu comunidad en Twitter, HackerNews y Reddit."
+      }
+    ]
+  },
+  "solopreneurs": {
+    "title": "Asistente de IA para Solopreneurs",
+    "role": "Solopreneurs",
+    "metaTitle": "Asistente de IA para Solopreneurs - Ejecute su Negocio en Piloto Automático",
+    "metaDescription": "GAIA ayuda a los solopreneurs a gestionar correos electrónicos, automatizar flujos de trabajo de clientes, manejar la programación y ejecutar operaciones comerciales con eficiencia impulsada por IA como un equipo de uno.",
+    "keywords": [
+      "asistente de IA para solopreneurs",
+      "automatización de solopreneurs",
+      "IA de negocio unipersonal",
+      "productividad de negocio individual",
+      "herramienta de flujos de trabajo de solopreneur",
+      "IA para negocios unipersonales",
+      "IA de gestión de correo electrónico de solopreneur",
+      "alternativa de asistente virtual para solopreneurs",
+      "automatización de calendario de solopreneur",
+      "IA de automatización de negocios en línea",
+      "mejor IA para solopreneurs",
+      "herramienta de gestión de tareas de solopreneur",
+      "IA para creadores de productos digitales",
+      "IA de automatización de negocios de servicios",
+      "IA de gestión de clientes de solopreneur"
+    ],
+    "intro": "Los solopreneurs generan ingresos que rivalizan con los equipos pequeños, pero lo hacen solos. Una encuesta de Hiscox encontró que el solopreneur promedio trabaja 52 horas a la semana, y casi la mitad de ese tiempo se dedica a operaciones comerciales en lugar de trabajo que genera ingresos. GAIA funciona como tu equipo de IA, manejando la gestión de correo electrónico, la programación de clientes, la coordinación de tareas y la sobrecarga administrativa para que tu operación individual funcione con la eficiencia de un negocio con personal completo.",
+    "painPoints": [
+      "Cada tarea operativa recae sobre ti, desde facturación hasta soporte al cliente y marketing",
+      "La bandeja de entrada de correo electrónico se convierte en un cuello de botella cuando las comunicaciones de clientes, correos electrónicos de proveedores y administración se acumulan",
+      "Los conflictos de programación y las reservas dobles ocurren sin una persona de operaciones dedicada",
+      "El crecimiento del negocio se estanca cuando no puedes liberar suficiente tiempo de las operaciones para la estrategia y las ventas"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Gestión Integral de Correo Electrónico",
+        "description": "GAIA lee, categoriza y prioriza cada correo electrónico. Redacta respuestas para mensajes rutinarios, marca elementos urgentes y asegura que tu bandeja de entrada nunca se convierta en un cuello de botella para tu negocio."
+      },
+      {
+        "title": "Programación de Clientes y Seguimientos",
+        "description": "GAIA administra tu Google Calendar, maneja solicitudes de programación de clientes, envía recordatorios de citas y redacta correos electrónicos de seguimiento después de las reuniones para mantener relaciones profesionales con los clientes."
+      },
+      {
+        "title": "Automatización de Tareas y Flujos de Trabajo",
+        "description": "GAIA crea tareas recurrentes en Todoist, automatiza flujos de trabajo comerciales de varios pasos y gestiona proactivamente tu lista de tareas para que nada se escape de tu operación unipersonal."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA realmente reemplazar a un asistente virtual?",
+        "answer": "Para muchas tareas operativas, sí. GAIA maneja la clasificación de correo electrónico, la programación, la gestión de tareas y los seguimientos las 24 horas del día, los 7 días de la semana sin descansos. Aprende tus preferencias a través de la memoria basada en grafos y mejora con el tiempo. Para tareas que requieren juicio humano o creatividad, GAIA redacta y tú apruebas."
+      },
+      {
+        "question": "¿Qué tan rápido puede un solopreneur configurar GAIA?",
+        "answer": "GAIA se puede configurar en minutos. Conecta tu Gmail, Google Calendar y herramientas de gestión de tareas, y GAIA comienza a aprender tus patrones de inmediato. La mayoría de los solopreneurs ven ganancias de productividad dentro de la primera semana."
+      }
+    ]
+  },
+  "operations-managers": {
+    "title": "Asistente de IA para Gerentes de Operaciones",
+    "role": "Gerentes de Operaciones",
+    "metaTitle": "Asistente de IA para Gerentes de Operaciones - Optimizar Flujos de Trabajo Operativos",
+    "metaDescription": "GAIA ayuda a los gerentes de operaciones a automatizar el monitoreo de procesos, optimizar las comunicaciones con proveedores, rastrear KPIs y reducir la sobrecarga operativa manual en todos los equipos.",
+    "keywords": [
+      "asistente de IA para gerentes de operaciones",
+      "IA de automatización de operaciones",
+      "herramienta de gestión de procesos",
+      "IA de eficiencia operativa",
+      "automatización de flujos de trabajo de ops",
+      "herramienta de IA de operaciones comerciales",
+      "herramienta de productividad para gerentes de operaciones",
+      "IA para equipos de operaciones",
+      "automatización de informes operativos",
+      "herramienta de IA de seguimiento de KPIs",
+      "IA de automatización de gestión de proveedores",
+      "mejor IA para gerentes de operaciones",
+      "IA de coordinación interdepartamental",
+      "asistente de IA de monitoreo de procesos",
+      "IA de flujos de trabajo de operaciones"
+    ],
+    "intro": "Los gerentes de operaciones garantizan que la maquinaria del negocio funcione sin problemas, pero el rol es inherentemente reactivo. La investigación de McKinsey sobre excelencia operativa muestra que las empresas con flujos de trabajo operativos automatizados logran una eficiencia un 25% mayor que aquellas que dependen de procesos manuales. GAIA aporta automatización impulsada por IA a tus flujos de trabajo operativos, monitoreando proactivamente los procesos, gestionando las comunicaciones con proveedores y presentando los datos que necesitas para mantener las operaciones a la máxima eficiencia.",
+    "painPoints": [
+      "El monitoreo de procesos a través de sistemas requiere verificaciones manuales y seguimiento basado en hojas de cálculo",
+      "La gestión de la comunicación con proveedores a través de docenas de hilos de correo electrónico consume mucho tiempo",
+      "El seguimiento de KPIs y la elaboración de informes operativos exigen la compilación semanal de datos de múltiples fuentes",
+      "La coordinación interdepartamental en iniciativas operativas depende en gran medida del correo electrónico y las reuniones"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Monitoreo Automatizado de Procesos",
+        "description": "GAIA monitorea tus herramientas conectadas en busca de anomalías en los procesos, rastrea métricas operativas a través de Google Sheets y Airtable, y envía alertas proactivas cuando los KPIs se desvían de los objetivos."
+      },
+      {
+        "title": "Gestión de Comunicación con Proveedores",
+        "description": "GAIA organiza los correos electrónicos de proveedores por relación y prioridad, redacta respuestas rutinarias, rastrea estados de pedidos y asegura seguimientos oportunos de las solicitudes pendientes."
+      },
+      {
+        "title": "Automatización de Informes Operativos",
+        "description": "GAIA compila datos operativos de tus herramientas conectadas en informes formateados, los distribuye a las partes interesadas a través de Slack o correo electrónico y mantiene un seguimiento histórico en Google Sheets."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo se integra GAIA con los sistemas operativos existentes?",
+        "answer": "GAIA se conecta a tus herramientas operativas a través de integraciones MCP, incluyendo Google Sheets, Airtable, Slack y correo electrónico. Actúa como una capa de automatización inteligente sobre tus sistemas existentes sin requerir que reemplaces nada."
+      },
+      {
+        "question": "¿Puede GAIA ayudar con la gestión de proveedores?",
+        "answer": "Sí. GAIA organiza las comunicaciones con proveedores, rastrea los tiempos de respuesta, redacta mensajes de seguimiento y mantiene el historial de interacciones con proveedores. Asegura una gestión de proveedores consistente sin la sobrecarga manual de rastrear docenas de hilos de correo electrónico."
+      }
+    ]
+  },
+  "team-leads": {
+    "title": "Asistente de IA para Líderes de Equipo",
+    "role": "Líderes de Equipo",
+    "metaTitle": "Asistente de IA para Líderes de Equipo - Empodere a su Equipo con IA",
+    "metaDescription": "GAIA ayuda a los líderes de equipo a gestionar la comunicación del equipo, automatizar la recopilación de standups, rastrear entregables y mantener la alineación entre equipos distribuidos.",
+    "keywords": [
+      "asistente de IA para líderes de equipo",
+      "automatización de liderazgo de equipo",
+      "IA de automatización de standups",
+      "herramienta de gestión de equipos",
+      "IA de coordinación de equipos",
+      "IA para líderes técnicos",
+      "herramienta de productividad para líderes de equipo",
+      "herramienta de recopilación automatizada de standups",
+      "IA de seguimiento de progreso de equipo",
+      "alternativa de bot de standup de Slack",
+      "mejor IA para líderes de equipo",
+      "IA de seguimiento de bloqueos de equipo",
+      "automatización de informes ascendentes",
+      "herramienta de flujos de trabajo para líderes de equipo",
+      "IA para líderes de ingeniería"
+    ],
+    "intro": "Los líderes de equipo ocupan la capa intermedia crítica entre los contribuyentes individuales y la gerencia. La investigación de Atlassian sobre la efectividad de los equipos muestra que los líderes de equipo dedican un promedio del 62% de su tiempo a coordinación y comunicación en lugar de sus propias entregas. Recopilar standups, rastrear el progreso del equipo, gestionar bloqueos y comunicarse hacia arriba crea un impuesto de coordinación que crece con el tamaño del equipo. GAIA automatiza la capa de coordinación para que puedas concentrarte en entrenar, mentorizar y eliminar obstáculos para tu equipo.",
+    "painPoints": [
+      "La recopilación y compilación diaria de standups de los miembros del equipo es repetitiva y consume mucho tiempo",
+      "El seguimiento del progreso individual de los miembros del equipo a través de Linear, GitHub y Slack requiere un cambio de contexto constante",
+      "La comunicación del estado del equipo hacia la gerencia exige formatear informes regulares",
+      "Equilibrar el trabajo del contribuyente individual con la coordinación del equipo deja tiempo insuficiente para ambos"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Recopilación Automatizada de Standups",
+        "description": "GAIA recopila actualizaciones diarias de los miembros del equipo a través de Slack, las compila en resúmenes de standup formateados e identifica bloqueos que necesitan tu atención. No más perseguir a la gente para obtener actualizaciones."
+      },
+      {
+        "title": "Visibilidad del Progreso del Equipo",
+        "description": "GAIA monitorea Linear y GitHub para la actividad de tu equipo, proporciona instantáneas de progreso en tiempo real y marca elementos en riesgo de incumplir los plazos antes de que se conviertan en problemas."
+      },
+      {
+        "title": "Informes Ascendentes",
+        "description": "GAIA compila informes semanales de rendimiento del equipo de tus herramientas de proyecto, los formatea para el consumo de la gerencia y los entrega por correo electrónico o Slack en tu horario preferido."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo recopila GAIA los standups de mi equipo?",
+        "answer": "GAIA monitorea la actividad de Slack de tu equipo y las actualizaciones de las herramientas de proyecto (Linear, GitHub) para compilar resúmenes de progreso diarios. También puede solicitar directamente a los miembros del equipo en Slack actualizaciones y compilar las respuestas en un informe de standup formateado."
+      },
+      {
+        "question": "¿Puede GAIA ayudarme a identificar los bloqueos del equipo temprano?",
+        "answer": "Sí. GAIA monitorea los tableros de proyectos en busca de tickets estancados, rastrea los tiempos de revisión de PR en GitHub y presenta conversaciones de Slack sobre bloqueos. Te alerta proactivamente sobre problemas antes de que afecten la velocidad del equipo."
+      }
+    ]
+  },
+  "executives": {
+    "title": "Asistente de IA para Ejecutivos",
+    "role": "Ejecutivos",
+    "metaTitle": "Asistente de IA para Ejecutivos - Inteligencia Estratégica en Piloto Automático",
+    "metaDescription": "GAIA ayuda a los ejecutivos a gestionar la sobrecarga de información, automatizar la preparación de reuniones, optimizar la comunicación y mantener el enfoque estratégico en medio de las demandas operativas.",
+    "keywords": [
+      "asistente de IA para ejecutivos",
+      "IA de productividad ejecutiva",
+      "herramienta de asistente de CEO",
+      "automatización de comunicación ejecutiva",
+      "productividad de C-suite",
+      "asistente ejecutivo de IA",
+      "IA para líderes de C-suite",
+      "herramienta de productividad de CEO",
+      "jefe de gabinete de IA",
+      "IA de clasificación de correo electrónico ejecutivo",
+      "IA de preparación de reuniones de directorio",
+      "mejor IA para ejecutivos",
+      "IA de inteligencia de decisiones ejecutivas",
+      "IA para CEOs y fundadores",
+      "automatización de briefings estratégicos"
+    ],
+    "intro": "Los ejecutivos toman decisiones que dan forma a organizaciones enteras, sin embargo, un estudio de Harvard Business Review encontró que los CEOs tienen solo el 28% de su tiempo para trabajo estratégico real. El resto se consume por correo electrónico, reuniones, viajes y extinción de incendios operativa. La calidad de las decisiones ejecutivas depende directamente de la calidad y puntualidad de la información que reciben. GAIA actúa como tu asistente ejecutivo de IA, asegurando que tengas la información correcta en el momento adecuado mientras automatiza la sobrecarga operativa que fragmenta tu atención.",
+    "painPoints": [
+      "El volumen de correo electrónico a nivel ejecutivo supera los 200+ mensajes diarios, con elementos críticos enterrados en el ruido",
+      "La preparación de reuniones, incluidas reuniones de directorio, llamadas con inversores y revisiones de equipo, requiere briefings extensos",
+      "La información de los subordinados directos, la inteligencia de mercado y los sistemas internos llega en flujos fragmentados",
+      "El tiempo de pensamiento estratégico se ve erosionado constantemente por las demandas operativas y las solicitudes urgentes"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Inteligencia de Correo Electrónico Ejecutivo",
+        "description": "GAIA procesa cada correo electrónico a través de un filtro de urgencia e importancia estratégica. Redacta respuestas para correspondencia rutinaria, escala elementos críticos de inmediato y proporciona un resumen diario de correo electrónico organizado por prioridad."
+      },
+      {
+        "title": "Preparación y Seguimiento de Reuniones",
+        "description": "Antes de cada reunión, GAIA compila briefings completos con datos relevantes, comunicaciones recientes y contexto de tus herramientas conectadas. Después de las reuniones, captura elementos de acción y rastrea su finalización."
+      },
+      {
+        "title": "Síntesis de Información Estratégica",
+        "description": "GAIA monitorea Slack, correo electrónico y herramientas conectadas en busca de señales estratégicas, desarrollos de la industria a través de Perplexity e indicadores de rendimiento del equipo. Entrega briefings de inteligencia matutinos para que comiences cada día informado."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo maneja GAIA las comunicaciones ejecutivas confidenciales?",
+        "answer": "GAIA es completamente de código abierto y auto-alojable. Los ejecutivos pueden implementar GAIA en infraestructura dedicada con controles de seguridad de nivel empresarial, asegurando una confidencialidad total. Ningún dato se comparte con terceros ni se utiliza para el entrenamiento de modelos."
+      },
+      {
+        "question": "¿Puede GAIA integrarse con el flujo de trabajo de un asistente ejecutivo existente?",
+        "answer": "Sí. GAIA complementa a los asistentes ejecutivos humanos al manejar tareas de alto volumen como la clasificación de correo electrónico, la compilación de preparación de reuniones y la síntesis de información. Tu EA puede concentrarse en la gestión de relaciones y la coordinación de alto nivel mientras GAIA maneja las tareas operativas intensivas en datos."
+      },
+      {
+        "question": "¿Cómo prioriza GAIA la información para los ejecutivos?",
+        "answer": "GAIA utiliza IA para evaluar la urgencia, la relevancia estratégica y la importancia del remitente. Aprende tus prioridades con el tiempo a través de la memoria basada en grafos, asegurando que la jerarquía de información que presenta se alinee con tus necesidades reales de toma de decisiones."
+      }
+    ]
+  },
+  "real-estate-agents": {
+    "title": "Asistente de IA para Agentes Inmobiliarios",
+    "role": "Agentes Inmobiliarios",
+    "metaTitle": "Asistente de IA para Agentes Inmobiliarios - Cierre Más Negocios con IA",
+    "metaDescription": "GAIA ayuda a los agentes inmobiliarios a gestionar leads, automatizar seguimientos, programar visitas y mantener a los clientes informados con gestión proactiva de comunicación impulsada por IA.",
+    "keywords": [
+      "asistente de IA para agentes inmobiliarios",
+      "automatización inmobiliaria",
+      "IA de CRM inmobiliario",
+      "IA de programador de visitas",
+      "gestión de leads inmobiliarios",
+      "IA para seguimiento de leads inmobiliarios",
+      "HubSpot IA para agentes inmobiliarios",
+      "programador de visitas de Google Calendar",
+      "herramienta de productividad para agentes inmobiliarios",
+      "mejor IA para agentes inmobiliarios",
+      "IA para comunicación con el cliente en bienes raíces",
+      "automatización de Gmail para agentes inmobiliarios",
+      "automatización de flujos de trabajo inmobiliarios",
+      "IA para preparación de información de propiedades",
+      "IA de respuesta a leads de agentes inmobiliarios"
+    ],
+    "intro": "Los bienes raíces son un negocio impulsado por las relaciones donde el tiempo de respuesta impacta directamente las tasas de conversión. La investigación de la NAR muestra que los agentes que responden a los leads dentro de los 5 minutos tienen 21 veces más probabilidades de convertirlos en comparación con los tiempos de respuesta de 30 minutos. Sin embargo, la mayoría de los agentes gestionan más de 20 clientes activos mientras prospectan nuevos negocios, lo que hace que la respuesta instantánea sea casi imposible sin automatización. GAIA asegura que cada lead reciba una respuesta rápida y que cada cliente se mantenga informado durante toda su transacción.",
+    "painPoints": [
+      "La respuesta a los leads se ve afectada al hacer malabares con visitas, cierres y llamadas a clientes simultáneamente",
+      "La comunicación con el cliente a través de correo electrónico, texto y teléfono crea historiales de conversación dispersos",
+      "La programación y coordinación de visitas con los agentes listadores consume horas de ida y vuelta",
+      "Las actualizaciones del mercado y la información del vecindario deben compartirse proactivamente con los compradores activos"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Respuesta Instantánea a Leads",
+        "description": "GAIA monitorea Gmail en busca de nuevas consultas de leads y redacta respuestas iniciales personalizadas en minutos. Clasifica los leads por intención y urgencia, asegurando que los leads calientes reciban atención inmediata."
+      },
+      {
+        "title": "Seguimiento de Comunicación con Clientes",
+        "description": "GAIA organiza todas las comunicaciones con clientes de Gmail y Slack en líneas de tiempo por cliente, rastrea las fechas del último contacto y te recuerda que te comuniques cuando los clientes se han quedado en silencio."
+      },
+      {
+        "title": "Coordinación de Visitas y Reuniones",
+        "description": "GAIA administra tu Google Calendar para visitas, coordina la programación con los agentes listadores por correo electrónico, envía mensajes de confirmación y recordatorio, y prepara briefings de propiedades utilizando datos de vecindario de Google Maps y Yelp."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo ayuda GAIA a los agentes inmobiliarios a responder a los leads más rápido?",
+        "answer": "GAIA monitorea tu bandeja de entrada de correo electrónico 24/7 en busca de nuevas consultas de leads y redacta respuestas personalizadas de inmediato. Mientras estás en una visita, GAIA asegura que cada nuevo lead reciba una respuesta profesional y oportuna que lo mantenga comprometido hasta que puedas darle seguimiento personalmente."
+      },
+      {
+        "question": "¿Puede GAIA ayudar con la investigación de propiedades?",
+        "answer": "Sí. GAIA se integra con Google Maps y Yelp para compilar información del vecindario, servicios cercanos y conocimientos del área. Puede preparar briefings de propiedades y comparaciones de áreas para compartir con los compradores."
+      },
+      {
+        "question": "¿Se integra GAIA con los CRM inmobiliarios?",
+        "answer": "GAIA se integra con HubSpot para la gestión de CRM y puede rastrear las relaciones con los clientes a través de Gmail. Las integraciones MCP personalizadas pueden conectar GAIA con plataformas especializadas de bienes raíces."
+      }
+    ]
+  },
+  "lawyers": {
+    "title": "Asistente de IA para Abogados",
+    "role": "Abogados",
+    "metaTitle": "Asistente de IA para Abogados - Maximice las Horas Facturables con IA",
+    "metaDescription": "GAIA ayuda a los abogados a gestionar las comunicaciones con los clientes, rastrear plazos, automatizar flujos de trabajo de documentos y reducir la carga administrativa de la práctica legal.",
+    "keywords": [
+      "asistente de IA para abogados",
+      "IA de productividad legal",
+      "automatización de práctica legal",
+      "seguimiento de plazos legales",
+      "herramienta de flujos de trabajo para abogados"
+    ],
+    "intro": "Los abogados se enfrentan a la doble presión de maximizar las horas facturables mientras gestionan extensos requisitos administrativos. El Informe de Tendencias Legales de Clio muestra consistentemente que los abogados facturan solo 2.5 horas de una jornada laboral de 8 horas en promedio, y el resto se consume por correo electrónico, gestión de documentos, programación y tareas administrativas. GAIA automatiza el trabajo operativo no facturable de la práctica legal para que puedas dedicar más tiempo al trabajo legal sustantivo que los clientes valoran y que puedes facturar.",
+    "painPoints": [
+      "La gestión de la comunicación con el cliente a través de cadenas de correo electrónico para múltiples casos es abrumadora",
+      "Los plazos judiciales, las fechas de presentación y el seguimiento de los estatutos de limitaciones requieren una atención meticulosa",
+      "La organización de documentos y el control de versiones en todos los casos crean sobrecarga administrativa",
+      "Las interrupciones de facturación y seguimiento de tiempo fragmentan el enfoque en el trabajo legal sustantivo"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Gestión de Comunicación con Clientes",
+        "description": "GAIA organiza los correos electrónicos de los clientes por asunto del caso, redacta respuestas para consultas rutinarias, rastrea los plazos de respuesta y asegura que ninguna comunicación del cliente se pierda en una práctica ocupada."
+      },
+      {
+        "title": "Gestión de Plazos y Calendario",
+        "description": "GAIA rastrea plazos críticos en Todoist y Google Calendar, envía recordatorios proactivos con suficiente antelación y asegura que nunca se pierdan las fechas de presentación y las comparecencias judiciales."
+      },
+      {
+        "title": "Automatización de Flujos de Trabajo de Documentos",
+        "description": "GAIA organiza los documentos del caso en Google Docs y Notion, rastrea las versiones de los documentos y gestiona los flujos de trabajo de revisión. Asegura que se preparen y accedan a los documentos correctos cuando los necesites."
+      },
+      {
+        "title": "Asistencia de Investigación",
+        "description": "GAIA utiliza Perplexity para consultas de investigación legal, organiza los hallazgos por asunto del caso en Notion y te ayuda a construir memorandos de investigación de manera más eficiente."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Es GAIA lo suficientemente seguro para las comunicaciones abogado-cliente?",
+        "answer": "GAIA es completamente de código abierto y auto-alojable. Los bufetes de abogados pueden implementar GAIA en su propia infraestructura con control total de datos, asegurando que se mantenga el privilegio abogado- cliente. Ningún dato se comparte con terceros ni se utiliza para entrenamiento."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA a los abogados a rastrear los plazos?",
+        "answer": "GAIA monitorea tu correo electrónico en busca de comunicaciones relacionadas con plazos, crea tareas con fechas de vencimiento en Todoist o Google Tasks, y envía recordatorios proactivos con antelación configurable. Asegura que los plazos legales críticos como fechas de presentación y estatutos de limitaciones se rastreen de manera confiable."
+      },
+      {
+        "question": "¿Puede GAIA ayudar con la investigación legal?",
+        "answer": "GAIA se integra con Perplexity para investigación impulsada por IA y organiza los hallazgos en Notion. Si bien no reemplaza las plataformas especializadas de investigación legal, acelera el proceso de investigación y ayuda a organizar los hallazgos por asunto del caso para una fácil referencia."
+      }
+    ]
+  },
+  "data-analysts": {
+    "title": "Asistente de IA para Analistas de Datos",
+    "role": "Analistas de Datos",
+    "metaTitle": "Asistente de IA para Analistas de Datos - Automatizar Informes y Flujos de Trabajo de BI",
+    "metaDescription": "GAIA ayuda a los analistas de datos a automatizar informes recurrentes, configurar alertas de umbrales de datos, programar briefings analíticos y eliminar extracciones de datos manuales en herramientas como Excel, Tableau y SQL.",
+    "keywords": [
+      "asistente de IA para analistas de datos",
+      "herramienta de productividad para analistas de datos",
+      "automatizar informes de Excel IA",
+      "automatización de IA de Google Sheets",
+      "automatización de informes de BI",
+      "herramienta de flujos de trabajo para analistas de datos",
+      "IA para inteligencia de negocios",
+      "automatización de flujos de trabajo SQL",
+      "asistente de IA de informes de datos",
+      "IA de productividad de analista",
+      "automatizar informes para partes interesadas",
+      "herramienta de IA para equipos de datos"
+    ],
+    "intro": "Los analistas de datos son el motor detrás de la inteligencia de negocios, sin embargo, un informe de TDWI de 2024 encontró que los analistas dedican hasta el 60% de su tiempo a extracciones de datos repetitivas, formato de informes y respuesta a solicitudes ad hoc de partes interesadas en lugar de obtener información estratégica. GAIA automatiza el lado operativo del trabajo analítico, desde la programación de informes recurrentes hasta la alerta sobre umbrales de datos, para que puedas concentrarte en el análisis que realmente impulsa las decisiones.",
+    "painPoints": [
+      "La generación repetitiva de informes en Excel, Tableau y Power BI consume horas cada semana",
+      "Las solicitudes de datos ad hoc de las partes interesadas interrumpen constantemente el trabajo analítico profundo",
+      "Las extracciones de datos manuales y copiar-pegar entre herramientas introducen errores y ralentizan la entrega",
+      "Actualizar paneles y notificar a las partes interesadas sobre cambios en las métricas requiere monitoreo manual",
+      "Programar tiempo para análisis profundos es difícil cuando las solicitudes reactivas dominan el calendario"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Automatización de Informes Recurrentes",
+        "description": "GAIA programa y activa flujos de trabajo de generación de informes recurrentes, compila resultados de Google Sheets o herramientas de BI conectadas y distribuye resúmenes formateados a las partes interesadas a través de Gmail o Slack en tu frecuencia preferida."
+      },
+      {
+        "title": "Alertas de Umbrales de Datos",
+        "description": "GAIA monitorea métricas clave rastreadas en Google Sheets o paneles conectados y envía alertas proactivas por correo electrónico o Slack cuando los valores exceden los umbrales definidos, asegurando que las partes interesadas estén informadas sin verificaciones manuales constantes."
+      },
+      {
+        "title": "Clasificación de Solicitudes de Partes Interesadas",
+        "description": "GAIA administra tu bandeja de entrada de correo electrónico y Slack para solicitudes de datos entrantes, las prioriza por urgencia y remitente, y redacta respuestas de acuse de recibo para que ninguna solicitud se pierda y puedas agrupar el trabajo analítico de manera eficiente."
+      },
+      {
+        "title": "Protección del Calendario para Trabajo Profundo",
+        "description": "GAIA analiza tu Google Calendar y bloquea tiempo de enfoque dedicado para trabajo analítico profundo, protegiendo sesiones ininterrumpidas de la invasión de reuniones y conflictos de programación."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA conectarse directamente a mis bases de datos SQL o herramientas de BI?",
+        "answer": "GAIA se enfoca en la capa operativa y de comunicación en torno al trabajo analítico: distribución de informes, clasificación de partes interesadas, programación y alertas a través de Google Sheets y correo electrónico. Las integraciones MCP personalizadas pueden extender GAIA para conectarse con BigQuery, Tableau u otras plataformas de BI en tu pila."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA a reducir las interrupciones de solicitudes de datos ad hoc?",
+        "answer": "GAIA monitorea tu Gmail y Slack en busca de solicitudes de datos entrantes, las clasifica por urgencia, redacta respuestas de acuse de recibo y crea entradas de tareas organizadas en Todoist. Esto te permite agrupar el trabajo ad hoc en bloques dedicados en lugar de responder de forma reactiva durante todo el día."
+      },
+      {
+        "question": "¿Es GAIA adecuado para equipos de datos empresariales?",
+        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que lo hace adecuado para implementaciones empresariales con estrictos requisitos de gobernanza de datos. Los equipos pueden ejecutar GAIA en su propia infraestructura con control total sobre el acceso a los datos y las integraciones."
+      }
+    ]
+  },
+  "hr-managers": {
+    "title": "Asistente de IA para Gerentes de RR. HH.",
+    "role": "Gerentes de RR. HH.",
+    "metaTitle": "Asistente de IA para Gerentes de RR. HH. - Automatizar Reclutamiento y Operaciones de RR. HH.",
+    "metaDescription": "GAIA ayuda a los gerentes de RR. HH. a automatizar la programación de entrevistas, clasificar la bandeja de entrada de RR. HH., redactar cartas de oferta, gestionar listas de tareas de incorporación y prepararse para ciclos de evaluación de desempeño.",
+    "keywords": [
+      "asistente de IA para gerentes de RR. HH.",
+      "IA de automatización de RR. HH.",
+      "IA de flujos de trabajo de reclutamiento",
+      "automatización de programación de entrevistas",
+      "herramienta de productividad de RR. HH.",
+      "IA de automatización de incorporación",
+      "IA de operaciones de RR. HH.",
+      "asistente de IA de recursos humanos",
+      "IA para equipos de RR. HH.",
+      "IA de gestión de empleados",
+      "automatización de evaluación de desempeño",
+      "IA de clasificación de bandeja de entrada de RR. HH."
+    ],
+    "intro": "Los gerentes de RR. HH. se encuentran en la intersección de cada etapa del ciclo de vida del empleado, desde la búsqueda de candidatos hasta la baja. La investigación de SHRM muestra que los profesionales de RR. HH. dedican más del 50% de su tiempo a tareas administrativas, incluyendo programación, documentación, correspondencia por correo electrónico y seguimiento de cumplimiento. GAIA automatiza el trabajo operativo de alto volumen de la gestión de RR. HH. para que puedas concentrarte en las decisiones humanas que definen la cultura y la experiencia del empleado.",
+    "painPoints": [
+      "La coordinación de horarios de entrevistas entre candidatos, gerentes de contratación y miembros del panel consume horas por puesto",
+      "La coordinación de la incorporación entre TI, finanzas y líderes de equipo requiere seguimiento constante",
+      "El seguimiento de solicitudes de empleados, solicitudes de licencia y preguntas sobre políticas a través de correo electrónico carece de estructura",
+      "La gestión de documentos de políticas y su distribución a los empleados es manual y propensa a errores de versión",
+      "Los ciclos de evaluación de desempeño implican recopilar, organizar y sintetizar aportes de múltiples partes interesadas",
+      "Los correos electrónicos de administración de beneficios y la coordinación de inscripciones abiertas crean una sobrecarga estacional de la bandeja de entrada"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Automatización de Programación de Entrevistas",
+        "description": "GAIA coordina la logística de entrevistas entre candidatos, gerentes de contratación y miembros del panel a través de Gmail y Google Calendar. Encuentra horarios disponibles, envía invitaciones de calendario con contexto y maneja las solicitudes de reprogramación automáticamente."
+      },
+      {
+        "title": "Clasificación de Bandeja de Entrada de RR. HH.",
+        "description": "GAIA lee y clasifica tu bandeja de entrada de RR. HH. por tipo de solicitud, incluyendo solicitudes de licencia, preguntas sobre políticas, tareas de incorporación y consultas sobre beneficios. Redacta respuestas para preguntas rutinarias y marca elementos que requieren tu atención directa."
+      },
+      {
+        "title": "Gestión de Tareas de Incorporación",
+        "description": "GAIA crea y rastrea listas de tareas de incorporación en Notion o Todoist, coordina con TI y finanzas a través de Slack, envía recordatorios a las partes interesadas y asegura que cada nuevo empleado tenga una experiencia de incorporación completa sin orquestación manual."
+      },
+      {
+        "title": "Preparación para Evaluación de Desempeño",
+        "description": "GAIA compila materiales de evaluación de desempeño de Notion y correo electrónico, programa reuniones de revisión en Google Calendar y redacta documentos de resumen para que los gerentes realicen ciclos de revisión preparados con contexto completo."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA integrarse con BambooHR, Greenhouse o Workday?",
+        "answer": "GAIA se enfoca en flujos de trabajo de comunicación y coordinación a través de Gmail, Google Calendar, Slack y Notion. Las integraciones MCP personalizadas pueden conectar GAIA con plataformas especializadas de RR. HH. como BambooHR, Greenhouse o Workday para extender sus capacidades de automatización."
+      },
+      {
+        "question": "¿Cómo maneja GAIA las comunicaciones sensibles de RR. HH.?",
+        "answer": "GAIA es completamente de código abierto y auto-alojable. Los equipos de RR. HH. pueden implementarlo en su propia infraestructura con control total de datos, asegurando que la información del empleado permanezca dentro de los límites organizacionales. Ningún dato se comparte con terceros."
+      },
+      {
+        "question": "¿Puede GAIA ayudar a gestionar el ciclo de evaluación de desempeño?",
+        "answer": "Sí. GAIA rastrea los plazos de revisión en Todoist, programa reuniones de 1:1 en Google Calendar, compila comentarios de Notion o correo electrónico y redacta documentos de resumen. Gestiona la logística del ciclo de revisión para que puedas concentrarte en las conversaciones importantes."
+      }
+    ]
+  },
+  "recruiters": {
+    "title": "Asistente de IA para Reclutadores",
+    "role": "Reclutadores",
+    "metaTitle": "Asistente de IA para Reclutadores - Automatizar Búsqueda, Programación y Alcance",
+    "metaDescription": "GAIA ayuda a los reclutadores a redactar alcance personalizado a escala, programar entrevistas automáticamente entre zonas horarias, resumir perfiles de candidatos y gestionar secuencias de seguimiento para cada puesto vacante.",
+    "keywords": [
+      "asistente de IA para reclutadores",
+      "IA de automatización de reclutamiento",
+      "IA de búsqueda de candidatos",
+      "IA de programación de entrevistas",
+      "herramienta de productividad para reclutadores",
+      "IA para adquisición de talento",
+      "automatización de flujos de trabajo de reclutadores",
+      "IA de automatización de ATS",
+      "herramienta de automatización de contratación",
+      "IA de correo electrónico para reclutadores",
+      "automatización de alcance a candidatos",
+      "IA de adquisición de talento"
+    ],
+    "intro": "Los reclutadores gestionan el ciclo de vida completo del candidato en múltiples puestos vacantes simultáneamente. El informe Global Talent Trends de LinkedIn encontró que los reclutadores dedican más del 30% de su tiempo a tareas manuales repetitivas, incluyendo alcance por correo electrónico, coordinación de entrevistas y entrada de datos en el ATS. Por cada hora dedicada a la administración, es una hora que no se dedica a construir relaciones con los mejores candidatos. GAIA automatiza el lado operativo del reclutamiento para que puedas concentrarte en la evaluación del talento y la experiencia del candidato.",
+    "painPoints": [
+      "El alcance a candidatos a escala requiere personalizar mensajes para docenas de prospectos por puesto",
+      "La programación de entrevistas entre zonas horarias con múltiples partes interesadas crea cadenas de coordinación de ida y vuelta",
+      "La entrada de datos en el ATS y el seguimiento de candidatos requiere actualizaciones manuales constantes",
+      "La redacción y refinación de descripciones de puestos para nuevos roles es repetitiva y consume mucho tiempo",
+      "Hacer seguimiento a los candidatos con la cadencia adecuada evita pérdidas de ofertas, pero es fácil de pasar por alto",
+      "La coordinación con los gerentes de contratación sobre la retroalimentación y los próximos pasos de los candidatos requiere un seguimiento constante"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Alcance Personalizado a Escala",
+        "description": "GAIA redacta correos electrónicos de alcance personalizados para cada perfil de LinkedIn o resumen de candidato, incorporando contexto específico del puesto y mensajes. Envía alcance de alta calidad a granel sin sacrificar la personalización."
+      },
+      {
+        "title": "Automatización de Programación de Entrevistas",
+        "description": "GAIA coordina la programación de entrevistas multipartitas a través de Gmail y Google Calendar, encuentra horarios disponibles para candidatos y equipos de contratación, envía invitaciones con contexto de preparación y maneja automáticamente las conversiones de zonas horarias."
+      },
+      {
+        "title": "Resúmenes de Información de Candidatos",
+        "description": "Antes de cada llamada con el candidato o resumen de entrevista, GAIA compila un resumen del perfil del candidato, comunicaciones recientes e historial de etapa de entrevista para que tú y los gerentes de contratación lleguen preparados."
+      },
+      {
+        "title": "Gestión de Secuencias de Seguimiento",
+        "description": "GAIA rastrea a cada candidato activo y puesto vacante en Notion o Todoist, identifica cuándo los seguimientos están vencidos y redacta comunicaciones oportunas para mantener a los candidatos comprometidos durante todo el pipeline."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Se integra GAIA directamente con Greenhouse, Lever o Ashby?",
+        "answer": "GAIA funciona con Gmail, Google Calendar, Notion y Slack para automatizar los flujos de trabajo de reclutamiento. Las integraciones MCP personalizadas pueden conectar GAIA con plataformas ATS como Greenhouse, Lever o Ashby para extender la automatización a esos sistemas."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA con el alcance de alto volumen?",
+        "answer": "GAIA redacta correos electrónicos de alcance personalizados basados en el contexto del candidato que proporcionas, gestiona secuencias de seguimiento y rastrea las tasas de respuesta. Te permite mantener una calidad de personalización a un volumen que de otro modo requeriría un equipo."
+      },
+      {
+        "question": "¿Puede GAIA ayudar a coordinar con equipos de contratación distribuidos?",
+        "answer": "Sí. GAIA gestiona la programación entre zonas horarias, envía briefings de preparación a todos los entrevistadores por Slack o correo electrónico, recopila recordatorios de retroalimentación después de las entrevistas y mantiene informados a los gerentes de contratación durante todo el proceso sin coordinación manual."
+      }
+    ]
+  },
+  "teachers-educators": {
+    "title": "Asistente de IA para Profesores y Educadores",
+    "role": "Profesores y Educadores",
+    "metaTitle": "Asistente de IA para Profesores y Educadores - Reducir la Administración, Enfocarse en la Enseñanza",
+    "metaDescription": "GAIA ayuda a los profesores a redactar comunicaciones con los padres, organizar planes de lecciones, programar conferencias de padres y maestros, gestionar fechas límite de tareas y clasificar correos electrónicos administrativos escolares.",
+    "keywords": [
+      "asistente de IA para profesores",
+      "herramienta de productividad para profesores",
+      "IA para educadores",
+      "asistente de IA en el aula",
+      "IA para la planificación de lecciones",
+      "automatización de flujos de trabajo de profesores",
+      "herramienta de IA para la educación",
+      "IA para escuelas",
+      "asistente de enseñanza de IA",
+      "IA de productividad para educadores",
+      "IA de administración escolar",
+      "IA de comunicación con padres"
+    ],
+    "intro": "La enseñanza es una de las profesiones más exigentes en términos de trabajo cognitivo y emocional. Una encuesta de la Gates Foundation encontró que los maestros trabajan un promedio de 10.5 horas al día, con más de tres horas dedicadas a tareas administrativas no instructivas. La planificación de lecciones, la comunicación con los padres, la coordinación de la calificación y los requisitos administrativos de la escuela consumen tiempo que de otro modo podría dedicarse a la participación de los estudiantes y la calidad educativa. GAIA maneja la carga administrativa para que los educadores puedan mantenerse enfocados en lo más importante: sus estudiantes.",
+    "painPoints": [
+      "Redactar y enviar comunicaciones a los padres para actualizaciones, preocupaciones y coordinación de eventos consume mucho tiempo",
+      "La preparación de planes de lecciones y la organización del currículo requieren tiempo significativo fuera del horario de clase",
+      "La programación y preparación de conferencias de padres y maestros implica coordinación logística con docenas de familias",
+      "La documentación administrativa para requisitos escolares agrega sobrecarga burocrática a una carga de trabajo ya completa",
+      "El seguimiento del progreso de los estudiantes y las fechas límite de las tareas en múltiples clases es difícil de gestionar manualmente"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Gestión de Comunicación con Padres",
+        "description": "GAIA redacta correos electrónicos profesionales para padres para actualizaciones rutinarias, notificaciones de eventos, informes de progreso y preocupaciones individuales de los estudiantes. Administra tu bandeja de entrada de Gmail categorizando los mensajes de los padres y asegurando respuestas oportunas."
+      },
+      {
+        "title": "Organización de Planes de Lección y Currículo",
+        "description": "GAIA organiza planes de lección, recursos curriculares y materiales de enseñanza en Notion o Google Docs. Crea documentos de planificación estructurados y rastrea lo que se ha cubierto en todas las clases."
+      },
+      {
+        "title": "Programación de Conferencias de Padres y Maestros",
+        "description": "GAIA coordina la programación de conferencias de padres y maestros a través de Google Calendar y Gmail, envía invitaciones con detalles de la conferencia, maneja solicitudes de reprogramación y prepara resúmenes del progreso del estudiante para cada reunión."
+      },
+      {
+        "title": "Seguimiento de Tareas y Fechas Límite",
+        "description": "GAIA rastrea las fechas límite de las tareas y los eventos del calendario escolar en Todoist o Google Calendar, envía recordatorios proactivos y ayuda a gestionar el ritmo administrativo del año académico."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA ayudar a gestionar las comunicaciones con muchos padres?",
+        "answer": "Sí. GAIA clasifica tu bandeja de entrada de Gmail, redacta respuestas para consultas comunes de los padres y te ayuda a gestionar períodos de comunicación de alto volumen como liberaciones de calificaciones o eventos escolares. Asegura que ningún correo electrónico de padres quede sin respuesta."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA con la planificación de lecciones?",
+        "answer": "GAIA organiza tus materiales curriculares en Notion o Google Docs, ayuda a estructurar los planes de lección por unidad y objetivo, y rastrea qué recursos se han utilizado. Maneja el trabajo organizativo para que puedas concentrarte en las decisiones pedagógicas."
+      },
+      {
+        "question": "¿Es GAIA adecuado para su uso en escuelas e instituciones educativas?",
+        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que lo hace adecuado para implementaciones escolares con requisitos de privacidad de datos. Las instituciones pueden ejecutar GAIA en su propia infraestructura con control total sobre los datos de educadores y estudiantes."
+      }
+    ]
+  },
+  "financial-advisors": {
+    "title": "Asistente de IA para Asesores Financieros",
+    "role": "Asesores Financieros",
+    "metaTitle": "Asistente de IA para Asesores Financieros - Automatizar Preparación de Clientes y Seguimientos",
+    "metaDescription": "GAIA ayuda a los asesores financieros a preparar briefings pre-reunión con clientes, redactar comunicaciones conformes con el cliente, gestionar tareas de seguimiento, programar cadencias de revisión de portfolio y clasificar las solicitudes de clientes por urgencia.",
+    "keywords": [
+      "asistente de IA para asesores financieros",
+      "IA de gestión de patrimonio",
+      "herramienta de productividad para asesores financieros",
+      "IA de preparación de reuniones con clientes",
+      "automatización de flujos de trabajo financieros",
+      "automatización de correo electrónico de asesores",
+      "IA de flujo de trabajo de cumplimiento",
+      "asistente de IA de servicios financieros",
+      "automatización de revisión de cartera",
+      "herramienta de productividad RIA",
+      "automatización de CRM de asesores financieros",
+      "IA de comunicación con clientes"
+    ],
+    "intro": "Los asesores financieros gestionan relaciones profundas y personales con los clientes mientras navegan por complejas regulaciones de cumplimiento y un flujo constante de consultas de clientes impulsadas por el mercado. La investigación de Cerulli Associates muestra que los asesores dedican menos de un tercio de su tiempo a interacciones significativas con los clientes, y la mayoría se consume en tareas administrativas, preparación de reuniones y documentación. GAIA automatiza la capa operativa del trabajo de asesoramiento para que puedas invertir más tiempo en el asesoramiento que los clientes realmente valoran.",
+    "painPoints": [
+      "La preparación de reuniones con clientes requiere revisar manualmente el historial de correo electrónico, las notas de la cuenta y el contexto reciente del mercado",
+      "Los requisitos de documentación de cumplimiento agregan una sobrecarga significativa a cada comunicación con el cliente",
+      "Rastrear las solicitudes de los clientes a través de hilos de correo electrónico dificulta el seguimiento oportuno a escala",
+      "La programación de revisiones trimestrales de cartera en una gran base de clientes crea complejidad en la coordinación del calendario",
+      "Preparar resúmenes de rendimiento e informes de cuenta para reuniones con clientes es un trabajo manual intensivo"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Briefings Pre-Reunión con Clientes",
+        "description": "Antes de cada reunión con el cliente, GAIA compila un briefing del historial de tu Gmail con ese cliente, los elementos de acción abiertos de Todoist y las notas recientes de la cuenta de Notion. Entra en cada conversación con contexto completo y sin prisas de última hora."
+      },
+      {
+        "title": "Borradores de Comunicación con Clientes Conformes",
+        "description": "GAIA redacta correos electrónicos dirigidos a clientes en tu voz y estilo, siguiendo las plantillas de comunicación y las pautas de cumplimiento que establezcas. Maneja la correspondencia rutinaria con los clientes mientras te mantiene en el ciclo de revisión y aprobación."
+      },
+      {
+        "title": "Gestión de Tareas de Seguimiento",
+        "description": "Después de cada reunión con el cliente, GAIA captura los compromisos y elementos de acción, crea tareas en Todoist con las fechas de vencimiento apropiadas y envía recordatorios para que cada seguimiento del cliente ocurra a tiempo."
+      },
+      {
+        "title": "Programación de Cadencia de Revisión de Cartera",
+        "description": "GAIA administra tu Google Calendar para programar y mantener cadencias de revisión trimestrales en toda tu base de clientes, envía recordatorios de preparación antes de cada revisión y ayuda a rastrear qué clientes están listos para ser contactados."
+      },
+      {
+        "title": "Clasificación de Solicitudes de Clientes",
+        "description": "GAIA monitorea tu Gmail en busca de solicitudes de clientes entrantes, las clasifica por urgencia y tipo, redacta respuestas de acuse de recibo y crea listas de tareas priorizadas para que las solicitudes de alta urgencia surjan de inmediato."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Cómo maneja GAIA la sensibilidad de cumplimiento de las comunicaciones financieras?",
+        "answer": "GAIA redacta las comunicaciones con los clientes basándose en las plantillas y directrices que proporcionas, y te mantiene en el ciclo de revisión y aprobación antes de que se envíe algo. Es completamente de código abierto y auto-alojable, por lo que las RIAs y las casas de bolsa pueden implementarlo dentro de su propia infraestructura con control total de datos."
+      },
+      {
+        "question": "¿Puede GAIA integrarse con Salesforce u otras herramientas CRM financieras?",
+        "answer": "GAIA funciona con Gmail, Google Calendar, Notion y HubSpot de inmediato. Las integraciones MCP personalizadas pueden conectar GAIA con plataformas especializadas de asesoramiento financiero para extender la automatización de flujos de trabajo."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA a los asesores a gestionar grandes carteras de clientes?",
+        "answer": "GAIA mantiene el contexto por cliente a través del historial de correo electrónico y las notas de Notion, rastrea los calendarios de cadencia de revisión en Google Calendar y presenta a los clientes que están listos para ser contactados o para seguimiento. Te ayuda a mantener un estándar de relación de alto contacto en una gran cartera de negocios."
+      }
+    ]
+  },
+  "healthcare-professionals": {
+    "title": "Asistente de IA para Profesionales de la Salud",
+    "role": "Profesionales de la Salud",
+    "metaTitle": "Asistente de IA para Profesionales de la Salud - Reducir la Carga Administrativa",
+    "metaDescription": "GAIA ayuda a los profesionales de la salud a clasificar correos electrónicos no clínicos, gestionar horarios, organizar investigaciones y manejar correspondencia administrativa. Auto-alojable para flujos de trabajo administrativos compatibles con HIPAA.",
+    "keywords": [
+      "asistente de IA para médicos",
+      "IA de productividad en salud",
+      "automatización de flujos de trabajo médicos",
+      "IA administrativa para médicos",
+      "herramienta de IA para la salud",
+      "herramienta de productividad para médicos",
+      "IA de flujos de trabajo clínicos",
+      "IA de administración hospitalaria",
+      "asistente de IA para profesionales médicos",
+      "asistente de IA compatible con HIPAA",
+      "automatización administrativa en salud",
+      "IA de gestión de correo electrónico para médicos"
+    ],
+    "intro": "Los profesionales de la salud se enfrentan a una de las cargas administrativas más pesadas de cualquier profesión. Una encuesta de la AMA de 2024 encontró que los médicos dedican un promedio de 15.5 horas por semana a tareas administrativas, y la comunicación electrónica y el papeleo consumen tiempo que podría dedicarse a la atención al paciente. Es importante destacar que GAIA opera estrictamente en la capa administrativa y de productividad: no accede a sistemas clínicos, registros médicos electrónicos ni a información de salud protegida. Para las organizaciones de atención médica con requisitos de cumplimiento, GAIA es completamente de código abierto y auto-alojable, lo que permite su implementación dentro de su propia infraestructura para flujos de trabajo administrativos compatibles con HIPAA.",
+    "painPoints": [
+      "El volumen de correo electrónico administrativo, incluyendo solicitudes de programación, referencias y comunicaciones departamentales, crea una sobrecarga diaria de la bandeja de entrada",
+      "La complejidad de la programación entre clínicas, hospitales y citas de pacientes requiere coordinación constante",
+      "Mantenerse al día con la investigación y la literatura médica es difícil debido a las limitaciones de tiempo",
+      "La carga de documentación para correspondencia administrativa y coordinación interdepartamental agrega carga de trabajo no clínica",
+      "Coordinar entre departamentos, especialistas y personal administrativo implica una comunicación extensa de ida y vuelta"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Clasificación de Correo Electrónico No Clínico",
+        "description": "GAIA clasifica tu bandeja de entrada de Gmail administrativa, categorizando los mensajes por tipo, incluyendo solicitudes de programación, comunicaciones departamentales, actualizaciones de investigación y tareas administrativas. Redacta respuestas para correspondencia rutinaria y marca los elementos urgentes de inmediato. GAIA no accede ni procesa registros clínicos ni información de salud protegida."
+      },
+      {
+        "title": "Coordinación de Horarios y Citas",
+        "description": "GAIA administra la programación administrativa a través de Google Calendar, coordina la logística de reuniones y citas por correo electrónico y maneja la comunicación de ida y vuelta de la programación multipartita entre departamentos y referencias de especialistas."
+      },
+      {
+        "title": "Organización de Investigación y Literatura",
+        "description": "GAIA utiliza Perplexity para encontrar investigaciones y literatura médica relevantes, organiza los hallazgos en Notion por especialidad y tema, y crea listas de lectura estructuradas para que mantenerse al día con tu campo sea sistemático en lugar de esporádico."
+      },
+      {
+        "title": "Redacción de Correspondencia Administrativa",
+        "description": "GAIA redacta correspondencia administrativa profesional, incluyendo correos electrónicos interdepartamentales, mensajes de coordinación de referencias, agendas de reuniones y documentación administrativa, reduciendo el tiempo dedicado a la escritura no clínica."
+      },
+      {
+        "title": "Preparación de Rondas de Consulta",
+        "description": "GAIA organiza los materiales administrativos y los horarios para las rondas de consulta de pacientes, prepara documentos de agenda de Notion y asegura que toda la logística de coordinación se maneje antes de que comiencen las rondas."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿GAIA accede a registros médicos electrónicos o datos de pacientes?",
+        "answer": "No. GAIA opera estrictamente en la capa administrativa y de productividad. No se conecta a sistemas EHR, no accede a información de salud protegida ni procesa ningún dato clínico. Solo administra correos electrónicos administrativos, programación, organización de investigaciones y correspondencia no clínica."
+      },
+      {
+        "question": "¿Se puede implementar GAIA de manera compatible con HIPAA?",
+        "answer": "Sí. GAIA es completamente de código abierto y auto-alojable. Las organizaciones de atención médica pueden implementar GAIA completamente dentro de su propia infraestructura, manteniendo un control total sobre los flujos de datos y asegurando el cumplimiento de los requisitos organizacionales y regulatorios para los sistemas administrativos."
+      },
+      {
+        "question": "¿Cómo ayuda GAIA a los médicos a gestionar su carga de correo electrónico administrativo?",
+        "answer": "GAIA monitorea tu Gmail en busca de mensajes administrativos, los clasifica por tipo y urgencia, redacta respuestas para solicitudes rutinarias y asegura que los elementos de alta prioridad surjan rápidamente. Los médicos informan que la gestión de correo electrónico administrativo por sí sola puede consumir una hora o más al día, lo que GAIA reduce significativamente."
+      }
+    ]
+  },
+  "adhd-professionals": {
+    "title": "GAIA para Profesionales con TDAH",
+    "role": "Profesionales con TDAH",
+    "metaTitle": "GAIA para Profesionales con TDAH — Menos Sobrecarga, Más Enfoque",
+    "metaDescription": "GAIA captura tareas antes de que las ideas desaparezcan, presenta lo que es urgente sin que tengas que recordar verificar, y maneja los seguimientos automáticamente — reduciendo el impuesto de la función ejecutiva de gestionar un día laboral moderno.",
+    "keywords": [
+      "asistente de IA para TDAH",
+      "asistente de IA para TDAH reddit",
+      "herramienta de productividad para TDAH",
+      "gestor de tareas de IA TDAH",
+      "herramienta de IA TDAH",
+      "mejor IA para profesionales con TDAH",
+      "soporte de función ejecutiva de IA",
+      "aplicación asistente TDAH",
+      "herramienta de IA para profesionales con TDAH",
+      "IA para productividad TDAH"
+    ],
+    "intro": "Para profesionales con TDAH, el cambio constante de contexto del lugar de trabajo moderno no es solo molesto — es un sistema que trabaja activamente en contra de la forma en que funciona tu cerebro. En el momento en que la atención cambia, las tareas escapan a la captura, los correos electrónicos se acumulan en una pila de perdición, y la culpa de las notificaciones no leídas se acumula silenciosamente. GAIA fue construido para eliminar la sobrecarga de la función ejecutiva de tu día: captura tareas de donde sea que surjan, te presenta proactivamente lo que necesita atención ahora mismo, y maneja los seguimientos en segundo plano para que tu memoria de trabajo no tenga que hacerlo.",
+    "painPoints": [
+      "Las tareas que surgen a mitad de una conversación o en correos electrónicos aleatorios desaparecen en el momento en que la atención se traslada a lo siguiente",
+      "La pila de perdición de correo electrónico sin leer crece más rápido que la motivación para abordarla, hasta que la evitación se convierte en la norma",
+      "Los seguimientos importantes se olvidan por completo — no porque no sean una prioridad, sino porque no había un sistema para presentarlos en el momento adecuado",
+      "La hiperfocalización atrae la atención a trabajos de baja prioridad mientras que los elementos verdaderamente urgentes se acumulan silenciosamente sin ser notados",
+      "La parálisis de abrir una lista de tareas con 40 elementos indiferenciados y sin una señal clara de dónde empezar"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Captura Proactiva de Tareas de Correo Electrónico y Chat",
+        "description": "GAIA monitorea tu Gmail y Slack en busca de elementos de acción y los agrega automáticamente a Todoist — para que las tareas se capturen antes de que tu atención se mueva, incluso si nunca las escribiste explícitamente."
+      },
+      {
+        "title": "Superficie de Priorización Automática",
+        "description": "En lugar de requerirte que revises cada elemento en cada herramienta, GAIA presenta proactivamente lo más urgente cada mañana según plazos, contexto de correo electrónico y presión del calendario — eliminando la parálisis de elegir por dónde empezar."
+      },
+      {
+        "title": "Recordatorios de Seguimiento sin Configuración Manual",
+        "description": "Cuando GAIA detecta que has enviado un correo electrónico que probablemente necesite una respuesta, programa automáticamente un recordatorio de seguimiento — sin necesidad de crear recordatorios manuales, sin hilos olvidados."
+      },
+      {
+        "title": "Bandeja de Entrada Unificada en Todas las Herramientas",
+        "description": "GAIA consolida correo electrónico, mensajes de Slack, eventos de calendario y tareas en un único contexto — reduciendo el impuesto de cambio de herramienta que fragmenta la atención y agota la memoria de trabajo durante el día."
+      },
+      {
+        "title": "Entrada de Tareas en Lenguaje Natural",
+        "description": "Agrega tareas en lenguaje natural a través de chat, correo electrónico o voz sin navegar por menús o abrir aplicaciones. GAIA analiza la intención, establece fechas de vencimiento y enruta la tarea a la lista correcta para que ocurra una captura de baja fricción."
+      },
+      {
+        "title": "Código Abierto y Auto-Alojable",
+        "description": "GAIA es completamente de código abierto y gratuito para auto-alojar — sin suscripción requerida para empezar — con un plan Pro a $20/mes fijo si quieres la versión gestionada, dándote control total sobre tus datos y sin dependencia del proveedor."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿En qué se diferencia GAIA de un gestor de tareas regular para TDAH?",
+        "answer": "La mayoría de los gestores de tareas requieren que recuerdes abrirlos y ingresar tareas manualmente — que es exactamente el paso que falla con el TDAH. GAIA es proactivo: captura tareas de tus herramientas existentes automáticamente, presenta lo que es urgente sin que tengas que verificarlo, y envía recordatorios de seguimiento que configura por sí mismo. Reduce el número de acciones deliberadas necesarias para mantenerte al día en tu día."
+      },
+      {
+        "question": "¿Puede GAIA ayudar con la evitación de correo electrónico?",
+        "answer": "Sí. GAIA clasifica tu bandeja de entrada de Gmail, categoriza los mensajes por urgencia y tipo, redacta respuestas para correos electrónicos rutinarios y presenta solo los mensajes que realmente necesitan tu atención. La pila de perdición se reduce porque GAIA maneja el ruido de baja importancia, dejándote con un conjunto manejable de decisiones reales."
+      },
+      {
+        "question": "¿Funciona GAIA con las herramientas que ya utilizo?",
+        "answer": "GAIA se conecta a Gmail, Google Calendar, Slack y Todoist de inmediato, con más de 50 integraciones adicionales disponibles a través de MCP. Funciona dentro de tu pila existente en lugar de requerir que adoptes un nuevo sistema, lo que significa un menor costo de cambio y una formación de hábitos más rápida."
+      }
+    ]
+  },
+  "chiefs-of-staff": {
+    "title": "GAIA para Jefes de Gabinete",
+    "role": "Jefes de Gabinete",
+    "metaTitle": "GAIA para Jefes de Gabinete — Soporte Ejecutivo a Escala",
+    "metaDescription": "GAIA prepara briefings pre-reunión, extrae elementos de acción de todas las comunicaciones, redacta actualizaciones para partes interesadas y gestiona la bandeja de entrada ejecutiva — para que puedas dirigir la oficina sin rastrear manualmente cada hilo.",
+    "keywords": [
+      "aplicación de IA para jefe de gabinete",
+      "IA para jefes de gabinete",
+      "asistente de IA para jefe de gabinete",
+      "herramienta de productividad para jefe de gabinete",
+      "herramienta de soporte ejecutivo de IA",
+      "IA para soporte de CXO",
+      "asistente de IA para jefe de gabinete",
+      "herramienta de IA para jefe de gabinete",
+      "IA de operaciones ejecutivas",
+      "IA para gestión de oficina ejecutiva"
+    ],
+    "intro": "Un Jefe de Gabinete solo es tan efectivo como su capacidad para mantener el contexto en toda la organización al mismo tiempo — lo que significa que cualquier herramienta que reduzca la sobrecarga manual de seguimiento, preparación y seguimiento es un multiplicador de fuerza directo en el impacto del liderazgo. GAIA actúa como ese multiplicador de fuerza: extrayendo contexto del calendario, la bandeja de entrada y los canales de comunicación del ejecutivo para preparar briefings antes de que ocurran las reuniones, extraer elementos de acción en el momento en que termina una reunión, y mantener informadas a las partes interesadas sin que el CoS escriba todas las actualizaciones a mano.",
+    "painPoints": [
+      "Las reuniones ejecutivas consecutivas no dejan margen para la preparación, por lo que los briefings se omiten o se apresuran, incluso cuando las apuestas son altas",
+      "Los elementos de acción se dispersan en correos electrónicos, hilos de Slack y notas de reuniones sin un sistema único que los agrupe en una lista responsable",
+      "Mantener informadas a las partes interesadas interfuncionales requiere escribir esencialmente la misma actualización en cinco lugares diferentes",
+      "Gestionar la bandeja de entrada y el calendario del ejecutivo simultáneamente mientras se ejecuta la propia carga de trabajo operativa crea un colapso de contexto constante",
+      "Perder el hilo de más de 10 iniciativas activas cuando los cambios de contexto ocurren cada 20 minutos en un día típico de CoS"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Generación de Briefings Pre-Reunión",
+        "description": "GAIA lee los próximos eventos del calendario del ejecutivo, extrae hilos de correo electrónico relevantes y documentos de Notion, y genera un briefing estructurado — asistentes, contexto, elementos de acción abiertos y puntos de conversación sugeridos — antes de que comience cada reunión."
+      },
+      {
+        "title": "Extracción de Elementos de Acción de Todas las Comunicaciones",
+        "description": "GAIA monitorea Gmail, Slack y transcripciones de reuniones para extraer elementos de acción explícitos e implícitos, asigna responsables y los sincroniza con Todoist o Notion — para que nada se pierda después de que termine una reunión."
+      },
+      {
+        "title": "Borradores Automatizados de Actualizaciones para Partes Interesadas",
+        "description": "GAIA redacta correos electrónicos de actualización de estado y mensajes de Slack para partes interesadas interfuncionales basados en el estado actual del proyecto, reduciendo el tiempo dedicado a escribir actualizaciones repetitivas en iniciativas de horas a minutos."
+      },
+      {
+        "title": "Gestión de la Bandeja de Entrada Ejecutiva",
+        "description": "GAIA clasifica la bandeja de entrada de Gmail del ejecutivo, marca mensajes que necesitan una decisión, redacta respuestas para comunicaciones rutinarias y presenta hilos sensibles al tiempo — permitiendo al CoS gestionar el correo electrónico del ejecutivo sin leer cada mensaje individualmente."
+      },
+      {
+        "title": "Coordinación de Tareas Inter-Herramientas",
+        "description": "Con más de 50 integraciones a través de MCP, GAIA conecta Gmail, Google Calendar, Slack, Notion y Todoist en una capa operativa unificada — para que el CoS pueda rastrear entregables, plazos y decisiones entre herramientas desde una única interfaz."
+      },
+      {
+        "title": "Código Abierto y Auto-Alojable",
+        "description": "GAIA es completamente de código abierto y auto-alojable para organizaciones con requisitos de residencia de datos, con un plan Pro a $20/mes fijo para la versión gestionada — sin precios por asiento que hacen que las herramientas de soporte ejecutivo sean prohibitivamente caras."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA preparar briefings antes de las reuniones automáticamente?",
+        "answer": "Sí. GAIA lee el Google Calendar del ejecutivo, identifica las próximas reuniones, extrae hilos de correo electrónico y documentos relevantes de las herramientas conectadas, y genera un briefing estructurado que incluye contexto de los asistentes, elementos de acción abiertos y puntos de conversación sugeridos. El briefing se entrega antes de que comience la reunión para que la preparación ocurra incluso en días sin tiempo de margen."
+      },
+      {
+        "question": "¿Cómo maneja GAIA el seguimiento de elementos de acción en herramientas como correo electrónico, Slack y reuniones?",
+        "answer": "GAIA monitorea todos los canales de comunicación conectados simultáneamente y extrae elementos de acción — solicitudes explícitas, compromisos implícitos y seguimientos marcados — a medida que surgen. Los sincroniza con Todoist o Notion con contexto de responsable y fecha de vencimiento, creando una lista única y responsable que no requiere curación manual después de cada conversación."
+      },
+      {
+        "question": "¿Es GAIA apropiado para gestionar las comunicaciones sensibles de un ejecutivo C-suite?",
+        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que significa que tu organización puede implementarlo completamente dentro de tu propia infraestructura sin acceso de terceros a los datos. Para organizaciones que necesitan control total sobre las comunicaciones ejecutivas, el auto-alojamiento proporciona soberanía total de los datos. El plan Pro gestionado a $20/mes también está disponible para equipos que se sientan cómodos con una implementación alojada."
+      }
+    ]
+  },
+  "virtual-assistants": {
+    "title": "GAIA para Asistentes Virtuales",
+    "role": "Asistentes Virtuales",
+    "metaTitle": "GAIA para Asistentes Virtuales — Maneje Más Clientes, Menos Esfuerzo",
+    "metaDescription": "GAIA ayuda a los VAs a gestionar múltiples bandejas de entrada de clientes, automatizar comunicaciones rutinarias, coordinar la programación entre calendarios de clientes y rastrear entregables — para que puedas escalar tu capacidad sin agotarte.",
+    "keywords": [
+      "IA para asistentes virtuales",
+      "herramientas de IA para asistentes virtuales",
+      "asistente de IA para VAs",
+      "herramienta de productividad para asistentes virtuales",
+      "herramientas de IA para VAs",
+      "mejor IA para VAs",
+      "IA para gestión de negocios en línea",
+      "automatización de IA de asistentes virtuales",
+      "herramienta de IA para asistentes virtuales",
+      "asistente de IA para trabajo remoto"
+    ],
+    "intro": "El techo de los ingresos de un VA casi siempre es la capacidad — solo hay tantas horas en un día para rastrear tareas, escribir correos electrónicos y coordinar horarios entre múltiples clientes. GAIA eleva ese techo automatizando las partes repetibles del trabajo de VA: redactando comunicaciones rutinarias con el cliente, gestionando bandejas de entrada de múltiples clientes, manejando la coordinación de horarios y rastreando entregables en contextos de clientes. El resultado es más tiempo para el trabajo de alto juicio que realmente requiere un humano calificado, y espacio para asumir clientes adicionales sin que la carga de trabajo escale linealmente.",
+    "painPoints": [
+      "Rastrear manualmente tareas, plazos y entregables entre tres a cinco contextos de clientes en paralelo sin un sistema compartido",
+      "Escribir esencialmente la misma categoría de correo electrónico — confirmaciones de reuniones, recordatorios de seguimiento, solicitudes de programación — una y otra vez para diferentes clientes",
+      "La coordinación de horarios consume una parte desproporcionada del día: encontrar horarios, enviar invitaciones, manejar reprogramaciones, obtener confirmaciones",
+      "Colapso de contexto al cambiar entre clientes a mitad del día, lo que lleva a errores, detalles perdidos o tiempo perdido releyendo hilos para reorientarse",
+      "Facturar horas por tareas que son totalmente automatizables, lo cual es ineficiente para el VA y una conversación de valor difícil con clientes conscientes de los costos"
+    ],
+    "howGaiaHelps": [
+      {
+        "title": "Gestión de Bandeja de Entrada Multi-Cliente",
+        "description": "GAIA gestiona las bandejas de entrada de Gmail entre múltiples cuentas de clientes, clasificando los mensajes por cliente y urgencia, redactando respuestas para comunicaciones rutinarias y presentando elementos que necesitan una decisión humana — para que ninguna bandeja de entrada de cliente se convierta en una pila descuidada."
+      },
+      {
+        "title": "Redacción de Correos Electrónicos Rutinarios",
+        "description": "GAIA redacta correos electrónicos específicos del cliente — confirmaciones de reuniones, recordatorios de seguimiento, actualizaciones de estado, solicitudes de programación — utilizando el tono, el contexto y el historial de cada cliente, reduciendo la carga de escritura repetitiva sin producir copias genéricas."
+      },
+      {
+        "title": "Automatización de Programación entre Calendarios de Clientes",
+        "description": "GAIA maneja el ciclo completo de programación para múltiples calendarios de Google de clientes: encontrar horarios disponibles, enviar invitaciones, gestionar reprogramaciones y hacer seguimiento de reuniones no confirmadas — sin que el VA coordine manualmente cada intercambio."
+      },
+      {
+        "title": "Seguimiento de Entregables entre Clientes",
+        "description": "GAIA extrae compromisos y plazos de los correos electrónicos de clientes y mensajes de Slack, los sincroniza con Todoist o Notion organizados por cliente y presenta las próximas fechas de vencimiento de forma proactiva — reemplazando el sistema manual de hojas de cálculo o notas adhesivas."
+      },
+      {
+        "title": "Integración con Herramientas del Cliente a través de MCP",
+        "description": "Con más de 50 integraciones a través de MCP, GAIA se conecta a las herramientas que cada cliente ya utiliza — Notion, Slack, Todoist, Google Workspace — para que el VA pueda operar dentro de la pila existente del cliente en lugar de pedir a cada cliente que adopte algo nuevo."
+      },
+      {
+        "title": "Código Abierto y Gratuito para Empezar",
+        "description": "GAIA es completamente de código abierto con un nivel gratuito para implementaciones auto-alojadas, y un plan Pro a $20/mes fijo — sin precios por cliente o por asiento que erosionan los márgenes a medida que crece la lista de clientes."
+      }
+    ],
+    "faqs": [
+      {
+        "question": "¿Puede GAIA gestionar bandejas de entrada para múltiples clientes a la vez?",
+        "answer": "Sí. GAIA se conecta a múltiples cuentas de Gmail simultáneamente, clasifica cada bandeja de entrada de forma independiente con contexto específico del cliente y redacta respuestas en la voz de cada cliente. Cambiar entre contextos de clientes lo maneja GAIA en lugar de requerir que el VA relea manualmente hilos y se reoriente cada vez."
+      },
+      {
+        "question": "¿Hará GAIA que sea menos valioso para los clientes al automatizar mi trabajo?",
+        "answer": "GAIA automatiza las tareas repetitivas y de bajo juicio — programación, redacción de correos electrónicos rutinarios, seguimiento de entregables — lo que libera tu tiempo para el trabajo por el que los clientes realmente pagan una prima: gestión de relaciones, juicios de valor, coordinación compleja y resolución proactiva de problemas. La automatización del trabajo pesado hace que el trabajo de alto valor sea más visible, ¡no menos!"
+      },
+      {
+        "question": "¿Cómo maneja GAIA la confidencialidad del cliente?",
+        "answer": "GAIA es completamente de código abierto y auto-alojable, lo que significa que puedes implementarlo en tu propia infraestructura sin acceso de terceros a los datos del cliente. Para VAs que manejan comunicaciones confidenciales de clientes, el auto-alojamiento proporciona control total de los datos. El plan Pro gestionado a $20/mes también está disponible para VAs que se sientan cómodos con una implementación alojada."
+      }
+    ]
+  }
+}

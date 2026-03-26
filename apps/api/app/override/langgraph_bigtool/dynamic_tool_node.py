@@ -234,7 +234,15 @@ class DynamicToolNode(ToolNode):
 
             tool_input = dict(tc)
             tool_input["type"] = "tool_call"
-            result = await resolved_tool.ainvoke(tool_input, config=config)
+            try:
+                result = await resolved_tool.ainvoke(tool_input, config=config)
+            except Exception as exc:
+                return ToolMessage(
+                    content=f"Error: {exc}",
+                    tool_call_id=tc.get("id", ""),
+                    name=tc.get("name", ""),
+                    status="error",
+                )
 
             if isinstance(result, ToolMessage):
                 return result

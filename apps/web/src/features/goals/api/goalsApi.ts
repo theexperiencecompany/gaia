@@ -1,4 +1,4 @@
-import { apiService } from "@/lib/api";
+import { apiService } from "@/lib/api/service";
 import type { Goal, GoalCreate, GoalUpdate } from "@/types/api/goalsApiTypes";
 
 export const goalsApi = {

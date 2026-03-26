@@ -83,10 +83,10 @@ async def call_executor(
         else:
             detail: dict = e.detail if isinstance(e.detail, dict) else {}
             feature = detail.get("feature", "")
-        log.warning("Rate limit exceeded for executor task: {}", feature)
+        log.warning(f"Rate limit exceeded for executor task: {feature}")
         return f"Rate limit exceeded for {feature or 'this feature'}. The user has been shown an upgrade prompt."
     except Exception as e:
-        log.error("Error calling executor: {}", str(e), exc_info=True)
+        log.error(f"Error calling executor: {e}")
         return f"Error executing task: {str(e)}"
 
 

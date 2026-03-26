@@ -1,57 +1,64 @@
 {
   "expo": {
-    "name": "gaia-mobile",
-    "slug": "gaia-mobile",
+    "name": "Gaia",
+    "slug": "gaia",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icons/gaialogo.png",
-    "scheme": "gaiamobile",
+    "scheme": "gaia",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "io.heygaia.giamobile",
+      "bundleIdentifier": "io.heygaia.gaiamobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "io.heygaia.giamobile",
-      "googleServicesFile": "./google-services.json",
+      "package": "io.heygaia.gaiamobile",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#141414",
-        "foregroundImage": "./assets/icons/gaialogo.png",
-        "backgroundImage": "./assets/icons/gaialogo.png",
-        "monochromeImage": "./assets/icons/gaialogo.png"
+        "backgroundColor": "#121212",
+        "foregroundImage": "./assets/icons/adaptive-icon.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "intentFilters": [
         {
           "action": "VIEW",
           "data": [
             {
-              "scheme": "gaiamobile",
+              "scheme": "gaia",
               "host": "auth",
               "pathPrefix": "/callback"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            { "scheme": "gaia", "host": "chat" },
+            { "scheme": "gaia", "host": "todos" },
+            { "scheme": "gaia", "host": "notifications" },
+            { "scheme": "gaia", "host": "settings" },
+            { "scheme": "gaia", "host": "integrations" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
-    },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/icons/gaialogo.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/background/web.png",
-          "imageWidth": 200,
-          "resizeMode": "cover",
+          "image": "./assets/icons/gaialogo.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
           "backgroundColor": "#141414",
           "dark": {
             "backgroundColor": "#000000"
@@ -67,8 +74,7 @@
           "icon": "./assets/icons/gaialogo.png",
           "color": "#ffffff",
           "sounds": ["./assets/sound/uwu.mp3"],
-          "defaultChannel": "gaia_channel",
-          "mode": "production"
+          "defaultChannel": "gaia_channel"
         }
       ]
     ],
@@ -81,9 +87,9 @@
         "root": "./src/app"
       },
       "eas": {
-        "projectId": "dfc106f0-990f-4593-97ed-7999efde6e8c"
+        "projectId": "d40e3b70-3315-4212-9f89-c3efb7f1ef85"
       }
     },
-    "owner": "sanku02"
+    "owner": "aryanranderiya"
   }
 }

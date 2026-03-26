@@ -90,7 +90,7 @@ export default function YouMightAlsoLike({
               variant="community"
               showCreator={true}
               onCardClick={() => {
-                router.push(`/use-cases/${workflow.id}`);
+                router.push(`/use-cases/${workflow.slug ?? workflow.id}`);
               }}
             />
           ))}

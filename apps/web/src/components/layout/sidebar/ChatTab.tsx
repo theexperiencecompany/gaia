@@ -2,9 +2,9 @@
 import { Button } from "@heroui/button";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import React, { type FC, useEffect, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { usePathname } from "@/i18n/navigation";
 import { useChatStore } from "@/stores/chatStore";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
@@ -73,13 +73,7 @@ export const ChatTab: FC<ChatTabProps> = ({
       onMouseOver={() => setButtonHovered(true)}
     >
       <Button
-        className={`w-full justify-start px-2 font-light text-sm ${
-          isUnread
-            ? "text-white font-normal"
-            : isActive
-              ? "text-zinc-300"
-              : "text-zinc-400 hover:text-zinc-300"
-        }`}
+        className={`w-full justify-start px-2 font-light text-sm ${isUnread ? "text-white font-normal" : isActive ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
         size="sm"
         as={Link}
         href={`/c/${id}`}

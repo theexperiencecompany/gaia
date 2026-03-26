@@ -2,7 +2,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { toast } from "@/lib/toast";
-import { wsManager } from "@/lib/websocket";
+import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { batchSyncConversations } from "@/services/syncService";
 import { useNotificationStore } from "@/stores/notificationStore";
 import type {
@@ -87,6 +87,10 @@ export function useNotificationWebSocket() {
 
             // Sync chats when a workflow completion notification arrives
             if (message.notification.metadata?.conversation_id) {
+              console.debug(
+                "[NotificationWS] Notification has conversation_id, triggering sync",
+                message.notification.metadata.conversation_id,
+              );
               batchSyncConversations();
             }
           }

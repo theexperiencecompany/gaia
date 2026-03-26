@@ -75,18 +75,19 @@ Subject: {subject}
                 user_context += f" Their email is {user_email}."
 
         # Single API call to store all memories with custom instructions
-        result = await memory_service.store_memory_batch(
-            messages=messages,
-            user_id=user_id,
-            metadata={
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "source": "gmail_background_batch",
-                "batch_size": len(messages),
-                "user_name": user_name,
-                "user_email": user_email,
-            },
-            async_mode=False,
-            custom_instructions=f"""{user_context}
+        try:
+            result = await memory_service.store_memory_batch(
+                messages=messages,
+                user_id=user_id,
+                metadata={
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "source": "gmail_background_batch",
+                    "batch_size": len(messages),
+                    "user_name": user_name,
+                    "user_email": user_email,
+                },
+                async_mode=False,
+                custom_instructions=f"""{user_context}
 
 Extract memories ABOUT THE USER from emails they received.
 
@@ -116,7 +117,10 @@ DON'T STORE:
 FORMAT: Present tense, factual statements starting with "User"
 Example: "User works as Software Engineer at Acme Corp", "User's email is john@example.com"
 """,
-        )
+            )
+        except Exception as e:
+            log.error(f"Error in batch memory processing for user {user_id}: {e}")
+            return f"Error in batch memory processing for user {user_id}: {e}"
 
         if result:
             log.set(emails_stored=len(messages), emails_filtered=0)

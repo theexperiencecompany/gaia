@@ -43,7 +43,11 @@ async def proxy_mcp_tool_call(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
-    log.set(user={"id": user_id}, operation="mcp_proxy_tool_call", tool_name=request.tool_name)
+    log.set(
+        user={"id": user_id},
+        operation="mcp_proxy_tool_call",
+        tool_name=request.tool_name,
+    )
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -61,7 +65,7 @@ async def proxy_mcp_tool_call(
     except HTTPException:
         raise
     except Exception as e:
-        log.error("MCP proxy tool call failed: %s", e)
+        log.error(f"MCP proxy tool call failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Tool call failed: {str(e)}",
@@ -102,7 +106,7 @@ async def proxy_mcp_resources_list(
     except HTTPException:
         raise
     except Exception as e:
-        log.error("MCP proxy resources/list failed: %s", e)
+        log.error(f"MCP proxy resources/list failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/list failed: {str(e)}",
@@ -135,7 +139,14 @@ async def proxy_mcp_resource_templates_list(
             server_url=request.server_url,
             cursor=request.cursor,
         )
-        log.set(outcome="success", result_count=len(result.get("resource_templates") or result.get("resourceTemplates") or []))
+        log.set(
+            outcome="success",
+            result_count=len(
+                result.get("resource_templates")
+                or result.get("resourceTemplates")
+                or []
+            ),
+        )
         return MCPProxyResourceTemplatesListResponse(
             resource_templates=result.get("resource_templates")
             or result.get("resourceTemplates")
@@ -145,7 +156,7 @@ async def proxy_mcp_resource_templates_list(
     except HTTPException:
         raise
     except Exception as e:
-        log.error("MCP proxy resources/templates/list failed: %s", e)
+        log.error(f"MCP proxy resources/templates/list failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/templates/list failed: {str(e)}",
@@ -170,7 +181,11 @@ async def proxy_mcp_resource_read(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
-    log.set(user={"id": user_id}, operation="mcp_proxy_resource_read", resource_uri=request.uri)
+    log.set(
+        user={"id": user_id},
+        operation="mcp_proxy_resource_read",
+        resource_uri=request.uri,
+    )
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -185,7 +200,7 @@ async def proxy_mcp_resource_read(
     except HTTPException:
         raise
     except Exception as e:
-        log.error("MCP proxy resources/read failed: %s", e)
+        log.error(f"MCP proxy resources/read failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/read failed: {str(e)}",
@@ -226,7 +241,7 @@ async def proxy_mcp_prompts_list(
     except HTTPException:
         raise
     except Exception as e:
-        log.error("MCP proxy prompts/list failed: %s", e)
+        log.error(f"MCP proxy prompts/list failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"prompts/list failed: {str(e)}",

@@ -249,7 +249,7 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
         parent_dynamic, use_direct_tools=False, disable_retrieve_tools=False
     )
     assert child_dynamic.enable_retrieve_tools is True
-    assert child_dynamic.initial_tool_names == ["vfs_read"]
+    assert child_dynamic.initial_tool_names == ["vfs_read", "vfs_cmd"]
 
     parent_direct = build_provider_parent_tool_runtime_config(
         provider_tool_names=["p1", "p2"],
@@ -267,7 +267,7 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
 
     executor_child = build_executor_child_tool_runtime_config()
     assert executor_child.enable_retrieve_tools is True
-    assert executor_child.initial_tool_names == ["vfs_read"]
+    assert executor_child.initial_tool_names == ["vfs_read", "vfs_cmd"]
 
     kwargs = build_create_agent_tool_kwargs(parent_dynamic, tool_space="provider_space")
     assert "initial_tool_ids" in kwargs
@@ -555,10 +555,6 @@ async def test_retrieval_query_mode_includes_subagents_when_enabled_and_filters_
                 ]
             ),
         ),
-        patch(
-            "app.agents.tools.core.retrieval._log_store_diagnostics",
-            new=AsyncMock(return_value=None),
-        ),
     ):
         result = await retrieve_tools(
             store=store,
@@ -677,7 +673,7 @@ async def test_base_subagent_dynamic_mode_wires_retrieve_and_auto_bind():
     assert "normal_tool" in captured_kwargs["initial_tool_ids"]
     assert "missing_tool" not in captured_kwargs["initial_tool_ids"]
     # spawned child for dynamic mode should keep minimal initial tools
-    assert mw._tool_runtime_config.initial_tool_names == ["vfs_read"]
+    assert mw._tool_runtime_config.initial_tool_names == ["vfs_read", "vfs_cmd"]
     assert mw._tool_runtime_config.enable_retrieve_tools is True
 
 

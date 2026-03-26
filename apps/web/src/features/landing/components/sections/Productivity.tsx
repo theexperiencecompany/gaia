@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef } from "react";
-import { ChevronRight } from "@/components";
+import { ChevronRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 // import { CalendarDemo } from "@/features/calendar/components/Calendar";
 // import GoalsStepsContent from "./GoalsStepsContent";

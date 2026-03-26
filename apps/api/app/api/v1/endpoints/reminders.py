@@ -79,8 +79,12 @@ async def create_reminder_endpoint(
             reminder=ReminderContext(
                 operation="create",
                 id=str(reminder.id),
-                recurrence=reminder.recurrence if hasattr(reminder, "recurrence") else None,
-                next_run_time=str(reminder.next_run_time) if hasattr(reminder, "next_run_time") and reminder.next_run_time else None,
+                recurrence=reminder.recurrence
+                if hasattr(reminder, "recurrence")
+                else None,
+                next_run_time=str(reminder.next_run_time)
+                if hasattr(reminder, "next_run_time") and reminder.next_run_time
+                else None,
             )
         )
         log.set(outcome="success")
@@ -136,7 +140,9 @@ async def get_reminder_endpoint(
             reminder=ReminderContext(
                 operation="get",
                 id=str(reminder.id),
-                recurrence=reminder.recurrence if hasattr(reminder, "recurrence") else None,
+                recurrence=reminder.recurrence
+                if hasattr(reminder, "recurrence")
+                else None,
             )
         )
         log.set(outcome="success")
@@ -211,7 +217,9 @@ async def update_reminder_endpoint(
             reminder=ReminderContext(
                 operation="update",
                 id=str(updated_reminder.id),
-                recurrence=updated_reminder.recurrence if hasattr(updated_reminder, "recurrence") else None,
+                recurrence=updated_reminder.recurrence
+                if hasattr(updated_reminder, "recurrence")
+                else None,
             )
         )
         log.set(outcome="success")

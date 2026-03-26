@@ -129,11 +129,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               ) : (
                 <h1
                   onClick={() => setIsEditingTitle(true)}
-                  className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${
-                    todo.completed
-                      ? "text-zinc-500 line-through"
-                      : "text-zinc-100"
-                  }`}
+                  className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
                 >
                   {todo.title}
                 </h1>
@@ -164,9 +160,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           ) : (
             <p
               onClick={() => setIsEditingDescription(true)}
-              className={`cursor-pointer text-sm leading-relaxed transition-colors hover:text-zinc-300 ${
-                todo.completed ? "text-zinc-600" : "text-zinc-400"
-              }`}
+              className={`cursor-pointer text-sm leading-relaxed transition-colors hover:text-zinc-300 ${todo.completed ? "text-zinc-600" : "text-zinc-400"}`}
             >
               {todo.description || "Add a description..."}
             </p>
@@ -208,6 +202,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           </div>
 
           <WorkflowSection
+            key={todo.id}
             hideBg={true}
             todoId={todo.id}
             onWorkflowLinked={handleWorkflowLinked}

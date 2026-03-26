@@ -31,6 +31,7 @@ from app.templates.docstrings.twitter_tool_docs import (
     CUSTOM_SCHEDULE_TWEET_DOC,
     CUSTOM_SEARCH_USERS_DOC,
 )
+import app.utils.twitter_utils as _twitter_utils_module
 from app.utils.twitter_utils import (
     TWITTER_API_BASE,
     create_tweet,
@@ -55,8 +56,6 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
     Returns:
         List of registered tool names
     """
-    # Import httpx client from utils for username lookup
-    from app.utils.twitter_utils import _http_client
 
     @composio.tools.custom_tool(toolkit="TWITTER")
     @with_doc(CUSTOM_BATCH_FOLLOW_DOC)
@@ -288,7 +287,7 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
 
         # Get username for thread URL
         try:
-            resp = _http_client.get(
+            resp = _twitter_utils_module._http_client.get(
                 f"{TWITTER_API_BASE}/users/me",
                 headers=twitter_headers(access_token),
             )
@@ -392,6 +391,7 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
         This creates a draft that can be stored and posted later by a scheduler.
         """
         writer = get_stream_writer()
+        get_access_token(auth_credentials)
 
         draft = {
             "text": request.text,
@@ -422,7 +422,7 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
         headers = twitter_headers(access_token)
 
         # Get user profile with metrics
-        me_resp = _http_client.get(
+        me_resp = _twitter_utils_module._http_client.get(
             f"{TWITTER_API_BASE}/users/me",
             headers=headers,
             params={"user.fields": "public_metrics,description,username"},
@@ -436,7 +436,7 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
         # Get recent tweets
         tweets: List[Dict[str, Any]] = []
         if user_id:
-            tweets_resp = _http_client.get(
+            tweets_resp = _twitter_utils_module._http_client.get(
                 f"{TWITTER_API_BASE}/users/{user_id}/tweets",
                 headers=headers,
                 params={"max_results": 5, "tweet.fields": "created_at,public_metrics"},

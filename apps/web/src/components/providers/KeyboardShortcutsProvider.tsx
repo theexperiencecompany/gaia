@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   createContext,
   type ReactNode,
@@ -11,8 +11,8 @@ import {
   useState,
 } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
+import { usePathname } from "@/i18n/navigation";
 
 import KeyboardShortcutsModal from "../shared/KeyboardShortcutsModal";
 

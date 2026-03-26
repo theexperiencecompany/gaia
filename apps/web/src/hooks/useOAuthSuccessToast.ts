@@ -1,9 +1,10 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useSendMessage } from "@/hooks/useSendMessage";
+import { usePathname } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
 
 // Module-level Set to track which OAuth callbacks we've already processed

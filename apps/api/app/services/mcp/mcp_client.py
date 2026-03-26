@@ -1604,7 +1604,7 @@ class MCPClient:
 
             matching_client = self._clients.get(matching_integration_id)
             if matching_client is None:
-                log.warning("No active MCP client found for server_url: %s", server_url)
+                log.warning(f"No active MCP client found for server_url: {server_url}")
                 return None
 
             session = matching_client.get_session(matching_integration_id)

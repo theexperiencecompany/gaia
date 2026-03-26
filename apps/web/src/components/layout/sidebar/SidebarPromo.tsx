@@ -28,11 +28,7 @@ export function SidebarPromo({ price, onUpgrade }: SidebarPromoProps) {
 
   return (
     <div
-      className={`flex flex-col justify-center transition-all duration-200 group/pricingsidebar ${
-        isCollapsed
-          ? "w-full px-1 mb-2 mt-1"
-          : "mb-2 h-fit w-fit rounded-2xl bg-zinc-800 p-4 pt-1"
-      }`}
+      className={`flex flex-col justify-center transition-all duration-200 group/pricingsidebar ${isCollapsed ? "w-full px-1 mb-2 mt-1" : "mb-2 h-fit w-fit rounded-2xl bg-zinc-800 p-4 pt-1"}`}
     >
       {!isCollapsed && (
         <>

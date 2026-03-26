@@ -126,7 +126,7 @@ def rank_and_deduplicate_urls(
 
     ranked = sorted(
         url_map.values(),
-        key=lambda x: (x["appearances"] * 2 + x["score"]),
+        key=lambda x: x["appearances"] * 2 + x["score"],
         reverse=True,
     )
     return ranked[:max_urls]

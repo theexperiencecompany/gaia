@@ -3,11 +3,13 @@ import { Button, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import {
   EmailAccordion,
-  EmailComposeCard,
-  NotificationCard,
-  SAMPLE_EMAIL_COMPOSE,
   SAMPLE_EMAILS,
-} from "@/features/chat";
+} from "@/features/chat/components/chat/email-accordion";
+import {
+  EmailComposeCard,
+  SAMPLE_EMAIL_COMPOSE,
+} from "@/features/chat/components/chat/email-compose-card";
+import { NotificationCard } from "@/features/chat/tool-data/cards/notification-card";
 import { useNotificationContext } from "@/features/notifications/components/notification-provider";
 import { StyledSafeAreaView } from "@/lib/uniwind";
 

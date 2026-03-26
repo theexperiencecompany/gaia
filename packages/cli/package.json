@@ -62,6 +62,7 @@
     "@types/react-dom": "^19.2.3",
     "esbuild": "latest",
     "tsx": "latest",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.15"
   }
 }

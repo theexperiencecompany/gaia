@@ -4,13 +4,13 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Cancel01Icon, GridIcon, SearchIcon } from "@icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence, m } from "motion/react";
-import { usePathname } from "next/navigation";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
+import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
@@ -93,9 +93,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         style={baseStyle}
       >
         <div
-          className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
-            isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
-          }`}
+          className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
           onClick={() => {
             trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_SELECTED, {
               tool_name: match.tool.name,
@@ -602,11 +600,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                       e.stopPropagation();
                       handleCategoryChange(category);
                     }}
-                    className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
-                      selectedCategory === category
-                        ? "bg-zinc-700/40 text-white"
-                        : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"
-                    }`}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${selectedCategory === category ? "bg-zinc-700/40 text-white" : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"}`}
                   >
                     {category === "all" ? (
                       <GridIcon

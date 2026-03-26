@@ -94,7 +94,9 @@ async def update_file_endpoint(
         update_data=update_data,
     )
 
-    log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
+    log.set(
+        user={"id": user_id}, operation="update", file_id=file_id, outcome="success"
+    )
     return result
 
 
@@ -120,5 +122,10 @@ async def delete_file_endpoint(
         user_id=user.get("user_id", None),
     )
 
-    log.set(user={"id": user.get("user_id")}, operation="delete", file_id=file_id, outcome="success")
+    log.set(
+        user={"id": user.get("user_id")},
+        operation="delete",
+        file_id=file_id,
+        outcome="success",
+    )
     return result

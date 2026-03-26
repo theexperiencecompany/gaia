@@ -13,6 +13,7 @@ from typing import Any
 from chromadb.api import AsyncClientAPI
 from shared.py.wide_events import log
 from chromadb.api.models.AsyncCollection import AsyncCollection
+from chromadb.api.types import EmbeddingFunction
 from langchain_core.embeddings import Embeddings
 from langgraph.store.base import (
     BaseStore,
@@ -30,6 +31,29 @@ from langgraph.store.base import (
     get_text_at_path,
     tokenize_path,
 )
+
+
+class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
+    """Embedding function that bypasses model loading.
+
+    ChromaStore computes its own embeddings via ``self.embeddings`` and passes
+    them explicitly to ``collection.upsert(embeddings=...)``.  When no
+    embeddings are provided, ChromaDB falls back to its default ONNX-based
+    model which requires downloading and loading ``all-MiniLM-L6-v2``.
+
+    Registering this no-op function on the collection prevents ChromaDB from
+    ever attempting to load the ONNX model, avoiding failures in environments
+    where the model is unavailable (CI, minimal containers, etc.).
+    """
+
+    def __init__(self) -> None:
+        pass
+
+    def __call__(self, input: list[str]) -> Any:
+        return [[0.0] * 384 for _ in input]
+
+
+_NOOP_EF = _NoOpEmbeddingFunction()
 
 
 class ChromaStore(BaseStore):
@@ -83,7 +107,13 @@ class ChromaStore(BaseStore):
             self._tokenized_fields = []
 
     async def _get_collection(self) -> AsyncCollection:
-        """Get or create the ChromaDB collection."""
+        """Get or create the ChromaDB collection.
+
+        Uses ``_NOOP_EF`` as the collection-level embedding function so
+        ChromaDB never attempts to load its default ONNX model.  ChromaStore
+        manages embeddings itself via ``self.embeddings`` and always passes
+        them explicitly to ``collection.upsert()``.
+        """
         if self._collection_cache is None:
             collections = await self.client.list_collections()
             collection_names = [col.name for col in collections]
@@ -99,10 +129,12 @@ class ChromaStore(BaseStore):
                 self._collection_cache = await self.client.create_collection(
                     name=self.collection_name,
                     metadata={"hnsw:space": "cosine"},
+                    embedding_function=_NOOP_EF,
                 )
             else:
                 self._collection_cache = await self.client.get_collection(
-                    name=self.collection_name
+                    name=self.collection_name,
+                    embedding_function=_NOOP_EF,
                 )
 
         return self._collection_cache

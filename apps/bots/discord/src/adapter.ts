@@ -880,7 +880,7 @@ export class DiscordAdapter extends BaseBotAdapter {
  * @param msg - The platform-agnostic rich message.
  * @returns A Discord `EmbedBuilder` ready to be sent.
  */
-function richMessageToEmbed(msg: RichMessage): EmbedBuilder {
+export function richMessageToEmbed(msg: RichMessage): EmbedBuilder {
   const embed = new EmbedBuilder().setTitle(msg.title);
 
   if (msg.description) embed.setDescription(msg.description);

@@ -152,7 +152,11 @@ async def update_user_timezone(
     This updates the root-level timezone field for the user.
     """
     try:
-        log.set(user={"id": user["user_id"]}, operation="update_user_timezone", timezone=user_timezone.strip())
+        log.set(
+            user={"id": user["user_id"]},
+            operation="update_user_timezone",
+            timezone=user_timezone.strip(),
+        )
         try:
             pytz.timezone(user_timezone.strip())
         except pytz.UnknownTimeZoneError:

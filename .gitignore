@@ -1,4 +1,5 @@
 .history
+.claude/worktrees
 venv
 api/__pycache__
 */__pycache__/*
@@ -132,3 +133,6 @@ docs/superpowers
 bin/dagger
 
 .beads/
+.coverage
+i18n.cache
+.worktrees/

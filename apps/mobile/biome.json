@@ -11,5 +11,22 @@
         "noDuplicateCustomProperties": "off"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "src/features/chat/components/chat/voice-recorder.tsx",
+        "src/features/chat/components/tool-cards/chart-card.tsx",
+        "src/features/chat/components/tool-cards/code-execution-card.tsx",
+        "src/features/search/components/SearchResultItem.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noArrayIndexKey": "off"
+          }
+        }
+      }
+    }
+  ]
 }

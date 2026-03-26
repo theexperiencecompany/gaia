@@ -18,7 +18,11 @@ async def list_marketplace_integrations(category: Optional[str] = None):
     try:
         log.set(operation="list_marketplace_integrations", category=category)
         result = await get_all_integrations(category=category)
-        log.set(result_count=len(result.integrations) if hasattr(result, "integrations") else 0)
+        log.set(
+            result_count=len(result.integrations)
+            if hasattr(result, "integrations")
+            else 0
+        )
         log.set(outcome="success")
         return result
     except Exception as e:

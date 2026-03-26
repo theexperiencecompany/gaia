@@ -3,10 +3,11 @@
 import { Tooltip } from "@heroui/react";
 import { ArrowRight01Icon, CheckmarkCircle02Icon } from "@icons";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
+import { usePathname } from "@/i18n/navigation";
 import { useTodoStore } from "@/stores/todoStore";
 
 export default function TodosHeader() {

@@ -14,6 +14,7 @@ import {
   removeUserInfo,
 } from "@/features/auth/utils/auth-storage";
 import { unregisterDeviceOnLogout } from "@/features/notifications/utils/notification-storage";
+import { setOnUnauthorized } from "@/lib/api";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -79,6 +80,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error) {
       console.error("Error signing out:", error);
     }
+  }, []);
+
+  // Register a callback with the API service so that a 401 response from
+  // any request automatically clears auth state (token already wiped by
+  // api.ts via clearAuthData) and redirects to login via the auth guard.
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      setIsAuthenticated(false);
+      setUser(null);
+    });
   }, []);
 
   return (

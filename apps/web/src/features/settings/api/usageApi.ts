@@ -1,53 +1,13 @@
-import { apiauth } from "@/lib/api";
+import type { FeatureUsage, UsageSummary } from "@shared/types";
+import { apiauth } from "@/lib/api/client";
 
-export interface UsagePeriod {
-  used: number;
-  limit: number;
-  percentage: number;
-  reset_time?: string;
-  remaining: number;
-}
-
-export interface FeatureUsage {
-  title: string;
-  description: string;
-  category: string;
-  periods: {
-    hour?: UsagePeriod;
-    day?: UsagePeriod;
-    month?: UsagePeriod;
-  };
-}
-
-export interface TokenUsage {
-  title: string;
-  periods: {
-    day?: {
-      input_tokens: number;
-      output_tokens: number;
-      total_tokens: number;
-      limit: number;
-      percentage: number;
-      remaining: number;
-    };
-    month?: {
-      input_tokens: number;
-      output_tokens: number;
-      total_tokens: number;
-      limit: number;
-      percentage: number;
-      remaining: number;
-    };
-  };
-}
-
-export interface UsageSummary {
-  user_id: string;
-  plan_type: string;
-  features: Record<string, FeatureUsage>;
-  token_usage: Record<string, TokenUsage>;
-  last_updated: string;
-}
+export type {
+  FeatureUsage,
+  TokenUsage,
+  TokenUsagePeriod,
+  UsagePeriod,
+  UsageSummary,
+} from "@shared/types";
 
 export interface UsageHistoryEntry {
   date: string;

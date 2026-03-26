@@ -174,7 +174,13 @@ async def prepare_subagent_execution(
 
     subagent_cfg = integration.subagent_config
     agent_name = subagent_cfg.agent_name
-    log.set(subagent={"name": agent_name, "provider": integration.provider, "task_length": len(task)})
+    log.set(
+        subagent={
+            "name": agent_name,
+            "provider": integration.provider,
+            "task_length": len(task),
+        }
+    )
 
     # Load subagent graph
     subagent_graph = await providers.aget(agent_name)

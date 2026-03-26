@@ -3,10 +3,26 @@
 import asyncio
 from typing import Optional
 
+from pymongo import UpdateOne
 from shared.py.wide_events import log
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import delete_cache, get_cache, set_cache
+
+# Module-level set to hold references to background tasks and prevent premature GC
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _format_tools(tools: list[dict]) -> list[dict]:
+    """Normalize and filter tool dicts: strip whitespace, drop entries without a name."""
+    return [
+        {
+            "name": t.get("name", "").strip(),
+            "description": t.get("description", "").strip(),
+        }
+        for t in tools
+        if t.get("name", "").strip()
+    ]
 
 
 class MCPToolsStore:
@@ -17,14 +33,7 @@ class MCPToolsStore:
         if not tools:
             return
 
-        formatted_tools = [
-            {
-                "name": t.get("name", "").strip(),
-                "description": t.get("description", "").strip(),
-            }
-            for t in tools
-            if t.get("name", "").strip()
-        ]
+        formatted_tools = _format_tools(tools)
 
         if not formatted_tools:
             return
@@ -36,9 +45,39 @@ class MCPToolsStore:
                 upsert=True,
             )
             await delete_cache(MCP_TOOLS_CACHE_KEY)
-            asyncio.create_task(self._refresh_cache())
+            _task = asyncio.create_task(self._refresh_cache())
+            _background_tasks.add(_task)
+            _task.add_done_callback(_background_tasks.discard)
         except Exception as e:
             log.error(f"[{integration_id}] Error storing tools: {e}")
+            raise
+
+    async def store_tools_batch(self, items: list[tuple[str, list[dict]]]) -> None:
+        """Store tools for multiple integrations in a single bulk write."""
+        ops = []
+        for integration_id, tools in items:
+            formatted = _format_tools(tools)
+            if not formatted:
+                continue
+            ops.append(
+                UpdateOne(
+                    {"integration_id": integration_id},
+                    {"$set": {"tools": formatted, "integration_id": integration_id}},
+                    upsert=True,
+                )
+            )
+
+        if not ops:
+            return
+
+        try:
+            await integrations_collection.bulk_write(ops)
+            await delete_cache(MCP_TOOLS_CACHE_KEY)
+            _task = asyncio.create_task(self._refresh_cache())
+            _background_tasks.add(_task)
+            _task.add_done_callback(_background_tasks.discard)
+        except Exception as e:
+            log.error(f"Error storing tools batch: {e}")
             raise
 
     async def get_tools(self, integration_id: str) -> Optional[list[dict]]:

@@ -44,7 +44,7 @@ class CreateThreadInput(BaseModel):
         min_length=2,
         max_length=25,
     )
-    media_ids: Optional[List[List[str]]] = Field(
+    media_ids: Optional[List[Optional[List[str]]]] = Field(
         None,
         description="Optional list of media ID arrays, one per tweet. Use TWITTER_UPLOAD_MEDIA first to get media IDs.",
     )

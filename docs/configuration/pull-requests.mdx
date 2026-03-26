@@ -1,6 +1,6 @@
 ---
 title: "Pull Request Guide"
-description: "How to create and submit pull requests to GAIA"
+description: "Guide to creating and submitting pull requests to GAIA, including branch naming, commit guidelines, and review process."
 icon: "code-pull-request"
 ---
 
@@ -197,12 +197,16 @@ Once merged:
     ```
   </Accordion>
 
-{" "}
-
-<Accordion title="Failed CI Checks">
-  Review the CI logs and fix issues: ```bash mise lint:fix mise test git add .
-  git commit -m "fix: resolve CI issues" git push ```
-</Accordion>
+  <Accordion title="Failed CI Checks">
+    Review the CI logs and fix issues:
+    ```bash
+    mise lint:fix
+    mise test
+    git add .
+    git commit -m "fix: resolve CI issues"
+    git push
+    ```
+  </Accordion>
 
   <Accordion title="Outdated Branch">
     Rebase on latest master:

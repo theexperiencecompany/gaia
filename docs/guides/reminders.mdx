@@ -1,0 +1,166 @@
+---
+title: "Setting Up Reminders"
+description: "Never forget a task — set one-time or recurring reminders in natural language"
+---
+
+## Overview
+
+Just tell GAIA what you need to remember and when. No forms, no date pickers, no cron syntax. GAIA schedules it and sends you a notification when the time comes.
+
+Reminders work everywhere you talk to GAIA: the web app, mobile app, desktop app, and your connected bots (Discord, Slack, Telegram).
+
+## How Reminders Work
+
+When you ask GAIA to remind you of something, three things happen:
+
+1. **GAIA reads your request** — it pulls out the reminder text, the time, and whether it should repeat.
+2. **A scheduled task is created** — stored with a title, message, time, and optional recurrence pattern.
+3. **A notification fires at the right moment** — in-app, and as a push notification on mobile.
+
+You can create, list, update, pause, resume, and cancel reminders entirely through chat.
+
+## Create Your First Reminder
+
+<Steps>
+  <Step title="Open a chat with GAIA">
+    Go to any conversation in the web, desktop, or mobile app — or message GAIA through a connected bot.
+  </Step>
+  <Step title="Ask for a reminder in plain language">
+    Just type what you need. GAIA understands relative times, specific times, and recurring schedules.
+
+    For example:
+    ```
+    Remind me to submit the quarterly report tomorrow at 9 AM
+    ```
+
+  </Step>
+  <Step title="Confirm the reminder">
+    GAIA replies with a confirmation showing the reminder text and scheduled time. You're done.
+  </Step>
+</Steps>
+
+## One-Time Reminders
+
+A one-time reminder fires once, then it's done. Use these for deadlines, appointments, or anything with a single due date.
+
+**Example prompts:**
+
+| What you say                                     | What GAIA schedules                       |
+| ------------------------------------------------ | ----------------------------------------- |
+| "Remind me to call the dentist in 30 minutes"    | 30 minutes from now                       |
+| "Remind me to buy groceries at 5 PM today"       | Today at 5:00 PM                          |
+| "Remind me to renew my subscription on March 20" | March 20 at the time you send the message |
+| "Remind me in 2 hours to check the oven"         | 2 hours from now                          |
+
+<Tip>
+  Relative times like "in 10 minutes" or "in 3 hours" are the fastest way to set
+  a quick reminder. GAIA works out the exact time for you.
+</Tip>
+
+## Recurring Reminders
+
+Recurring reminders repeat on a schedule until you cancel them or set a limit. Use these for habits, weekly check-ins, or anything that happens on a regular basis.
+
+**Example prompts:**
+
+| What you say                                                | Schedule                         |
+| ----------------------------------------------------------- | -------------------------------- |
+| "Remind me to stand up and stretch every 2 hours"           | Every 2 hours during the day     |
+| "Every Monday at 9 AM, remind me to review my weekly goals" | Weekly on Mondays at 9:00 AM     |
+| "Remind me to take my medication every day at 8 PM"         | Daily at 8:00 PM                 |
+| "On the first of every month, remind me to pay rent"        | Monthly on the 1st               |
+| "Every weekday at 6 PM, remind me to wrap up for the day"   | Monday through Friday at 6:00 PM |
+
+<Note>
+  Recurring reminders automatically expire after 6 months unless you set an end
+  date. You can extend or cancel them at any time.
+</Note>
+
+### Setting Limits on Recurring Reminders
+
+Tell GAIA when to stop:
+
+- **By count:** "Remind me to water the plants every 3 days, 10 times total"
+- **By date:** "Every Tuesday at noon, remind me to submit timesheets until June 30"
+
+## Managing Reminders
+
+### List Your Reminders
+
+Ask GAIA to show what's scheduled:
+
+```
+Show me my upcoming reminders
+```
+
+```
+List all my scheduled reminders
+```
+
+### Update a Reminder
+
+Change the text or the time of an existing reminder:
+
+```
+Change my daily medication reminder to 9 PM instead of 8 PM
+```
+
+### Pause and Resume
+
+Pause a reminder without deleting it — handy for vacations or breaks:
+
+```
+Pause my weekday wrap-up reminder
+```
+
+```
+Resume my weekday wrap-up reminder
+```
+
+### Cancel a Reminder
+
+When you no longer need it:
+
+```
+Cancel my Monday goals reminder
+```
+
+<Warning>
+  Cancelled reminders cannot be restored. If you might want it back later, pause
+  it instead.
+</Warning>
+
+## Reminders and Workflows
+
+Reminders and [workflows](/guides/marketplace#publishing-a-workflow) do different things. Here's how they compare:
+
+|                | Reminders                               | Workflows                                  |
+| -------------- | --------------------------------------- | ------------------------------------------ |
+| **Purpose**    | Nudge you at a specific time            | Automate a multi-step process              |
+| **Output**     | A notification with a title and message | Actions across your connected apps         |
+| **Trigger**    | Time-based (one-time or recurring)      | Time-based, event-based, or manual         |
+| **Complexity** | Single message                          | Multiple steps with logic and integrations |
+
+Use reminders when you need a simple nudge. Use workflows when you want GAIA to act on your behalf — like sending a summary email, creating a task in Linear, or pulling data from a connected service.
+
+<Tip>
+  You can use both together: set a reminder to review something, and create a
+  workflow to prepare the information you need before you sit down to review it.
+</Tip>
+
+## Timezones
+
+GAIA uses your local timezone by default. When you say "at 3 PM," it schedules for 3 PM your time — no conversion needed.
+
+To set a reminder in a different timezone, just say so:
+
+```
+Remind me to join the call at 2 PM EST tomorrow
+```
+
+## Tips for Better Reminders
+
+- **Be specific with the content.** "Remind me to email Sarah about the contract renewal" is more useful than "Remind me about Sarah."
+- **Use relative times for quick reminders.** "In 15 minutes" is faster than looking up the exact time.
+- **Set recurring reminders for habits.** Consistency is easier when you don't have to remember to remember.
+- **Review your reminders periodically.** Ask GAIA to list your active reminders and clear out any you no longer need.

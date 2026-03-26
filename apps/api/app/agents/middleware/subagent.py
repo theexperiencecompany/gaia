@@ -128,7 +128,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                log.error("Subagent execution failed: {}", str(e))
+                log.error(f"Subagent execution failed: {e}")
                 return Command(
                     update={
                         "messages": [
@@ -283,7 +283,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     except asyncio.CancelledError:
                         raise
                     except Exception as e:
-                        log.error("Subagent retrieve_tools error: {}", str(e))
+                        log.error(f"Subagent retrieve_tools error: {e}")
                         content = f"retrieve_tools error: {e}"
 
                     messages.append(

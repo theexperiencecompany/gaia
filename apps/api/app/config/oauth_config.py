@@ -97,6 +97,40 @@ from app.models.mcp_config import (
     VariableExtraction,
 )
 from app.models.oauth_models import OAuthIntegration
+from app.config.oauth_content import (
+    AGENTMAIL_CONTENT,
+    AIRTABLE_CONTENT,
+    ASANA_CONTENT,
+    BROWSERBASE_CONTENT,
+    CLICKUP_CONTENT,
+    CONTEXT7_CONTENT,
+    DEEPWIKI_CONTENT,
+    GITHUB_CONTENT,
+    GMAIL_CONTENT,
+    GOOGLEDOCS_CONTENT,
+    GOOGLE_MAPS_CONTENT,
+    GOOGLEMEET_CONTENT,
+    GOOGLECALENDAR_CONTENT,
+    GOOGLESHEETS_CONTENT,
+    GOOGLETASKS_CONTENT,
+    HACKERNEWS_CONTENT,
+    HUBSPOT_CONTENT,
+    INSTAGRAM_CONTENT,
+    INSTACART_CONTENT,
+    LINEAR_CONTENT,
+    LINKEDIN_CONTENT,
+    MICROSOFT_TEAMS_CONTENT,
+    NOTION_CONTENT,
+    PERPLEXITY_CONTENT,
+    POSTHOG_CONTENT,
+    REDDIT_CONTENT,
+    SLACK_CONTENT,
+    TODOIST_CONTENT,
+    TRELLO_CONTENT,
+    TWITTER_CONTENT,
+    YELP_CONTENT,
+    ZOOM_CONTENT,
+)
 from app.models.trigger_config import (
     TriggerConfig,
     TriggerConfigFieldSchema,
@@ -205,6 +239,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=CALENDAR_MEMORY_PROMPT,
         ),
+        content=GOOGLECALENDAR_CONTENT,
     ),
     OAuthIntegration(
         id="googledocs",
@@ -283,6 +318,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=GOOGLE_DOCS_MEMORY_PROMPT,
         ),
+        content=GOOGLEDOCS_CONTENT,
     ),
     OAuthIntegration(
         id="todos",
@@ -465,7 +501,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 "GMAIL_CUSTOM_GATHER_CONTEXT",
                 "GMAIL_FETCH_EMAILS",
                 "GMAIL_CREATE_EMAIL_DRAFT",
-                "GMAIL_SEARCH_EMAILS",
+                "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
                 "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
                 "GMAIL_GET_CONTACT_LIST",
             ],
@@ -481,6 +517,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 ),
             ],
         ),
+        content=GMAIL_CONTENT,
     ),
     OAuthIntegration(
         id="notion",
@@ -588,6 +625,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 ),
             ],
         ),
+        content=NOTION_CONTENT,
     ),
     OAuthIntegration(
         id="twitter",
@@ -636,6 +674,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 ),
             ],
         ),
+        content=TWITTER_CONTENT,
     ),
     OAuthIntegration(
         id="googlesheets",
@@ -718,6 +757,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=GOOGLE_SHEETS_MEMORY_PROMPT,
         ),
+        content=GOOGLESHEETS_CONTENT,
     ),
     OAuthIntegration(
         id="linkedin",
@@ -755,6 +795,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=LINKEDIN_MEMORY_PROMPT,
         ),
+        content=LINKEDIN_CONTENT,
     ),
     OAuthIntegration(
         id="github",
@@ -902,6 +943,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 ),
             ],
         ),
+        content=GITHUB_CONTENT,
     ),
     OAuthIntegration(
         id="reddit",
@@ -939,6 +981,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=REDDIT_MEMORY_PROMPT,
         ),
+        content=REDDIT_CONTENT,
     ),
     OAuthIntegration(
         id="airtable",
@@ -976,6 +1019,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=AIRTABLE_MEMORY_PROMPT,
         ),
+        content=AIRTABLE_CONTENT,
     ),
     OAuthIntegration(
         id="linear",
@@ -1086,6 +1130,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 ),
             ],
         ),
+        content=LINEAR_CONTENT,
     ),
     OAuthIntegration(
         id="slack",
@@ -1197,6 +1242,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 ),
             ],
         ),
+        content=SLACK_CONTENT,
     ),
     OAuthIntegration(
         id="hubspot",
@@ -1234,6 +1280,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=HUBSPOT_MEMORY_PROMPT,
         ),
+        content=HUBSPOT_CONTENT,
     ),
     OAuthIntegration(
         id="googletasks",
@@ -1271,6 +1318,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=GOOGLE_TASKS_MEMORY_PROMPT,
         ),
+        content=GOOGLETASKS_CONTENT,
     ),
     OAuthIntegration(
         id="todoist",
@@ -1323,6 +1371,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=TODOIST_MEMORY_PROMPT,
         ),
+        content=TODOIST_CONTENT,
     ),
     OAuthIntegration(
         id="microsoft_teams",
@@ -1360,6 +1409,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=MICROSOFT_TEAMS_MEMORY_PROMPT,
         ),
+        content=MICROSOFT_TEAMS_CONTENT,
     ),
     OAuthIntegration(
         id="zoom",
@@ -1387,6 +1437,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=ZOOM_AGENT_SYSTEM_PROMPT,
             memory_prompt=ZOOM_MEMORY_PROMPT,
         ),
+        content=ZOOM_CONTENT,
     ),
     OAuthIntegration(
         id="googlemeet",
@@ -1419,6 +1470,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=GOOGLE_MEET_MEMORY_PROMPT,
         ),
+        content=GOOGLEMEET_CONTENT,
     ),
     OAuthIntegration(
         id="google_maps",
@@ -1456,6 +1508,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=GOOGLE_MAPS_MEMORY_PROMPT,
         ),
+        content=GOOGLE_MAPS_CONTENT,
     ),
     OAuthIntegration(
         id="asana",
@@ -1519,6 +1572,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=ASANA_MEMORY_PROMPT,
         ),
+        content=ASANA_CONTENT,
     ),
     OAuthIntegration(
         id="trello",
@@ -1556,6 +1610,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=TRELLO_MEMORY_PROMPT,
         ),
+        content=TRELLO_CONTENT,
     ),
     OAuthIntegration(
         id="instagram",
@@ -1593,6 +1648,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=INSTAGRAM_MEMORY_PROMPT,
         ),
+        content=INSTAGRAM_CONTENT,
     ),
     OAuthIntegration(
         id="clickup",
@@ -1630,6 +1686,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=CLICKUP_MEMORY_PROMPT,
         ),
+        content=CLICKUP_CONTENT,
     ),
     # MCP Integrations (no authentication required)
     OAuthIntegration(
@@ -1658,6 +1715,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=DEEPWIKI_MEMORY_PROMPT,
         ),
+        content=DEEPWIKI_CONTENT,
     ),
     # HackerNews MCP (unauthenticated, Composio hosted)
     OAuthIntegration(
@@ -1686,6 +1744,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=HACKERNEWS_MEMORY_PROMPT,
         ),
+        content=HACKERNEWS_CONTENT,
     ),
     # Instacart MCP (unauthenticated, Composio hosted)
     OAuthIntegration(
@@ -1714,6 +1773,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=INSTACART_MEMORY_PROMPT,
         ),
+        content=INSTACART_CONTENT,
     ),
     # Yelp MCP (unauthenticated, Composio hosted)
     OAuthIntegration(
@@ -1742,6 +1802,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=YELP_MEMORY_PROMPT,
         ),
+        content=YELP_CONTENT,
     ),
     # Context7 MCP (Smithery-hosted, OAuth via MCP spec discovery)
     OAuthIntegration(
@@ -1772,6 +1833,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=CONTEXT7_AGENT_SYSTEM_PROMPT,
             memory_prompt=CONTEXT7_MEMORY_PROMPT,
         ),
+        content=CONTEXT7_CONTENT,
     ),
     # Perplexity MCP (Smithery-hosted, OAuth via MCP spec discovery)
     OAuthIntegration(
@@ -1802,6 +1864,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=PERPLEXITY_MEMORY_PROMPT,
         ),
+        content=PERPLEXITY_CONTENT,
     ),
     # AgentMail MCP (OAuth via MCP spec discovery)
     OAuthIntegration(
@@ -1832,6 +1895,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=AGENTMAIL_MEMORY_PROMPT,
         ),
+        content=AGENTMAIL_CONTENT,
     ),
     # Browserbase MCP (OAuth via MCP spec discovery)
     OAuthIntegration(
@@ -1862,6 +1926,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             disable_retrieve_tools=True,
             memory_prompt=BROWSERBASE_MEMORY_PROMPT,
         ),
+        content=BROWSERBASE_CONTENT,
     ),
     # PostHog MCP (OAuth via MCP spec discovery)
     OAuthIntegration(
@@ -1901,6 +1966,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             ],
             memory_prompt=POSTHOG_MEMORY_PROMPT,
         ),
+        content=POSTHOG_CONTENT,
     ),
 ]
 
