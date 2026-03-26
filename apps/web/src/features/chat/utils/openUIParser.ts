@@ -1,3 +1,5 @@
+import type { Library } from "@openuidev/react-lang";
+
 export interface ContentSegment {
   type: "markdown" | "openui";
   content: string;
@@ -172,4 +174,117 @@ export function splitByBreaksPreservingFences(content: string): string[] {
   if (tail) parts.push(tail);
 
   return parts;
+}
+
+// ---------------------------------------------------------------------------
+// Named-arg normalizer
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a raw arg-list string at top-level commas.
+ * Commas inside (), [], {}, or "" are ignored.
+ */
+function splitTopLevelArgs(s: string): string[] {
+  const args: string[] = [];
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let start = 0;
+
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (esc) {
+      esc = false;
+      continue;
+    }
+    if (c === "\\" && inStr) {
+      esc = true;
+      continue;
+    }
+    if (c === '"') {
+      inStr = !inStr;
+      continue;
+    }
+    if (inStr) continue;
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (c === "," && depth === 0) {
+      args.push(s.slice(start, i));
+      start = i + 1;
+    }
+  }
+  args.push(s.slice(start));
+  return args;
+}
+
+/**
+ * If `arg` looks like `identifier = value`, return {name, value}.
+ * Only matches plain lowercase/underscore identifiers (not strings or
+ * PascalCase component refs).
+ */
+function parseNamedArg(arg: string): { name: string; value: string } | null {
+  const trimmed = arg.trim();
+  const m = trimmed.match(/^([a-z_][a-zA-Z0-9_]*)\s*=\s*([\s\S]*)$/);
+  if (!m) return null;
+  return { name: m[1], value: m[2].trim() };
+}
+
+/**
+ * Convert openui code that uses named args  (`key=value`) into the
+ * positional form the parser expects, using the library's schema field order.
+ *
+ * - If a line has no named args it is returned unchanged.
+ * - If ANY top-level arg is positional while others are named, the whole line
+ *   is returned unchanged (ambiguous, fall back to parser).
+ * - Unknown component names are returned unchanged.
+ *
+ * @example
+ * Input:  `root = DataCard(title="Server", fields=[{"label":"k","value":"v"}])`
+ * Output: `root = DataCard("Server", [{"label":"k","value":"v"}])`
+ */
+export function normalizeOpenUICode(code: string, library: Library): string {
+  const lines = code.split("\n");
+
+  return lines
+    .map((line) => {
+      // Match: optional leading whitespace, identifier, =, PascalCase(...)
+      const m = line.match(/^(\s*\w+\s*=\s*)([A-Z]\w*)\(([\s\S]*)\)(\s*)$/);
+      if (!m) return line;
+
+      const [, prefix, compName, argsStr, suffix] = m;
+      const def = library.components[compName];
+      if (!def) return line;
+
+      const rawArgs = splitTopLevelArgs(argsStr);
+      const parsed = rawArgs.map(parseNamedArg);
+
+      // No named args — nothing to do
+      if (parsed.every((p) => p === null)) return line;
+
+      // Mixed positional + named — ambiguous, leave as-is
+      if (parsed.some((p) => p !== null) && parsed.some((p) => p === null))
+        return line;
+
+      // All named — reorder to schema field order
+      const namedMap: Record<string, string> = {};
+      for (const p of parsed as { name: string; value: string }[]) {
+        namedMap[p.name] = p.value;
+      }
+
+      const fieldNames = Object.keys(
+        (def.props as { shape: Record<string, unknown> }).shape,
+      );
+      const positionalArgs = fieldNames.map((f) => namedMap[f] ?? "null");
+
+      // Trim trailing nulls so optional args at the end are simply omitted
+      while (
+        positionalArgs.length > 0 &&
+        positionalArgs[positionalArgs.length - 1] === "null"
+      ) {
+        positionalArgs.pop();
+      }
+
+      return `${prefix}${compName}(${positionalArgs.join(", ")})${suffix}`;
+    })
+    .join("\n");
 }

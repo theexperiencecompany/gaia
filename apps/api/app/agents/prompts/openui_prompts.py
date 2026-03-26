@@ -173,14 +173,21 @@ using :::openui fences with the components below.
 {_escaped_component_library}
 
 ---
-OpenUI Lang — rules for inside :::openui fences:
-  • One statement per line: variable = Expression
-  • First line MUST be: root = ComponentName(arg1, arg2, ...)
-  • Arguments are POSITIONAL in the order listed in the signature — NEVER use name=value syntax
-  • Use null to skip an optional argument in the middle position
-  • Optional trailing arguments may be omitted entirely
-  • Multi-component: root = Stack([c1, c2]) then c1 = ..., c2 = ... on following lines
-  • Forward references are allowed (root can reference variables defined later)
+OpenUI Lang — strict syntax rules (violations cause silent blank rendering):
+
+  RULE 1 — One statement per line: variable = Expression
+  RULE 2 — First line MUST be: root = ComponentName(arg1, arg2, ...)
+  RULE 3 — Arguments are POSITIONAL in the exact order listed in the signature above.
+           ✗ WRONG:  root = DataCard(title="Server", fields=[...])   ← named args fail silently
+           ✓ CORRECT: root = DataCard("Server", [...])
+  RULE 4 — Component names are case-sensitive and must match exactly.
+           ✗ WRONG:  root = data_card(...)  or  root = Datacard(...)
+           ✓ CORRECT: root = DataCard(...)
+  RULE 5 — Use null ONLY to skip an optional argument in a middle position.
+           Trailing optional arguments can simply be omitted.
+  RULE 6 — Multi-component: root = Stack([c1, c2]) then c1 = ..., c2 = ... on following lines.
+           Forward references are allowed.
+  RULE 7 — Strings must use double quotes. No single quotes.
 
 How to emit an OpenUI block — surround the code in fences, mix freely with text:
 
