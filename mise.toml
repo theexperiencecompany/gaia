@@ -172,12 +172,12 @@ description = "Run Mobile App + API (starts Docker automatically)"
 run = "nx run docker:docker:up && nx run-many -t dev --projects=api,mobile --parallel=2"
 
 [tasks."dev:bots"]
-description = "Run ALL bots (Discord, Telegram, Slack) in parallel"
-run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack --parallel=3"
+description = "Run ALL bots (Discord, Telegram, Slack, WhatsApp) in parallel"
+run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack,bot-whatsapp --parallel=4"
 
 [tasks."dev:full"]
 description = "Run API + web + arq worker + voice agent + all bots in parallel"
-run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent,bot-discord,bot-telegram,bot-slack --parallel=7"
+run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent,bot-discord,bot-telegram,bot-slack,bot-whatsapp --parallel=8"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILD COMMANDS
@@ -220,7 +220,7 @@ description = "Run API tests with coverage report"
 run = "nx test:coverage api"
 
 [tasks."test:bots"]
-description = "Test all bots (Discord, Slack, Telegram)"
+description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"
 run = "cd apps/bots && pnpm vitest run"
 
 [tasks."test:cli"]

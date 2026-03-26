@@ -224,6 +224,22 @@ services:
     networks:
       - gaia_network
 
+  # WhatsApp Bot (optional - enable with --profile bots)
+  whatsapp-bot:
+    container_name: whatsapp-bot
+    profiles: ["bots"]
+    image: ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest
+    env_file:
+      - ../../apps/bots/.env
+    ports:
+      - "${WHATSAPP_WEBHOOK_PORT:-3001}:3001"
+    restart: always
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
   # Voice Agent Worker (optional - enable with --profile voice-agent)
   voice-agent-worker:
     container_name: voice-agent-worker

@@ -255,6 +255,26 @@ services:
     networks:
       - gaia_network
 
+  # WhatsApp Bot
+  whatsapp-bot:
+    container_name: whatsapp-bot
+    profiles: ["bots", "all"]
+    build:
+      context: ../..
+      dockerfile: apps/bots/Dockerfile
+      args:
+        BOT_NAME: whatsapp
+    env_file:
+      - ../../apps/bots/.env
+    ports:
+      - "${WHATSAPP_WEBHOOK_PORT:-3001}:3001"
+    restart: on-failure
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
   # Voice Agent Worker
   voice-agent-worker:
     container_name: voice-agent-worker

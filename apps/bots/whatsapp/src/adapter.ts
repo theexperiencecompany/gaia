@@ -34,6 +34,7 @@ import { Hono } from "hono";
 import {
   extractTextBody,
   extractWaId,
+  type KapsoMessageBatch,
   type KapsoMessageEvent,
   verifyKapsoSignature,
 } from "./webhook";
@@ -101,7 +102,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
     app.post("/webhook", async (c) => {
       const rawBody = await c.req.text();
-      const signature = c.req.header("x-kapso-signature") ?? null;
+      const signature = c.req.header("x-webhook-signature") ?? null;
 
       if (
         !verifyKapsoSignature(
@@ -113,25 +114,34 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         return c.json({ error: "Invalid signature" }, 401);
       }
 
-      let event: KapsoMessageEvent;
+      // Event type is in the header for Kapso webhooks, not in the body
+      const eventType = c.req.header("x-webhook-event") ?? null;
+      if (eventType !== "whatsapp.message.received") {
+        return c.json({ status: "ignored" });
+      }
+
+      let body: unknown;
       try {
-        event = JSON.parse(rawBody) as KapsoMessageEvent;
+        body = JSON.parse(rawBody);
       } catch {
         return c.json({ error: "Invalid JSON" }, 400);
       }
 
-      if (event.type !== "whatsapp.message.received") {
-        return c.json({ status: "ignored" });
-      }
+      // Batched delivery wraps events in { batch: true, data: [...] }
+      const isBatch = c.req.header("x-webhook-batch") === "true";
+      const events: KapsoMessageEvent[] = isBatch
+        ? (body as KapsoMessageBatch).data
+        : [body as KapsoMessageEvent];
 
-      const waId = extractWaId(event);
-      const text = extractTextBody(event);
-
-      if (text) {
-        // Fire-and-forget — do not await so webhook returns 200 quickly
-        this.handleIncomingMessage(waId, text).catch((err) =>
-          console.error("Error handling WhatsApp message:", err),
-        );
+      for (const event of events) {
+        const waId = extractWaId(event);
+        const text = extractTextBody(event);
+        if (text) {
+          // Fire-and-forget — do not await so webhook returns 200 quickly
+          this.handleIncomingMessage(waId, text).catch((err) =>
+            console.error("Error handling WhatsApp message:", err),
+          );
+        }
       }
 
       return c.json({ status: "ok" });
