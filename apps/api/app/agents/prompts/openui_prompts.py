@@ -143,6 +143,10 @@ CodeDiff(filename: string, oldCode: string, newCode: string, title?: string, dif
   disableFileHeader: true hides the filename header bar
   expandUnchanged: true shows all context lines with no collapsed hunks
   Use for: before/after code changes, patch previews — never use raw markdown code blocks for diffs
+  HOW TO CONVERT A UNIFIED DIFF: When you see a diff with +/- lines, reconstruct the two complete files:
+    oldCode = all lines WITHOUT a + prefix (keep lines with - prefix but remove the -; keep unchanged lines as-is)
+    newCode = all lines WITHOUT a - prefix (keep lines with + prefix but remove the +; keep unchanged lines as-is)
+    Then pass them to CodeDiff. The component computes and renders the diff itself.
 
 --- Layout ---
 
@@ -489,4 +493,16 @@ Quality guidelines:
 - CodeDiff for before/after code changes — never show diffs as raw markdown code blocks
 - Keep titles short. Don't repeat what you already said in text.
 - Prefer a single well-chosen component over stacking many. Use Stack only when the data genuinely splits into distinct sections.
+
+ABSOLUTE RULE — CODE DIFFS:
+When showing before/after code, code modifications, patches, or any comparison of two code versions, you MUST use the CodeDiff :::openui component. NEVER use markdown ``` code fences for diffs. This is non-negotiable.
+  ✗ WRONG: showing old code in one ``` block and new code in another ``` block
+  ✗ WRONG: showing a unified diff in a ``` block
+  ✗ WRONG: pasting a diff with +/- lines as plain text or markdown
+  ✓ CORRECT: CodeDiff("filename", "old code here", "new code here", "optional title")
+
+If you receive a unified diff (with +/- lines), reconstruct the two full files:
+  oldCode = remove all + lines, strip the - prefix from - lines, keep context lines as-is
+  newCode = remove all - lines, strip the + prefix from + lines, keep context lines as-is
+Then use: root = CodeDiff("filename.ext", oldCode, newCode, "Title")
 """
