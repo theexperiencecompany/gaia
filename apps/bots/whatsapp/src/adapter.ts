@@ -10,7 +10,7 @@
  * - **Rich messages** rendered as WhatsApp markdown (*bold*, _italic_)
  * - **No streaming** — full response sent once complete (streaming: false)
  * - **No message editing** — WhatsApp API does not support edits
- * - **No typing indicator** — no standard WhatsApp typing API
+ * - **Typing indicator** refreshed every 20s via markRead to survive long responses
  *
  * @module
  */
@@ -201,49 +201,64 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     messageId: string,
   ): Promise<void> {
     // Show typing indicator — mark message as read and display "typing..." bubble.
-    // Auto-dismisses after ~25s or when we send a reply. Fire-and-forget.
-    this.waClient.messages
-      .markRead({
-        phoneNumberId: this.waConfig.kapsoPhoneNumberId,
-        messageId,
-        typingIndicator: { type: "text" },
-      })
-      .catch((err) =>
-        console.error("WhatsApp: failed to show typing indicator:", err),
-      );
+    // WhatsApp auto-dismisses after ~25s, so we refresh every 20s to keep it alive
+    // for long-running responses. The interval is cleared when a reply is sent.
+    const showTyping = () =>
+      this.waClient.messages
+        .markRead({
+          phoneNumberId: this.waConfig.kapsoPhoneNumberId,
+          messageId,
+          typingIndicator: { type: "text" },
+        })
+        .catch((err) =>
+          console.error("WhatsApp: failed to show typing indicator:", err),
+        );
 
-    const target = this.createWaTarget(waId);
+    showTyping();
+    const typingInterval = setInterval(showTyping, 20_000);
+    const clearTyping = () => clearInterval(typingInterval);
 
-    if (text.startsWith("/")) {
-      const withoutSlash = text.slice(1);
-      const spaceIndex = withoutSlash.indexOf(" ");
-      const commandName = (
-        spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
-      ).toLowerCase();
-      const rest =
-        spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim();
+    const target = this.createWaTarget(waId, messageId);
 
-      if (commandName === "gaia") {
-        if (!rest) {
-          await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
+    try {
+      if (text.startsWith("/")) {
+        const withoutSlash = text.slice(1);
+        const spaceIndex = withoutSlash.indexOf(" ");
+        const commandName = (
+          spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
+        ).toLowerCase();
+        const rest =
+          spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim();
+
+        if (commandName === "gaia") {
+          if (!rest) {
+            await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
+            return;
+          }
+          await this.handleStreamingMessage(waId, rest);
           return;
         }
-        await this.handleStreamingMessage(waId, rest);
+
+        const args: Record<string, string | number | boolean | undefined> = {};
+        if (commandName === "todo" || commandName === "workflow") {
+          const parsed = parseTextArgs(rest);
+          args.subcommand = parsed.subcommand;
+        }
+
+        await this.dispatchCommand(
+          commandName,
+          target,
+          args,
+          rest || undefined,
+        );
         return;
       }
 
-      const args: Record<string, string | number | boolean | undefined> = {};
-      if (commandName === "todo" || commandName === "workflow") {
-        const parsed = parseTextArgs(rest);
-        args.subcommand = parsed.subcommand;
-      }
-
-      await this.dispatchCommand(commandName, target, args, rest || undefined);
-      return;
+      // Plain text — treat as chat
+      await this.handleStreamingMessage(waId, text);
+    } finally {
+      clearTyping();
     }
-
-    // Plain text — treat as chat
-    await this.handleStreamingMessage(waId, text);
   }
 
   /**
@@ -251,8 +266,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    *
    * WhatsApp streaming is disabled (STREAMING_DEFAULTS.whatsapp.streaming = false),
    * so the full response is accumulated and sent as a single message.
-   * The typing indicator shown by handleIncomingMessage stays visible until
-   * the reply is sent (auto-dismissed by WhatsApp on message delivery).
+   * The typing indicator is refreshed every 20s by handleIncomingMessage
+   * and cleared when processing completes.
    */
   private async handleStreamingMessage(
     waId: string,
@@ -328,9 +343,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * - `send` / `sendEphemeral` send a text message (no ephemeral concept in WhatsApp)
    * - `sendRich` renders {@link RichMessage} as WhatsApp markdown
    * - `edit` sends a NEW message (WhatsApp does not support editing)
-   * - `startTyping` is a no-op (no standard typing API)
+   * - `startTyping` refreshes the typing indicator every 20s via markRead
    */
-  private createWaTarget(waId: string): RichMessageTarget {
+  private createWaTarget(waId: string, messageId: string): RichMessageTarget {
     return {
       platform: "whatsapp",
       userId: waId,
@@ -351,9 +366,22 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       },
 
       startTyping: async () => {
-        // Typing indicator is shown via markRead in handleIncomingMessage.
-        // Nothing additional to do here.
-        return () => {};
+        const showTyping = () =>
+          this.waClient.messages
+            .markRead({
+              phoneNumberId: this.waConfig.kapsoPhoneNumberId,
+              messageId,
+              typingIndicator: { type: "text" },
+            })
+            .catch((err) =>
+              console.error(
+                "WhatsApp: failed to refresh typing indicator:",
+                err,
+              ),
+            );
+        showTyping();
+        const interval = setInterval(showTyping, 20_000);
+        return () => clearInterval(interval);
       },
     };
   }
