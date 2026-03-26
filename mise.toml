@@ -327,65 +327,69 @@ run = "nx affected:graph"
 
 [tasks."ci:dagger"]
 description = "Run full quality gate via Dagger (same as CI)"
-run = "dagger call quality-checks"
+run = "dagger call -s quality-checks"
 
 [tasks."ci:dagger:lint"]
 description = "Run lint checks via Dagger"
-run = "dagger call lint"
+run = "dagger call -s lint"
 
 [tasks."ci:dagger:type-check"]
 description = "Run type-check via Dagger"
-run = "dagger call type-check"
+run = "dagger call -s type-check"
 
 [tasks."ci:dagger:build"]
 description = "Run build via Dagger"
-run = "dagger call build"
+run = "dagger call -s build"
 
 [tasks."ci:dagger:test"]
 description = "Run tests via Dagger"
-run = "dagger call test"
+run = "dagger call -s test"
 
 [tasks."ci:dagger:dead-code"]
 description = "Run dead code detection via Dagger"
-run = "dagger call dead-code"
+run = "dagger call -s dead-code"
 
 [tasks."ci:dagger:integration"]
 description = "Run integration tests via Dagger (with live Postgres, Redis, MongoDB)"
-run = "dagger call integration-test"
+run = "dagger call -s integration-test"
 
 [tasks."ci:dagger:debug"]
 description = "Run full quality gate with interactive debugging on failure"
 run = "dagger call quality-checks --interactive"
 
+[tasks."ci:dagger:verbose"]
+description = "Run full quality gate with full TUI and debug logs"
+run = "dagger call -vv quality-checks"
+
 # ── Dagger Docker image builds ──
 
 [tasks."ci:docker"]
 description = "Build all Docker images via Dagger"
-run = "dagger call docker-build-all"
+run = "dagger call -s docker-build-all"
 
 [tasks."ci:docker:api"]
 description = "Build API Docker image via Dagger"
-run = "dagger call docker-build --app api"
+run = "dagger call -s docker-build --app api"
 
 [tasks."ci:docker:web"]
 description = "Build web Docker image via Dagger"
-run = "dagger call docker-build --app web"
+run = "dagger call -s docker-build --app web"
 
 [tasks."ci:docker:voice-agent"]
 description = "Build voice-agent Docker image via Dagger"
-run = "dagger call docker-build --app voice-agent"
+run = "dagger call -s docker-build --app voice-agent"
 
 [tasks."ci:docker:bot-discord"]
 description = "Build Discord bot Docker image via Dagger"
-run = "dagger call docker-build --app bot-discord"
+run = "dagger call -s docker-build --app bot-discord"
 
 [tasks."ci:docker:bot-slack"]
 description = "Build Slack bot Docker image via Dagger"
-run = "dagger call docker-build --app bot-slack"
+run = "dagger call -s docker-build --app bot-slack"
 
 [tasks."ci:docker:bot-telegram"]
 description = "Build Telegram bot Docker image via Dagger"
-run = "dagger call docker-build --app bot-telegram"
+run = "dagger call -s docker-build --app bot-telegram"
 
 # ── GitHub Actions simulation (via act) ──
 

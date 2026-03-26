@@ -40,17 +40,18 @@ dagger call docker-build --app bot-telegram
 dagger call docker-build-all
 ```
 
-Or use the equivalent mise tasks:
+Or use the equivalent mise tasks (all use `-s` for clean output by default):
 
 ```bash
-mise ci:dagger                # Full quality gate
+mise ci:dagger                # Full quality gate (clean output)
 mise ci:dagger:lint           # Lint only
 mise ci:dagger:type-check     # Type-check only
 mise ci:dagger:build          # Build only
 mise ci:dagger:test           # Test only
 mise ci:dagger:dead-code      # Dead code detection
 mise ci:dagger:integration    # Integration tests
-mise ci:dagger:debug          # Quality gate with interactive debugging
+mise ci:dagger:debug          # Quality gate with interactive debugging on failure
+mise ci:dagger:verbose        # Quality gate with full TUI + debug logs
 ```
 
 ---
@@ -156,13 +157,17 @@ For deeper inspection, add `.terminal()` calls in the pipeline code:
 env = self.ci_env(source).terminal()  # pauses here for inspection
 ```
 
-### Verbose output
+### Output modes
 
 ```bash
-dagger call quality-checks -v     # info-level logs
-dagger call quality-checks -vv    # debug-level logs
-dagger call quality-checks -vvv   # trace-level logs
+dagger call -s quality-checks     # silent — clean output only (mise default)
+dagger call quality-checks        # normal — animated TUI with DAG visualization
+dagger call -v quality-checks     # verbose — info-level logs
+dagger call -vv quality-checks    # debug — debug-level logs
+dagger call -vvv quality-checks   # trace — full trace logs
 ```
+
+The mise tasks use `-s` (silent) by default for clean, readable output. Use `mise ci:dagger:verbose` or run `dagger call` directly when you need the TUI or debug logs.
 
 ---
 
