@@ -14,7 +14,6 @@ import {
   CarouselView,
   ComparisonTableView,
   DataCardView,
-  DataTableView,
   FileTreeView,
   GaugeChartView,
   ImageBlockView,
@@ -185,18 +184,6 @@ export default function OpenUIPreview() {
               { label: "Field B", value: "Value 2" },
               { label: "Field C", value: "Value 3" },
               { label: "Field D", value: "Value 4" },
-            ]}
-          />
-        </Exchange>
-
-        <Exchange name="DataTable" userText="Give me the table.">
-          <DataTableView
-            title="Data Table"
-            columns={["Column A", "Column B", "Column C", "Column D"]}
-            rows={[
-              ["Row 1A", "Row 1B", "Row 1C", "Row 1D"],
-              ["Row 2A", "Row 2B", "Row 2C", "Row 2D"],
-              ["Row 3A", "Row 3B", "Row 3C", "Row 3D"],
             ]}
           />
         </Exchange>

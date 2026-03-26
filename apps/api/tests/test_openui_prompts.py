@@ -42,7 +42,6 @@ def test_instructions_contains_all_component_names():
     components = [
         "DataCard",
         "ResultList",
-        "DataTable",
         "ComparisonTable",
         "StatusCard",
         "ActionCard",

@@ -45,12 +45,6 @@ export const resultListSchema = z.object({
   title: z.string().optional(),
 });
 
-export const dataTableSchema = z.object({
-  columns: z.array(z.string()),
-  rows: z.array(z.array(z.string())),
-  title: z.string().optional(),
-});
-
 export const comparisonTableSchema = z.object({
   leftLabel: z.string(),
   rightLabel: z.string(),
@@ -342,52 +336,6 @@ export function ResultListView(props: z.infer<typeof resultListSchema>) {
             )}
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-export function DataTableView(props: z.infer<typeof dataTableSchema>) {
-  return (
-    <div>
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
-      <div className="overflow-auto rounded-2xl bg-zinc-900">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800">
-              {props.columns.map((col) => (
-                <th
-                  key={col}
-                  className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500"
-                >
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {props.rows.map((row, ri) => (
-              <tr
-                key={row.join("-")}
-                className={
-                  ri % 2 === 0
-                    ? "bg-zinc-900 hover:bg-zinc-800/40 transition-colors"
-                    : "bg-transparent hover:bg-zinc-800/40 transition-colors"
-                }
-              >
-                {row.map((cell) => (
-                  <td key={cell} className="px-3 py-2 text-xs text-zinc-300">
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div>
   );
@@ -821,13 +769,6 @@ export const resultListDef = defineComponent({
   description: "List of results with title, subtitle, body, url, badge.",
   props: resultListSchema,
   component: ({ props }) => React.createElement(ResultListView, props),
-});
-
-export const dataTableDef = defineComponent({
-  name: "DataTable",
-  description: "Tabular data with columns and rows.",
-  props: dataTableSchema,
-  component: ({ props }) => React.createElement(DataTableView, props),
 });
 
 export const comparisonTableDef = defineComponent({

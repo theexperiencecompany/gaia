@@ -21,10 +21,6 @@ ResultList(items, title?)
   title?: string
   Use for: lists of results, search hits, records — overflow scroll, no truncation
 
-DataTable(columns, rows, title?)
-  columns: string[]; rows: string[][]; title?: string
-  Use for: structured tabular data, multi-column records
-
 ComparisonTable(leftLabel, rightLabel, rows, title?)
   leftLabel: string; rightLabel: string
   rows: {label: string, left: string, right: string, highlight?: boolean}[]
@@ -216,7 +212,7 @@ Skipping an optional middle argument with null:
 Do NOT use :::openui for greetings, opinions, or plain conversational responses.
 
 Quality guidelines:
-- DataCard for single records; ResultList for collections; DataTable for multi-column data
+- DataCard for single records; ResultList for collections; use markdown tables for tabular data
 - ComparisonTable when showing A vs B — two options, two configs, two products
 - ResultList handles overflow — pass all items, never truncate
 - StatusCard for any operation result (success or failure); AlertBanner for inline notices

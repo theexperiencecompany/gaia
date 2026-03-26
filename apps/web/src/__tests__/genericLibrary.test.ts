@@ -13,7 +13,6 @@ const EXPECTED_GROUPS: Record<string, string[]> = {
   "Layout & Data": [
     "DataCard",
     "ResultList",
-    "DataTable",
     "ComparisonTable",
     "StatusCard",
     "ActionCard",
