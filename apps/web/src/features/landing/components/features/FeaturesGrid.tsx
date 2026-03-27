@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight01Icon } from "@icons";
+import { ArrowRight02Icon } from "@icons";
 import type { Easing, Variants } from "motion/react";
 import { m } from "motion/react";
 import Link from "next/link";
@@ -8,6 +8,7 @@ import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import LargeHeader from "@/features/landing/components/shared/LargeHeader";
 import {
+  CATEGORY_COLORS,
   FEATURE_CATEGORIES,
   getFeaturesByCategory,
 } from "@/features/landing/data/featuresData";
@@ -57,30 +58,42 @@ export function FeaturesGrid() {
                   whileInView="visible"
                   viewport={{ once: true, margin: "-50px" }}
                 >
-                  {features.map((feature) => (
-                    <m.div key={feature.slug} variants={cardVariants}>
-                      <Link
-                        href={`/features/${feature.slug}`}
-                        className="block rounded-2xl bg-zinc-800/50 p-5 transition-colors hover:bg-zinc-800"
+                  {features.map((feature) => {
+                    const color = CATEGORY_COLORS[category];
+                    return (
+                      <m.div
+                        key={feature.slug}
+                        variants={cardVariants}
+                        className="h-full"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#00bbff]/10">
-                            <FeatureIcon name={feature.icon} />
+                        <Link
+                          href={`/features/${feature.slug}`}
+                          className="flex h-full flex-col rounded-2xl bg-zinc-800/50 p-5 transition-colors hover:bg-zinc-800"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div
+                              className={`flex h-9 w-9 items-center justify-center rounded-xl ${color.bg}`}
+                            >
+                              <FeatureIcon
+                                name={feature.icon}
+                                color={color.icon}
+                              />
+                            </div>
+                            <ArrowRight02Icon
+                              size={16}
+                              className="text-zinc-500"
+                            />
                           </div>
-                          <ArrowRight01Icon
-                            size={16}
-                            className="text-zinc-500"
-                          />
-                        </div>
-                        <p className="mt-3 text-sm font-medium text-zinc-100">
-                          {feature.title}
-                        </p>
-                        <p className="mt-1 text-xs font-light leading-relaxed text-zinc-400">
-                          {feature.tagline}
-                        </p>
-                      </Link>
-                    </m.div>
-                  ))}
+                          <p className="mt-3 text-sm font-medium text-zinc-100">
+                            {feature.title}
+                          </p>
+                          <p className="mt-1 text-xs font-light leading-relaxed text-zinc-400">
+                            {feature.tagline}
+                          </p>
+                        </Link>
+                      </m.div>
+                    );
+                  })}
                 </m.div>
               </section>
             );

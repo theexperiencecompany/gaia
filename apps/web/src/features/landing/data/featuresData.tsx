@@ -51,6 +51,17 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
   "Multi-Platform",
 ];
 
+export const CATEGORY_COLORS: Record<
+  FeatureCategory,
+  { icon: string; bg: string }
+> = {
+  "AI Intelligence": { icon: "#a78bfa", bg: "bg-violet-400/10" },
+  Productivity: { icon: "#34d399", bg: "bg-emerald-400/10" },
+  Automation: { icon: "#fb923c", bg: "bg-amber-400/10" },
+  Integrations: { icon: "#60a5fa", bg: "bg-blue-400/10" },
+  "Multi-Platform": { icon: "#f472b6", bg: "bg-pink-400/10" },
+};
+
 export const FEATURES: FeatureData[] = [
   // AI Intelligence
   {

@@ -2,11 +2,13 @@
 
 import { ArrowDown01Icon } from "@icons";
 import { m } from "motion/react";
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import {
+  CATEGORY_COLORS,
   type FeatureData,
   getFeatureBySlug,
 } from "@/features/landing/data/featuresData";
@@ -21,11 +23,12 @@ const ease = [0.22, 1, 0.36, 1] as const;
 
 export function FeatureDetailClient({ feature }: Props) {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const categoryColor = CATEGORY_COLORS[feature.category];
 
   return (
     <div className="w-full bg-[#111111] min-h-screen">
       {/* Back link */}
-      <div className="pt-6 px-6">
+      <div className="pt-6 px-6 relative z-10">
         <Link
           href="/features"
           className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
@@ -35,12 +38,23 @@ export function FeatureDetailClient({ feature }: Props) {
       </div>
 
       {/* Hero */}
-      <section className="pt-16 pb-12 max-w-3xl mx-auto px-6 text-center">
+      <section className="relative pt-16 pb-12 max-w-3xl mx-auto px-6 text-center overflow-hidden">
+        <div className="pointer-events-none absolute inset-x-0 top-0 -translate-y-1/4 opacity-30 select-none">
+          <Image
+            src="/images/wallpapers/bands_gradient_1.webp"
+            alt=""
+            width={1200}
+            height={600}
+            className="w-full object-cover"
+            priority
+          />
+        </div>
         <m.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease }}
-          className="text-xs uppercase tracking-widest text-[#00bbff] mb-4"
+          className="relative text-xs uppercase tracking-widest mb-4"
+          style={{ color: categoryColor.icon }}
         >
           {feature.category}
         </m.div>
@@ -48,7 +62,7 @@ export function FeatureDetailClient({ feature }: Props) {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease, delay: 0.1 }}
-          className="font-serif text-4xl md:text-5xl lg:text-6xl font-normal text-zinc-50 mb-6 leading-[1.1]"
+          className="relative font-serif text-4xl md:text-5xl lg:text-6xl font-normal text-zinc-50 mb-6 leading-[1.1]"
         >
           {feature.headline}
         </m.h1>
@@ -56,7 +70,7 @@ export function FeatureDetailClient({ feature }: Props) {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease, delay: 0.2 }}
-          className="text-base md:text-lg font-light text-zinc-400 max-w-2xl mx-auto mb-8"
+          className="relative text-base md:text-lg font-light text-zinc-400 max-w-2xl mx-auto mb-8"
         >
           {feature.subheadline}
         </m.p>
@@ -64,6 +78,7 @@ export function FeatureDetailClient({ feature }: Props) {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease, delay: 0.3 }}
+          className="relative"
         >
           <GetStartedButton />
         </m.div>
@@ -95,8 +110,10 @@ export function FeatureDetailClient({ feature }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {feature.benefits.map((benefit) => (
             <div key={benefit.title} className="rounded-2xl bg-zinc-800 p-6">
-              <div className="bg-[#00bbff]/10 rounded-xl p-2 w-9 h-9 mb-4 flex items-center justify-center">
-                <FeatureIcon name={benefit.icon} />
+              <div
+                className={`${categoryColor.bg} rounded-xl p-2 w-9 h-9 mb-4 flex items-center justify-center`}
+              >
+                <FeatureIcon name={benefit.icon} color={categoryColor.icon} />
               </div>
               <h3 className="text-sm font-medium text-zinc-100 mb-2">
                 {benefit.title}
@@ -227,14 +244,20 @@ export function FeatureDetailClient({ feature }: Props) {
             {feature.relatedSlugs.map((slug) => {
               const related = getFeatureBySlug(slug);
               if (!related) return null;
+              const relatedColor = CATEGORY_COLORS[related.category];
               return (
                 <Link
                   key={slug}
                   href={`/features/${slug}`}
                   className="rounded-2xl bg-zinc-800 p-6 hover:bg-zinc-700 transition-colors"
                 >
-                  <div className="bg-[#00bbff]/10 rounded-xl p-2 w-9 h-9 mb-4 flex items-center justify-center">
-                    <FeatureIcon name={related.icon} />
+                  <div
+                    className={`${relatedColor.bg} rounded-xl p-2 w-9 h-9 mb-4 flex items-center justify-center`}
+                  >
+                    <FeatureIcon
+                      name={related.icon}
+                      color={relatedColor.icon}
+                    />
                   </div>
                   <h3 className="text-sm font-medium text-zinc-100 mb-1">
                     {related.title}
