@@ -55,11 +55,11 @@ export const CATEGORY_COLORS: Record<
   FeatureCategory,
   { icon: string; bg: string }
 > = {
-  "AI Intelligence": { icon: "#a78bfa", bg: "bg-violet-400/10" },
-  Productivity: { icon: "#34d399", bg: "bg-emerald-400/10" },
-  Automation: { icon: "#fb923c", bg: "bg-amber-400/10" },
-  Integrations: { icon: "#60a5fa", bg: "bg-blue-400/10" },
-  "Multi-Platform": { icon: "#f472b6", bg: "bg-pink-400/10" },
+  "AI Intelligence": { icon: "#a855f7", bg: "rgba(168,85,247,0.12)" },
+  Productivity: { icon: "#22c55e", bg: "rgba(34,197,94,0.12)" },
+  Automation: { icon: "#f97316", bg: "rgba(249,115,22,0.12)" },
+  Integrations: { icon: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
+  "Multi-Platform": { icon: "#ec4899", bg: "rgba(236,72,153,0.12)" },
 };
 
 export const FEATURES: FeatureData[] = [

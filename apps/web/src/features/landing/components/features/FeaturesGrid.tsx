@@ -72,7 +72,8 @@ export function FeaturesGrid() {
                         >
                           <div className="flex items-center justify-between">
                             <div
-                              className={`flex h-9 w-9 items-center justify-center rounded-xl ${color.bg}`}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl"
+                              style={{ background: color.bg }}
                             >
                               <FeatureIcon
                                 name={feature.icon}
