@@ -1,11 +1,17 @@
 "use client";
 
+import { ArrowDown01Icon } from "@icons";
 import { m } from "motion/react";
 import Link from "next/link";
+import { useState } from "react";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
-import type { FeatureData } from "@/features/landing/data/featuresData";
+import {
+  type FeatureData,
+  getFeatureBySlug,
+} from "@/features/landing/data/featuresData";
 import { FeatureDemoWrapper } from "./FeatureDemoWrapper";
+import { FeatureIcon } from "./FeatureIcon";
 
 interface Props {
   feature: FeatureData;
@@ -14,6 +20,8 @@ interface Props {
 const ease = [0.22, 1, 0.36, 1] as const;
 
 export function FeatureDetailClient({ feature }: Props) {
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
   return (
     <div className="w-full bg-[#111111] min-h-screen">
       {/* Back link */}
@@ -88,7 +96,7 @@ export function FeatureDetailClient({ feature }: Props) {
           {feature.benefits.map((benefit) => (
             <div key={benefit.title} className="rounded-2xl bg-zinc-800 p-6">
               <div className="bg-[#00bbff]/10 rounded-xl p-2 w-9 h-9 mb-4 flex items-center justify-center">
-                <span className="text-[#00bbff] text-sm">✦</span>
+                <FeatureIcon name={benefit.icon} />
               </div>
               <h3 className="text-sm font-medium text-zinc-100 mb-2">
                 {benefit.title}
@@ -100,6 +108,33 @@ export function FeatureDetailClient({ feature }: Props) {
           ))}
         </div>
       </m.section>
+
+      {/* Use Cases */}
+      {feature.useCases && (
+        <m.section
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="max-w-6xl mx-auto px-6 py-12"
+        >
+          <h2 className="text-2xl font-serif font-normal text-zinc-50 text-center mb-10">
+            How teams use this
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {feature.useCases.map((uc) => (
+              <div key={uc.title} className="rounded-2xl bg-zinc-800 p-6">
+                <h3 className="text-sm font-medium text-zinc-100 mb-2">
+                  {uc.title}
+                </h3>
+                <p className="text-sm font-light text-zinc-400 leading-relaxed">
+                  {uc.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </m.section>
+      )}
 
       {/* How it works */}
       {feature.howItWorks && (
@@ -127,6 +162,89 @@ export function FeatureDetailClient({ feature }: Props) {
                 </p>
               </div>
             ))}
+          </div>
+        </m.section>
+      )}
+
+      {/* FAQ */}
+      {feature.faqs && (
+        <m.section
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="max-w-3xl mx-auto px-6 py-12"
+        >
+          <h2 className="text-2xl font-serif font-normal text-zinc-50 text-center mb-10">
+            Frequently asked questions
+          </h2>
+          <div className="flex flex-col gap-2">
+            {feature.faqs.map((faq, i) => (
+              <div
+                key={faq.question}
+                className="rounded-2xl bg-zinc-800 overflow-hidden"
+              >
+                <button
+                  type="button"
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  className="w-full flex items-center justify-between px-6 py-4 text-left"
+                >
+                  <span className="text-sm font-medium text-zinc-100">
+                    {faq.question}
+                  </span>
+                  <span
+                    className={`text-zinc-400 transition-transform duration-200 ${openFaq === i ? "rotate-180" : ""}`}
+                  >
+                    <ArrowDown01Icon size={16} />
+                  </span>
+                </button>
+                {openFaq === i && (
+                  <div className="px-6 pb-5">
+                    <p className="text-sm font-light text-zinc-400 leading-relaxed">
+                      {faq.answer}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </m.section>
+      )}
+
+      {/* Related Features */}
+      {feature.relatedSlugs && (
+        <m.section
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="max-w-6xl mx-auto px-6 py-12"
+        >
+          <h2 className="text-2xl font-serif font-normal text-zinc-50 text-center mb-10">
+            Related features
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {feature.relatedSlugs.map((slug) => {
+              const related = getFeatureBySlug(slug);
+              if (!related) return null;
+              return (
+                <Link
+                  key={slug}
+                  href={`/features/${slug}`}
+                  className="rounded-2xl bg-zinc-800 p-6 hover:bg-zinc-700 transition-colors"
+                >
+                  <div className="bg-[#00bbff]/10 rounded-xl p-2 w-9 h-9 mb-4 flex items-center justify-center">
+                    <FeatureIcon name={related.icon} />
+                  </div>
+                  <h3 className="text-sm font-medium text-zinc-100 mb-1">
+                    {related.title}
+                  </h3>
+                  <p className="text-xs font-light text-zinc-500 leading-relaxed">
+                    {related.tagline}
+                  </p>
+                </Link>
+              );
+            })}
           </div>
         </m.section>
       )}
