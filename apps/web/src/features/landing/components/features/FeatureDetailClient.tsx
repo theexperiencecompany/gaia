@@ -1,10 +1,9 @@
 "use client";
 
-import { ArrowDown01Icon } from "@icons";
 import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import FAQAccordion from "@/components/seo/FAQAccordion";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import {
@@ -22,7 +21,6 @@ interface Props {
 const ease = [0.22, 1, 0.36, 1] as const;
 
 export function FeatureDetailClient({ feature }: Props) {
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
   const categoryColor = CATEGORY_COLORS[feature.category];
 
   return (
@@ -40,7 +38,7 @@ export function FeatureDetailClient({ feature }: Props) {
         <div className="pointer-events-none absolute bottom-0 inset-x-0 h-40 bg-gradient-to-b from-transparent to-[#111111]" />
 
         {/* Back link */}
-        <div className="relative z-10 pt-6 px-6">
+        <div className="relative z-10 pt-10 px-6">
           <Link
             href="/features"
             className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
@@ -50,7 +48,7 @@ export function FeatureDetailClient({ feature }: Props) {
         </div>
 
         {/* Hero text */}
-        <section className="relative z-10 pt-10 pb-12 max-w-3xl mx-auto px-6 text-center">
+        <section className="relative z-10 pt-16 pb-12 max-w-3xl mx-auto px-6 text-center">
           <m.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -203,39 +201,10 @@ export function FeatureDetailClient({ feature }: Props) {
           <h2 className="text-3xl md:text-4xl font-serif font-normal text-zinc-50 text-center mb-2">
             Frequently asked questions
           </h2>
-          <p className="text-sm font-light text-zinc-500 text-center mb-12">
+          <p className="text-sm font-light text-zinc-500 text-center mb-10">
             Everything you need to know.
           </p>
-          <div className="flex flex-col gap-2">
-            {feature.faqs.map((faq, i) => (
-              <div
-                key={faq.question}
-                className="rounded-2xl bg-zinc-800 overflow-hidden"
-              >
-                <button
-                  type="button"
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  className="w-full flex items-center justify-between px-6 py-4 text-left"
-                >
-                  <span className="text-sm font-medium text-zinc-100">
-                    {faq.question}
-                  </span>
-                  <span
-                    className={`text-zinc-400 transition-transform duration-200 ${openFaq === i ? "rotate-180" : ""}`}
-                  >
-                    <ArrowDown01Icon size={16} />
-                  </span>
-                </button>
-                {openFaq === i && (
-                  <div className="px-6 pb-5">
-                    <p className="text-sm font-light text-zinc-400 leading-relaxed">
-                      {faq.answer}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <FAQAccordion faqs={[...feature.faqs]} />
         </m.section>
       )}
 

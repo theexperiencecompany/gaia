@@ -246,9 +246,10 @@ export function FeatureIcon({
   size = 18,
   color = "#00bbff",
 }: FeatureIconProps) {
-  const Icon = ICON_MAP[name];
-  if (!Icon) {
-    return <ZapIcon size={size} color={color} />;
-  }
-  return <Icon size={size} color={color} />;
+  const Icon = ICON_MAP[name] ?? ZapIcon;
+  return (
+    <span style={{ color, display: "flex", alignItems: "center" }}>
+      <Icon size={size} />
+    </span>
+  );
 }
