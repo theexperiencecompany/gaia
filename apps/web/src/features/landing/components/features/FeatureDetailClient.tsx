@@ -33,11 +33,11 @@ export function FeatureDetailClient({ feature }: Props) {
           src="/images/wallpapers/bands_gradient_1.webp"
           alt=""
           fill
-          className="object-cover opacity-20 pointer-events-none select-none"
+          className="object-cover pointer-events-none select-none"
           priority
         />
         {/* Fade into page bg at the bottom */}
-        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-32 bg-gradient-to-b from-transparent to-[#111111]" />
+        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-40 bg-gradient-to-b from-transparent to-[#111111]" />
 
         {/* Back link */}
         <div className="relative z-10 pt-6 px-6">
@@ -50,7 +50,7 @@ export function FeatureDetailClient({ feature }: Props) {
         </div>
 
         {/* Hero text */}
-        <section className="relative z-10 pt-10 pb-20 max-w-3xl mx-auto px-6 text-center">
+        <section className="relative z-10 pt-10 pb-12 max-w-3xl mx-auto px-6 text-center">
           <m.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -84,22 +84,21 @@ export function FeatureDetailClient({ feature }: Props) {
             <GetStartedButton />
           </m.div>
         </section>
-      </div>
 
-      {/* Demo section */}
-      <m.div
-        initial={{ opacity: 0, y: 24 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        viewport={{ once: true }}
-        className="max-w-4xl mx-auto px-6 py-8"
-      >
-        <div className="rounded-2xl bg-zinc-800 p-4">
-          <div className="rounded-2xl bg-zinc-900 p-4 md:p-6">
-            <FeatureDemoWrapper demoComponent={feature.demoComponent} />
+        {/* Demo — inside the hero gradient */}
+        <m.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease, delay: 0.4 }}
+          className="relative z-10 max-w-4xl mx-auto px-6 pb-20"
+        >
+          <div className="rounded-3xl bg-zinc-800 p-4">
+            <div className="rounded-3xl bg-zinc-900 p-4 md:p-6">
+              <FeatureDemoWrapper demoComponent={feature.demoComponent} />
+            </div>
           </div>
-        </div>
-      </m.div>
+        </m.div>
+      </div>
 
       {/* Benefits */}
       <m.section
