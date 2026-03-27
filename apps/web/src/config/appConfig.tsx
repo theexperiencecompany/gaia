@@ -58,6 +58,11 @@ export const appConfig = {
         icon: <Home01Icon width={20} height={20} color={"currentColor"} />,
         description: "Return to the home page",
       },
+      {
+        href: "/features",
+        label: "Features",
+        description: "Explore everything GAIA can do",
+      },
     ] as AppLink[],
 
     // Navigation menu sections
