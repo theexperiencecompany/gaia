@@ -10,13 +10,17 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
 import asyncio
+import json
 from datetime import datetime
 from typing import Optional
+from uuid import uuid4
 
+from langsmith import traceable
 from shared.py.wide_events import log
 
 from app.agents.core.background.inbox import (
     deregister_executor_inbox,
+    mark_executor_spawned,
     register_executor_inbox,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
@@ -24,10 +28,14 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
 from app.db.redis import redis_cache
 
+# Prevent GC of background tasks spawned from the queue
+_queued_executor_tasks: set[asyncio.Task] = set()
 
+
+@traceable(name="executor_background", run_type="chain")
 async def run_executor_background(
     task: str,
     configurable: dict,
@@ -88,3 +96,71 @@ async def run_executor_background(
         deregister_executor_inbox(stream_id)
         if comms_inbox:
             await comms_inbox.put(None)  # sentinel — notifier loop exits
+
+        # Process next queued task if one exists.
+        # Queued tasks run without a live SSE stream — the executor performs
+        # the requested actions (creates todos, sends emails, etc.) and its
+        # result is silently saved to the LangGraph checkpoint. No comms
+        # response is streamed because the original SSE stream is already closed.
+        await _process_next_queued_task(conversation_id)
+
+
+async def _process_next_queued_task(conversation_id: str) -> None:
+    """Pop the next queued task for this conversation and spawn it.
+
+    Called from run_executor_background's finally block. Acquires the executor
+    lock before spawning so the queued run is still protected against
+    concurrent access to the executor_{conversation_id} checkpoint.
+    """
+    if not redis_cache.client:
+        return
+
+    queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
+    raw = await redis_cache.client.lpop(queue_key)
+    if not raw:
+        return
+
+    try:
+        item: dict = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        log.error(f"Failed to parse queued executor task for {conversation_id}: {e}")
+        return
+
+    task = item.get("task", "")
+    configurable: dict = item.get("configurable", {})
+    user_time_str: str = item.get("user_time_str", "")
+    user_time = (
+        datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
+    )
+
+    # Use a synthetic stream_id — no SSE channel exists for queued tasks
+    queued_stream_id = f"queued_{uuid4()}"
+
+    # Re-acquire the lock before spawning (same pattern as call_executor)
+    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+    await redis_cache.set(lock_key, "1", ttl=1800)
+
+    # Mark spawned so any concurrent chat_service check is correct
+    mark_executor_spawned(queued_stream_id)
+
+    # Update stream_id in configurable so notify_comms/notify_executor
+    # don't try to push to the now-closed original stream
+    configurable = {**configurable, "stream_id": queued_stream_id}
+
+    bg_task = asyncio.create_task(
+        run_executor_background(
+            task=task,
+            configurable=configurable,
+            user_time=user_time,
+            stream_id=queued_stream_id,
+            conversation_id=conversation_id,
+            comms_inbox=None,  # no live stream — runs silently
+        )
+    )
+    _queued_executor_tasks.add(bg_task)
+    bg_task.add_done_callback(_queued_executor_tasks.discard)
+
+    log.info(
+        f"Queued executor task spawned for conversation {conversation_id} "
+        f"as stream {queued_stream_id}"
+    )

@@ -19,8 +19,10 @@ from app.agents.core.agent import call_agent
 from app.agents.core.background.comms_notifier import run_comms_notifier
 from app.agents.core.background.inbox import (
     deregister_comms_inbox,
+    deregister_executor_spawned,
     deregister_pending_subagents,
     register_comms_inbox,
+    was_executor_spawned,
 )
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
@@ -352,6 +354,14 @@ async def _run_chat_stream(
                 stream_id=stream_id,
             )
         else:
+            # For existing conversations there is no async setup before publishing
+            # the init chunk. uvicorn does an asyncio.sleep(0) drain after sending
+            # HTTP response headers, during which this background task can run and
+            # reach publish_chunk before the HTTP subscriber has called
+            # pubsub.subscribe(). Without this sleep the PUBLISH races the SUBSCRIBE
+            # and the init chunk is silently dropped. New conversations avoid this
+            # race via the MongoDB round-trips inside _initialize_new_conversation.
+            await asyncio.sleep(0.05)
             init_data = f"data: {json.dumps({'user_message_id': user_message_id, 'bot_message_id': bot_message_id, 'stream_id': stream_id})}\n\n"
         await stream_manager.publish_chunk(stream_id, init_data)
 
@@ -419,11 +429,11 @@ async def _run_chat_stream(
         )
 
         # ── Background executor + comms notifier ──────────────────────────
-        # If call_executor was used, it spawned a background task and pushed
-        # items to comms_inbox. Run the comms notifier to process them.
-        # If no executor was used, comms_inbox is empty — we try a short
-        # timeout window in case the executor just started.
-        if not is_cancelled and not comms_inbox.empty():
+        # call_executor sets a per-stream flag (mark_executor_spawned) before
+        # spawning the asyncio task, so this check is race-free and scoped to
+        # THIS stream — not the per-conversation Redis lock which stays set for
+        # the entire executor lifetime and would mislead concurrent streams.
+        if not is_cancelled and was_executor_spawned(stream_id):
             log.info(f"Comms notifier starting for stream {stream_id}")
             notifier_message = await run_comms_notifier(
                 comms_inbox=comms_inbox,
@@ -438,28 +448,6 @@ async def _run_chat_stream(
             )
             if notifier_message:
                 complete_message = notifier_message
-        elif not is_cancelled:
-            # Give a brief window for the background task to push to queue
-            try:
-                item = await asyncio.wait_for(comms_inbox.get(), timeout=0.5)
-                if item is not None:
-                    # Executor did start — put the item back and run notifier
-                    await comms_inbox.put(item)
-                    notifier_message = await run_comms_notifier(
-                        comms_inbox=comms_inbox,
-                        conversation_id=conversation_id,
-                        user=user,
-                        user_time=user_time,
-                        stream_id=stream_id,
-                        tool_data=tool_data,
-                        tool_outputs=tool_outputs,
-                        todo_progress_accumulated=todo_progress_accumulated,
-                        follow_up_actions=follow_up_actions,
-                    )
-                    if notifier_message:
-                        complete_message = notifier_message
-            except asyncio.TimeoutError:
-                pass  # No executor used — continue normally
         # ── End background executor phase ─────────────────────────────────
 
         # Await description task if still pending
@@ -489,6 +477,7 @@ async def _run_chat_stream(
     finally:
         deregister_comms_inbox(stream_id)
         deregister_pending_subagents(stream_id)
+        deregister_executor_spawned(stream_id)
 
         # On cancellation, complete_message may be empty because nostream: marker
         # never arrives. Recover from Redis progress which tracks accumulated text.

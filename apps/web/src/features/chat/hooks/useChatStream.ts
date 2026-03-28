@@ -21,6 +21,7 @@ import { toast } from "@/lib/toast";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
+import { useLoadingStore } from "@/stores/loadingStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { TodoProgressSnapshot } from "@/types/features/todoProgressTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
@@ -613,6 +614,12 @@ export const useChatStream = () => {
         }
 
         if (parsed.type === "progress") {
+          // Re-show spinner if it was hidden by an earlier main_response_complete
+          // (executor sending progress after comms ack "I'm on it")
+          if (!useLoadingStore.getState().isLoading) {
+            setIsLoading(true);
+            updateBotMessage({ loading: true });
+          }
           setLoadingText(parsed.message, {
             toolName: parsed.tool_name,
             toolCategory: parsed.tool_category,
@@ -621,6 +628,12 @@ export const useChatStream = () => {
         }
 
         if (parsed.type === "response") {
+          // Re-show spinner if it was hidden by an earlier main_response_complete
+          // (executor result arriving after comms ack "I'm on it")
+          if (!useLoadingStore.getState().isLoading) {
+            setIsLoading(true);
+            updateBotMessage({ loading: true });
+          }
           streamingData.response =
             typeof streamingData.response === "string"
               ? `${streamingData.response}${parsed.chunk}`

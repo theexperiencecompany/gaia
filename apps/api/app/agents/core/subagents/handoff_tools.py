@@ -498,29 +498,52 @@ async def handoff(
 
         # Background mode: spawn subagent as asyncio task and return immediately.
         # Caller must use wait_for_subagents() to collect results.
+        #
+        # Requires stream_id to be propagated into the executor configurable.
+        # If stream_id is missing, background dispatch is impossible because
+        # there is no executor inbox to route subagent results through.
         if background:
             executor_inbox = get_executor_inbox(stream_id) if stream_id else None
             if not executor_inbox:
+                fallback_reason = (
+                    "stream_id is None (not propagated into executor configurable)"
+                    if not stream_id
+                    else f"no executor inbox registered for stream_id={stream_id!r}"
+                )
                 log.warning(
-                    f"handoff background=True but no executor inbox for stream {stream_id}; "
+                    f"handoff background=True but cannot dispatch: {fallback_reason}; "
                     "falling back to blocking execution"
                 )
-            else:
-                increment_pending_subagents(stream_id)
-                bg_task = asyncio.create_task(
-                    run_subagent_background(
-                        ctx=ctx,
-                        stream_id=stream_id or "",
-                        executor_inbox=executor_inbox,
-                        integration_metadata=integration_metadata,
-                    )
+                # Fall through to blocking execution below, but capture the warning
+                # so it is prepended to the result for visibility.
+                fallback_prefix = (
+                    f"[WARNING: background handoff fell back to blocking — {fallback_reason}] "
                 )
-                _background_subagent_tasks.add(bg_task)
-                bg_task.add_done_callback(_background_subagent_tasks.discard)
-                log.info(
-                    f"Subagent {agent_name} dispatched to background for stream {stream_id}"
+                writer = get_stream_writer()
+                blocking_result = await execute_subagent_stream(
+                    ctx=ctx,
+                    stream_writer=writer,
+                    integration_metadata=integration_metadata,
                 )
-                return f"Subagent {agent_name} started in background. Call wait_for_subagents() when ready to collect results."
+                return f"{fallback_prefix}{blocking_result}"
+            # At this point executor_inbox is non-None, which means stream_id was
+            # non-None (executor_inbox only comes from get_executor_inbox(stream_id)).
+            assert stream_id is not None  # noqa: S101 — invariant guaranteed above
+            increment_pending_subagents(stream_id)
+            bg_task = asyncio.create_task(
+                run_subagent_background(
+                    ctx=ctx,
+                    stream_id=stream_id or "",
+                    executor_inbox=executor_inbox,
+                    integration_metadata=integration_metadata,
+                )
+            )
+            _background_subagent_tasks.add(bg_task)
+            bg_task.add_done_callback(_background_subagent_tasks.discard)
+            log.info(
+                f"Subagent {agent_name} dispatched to background for stream {stream_id}"
+            )
+            return f"Subagent {agent_name} started in background. Call wait_for_subagents() when ready to collect results."
 
         # Blocking (default): execute synchronously and return result
         writer = get_stream_writer()

@@ -13,10 +13,17 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.agents.core.background.executor_runner import run_executor_background
-from app.agents.core.background.inbox import get_comms_inbox
+import json
+
+from app.agents.core.background.inbox import get_comms_inbox, mark_executor_spawned
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
-from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
+from app.constants.cache import (
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_QUEUE_PREFIX,
+    EXECUTOR_QUEUE_TTL,
+)
 from app.db.redis import redis_cache
 from app.decorators.rate_limiting import LangChainRateLimitException
 from shared.py.wide_events import log
@@ -48,13 +55,53 @@ async def call_executor(
         user_id = configurable.get("user_id")
         stream_id = configurable.get("stream_id")
 
-        # Check executor lock
+        # Check executor lock — if busy, queue the task and return immediately.
+        # Only one executor can run per conversation (stateful checkpoint under
+        # executor_{conversation_id}). Queued tasks are processed sequentially
+        # after the current executor finishes.
         lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
         if await redis_cache.get(lock_key):
-            log.info(f"Executor already busy for conversation {conversation_id}")
+            queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
+            # configurable may contain non-serializable LangGraph internals
+            # (e.g. Runtime objects). Only carry the scalar values we need.
+            _CONFIGURABLE_SCALAR_KEYS = {
+                "thread_id",
+                "conversation_id",
+                "user_id",
+                "user_email",
+                "user_name",
+                "user_time",
+                "stream_id",
+                "provider",
+                "model_name",
+                "max_tokens",
+                "selected_tool",
+                "tool_category",
+                "subagent_id",
+                "vfs_session_id",
+            }
+            safe_configurable = {
+                k: v
+                for k, v in configurable.items()
+                if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, (str, int, float, bool, type(None)))
+            }
+            queue_item = json.dumps(
+                {
+                    "task": task,
+                    "configurable": safe_configurable,
+                    "user_time_str": configurable.get("user_time", ""),
+                    "conversation_id": conversation_id,
+                }
+            )
+            if redis_cache.client:
+                await redis_cache.client.rpush(queue_key, queue_item)
+                await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
+            log.info(
+                f"Executor busy — task queued for conversation {conversation_id}"
+            )
             return (
                 "I'm already working on a task for this conversation. "
-                "I'll let you know when it's done before starting something new."
+                "Your request has been queued and I'll handle it right after."
             )
 
         # Set executor lock
@@ -80,6 +127,12 @@ async def call_executor(
 
         # Get comms inbox for this stream
         comms_inbox = get_comms_inbox(stream_id) if stream_id else None
+
+        # Mark this stream as having an active executor BEFORE spawning the
+        # task so chat_service can reliably detect it after the comms agent
+        # finishes (the task may not have run yet due to asyncio scheduling).
+        if stream_id:
+            mark_executor_spawned(stream_id)
 
         # Spawn executor in background
         bg_task = asyncio.create_task(

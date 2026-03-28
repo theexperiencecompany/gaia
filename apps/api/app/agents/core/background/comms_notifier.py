@@ -1,11 +1,15 @@
 """Comms notifier loop — reads executor updates, runs comms graph, streams to user.
 
-This coroutine runs concurrently with run_executor_background via
-asyncio.gather in _run_chat_stream. It reads messages from the comms
-inbox queue and invokes the comms_graph for each one, sequentially.
+This coroutine runs SEQUENTIALLY after the comms agent finishes in
+_run_chat_stream. The comms agent naturally completes first (sending
+"I'm on it!" acknowledgement), then this notifier blocks on the comms
+inbox queue waiting for executor progress/final messages, invoking the
+comms_graph for each one in order.
 
-Sequential processing is critical: concurrent comms_graph invocations
-on the same thread_id cause PostgreSQL checkpointer serialization errors.
+Sequential processing is intentional: concurrent comms_graph invocations
+on the same thread_id would cause PostgreSQL checkpointer serialization
+errors. The executor background task always pushes a sentinel (None) when
+done, which causes this loop to exit.
 
 Message types:
 - {"type": "progress", "message": "..."} → comms sees [EXECUTOR_UPDATE]
@@ -20,6 +24,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from langchain_core.messages import HumanMessage
+from langsmith import traceable
 
 from shared.py.wide_events import log
 
@@ -35,6 +40,7 @@ _TYPE_PREFIX = {
 }
 
 
+@traceable(name="comms_notifier", run_type="chain")
 async def run_comms_notifier(
     comms_inbox: asyncio.Queue,
     conversation_id: str,
@@ -99,6 +105,13 @@ async def run_comms_notifier(
 
         # Inject message as HumanMessage into the comms thread
         initial_state = {"messages": [HumanMessage(content=f"{prefix}\n{msg_text}")]}
+
+        # Push a visual break so this response renders as a separate bubble
+        # from the comms ack ("I'm on it") that preceded it.
+        await stream_manager.publish_chunk(
+            stream_id,
+            f"data: {json.dumps({'response': '<NEW_MESSAGE_BREAK>'})}\n\n",
+        )
 
         try:
             async for chunk in execute_graph_streaming(graph, initial_state, config):
