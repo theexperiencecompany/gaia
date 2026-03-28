@@ -41,6 +41,25 @@ _TYPE_PREFIX = {
 }
 
 
+def _extract_text_from_content(content: object) -> str:
+    """Extract text from LLM response content, handling both string and list formats.
+
+    Gemini (ChatGoogleGenerativeAI) returns content as a list of dicts like
+    ``[{"type": "text", "text": "..."}]`` while OpenAI returns a plain string.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, dict):
+                parts.append(part.get("text", ""))
+            elif isinstance(part, str):
+                parts.append(part)
+        return "".join(parts)
+    return ""
+
+
 async def _stream_notification_tokens(
     prefix: str,
     msg_text: str,
@@ -54,6 +73,10 @@ async def _stream_notification_tokens(
     the SSE connection stays alive during inference and the notification appears
     progressively to the user.
 
+    Uses ``preferred_provider="openai"`` because the default Gemini provider
+    can silently return empty content due to safety filters triggered by the
+    persona-heavy COMMS_AGENT_PROMPT (no exception, just empty).
+
     Args:
         prefix: [EXECUTOR_RESULT], [EXECUTOR_UPDATE], or [EXECUTOR_ERROR]
         msg_text: The executor result/update/error text.
@@ -64,14 +87,17 @@ async def _stream_notification_tokens(
         Full notification text accumulated from all tokens, or empty string on failure.
     """
     try:
-        llm = init_llm()
+        try:
+            llm = init_llm(preferred_provider="openai")
+        except (RuntimeError, ValueError):
+            llm = init_llm()  # Fall back to default provider
         system_prompt = COMMS_AGENT_PROMPT.replace("{user_name}", user_name or "there")
         accumulated = ""
         async for chunk in llm.astream([
             SystemMessage(content=system_prompt),
             HumanMessage(content=f"{prefix}\n{msg_text}"),
         ]):
-            token = chunk.content if isinstance(chunk.content, str) else ""
+            token = _extract_text_from_content(chunk.content)
             token = token.replace(NEW_MESSAGE_BREAKER, "")
             if token:
                 accumulated += token
@@ -79,7 +105,13 @@ async def _stream_notification_tokens(
                     stream_id,
                     f"data: {json.dumps({'response': token})}\n\n",
                 )
-        return accumulated.strip()
+        result = accumulated.strip()
+        if not result:
+            log.warning(
+                f"_stream_notification_tokens: LLM returned empty content for "
+                f"stream {stream_id}, using raw executor result as fallback"
+            )
+        return result
     except Exception as e:
         log.error(f"_stream_notification_tokens failed: {e}", exc_info=True)
         return ""
@@ -163,9 +195,19 @@ async def run_comms_notifier(
                     f"Comms notifier streamed notification for stream {stream_id}"
                 )
             else:
+                # Fallback: stream the raw executor result directly so the
+                # user at least sees what the executor produced, even if the
+                # comms-style LLM call returned empty (e.g. safety-filtered).
                 log.warning(
-                    f"Comms notifier: empty notification for stream {stream_id}"
+                    f"Comms notifier: empty LLM notification for stream "
+                    f"{stream_id}, falling back to raw executor result"
                 )
+                if msg_text:
+                    complete_message = msg_text
+                    await stream_manager.publish_chunk(
+                        stream_id,
+                        f"data: {json.dumps({'response': msg_text})}\n\n",
+                    )
 
         except Exception as e:
             log.error(f"Comms notifier error for stream {stream_id}: {e}")

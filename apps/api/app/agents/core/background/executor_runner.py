@@ -159,7 +159,10 @@ async def _deliver_queued_result(
     user_name = configurable.get("user_name", "")
 
     try:
-        llm = init_llm()
+        try:
+            llm = init_llm(preferred_provider="openai")
+        except (RuntimeError, ValueError):
+            llm = init_llm()  # Fall back to default provider
         system_prompt = COMMS_AGENT_PROMPT.replace("{user_name}", user_name or "there")
         response = await llm.ainvoke([
             SystemMessage(content=system_prompt),
@@ -171,9 +174,12 @@ async def _deliver_queued_result(
         log.error(f"_deliver_queued_result: LLM call failed: {e}")
         complete_message = ""
 
+    # Fallback to raw executor result if LLM returned empty
     if not complete_message:
-        log.warning("_deliver_queued_result: empty notification, skipping save")
-        return
+        log.warning(
+            "_deliver_queued_result: empty LLM response, using raw executor result"
+        )
+        complete_message = result
 
     bot_message_id = str(uuid4())
     bot_message = MessageModel(
