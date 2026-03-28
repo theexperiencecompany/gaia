@@ -23,15 +23,15 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 
 from shared.py.wide_events import log
 
-from app.agents.core.graph_manager import GraphManager
+from app.agents.llm.client import init_llm
+from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.core.stream_manager import stream_manager
-from app.helpers.agent_helpers import build_agent_config
 
 # Map message type to prefix the comms agent sees
 _TYPE_PREFIX = {
@@ -41,40 +41,40 @@ _TYPE_PREFIX = {
 }
 
 
-async def _invoke_comms_notification(
-    graph: Any,
-    initial_state: dict,
-    config: dict,
+async def _generate_notification_text(
+    prefix: str,
+    msg_text: str,
+    user_name: str,
 ) -> str:
-    """Invoke comms graph and extract the final AI response text.
+    """Call the LLM directly to generate a user-facing notification message.
 
-    Uses graph.ainvoke to avoid relying on streaming chunk types, which are
-    unreliable for checkpoint-continuation runs. Extracts the last AIMessage
-    from the final state and strips the NEW_MESSAGE_BREAKER sentinel.
+    Bypasses the comms graph entirely to avoid checkpoint-continuation issues
+    (empty LLM responses, middleware interference). Produces a standalone,
+    persona-consistent notification using only the COMMS_AGENT_PROMPT + the
+    executor result as context.
 
     Args:
-        graph: Compiled comms agent graph.
-        initial_state: State dict with the SystemMessage to inject.
-        config: LangGraph config dict.
+        prefix: [EXECUTOR_RESULT], [EXECUTOR_UPDATE], or [EXECUTOR_ERROR]
+        msg_text: The executor result/update/error text.
+        user_name: User's name for prompt personalisation.
 
     Returns:
-        Clean response text, or empty string on failure.
+        Clean notification text, or empty string on failure.
     """
-    final_state = await graph.ainvoke(initial_state, config=config)
-    messages = final_state.get("messages", [])
-
-    for msg in reversed(messages):
-        if not isinstance(msg, AIMessage):
-            continue
-        content = msg.content
-        if not isinstance(content, str) or not content:
-            continue
-        # Strip the NEW_MESSAGE_BREAKER sentinel appended by acall_model
-        clean = content.replace(NEW_MESSAGE_BREAKER, "").strip()
-        if clean:
-            return clean
-
-    return ""
+    try:
+        llm = init_llm()
+        system_prompt = COMMS_AGENT_PROMPT.replace("{user_name}", user_name or "there")
+        response = await llm.ainvoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"{prefix}\n{msg_text}"),
+        ])
+        content = response.content if isinstance(response.content, str) else ""
+        # Strip the NEW_MESSAGE_BREAKER sentinel — acall_model appends it but
+        # since we're calling the LLM directly it won't be there; strip defensively.
+        return content.replace(NEW_MESSAGE_BREAKER, "").strip()
+    except Exception as e:
+        log.error(f"_generate_notification_text failed: {e}")
+        return ""
 
 
 @traceable(name="comms_notifier", run_type="chain")
@@ -109,11 +109,7 @@ async def run_comms_notifier(
         The complete_message from the last comms graph invocation.
     """
     complete_message = ""
-
-    graph = await GraphManager.get_graph("comms_agent")
-    if not graph:
-        log.error("run_comms_notifier: comms graph not available")
-        return complete_message
+    user_name = user.get("name", "")
 
     while True:
         item = await comms_inbox.get()
@@ -133,33 +129,6 @@ async def run_comms_notifier(
 
         log.info(f"Comms notifier processing {msg_type} for stream {stream_id}")
 
-        # Build config for this comms invocation (same thread_id = full history)
-        config = build_agent_config(
-            conversation_id=conversation_id,
-            user=user,
-            user_time=user_time,
-            thread_id=conversation_id,
-            agent_name="comms_agent",
-        )
-        config.setdefault("configurable", {})["stream_id"] = stream_id
-
-        # Inject as SystemMessage so the LLM treats it as background context
-        # injected by the system, not as a new message from the user. This keeps
-        # the conversation thread coherent: User → AI → [System: executor result] → AI.
-        #
-        # Mark as memory_message=True so manage_system_prompts_node treats it as
-        # preserved context rather than as the "latest system prompt" — without this
-        # flag the node would replace the COMMS_AGENT_PROMPT with this message,
-        # leaving the LLM with no instructions and producing an empty response.
-        initial_state = {
-            "messages": [
-                SystemMessage(
-                    content=f"{prefix}\n{msg_text}",
-                    additional_kwargs={"memory_message": True},
-                )
-            ]
-        }
-
         # Push a visual break so this response renders as a separate bubble
         # from the comms ack ("I'm on it") that preceded it.
         await stream_manager.publish_chunk(
@@ -168,12 +137,15 @@ async def run_comms_notifier(
         )
 
         try:
-            # Use graph.ainvoke + final-state extraction instead of streaming.
-            # Streaming chunk types (AIMessageChunk vs AIMessage) are unreliable
-            # for checkpoint-continuation runs, causing execute_graph_silent to
-            # return empty. ainvoke always produces a final AIMessage in state.
-            notification_message = await _invoke_comms_notification(
-                graph, initial_state, config
+            # Call the LLM directly instead of going through the comms graph.
+            # Graph-based invocation (graph.ainvoke / execute_graph_silent) returns
+            # "Empty response from model." on checkpoint-continuation runs due to
+            # middleware interference. Direct LLM call is simple and reliable:
+            # COMMS_AGENT_PROMPT + executor result → persona-consistent notification.
+            notification_message = await _generate_notification_text(
+                prefix=prefix,
+                msg_text=msg_text,
+                user_name=user_name,
             )
 
             if notification_message:
@@ -191,7 +163,7 @@ async def run_comms_notifier(
                 )
 
         except Exception as e:
-            log.error(f"Comms notifier graph error for stream {stream_id}: {e}")
+            log.error(f"Comms notifier error for stream {stream_id}: {e}")
             await stream_manager.publish_chunk(
                 stream_id,
                 f"data: {json.dumps({'error': f'Notification error: {str(e)}'})}\n\n",
