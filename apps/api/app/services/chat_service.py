@@ -21,7 +21,9 @@ from app.agents.core.background.inbox import (
     deregister_comms_inbox,
     deregister_executor_spawned,
     deregister_pending_subagents,
+    deregister_tool_event_collector,
     register_comms_inbox,
+    register_tool_event_collector,
     was_executor_spawned,
 )
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
@@ -306,6 +308,43 @@ def _inject_todo_progress(
         )
 
 
+def _accumulate_executor_tool_event(
+    data: Dict[str, Any],
+    tool_data: Dict[str, Any],
+    tool_outputs: Dict[str, str],
+    todo_progress_accumulated: Dict[str, Any],
+) -> None:
+    """Accumulate a single executor tool event into the mutable tracking dicts.
+
+    Called after run_comms_notifier returns to capture executor tool_data /
+    tool_output / todo_progress that were published to the SSE stream via
+    make_redis_stream_writer but never processed by _process_data_chunk
+    (which only runs during the comms-agent streaming loop, not the notifier phase).
+
+    The events have ALREADY been sent to the browser — this is only for
+    MongoDB persistence. Do NOT re-publish them.
+    """
+    if "todo_progress" in data:
+        snapshot = data["todo_progress"]
+        source = snapshot.get("source", "executor")
+        todo_progress_accumulated[source] = snapshot
+
+    if "tool_data" in data:
+        entry = data["tool_data"]
+        if isinstance(entry, list):
+            tool_data["tool_data"].extend(entry)
+        elif isinstance(entry, dict):
+            tool_data["tool_data"].append(entry)
+
+    if "tool_output" in data:
+        output_data = data["tool_output"]
+        if isinstance(output_data, dict):
+            tool_call_id = output_data.get("tool_call_id")
+            output = output_data.get("output")
+            if tool_call_id and output:
+                tool_outputs[tool_call_id] = output
+
+
 async def _run_chat_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
@@ -323,9 +362,15 @@ async def _run_chat_stream(
     usage_metadata: Dict[str, Any] = {}
     follow_up_actions: List[str] = []
     is_cancelled = False
+    _saved = False  # tracks whether _save_conversation_async already ran
 
     # Register comms inbox — executor's notify_comms tool will push here
     comms_inbox = register_comms_inbox(stream_id)
+    # Register tool event collector — make_redis_stream_writer appends executor
+    # tool events here so we can capture them for MongoDB persistence after
+    # run_comms_notifier returns (they bypass _process_data_chunk which only
+    # runs during the comms-agent streaming loop).
+    executor_tool_events = register_tool_event_collector(stream_id)
 
     try:
         description_task = _start_description_task(
@@ -450,6 +495,37 @@ async def _run_chat_stream(
                 complete_message = notifier_message
         # ── End background executor phase ─────────────────────────────────
 
+        # ── Save BEFORE [DONE] to preserve message ordering ───────────────
+        # pendingStreamArgsRef on the frontend fires when [DONE] arrives.
+        # If we save after [DONE], a queued stream can save its messages
+        # first, scrambling the chronological order in MongoDB.
+        # Also capture executor tool events here — they were published to
+        # the SSE stream via make_redis_stream_writer but never processed
+        # by _process_data_chunk (which only runs during the comms loop).
+        for event_data in executor_tool_events:
+            _accumulate_executor_tool_event(
+                event_data, tool_data, tool_outputs, todo_progress_accumulated
+            )
+
+        complete_message, tool_data = await _recover_stream_state(
+            stream_id, complete_message, tool_data
+        )
+        _merge_tool_outputs(tool_data, tool_outputs)
+        _inject_todo_progress(tool_data, todo_progress_accumulated)
+
+        await _save_conversation_async(
+            body=body,
+            user=user,
+            conversation_id=conversation_id,
+            complete_message=complete_message,
+            tool_data=tool_data,
+            metadata=usage_metadata,
+            user_message_id=user_message_id,
+            bot_message_id=bot_message_id,
+        )
+        _saved = True
+        # ── End pre-[DONE] save ───────────────────────────────────────────
+
         # Await description task if still pending
         if description_task:
             try:
@@ -478,28 +554,29 @@ async def _run_chat_stream(
         deregister_comms_inbox(stream_id)
         deregister_pending_subagents(stream_id)
         deregister_executor_spawned(stream_id)
+        deregister_tool_event_collector(stream_id)
 
-        # On cancellation, complete_message may be empty because nostream: marker
-        # never arrives. Recover from Redis progress which tracks accumulated text.
-        complete_message, tool_data = await _recover_stream_state(
-            stream_id, complete_message, tool_data
-        )
-
-        # Merge tool outputs into tool_data entries and inject todo_progress before saving
-        _merge_tool_outputs(tool_data, tool_outputs)
-        _inject_todo_progress(tool_data, todo_progress_accumulated)
-
-        # Always save conversation to MongoDB
-        await _save_conversation_async(
-            body=body,
-            user=user,
-            conversation_id=conversation_id,
-            complete_message=complete_message,
-            tool_data=tool_data,
-            metadata=usage_metadata,
-            user_message_id=user_message_id,
-            bot_message_id=bot_message_id,
-        )
+        if not _saved:
+            # Error path: save as fallback. _recover_stream_state / merge /
+            # inject are safe to call even if partially run in try block.
+            try:
+                complete_message, tool_data = await _recover_stream_state(
+                    stream_id, complete_message, tool_data
+                )
+                _merge_tool_outputs(tool_data, tool_outputs)
+                _inject_todo_progress(tool_data, todo_progress_accumulated)
+                await _save_conversation_async(
+                    body=body,
+                    user=user,
+                    conversation_id=conversation_id,
+                    complete_message=complete_message,
+                    tool_data=tool_data,
+                    metadata=usage_metadata,
+                    user_message_id=user_message_id,
+                    bot_message_id=bot_message_id,
+                )
+            except Exception as save_err:
+                log.error(f"Fallback save failed for stream {stream_id}: {save_err}")
 
         # Cleanup Redis
         await stream_manager.cleanup(stream_id)

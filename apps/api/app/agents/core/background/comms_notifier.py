@@ -41,39 +41,47 @@ _TYPE_PREFIX = {
 }
 
 
-async def _generate_notification_text(
+async def _stream_notification_tokens(
     prefix: str,
     msg_text: str,
     user_name: str,
+    stream_id: str,
 ) -> str:
-    """Call the LLM directly to generate a user-facing notification message.
+    """Call the LLM with astream and publish tokens to the SSE stream as they arrive.
 
     Bypasses the comms graph entirely to avoid checkpoint-continuation issues
-    (empty LLM responses, middleware interference). Produces a standalone,
-    persona-consistent notification using only the COMMS_AGENT_PROMPT + the
-    executor result as context.
+    (empty LLM responses, middleware interference). Streams tokens directly so
+    the SSE connection stays alive during inference and the notification appears
+    progressively to the user.
 
     Args:
         prefix: [EXECUTOR_RESULT], [EXECUTOR_UPDATE], or [EXECUTOR_ERROR]
         msg_text: The executor result/update/error text.
         user_name: User's name for prompt personalisation.
+        stream_id: Active SSE stream ID to publish tokens to.
 
     Returns:
-        Clean notification text, or empty string on failure.
+        Full notification text accumulated from all tokens, or empty string on failure.
     """
     try:
         llm = init_llm()
         system_prompt = COMMS_AGENT_PROMPT.replace("{user_name}", user_name or "there")
-        response = await llm.ainvoke([
+        accumulated = ""
+        async for chunk in llm.astream([
             SystemMessage(content=system_prompt),
             HumanMessage(content=f"{prefix}\n{msg_text}"),
-        ])
-        content = response.content if isinstance(response.content, str) else ""
-        # Strip the NEW_MESSAGE_BREAKER sentinel — acall_model appends it but
-        # since we're calling the LLM directly it won't be there; strip defensively.
-        return content.replace(NEW_MESSAGE_BREAKER, "").strip()
+        ]):
+            token = chunk.content if isinstance(chunk.content, str) else ""
+            token = token.replace(NEW_MESSAGE_BREAKER, "")
+            if token:
+                accumulated += token
+                await stream_manager.publish_chunk(
+                    stream_id,
+                    f"data: {json.dumps({'response': token})}\n\n",
+                )
+        return accumulated.strip()
     except Exception as e:
-        log.error(f"_generate_notification_text failed: {e}")
+        log.error(f"_stream_notification_tokens failed: {e}", exc_info=True)
         return ""
 
 
@@ -137,25 +145,22 @@ async def run_comms_notifier(
         )
 
         try:
-            # Call the LLM directly instead of going through the comms graph.
+            # Stream tokens directly from the LLM to the SSE stream.
             # Graph-based invocation (graph.ainvoke / execute_graph_silent) returns
             # "Empty response from model." on checkpoint-continuation runs due to
-            # middleware interference. Direct LLM call is simple and reliable:
-            # COMMS_AGENT_PROMPT + executor result → persona-consistent notification.
-            notification_message = await _generate_notification_text(
+            # middleware interference. Streaming tokens directly keeps the SSE
+            # connection alive during inference and shows the notification progressively.
+            notification_message = await _stream_notification_tokens(
                 prefix=prefix,
                 msg_text=msg_text,
                 user_name=user_name,
+                stream_id=stream_id,
             )
 
             if notification_message:
                 complete_message = notification_message
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'response': notification_message})}\n\n",
-                )
                 log.info(
-                    f"Comms notifier published notification for stream {stream_id}"
+                    f"Comms notifier streamed notification for stream {stream_id}"
                 )
             else:
                 log.warning(

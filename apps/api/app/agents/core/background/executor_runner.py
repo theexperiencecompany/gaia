@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 from shared.py.wide_events import log
 
@@ -25,14 +25,15 @@ from app.agents.core.background.inbox import (
     register_executor_inbox,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
-from app.agents.core.graph_manager import GraphManager
 from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
+from app.agents.llm.client import init_llm
+from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.redis import redis_cache
-from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.services.conversation_service import update_messages
 
@@ -134,11 +135,11 @@ async def _deliver_queued_result(
     conversation_id: str,
     user_time: datetime,
 ) -> None:
-    """Invoke comms agent silently for a queued executor result and save to MongoDB.
+    """Generate a comms notification for a queued executor result and save to MongoDB.
 
-    Called when a queued executor completes with no live SSE stream. Runs the
-    comms graph with the executor result injected as a SystemMessage, then
-    persists the comms response as a standalone bot message.
+    Called when a queued executor completes with no live SSE stream. Calls the
+    LLM directly (same approach as comms_notifier live path) to avoid the
+    checkpoint-continuation empty-response issue that plagued execute_graph_silent.
 
     Args:
         result: Executor result text (or error message).
@@ -155,41 +156,23 @@ async def _deliver_queued_result(
         "email": configurable.get("user_email", ""),
         "name": configurable.get("user_name", ""),
     }
-
-    graph = await GraphManager.get_graph("comms_agent")
-    if not graph:
-        log.error("_deliver_queued_result: comms graph not available")
-        return
-
-    config = build_agent_config(
-        conversation_id=conversation_id,
-        user=user,
-        user_time=user_time,
-        thread_id=conversation_id,
-        agent_name="comms_agent",
-    )
-
-    # Mark as memory_message=True so manage_system_prompts_node treats it as
-    # preserved context rather than replacing the COMMS_AGENT_PROMPT.
-    initial_state = {
-        "messages": [
-            SystemMessage(
-                content=f"{prefix}\n{result}",
-                additional_kwargs={"memory_message": True},
-            )
-        ]
-    }
+    user_name = configurable.get("user_name", "")
 
     try:
-        complete_message, _ = await execute_graph_silent(graph, initial_state, config)
+        llm = init_llm()
+        system_prompt = COMMS_AGENT_PROMPT.replace("{user_name}", user_name or "there")
+        response = await llm.ainvoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"{prefix}\n{result}"),
+        ])
+        content = response.content if isinstance(response.content, str) else ""
+        complete_message = content.replace(NEW_MESSAGE_BREAKER, "").strip()
     except Exception as e:
-        log.error(f"_deliver_queued_result: comms graph failed: {e}")
-        complete_message = (
-            f"I've completed a queued task, but couldn't generate a summary: {e}"
-        )
+        log.error(f"_deliver_queued_result: LLM call failed: {e}")
+        complete_message = ""
 
     if not complete_message:
-        log.warning("_deliver_queued_result: comms returned empty message, skipping save")
+        log.warning("_deliver_queued_result: empty notification, skipping save")
         return
 
     bot_message_id = str(uuid4())

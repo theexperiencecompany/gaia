@@ -11,7 +11,7 @@ key handles cross-process safety for multi-worker deployments.
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
 
@@ -132,3 +132,30 @@ def was_executor_spawned(stream_id: str) -> bool:
 def deregister_executor_spawned(stream_id: str) -> None:
     """Remove the spawned flag. Safe to call multiple times."""
     _executor_spawned_streams.discard(stream_id)
+
+
+# ── Executor tool event collector ────────────────────────────────────
+# make_redis_stream_writer appends raw tool event dicts here so
+# chat_service can capture executor tool_data / tool_output /
+# todo_progress for MongoDB persistence after run_comms_notifier returns.
+# The events are ALREADY published to the SSE stream by the writer —
+# the collector only captures them for the save path, not re-publishing.
+
+_executor_tool_event_collectors: dict[str, list[dict[str, Any]]] = {}
+
+
+def register_tool_event_collector(stream_id: str) -> list[dict[str, Any]]:
+    """Create and register a tool event collector list for this stream."""
+    collector: list[dict[str, Any]] = []
+    _executor_tool_event_collectors[stream_id] = collector
+    return collector
+
+
+def get_tool_event_collector(stream_id: str) -> Optional[list[dict[str, Any]]]:
+    """Return the tool event collector for a stream, or None."""
+    return _executor_tool_event_collectors.get(stream_id)
+
+
+def deregister_tool_event_collector(stream_id: str) -> None:
+    """Remove the tool event collector. Safe to call multiple times."""
+    _executor_tool_event_collectors.pop(stream_id, None)
