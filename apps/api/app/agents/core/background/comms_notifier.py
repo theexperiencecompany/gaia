@@ -23,7 +23,7 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import SystemMessage
 from langsmith import traceable
 
 from shared.py.wide_events import log
@@ -103,8 +103,10 @@ async def run_comms_notifier(
         )
         config.setdefault("configurable", {})["stream_id"] = stream_id
 
-        # Inject message as HumanMessage into the comms thread
-        initial_state = {"messages": [HumanMessage(content=f"{prefix}\n{msg_text}")]}
+        # Inject as SystemMessage so the LLM treats it as background context
+        # injected by the system, not as a new message from the user. This keeps
+        # the conversation thread coherent: User → AI → [System: executor result] → AI.
+        initial_state = {"messages": [SystemMessage(content=f"{prefix}\n{msg_text}")]}
 
         # Push a visual break so this response renders as a separate bubble
         # from the comms ack ("I'm on it") that preceded it.
