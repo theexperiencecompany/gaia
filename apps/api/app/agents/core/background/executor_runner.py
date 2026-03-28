@@ -169,7 +169,16 @@ async def _deliver_queued_result(
         agent_name="comms_agent",
     )
 
-    initial_state = {"messages": [SystemMessage(content=f"{prefix}\n{result}")]}
+    # Mark as memory_message=True so manage_system_prompts_node treats it as
+    # preserved context rather than replacing the COMMS_AGENT_PROMPT.
+    initial_state = {
+        "messages": [
+            SystemMessage(
+                content=f"{prefix}\n{result}",
+                additional_kwargs={"memory_message": True},
+            )
+        ]
+    }
 
     try:
         complete_message, _ = await execute_graph_silent(graph, initial_state, config)

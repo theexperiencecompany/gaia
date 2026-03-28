@@ -146,7 +146,19 @@ async def run_comms_notifier(
         # Inject as SystemMessage so the LLM treats it as background context
         # injected by the system, not as a new message from the user. This keeps
         # the conversation thread coherent: User → AI → [System: executor result] → AI.
-        initial_state = {"messages": [SystemMessage(content=f"{prefix}\n{msg_text}")]}
+        #
+        # Mark as memory_message=True so manage_system_prompts_node treats it as
+        # preserved context rather than as the "latest system prompt" — without this
+        # flag the node would replace the COMMS_AGENT_PROMPT with this message,
+        # leaving the LLM with no instructions and producing an empty response.
+        initial_state = {
+            "messages": [
+                SystemMessage(
+                    content=f"{prefix}\n{msg_text}",
+                    additional_kwargs={"memory_message": True},
+                )
+            ]
+        }
 
         # Push a visual break so this response renders as a separate bubble
         # from the comms ack ("I'm on it") that preceded it.
