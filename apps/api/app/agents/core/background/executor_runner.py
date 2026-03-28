@@ -11,10 +11,11 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
+from langchain_core.messages import SystemMessage
 from langsmith import traceable
 from shared.py.wide_events import log
 
@@ -24,12 +25,16 @@ from app.agents.core.background.inbox import (
     register_executor_inbox,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
+from app.agents.core.graph_manager import GraphManager
 from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
 from app.db.redis import redis_cache
+from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
+from app.models.chat_models import MessageModel, UpdateMessagesRequest
+from app.services.conversation_service import update_messages
 
 # Prevent GC of background tasks spawned from the queue
 _queued_executor_tasks: set[asyncio.Task] = set()
@@ -82,14 +87,31 @@ async def run_executor_background(
 
         log.info(f"Background executor completed for stream {stream_id}")
 
-        # Push final result to comms inbox
         if comms_inbox:
+            # Push final result to comms inbox (live stream path)
             await comms_inbox.put({"type": "final", "message": result})
+        else:
+            # Queued path — no live stream. Invoke comms silently and save.
+            await _deliver_queued_result(
+                result=result,
+                msg_type="final",
+                configurable=configurable,
+                conversation_id=conversation_id,
+                user_time=user_time,
+            )
 
     except Exception as e:
         log.error(f"Background executor failed for stream {stream_id}: {e}")
         if comms_inbox:
             await comms_inbox.put({"type": "error", "message": str(e)})
+        else:
+            await _deliver_queued_result(
+                result=str(e),
+                msg_type="error",
+                configurable=configurable,
+                conversation_id=conversation_id,
+                user_time=user_time,
+            )
     finally:
         # Always release lock and signal notifier to stop
         await redis_cache.delete(lock_key)
@@ -103,6 +125,86 @@ async def run_executor_background(
         # result is silently saved to the LangGraph checkpoint. No comms
         # response is streamed because the original SSE stream is already closed.
         await _process_next_queued_task(conversation_id)
+
+
+async def _deliver_queued_result(
+    result: str,
+    msg_type: str,
+    configurable: dict,
+    conversation_id: str,
+    user_time: datetime,
+) -> None:
+    """Invoke comms agent silently for a queued executor result and save to MongoDB.
+
+    Called when a queued executor completes with no live SSE stream. Runs the
+    comms graph with the executor result injected as a SystemMessage, then
+    persists the comms response as a standalone bot message.
+
+    Args:
+        result: Executor result text (or error message).
+        msg_type: "final" or "error" — controls the prefix shown to comms.
+        configurable: Scalar configurable dict from the queued task item.
+        conversation_id: Conversation to save the bot message into.
+        user_time: User's local time for config.
+    """
+    prefix = "[EXECUTOR_RESULT]" if msg_type == "final" else "[EXECUTOR_ERROR]"
+
+    # Reconstruct minimal user dict from scalar configurable keys
+    user: dict = {
+        "user_id": configurable.get("user_id", ""),
+        "email": configurable.get("user_email", ""),
+        "name": configurable.get("user_name", ""),
+    }
+
+    graph = await GraphManager.get_graph("comms_agent")
+    if not graph:
+        log.error("_deliver_queued_result: comms graph not available")
+        return
+
+    config = build_agent_config(
+        conversation_id=conversation_id,
+        user=user,
+        user_time=user_time,
+        thread_id=conversation_id,
+        agent_name="comms_agent",
+    )
+
+    initial_state = {"messages": [SystemMessage(content=f"{prefix}\n{result}")]}
+
+    try:
+        complete_message, _ = await execute_graph_silent(graph, initial_state, config)
+    except Exception as e:
+        log.error(f"_deliver_queued_result: comms graph failed: {e}")
+        complete_message = (
+            f"I've completed a queued task, but couldn't generate a summary: {e}"
+        )
+
+    if not complete_message:
+        log.warning("_deliver_queued_result: comms returned empty message, skipping save")
+        return
+
+    bot_message_id = str(uuid4())
+    bot_message = MessageModel(
+        type="bot",
+        response=complete_message,
+        date=datetime.now(timezone.utc).isoformat(),
+    )
+    bot_message.message_id = bot_message_id
+
+    try:
+        await update_messages(
+            UpdateMessagesRequest(
+                conversation_id=conversation_id,
+                messages=[bot_message],
+            ),
+            user=user,
+        )
+        log.info(
+            f"_deliver_queued_result: saved comms message {bot_message_id} "
+            f"for conversation {conversation_id}"
+        )
+    except Exception as e:
+        log.error(f"_deliver_queued_result: failed to save bot message: {e}")
 
 
 async def _process_next_queued_task(conversation_id: str) -> None:
