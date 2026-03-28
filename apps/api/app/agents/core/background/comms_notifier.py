@@ -30,7 +30,7 @@ from shared.py.wide_events import log
 
 from app.agents.core.graph_manager import GraphManager
 from app.core.stream_manager import stream_manager
-from app.helpers.agent_helpers import build_agent_config, execute_graph_streaming
+from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
 
 # Map message type to prefix the comms agent sees
 _TYPE_PREFIX = {
@@ -71,8 +71,6 @@ async def run_comms_notifier(
     Returns:
         The complete_message from the last comms graph invocation.
     """
-    from app.services.chat_service import _process_data_chunk
-
     complete_message = ""
 
     graph = await GraphManager.get_graph("comms_agent")
@@ -86,6 +84,11 @@ async def run_comms_notifier(
         # Sentinel: executor done, exit loop
         if item is None:
             break
+
+        # Check cancellation before processing
+        if await stream_manager.is_cancelled(stream_id):
+            log.info(f"Comms notifier cancelled for stream {stream_id}")
+            return complete_message
 
         msg_type = item.get("type", "progress")
         msg_text = item.get("message", "")
@@ -116,42 +119,27 @@ async def run_comms_notifier(
         )
 
         try:
-            async for chunk in execute_graph_streaming(graph, initial_state, config):
-                # Check cancellation
-                if await stream_manager.is_cancelled(stream_id):
-                    log.info(f"Comms notifier cancelled for stream {stream_id}")
-                    return complete_message
+            # Use silent execution and publish the complete response as a single
+            # chunk. The streaming path's per-event agent_name check is unreliable
+            # for the second comms run (LangGraph checkpoint continuation), but
+            # execute_graph_silent reliably captures the full response text.
+            notification_message, _ = await execute_graph_silent(
+                graph, initial_state, config
+            )
 
-                # Skip [DONE] marker — we send it in _run_chat_stream
-                if chunk == "data: [DONE]\n\n":
-                    continue
-
-                # Process nostream marker (internal complete_message)
-                if chunk.startswith("nostream: "):
-                    nostream_json = json.loads(chunk.replace("nostream: ", ""))
-                    if (
-                        isinstance(nostream_json, dict)
-                        and "complete_message" in nostream_json
-                    ):
-                        complete_message = str(nostream_json["complete_message"])
-                    continue
-
-                # Process data chunks (tool_data, tool_output, etc.)
-                if chunk.startswith("data: "):
-                    try:
-                        follow_up_actions, _ = await _process_data_chunk(
-                            stream_id,
-                            chunk,
-                            tool_data,
-                            tool_outputs,
-                            todo_progress_accumulated,
-                            follow_up_actions,
-                        )
-                    except Exception as e:
-                        log.error(f"Error processing notifier chunk: {e}")
-                        await stream_manager.publish_chunk(stream_id, chunk)
-                else:
-                    await stream_manager.publish_chunk(stream_id, chunk)
+            if notification_message:
+                complete_message = notification_message
+                await stream_manager.publish_chunk(
+                    stream_id,
+                    f"data: {json.dumps({'response': notification_message})}\n\n",
+                )
+                log.info(
+                    f"Comms notifier published notification for stream {stream_id}"
+                )
+            else:
+                log.warning(
+                    f"Comms notifier: empty notification for stream {stream_id}"
+                )
 
         except Exception as e:
             log.error(f"Comms notifier graph error for stream {stream_id}: {e}")
