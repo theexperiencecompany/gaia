@@ -23,14 +23,15 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage
 from langsmith import traceable
 
 from shared.py.wide_events import log
 
 from app.agents.core.graph_manager import GraphManager
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.core.stream_manager import stream_manager
-from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
+from app.helpers.agent_helpers import build_agent_config
 
 # Map message type to prefix the comms agent sees
 _TYPE_PREFIX = {
@@ -38,6 +39,42 @@ _TYPE_PREFIX = {
     "final": "[EXECUTOR_RESULT]",
     "error": "[EXECUTOR_ERROR]",
 }
+
+
+async def _invoke_comms_notification(
+    graph: Any,
+    initial_state: dict,
+    config: dict,
+) -> str:
+    """Invoke comms graph and extract the final AI response text.
+
+    Uses graph.ainvoke to avoid relying on streaming chunk types, which are
+    unreliable for checkpoint-continuation runs. Extracts the last AIMessage
+    from the final state and strips the NEW_MESSAGE_BREAKER sentinel.
+
+    Args:
+        graph: Compiled comms agent graph.
+        initial_state: State dict with the SystemMessage to inject.
+        config: LangGraph config dict.
+
+    Returns:
+        Clean response text, or empty string on failure.
+    """
+    final_state = await graph.ainvoke(initial_state, config=config)
+    messages = final_state.get("messages", [])
+
+    for msg in reversed(messages):
+        if not isinstance(msg, AIMessage):
+            continue
+        content = msg.content
+        if not isinstance(content, str) or not content:
+            continue
+        # Strip the NEW_MESSAGE_BREAKER sentinel appended by acall_model
+        clean = content.replace(NEW_MESSAGE_BREAKER, "").strip()
+        if clean:
+            return clean
+
+    return ""
 
 
 @traceable(name="comms_notifier", run_type="chain")
@@ -119,11 +156,11 @@ async def run_comms_notifier(
         )
 
         try:
-            # Use silent execution and publish the complete response as a single
-            # chunk. The streaming path's per-event agent_name check is unreliable
-            # for the second comms run (LangGraph checkpoint continuation), but
-            # execute_graph_silent reliably captures the full response text.
-            notification_message, _ = await execute_graph_silent(
+            # Use graph.ainvoke + final-state extraction instead of streaming.
+            # Streaming chunk types (AIMessageChunk vs AIMessage) are unreliable
+            # for checkpoint-continuation runs, causing execute_graph_silent to
+            # return empty. ainvoke always produces a final AIMessage in state.
+            notification_message = await _invoke_comms_notification(
                 graph, initial_state, config
             )
 
