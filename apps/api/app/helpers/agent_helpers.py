@@ -504,7 +504,7 @@ async def execute_graph_silent(
 
             if chunk and isinstance(chunk, AIMessageChunk):
                 content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     complete_message += content
 
         elif stream_mode == "custom":
@@ -696,7 +696,7 @@ async def execute_graph_streaming(
             # Stream AI response content (only from comms_agent to avoid duplication)
             if chunk and isinstance(chunk, AIMessageChunk):
                 content = chunk.text
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     yield format_sse_response(content)
                     complete_message += content
 
