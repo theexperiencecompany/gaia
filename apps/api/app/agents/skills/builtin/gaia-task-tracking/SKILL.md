@@ -27,49 +27,61 @@ Always available to the executor — no `retrieve_tools` needed:
 | `search_todo_context` | Semantic search across all canvas embeddings (ChromaDB). Includes completed todos. |
 | `list_tracked_todos` | List all active tracked todos (up to 50) with full metadata |
 
-## When to Create
+## Search First, Create Last
 
-**Create when** GAIA touches an external system on behalf of the user — email, calendar, Slack, Linear, Notion, etc. Even if the task completes immediately.
+Creating a new todo is the **last step**, not the first. Always search before creating.
 
-**Don't create for** pure lookups ("what's the weather?"), information retrieval ("summarize my emails"), orchestration steps (use `plan_tasks`), or casual conversation.
+```
+search_todo_context(query="relevant keywords")
+```
+
+| What you find | What to do |
+|---------------|-----------|
+| Active match | Update its canvas. Do NOT create a new one. "Related action" = same initiative, same person, same system, same goal — always update, even for follow-on steps. |
+| Completed match, same initiative resuming | Create new ONLY IF the user explicitly asked GAIA to DO something for this initiative. Never create just because search returned a historical match during an unrelated request. |
+| No match | Create a new todo — only if a write action was performed this turn. |
+
+**Create when** GAIA takes an action on an external system (email, calendar, Slack, Linear, Notion, etc.) and nothing relevant already exists in memory.
+
+**Do NOT create for:**
+- Pure lookups with no side effects ("what's the weather?", "summarize my emails")
+- Steps in your current orchestration (use `plan_tasks`)
+- Casual conversation or one-off questions
+- Anything clearly continuing an existing tracked todo — update that one instead
+
+Overusing tracked todos degrades search quality and clutters GAIA's memory.
 
 ## Two Modes
 
+Once you've confirmed no existing todo covers this (see Search First above):
+
 ### Immediate
-Task completes in this conversation. Create → delegate → document → complete. All in one flow.
+Completes in this conversation. Create → delegate → document → complete.
 
 ```
-1. search_todo_context(query="...") — check for existing related todo
-2. create_tracked_todo(title="Sent meeting notes to Sarah")
-3. handoff to Gmail agent
-4. Gmail agent returns activity report (what it did, tools used, IDs)
-5. update_tracked_todo_canvas(todo_id="...", canvas_content="...activity log...")
-6. complete_tracked_todo(todo_id="...", summary="Emailed Sarah meeting notes, thread 18f3a2b")
+search_todo_context → (nothing relevant found) → create_tracked_todo
+→ handoff to subagent → collect activity report
+→ update_tracked_todo_canvas (append activity log)
+→ complete_tracked_todo
 ```
-
-The completed todo persists as searchable memory. "Did I send Sarah those notes?" → found.
 
 ### Long-Running
-Task spans conversations or needs follow-up. Create → act → update canvas → leave open.
+Spans conversations or needs follow-up. Create → act → update → leave open.
 
 ```
-1. search_todo_context(query="...") — check for existing related todo
-2. create_tracked_todo(title="Contract negotiation with Rahul", scheduled_at="...", ...)
-3. handoff to Gmail agent (send initial email)
-4. update_tracked_todo_canvas with activity log + current state
-5. (future conversation) read canvas → act → update canvas
-6. eventually: complete_tracked_todo with learnings
+search_todo_context → (nothing relevant found) → create_tracked_todo(scheduled_at=..., ...)
+→ act → update_tracked_todo_canvas → leave open
+→ (future conversation) find via active todos or search → read canvas → act → update
+→ eventually: complete_tracked_todo with learnings
 ```
 
-### Which mode?
-
-| Request | Mode | Why |
-|---------|------|-----|
-| "Send Rahul the report" | Immediate | Fire-and-forget, but still record it |
-| "Email Rahul to schedule a meeting" | Long-running | Back-and-forth expected |
-| "What's the weather?" | No todo | Pure lookup, no side effect |
-| "Summarize my emails" | No todo | Information retrieval, nothing changed |
-| "Schedule a dentist appointment" | Long-running | Waiting for confirmation |
+| Request | Action |
+|---------|--------|
+| "Send Rahul the report" | Search first. If nothing found: immediate todo. |
+| "Email Rahul about the meeting" | Search first. If nothing found: long-running todo. |
+| "He replied, send thanks" | Search finds existing todo → update canvas, no new todo. |
+| "What's the weather?" | No todo at all. |
+| "Summarize my emails" | No todo at all. |
 
 ## Canvas
 
@@ -109,7 +121,7 @@ Default template (used when `initial_canvas` is omitted):
 <!-- what's true RIGHT NOW — updated after every action -->
 
 ## Activity Log
-<!-- which agent did what, which tools it used, what the outcome was -->
+<!-- which agent did what, which tools it used, what the outcome was — add entries HERE, not in Learnings -->
 
 ## Timeline
 <!-- chronological list of actions with dates -->
@@ -118,7 +130,7 @@ Default template (used when `initial_canvas` is omitted):
 <!-- accumulated context from signals, related information, decisions made -->
 
 ## Learnings
-<!-- written before completion: what worked, what didn't, timing insights, reusable patterns -->
+<!-- written ONLY at completion time: what worked, what didn't, timing insights, reusable patterns. DO NOT write activity log entries here -->
 ```
 
 ### Activity Log

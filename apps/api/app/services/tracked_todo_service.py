@@ -35,6 +35,9 @@ CANVAS_TEMPLATE = """# {title}
 ## Current State
 <!-- what's true RIGHT NOW — updated after every action -->
 
+## Activity Log
+<!-- which agent did what, which tools it used, what the outcome was — add entries HERE, not in Learnings -->
+
 ## Timeline
 <!-- chronological list of actions taken and results -->
 

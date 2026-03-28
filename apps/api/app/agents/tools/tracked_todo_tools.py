@@ -448,18 +448,31 @@ async def update_tracked_todo(
     if not update_fields:
         return "No fields to update. Provide at least one field to change."
 
-    # Guard: cannot clear scheduled_at while recurrence is still being set in the same call
-    if (
-        update_fields.get("recurrence")
-        and update_fields.get("scheduled_at") is None
-        and "scheduled_at" in update_fields
-    ):
-        return "Error: cannot clear scheduled_at while recurrence is set. Clear recurrence first."
+    # Fetch existing doc to validate the resulting state after applying these updates.
+    # The in-call guard alone is insufficient — the DB may already have recurrence/scheduled_at
+    # set from a previous call, which this call could silently corrupt.
+    existing = await todos_collection.find_one(
+        {"_id": ObjectId(todo_id), "user_id": user_id, "vfs_path": {"$exists": True}}
+    )
+    if not existing:
+        return f"Error: tracked todo {todo_id} not found or not a tracked todo."
+
+    # Compute the effective post-update values for scheduling fields
+    effective_scheduled_at = update_fields.get(
+        "scheduled_at", existing.get("scheduled_at")
+    )
+    effective_recurrence = update_fields.get("recurrence", existing.get("recurrence"))
+
+    if effective_recurrence and not effective_scheduled_at:
+        return (
+            "Error: cannot have recurrence without scheduled_at. "
+            "Either clear recurrence or provide a scheduled_at value."
+        )
 
     update_fields["updated_at"] = datetime.now(timezone.utc)
 
     result = await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id, "vfs_path": {"$exists": True}},
+        {"_id": ObjectId(todo_id), "user_id": user_id},
         {"$set": update_fields},
     )
 
