@@ -94,10 +94,15 @@
         }
       },
       "bots": {
-        "projects": ["bot-discord", "bot-slack", "bot-telegram"],
+        "projects": [
+          "bot-discord",
+          "bot-slack",
+          "bot-telegram",
+          "bot-whatsapp"
+        ],
         "projectsRelationship": "fixed",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },

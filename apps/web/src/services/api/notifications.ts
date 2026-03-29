@@ -215,10 +215,13 @@ export class NotificationsAPI {
   static async getChannelPreferences(): Promise<{
     telegram: boolean;
     discord: boolean;
+    whatsapp: boolean;
   }> {
-    const response = await apiauth.get<{ telegram: boolean; discord: boolean }>(
-      `${NotificationsAPI.BASE_URL}/preferences/channels`,
-    );
+    const response = await apiauth.get<{
+      telegram: boolean;
+      discord: boolean;
+      whatsapp: boolean;
+    }>(`${NotificationsAPI.BASE_URL}/preferences/channels`);
     return response.data;
   }
 
@@ -226,7 +229,7 @@ export class NotificationsAPI {
    * Update a notification channel preference
    */
   static async updateChannelPreference(
-    platform: "telegram" | "discord",
+    platform: "telegram" | "discord" | "whatsapp",
     enabled: boolean,
   ): Promise<void> {
     await apiauth.put(`${NotificationsAPI.BASE_URL}/preferences/channels`, {
