@@ -55,7 +55,12 @@ export function FeaturesGrid() {
           transition={{ duration: 0.5, ease }}
           className="relative z-10 mb-6"
         >
-          <Chip variant="flat" color="primary" size="md">
+          <Chip
+            variant="flat"
+            color="primary"
+            size="md"
+            className="text-primary"
+          >
             Features
           </Chip>
         </m.div>
