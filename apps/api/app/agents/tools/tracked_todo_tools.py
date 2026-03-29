@@ -80,6 +80,10 @@ async def create_tracked_todo(
 
     Do NOT use for one-shot actions with no expected follow-up.
 
+    IMPORTANT: Before creating a tracked todo with scheduling (scheduled_at, recurrence),
+    read the "tracked-todo-working-memory" skill first for scheduling best practices,
+    canvas template guidelines, and lifecycle rules.
+
     scheduled_at: ISO datetime with the user's timezone offset (e.g., "2026-03-20T09:00:00+05:30").
                   Always use the user's timezone offset from config, never raw 'Z' unless user says UTC.
     recurrence: How often to repeat. Options: 'daily', 'weekly', 'every_4h', or a cron expression.
