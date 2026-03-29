@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!feature) return {};
 
   return generatePageMetadata({
-    title: `${feature.title} — GAIA AI Assistant`,
+    title: `${feature.title}`,
     description: feature.subheadline,
     path: `/features/${slug}`,
     keywords: [

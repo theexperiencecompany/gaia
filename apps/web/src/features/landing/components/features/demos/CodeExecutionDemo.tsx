@@ -22,9 +22,9 @@ plt.show()`,
 // ─── Chart Card ───────────────────────────────────────────────────────────────
 
 const BAR_DATA = [
-  { label: "Jan", value: 42000, heightPct: 69 },
-  { label: "Feb", value: 61000, heightPct: 100 },
-  { label: "Mar", value: 58000, heightPct: 95 },
+  { label: "Jan", value: 42000, height: 77 },
+  { label: "Feb", value: 61000, height: 112 },
+  { label: "Mar", value: 58000, height: 107 },
 ];
 
 function Q1SalesChartCard() {
@@ -32,11 +32,11 @@ function Q1SalesChartCard() {
     <div className="rounded-2xl bg-zinc-800 p-4">
       <p className="mb-3 text-sm font-semibold text-zinc-100">Q1 Sales</p>
       <div className="rounded-2xl bg-zinc-900 p-3">
-        <div className="flex h-28 items-end justify-around gap-3 px-2">
+        <div className="relative flex h-28 items-end gap-4 px-2">
           {BAR_DATA.map((bar) => (
             <div
               key={bar.label}
-              className="flex flex-1 flex-col items-center gap-1"
+              className="flex flex-1 flex-col items-center justify-end h-full gap-1"
             >
               <span className="text-[10px] font-medium text-zinc-400">
                 ${(bar.value / 1000).toFixed(0)}k
@@ -44,7 +44,7 @@ function Q1SalesChartCard() {
               <div
                 className="w-full rounded-t-md"
                 style={{
-                  height: `${bar.heightPct}%`,
+                  height: bar.height,
                   backgroundColor: "#00bbff",
                   opacity: 0.85,
                 }}

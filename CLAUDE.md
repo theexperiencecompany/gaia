@@ -174,6 +174,7 @@ The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the re
 - **Never use `any`** — always provide proper type definitions
 - **Before creating a new type, search `src/types/` first** — do not duplicate existing types
 - Path alias `@/` maps to `src/` in web/desktop
+- **Never use Unicode/text symbols as UI elements** — no `→`, `↗`, `←`, `↑`, `↓`, `•`, `✓`, `×`, or any other Unicode symbol characters in rendered JSX. Always use icon components from `@icons` instead. This applies everywhere: demo components, cards, labels, badges, list items.
 
 ### Python
 
@@ -186,6 +187,7 @@ Rules are also enforced via auto-loaded rule files — see `.claude/rules/`:
 - **Python/Backend**: `.claude/rules/python.md` — Ruff, mypy, FastAPI patterns, services, logging, caching
 - **Design system**: `.claude/rules/design.md` — card contract, colors, icons, animations, OpenUI
 - **General engineering**: `.claude/rules/general.md` — DRY, dead code, constants, feature-based org
+- **SEO**: `.claude/rules/seo.md` — page title template, no redundant brand suffix, description length
 - **Linear**: `.claude/rules/linear.md` — issue titles, descriptions, priorities, cycle hygiene, writing style
 
 ## DRY Principles

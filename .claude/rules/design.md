@@ -87,6 +87,8 @@ import { CheckmarkCircle02Icon, Copy01Icon } from "@icons";
 
 Sizing: inline/badge → `height={17}`, actions → `size={16}`, decorative → `size={24}`
 
+**Never use Unicode/text symbols as UI elements.** No `→`, `↗`, `←`, `↑`, `↓`, `•`, `✓`, `×`, or any Unicode arrow/symbol characters in rendered JSX. Use icon components from `@icons` instead in every case — cards, labels, badges, list items, status indicators.
+
 ---
 
 ## Toasts / Notifications
@@ -131,6 +133,31 @@ import { cn } from "@/lib/utils";
 ```
 
 Use `cva` from `class-variance-authority` for multi-variant components.
+
+---
+
+## HeroUI — Do Not Override Default Styling
+
+Use HeroUI components as-is. Do not pass `classNames`, `className`, or inline `style` to override HeroUI's internal styling unless:
+- The user explicitly asks for a visual customisation, or
+- The component truly needs a one-off layout adjustment (e.g. `className="w-full"`)
+
+**Wrong — fighting the component system:**
+```tsx
+<Input
+  classNames={{
+    inputWrapper: "bg-white/10 border-white/20 hover:bg-white/15",
+    input: "text-white placeholder:text-zinc-400",
+  }}
+/>
+```
+
+**Correct — let HeroUI handle its own appearance:**
+```tsx
+<Input placeholder="Search..." radius="full" size="md" />
+```
+
+If the default appearance does not fit the design, use a different HeroUI variant/color prop first (`variant="flat"`, `color="primary"`, etc.) before reaching for `classNames`. Custom overrides make components fragile across theme changes and HeroUI upgrades.
 
 ---
 

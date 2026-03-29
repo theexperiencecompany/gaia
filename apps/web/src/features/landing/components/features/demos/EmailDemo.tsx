@@ -7,15 +7,12 @@ import type { ToolStep } from "../../demo/types";
 
 // ─── Tool Definitions ────────────────────────────────────────────────
 
-const EMAIL_LIST_TOOLS: ToolStep[] = [
+const EMAIL_TOOLS: ToolStep[] = [
   {
     category: "gmail",
     name: "list_messages",
     message: "Fetching unread emails",
   },
-];
-
-const EMAIL_GET_TOOLS: ToolStep[] = [
   {
     category: "gmail",
     name: "get_message",
@@ -144,15 +141,8 @@ const EMAIL_MESSAGES: ChatMessage[] = [
     id: "em3",
     role: "tools",
     content: "",
-    tools: EMAIL_LIST_TOOLS,
+    tools: EMAIL_TOOLS,
     delay: 900,
-  },
-  {
-    id: "em4",
-    role: "tools",
-    content: "",
-    tools: EMAIL_GET_TOOLS,
-    delay: 700,
   },
   {
     id: "em5",

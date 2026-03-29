@@ -2,12 +2,13 @@
 
 import { m, useInView } from "motion/react";
 import { useRef } from "react";
+import { cn } from "@/lib/utils";
 
 // ─── Widget: Emails ──────────────────────────────────────────────────────────
 
 function EmailsWidget() {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4">
+    <div className="h-full rounded-2xl bg-zinc-800 p-4">
       <p className="text-xs text-zinc-500">Unread Emails</p>
       <p className="mt-1 text-3xl font-semibold text-zinc-200">12</p>
       <p className="mt-1 text-xs text-zinc-500">3 flagged</p>
@@ -19,7 +20,7 @@ function EmailsWidget() {
 
 function CalendarWidget() {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4">
+    <div className="h-full rounded-2xl bg-zinc-800 p-4">
       <p className="text-xs text-zinc-500">Today's Events</p>
       <div className="mt-2 space-y-2">
         <div className="rounded-2xl bg-zinc-900 p-3">
@@ -39,7 +40,7 @@ const TODO_ITEMS = ["Review PR #47", "Send Q1 report", "Update roadmap"];
 
 function TodosWidget() {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4">
+    <div className="h-full rounded-2xl bg-zinc-800 p-4">
       <p className="text-xs text-zinc-500">Tasks Due Today</p>
       <div className="mt-2 space-y-2">
         {TODO_ITEMS.map((item) => (
@@ -57,7 +58,7 @@ function TodosWidget() {
 
 function WorkflowsWidget() {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4">
+    <div className="h-full rounded-2xl bg-zinc-800 p-4">
       <p className="text-xs text-zinc-500">Active Workflows</p>
       <div className="mt-2 flex items-center gap-2">
         <span className="relative flex h-2 w-2">
@@ -74,7 +75,7 @@ function WorkflowsWidget() {
 
 function RecentChatsWidget() {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4">
+    <div className="h-full rounded-2xl bg-zinc-800 p-4">
       <p className="text-xs text-zinc-500">Recent Conversations</p>
       <div className="mt-2 space-y-2">
         <div className="rounded-2xl bg-zinc-900 p-3">
@@ -107,7 +108,7 @@ function AnimatedWidget({
 }: AnimatedWidgetProps) {
   return (
     <m.div
-      className={className}
+      className={cn("h-full", className)}
       initial={{ opacity: 0, scale: 0.97 }}
       animate={inView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.97 }}
       transition={{ duration: 0.3, delay: index * 0.1 }}
@@ -124,24 +125,25 @@ export default function DashboardDemo() {
   const inView = useInView(ref, { once: true });
 
   return (
-    <div ref={ref} className="grid grid-cols-3 gap-3">
+    <div ref={ref} className="grid grid-cols-2 gap-3">
+      {/* Row 1: Stats row */}
       <AnimatedWidget index={0} inView={inView}>
         <EmailsWidget />
       </AnimatedWidget>
-
-      <AnimatedWidget index={1} inView={inView} className="col-span-2">
-        <CalendarWidget />
-      </AnimatedWidget>
-
-      <AnimatedWidget index={2} inView={inView}>
-        <TodosWidget />
-      </AnimatedWidget>
-
-      <AnimatedWidget index={3} inView={inView}>
+      <AnimatedWidget index={1} inView={inView}>
         <WorkflowsWidget />
       </AnimatedWidget>
 
-      <AnimatedWidget index={4} inView={inView} className="col-span-2">
+      {/* Row 2: Calendar spans full width */}
+      <AnimatedWidget index={2} inView={inView} className="col-span-2">
+        <CalendarWidget />
+      </AnimatedWidget>
+
+      {/* Row 3: Todos + Recent chats */}
+      <AnimatedWidget index={3} inView={inView}>
+        <TodosWidget />
+      </AnimatedWidget>
+      <AnimatedWidget index={4} inView={inView}>
         <RecentChatsWidget />
       </AnimatedWidget>
     </div>

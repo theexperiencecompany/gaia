@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, m, useInView } from "motion/react";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -53,21 +54,17 @@ function GeneratedImage() {
       transition={{ duration: 0.4, ease }}
     >
       <div
-        className="rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-700 relative overflow-hidden"
+        className="rounded-xl overflow-hidden relative"
         style={{ width: 280, height: 180 }}
       >
-        {/* Abstract gradient pattern simulating a generated image */}
-        <div className="absolute inset-0 bg-gradient-to-br from-zinc-900/80 via-transparent to-cyan-900/30" />
-        <div className="absolute top-4 left-4 right-4 h-8 rounded-lg bg-zinc-900/70 border border-zinc-700/40" />
-        <div className="absolute top-16 left-4 w-24 h-2 rounded bg-zinc-600/60" />
-        <div className="absolute top-20 left-4 w-16 h-2 rounded bg-zinc-700/50" />
-        <div className="absolute top-28 left-4 right-4 h-14 rounded-lg bg-gradient-to-br from-zinc-800/80 to-zinc-900/60 border border-cyan-500/20" />
-        <div className="absolute top-32 left-8 w-12 h-1.5 rounded bg-cyan-500/40" />
-        <div className="absolute top-35 left-8 w-8 h-1.5 rounded bg-zinc-600/50" />
-        {/* Cyan accent glow */}
-        <div className="absolute bottom-6 right-4 w-10 h-10 rounded-full bg-cyan-500/10 blur-lg" />
-        {/* Bottom overlay */}
-        <div className="absolute bottom-0 left-0 right-0 px-3 py-2 bg-zinc-900/60 backdrop-blur-sm">
+        <Image
+          src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=560&q=80"
+          alt="Generated: minimalist SaaS dashboard hero"
+          fill
+          className="object-cover"
+          unoptimized
+        />
+        <div className="absolute bottom-0 left-0 right-0 px-3 py-2 bg-zinc-900/70 backdrop-blur-sm">
           <p className="text-xs text-zinc-400">
             minimalist · dark theme · SaaS dashboard
           </p>

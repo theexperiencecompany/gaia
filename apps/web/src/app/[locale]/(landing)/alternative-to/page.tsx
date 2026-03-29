@@ -18,7 +18,7 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Best Alternatives to Popular Productivity Tools | GAIA",
+  title: "Best Alternatives to Popular Productivity Tools",
   description:
     "See how GAIA replaces Notion, ChatGPT, Todoist, Zapier, Superhuman, Obsidian, and 24 more tools. Honest fit scores and migration steps for each.",
   path: "/alternative-to",

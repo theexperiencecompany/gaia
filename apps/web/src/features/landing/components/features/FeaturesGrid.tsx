@@ -1,10 +1,13 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { ArrowRight02Icon } from "@icons";
+import { Input } from "@heroui/input";
+import { Kbd } from "@heroui/kbd";
+import { ArrowRight02Icon, Search01Icon } from "@icons";
 import type { Easing, Variants } from "motion/react";
 import { m } from "motion/react";
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
@@ -34,6 +37,21 @@ const cardVariants: Variants = {
 };
 
 export function FeaturesGrid() {
+  const [search, setSearch] = useState("");
+  const query = search.toLowerCase().trim();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <LazyMotionProvider>
       {/* Hero */}
@@ -100,8 +118,43 @@ export function FeaturesGrid() {
 
       {/* Feature categories */}
       <div className="mx-auto max-w-6xl px-6 py-16">
+        {/* Search */}
+        <m.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease }}
+          viewport={{ once: true }}
+          className="mb-10 flex justify-center"
+        >
+          <Input
+            ref={inputRef}
+            placeholder="Search features..."
+            radius="full"
+            size="md"
+            value={search}
+            onValueChange={setSearch}
+            startContent={<Search01Icon className="size-4 shrink-0" />}
+            endContent={
+              !search && (
+                <Kbd keys={["ctrl"]} className="text-xs">
+                  F
+                </Kbd>
+              )
+            }
+            className="max-w-md"
+          />
+        </m.div>
+
         {FEATURE_CATEGORIES.map((category) => {
-          const features = getFeaturesByCategory(category);
+          const allFeatures = getFeaturesByCategory(category);
+          const features = query
+            ? allFeatures.filter(
+                (f) =>
+                  f.title.toLowerCase().includes(query) ||
+                  f.tagline.toLowerCase().includes(query),
+              )
+            : allFeatures;
+          if (features.length === 0) return null;
           return (
             <section key={category} className="mb-16">
               <p className="mb-4 mt-12 text-xs font-medium uppercase tracking-widest text-primary">

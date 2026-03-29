@@ -1,14 +1,32 @@
 "use client";
 
-import { Clock01Icon } from "@icons";
+import {
+  Calendar01Icon,
+  Clock01Icon,
+  Mail01Icon,
+  MessageMultiple01Icon,
+  SourceCodeCircleIcon,
+} from "@icons";
 import { m, useInView } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
 const BRIEFING_ITEMS = [
-  "📧 3 emails need your reply — including Sarah from legal",
-  "📅 2 meetings today — standup at 10am, demo at 3pm",
-  "🔀 PR #47 has been waiting for review 2 days",
-  "💬 Slack thread in #product needs decision by EOD",
+  {
+    icon: Mail01Icon,
+    text: "3 emails need your reply — including Sarah from legal",
+  },
+  {
+    icon: Calendar01Icon,
+    text: "2 meetings today — standup at 10am, demo at 3pm",
+  },
+  {
+    icon: SourceCodeCircleIcon,
+    text: "PR #47 has been waiting for review 2 days",
+  },
+  {
+    icon: MessageMultiple01Icon,
+    text: "Slack thread in #product needs decision by EOD",
+  },
 ];
 
 export default function ProactiveAIDemo() {
@@ -58,7 +76,7 @@ export default function ProactiveAIDemo() {
         <div className="space-y-2">
           {BRIEFING_ITEMS.map((item, index) => (
             <m.div
-              key={item}
+              key={item.text}
               initial={{ opacity: 0, x: -12 }}
               animate={isInView ? { opacity: 1, x: 0 } : { opacity: 0, x: -12 }}
               transition={{
@@ -76,8 +94,9 @@ export default function ProactiveAIDemo() {
                     : "2px solid transparent",
               }}
             >
+              <item.icon className="size-3.5 text-zinc-400 shrink-0 mt-0.5" />
               <span className="text-xs text-zinc-300 leading-relaxed">
-                {item}
+                {item.text}
               </span>
             </m.div>
           ))}
