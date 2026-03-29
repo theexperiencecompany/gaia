@@ -296,6 +296,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
 
     let lastEditFn: ((t: string) => Promise<void>) | null = null;
+    let finalMessageSent = false;
 
     try {
       await handleStreamingChat(
@@ -308,12 +309,19 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         },
         // editMessage: no placeholder to edit — send as new message on first call
         async (updatedText: string) => {
+          if (finalMessageSent) {
+            // WhatsApp has no edit API — edit() sends a new message.
+            // Guard against sending multiple new messages if streaming is
+            // ever re-enabled or editMessage is called on retry.
+            return;
+          }
           if (lastEditFn) {
             await lastEditFn(updatedText);
           } else {
             const sent = await this.sendWhatsAppText(waId, updatedText);
             lastEditFn = sent.edit;
           }
+          finalMessageSent = true;
         },
         // sendNewMessage: send a new message and return its edit function
         async (newText: string) => {
