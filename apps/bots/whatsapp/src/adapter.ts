@@ -343,7 +343,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * - `send` / `sendEphemeral` send a text message (no ephemeral concept in WhatsApp)
    * - `sendRich` renders {@link RichMessage} as WhatsApp markdown
    * - `edit` sends a NEW message (WhatsApp does not support editing)
-   * - `startTyping` refreshes the typing indicator every 20s via markRead
+   * - `startTyping` is a no-op — typing is already managed by `handleIncomingMessage`
    */
   private createWaTarget(waId: string, messageId: string): RichMessageTarget {
     return {
@@ -366,22 +366,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       },
 
       startTyping: async () => {
-        const showTyping = () =>
-          this.waClient.messages
-            .markRead({
-              phoneNumberId: this.waConfig.kapsoPhoneNumberId,
-              messageId,
-              typingIndicator: { type: "text" },
-            })
-            .catch((err) =>
-              console.error(
-                "WhatsApp: failed to refresh typing indicator:",
-                err,
-              ),
-            );
-        showTyping();
-        const interval = setInterval(showTyping, 20_000);
-        return () => clearInterval(interval);
+        // Typing indicator is already shown (and refreshed every 20s) by
+        // handleIncomingMessage for the full duration of processing.
+        // No second interval needed here.
+        return () => undefined;
       },
     };
   }
