@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from app.agents.core.agent import call_agent
-from app.agents.core.background.comms_notifier import run_comms_notifier
 from app.agents.core.background.inbox import (
     deregister_comms_inbox,
     deregister_executor_spawned,
@@ -38,6 +37,7 @@ from app.models.chat_models import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
+from app.db.mongodb.collections import conversations_collection
 from app.services.conversation_service import update_messages
 from app.services.file_service import get_files
 from app.services.payments.payment_service import payment_service
@@ -308,43 +308,6 @@ def _inject_todo_progress(
         )
 
 
-def _accumulate_executor_tool_event(
-    data: Dict[str, Any],
-    tool_data: Dict[str, Any],
-    tool_outputs: Dict[str, str],
-    todo_progress_accumulated: Dict[str, Any],
-) -> None:
-    """Accumulate a single executor tool event into the mutable tracking dicts.
-
-    Called after run_comms_notifier returns to capture executor tool_data /
-    tool_output / todo_progress that were published to the SSE stream via
-    make_redis_stream_writer but never processed by _process_data_chunk
-    (which only runs during the comms-agent streaming loop, not the notifier phase).
-
-    The events have ALREADY been sent to the browser — this is only for
-    MongoDB persistence. Do NOT re-publish them.
-    """
-    if "todo_progress" in data:
-        snapshot = data["todo_progress"]
-        source = snapshot.get("source", "executor")
-        todo_progress_accumulated[source] = snapshot
-
-    if "tool_data" in data:
-        entry = data["tool_data"]
-        if isinstance(entry, list):
-            tool_data["tool_data"].extend(entry)
-        elif isinstance(entry, dict):
-            tool_data["tool_data"].append(entry)
-
-    if "tool_output" in data:
-        output_data = data["tool_output"]
-        if isinstance(output_data, dict):
-            tool_call_id = output_data.get("tool_call_id")
-            output = output_data.get("output")
-            if tool_call_id and output:
-                tool_outputs[tool_call_id] = output
-
-
 async def _run_chat_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
@@ -364,12 +327,12 @@ async def _run_chat_stream(
     is_cancelled = False
     _saved = False  # tracks whether _save_conversation_async already ran
 
-    # Register comms inbox — executor's notify_comms tool will push here
+    # Register comms inbox — executor pushes sentinel (None) here when done.
+    # We wait on it to keep SSE open for executor tool events.
     comms_inbox = register_comms_inbox(stream_id)
-    # Register tool event collector — make_redis_stream_writer appends executor
-    # tool events here so we can capture them for MongoDB persistence after
-    # run_comms_notifier returns (they bypass _process_data_chunk which only
-    # runs during the comms-agent streaming loop).
+    # Register tool event collector — make_redis_stream_writer appends
+    # executor tool events here so we can update the bot message with
+    # tool_data after the executor completes.
     executor_tool_events = register_tool_event_collector(stream_id)
 
     try:
@@ -418,6 +381,7 @@ async def _run_chat_stream(
             user_time=user_time,
             usage_metadata_callback=usage_metadata_callback,
             stream_id=stream_id,
+            user_message_id=user_message_id,
         ):
             if await stream_manager.is_cancelled(stream_id):
                 is_cancelled = True
@@ -473,40 +437,11 @@ async def _run_chat_stream(
             is_cancelled=is_cancelled,
         )
 
-        # ── Background executor + comms notifier ──────────────────────────
-        # call_executor sets a per-stream flag (mark_executor_spawned) before
-        # spawning the asyncio task, so this check is race-free and scoped to
-        # THIS stream — not the per-conversation Redis lock which stays set for
-        # the entire executor lifetime and would mislead concurrent streams.
-        if not is_cancelled and was_executor_spawned(stream_id):
-            log.info(f"Comms notifier starting for stream {stream_id}")
-            notifier_message = await run_comms_notifier(
-                comms_inbox=comms_inbox,
-                conversation_id=conversation_id,
-                user=user,
-                user_time=user_time,
-                stream_id=stream_id,
-                tool_data=tool_data,
-                tool_outputs=tool_outputs,
-                todo_progress_accumulated=todo_progress_accumulated,
-                follow_up_actions=follow_up_actions,
-            )
-            if notifier_message:
-                complete_message = notifier_message
-        # ── End background executor phase ─────────────────────────────────
-
-        # ── Save BEFORE [DONE] to preserve message ordering ───────────────
-        # pendingStreamArgsRef on the frontend fires when [DONE] arrives.
-        # If we save after [DONE], a queued stream can save its messages
-        # first, scrambling the chronological order in MongoDB.
-        # Also capture executor tool events here — they were published to
-        # the SSE stream via make_redis_stream_writer but never processed
-        # by _process_data_chunk (which only runs during the comms loop).
-        for event_data in executor_tool_events:
-            _accumulate_executor_tool_event(
-                event_data, tool_data, tool_outputs, todo_progress_accumulated
-            )
-
+        # ── Early save: guarantee ordering before waiting for executor ──
+        # Save the comms ack IMMEDIATELY after the comms streaming loop.
+        # This ensures this message's array position in MongoDB is correct
+        # even if a concurrent stream for a second user message completes
+        # while we wait for the executor below.
         complete_message, tool_data = await _recover_stream_state(
             stream_id, complete_message, tool_data
         )
@@ -524,7 +459,64 @@ async def _run_chat_stream(
             bot_message_id=bot_message_id,
         )
         _saved = True
-        # ── End pre-[DONE] save ───────────────────────────────────────────
+
+        # ── Wait for executor tool events to finish ───────────────────────
+        # The SSE stream stays open so the frontend receives live tool
+        # events (progress cards, tool_data). When the executor pushes
+        # the sentinel, we update the saved bot message with accumulated
+        # tool_data, then send [DONE].
+        executor_spawned = was_executor_spawned(stream_id)
+        if not is_cancelled and executor_spawned:
+            log.info(f"Waiting for executor completion for stream {stream_id}")
+            while True:
+                item = await comms_inbox.get()
+                if item is None:
+                    break
+
+            # Update the saved bot message with executor tool_data.
+            executor_td = [
+                e["tool_data"]
+                for e in executor_tool_events
+                if "tool_data" in e
+            ]
+            executor_outputs: Dict[str, str] = {}
+            for evt in executor_tool_events:
+                if "tool_output" in evt:
+                    out = evt["tool_output"]
+                    tid = out.get("tool_call_id")
+                    val = out.get("output")
+                    if tid and val:
+                        executor_outputs[tid] = val
+
+            for entry in executor_td:
+                if entry.get("tool_name") == "tool_calls_data":
+                    data = entry.get("data", {})
+                    if isinstance(data, dict):
+                        tcid = data.get("tool_call_id")
+                        if tcid and tcid in executor_outputs:
+                            data["output"] = executor_outputs[tcid]
+
+            if executor_td:
+                try:
+                    await conversations_collection.update_one(
+                        {
+                            "user_id": user.get("user_id"),
+                            "conversation_id": conversation_id,
+                            "messages.message_id": bot_message_id,
+                        },
+                        {
+                            "$push": {
+                                "messages.$.tool_data": {"$each": executor_td}
+                            }
+                        },
+                    )
+                except Exception as e:
+                    log.error(f"Failed to update bot message tool_data: {e}")
+
+        # Notification delivery is handled by the executor's finally block
+        # via _deliver_bg_notification (WebSocket → NEW bot message in MongoDB).
+        # This ensures the notification is a separate real message with its
+        # own timeline position, not appended to the comms ack bubble.
 
         # Await description task if still pending
         if description_task:

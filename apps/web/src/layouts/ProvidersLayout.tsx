@@ -6,6 +6,7 @@ import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
 import LoginModal from "@/features/auth/components/LoginModal";
+import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSocket";
 import { GlobalIntegrationModal } from "@/features/integrations/components/GlobalIntegrationModal";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
@@ -27,6 +28,10 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   // Subscribe to notification events — updates the shared store directly
   useNotificationWebSocket();
+
+  // Subscribe to background executor completion messages — inserts new
+  // bot messages delivered via WebSocket (executor notifications, queued task results)
+  useBgMessageWebSocket();
 
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();

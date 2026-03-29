@@ -1,21 +1,21 @@
 """Executor tool for comms agent to delegate tasks to executor agent.
 
 Non-blocking: spawns executor as a background asyncio task and returns
-immediately. The executor communicates progress via notify_comms tool,
-and its final result is pushed to comms_inbox for the notifier loop.
+immediately. The executor delivers its result as a NEW bot message via
+WebSocket when it completes (see _deliver_bg_notification).
 """
 
 import asyncio
+import json
 from datetime import datetime
 from typing import Annotated
+from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.agents.core.background.executor_runner import run_executor_background
-import json
-
-from app.agents.core.background.inbox import get_comms_inbox, mark_executor_spawned
+from app.agents.core.background.inbox import mark_executor_spawned
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.cache import (
@@ -50,10 +50,14 @@ async def call_executor(
     configurable = config.get("configurable", {})
     conversation_id = configurable.get("thread_id", "")
 
+    # Generate a unique task_id for tracking this executor invocation
+    task_id = str(uuid4())
+
     try:
-        log.set(tool={"name": "call_executor", "action": "dispatch"})
+        log.set(tool={"name": "call_executor", "action": "dispatch", "task_id": task_id})
         user_id = configurable.get("user_id")
         stream_id = configurable.get("stream_id")
+        user_message_id = configurable.get("user_message_id")
 
         # Check executor lock — if busy, queue the task and return immediately.
         # Only one executor can run per conversation (stateful checkpoint under
@@ -79,6 +83,7 @@ async def call_executor(
                 "tool_category",
                 "subagent_id",
                 "vfs_session_id",
+                "user_message_id",
             }
             safe_configurable = {
                 k: v
@@ -88,20 +93,22 @@ async def call_executor(
             queue_item = json.dumps(
                 {
                     "task": task,
+                    "task_id": task_id,
                     "configurable": safe_configurable,
                     "user_time_str": configurable.get("user_time", ""),
                     "conversation_id": conversation_id,
+                    "user_message_id": user_message_id,
                 }
             )
             if redis_cache.client:
                 await redis_cache.client.rpush(queue_key, queue_item)
                 await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
             log.info(
-                f"Executor busy — task queued for conversation {conversation_id}"
+                f"Executor busy — task queued (task_id={task_id}) for conversation {conversation_id}"
             )
             return (
-                "I'm already working on a task for this conversation. "
-                "Your request has been queued and I'll handle it right after."
+                f"I'm already working on a task for this conversation. "
+                f"Your request has been queued (task_id: {task_id}) and I'll handle it right after."
             )
 
         # Set executor lock
@@ -125,16 +132,13 @@ async def call_executor(
             datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
         )
 
-        # Get comms inbox for this stream
-        comms_inbox = get_comms_inbox(stream_id) if stream_id else None
-
         # Mark this stream as having an active executor BEFORE spawning the
-        # task so chat_service can reliably detect it after the comms agent
-        # finishes (the task may not have run yet due to asyncio scheduling).
+        # task so chat_service knows an executor was dispatched for this stream.
         if stream_id:
             mark_executor_spawned(stream_id)
 
-        # Spawn executor in background
+        # Spawn executor in background — it delivers its own notification
+        # as a NEW bot message via WebSocket when it completes.
         bg_task = asyncio.create_task(
             run_executor_background(
                 task=task,
@@ -142,14 +146,15 @@ async def call_executor(
                 user_time=user_time,
                 stream_id=stream_id or "",
                 conversation_id=conversation_id,
-                comms_inbox=comms_inbox,
+                task_id=task_id,
+                user_message_id=user_message_id,
             )
         )
         _executor_tasks.add(bg_task)
         bg_task.add_done_callback(_executor_tasks.discard)
 
-        log.info(f"Executor dispatched to background for stream {stream_id}")
-        return "Task accepted. I'm on it — you'll get progress updates as I work."
+        log.info(f"Executor dispatched (task_id={task_id}) to background for stream {stream_id}")
+        return f"Task accepted (task_id: {task_id}). I'm on it — you'll get progress updates as I work."
 
     except (LangChainRateLimitException, RateLimitExceededException) as e:
         if isinstance(e, LangChainRateLimitException):

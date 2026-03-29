@@ -1,120 +1,30 @@
-"""Comms notifier loop — reads executor updates, runs comms graph, streams to user.
+"""Comms notifier loop — drains executor messages to keep SSE alive.
 
 This coroutine runs SEQUENTIALLY after the comms agent finishes in
-_run_chat_stream. The comms agent naturally completes first (sending
-"I'm on it!" acknowledgement), then this notifier blocks on the comms
-inbox queue waiting for executor progress/final messages, invoking the
-comms_graph for each one in order.
+_run_chat_stream. It blocks on the comms inbox queue waiting for the
+executor sentinel (None), keeping the SSE connection alive so the
+frontend can receive live tool events from the executor.
 
-Sequential processing is intentional: concurrent comms_graph invocations
-on the same thread_id would cause PostgreSQL checkpointer serialization
-errors. The executor background task always pushes a sentinel (None) when
-done, which causes this loop to exit.
+Notification text is NOT generated here — _deliver_bg_notification in
+executor_runner.py handles that via WebSocket + comms checkpoint injection.
+This avoids duplicate notifications (SSE + WebSocket) and ensures the
+notification is always in the conversation history.
 
-Message types:
-- {"type": "progress", "message": "..."} → comms sees [EXECUTOR_UPDATE]
-- {"type": "final", "message": "..."}    → comms sees [EXECUTOR_RESULT]
-- {"type": "error", "message": "..."}    → comms sees [EXECUTOR_ERROR]
+Message types consumed:
+- {"type": "progress", "message": "..."} → logged, not streamed
+- {"type": "final", "message": "..."}    → logged, not streamed
+- {"type": "error", "message": "..."}    → logged, not streamed
 - None                                    → sentinel, loop exits
 """
 
 import asyncio
-import json
 from datetime import datetime
 from typing import Any, Dict, List
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
-
 from shared.py.wide_events import log
 
-from app.agents.llm.client import init_llm
-from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.core.stream_manager import stream_manager
-
-# Map message type to prefix the comms agent sees
-_TYPE_PREFIX = {
-    "progress": "[EXECUTOR_UPDATE]",
-    "final": "[EXECUTOR_RESULT]",
-    "error": "[EXECUTOR_ERROR]",
-}
-
-
-def _extract_text_from_content(content: object) -> str:
-    """Extract text from LLM response content, handling both string and list formats.
-
-    Gemini (ChatGoogleGenerativeAI) returns content as a list of dicts like
-    ``[{"type": "text", "text": "..."}]`` while OpenAI returns a plain string.
-    """
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for part in content:
-            if isinstance(part, dict):
-                parts.append(part.get("text", ""))
-            elif isinstance(part, str):
-                parts.append(part)
-        return "".join(parts)
-    return ""
-
-
-async def _stream_notification_tokens(
-    prefix: str,
-    msg_text: str,
-    user_name: str,
-    stream_id: str,
-) -> str:
-    """Call the LLM with astream and publish tokens to the SSE stream as they arrive.
-
-    Bypasses the comms graph entirely to avoid checkpoint-continuation issues
-    (empty LLM responses, middleware interference). Streams tokens directly so
-    the SSE connection stays alive during inference and the notification appears
-    progressively to the user.
-
-    Uses ``preferred_provider="openai"`` because the default Gemini provider
-    can silently return empty content due to safety filters triggered by the
-    persona-heavy COMMS_AGENT_PROMPT (no exception, just empty).
-
-    Args:
-        prefix: [EXECUTOR_RESULT], [EXECUTOR_UPDATE], or [EXECUTOR_ERROR]
-        msg_text: The executor result/update/error text.
-        user_name: User's name for prompt personalisation.
-        stream_id: Active SSE stream ID to publish tokens to.
-
-    Returns:
-        Full notification text accumulated from all tokens, or empty string on failure.
-    """
-    try:
-        try:
-            llm = init_llm(preferred_provider="openai")
-        except (RuntimeError, ValueError):
-            llm = init_llm()  # Fall back to default provider
-        system_prompt = COMMS_AGENT_PROMPT.replace("{user_name}", user_name or "there")
-        accumulated = ""
-        async for chunk in llm.astream([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"{prefix}\n{msg_text}"),
-        ]):
-            token = _extract_text_from_content(chunk.content)
-            token = token.replace(NEW_MESSAGE_BREAKER, "")
-            if token:
-                accumulated += token
-                await stream_manager.publish_chunk(
-                    stream_id,
-                    f"data: {json.dumps({'response': token})}\n\n",
-                )
-        result = accumulated.strip()
-        if not result:
-            log.warning(
-                f"_stream_notification_tokens: LLM returned empty content for "
-                f"stream {stream_id}, using raw executor result as fallback"
-            )
-        return result
-    except Exception as e:
-        log.error(f"_stream_notification_tokens failed: {e}", exc_info=True)
-        return ""
 
 
 @traceable(name="comms_notifier", run_type="chain")
@@ -129,91 +39,42 @@ async def run_comms_notifier(
     todo_progress_accumulated: Dict[str, Any],
     follow_up_actions: List[str],
 ) -> str:
-    """Read comms inbox and invoke comms_graph for each executor message.
+    """Drain comms inbox to keep SSE alive for executor tool events.
 
-    Returns the last complete_message from the comms graph (used for
-    MongoDB save in _run_chat_stream).
+    Notification delivery is handled by _deliver_bg_notification via
+    WebSocket, not by this function. This just waits for the sentinel
+    so the SSE stream stays open for live tool event streaming.
+
+    Returns empty string (notification text is delivered separately).
 
     Args:
         comms_inbox: Queue populated by executor (notify_comms tool + final result).
-        conversation_id: Thread ID for comms_graph checkpoint continuity.
-        user: User dict with user_id, email, name.
-        user_time: User's local time.
+        conversation_id: Thread ID for logging.
+        user: User dict (unused, kept for interface compatibility).
+        user_time: User's local time (unused, kept for interface compatibility).
         stream_id: Active SSE stream ID.
-        tool_data: Mutable dict accumulating tool_data entries for MongoDB save.
-        tool_outputs: Mutable dict accumulating tool outputs.
-        todo_progress_accumulated: Mutable dict accumulating todo progress.
-        follow_up_actions: Mutable list accumulating follow-up actions.
+        tool_data: Mutable dict (unused, kept for interface compatibility).
+        tool_outputs: Mutable dict (unused, kept for interface compatibility).
+        todo_progress_accumulated: Mutable dict (unused, kept for interface compatibility).
+        follow_up_actions: Mutable list (unused, kept for interface compatibility).
 
     Returns:
-        The complete_message from the last comms graph invocation.
+        Empty string — notification text is delivered via WebSocket.
     """
-    complete_message = ""
-    user_name = user.get("name", "")
-
     while True:
         item = await comms_inbox.get()
 
         # Sentinel: executor done, exit loop
         if item is None:
+            log.info(f"Comms notifier received sentinel for stream {stream_id}")
             break
 
         # Check cancellation before processing
         if await stream_manager.is_cancelled(stream_id):
             log.info(f"Comms notifier cancelled for stream {stream_id}")
-            return complete_message
+            return ""
 
         msg_type = item.get("type", "progress")
-        msg_text = item.get("message", "")
-        prefix = _TYPE_PREFIX.get(msg_type, "[EXECUTOR_UPDATE]")
+        log.info(f"Comms notifier drained {msg_type} message for stream {stream_id}")
 
-        log.info(f"Comms notifier processing {msg_type} for stream {stream_id}")
-
-        # Push a visual break so this response renders as a separate bubble
-        # from the comms ack ("I'm on it") that preceded it.
-        await stream_manager.publish_chunk(
-            stream_id,
-            f"data: {json.dumps({'response': '<NEW_MESSAGE_BREAK>'})}\n\n",
-        )
-
-        try:
-            # Stream tokens directly from the LLM to the SSE stream.
-            # Graph-based invocation (graph.ainvoke / execute_graph_silent) returns
-            # "Empty response from model." on checkpoint-continuation runs due to
-            # middleware interference. Streaming tokens directly keeps the SSE
-            # connection alive during inference and shows the notification progressively.
-            notification_message = await _stream_notification_tokens(
-                prefix=prefix,
-                msg_text=msg_text,
-                user_name=user_name,
-                stream_id=stream_id,
-            )
-
-            if notification_message:
-                complete_message = notification_message
-                log.info(
-                    f"Comms notifier streamed notification for stream {stream_id}"
-                )
-            else:
-                # Fallback: stream the raw executor result directly so the
-                # user at least sees what the executor produced, even if the
-                # comms-style LLM call returned empty (e.g. safety-filtered).
-                log.warning(
-                    f"Comms notifier: empty LLM notification for stream "
-                    f"{stream_id}, falling back to raw executor result"
-                )
-                if msg_text:
-                    complete_message = msg_text
-                    await stream_manager.publish_chunk(
-                        stream_id,
-                        f"data: {json.dumps({'response': msg_text})}\n\n",
-                    )
-
-        except Exception as e:
-            log.error(f"Comms notifier error for stream {stream_id}: {e}")
-            await stream_manager.publish_chunk(
-                stream_id,
-                f"data: {json.dumps({'error': f'Notification error: {str(e)}'})}\n\n",
-            )
-
-    return complete_message
+    return ""
