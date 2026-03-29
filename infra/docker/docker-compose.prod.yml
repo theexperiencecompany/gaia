@@ -231,8 +231,6 @@ services:
     image: ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest
     env_file:
       - ../../apps/bots/.env
-    ports:
-      - "${WHATSAPP_WEBHOOK_PORT:-3001}:3001"
     restart: always
     depends_on:
       gaia-backend:

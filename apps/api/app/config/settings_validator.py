@@ -259,6 +259,17 @@ class SettingsValidator:
             )
         )
 
+        self.register_group(
+            SettingsGroup(
+                name="WhatsApp Bot (Kapso)",
+                keys=["KAPSO_WEBHOOK_SECRET"],
+                description="Kapso webhook secret for WhatsApp message proxying",
+                affected_features="WhatsApp webhook signature verification — all inbound WhatsApp messages will be rejected without this",
+                required_in_prod=True,
+                all_required=True,
+            )
+        )
+
         # Code Execution
         self.register_group(
             SettingsGroup(
