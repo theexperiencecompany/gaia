@@ -23,7 +23,7 @@ from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
 )
-from app.agents.tools.executor_tool import call_executor
+from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.notify_comms_tool import notify_comms as notify_comms_tool
 from app.agents.tools.notify_executor_tool import notify_executor as notify_executor_tool
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
@@ -164,6 +164,7 @@ async def build_comms_graph(
 
     tool_registry = {
         "call_executor": call_executor,
+        "cancel_executor": cancel_executor,
         "add_memory": memory_tools.add_memory,
         "search_memory": memory_tools.search_memory,
     }
@@ -181,7 +182,7 @@ async def build_comms_graph(
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
-        initial_tool_ids=["call_executor", "add_memory", "search_memory"],
+        initial_tool_ids=["call_executor", "cancel_executor", "add_memory", "search_memory"],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
         end_graph_hooks=[

@@ -35,6 +35,7 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
 )
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
+from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
@@ -306,10 +307,20 @@ async def run_executor_background(
                 await inbox.put({"type": result_type, "message": result_text})
             await inbox.put(None)  # sentinel
 
-        # Deliver notification as a NEW bot message for ALL paths.
+        # Skip notification if the executor was cancelled by the user.
+        # The cancel_executor tool already released the lock and informed
+        # the user — delivering a partial result would be confusing.
+        was_cancelled = stream_id and await StreamManager.is_cancelled(stream_id)
+        if was_cancelled:
+            log.info(
+                f"Skipping notification for cancelled executor "
+                f"(task_id={task_id}, stream={stream_id})"
+            )
+
+        # Deliver notification as a NEW bot message for non-cancelled paths.
         # Invokes comms graph (checkpoint updated naturally), saves to
         # MongoDB, and pushes via WebSocket.
-        if result_text:
+        if result_text and not was_cancelled:
             collected_tool_data: Optional[List[Dict[str, Any]]] = None
             # Collect tool_data from the event collector
             collector = get_tool_event_collector(stream_id)
@@ -336,8 +347,10 @@ async def run_executor_background(
         # Clean up tool event collector for this stream
         deregister_tool_event_collector(stream_id)
 
-        # Process next queued task if one exists
-        await _process_next_queued_task(conversation_id)
+        # Process next queued task if one exists.
+        # Skip if cancelled — cancel_executor already cleared the queue.
+        if not was_cancelled:
+            await _process_next_queued_task(conversation_id)
 
 
 async def _process_next_queued_task(conversation_id: str) -> None:
@@ -373,9 +386,10 @@ async def _process_next_queued_task(conversation_id: str) -> None:
     # Use a synthetic stream_id — no SSE channel exists for queued tasks
     queued_stream_id = f"queued_{uuid4()}"
 
-    # Re-acquire the lock before spawning (same pattern as call_executor)
+    # Re-acquire the lock before spawning (same pattern as call_executor).
+    # Store "stream_id:task_id" so cancel_executor can target by task_id.
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    await redis_cache.set(lock_key, "1", ttl=1800)
+    await redis_cache.set(lock_key, f"{queued_stream_id}:{task_id}", ttl=1800)
 
     # Mark spawned so any concurrent chat_service check is correct
     mark_executor_spawned(queued_stream_id)
