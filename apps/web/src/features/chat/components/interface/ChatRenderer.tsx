@@ -208,6 +208,18 @@ export default function ChatRenderer({
 
           if (!messageProps) return null;
 
+          // Consecutive bot bubble grouping (iMessage-style):
+          // - Only the LAST bot message in a consecutive group shows the avatar
+          // - No actions/timestamps/follow-ups on non-last messages
+          // - Tight spacing (no gap) between grouped messages
+          const nextMessage = messagesWithDeduplicatedToolCalls[index + 1];
+          const prevMessage =
+            index > 0
+              ? messagesWithDeduplicatedToolCalls[index - 1]
+              : undefined;
+          const isFollowedByBot = nextMessage?.type === "bot";
+          const isPrecededByBot = prevMessage?.type === "bot";
+
           if (
             message.type === "bot" &&
             !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
@@ -216,6 +228,13 @@ export default function ChatRenderer({
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
+                disableActions={isFollowedByBot}
+                follow_up_actions={
+                  isFollowedByBot ? undefined : messageProps.follow_up_actions
+                }
+                date={isFollowedByBot ? undefined : messageProps.date}
+                hideAvatar={isFollowedByBot}
+                isGroupedWithPrev={isPrecededByBot}
               />
             );
 

@@ -16,14 +16,16 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from app.agents.core.agent import call_agent
-from app.agents.core.background.comms_notifier import run_comms_notifier
 from app.agents.core.background.inbox import (
     deregister_comms_inbox,
     deregister_executor_inbox,
+    deregister_executor_spawned,
     deregister_pending_subagents,
+    deregister_tool_event_collector,
     register_comms_inbox,
+    register_tool_event_collector,
+    was_executor_spawned,
 )
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.db.redis import redis_cache
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
@@ -35,6 +37,7 @@ from app.models.chat_models import (
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
+from app.db.mongodb.collections import conversations_collection
 from app.services.conversation_service import update_messages
 from app.services.file_service import get_files
 from app.services.payments.payment_service import payment_service
@@ -91,15 +94,15 @@ def _set_stream_log_context(
             conversation_id=conversation_id,
             stream_id=stream_id,
             is_new_conversation=is_new_conversation,
-            message_count=len(body.messages) if body.messages else None,
+            message_count=len(body.messages) if body.messages else 0,
             has_files=bool(body.fileIds or body.fileData),
             file_count=len(body.fileIds or []) + len(body.fileData or []),
-            tool_category=body.toolCategory,
+            tool_category=body.toolCategory or "",
             has_reply=bool(body.replyToMessage),
             has_calendar_event=bool(body.selectedCalendarEvent),
             selected_workflow_id=body.selectedWorkflow.id
             if body.selectedWorkflow
-            else None,
+            else "",
         ),
         user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
         selected_tool=body.selectedTool,
@@ -247,9 +250,15 @@ async def _run_chat_stream(
     usage_metadata: Dict[str, Any] = {}
     follow_up_actions: List[str] = []
     is_cancelled = False
+    _saved = False  # tracks whether _save_conversation_async already ran
 
-    # Register comms inbox — executor's notify_comms tool will push here
+    # Register comms inbox — executor pushes sentinel (None) here when done.
+    # We wait on it to keep SSE open for executor tool events.
     comms_inbox = register_comms_inbox(stream_id)
+    # Register tool event collector — make_redis_stream_writer appends
+    # executor tool events here so we can update the bot message with
+    # tool_data after the executor completes.
+    executor_tool_events = register_tool_event_collector(stream_id)
 
     try:
         description_task = _start_description_task(
@@ -278,6 +287,14 @@ async def _run_chat_stream(
                 stream_id=stream_id,
             )
         else:
+            # For existing conversations there is no async setup before publishing
+            # the init chunk. uvicorn does an asyncio.sleep(0) drain after sending
+            # HTTP response headers, during which this background task can run and
+            # reach publish_chunk before the HTTP subscriber has called
+            # pubsub.subscribe(). Without this sleep the PUBLISH races the SUBSCRIBE
+            # and the init chunk is silently dropped. New conversations avoid this
+            # race via the MongoDB round-trips inside _initialize_new_conversation.
+            await asyncio.sleep(0.05)
             init_data = f"data: {json.dumps({'user_message_id': user_message_id, 'bot_message_id': bot_message_id, 'stream_id': stream_id})}\n\n"
         await stream_manager.publish_chunk(stream_id, init_data)
 
@@ -289,6 +306,7 @@ async def _run_chat_stream(
             user_time=user_time,
             usage_metadata_callback=usage_metadata_callback,
             stream_id=stream_id,
+            user_message_id=user_message_id,
         ):
             if await stream_manager.is_cancelled(stream_id):
                 is_cancelled = True
@@ -344,54 +362,102 @@ async def _run_chat_stream(
             is_cancelled=is_cancelled,
         )
 
-        # ── Background executor + comms notifier ──────────────────────────
-        # If call_executor was used, it spawned a background task and pushed
-        # items to comms_inbox. Run the comms notifier to process them.
-        # If the inbox is empty but the executor lock exists, the executor is
-        # still initialising — wait up to 30s for the first message to arrive.
-        if not is_cancelled and not comms_inbox.empty():
-            log.info(f"Comms notifier starting for stream {stream_id}")
-            notifier_message = await run_comms_notifier(
-                comms_inbox=comms_inbox,
-                conversation_id=conversation_id,
-                user=user,
-                user_time=user_time,
-                stream_id=stream_id,
-                tool_data=tool_data,
-                tool_outputs=tool_outputs,
-                todo_progress_accumulated=todo_progress_accumulated,
-                follow_up_actions=follow_up_actions,
-            )
-            if notifier_message:
-                complete_message = notifier_message
-        elif not is_cancelled and await redis_cache.get(
-            f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-        ):
-            # Executor dispatched but hasn't pushed anything yet — wait for first item.
-            # 30s covers cold graph compilation + LLM warm-up; after that we give up.
-            try:
-                item = await asyncio.wait_for(comms_inbox.get(), timeout=30.0)
-                if item is not None:
-                    await comms_inbox.put(item)
-                    log.info(f"Comms notifier starting (deferred) for stream {stream_id}")
-                    notifier_message = await run_comms_notifier(
-                        comms_inbox=comms_inbox,
-                        conversation_id=conversation_id,
-                        user=user,
-                        user_time=user_time,
-                        stream_id=stream_id,
-                        tool_data=tool_data,
-                        tool_outputs=tool_outputs,
-                        todo_progress_accumulated=todo_progress_accumulated,
-                        follow_up_actions=follow_up_actions,
+        # ── Early save: guarantee ordering before waiting for executor ──
+        # Save the comms ack IMMEDIATELY after the comms streaming loop.
+        # This ensures this message's array position in MongoDB is correct
+        # even if a concurrent stream for a second user message completes
+        # while we wait for the executor below.
+        complete_message, tool_data = await _recover_stream_state(
+            stream_id, complete_message, tool_data
+        )
+        _merge_tool_outputs(tool_data, tool_outputs)
+        _inject_todo_progress(tool_data, todo_progress_accumulated)
+
+        await _save_conversation_async(
+            body=body,
+            user=user,
+            conversation_id=conversation_id,
+            complete_message=complete_message,
+            tool_data=tool_data,
+            metadata=usage_metadata,
+            user_message_id=user_message_id,
+            bot_message_id=bot_message_id,
+        )
+        _saved = True
+
+        # ── Wait for executor tool events to finish ───────────────────────
+        # The SSE stream stays open so the frontend receives live tool
+        # events (progress cards, tool_data). When the executor pushes
+        # the sentinel, we update the saved bot message with accumulated
+        # tool_data, then send [DONE].
+        executor_spawned = was_executor_spawned(stream_id)
+        if not is_cancelled and executor_spawned:
+            log.info(f"Waiting for executor completion for stream {stream_id}")
+            while True:
+                item = await comms_inbox.get()
+                if item is None:
+                    break
+
+                # Deliver progress notifications via WebSocket as they arrive.
+                # Fire-and-forget so we don't block the inbox drain loop.
+                if item.get("type") == "progress" and item.get("message"):
+                    from app.agents.core.background.executor_runner import (
+                        _deliver_bg_notification,
                     )
-                    if notifier_message:
-                        complete_message = notifier_message
-            except asyncio.TimeoutError:
-                log.warning(
-                    f"Timed out waiting for executor first message on stream {stream_id}"
-                )
-        # ── End background executor phase ─────────────────────────────────
+
+                    asyncio.create_task(
+                        _deliver_bg_notification(
+                            result=item["message"],
+                            msg_type="progress",
+                            conversation_id=conversation_id,
+                            user=user,
+                        )
+                    )
+
+            # Update the saved bot message with executor tool_data.
+            executor_td = [
+                e["tool_data"]
+                for e in executor_tool_events
+                if "tool_data" in e
+            ]
+            executor_outputs: Dict[str, str] = {}
+            for evt in executor_tool_events:
+                if "tool_output" in evt:
+                    out = evt["tool_output"]
+                    tid = out.get("tool_call_id")
+                    val = out.get("output")
+                    if tid and val:
+                        executor_outputs[tid] = val
+
+            for entry in executor_td:
+                if entry.get("tool_name") == "tool_calls_data":
+                    data = entry.get("data", {})
+                    if isinstance(data, dict):
+                        tcid = data.get("tool_call_id")
+                        if tcid and tcid in executor_outputs:
+                            data["output"] = executor_outputs[tcid]
+
+            if executor_td:
+                try:
+                    await conversations_collection.update_one(
+                        {
+                            "user_id": user.get("user_id"),
+                            "conversation_id": conversation_id,
+                            "messages.message_id": bot_message_id,
+                        },
+                        {
+                            "$push": {
+                                "messages.$.tool_data": {"$each": executor_td}
+                            }
+                        },
+                    )
+                except Exception as e:
+                    log.error(f"Failed to update bot message tool_data: {e}")
+
+        # Notification delivery is handled by the executor's finally block
+        # via _deliver_bg_notification (WebSocket → NEW bot message in MongoDB).
+        # This ensures the notification is a separate real message with its
+        # own timeline position, not appended to the comms ack bubble.
 
         # Await description task if still pending
         if description_task:
@@ -421,28 +487,30 @@ async def _run_chat_stream(
         deregister_comms_inbox(stream_id)
         deregister_executor_inbox(stream_id)
         deregister_pending_subagents(stream_id)
+        deregister_executor_spawned(stream_id)
+        deregister_tool_event_collector(stream_id)
 
-        # On cancellation, complete_message may be empty because nostream: marker
-        # never arrives. Recover from Redis progress which tracks accumulated text.
-        complete_message, tool_data = await _recover_stream_state(
-            stream_id, complete_message, tool_data
-        )
-
-        # Merge tool outputs into tool_data entries and inject todo_progress before saving
-        _merge_tool_outputs(tool_data, tool_outputs)
-        _inject_todo_progress(tool_data, todo_progress_accumulated)
-
-        # Always save conversation to MongoDB
-        await _save_conversation_async(
-            body=body,
-            user=user,
-            conversation_id=conversation_id,
-            complete_message=complete_message,
-            tool_data=tool_data,
-            metadata=usage_metadata,
-            user_message_id=user_message_id,
-            bot_message_id=bot_message_id,
-        )
+        if not _saved:
+            # Error path: save as fallback. _recover_stream_state / merge /
+            # inject are safe to call even if partially run in try block.
+            try:
+                complete_message, tool_data = await _recover_stream_state(
+                    stream_id, complete_message, tool_data
+                )
+                _merge_tool_outputs(tool_data, tool_outputs)
+                _inject_todo_progress(tool_data, todo_progress_accumulated)
+                await _save_conversation_async(
+                    body=body,
+                    user=user,
+                    conversation_id=conversation_id,
+                    complete_message=complete_message,
+                    tool_data=tool_data,
+                    metadata=usage_metadata,
+                    user_message_id=user_message_id,
+                    bot_message_id=bot_message_id,
+                )
+            except Exception as save_err:
+                log.error(f"Fallback save failed for stream {stream_id}: {save_err}")
 
         # Cleanup Redis
         await stream_manager.cleanup(stream_id)

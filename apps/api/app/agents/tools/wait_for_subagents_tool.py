@@ -70,6 +70,7 @@ async def wait_for_subagents(
         except asyncio.TimeoutError:
             # No item arrived — check if all subagents are done
             if get_pending_subagents(stream_id) == 0:
+                await asyncio.sleep(0)
                 _drain_remaining(queue, results)
                 break
             continue
@@ -83,8 +84,11 @@ async def wait_for_subagents(
         elif msg_type == "subagent_update":
             results.append(f"[{agent} update]\n{message}")
 
-        # All subagents done and queue now empty → exit
+        # All subagents done — yield once so any in-flight put() calls from
+        # tasks that decremented before we read their item can complete,
+        # then non-blocking drain to collect any late arrivals.
         if get_pending_subagents(stream_id) == 0:
+            await asyncio.sleep(0)
             _drain_remaining(queue, results)
             break
 

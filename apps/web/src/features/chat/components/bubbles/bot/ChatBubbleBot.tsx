@@ -18,6 +18,8 @@ import TextBubble from "./TextBubble";
 export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
     disableActions?: boolean;
+    hideAvatar?: boolean;
+    isGroupedWithPrev?: boolean;
     children?: ReactNode;
   },
 ) {
@@ -35,6 +37,8 @@ export default function ChatBubbleBot(
     follow_up_actions,
     isLastMessage,
     disableActions = false,
+    hideAvatar = false,
+    isGroupedWithPrev = false,
     children,
     onRetry,
     isRetrying,
@@ -89,11 +93,11 @@ export default function ChatBubbleBot(
         id={message_id}
         onMouseOver={handleMouseOver}
         onMouseOut={handleMouseOut}
-        className="relative flex flex-col"
+        className={`relative flex flex-col ${isGroupedWithPrev ? "mt-1.5" : ""}`}
       >
         <div className="flex items-end gap-1">
           <div className="relative bottom-0 min-w-10 shrink-0">
-            {showBubbleChrome && (
+            {showBubbleChrome && !hideAvatar && (
               <Image
                 alt="GAIA Logo"
                 src={"/images/logos/logo.webp"}

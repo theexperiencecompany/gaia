@@ -21,6 +21,7 @@ import { toast } from "@/lib/toast";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
+import { useLoadingStore } from "@/stores/loadingStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { TodoProgressSnapshot } from "@/types/features/todoProgressTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
@@ -41,6 +42,25 @@ export const useChatStream = () => {
   // Guard against double invocation of handleStreamClose — it's called from both
   // onmessage (on [DONE]) and onclose (on connection close) in chatApi.ts.
   const streamCloseHandledRef = useRef(false);
+
+  // Holds args for a stream that arrived while another was in progress.
+  // Dispatched automatically in handleStreamClose once the active stream ends.
+  type PendingStreamArgs = [
+    inputText: string,
+    currentMessages: MessageType[],
+    fileData?: FileData[],
+    selectedTool?: string | null,
+    toolCategory?: string | null,
+    selectedWorkflow?: WorkflowData | null,
+    selectedCalendarEvent?: SelectedCalendarEventData | null,
+    optimisticUserId?: string,
+    replyToMessage?: {
+      id: string;
+      content: string;
+      role: "user" | "assistant";
+    } | null,
+  ];
+  const pendingStreamArgsRef = useRef<PendingStreamArgs | null>(null);
 
   // Unified ref storage
   const refs = useRef({
@@ -613,6 +633,12 @@ export const useChatStream = () => {
         }
 
         if (parsed.type === "progress") {
+          // Re-show spinner if it was hidden by an earlier main_response_complete
+          // (executor sending progress after comms ack "I'm on it")
+          if (!useLoadingStore.getState().isLoading) {
+            setIsLoading(true);
+            updateBotMessage({ loading: true });
+          }
           setLoadingText(parsed.message, {
             toolName: parsed.tool_name,
             toolCategory: parsed.tool_category,
@@ -621,6 +647,12 @@ export const useChatStream = () => {
         }
 
         if (parsed.type === "response") {
+          // Re-show spinner if it was hidden by an earlier main_response_complete
+          // (executor result arriving after comms ack "I'm on it")
+          if (!useLoadingStore.getState().isLoading) {
+            setIsLoading(true);
+            updateBotMessage({ loading: true });
+          }
           streamingData.response =
             typeof streamingData.response === "string"
               ? `${streamingData.response}${parsed.chunk}`
@@ -727,6 +759,14 @@ export const useChatStream = () => {
         refs.current.currentStreamingMessages = [];
         refs.current.newConversation = { id: null, description: null };
         useChatStore.getState().setStreamingConversationId(null);
+        const pending = pendingStreamArgsRef.current;
+        if (pending) {
+          pendingStreamArgsRef.current = null;
+          console.log(
+            "[useChatStream] dispatching pending stream after early close",
+          );
+          setTimeout(() => streamFunction(...pending), 100);
+        }
         return;
       }
 
@@ -804,10 +844,30 @@ export const useChatStream = () => {
 
       // Clear streaming indicator
       useChatStore.getState().setStreamingConversationId(null);
+
+      // Dispatch any message that arrived while this stream was in progress.
+      // setTimeout yields to the event loop so React state updates from this
+      // handleStreamClose call settle before the new stream starts.
+      const pending = pendingStreamArgsRef.current;
+      if (pending) {
+        pendingStreamArgsRef.current = null;
+        console.log(
+          "[useChatStream] dispatching pending stream after stream close",
+        );
+        setTimeout(() => streamFunction(...pending), 100);
+      }
     } catch (error) {
       console.error("Error handling stream close:", error);
       streamState.endStream();
       resetStreamState(); // Ensure state is reset even on error
+      const pending = pendingStreamArgsRef.current;
+      if (pending) {
+        pendingStreamArgsRef.current = null;
+        console.log(
+          "[useChatStream] dispatching pending stream after stream error",
+        );
+        setTimeout(() => streamFunction(...pending), 100);
+      }
     }
   };
 
@@ -850,7 +910,22 @@ export const useChatStream = () => {
     } | null = null,
   ) => {
     if (streamInProgressRef.current) {
-      console.warn("[useChatStream] stream already in progress, skipping");
+      console.warn(
+        "[useChatStream] stream already in progress, queuing for later",
+      );
+      // Save the latest args — we only keep the most recent pending request.
+      // When the active stream ends, handleStreamClose will dispatch it.
+      pendingStreamArgsRef.current = [
+        inputText,
+        currentMessages,
+        fileData,
+        selectedTool,
+        toolCategory,
+        selectedWorkflow,
+        selectedCalendarEvent,
+        optimisticUserId,
+        replyToMessage,
+      ];
       return;
     }
     console.log(

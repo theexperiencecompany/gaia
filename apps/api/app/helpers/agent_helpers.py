@@ -322,6 +322,7 @@ def build_agent_config(
 
     # Cherry-pick specific keys from base_configurable if provided
     # Only inherit model config and user context, not LangChain internal state
+    stream_id: Optional[str] = None
     if base_configurable:
         # Inherit model config from parent if not overridden
         provider_name = base_configurable.get("provider", provider_name)
@@ -331,6 +332,7 @@ def build_agent_config(
         tool_category = tool_category or base_configurable.get("tool_category")
         subagent_id = subagent_id or base_configurable.get("subagent_id")
         vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
+        stream_id = base_configurable.get("stream_id")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -347,6 +349,7 @@ def build_agent_config(
         "tool_category": tool_category,
         "subagent_id": subagent_id,
         "vfs_session_id": vfs_session_id,
+        "stream_id": stream_id,
     }
 
     config = {
@@ -447,6 +450,10 @@ async def execute_graph_silent(
         # Process "updates" events - same logic as execute_graph_streaming
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only collect tool_data from the LLM node — pre-model hooks
+                # produce updates containing historical messages with old tool_calls.
+                if node_name != "agent":
+                    continue
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
                         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
@@ -497,7 +504,7 @@ async def execute_graph_silent(
 
             if chunk and isinstance(chunk, AIMessageChunk):
                 content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     complete_message += content
 
         elif stream_mode == "custom":
@@ -606,6 +613,14 @@ async def execute_graph_streaming(
 
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only emit tool_data from the LLM ("agent") node.
+                # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
+                # etc.) also produce "updates" events that include historical
+                # AIMessages with tool_calls from previous turns — emitting those
+                # would replay stale tool cards into the current SSE stream.
+                if node_name != "agent":
+                    continue
+
                 # Process tool entries with metadata lookup
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
@@ -681,7 +696,7 @@ async def execute_graph_streaming(
             # Stream AI response content (only from comms_agent to avoid duplication)
             if chunk and isinstance(chunk, AIMessageChunk):
                 content = chunk.text
-                if content and metadata.get("agent_name") == "comms_agent":
+                if content and config.get("agent_name") == "comms_agent":
                     yield format_sse_response(content)
                     complete_message += content
 
@@ -698,8 +713,9 @@ async def execute_graph_streaming(
                 try:
                     json.dumps(tool_result_payload)
                 except TypeError:
-                    if hasattr(tool_result_payload, "model_dump"):
-                        tool_result_payload = tool_result_payload.model_dump()
+                    model_dump = getattr(tool_result_payload, "model_dump", None)
+                    if callable(model_dump):
+                        tool_result_payload = model_dump()
                     elif hasattr(tool_result_payload, "__dict__"):
                         tool_result_payload = dict(tool_result_payload.__dict__)
                     else:

@@ -30,15 +30,20 @@ async def notify_comms(
         "'Gmail search returned no results for that query, trying broader search.'",
     ],
 ) -> str:
-    """Send a progress update to the user while continuing your work.
+    """Send an INTERMEDIATE progress update to the user while continuing your work.
+
+    IMPORTANT: Do NOT use this for your final result. Your final response is
+    automatically delivered to the user when you finish. This tool is ONLY for
+    mid-execution progress updates when you have more work to do after the update.
 
     Use this when:
-    - You complete a significant subtask (found items, sent messages, created records)
+    - You complete a significant subtask AND have more work to do
     - You have partial results and more work is pending
     - You encounter an issue that changes the approach
     - You're about to start a long operation the user should know about
 
     Do NOT use for:
+    - Your final result or summary (this is sent automatically)
     - Every single tool call (too noisy)
     - Internal bookkeeping (plan_tasks, retrieve_tools, vfs operations)
     - Trivial or expected intermediate steps
