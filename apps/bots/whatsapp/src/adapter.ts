@@ -66,9 +66,21 @@ function loadWhatsAppConfig(): WhatsAppConfig {
 export class WhatsAppAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "whatsapp";
 
-  private waClient!: WhatsAppClient;
-  private waConfig!: WhatsAppConfig;
+  private waClient: WhatsAppClient | null = null;
+  private waConfig: WhatsAppConfig | null = null;
   private httpServer: Server | null = null;
+
+  private get whatsAppClient(): WhatsAppClient {
+    if (!this.waClient)
+      throw new Error("WhatsApp client not initialized — call boot() first");
+    return this.waClient;
+  }
+
+  private get whatsAppConfig(): WhatsAppConfig {
+    if (!this.waConfig)
+      throw new Error("WhatsApp config not initialized — call boot() first");
+    return this.waConfig;
+  }
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -108,7 +120,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         !verifyKapsoSignature(
           rawBody,
           signature,
-          this.waConfig.kapsoWebhookSecret,
+          this.whatsAppConfig.kapsoWebhookSecret,
         )
       ) {
         return c.json({ error: "Invalid signature" }, 401);
@@ -149,10 +161,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
     await new Promise<void>((resolve) => {
       this.httpServer = serve(
-        { fetch: app.fetch, port: this.waConfig.webhookPort },
+        { fetch: app.fetch, port: this.whatsAppConfig.webhookPort },
         () => {
           console.log(
-            `WhatsApp webhook server listening on port ${this.waConfig.webhookPort}`,
+            `WhatsApp webhook server listening on port ${this.whatsAppConfig.webhookPort}`,
           );
           resolve();
         },
@@ -204,9 +216,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     // WhatsApp auto-dismisses after ~25s, so we refresh every 20s to keep it alive
     // for long-running responses. The interval is cleared when a reply is sent.
     const showTyping = () =>
-      this.waClient.messages
+      this.whatsAppClient.messages
         .markRead({
-          phoneNumberId: this.waConfig.kapsoPhoneNumberId,
+          phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
           messageId,
           typingIndicator: { type: "text" },
         })
@@ -388,8 +400,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     waId: string,
     text: string,
   ): Promise<SentMessage> {
-    const response = await this.waClient.messages.sendText({
-      phoneNumberId: this.waConfig.kapsoPhoneNumberId,
+    const response = await this.whatsAppClient.messages.sendText({
+      phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
       to: `+${waId}`,
       body: text,
     });
@@ -400,8 +412,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       id: messageId,
       edit: async (updatedText: string): Promise<void> => {
         // WhatsApp does not support message editing — send a new message instead
-        await this.waClient.messages.sendText({
-          phoneNumberId: this.waConfig.kapsoPhoneNumberId,
+        await this.whatsAppClient.messages.sendText({
+          phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
           to: `+${waId}`,
           body: updatedText,
         });
