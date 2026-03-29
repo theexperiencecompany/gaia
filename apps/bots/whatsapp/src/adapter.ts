@@ -312,16 +312,16 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           if (finalMessageSent) {
             // WhatsApp has no edit API — edit() sends a new message.
             // Guard against sending multiple new messages if streaming is
-            // ever re-enabled or editMessage is called on retry.
+            // ever re-enabled or editMessage is called more than once.
             return;
           }
+          finalMessageSent = true;
           if (lastEditFn) {
             await lastEditFn(updatedText);
           } else {
             const sent = await this.sendWhatsAppText(waId, updatedText);
             lastEditFn = sent.edit;
           }
-          finalMessageSent = true;
         },
         // sendNewMessage: send a new message and return its edit function
         async (newText: string) => {
