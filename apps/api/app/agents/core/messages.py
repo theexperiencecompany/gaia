@@ -83,10 +83,12 @@ async def construct_langchain_messages(
         if memory_msg:
             chain_msgs.append(memory_msg)
 
-    # Add platform context if user is on a text-only platform
-    platform_msg = get_platform_context_message(source)
-    if platform_msg:
-        chain_msgs.append(platform_msg)
+    # Add platform context for comms agent only — executor already has
+    # PLATFORM-AWARE OUTPUT rules in its system prompt (EXECUTOR_AGENT_PROMPT).
+    if agent_type == "comms":
+        platform_msg = get_platform_context_message(source)
+        if platform_msg:
+            chain_msgs.append(platform_msg)
 
     # Extract user's latest message content
     user_content = (
