@@ -513,6 +513,45 @@ function renderTool<K extends ToolName>(
   return renderer ? renderer(data, index) : null;
 }
 
+const REPLY_QUOTE_MAX_LENGTH = 40;
+
+/** Inline reply quote shown at the top of a bot bubble, scrolls to the original message on click. */
+function ReplyQuote({
+  replyToMessage,
+}: {
+  replyToMessage: { id: string; content: string; role: "user" | "assistant" };
+}) {
+  const truncated =
+    replyToMessage.content.length > REPLY_QUOTE_MAX_LENGTH
+      ? `${replyToMessage.content.slice(0, REPLY_QUOTE_MAX_LENGTH).trim()}...`
+      : replyToMessage.content;
+
+  return (
+    <button
+      type="button"
+      className="-mx-5 mb-2 flex w-[calc(100%+40px)] cursor-pointer items-start rounded-md border-l-2 border-zinc-400 bg-zinc-700/50 py-1.5 pl-2.5 pr-3 text-left"
+      onClick={() => {
+        const el = document.getElementById(replyToMessage.id);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.style.transition = "all 0.3s ease";
+          el.style.scale = "1.02";
+          setTimeout(() => {
+            el.style.scale = "1";
+          }, 300);
+        }
+      }}
+    >
+      <div className="flex flex-col overflow-hidden">
+        <span className="text-[11px] font-semibold text-zinc-400">
+          {replyToMessage.role === "user" ? "You" : "GAIA"}
+        </span>
+        <span className="truncate text-[12px] text-zinc-500">{truncated}</span>
+      </div>
+    </button>
+  );
+}
+
 export default function TextBubble({
   text,
   disclaimer,
@@ -520,6 +559,7 @@ export default function TextBubble({
   isConvoSystemGenerated,
   systemPurpose,
   loading,
+  replyToMessage,
 }: ChatBubbleBotProps) {
   const baseId = useId();
 
@@ -675,6 +715,10 @@ export default function TextBubble({
                     key={`${baseId}-text-part-${index}`}
                     className={`${bubbleClassName} ${groupedClasses}`}
                   >
+                    {/* Reply quote: full-width card with left accent border, scrolls to original on click */}
+                    {isFirst && replyToMessage?.content && (
+                      <ReplyQuote replyToMessage={replyToMessage} />
+                    )}
                     <div className={textClass}>
                       {renderBubbleContent(part, isLast)}
                     </div>
