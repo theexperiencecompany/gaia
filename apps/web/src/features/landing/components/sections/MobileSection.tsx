@@ -3,6 +3,7 @@ import { Call02Icon, ChatBotIcon, VoiceIcon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight } from "@/components/shared/icons";
+import { appConfig } from "@/config/appConfig";
 import { SectionHeading } from "@/features/landing/layouts/SectionHeader";
 
 export default function MobileSection() {
@@ -44,7 +45,7 @@ export default function MobileSection() {
           <div className="relative z-1 flex flex-col gap-3 px-5 sm:px-0">
             <Button
               as={Link}
-              href="https://heygaia.app"
+              href={appConfig.site.mobileWaitlist}
               target="_blank"
               rel="noopener noreferrer"
             >

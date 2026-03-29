@@ -81,7 +81,7 @@ export default function Footer() {
           className="mt-10 z-[-1]"
         />
         <div className="flex h-fit w-full items-center justify-center px-6 sm:px-4">
-          <div className="grid w-full max-w-7xl grid-cols-2 md:grid-cols-6 gap-6 sm:gap-3">
+          <div className="grid w-full max-w-7xl grid-cols-2 sm:grid-cols-6 gap-6 sm:gap-3">
             <div className="relative -top-1 col-span-2 md:col-span-1 flex h-full flex-col gap-1 text-foreground-600 sm:-top-2">
               <div className="flex w-fit items-center justify-center rounded-xl p-1">
                 <iframe

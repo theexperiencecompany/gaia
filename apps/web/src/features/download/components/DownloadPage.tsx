@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "@/components/shared/icons";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
+import { appConfig } from "@/config/appConfig";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import {
   GITHUB_RELEASES_BASE,
@@ -385,7 +386,7 @@ function MobileSection() {
         <div className="flex flex-col gap-3">
           <Button
             as={Link}
-            href="https://heygaia.app"
+            href={appConfig.site.mobileWaitlist}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -645,7 +646,7 @@ export function LandingDownloadSection() {
               </Button>
               <Button
                 as={Link}
-                href="https://heygaia.app"
+                href={appConfig.site.mobileWaitlist}
                 target="_blank"
                 fullWidth
                 rel="noopener noreferrer"
