@@ -502,7 +502,7 @@ async def run_scenario(
 
         if scenario.expected_todo_created and actual_new_count == 0:
             failures.append(
-                f"Expected ≥1 tracked todo to be created, but got 0"
+                "Expected ≥1 tracked todo to be created, but got 0"
             )
         elif not scenario.expected_todo_created and actual_new_count > 0:
             todo_titles = [t.get("title", "?") for t in new_todos]

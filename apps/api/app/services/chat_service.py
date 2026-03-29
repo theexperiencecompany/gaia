@@ -26,7 +26,6 @@ from app.agents.core.background.inbox import (
     register_tool_event_collector,
     was_executor_spawned,
 )
-from app.db.redis import redis_cache
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost

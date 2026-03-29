@@ -52,7 +52,11 @@ async def create_tracked_todo(
     ] = "none",
     scheduled_at: Annotated[
         Optional[str],
-        "ISO datetime string when GAIA should execute this todo (e.g., '2026-03-20T09:00:00Z'). If set, GAIA will automatically run this todo at that time.",
+        "ISO datetime string when GAIA should execute this todo. "
+        "IMPORTANT: Always include the user's timezone offset from user_timezone in the config — "
+        "never use 'Z' (UTC) unless the user explicitly says UTC. "
+        "Example: if user says '9am' and their timezone is +05:30, use '2026-03-20T09:00:00+05:30'. "
+        "The backend converts to UTC automatically.",
     ] = None,
     recurrence: Annotated[
         Optional[str],
@@ -61,6 +65,7 @@ async def create_tracked_todo(
     expires_at: Annotated[
         Optional[str],
         "ISO datetime string when this todo becomes irrelevant. "
+        "Always include the user's timezone offset (e.g., '2026-04-01T23:59:00+05:30'). "
         "Use for time-sensitive context like 'check if package arrived' (expires in 3 days) "
         "or 'follow up if no reply' (expires in 2 weeks). "
         "Different from due_date: due_date means 'should be done by'; expires_at means 'no longer matters after'.",
@@ -75,8 +80,8 @@ async def create_tracked_todo(
 
     Do NOT use for one-shot actions with no expected follow-up.
 
-    scheduled_at: ISO datetime string when GAIA should execute this todo (e.g., "2026-03-20T09:00:00Z").
-                  If set, GAIA will automatically run this todo at that time.
+    scheduled_at: ISO datetime with the user's timezone offset (e.g., "2026-03-20T09:00:00+05:30").
+                  Always use the user's timezone offset from config, never raw 'Z' unless user says UTC.
     recurrence: How often to repeat. Options: 'daily', 'weekly', 'every_4h', or a cron expression.
                 Requires scheduled_at to also be set.
     expires_at: ISO datetime string when this todo becomes irrelevant regardless of completion.
@@ -351,7 +356,8 @@ async def update_tracked_todo(
     ] = None,
     scheduled_at: Annotated[
         Optional[str],
-        "ISO datetime string when GAIA should execute this todo. Must be in the future.",
+        "ISO datetime string when GAIA should execute this todo. Must be in the future. "
+        "Always include the user's timezone offset (e.g., '2026-03-20T09:00:00+05:30'), never use 'Z' unless user says UTC.",
     ] = None,
     recurrence: Annotated[
         Optional[str],
