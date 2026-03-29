@@ -1,5 +1,6 @@
 "use client";
 
+import { CircleArrowLeft02Icon } from "@icons";
 import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
@@ -67,12 +68,12 @@ export function FeatureDetailClient({ feature }: Props) {
             href="/features"
             className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
           >
-            ← All features
+            <CircleArrowLeft02Icon width={16} height={16} /> All features
           </Link>
         </div>
 
         {/* Hero text */}
-        <section className="relative z-10 pt-12 pb-12 max-w-3xl mx-auto px-6 text-center">
+        <section className="relative z-10 py-12 max-w-3xl mx-auto px-6 text-center">
           <m.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}

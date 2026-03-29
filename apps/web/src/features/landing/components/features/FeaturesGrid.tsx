@@ -150,9 +150,8 @@ export function FeaturesGrid() {
             </section>
           );
         })}
-
-        <FinalSection />
       </div>
+      <FinalSection />
     </LazyMotionProvider>
   );
 }
