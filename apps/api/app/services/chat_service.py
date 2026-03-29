@@ -93,15 +93,15 @@ def _set_stream_log_context(
             conversation_id=conversation_id,
             stream_id=stream_id,
             is_new_conversation=is_new_conversation,
-            message_count=len(body.messages) if body.messages else None,
+            message_count=len(body.messages) if body.messages else 0,
             has_files=bool(body.fileIds or body.fileData),
             file_count=len(body.fileIds or []) + len(body.fileData or []),
-            tool_category=body.toolCategory,
+            tool_category=body.toolCategory or "",
             has_reply=bool(body.replyToMessage),
             has_calendar_event=bool(body.selectedCalendarEvent),
             selected_workflow_id=body.selectedWorkflow.id
             if body.selectedWorkflow
-            else None,
+            else "",
         ),
         user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
         selected_tool=body.selectedTool,
@@ -472,6 +472,22 @@ async def _run_chat_stream(
                 item = await comms_inbox.get()
                 if item is None:
                     break
+
+                # Deliver progress notifications via WebSocket as they arrive.
+                # Fire-and-forget so we don't block the inbox drain loop.
+                if item.get("type") == "progress" and item.get("message"):
+                    from app.agents.core.background.executor_runner import (
+                        _deliver_bg_notification,
+                    )
+
+                    asyncio.create_task(
+                        _deliver_bg_notification(
+                            result=item["message"],
+                            msg_type="progress",
+                            conversation_id=conversation_id,
+                            user=user,
+                        )
+                    )
 
             # Update the saved bot message with executor tool_data.
             executor_td = [

@@ -713,8 +713,9 @@ async def execute_graph_streaming(
                 try:
                     json.dumps(tool_result_payload)
                 except TypeError:
-                    if hasattr(tool_result_payload, "model_dump"):
-                        tool_result_payload = tool_result_payload.model_dump()
+                    model_dump = getattr(tool_result_payload, "model_dump", None)
+                    if callable(model_dump):
+                        tool_result_payload = model_dump()
                     elif hasattr(tool_result_payload, "__dict__"):
                         tool_result_payload = dict(tool_result_payload.__dict__)
                     else:

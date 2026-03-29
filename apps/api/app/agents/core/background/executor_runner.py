@@ -3,13 +3,11 @@
 Spawned by call_executor tool via asyncio.create_task(). Runs the executor
 agent graph with a Redis stream writer for tool events, then pushes a
 sentinel to the comms inbox (SSE stream can close) and delivers the
-executor result as a NEW bot message via WebSocket.
+executor result by invoking the comms graph, which generates a notification
+and naturally updates the conversation checkpoint.
 
 The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
-
-After delivery, the result is injected into the comms agent's LangGraph
-checkpoint via graph.aupdate_state() so subsequent turns see it in history.
 """
 
 import asyncio
@@ -18,8 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from langchain_core.messages import AIMessage
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langsmith import traceable
 from shared.py.wide_events import log
 
@@ -32,16 +29,15 @@ from app.agents.core.background.inbox import (
     register_tool_event_collector,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
+from app.agents.core.graph_manager import GraphManager
 from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.agents.llm.client import init_llm
-from app.agents.templates.agent_template import COMMS_PROMPT_TEMPLATE
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
@@ -50,6 +46,7 @@ from app.services.conversation_service import update_messages
 _queued_executor_tasks: set[asyncio.Task] = set()
 
 
+@traceable(name="bg_notification_delivery", run_type="chain")
 async def _deliver_bg_notification(
     result: str,
     msg_type: str,
@@ -59,14 +56,15 @@ async def _deliver_bg_notification(
     user_message_id: Optional[str] = None,
     tool_data: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
-    """Generate notification for executor completion, save as NEW message, push via WebSocket.
+    """Invoke the comms graph with the executor result, save as NEW message, push via WebSocket.
 
     This is the unified delivery path for both live and queued executor results.
     The notification is always a standalone bot message — never appended to an
     existing message. The frontend receives it via WebSocket and inserts a new bubble.
 
-    After saving, injects the notification into the comms agent's LangGraph
-    checkpoint so subsequent turns can see the completion in conversation history.
+    The comms graph is invoked with the executor result as a HumanMessage so
+    the agent generates a natural response with full conversation context. The
+    checkpoint is updated naturally through normal graph execution.
 
     Args:
         result: Executor result text (or error message).
@@ -79,24 +77,40 @@ async def _deliver_bg_notification(
         tool_data: Optional tool_data entries to include (for queued tasks where
                    no SSE stream carried them to the frontend live).
     """
-    prefix = "[EXECUTOR_RESULT]" if msg_type == "final" else "[EXECUTOR_ERROR]"
-    user_name = user.get("name", "")
+    prefix_map = {
+        "final": "[EXECUTOR_RESULT]",
+        "error": "[EXECUTOR_ERROR]",
+        "progress": "[EXECUTOR_PROGRESS]",
+    }
+    prefix = prefix_map.get(msg_type, "[EXECUTOR_RESULT]")
 
-    # Generate notification text via LLM
+    # Invoke comms graph with executor result — generates a natural response
+    # and updates the checkpoint in one shot.
+    notification_text = ""
     try:
-        llm = init_llm()
-        system_prompt = COMMS_PROMPT_TEMPLATE.format(user_name=user_name or "there")
-        response = await llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"{prefix}\n{result}"),
-        ])
-        content = response.text if hasattr(response, "text") else ""
-        notification_text = content.replace(NEW_MESSAGE_BREAKER, "").strip()
+        comms_graph = await GraphManager.get_graph("comms_agent")
+        if comms_graph:
+            config = build_agent_config(
+                conversation_id=conversation_id,
+                user=user,
+                user_time=datetime.now(timezone.utc),
+                agent_name="comms_agent",
+            )
+            initial_state = {
+                "messages": [
+                    HumanMessage(
+                        content=f"{prefix}\n{result}",
+                        name="background_executor",
+                    )
+                ],
+            }
+            notification_text, _ = await execute_graph_silent(
+                comms_graph, initial_state, config
+            )
     except Exception as e:
-        log.error(f"_deliver_bg_notification LLM failed: {e}")
-        notification_text = ""
+        log.error(f"_deliver_bg_notification: comms graph invocation failed: {e}")
 
-    # Fallback to raw executor result
+    # Fallback to raw executor result if graph fails
     if not notification_text:
         notification_text = result
 
@@ -210,42 +224,6 @@ async def _deliver_bg_notification(
         f"(task_id={task_id}, ws={ws_delivered}) for conversation {conversation_id}"
     )
 
-    # ── Inject into comms checkpoint so subsequent turns see the completion ──
-    # Without this, the LLM would never know the task finished and would
-    # hallucinate that it's still running on the next user message.
-    # Uses a Redis mutex to prevent concurrent checkpoint writes (e.g. if
-    # another comms invocation starts at the same time).
-    task_label = f" (task_id: {task_id})" if task_id else ""
-    checkpoint_prefix = "[TASK_COMPLETED]" if msg_type == "final" else "[TASK_ERROR]"
-    checkpoint_msg = f"{checkpoint_prefix}{task_label} {notification_text}"
-
-    checkpoint_mutex_key = f"comms:checkpoint_mutex:{conversation_id}"
-    try:
-        from app.agents.core.graph_manager import GraphManager
-
-        # Acquire mutex (short TTL as safety net)
-        await redis_cache.set(checkpoint_mutex_key, "1", ttl=30)
-
-        comms_graph = await GraphManager.get_graph("comms_agent")
-        if comms_graph:
-            checkpoint_config = {"configurable": {"thread_id": conversation_id}}
-            await comms_graph.aupdate_state(
-                checkpoint_config,
-                {"messages": [AIMessage(content=checkpoint_msg)]},
-                as_node="agent",
-            )
-            log.info(
-                f"_deliver_bg_notification: injected completion into comms checkpoint "
-                f"for conversation {conversation_id}"
-            )
-    except Exception as e:
-        log.error(
-            f"_deliver_bg_notification: failed to update comms checkpoint "
-            f"for conversation {conversation_id}: {e}"
-        )
-    finally:
-        await redis_cache.delete(checkpoint_mutex_key)
-
 
 @traceable(name="executor_background", run_type="chain")
 async def run_executor_background(
@@ -262,9 +240,9 @@ async def run_executor_background(
     Designed for asyncio.create_task(). Never raises — all exceptions
     caught and handled.
 
-    When executor completes, _deliver_bg_notification saves a NEW bot
-    message to MongoDB, pushes it via WebSocket, and injects the result
-    into the comms agent's LangGraph checkpoint.
+    When executor completes, _deliver_bg_notification invokes the comms
+    graph with the result, saves the generated response to MongoDB, and
+    pushes it via WebSocket. The checkpoint is updated naturally.
 
     Args:
         task: Task string from comms to executor.
@@ -329,8 +307,8 @@ async def run_executor_background(
             await inbox.put(None)  # sentinel
 
         # Deliver notification as a NEW bot message for ALL paths.
-        # Uses WebSocket broadcast for live push + saves to MongoDB +
-        # injects into comms checkpoint for conversation history.
+        # Invokes comms graph (checkpoint updated naturally), saves to
+        # MongoDB, and pushes via WebSocket.
         if result_text:
             collected_tool_data: Optional[List[Dict[str, Any]]] = None
             # Collect tool_data from the event collector
