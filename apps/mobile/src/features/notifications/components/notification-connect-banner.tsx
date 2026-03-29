@@ -39,8 +39,8 @@ export function NotificationConnectBanner() {
             Stay notified on your devices
           </Text>
           <Text style={{ fontSize: fontSize.xs, color: "#8a9099" }}>
-            Connect Telegram and Discord to receive GAIA notifications outside
-            the app.
+            Connect Telegram, Discord, or WhatsApp to receive GAIA notifications
+            outside the app.
           </Text>
         </View>
 
