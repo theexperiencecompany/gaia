@@ -20,7 +20,6 @@ import { NavbarMenu } from "./NavbarMenu";
 
 const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Product", menu: "product" },
-  { type: "link", label: "Features", href: "/features" },
   { type: "link", label: "Pricing", href: "/pricing" },
   { type: "link", label: "Manifesto", href: "/manifesto" },
   { type: "dropdown", label: "Resources", menu: "resources" },

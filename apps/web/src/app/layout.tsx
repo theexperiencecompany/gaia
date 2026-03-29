@@ -195,6 +195,18 @@ export default async function RootLayout({
           type="image/webp"
         />
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title="GAIA RSS Feed"
+          href="/feed.xml"
+        />
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title="GAIA Blog RSS Feed"
+          href="/blog/rss.xml"
+        />
       </head>
       <body className={`dark ${defaultFont.className}`}>
         <NextIntlClientProvider locale={locale} messages={{}}>
