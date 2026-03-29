@@ -7,6 +7,7 @@ import { m } from "motion/react";
 import Link from "next/link";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import {
   CATEGORY_COLORS,
@@ -36,7 +37,7 @@ export function FeaturesGrid() {
   return (
     <LazyMotionProvider>
       {/* Hero */}
-      <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pb-16 pt-24 text-center">
+      <section className="relative flex flex-col items-center justify-center overflow-hidden px-6 pb-20 pt-32 text-center">
         <div className="absolute inset-0 -z-10">
           <ProgressiveImage
             webpSrc="/images/wallpapers/bands_gradient_1.webp"
@@ -150,12 +151,7 @@ export function FeaturesGrid() {
           );
         })}
 
-        <div className="mt-16 flex flex-col items-center gap-4 pb-16 text-center">
-          <p className="text-lg font-light text-zinc-300">
-            Start using GAIA free
-          </p>
-          <GetStartedButton />
-        </div>
+        <FinalSection />
       </div>
     </LazyMotionProvider>
   );

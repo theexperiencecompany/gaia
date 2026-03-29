@@ -20,13 +20,37 @@ interface Props {
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-4 text-xs font-medium uppercase tracking-widest text-primary">
+      {children}
+    </p>
+  );
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="font-serif mb-4 text-4xl font-normal text-white md:text-5xl">
+      {children}
+    </h2>
+  );
+}
+
+function SectionSubtitle({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-12 text-base font-light leading-relaxed text-zinc-400">
+      {children}
+    </p>
+  );
+}
+
 export function FeatureDetailClient({ feature }: Props) {
   const categoryColor = CATEGORY_COLORS[feature.category];
 
   return (
-    <div className="w-full bg-[#111111] min-h-screen">
+    <div className="w-full min-h-screen">
       {/* Hero — full-width gradient band */}
-      <div className="relative overflow-hidden">
+      <div className="relative overflow-hidden pt-24">
         <Image
           src="/images/wallpapers/bands_gradient_1.webp"
           alt=""
@@ -35,10 +59,10 @@ export function FeatureDetailClient({ feature }: Props) {
           priority
         />
         {/* Fade into page bg at the bottom */}
-        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-40 bg-gradient-to-b from-transparent to-[#111111]" />
+        <div className="pointer-events-none absolute bottom-0 inset-x-0 h-40 bg-gradient-to-b from-transparent to-background" />
 
         {/* Back link */}
-        <div className="relative z-10 pt-10 px-6">
+        <div className="relative z-10 px-6">
           <Link
             href="/features"
             className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors"
@@ -48,12 +72,12 @@ export function FeatureDetailClient({ feature }: Props) {
         </div>
 
         {/* Hero text */}
-        <section className="relative z-10 pt-16 pb-12 max-w-3xl mx-auto px-6 text-center">
+        <section className="relative z-10 pt-12 pb-12 max-w-3xl mx-auto px-6 text-center">
           <m.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease }}
-            className="text-xs uppercase tracking-widest mb-4"
+            className="text-xs uppercase tracking-widest mb-4 font-medium"
             style={{ color: categoryColor.icon }}
           >
             {feature.category}
@@ -62,7 +86,7 @@ export function FeatureDetailClient({ feature }: Props) {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease, delay: 0.1 }}
-            className="font-serif text-4xl md:text-5xl lg:text-6xl font-normal text-zinc-50 mb-6 leading-[1.1]"
+            className="font-serif text-5xl md:text-6xl lg:text-7xl font-normal text-white mb-6 leading-[1.1]"
           >
             {feature.headline}
           </m.h1>
@@ -70,7 +94,7 @@ export function FeatureDetailClient({ feature }: Props) {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease, delay: 0.2 }}
-            className="text-base md:text-lg font-light text-zinc-400 max-w-2xl mx-auto mb-8"
+            className="text-lg md:text-xl font-light leading-relaxed text-white/80 max-w-2xl mx-auto mb-10"
           >
             {feature.subheadline}
           </m.p>
@@ -79,7 +103,11 @@ export function FeatureDetailClient({ feature }: Props) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease, delay: 0.3 }}
           >
-            <GetStartedButton />
+            <GetStartedButton
+              text="Get started free"
+              btnColor="#000000"
+              classname="text-white! text-base h-12 rounded-2xl"
+            />
           </m.div>
         </section>
 
@@ -104,9 +132,12 @@ export function FeatureDetailClient({ feature }: Props) {
         whileInView={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         viewport={{ once: true }}
-        className="max-w-6xl mx-auto px-6 py-16"
+        className="max-w-6xl mx-auto px-6 py-20 text-center"
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <SectionLabel>{feature.category}</SectionLabel>
+        <SectionHeading>Key capabilities</SectionHeading>
+        <SectionSubtitle>What makes {feature.title} powerful.</SectionSubtitle>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
           {feature.benefits.map((benefit) => (
             <div key={benefit.title} className="rounded-2xl bg-zinc-800 p-6">
               <div
@@ -126,36 +157,6 @@ export function FeatureDetailClient({ feature }: Props) {
         </div>
       </m.section>
 
-      {/* Use Cases */}
-      {feature.useCases && (
-        <m.section
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          viewport={{ once: true }}
-          className="max-w-6xl mx-auto px-6 py-12"
-        >
-          <h2 className="text-3xl md:text-4xl font-serif font-normal text-zinc-50 text-center mb-2">
-            How teams use this
-          </h2>
-          <p className="text-sm font-light text-zinc-500 text-center mb-12">
-            Real workflows, real outcomes.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {feature.useCases.map((uc) => (
-              <div key={uc.title} className="rounded-2xl bg-zinc-800 p-6">
-                <h3 className="text-sm font-medium text-zinc-100 mb-2">
-                  {uc.title}
-                </h3>
-                <p className="text-sm font-light text-zinc-400 leading-relaxed">
-                  {uc.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </m.section>
-      )}
-
       {/* How it works */}
       {feature.howItWorks && (
         <m.section
@@ -163,15 +164,14 @@ export function FeatureDetailClient({ feature }: Props) {
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
           viewport={{ once: true }}
-          className="max-w-4xl mx-auto px-6 py-12"
+          className="max-w-4xl mx-auto px-6 py-20 text-center"
         >
-          <h2 className="text-3xl md:text-4xl font-serif font-normal text-zinc-50 text-center mb-2">
-            How it works
-          </h2>
-          <p className="text-sm font-light text-zinc-500 text-center mb-12">
-            Three steps to get started.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <SectionLabel>How it works</SectionLabel>
+          <SectionHeading>Three steps to get started.</SectionHeading>
+          <SectionSubtitle>
+            Set up in minutes. Works automatically from there.
+          </SectionSubtitle>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
             {feature.howItWorks.map((step) => (
               <div key={step.number} className="flex flex-col gap-2">
                 <span className="text-4xl font-mono text-zinc-700">
@@ -189,6 +189,33 @@ export function FeatureDetailClient({ feature }: Props) {
         </m.section>
       )}
 
+      {/* Use Cases */}
+      {feature.useCases && (
+        <m.section
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          viewport={{ once: true }}
+          className="max-w-6xl mx-auto px-6 py-20 text-center"
+        >
+          <SectionLabel>Use cases</SectionLabel>
+          <SectionHeading>How teams use this.</SectionHeading>
+          <SectionSubtitle>Real workflows, real outcomes.</SectionSubtitle>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
+            {feature.useCases.map((uc) => (
+              <div key={uc.title} className="rounded-2xl bg-zinc-800 p-6">
+                <h3 className="text-sm font-medium text-zinc-100 mb-2">
+                  {uc.title}
+                </h3>
+                <p className="text-sm font-light text-zinc-400 leading-relaxed">
+                  {uc.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </m.section>
+      )}
+
       {/* FAQ */}
       {feature.faqs && (
         <m.section
@@ -196,15 +223,14 @@ export function FeatureDetailClient({ feature }: Props) {
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
           viewport={{ once: true }}
-          className="max-w-3xl mx-auto px-6 py-12"
+          className="max-w-3xl mx-auto px-6 py-20 text-center"
         >
-          <h2 className="text-3xl md:text-4xl font-serif font-normal text-zinc-50 text-center mb-2">
-            Frequently asked questions
-          </h2>
-          <p className="text-sm font-light text-zinc-500 text-center mb-10">
-            Everything you need to know.
-          </p>
-          <FAQAccordion faqs={[...feature.faqs]} />
+          <SectionLabel>FAQ</SectionLabel>
+          <SectionHeading>Frequently asked questions.</SectionHeading>
+          <SectionSubtitle>Everything you need to know.</SectionSubtitle>
+          <div className="text-left">
+            <FAQAccordion faqs={[...feature.faqs]} />
+          </div>
         </m.section>
       )}
 
@@ -215,15 +241,14 @@ export function FeatureDetailClient({ feature }: Props) {
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
           viewport={{ once: true }}
-          className="max-w-6xl mx-auto px-6 py-12"
+          className="max-w-6xl mx-auto px-6 py-20 text-center"
         >
-          <h2 className="text-3xl md:text-4xl font-serif font-normal text-zinc-50 text-center mb-2">
-            Related features
-          </h2>
-          <p className="text-sm font-light text-zinc-500 text-center mb-12">
-            Features that work well together.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <SectionLabel>Related</SectionLabel>
+          <SectionHeading>Features that work well together.</SectionHeading>
+          <SectionSubtitle>
+            Combine these with {feature.title} for more power.
+          </SectionSubtitle>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
             {feature.relatedSlugs.map((slug) => {
               const related = getFeatureBySlug(slug);
               if (!related) return null;
