@@ -71,14 +71,16 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private httpServer: Server | null = null;
 
   private get whatsAppClient(): WhatsAppClient {
-    if (!this.waClient)
+    if (!this.waClient) {
       throw new Error("WhatsApp client not initialized — call boot() first");
+    }
     return this.waClient;
   }
 
   private get whatsAppConfig(): WhatsAppConfig {
-    if (!this.waConfig)
+    if (!this.waConfig) {
       throw new Error("WhatsApp config not initialized — call boot() first");
+    }
     return this.waConfig;
   }
 
