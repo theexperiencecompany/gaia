@@ -1,12 +1,13 @@
 "use client";
 
+import { Chip } from "@heroui/chip";
 import { ArrowRight02Icon } from "@icons";
 import type { Easing, Variants } from "motion/react";
 import { m } from "motion/react";
 import Link from "next/link";
+import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
-import LargeHeader from "@/features/landing/components/shared/LargeHeader";
 import {
   CATEGORY_COLORS,
   FEATURE_CATEGORIES,
@@ -14,6 +15,7 @@ import {
 } from "@/features/landing/data/featuresData";
 import { FeatureIcon } from "./FeatureIcon";
 
+const ease = [0.22, 1, 0.36, 1] as const;
 const EASE_OUT: Easing = "easeOut";
 
 const containerVariants: Variants = {
@@ -33,79 +35,126 @@ const cardVariants: Variants = {
 export function FeaturesGrid() {
   return (
     <LazyMotionProvider>
-      <div className="min-h-screen bg-[#111111]">
-        <div className="mx-auto max-w-6xl px-6 py-16">
-          <div className="flex justify-center mb-12">
-            <LargeHeader
-              chipText="Features"
-              headingText="Everything GAIA can do"
-              subHeadingText="30 capabilities across AI, productivity, automation, integrations, and every platform you use."
-              centered
-            />
-          </div>
+      {/* Hero */}
+      <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pb-16 pt-24 text-center">
+        <div className="absolute inset-0 -z-10">
+          <ProgressiveImage
+            webpSrc="/images/wallpapers/bands_gradient_1.webp"
+            pngSrc="/images/wallpapers/bands_gradient_1.png"
+            alt="Gradient background"
+            className="object-cover"
+            shouldHaveInitialFade
+            priority
+          />
+        </div>
 
-          {FEATURE_CATEGORIES.map((category) => {
-            const features = getFeaturesByCategory(category);
-            return (
-              <section key={category} className="mb-16">
-                <p className="mb-4 mt-12 text-xs font-medium uppercase tracking-widest text-[#00bbff]">
-                  {category}
-                </p>
-                <m.div
-                  className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
-                  variants={containerVariants}
-                  initial="hidden"
-                  whileInView="visible"
-                  viewport={{ once: true, margin: "-50px" }}
-                >
-                  {features.map((feature) => {
-                    const color = CATEGORY_COLORS[category];
-                    return (
-                      <m.div
-                        key={feature.slug}
-                        variants={cardVariants}
-                        className="h-full"
+        <m.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease }}
+          className="relative z-10 mb-6"
+        >
+          <Chip variant="flat" color="primary" size="md">
+            Features
+          </Chip>
+        </m.div>
+
+        <m.h1
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease, delay: 0.1 }}
+          className="font-serif relative z-10 mb-6 max-w-4xl text-5xl font-normal leading-[1.1] text-white sm:text-6xl md:text-7xl"
+        >
+          Everything GAIA can do.
+        </m.h1>
+
+        <m.p
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease, delay: 0.2 }}
+          className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
+        >
+          30 capabilities across AI intelligence, productivity, automation,
+          integrations, and every platform you use.
+        </m.p>
+
+        <m.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, ease, delay: 0.3 }}
+          className="relative z-10"
+        >
+          <GetStartedButton
+            text="Get started free"
+            btnColor="#000000"
+            classname="text-white! text-base h-12 rounded-2xl"
+          />
+        </m.div>
+      </section>
+
+      {/* Feature categories */}
+      <div className="mx-auto max-w-6xl px-6 py-16">
+        {FEATURE_CATEGORIES.map((category) => {
+          const features = getFeaturesByCategory(category);
+          return (
+            <section key={category} className="mb-16">
+              <p className="mb-4 mt-12 text-xs font-medium uppercase tracking-widest text-primary">
+                {category}
+              </p>
+              <m.div
+                className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+                variants={containerVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: "-50px" }}
+              >
+                {features.map((feature) => {
+                  const color = CATEGORY_COLORS[category];
+                  return (
+                    <m.div
+                      key={feature.slug}
+                      variants={cardVariants}
+                      className="h-full"
+                    >
+                      <Link
+                        href={`/features/${feature.slug}`}
+                        className="flex h-full flex-col rounded-2xl bg-zinc-800/50 p-5 transition-colors hover:bg-zinc-800"
                       >
-                        <Link
-                          href={`/features/${feature.slug}`}
-                          className="flex h-full flex-col rounded-2xl bg-zinc-800/50 p-5 transition-colors hover:bg-zinc-800"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div
-                              className="flex h-9 w-9 items-center justify-center rounded-xl"
-                              style={{ background: color.bg }}
-                            >
-                              <FeatureIcon
-                                name={feature.icon}
-                                color={color.icon}
-                              />
-                            </div>
-                            <ArrowRight02Icon
-                              size={16}
-                              className="text-zinc-500"
+                        <div className="flex items-center justify-between">
+                          <div
+                            className="flex h-9 w-9 items-center justify-center rounded-xl"
+                            style={{ background: color.bg }}
+                          >
+                            <FeatureIcon
+                              name={feature.icon}
+                              color={color.icon}
                             />
                           </div>
-                          <p className="mt-3 text-sm font-medium text-zinc-100">
-                            {feature.title}
-                          </p>
-                          <p className="mt-1 text-xs font-light leading-relaxed text-zinc-400">
-                            {feature.tagline}
-                          </p>
-                        </Link>
-                      </m.div>
-                    );
-                  })}
-                </m.div>
-              </section>
-            );
-          })}
+                          <ArrowRight02Icon
+                            size={16}
+                            className="text-zinc-500"
+                          />
+                        </div>
+                        <p className="mt-3 text-sm font-medium text-zinc-100">
+                          {feature.title}
+                        </p>
+                        <p className="mt-1 text-xs font-light leading-relaxed text-zinc-400">
+                          {feature.tagline}
+                        </p>
+                      </Link>
+                    </m.div>
+                  );
+                })}
+              </m.div>
+            </section>
+          );
+        })}
 
-          <div className="mt-16 flex flex-col items-center gap-4 pb-16 text-center">
-            <p className="text-lg font-light text-zinc-300">
-              Start using GAIA free
-            </p>
-            <GetStartedButton />
-          </div>
+        <div className="mt-16 flex flex-col items-center gap-4 pb-16 text-center">
+          <p className="text-lg font-light text-zinc-300">
+            Start using GAIA free
+          </p>
+          <GetStartedButton />
         </div>
       </div>
     </LazyMotionProvider>
