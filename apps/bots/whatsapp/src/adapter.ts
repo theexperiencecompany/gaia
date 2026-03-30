@@ -245,6 +245,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     if (!this.welcomeSent.has(waId)) {
       this.welcomeSent.add(waId);
       await this.sendWelcome(waId);
+      // Re-show typing — sending the welcome message dismisses the indicator
+      showTyping();
     }
 
     const target = this.createWaTarget(waId, messageId);

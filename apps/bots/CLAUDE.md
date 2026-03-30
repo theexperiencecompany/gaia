@@ -18,26 +18,61 @@ apps/bots/
 Use **pnpm**, not npm or yarn.
 
 ```bash
-# Run a bot in dev mode (hot reload via tsx watch)
-pnpm --filter @gaia/bot-discord dev
-pnpm --filter @gaia/bot-slack dev
-pnpm --filter @gaia/bot-telegram dev
-pnpm --filter @gaia/bot-whatsapp dev
+# Run all bots in parallel (mise task)
+mise dev:bots
 
-# Build (tsup produces dist/index.js)
-pnpm --filter @gaia/bot-discord build
+# Run a single bot in dev mode (hot reload via tsx watch)
+nx dev bot-discord
+nx dev bot-telegram
+nx dev bot-slack
+nx dev bot-whatsapp
+
+# Build (tsup produces dist/index.js with all deps bundled)
+nx build bot-discord
 
 # Run tests (always from apps/bots/ — vitest.config.ts lives there)
 nx test bots-e2e
-# or directly:
-cd apps/bots && pnpm vitest run --config vitest.config.ts
 
 # Deploy/register platform commands (run after adding or renaming commands)
 pnpm --filter @gaia/bot-discord deploy-commands   # registers Discord slash + context menu commands
 pnpm --filter @gaia/bot-telegram set-commands     # pushes command list to Telegram API
 # Slack: no manual registration step — slash commands are configured in the Slack App dashboard
 # WhatsApp: no registration step — commands matched by text prefix
+
+# CI Docker builds (Dagger)
+mise ci:docker:bot-discord
+mise ci:docker:bot-slack
+mise ci:docker:bot-telegram
+mise ci:docker:bot-whatsapp
 ```
+
+**Single-instance constraint**: Discord and Telegram use persistent connections (WebSocket / long polling). Only **one instance** can run per token at a time. Running `mise dev:bots` while a Docker container is also running the same bot will cause a `409 Conflict` on Telegram or gateway disconnects on Discord. Stop one before starting the other.
+
+## Configuration Pipeline
+
+Environment variables are resolved in this order (first value wins):
+
+```
+1. Process env vars         (Docker -e flags, CI env, shell exports)
+2. apps/bots/.env           (shared across all bots, loaded by loadConfig via dotenv)
+3. apps/bots/{platform}/.env (legacy/Docker fallback, rarely used)
+4. Infisical remote secrets  (fills remaining gaps, local env takes precedence)
+```
+
+`loadConfig()` in `libs/shared/ts/src/bots/config/index.ts` handles this. It is called inside `BaseBotAdapter.boot()`, not in the constructor. No `--require dotenv` flags are needed — dotenv is loaded explicitly in code.
+
+After all sources are exhausted, three vars are validated as required:
+- `GAIA_API_URL` — backend API URL
+- `GAIA_BOT_API_KEY` — shared secret (must match backend's `BOT_API_KEY`)
+- `GAIA_FRONTEND_URL` — web app URL for auth redirects
+
+If any are missing, the process throws and exits.
+
+**Infisical** (production secrets manager):
+- Optional in dev (skipped if not configured)
+- Required in production (`NODE_ENV=production`) — missing Infisical creds = fatal error
+- Only injects keys not already set in `process.env`
+- Needs: `INFISICAL_TOKEN`, `INFISICAL_PROJECT_ID`, `INFISICAL_MACHINE_IDENTITY_CLIENT_ID`, `INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET`
 
 ## Architecture
 
@@ -54,6 +89,8 @@ boot(allCommands)
 ```
 
 The `BaseBotAdapter` (in `libs/shared/ts/src/bots/adapter/base.ts`) owns `dispatchCommand`, `buildContext`, error handling, and the `GaiaClient` instance. Each bot only implements the five abstract methods above.
+
+Shutdown: entry points register `SIGINT`/`SIGTERM` handlers that call `adapter.shutdown()` → `stop()`. No `uncaughtException` or `unhandledRejection` handlers are registered — errors during boot propagate to `main().catch()` and exit with code 1.
 
 ### Unified command system
 

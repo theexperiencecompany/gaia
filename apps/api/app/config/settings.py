@@ -373,6 +373,11 @@ class DevelopmentSettings(CommonSettings):
     FIRECRAWL_API_KEY: Optional[str] = None
 
     # ----------------------------------------------
+    # Internal Service URLs (localhost in dev, Docker hostnames in prod)
+    # ----------------------------------------------
+    WHATSAPP_BOT_URL: str = "http://localhost:3001"
+
+    # ----------------------------------------------
     # Webhook Secrets & Security
     # ----------------------------------------------
     COMPOSIO_WEBHOOK_SECRET: Optional[str] = None

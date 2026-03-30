@@ -391,6 +391,10 @@ run = "dagger call -s docker-build --app bot-slack"
 description = "Build Telegram bot Docker image via Dagger"
 run = "dagger call -s docker-build --app bot-telegram"
 
+[tasks."ci:docker:bot-whatsapp"]
+description = "Build WhatsApp bot Docker image via Dagger"
+run = "dagger call -s docker-build --app bot-whatsapp"
+
 # ── GitHub Actions simulation (via act) ──
 
 [tasks."ci:desktop"]
