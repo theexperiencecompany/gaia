@@ -107,7 +107,11 @@ class TestGetChannelPreferences:
     async def test_get_channel_preferences_success(
         self, mock_fetch: AsyncMock, client: AsyncClient
     ):
-        mock_fetch.return_value = {"telegram": True, "discord": False}
+        mock_fetch.return_value = {
+            "telegram": True,
+            "discord": False,
+            "whatsapp": False,
+        }
         response = await client.get(f"{NOTIF_BASE}/preferences/channels")
         assert response.status_code == 200
         data = response.json()
@@ -147,7 +151,11 @@ class TestUpdateChannelPreferences:
         client: AsyncClient,
     ):
         mock_users.update_one = AsyncMock()
-        mock_fetch.return_value = {"telegram": False, "discord": True}
+        mock_fetch.return_value = {
+            "telegram": False,
+            "discord": True,
+            "whatsapp": False,
+        }
         response = await client.put(
             f"{NOTIF_BASE}/preferences/channels",
             json={"telegram": False, "discord": True},
