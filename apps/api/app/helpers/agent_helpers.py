@@ -305,21 +305,16 @@ def build_agent_config(
     if usage_metadata_callback:
         callbacks.append(usage_metadata_callback)
 
-    model_name = (
-        user_model_config.provider_model_name
-        if user_model_config
-        else DEFAULT_MODEL_NAME
-    )
-    provider_name = (
-        user_model_config.inference_provider.value
-        if user_model_config
-        else DEFAULT_LLM_PROVIDER
-    )
-    max_tokens = (
-        user_model_config.max_tokens if user_model_config else DEFAULT_MAX_TOKENS
-    )
-
-    log.set(model_config_source="user_selected" if user_model_config else "default")
+    if user_model_config:
+        model_name = user_model_config.provider_model_name
+        provider_name = user_model_config.inference_provider.value
+        max_tokens = user_model_config.max_tokens
+        log.set(model_config_source="user_selected")
+    else:
+        model_name = DEFAULT_MODEL_NAME
+        provider_name = DEFAULT_LLM_PROVIDER
+        max_tokens = DEFAULT_MAX_TOKENS
+        log.set(model_config_source="default")
 
     # Cherry-pick specific keys from base_configurable if provided
     # Only inherit model config and user context, not LangChain internal state

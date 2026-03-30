@@ -123,7 +123,7 @@ export function NotificationSection() {
           subtitle="Receive alerts via your connected WhatsApp bot"
           value={channels.whatsapp}
           onValueChange={(val) => {
-            void handleToggle("whatsapp", val);
+            handleToggle("whatsapp", val);
           }}
           disabled={updatingChannel === "whatsapp"}
           isLast

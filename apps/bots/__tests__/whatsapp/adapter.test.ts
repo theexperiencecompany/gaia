@@ -99,73 +99,21 @@ vi.mock("../../whatsapp/src/webhook", () => ({
 // Mock @gaia/shared — BaseBotAdapter stub + shared helpers.
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared", () => {
-  const formatBotErrorImpl = (err: unknown): string =>
-    err instanceof Error ? `Error: ${err.message}` : "Something went wrong";
-
-  const BaseBotAdapter = class {
-    platform = "whatsapp";
-    gaia = {};
-    config = {};
-    commands = new Map();
-
-    protected async dispatchCommand(
-      name: string,
-      target: {
-        sendEphemeral: (
-          t: string,
-        ) => Promise<{ id: string; edit: (t: string) => Promise<void> }>;
-      },
-      args: Record<string, string | number | boolean | undefined> = {},
-      rawText?: string,
-    ) {
-      const cmd = (
-        this.commands as Map<string, { execute: (p: unknown) => Promise<void> }>
-      ).get(name);
-      if (!cmd) {
-        await target.sendEphemeral(`Unknown command: /${name}`);
-        return;
-      }
-      try {
-        await cmd.execute({ gaia: this.gaia, target, ctx: {}, args, rawText });
-      } catch (error) {
-        const errMsg = formatBotErrorImpl(error);
-        try {
-          await target.sendEphemeral(errMsg);
-        } catch {
-          // Target may be expired
-        }
-      }
-    }
-
-    protected buildContext(userId: string, channelId?: string) {
-      return { platform: this.platform, platformUserId: userId, channelId };
-    }
-  };
-
-  return {
-    BaseBotAdapter,
-    formatBotError: vi.fn((err: unknown) =>
-      err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
-    ),
-    handleStreamingChat: vi.fn().mockResolvedValue(undefined),
-    STREAMING_DEFAULTS: {
+vi.mock("@gaia/shared", async () => {
+  const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
+  return makeGaiaSharedMock("whatsapp", {
+    streamingDefaults: {
       whatsapp: {
         editIntervalMs: 2000,
         streaming: false,
         platform: "whatsapp",
       },
     },
-    richMessageToMarkdown: vi
-      .fn()
-      .mockReturnValue("*GAIA Help*\nUse /gaia to chat"),
-    convertToWhatsAppMarkdown: vi
-      .fn()
-      .mockImplementation((text: string) => text),
-    parseTextArgs: vi.fn((text: string) => ({
-      subcommand: text.split(" ")[0] || undefined,
-    })),
-  };
+    converters: {
+      convertToWhatsAppMarkdown: vi.fn((text: string) => text),
+    },
+    defaultRichMarkdown: "*GAIA Help*\nUse /gaia to chat",
+  });
 });
 
 // ---------------------------------------------------------------------------

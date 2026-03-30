@@ -91,7 +91,7 @@ class CommonSettings(BaseAppSettings):
     ENABLE_LAZY_LOADING: bool = True
 
     # Internal service URLs (Docker network)
-    WHATSAPP_BOT_URL: str = "http://whatsapp-bot:3001"
+    WHATSAPP_BOT_URL: str = "http://whatsapp-bot:3001"  # NOSONAR python:S5332 — internal Docker network URL, TLS not applicable
 
     # ----------------------------------------------
     # Observability

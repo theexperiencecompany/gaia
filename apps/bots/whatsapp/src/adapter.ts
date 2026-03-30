@@ -72,7 +72,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private httpServer: Server | null = null;
 
   /** Tracks users who have already received a welcome message this process. */
-  private welcomeSent = new Set<string>();
+  private readonly welcomeSent = new Set<string>();
 
   private get whatsAppClient(): WhatsAppClient {
     if (!this.waClient) {
@@ -413,16 +413,14 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     waId: string,
     messageType: string,
   ): Promise<void> {
-    const typeLabel =
-      messageType === "image"
-        ? "images"
-        : messageType === "audio" || messageType === "voice"
-          ? "audio messages"
-          : messageType === "video"
-            ? "videos"
-            : messageType === "document"
-              ? "documents"
-              : `${messageType} messages`;
+    const typeLabelMap: Record<string, string> = {
+      image: "images",
+      audio: "audio messages",
+      voice: "audio messages",
+      video: "videos",
+      document: "documents",
+    };
+    const typeLabel = typeLabelMap[messageType] ?? `${messageType} messages`;
 
     await this.sendWhatsAppText(
       waId,

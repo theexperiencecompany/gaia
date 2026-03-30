@@ -19,7 +19,9 @@ async function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error("Fatal error:", err);
   process.exit(1);
-});
+}

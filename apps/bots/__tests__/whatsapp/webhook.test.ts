@@ -72,48 +72,48 @@ function buildEvent(
 // ---------------------------------------------------------------------------
 
 describe("verifyKapsoSignature", () => {
-  const secret = "test-secret"; // pragma: allowlist secret
+  const hmacKey = "test-hmac-key";
   const body = '{"phone_number_id":"pn_abc123"}';
 
   it("returns false when signatureHeader is null", () => {
-    expect(verifyKapsoSignature(body, null, secret)).toBe(false);
+    expect(verifyKapsoSignature(body, null, hmacKey)).toBe(false);
   });
 
   it("returns true for a valid raw hex signature", () => {
-    const header = buildSignature(body, secret);
-    expect(verifyKapsoSignature(body, header, secret)).toBe(true);
+    const header = buildSignature(body, hmacKey);
+    expect(verifyKapsoSignature(body, header, hmacKey)).toBe(true);
   });
 
   it("returns false when the signature hex is wrong", () => {
     const header =
       "0000000000000000000000000000000000000000000000000000000000000000";
-    expect(verifyKapsoSignature(body, header, secret)).toBe(false);
+    expect(verifyKapsoSignature(body, header, hmacKey)).toBe(false);
   });
 
   it("returns false when a different secret was used to sign the header", () => {
-    const header = buildSignature(body, "wrong-secret");
-    expect(verifyKapsoSignature(body, header, secret)).toBe(false);
+    const header = buildSignature(body, "wrong-hmac-key");
+    expect(verifyKapsoSignature(body, header, hmacKey)).toBe(false);
   });
 
   it("returns false when the body was tampered after signing", () => {
-    const header = buildSignature(body, secret);
+    const header = buildSignature(body, hmacKey);
     const tamperedBody = `${body} `;
-    expect(verifyKapsoSignature(tamperedBody, header, secret)).toBe(false);
+    expect(verifyKapsoSignature(tamperedBody, header, hmacKey)).toBe(false);
   });
 
   it("returns false when the header has wrong byte length (timingSafeEqual throws → caught → false)", () => {
     // "abc" is far too short — the Buffers will have different lengths,
     // causing timingSafeEqual to throw, which the implementation catches → false.
-    expect(verifyKapsoSignature(body, "abc", secret)).toBe(false);
+    expect(verifyKapsoSignature(body, "abc", hmacKey)).toBe(false);
   });
 
   it("returns false when the header has the sha256= prefix (Kapso sends raw hex, no prefix)", () => {
-    const rawHex = createHmac("sha256", secret)
+    const rawHex = createHmac("sha256", hmacKey)
       .update(body, "utf8")
       .digest("hex");
     const withPrefix = `sha256=${rawHex}`;
     // The Buffer lengths differ ("sha256=" adds 7 bytes), so timingSafeEqual throws → false
-    expect(verifyKapsoSignature(body, withPrefix, secret)).toBe(false);
+    expect(verifyKapsoSignature(body, withPrefix, hmacKey)).toBe(false);
   });
 });
 

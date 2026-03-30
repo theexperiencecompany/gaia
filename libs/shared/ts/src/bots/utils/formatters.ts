@@ -175,12 +175,12 @@ export function convertToWhatsAppMarkdown(text: string): string {
     text,
     (segment) =>
       segment
-        .replace(/\*\*\*(.+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
-        .replace(/\*\*(.+?)\*\*/g, "*$1*") // **bold** → *bold*
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
-        .replace(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
-        .replace(/^>\s*/gm, "") // > quote → strip prefix
-        .replace(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
+        .replaceAll(/\*\*\*([^*]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
+        .replaceAll(/\*\*([^*]+)\*\*/g, "*$1*") // **bold** → *bold*
+        .replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
+        .replaceAll(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
+        .replaceAll(/^>\s*/gm, "") // > quote → strip prefix
+        .replaceAll(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
   );
 }
 
