@@ -15,6 +15,7 @@ These disappear after execution. Not saved anywhere.
 
 — GAIA TRACKED TODOS (create_tracked_todo / update_tracked_todo) —
 GAIA's memory of what it did, when, and how — not the user's todo list.
+These track long-term goals, projects, and multi-conversation initiatives. They are NOT the user's day-to-day action items (those live in providers like Todoist, Google Tasks, Apple Reminders, etc.).
 Create for ANY action touching external systems (email, calendar, Slack, etc.),
 even if it completes immediately. One todo per initiative.
 Two modes:

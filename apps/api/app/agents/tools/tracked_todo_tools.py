@@ -9,17 +9,16 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
-from bson import ObjectId
-from croniter import croniter as _croniter
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from shared.py.wide_events import log
-
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import search_canvas_context
+from bson import ObjectId
+from croniter import croniter as _croniter
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from shared.py.wide_events import log
 
 _background_tasks: set[asyncio.Task] = set()
 
@@ -73,6 +72,10 @@ async def create_tracked_todo(
 ) -> str:
     """
     Create a tracked todo with VFS canvas for persistent working memory.
+
+    These are GAIA's internal memory for long-term goals, projects, and multi-conversation
+    initiatives — NOT the user's personal action-item todos (those live in providers like
+    Todoist, Google Tasks, Apple Reminders, Gaia Todos, etc.).
 
     Use when work will span multiple conversations, expects external
     responses, or needs future follow-up. The todo gets a VFS directory

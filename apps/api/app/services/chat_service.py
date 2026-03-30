@@ -1,10 +1,6 @@
 """
 Chat service with Redis-backed background streaming.
 
-This module provides two streaming modes:
-1. run_chat_stream_background() - Background execution with Redis pub/sub (new)
-2. chat_stream() - Legacy direct streaming (kept for backwards compatibility)
-
 Background streaming decouples LangGraph execution from HTTP request lifecycle,
 ensuring conversations are always saved even if client disconnects.
 """
@@ -16,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from app.agents.core.agent import call_agent
+from app.agents.core.background.executor_runner import _deliver_bg_notification
 from app.agents.core.background.inbox import (
     deregister_comms_inbox,
     deregister_executor_inbox,
@@ -27,22 +24,26 @@ from app.agents.core.background.inbox import (
     was_executor_spawned,
 )
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
-from app.models.chat_models import (
-    MessageModel,
-    UpdateMessagesRequest,
-)
+from app.db.mongodb.collections import conversations_collection
+from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
-from app.db.mongodb.collections import conversations_collection
 from app.services.conversation_service import update_messages
-from app.services.file_service import get_files
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
-from app.utils.stream_utils import process_data_chunk
+from app.utils.stream_utils import (
+    aggregate_usage_metadata,
+    inject_todo_progress,
+    merge_tool_outputs,
+    process_data_chunk,
+    publish_description_if_ready,
+    recover_stream_state,
+    set_stream_log_context,
+)
 from langchain_core.callbacks import UsageMetadataCallbackHandler
+from shared.py.wide_events import ModelContext, log, wide_task
 
 
 async def run_chat_stream_background(
@@ -57,13 +58,6 @@ async def run_chat_stream_background(
 
     This function runs independently of the HTTP request lifecycle.
     Progress is saved to MongoDB on completion, even if client disconnects.
-
-    Args:
-        stream_id: Unique stream identifier for Redis pub/sub
-        body: Message request with history
-        user: User information dict
-        user_time: User's local time
-        conversation_id: Conversation ID (may be new or existing)
     """
     async with wide_task(
         "chat_stream",
@@ -77,35 +71,6 @@ async def run_chat_stream_background(
             user_time=user_time,
             conversation_id=conversation_id,
         )
-
-
-def _set_stream_log_context(
-    body: MessageRequestWithHistory,
-    user_id: Optional[str],
-    conversation_id: str,
-    stream_id: str,
-    is_new_conversation: bool,
-) -> None:
-    """Attach structured log context for the stream."""
-    log.set(
-        user={"id": str(user_id)} if user_id else {},
-        chat=ChatContext(
-            conversation_id=conversation_id,
-            stream_id=stream_id,
-            is_new_conversation=is_new_conversation,
-            message_count=len(body.messages) if body.messages else 0,
-            has_files=bool(body.fileIds or body.fileData),
-            file_count=len(body.fileIds or []) + len(body.fileData or []),
-            tool_category=body.toolCategory or "",
-            has_reply=bool(body.replyToMessage),
-            has_calendar_event=bool(body.selectedCalendarEvent),
-            selected_workflow_id=body.selectedWorkflow.id
-            if body.selectedWorkflow
-            else "",
-        ),
-        user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
-        selected_tool=body.selectedTool,
-    )
 
 
 def _start_description_task(
@@ -127,109 +92,6 @@ def _start_description_task(
             body.selectedWorkflow if body.selectedWorkflow else None,
         )
     )
-
-
-async def _publish_description_if_ready(
-    stream_id: str,
-    description_task: Optional[asyncio.Task],
-) -> Optional[asyncio.Task]:
-    """Publish conversation description chunk if the task has completed. Returns None to clear it."""
-    if not description_task or not description_task.done():
-        return description_task
-    try:
-        description = description_task.result()
-        await stream_manager.publish_chunk(
-            stream_id,
-            f"""data: {json.dumps({"conversation_description": description})}\n\n""",
-        )
-    except Exception as e:
-        log.error(f"Failed to get conversation description: {e}")
-    return None  # Clear to prevent duplicate sends
-
-
-async def _process_data_chunk(
-    stream_id: str,
-    chunk: str,
-    tool_data: Dict[str, Any],
-    tool_outputs: Dict[str, str],
-    todo_progress_accumulated: Dict[str, Any],
-    follow_up_actions: List[str],
-) -> tuple[List[str], bool]:
-    return await process_data_chunk(
-        stream_id, chunk, tool_data, tool_outputs, todo_progress_accumulated, follow_up_actions
-    )
-
-
-def _aggregate_usage_metadata(
-    usage_metadata: Dict[str, Any],
-) -> tuple[int, int]:
-    """Sum input and output tokens across all model entries in usage metadata."""
-    total_input = sum(
-        v.get("input_tokens", 0) for v in usage_metadata.values() if isinstance(v, dict)
-    )
-    total_output = sum(
-        v.get("output_tokens", 0)
-        for v in usage_metadata.values()
-        if isinstance(v, dict)
-    )
-    return total_input, total_output
-
-
-async def _recover_stream_state(
-    stream_id: str,
-    complete_message: str,
-    tool_data: Dict[str, Any],
-) -> tuple[str, Dict[str, Any]]:
-    """
-    Recover complete_message and tool_data from Redis progress when the nostream
-    marker was never delivered (e.g. on cancellation).
-    """
-    if complete_message:
-        return complete_message, tool_data
-
-    progress = await stream_manager.get_progress(stream_id)
-    if not progress:
-        return complete_message, tool_data
-
-    complete_message = progress.get("complete_message", "")
-    progress_tool_data = progress.get("tool_data")
-    if (
-        isinstance(progress_tool_data, dict)
-        and progress_tool_data.get("tool_data")
-        and not tool_data.get("tool_data")
-    ):
-        tool_data = progress_tool_data
-    log.debug(f"Recovered {len(complete_message)} chars from Redis progress")
-    return complete_message, tool_data
-
-
-def _merge_tool_outputs(
-    tool_data: Dict[str, Any],
-    tool_outputs: Dict[str, str],
-) -> None:
-    """Merge captured tool outputs into the tool_data entries before saving."""
-    for entry in tool_data.get("tool_data", []):
-        if entry.get("tool_name") == "tool_calls_data":
-            data = entry.get("data", {})
-            if isinstance(data, dict):
-                tool_call_id = data.get("tool_call_id")
-                if tool_call_id and tool_call_id in tool_outputs:
-                    data["output"] = tool_outputs[tool_call_id]
-
-
-def _inject_todo_progress(
-    tool_data: Dict[str, Any],
-    todo_progress_accumulated: Dict[str, Any],
-) -> None:
-    """Inject accumulated todo_progress snapshots as a single tool_data entry."""
-    if todo_progress_accumulated:
-        tool_data["tool_data"].append(
-            {
-                "tool_name": "todo_progress",
-                "data": todo_progress_accumulated,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-        )
 
 
 async def _run_chat_stream(
@@ -265,13 +127,7 @@ async def _run_chat_stream(
         )
 
         user_id = user.get("user_id")
-        _set_stream_log_context(
-            body,
-            user_id,
-            conversation_id,
-            stream_id,
-            is_new_conversation,
-        )
+        set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
 
@@ -316,9 +172,7 @@ async def _run_chat_stream(
             if chunk == "data: [DONE]\n\n":
                 continue
 
-            description_task = await _publish_description_if_ready(
-                stream_id, description_task
-            )
+            description_task = await publish_description_if_ready(stream_id, description_task)
 
             # Process complete message marker (internal, not sent to client)
             if chunk.startswith("nostream: "):
@@ -334,7 +188,7 @@ async def _run_chat_stream(
 
             if chunk.startswith("data: "):
                 try:
-                    follow_up_actions, _ = await _process_data_chunk(
+                    follow_up_actions, _ = await process_data_chunk(
                         stream_id,
                         chunk,
                         tool_data,
@@ -349,7 +203,7 @@ async def _run_chat_stream(
                 await stream_manager.publish_chunk(stream_id, chunk)
 
         usage_metadata = usage_metadata_callback.usage_metadata or {}
-        total_input, total_output = _aggregate_usage_metadata(usage_metadata)
+        total_input, total_output = aggregate_usage_metadata(usage_metadata)
         log.set(
             model=ModelContext(
                 tokens_used=total_input + total_output,
@@ -366,11 +220,11 @@ async def _run_chat_stream(
         # This ensures this message's array position in MongoDB is correct
         # even if a concurrent stream for a second user message completes
         # while we wait for the executor below.
-        complete_message, tool_data = await _recover_stream_state(
+        complete_message, tool_data = await recover_stream_state(
             stream_id, complete_message, tool_data
         )
-        _merge_tool_outputs(tool_data, tool_outputs)
-        _inject_todo_progress(tool_data, todo_progress_accumulated)
+        merge_tool_outputs(tool_data, tool_outputs)
+        inject_todo_progress(tool_data, todo_progress_accumulated)
 
         await _save_conversation_async(
             body=body,
@@ -400,10 +254,6 @@ async def _run_chat_stream(
                 # Deliver progress notifications via WebSocket as they arrive.
                 # Fire-and-forget so we don't block the inbox drain loop.
                 if item.get("type") == "progress" and item.get("message"):
-                    from app.agents.core.background.executor_runner import (
-                        _deliver_bg_notification,
-                    )
-
                     asyncio.create_task(
                         _deliver_bg_notification(
                             result=item["message"],
@@ -490,14 +340,14 @@ async def _run_chat_stream(
         deregister_tool_event_collector(stream_id)
 
         if not _saved:
-            # Error path: save as fallback. _recover_stream_state / merge /
+            # Error path: save as fallback. recover_stream_state / merge /
             # inject are safe to call even if partially run in try block.
             try:
-                complete_message, tool_data = await _recover_stream_state(
+                complete_message, tool_data = await recover_stream_state(
                     stream_id, complete_message, tool_data
                 )
-                _merge_tool_outputs(tool_data, tool_outputs)
-                _inject_todo_progress(tool_data, todo_progress_accumulated)
+                merge_tool_outputs(tool_data, tool_outputs)
+                inject_todo_progress(tool_data, todo_progress_accumulated)
                 await _save_conversation_async(
                     body=body,
                     user=user,
@@ -541,15 +391,15 @@ async def _initialize_new_conversation(
         selectedTool=body.selectedTool,
         selectedWorkflow=body.selectedWorkflow,
         generate_description=False,
-        conversation_id=conversation_id,  # Use provided ID
+        conversation_id=conversation_id,
     )
 
     init_data = {
         "conversation_id": conversation_id,
-        "conversation_description": conversation.get("description"),
+        "conversation_description": conversation.get("conversation_description"),
         "user_message_id": user_message_id,
         "bot_message_id": bot_message_id,
-        "stream_id": stream_id,  # Include for frontend cancellation
+        "stream_id": stream_id,
     }
 
     return f"data: {json.dumps(init_data)}\n\n"
@@ -565,12 +415,7 @@ async def _save_conversation_async(
     user_message_id: str,
     bot_message_id: str,
 ) -> None:
-    """
-    Save conversation to MongoDB (called from background task).
-
-    This is the async version of update_conversation_messages,
-    called directly instead of via BackgroundTasks.
-    """
+    """Save conversation to MongoDB (called from background task)."""
     user_id = user.get("user_id")
 
     # Process token usage
@@ -620,125 +465,6 @@ async def _save_conversation_async(
 
     # Save to DB
     await update_messages(
-        UpdateMessagesRequest(
-            conversation_id=conversation_id,
-            messages=[user_message, bot_message],
-        ),
-        user=user,
-    )
-
-
-async def initialize_conversation(
-    body: MessageRequestWithHistory, user: dict
-) -> tuple[str, Optional[str], str, str]:
-    """Initialize a conversation or use an existing one."""
-    conversation_id = body.conversation_id or None
-    init_chunk = None
-    user_message_id = str(uuid4())
-    bot_message_id = str(uuid4())
-
-    if conversation_id is None:
-        last_message = body.messages[-1] if body.messages else None
-
-        conversation = await create_conversation(
-            last_message,
-            user=user,
-            selectedTool=body.selectedTool,
-            selectedWorkflow=body.selectedWorkflow,
-            generate_description=False,
-        )
-        conversation_id = conversation.get("conversation_id", "")
-
-        init_chunk = f"""data: {
-            json.dumps(
-                {
-                    "conversation_id": conversation_id,
-                    "conversation_description": conversation.get("description"),
-                    "user_message_id": user_message_id,
-                    "bot_message_id": bot_message_id,
-                }
-            )
-        }\n\n"""
-
-        return conversation_id, init_chunk, user_message_id, bot_message_id
-
-    init_chunk = f"""data: {
-        json.dumps(
-            {
-                "user_message_id": user_message_id,
-                "bot_message_id": bot_message_id,
-            }
-        )
-    }\n\n"""
-
-    uploaded_files = await get_files(
-        user_id=user.get("user_id"),
-        conversation_id=conversation_id,
-    )
-    log.info(f"{uploaded_files=}")
-
-    return conversation_id, init_chunk, user_message_id, bot_message_id
-
-
-def update_conversation_messages(
-    background_tasks: Any,
-    body: MessageRequestWithHistory,
-    user: dict,
-    conversation_id: str,
-    complete_message: str,
-    tool_data: Dict[str, Any] = {},
-    metadata: Dict[str, Any] = {},
-    user_message_id: Optional[str] = None,
-    bot_message_id: Optional[str] = None,
-    follow_up_actions: List[str] = [],
-) -> None:
-    """Schedule conversation update in the background (legacy)."""
-    if metadata and user.get("user_id"):
-        background_tasks.add_task(
-            _process_token_usage_and_cost, user_id=user["user_id"], metadata=metadata
-        )
-
-    bot_timestamp = datetime.now(timezone.utc)
-    user_timestamp = bot_timestamp - timedelta(milliseconds=100)
-
-    user_content = (
-        body.messages[-1].get("content")
-        if body.messages and len(body.messages) > 0
-        else None
-    ) or body.message
-    user_message = MessageModel(
-        type="user",
-        response=user_content,
-        date=user_timestamp.isoformat(),
-        fileIds=body.fileIds,
-        fileData=body.fileData,
-        selectedTool=body.selectedTool,
-        toolCategory=body.toolCategory,
-        selectedWorkflow=body.selectedWorkflow,
-        replyToMessage=body.replyToMessage,
-    )
-
-    if user_message_id:
-        user_message.message_id = user_message_id
-
-    bot_message = MessageModel(
-        type="bot",
-        response=complete_message,
-        date=bot_timestamp.isoformat(),
-        fileIds=body.fileIds,
-        metadata=metadata,
-        follow_up_actions=follow_up_actions,
-    )
-
-    if bot_message_id:
-        bot_message.message_id = bot_message_id
-
-    if tool_data:
-        for key, value in tool_data.items():
-            setattr(bot_message, key, value)
-
-    background_tasks.add_task(
-        update_messages,
         UpdateMessagesRequest(
             conversation_id=conversation_id,
             messages=[user_message, bot_message],

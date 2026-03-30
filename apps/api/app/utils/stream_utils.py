@@ -11,12 +11,16 @@ Used by:
 - chat_service.py and comms_notifier.py (SSE chunk processing)
 """
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from shared.py.wide_events import ChatContext, log
+
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
+from app.models.message_models import MessageRequestWithHistory
 from app.utils.agent_utils import format_tool_call_entry
 
 
@@ -244,3 +248,120 @@ async def process_data_chunk(
             tool_data=None,
         )
     return follow_up_actions, True
+
+
+def set_stream_log_context(
+    body: MessageRequestWithHistory,
+    user_id: Optional[str],
+    conversation_id: str,
+    stream_id: str,
+    is_new_conversation: bool,
+) -> None:
+    """Attach structured log context for a chat stream."""
+    log.set(
+        user={"id": str(user_id)} if user_id else {},
+        chat=ChatContext(
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            is_new_conversation=is_new_conversation,
+            message_count=len(body.messages) if body.messages else 0,
+            has_files=bool(body.fileIds or body.fileData),
+            file_count=len(body.fileIds or []) + len(body.fileData or []),
+            tool_category=body.toolCategory or "",
+            has_reply=bool(body.replyToMessage),
+            has_calendar_event=bool(body.selectedCalendarEvent),
+            selected_workflow_id=body.selectedWorkflow.id
+            if body.selectedWorkflow
+            else "",
+        ),
+        user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+        selected_tool=body.selectedTool,
+    )
+
+
+def aggregate_usage_metadata(usage_metadata: dict[str, Any]) -> tuple[int, int]:
+    """Sum input and output tokens across all model entries in usage metadata."""
+    total_input = sum(
+        v.get("input_tokens", 0) for v in usage_metadata.values() if isinstance(v, dict)
+    )
+    total_output = sum(
+        v.get("output_tokens", 0)
+        for v in usage_metadata.values()
+        if isinstance(v, dict)
+    )
+    return total_input, total_output
+
+
+def merge_tool_outputs(
+    tool_data: dict[str, Any],
+    tool_outputs: dict[str, str],
+) -> None:
+    """Merge captured tool outputs into the tool_data entries before saving."""
+    for entry in tool_data.get("tool_data", []):
+        if entry.get("tool_name") == "tool_calls_data":
+            data = entry.get("data", {})
+            if isinstance(data, dict):
+                tool_call_id = data.get("tool_call_id")
+                if tool_call_id and tool_call_id in tool_outputs:
+                    data["output"] = tool_outputs[tool_call_id]
+
+
+def inject_todo_progress(
+    tool_data: dict[str, Any],
+    todo_progress_accumulated: dict[str, Any],
+) -> None:
+    """Inject accumulated todo_progress snapshots as a single tool_data entry."""
+    if todo_progress_accumulated:
+        tool_data["tool_data"].append(
+            {
+                "tool_name": "todo_progress",
+                "data": todo_progress_accumulated,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+
+async def recover_stream_state(
+    stream_id: str,
+    complete_message: str,
+    tool_data: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """
+    Recover complete_message and tool_data from Redis progress when the nostream
+    marker was never delivered (e.g. on cancellation).
+    """
+    if complete_message:
+        return complete_message, tool_data
+
+    progress = await stream_manager.get_progress(stream_id)
+    if not progress:
+        return complete_message, tool_data
+
+    complete_message = progress.get("complete_message", "")
+    progress_tool_data = progress.get("tool_data")
+    if (
+        isinstance(progress_tool_data, dict)
+        and progress_tool_data.get("tool_data")
+        and not tool_data.get("tool_data")
+    ):
+        tool_data = progress_tool_data
+    log.debug(f"Recovered {len(complete_message)} chars from Redis progress")
+    return complete_message, tool_data
+
+
+async def publish_description_if_ready(
+    stream_id: str,
+    description_task: Optional[asyncio.Task],
+) -> Optional[asyncio.Task]:
+    """Publish conversation description chunk if the task has completed. Returns None to clear it."""
+    if not description_task or not description_task.done():
+        return description_task
+    try:
+        description = description_task.result()
+        await stream_manager.publish_chunk(
+            stream_id,
+            f"""data: {json.dumps({"conversation_description": description})}\n\n""",
+        )
+    except Exception as e:
+        log.error(f"Failed to get conversation description: {e}")
+    return None  # Clear to prevent duplicate sends

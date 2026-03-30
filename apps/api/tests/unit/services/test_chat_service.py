@@ -2,11 +2,9 @@
 
 Tests cover the core orchestration logic in chat_service.py:
 - run_chat_stream_background: end-to-end background streaming coordination
-- _initialize_new_conversation: conversation creation and init chunk format
 - _save_conversation_async: MongoDB persistence with correct message structure
 - extract_tool_data: JSON parsing and tool field extraction
 - _extract_response_text: response text extraction from SSE chunks
-- update_conversation_messages: legacy background-task scheduling path
 
 All external dependencies (Redis/stream_manager, MongoDB, agent, LLM) are
 mocked so tests exercise service logic only.
@@ -18,17 +16,12 @@ from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat_service import (
-    _extract_response_text,
-    _initialize_new_conversation,
     _save_conversation_async,
-    extract_tool_data,
     run_chat_stream_background,
-    update_conversation_messages,
 )
-
+from app.utils.stream_utils import _extract_response_text, extract_tool_data
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -196,101 +189,6 @@ class TestExtractResponseText:
     def test_returns_empty_string_for_empty_response_key(self):
         chunk = f"data: {json.dumps({'response': ''})}\n\n"
         assert _extract_response_text(chunk) == ""
-
-
-# ---------------------------------------------------------------------------
-# _initialize_new_conversation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestInitializeNewConversation:
-    async def test_returns_sse_formatted_init_chunk(self, test_user, basic_body):
-        mock_conv = {
-            "conversation_id": "conv_new_xyz",
-            "description": "New Chat",
-        }
-        with patch(
-            "app.services.chat_service.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ):
-            chunk = await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_new_xyz",
-                user_message_id="umsg_1",
-                bot_message_id="bmsg_1",
-                stream_id="stream_abc",
-            )
-
-        assert chunk.startswith("data: ")
-        assert chunk.endswith("\n\n")
-        payload = json.loads(chunk[6:])
-        assert payload["conversation_id"] == "conv_new_xyz"
-        assert payload["user_message_id"] == "umsg_1"
-        assert payload["bot_message_id"] == "bmsg_1"
-        assert payload["stream_id"] == "stream_abc"
-
-    async def test_passes_generate_description_false(self, test_user, basic_body):
-        """The new-conversation path must pass generate_description=False."""
-        mock_conv = {
-            "conversation_id": "conv_new_xyz",
-            "description": "New Chat",
-        }
-        with patch(
-            "app.services.chat_service.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ) as mock_create:
-            await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_new_xyz",
-                user_message_id="u1",
-                bot_message_id="b1",
-                stream_id="s1",
-            )
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs.get("generate_description") is False
-
-    async def test_uses_provided_conversation_id(self, test_user, basic_body):
-        mock_conv = {
-            "conversation_id": "forced_id",
-            "description": "New Chat",
-        }
-        with patch(
-            "app.services.chat_service.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ) as mock_create:
-            await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="forced_id",
-                user_message_id="u1",
-                bot_message_id="b1",
-                stream_id="s1",
-            )
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs.get("conversation_id") == "forced_id"
-
-    async def test_description_included_in_init_chunk(self, test_user, basic_body):
-        mock_conv = {
-            "conversation_id": "conv_id",
-            "description": "Chat about the weather",
-        }
-        with patch(
-            "app.services.chat_service.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ):
-            chunk = await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_id",
-                user_message_id="u1",
-                bot_message_id="b1",
-                stream_id="s1",
-            )
-        payload = json.loads(chunk[6:])
-        assert payload["conversation_description"] == "Chat about the weather"
 
 
 # ---------------------------------------------------------------------------
@@ -1254,126 +1152,4 @@ class TestRunChatStreamBackground:
         mock_desc.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# update_conversation_messages — legacy synchronous scheduler
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestUpdateConversationMessages:
-    def test_schedules_update_messages_task(self, test_user, basic_body):
-        background_tasks = MagicMock()
-
-        with patch("app.services.chat_service._process_token_usage_and_cost"):
-            update_conversation_messages(
-                background_tasks=background_tasks,
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_legacy",
-                complete_message="Legacy response",
-            )
-
-        # Must schedule an update_messages background task
-        assert background_tasks.add_task.called
-        call_args_list = background_tasks.add_task.call_args_list
-        task_funcs = [call.args[0].__name__ for call in call_args_list]
-        assert "update_messages" in task_funcs
-
-    def test_schedules_token_processing_when_metadata_present(
-        self, test_user, basic_body
-    ):
-        background_tasks = MagicMock()
-        metadata = {"model": {"input_tokens": 10, "output_tokens": 5}}
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="conv_legacy",
-            complete_message="response",
-            metadata=metadata,
-        )
-
-        call_args_list = background_tasks.add_task.call_args_list
-        task_funcs = [call.args[0].__name__ for call in call_args_list]
-        assert "_process_token_usage_and_cost" in task_funcs
-
-    def test_does_not_schedule_token_processing_without_metadata(
-        self, test_user, basic_body
-    ):
-        background_tasks = MagicMock()
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="conv_legacy",
-            complete_message="response",
-            metadata={},
-        )
-
-        call_args_list = background_tasks.add_task.call_args_list
-        task_funcs = [call.args[0].__name__ for call in call_args_list]
-        assert "_process_token_usage_and_cost" not in task_funcs
-
-    def test_update_request_has_correct_conversation_id(self, test_user, basic_body):
-        background_tasks = MagicMock()
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="target_conv_id",
-            complete_message="response",
-        )
-
-        # Find the update_messages task call
-        update_call = next(
-            c
-            for c in background_tasks.add_task.call_args_list
-            if c.args[0].__name__ == "update_messages"
-        )
-        request_arg = update_call.args[1]
-        assert request_arg.conversation_id == "target_conv_id"
-
-    def test_bot_message_id_is_set_when_provided(self, test_user, basic_body):
-        background_tasks = MagicMock()
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="conv_id",
-            complete_message="response",
-            bot_message_id="my_bot_msg_id",
-        )
-
-        update_call = next(
-            c
-            for c in background_tasks.add_task.call_args_list
-            if c.args[0].__name__ == "update_messages"
-        )
-        request_arg = update_call.args[1]
-        bot_msg = request_arg.messages[1]
-        assert bot_msg.message_id == "my_bot_msg_id"
-
-    def test_user_message_id_is_set_when_provided(self, test_user, basic_body):
-        background_tasks = MagicMock()
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="conv_id",
-            complete_message="response",
-            user_message_id="my_user_msg_id",
-        )
-
-        update_call = next(
-            c
-            for c in background_tasks.add_task.call_args_list
-            if c.args[0].__name__ == "update_messages"
-        )
-        request_arg = update_call.args[1]
-        user_msg = request_arg.messages[0]
-        assert user_msg.message_id == "my_user_msg_id"
+1

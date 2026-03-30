@@ -3,12 +3,12 @@ from typing import List, Optional
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
+from shared.py.wide_events import log
 from uuid_extensions import uuid7str
 
 from app.agents.core.state import State
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
-from shared.py.wide_events import log
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.services.conversation_service import (
     ConversationModel,
@@ -124,7 +124,10 @@ async def generate_and_update_description(
         last_message, selectedTool, selectedWorkflow
     )
 
-    await update_conversation_description(conversation_id, description, user)
+    try:
+        await update_conversation_description(conversation_id, description, user)
+    except Exception as e:
+        log.error(f"Failed to persist description to DB for {conversation_id}: {e}")
 
     return description
 
@@ -151,10 +154,9 @@ async def do_prompt_no_stream(
     state = State(messages=messages)
     response = await chatbot(state)
 
-    # Extract the AI's response content
+    # BaseMessage.text handles both plain-string and list-of-blocks content uniformly.
     ai_message = response["messages"][0]
-
-    return {"response": ai_message.content}
+    return {"response": ai_message.text}
 
 
 def get_user_id_from_config(config: RunnableConfig) -> str:
