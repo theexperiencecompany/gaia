@@ -161,6 +161,30 @@ export function convertToSlackMrkdwn(text: string): string {
 }
 
 /**
+ * Converts standard CommonMark Markdown to WhatsApp-compatible formatting.
+ *
+ * WhatsApp supports: `*bold*`, `_italic_`, `~strikethrough~`, `` `code` ``,
+ * ` ```code``` `. Links are shown as bare URLs (WhatsApp auto-links them).
+ *
+ * Converts `**bold**` → `*bold*`, `[label](url)` → `label (url)`,
+ * strips `# headers` to bold, strips blockquote `>` prefixes and horizontal rules.
+ * Code blocks are preserved unchanged.
+ */
+export function convertToWhatsAppMarkdown(text: string): string {
+  return applyOutsideCodeBlocks(
+    text,
+    (segment) =>
+      segment
+        .replace(/\*\*\*(.+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
+        .replace(/\*\*(.+?)\*\*/g, "*$1*") // **bold** → *bold*
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
+        .replace(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
+        .replace(/^>\s*/gm, "") // > quote → strip prefix
+        .replace(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
+  );
+}
+
+/**
  * Formats authentication required message with clear onboarding steps.
  */
 export function formatAuthRequiredMessage(

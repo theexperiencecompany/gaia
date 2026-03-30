@@ -16,7 +16,7 @@
  * 6.  createWaTarget — platform/userId/channelId identity
  * 7.  createWaTarget.send — delegates to sendWhatsAppText
  * 8.  createWaTarget.sendEphemeral — identical to send (no ephemeral concept)
- * 9.  createWaTarget.sendRich — calls richMessageToMarkdown then sendText
+ * 9.  createWaTarget.sendRich — calls richMessageToMarkdown then convertToWhatsAppMarkdown then sendText
  * 10. createWaTarget.startTyping — returns a callable no-op
  * 11. handleIncomingMessage — /gaia <text> routes to handleStreamingMessage
  * 12. handleIncomingMessage — /gaia (no text) sends usage hint, no streaming
@@ -35,6 +35,11 @@
  * 25. handleStreamingMessage — handleStreamingChat throw edits thinkingMsg
  * 26. dispatchCommand — unknown command sends ephemeral error
  * 27. dispatchCommand — registered command that throws sends ephemeral error
+ * 28. handleIncomingMessage — sends welcome on first contact, not on second
+ * 29. handleIncomingMessage — welcome sent per user (different users each get one)
+ * 30. handleUnsupportedMedia — replies with helpful message for image
+ * 31. handleUnsupportedMedia — replies with type-specific label for audio/voice/video/document
+ * 32. createWaTarget.sendRich — applies convertToWhatsAppMarkdown to rendered markdown
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -154,6 +159,9 @@ vi.mock("@gaia/shared", () => {
     richMessageToMarkdown: vi
       .fn()
       .mockReturnValue("*GAIA Help*\nUse /gaia to chat"),
+    convertToWhatsAppMarkdown: vi
+      .fn()
+      .mockImplementation((text: string) => text),
     parseTextArgs: vi.fn((text: string) => ({
       subcommand: text.split(" ")[0] || undefined,
     })),
@@ -164,7 +172,11 @@ vi.mock("@gaia/shared", () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat, richMessageToMarkdown } from "@gaia/shared";
+import {
+  convertToWhatsAppMarkdown,
+  handleStreamingChat,
+  richMessageToMarkdown,
+} from "@gaia/shared";
 import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 
 // ---------------------------------------------------------------------------
@@ -215,6 +227,9 @@ type PrivateAdapter = {
     messageId: string,
   ) => Promise<void>;
   handleStreamingMessage: (waId: string, text: string) => Promise<void>;
+  handleUnsupportedMedia: (waId: string, messageType: string) => Promise<void>;
+  sendWelcome: (waId: string) => Promise<void>;
+  welcomeSent: Set<string>;
   dispatchCommand: (
     name: string,
     target: {
@@ -356,17 +371,25 @@ describe("WhatsAppAdapter - createWaTarget", () => {
     expect(sent.id).toBe("wa-msg-123");
   });
 
-  it("target.sendRich calls richMessageToMarkdown with 'whatsapp' then sends the result", async () => {
+  it("target.sendRich calls richMessageToMarkdown then convertToWhatsAppMarkdown then sends the result", async () => {
     const target = priv.createWaTarget("15551234567");
     const richMsg = { title: "GAIA Help", sections: [] };
 
-    vi.mocked(richMessageToMarkdown).mockReturnValue("*GAIA Help*\nRendered");
+    vi.mocked(richMessageToMarkdown).mockReturnValue(
+      "*GAIA Help*\n**Name:** Aryan",
+    );
+    vi.mocked(convertToWhatsAppMarkdown).mockReturnValue(
+      "*GAIA Help*\n*Name:* Aryan",
+    );
 
     await target.sendRich(richMsg);
 
     expect(richMessageToMarkdown).toHaveBeenCalledWith(richMsg, "whatsapp");
+    expect(convertToWhatsAppMarkdown).toHaveBeenCalledWith(
+      "*GAIA Help*\n**Name:** Aryan",
+    );
     expect(mockSendText).toHaveBeenCalledWith(
-      expect.objectContaining({ body: "*GAIA Help*\nRendered" }),
+      expect.objectContaining({ body: "*GAIA Help*\n*Name:* Aryan" }),
     );
   });
 
@@ -723,5 +746,166 @@ describe("WhatsAppAdapter - dispatchCommand (via BaseBotAdapter stub)", () => {
     await priv.dispatchCommand("boom", mockTarget, {}, undefined);
 
     expect(mockSendEphemeral).toHaveBeenCalledWith("Error: Command exploded");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Welcome message — first contact tracking
+// ---------------------------------------------------------------------------
+
+describe("WhatsAppAdapter - welcome message", () => {
+  let adapter: WhatsAppAdapter;
+  let priv: PrivateAdapter;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-123" }] });
+    mockMarkRead.mockResolvedValue({});
+    adapter = makeAdapter();
+    priv = adapter as unknown as PrivateAdapter;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sends welcome on first message from a user", async () => {
+    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+
+    // First call should be the welcome message
+    const allBodies = mockSendText.mock.calls.map((c) => c[0].body as string);
+    expect(allBodies.some((b) => b.includes("Hey, I'm GAIA"))).toBe(true);
+  });
+
+  it("does NOT send welcome on second message from the same user", async () => {
+    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    vi.clearAllMocks();
+    mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-456" }] });
+    mockMarkRead.mockResolvedValue({});
+
+    await priv.handleIncomingMessage("15551234567", "again", "wamid.002");
+
+    const allBodies = mockSendText.mock.calls.map((c) => c[0].body as string);
+    expect(allBodies.some((b) => b.includes("Hey, I'm GAIA"))).toBe(false);
+  });
+
+  it("sends welcome to different users independently", async () => {
+    await priv.handleIncomingMessage("15551234567", "hello", "wamid.001");
+    vi.clearAllMocks();
+    mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-789" }] });
+    mockMarkRead.mockResolvedValue({});
+
+    await priv.handleIncomingMessage("14441234567", "hi", "wamid.003");
+
+    const allBodies = mockSendText.mock.calls.map((c) => c[0].body as string);
+    expect(allBodies.some((b) => b.includes("Hey, I'm GAIA"))).toBe(true);
+  });
+
+  it("welcome message includes key sections (Chat, Todos, Workflows, Link)", async () => {
+    await priv.sendWelcome("15551234567");
+
+    const body = mockSendText.mock.calls[0][0].body as string;
+    expect(body).toContain("Chat");
+    expect(body).toContain("Todos");
+    expect(body).toContain("Workflows");
+    expect(body).toContain("Link your account");
+    expect(body).toContain("/auth");
+    expect(body).toContain("heygaia.io");
+  });
+
+  it("welcome failure does not throw (silent catch)", async () => {
+    mockSendText.mockRejectedValueOnce(new Error("Network error"));
+
+    await expect(priv.sendWelcome("15551234567")).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleUnsupportedMedia — non-text message handling
+// ---------------------------------------------------------------------------
+
+describe("WhatsAppAdapter - handleUnsupportedMedia", () => {
+  let adapter: WhatsAppAdapter;
+  let priv: PrivateAdapter;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-123" }] });
+    adapter = makeAdapter();
+    priv = adapter as unknown as PrivateAdapter;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('replies with "images" for image messages', async () => {
+    await priv.handleUnsupportedMedia("15551234567", "image");
+
+    expect(mockSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("images"),
+      }),
+    );
+  });
+
+  it('replies with "audio messages" for audio messages', async () => {
+    await priv.handleUnsupportedMedia("15551234567", "audio");
+
+    expect(mockSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("audio messages"),
+      }),
+    );
+  });
+
+  it('replies with "audio messages" for voice messages', async () => {
+    await priv.handleUnsupportedMedia("15551234567", "voice");
+
+    expect(mockSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("audio messages"),
+      }),
+    );
+  });
+
+  it('replies with "videos" for video messages', async () => {
+    await priv.handleUnsupportedMedia("15551234567", "video");
+
+    expect(mockSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("videos"),
+      }),
+    );
+  });
+
+  it('replies with "documents" for document messages', async () => {
+    await priv.handleUnsupportedMedia("15551234567", "document");
+
+    expect(mockSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("documents"),
+      }),
+    );
+  });
+
+  it("replies with generic label for unknown message types", async () => {
+    await priv.handleUnsupportedMedia("15551234567", "sticker");
+
+    expect(mockSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("sticker messages"),
+      }),
+    );
+  });
+
+  it("includes help hint in all media responses", async () => {
+    await priv.handleUnsupportedMedia("15551234567", "image");
+
+    expect(mockSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("/help"),
+      }),
+    );
   });
 });

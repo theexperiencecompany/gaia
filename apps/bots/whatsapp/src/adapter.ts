@@ -19,6 +19,7 @@ import type { Server } from "node:http";
 import {
   BaseBotAdapter,
   type BotCommand,
+  convertToWhatsAppMarkdown,
   handleStreamingChat,
   type PlatformName,
   parseTextArgs,
@@ -69,6 +70,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private waClient: WhatsAppClient | null = null;
   private waConfig: WhatsAppConfig | null = null;
   private httpServer: Server | null = null;
+
+  /** Tracks users who have already received a welcome message this process. */
+  private welcomeSent = new Set<string>();
 
   private get whatsAppClient(): WhatsAppClient {
     if (!this.waClient) {
@@ -155,6 +159,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           this.handleIncomingMessage(waId, text, event.message.id).catch(
             (err) => console.error("Error handling WhatsApp message:", err),
           );
+        } else if (event.message.type !== "text") {
+          // Non-text message (image, audio, video, document, etc.)
+          this.handleUnsupportedMedia(waId, event.message.type).catch((err) =>
+            console.error("Error handling unsupported media:", err),
+          );
         }
       }
 
@@ -231,6 +240,12 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     showTyping();
     const typingInterval = setInterval(showTyping, 20_000);
     const clearTyping = () => clearInterval(typingInterval);
+
+    // Send welcome message on first contact from this user (per-process)
+    if (!this.welcomeSent.has(waId)) {
+      this.welcomeSent.add(waId);
+      await this.sendWelcome(waId);
+    }
 
     const target = this.createWaTarget(waId, messageId);
 
@@ -356,6 +371,64 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   // ---------------------------------------------------------------------------
+  // Welcome message
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Sends a welcome message to a first-time WhatsApp user.
+   *
+   * Adapted from Discord's DM welcome embed — rendered as WhatsApp markdown
+   * since WhatsApp has no native embed/button support.
+   * Tracked per-process via {@link welcomeSent} Set (resets on restart).
+   */
+  private async sendWelcome(waId: string): Promise<void> {
+    const text =
+      `*Hey, I'm GAIA* 👋\n\n` +
+      `Your personal AI — built to think ahead, remember everything, and get things done with you.\n\n` +
+      `Here's what I can do right on WhatsApp:\n\n` +
+      `*💬 Chat*\nJust type anything. Ask questions, brainstorm, think out loud.\n\n` +
+      `*✅ Todos*\nUse /todo add to capture tasks.\n\n` +
+      `*⚡ Workflows*\nRun automations with /workflow. Delegate entire projects.\n\n` +
+      `*🔗 Link your account*\nUse /auth to connect your GAIA account for memory and personalization.\n\n` +
+      `_Visit heygaia.io or read the docs at docs.heygaia.io_`;
+
+    try {
+      await this.sendWhatsAppText(waId, text);
+    } catch {
+      // If we can't send the welcome, continue silently (match Discord behavior)
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Unsupported media handler
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Replies to non-text messages (images, audio, video, documents) with a
+   * helpful message explaining that only text is currently supported.
+   */
+  private async handleUnsupportedMedia(
+    waId: string,
+    messageType: string,
+  ): Promise<void> {
+    const typeLabel =
+      messageType === "image"
+        ? "images"
+        : messageType === "audio" || messageType === "voice"
+          ? "audio messages"
+          : messageType === "video"
+            ? "videos"
+            : messageType === "document"
+              ? "documents"
+              : `${messageType} messages`;
+
+    await this.sendWhatsAppText(
+      waId,
+      `I can't process ${typeLabel} yet — please send your message as text. Type /help for available commands.`,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Message target factory
   // ---------------------------------------------------------------------------
 
@@ -367,7 +440,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * - `edit` sends a NEW message (WhatsApp does not support editing)
    * - `startTyping` is a no-op — typing is already managed by `handleIncomingMessage`
    */
-  private createWaTarget(waId: string, messageId: string): RichMessageTarget {
+  private createWaTarget(waId: string, _messageId: string): RichMessageTarget {
     return {
       platform: "whatsapp",
       userId: waId,
@@ -383,7 +456,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       },
 
       sendRich: async (richMsg: RichMessage): Promise<SentMessage> => {
-        const text = richMessageToMarkdown(richMsg, "whatsapp");
+        const markdown = richMessageToMarkdown(richMsg, "whatsapp");
+        const text = convertToWhatsAppMarkdown(markdown);
         return this.sendWhatsAppText(waId, text);
       },
 
