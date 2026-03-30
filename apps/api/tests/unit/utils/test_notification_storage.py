@@ -502,12 +502,12 @@ class TestNormalizeChannelPreferences:
     def test_none_input_uses_defaults(self) -> None:
         """None prefs fallback to DEFAULT_CHANNEL_PREFERENCES values."""
         result = normalize_channel_preferences(None)
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}
 
     def test_empty_dict_uses_defaults(self) -> None:
         """Empty dict falls back to defaults for every channel."""
         result = normalize_channel_preferences({})
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}
 
     def test_explicit_false_overrides_default(self) -> None:
         """An explicitly False value overrides the default True."""
@@ -562,7 +562,9 @@ class TestFetchChannelPreferences:
             "app.utils.notification.channel_preferences.users_collection",
             mock_collection,
         ):
-            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+            result = await fetch_channel_preferences(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
         assert result["telegram"] is False
         assert result["discord"] is True
@@ -576,9 +578,11 @@ class TestFetchChannelPreferences:
             "app.utils.notification.channel_preferences.users_collection",
             mock_collection,
         ):
-            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+            result = await fetch_channel_preferences(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}
 
     async def test_user_not_found(self) -> None:
         """When user doc is None, use defaults (None prefs)."""
@@ -589,9 +593,11 @@ class TestFetchChannelPreferences:
             "app.utils.notification.channel_preferences.users_collection",
             mock_collection,
         ):
-            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+            result = await fetch_channel_preferences(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}
 
     async def test_user_with_null_prefs_field(self) -> None:
         """When notification_channel_prefs is explicitly None, use defaults."""
@@ -605,6 +611,8 @@ class TestFetchChannelPreferences:
             "app.utils.notification.channel_preferences.users_collection",
             mock_collection,
         ):
-            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+            result = await fetch_channel_preferences(
+                "507f1f77bcf86cd799439011"  # pragma: allowlist secret
+            )
 
-        assert result == {"telegram": True, "discord": True}
+        assert result == {"telegram": True, "discord": True, "whatsapp": True}

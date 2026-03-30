@@ -323,14 +323,19 @@ class TestInitiatePlatformConnect:
         assert "gaia_bot" in resp.json()["instructions"]
 
     @pytest.mark.asyncio
-    async def test_unsupported_platform_no_oauth(self, client: AsyncClient) -> None:
-        """Platform valid but has no OAuth configured -> 501."""
+    async def test_whatsapp_manual(self, client: AsyncClient) -> None:
+        """WhatsApp uses manual flow (no OAuth) -> 200 with instructions."""
         with patch("app.api.v1.endpoints.platform_links.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
+            mock_settings.WHATSAPP_PHONE_NUMBER = "15551234567"
             resp = await client.get(f"{BASE}/whatsapp/connect")
 
-        assert resp.status_code == 501
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["auth_type"] == "manual"
+        assert "WhatsApp" in body["instructions"]
+        assert body["action_link"] == "https://wa.me/15551234567"
 
     @pytest.mark.asyncio
     async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:
