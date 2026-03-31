@@ -307,6 +307,10 @@ run = "nx run-many -t clean"
 description = "Clean Nx cache"
 run = "nx reset"
 
+[tasks."dagger-clean"]
+description = "Clear Dagger engine local cache"
+run = "dagger core engine local-cache prune"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # NX UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────

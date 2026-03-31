@@ -164,3 +164,37 @@ describe("extractTextBody", () => {
     expect(extractTextBody(event)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Additional edge cases
+// ---------------------------------------------------------------------------
+
+describe("verifyKapsoSignature - additional edge cases", () => {
+  const hmacKey = "test-hmac-key";
+  const body = '{"phone_number_id":"pn_abc123"}';
+
+  it("returns false for an empty string signature", () => {
+    expect(verifyKapsoSignature(body, "", hmacKey)).toBe(false);
+  });
+
+  it("returns false for a null body (edge case)", () => {
+    const header = buildSignature(body, hmacKey);
+    // Different body means signature mismatch
+    expect(verifyKapsoSignature("", header, hmacKey)).toBe(false);
+  });
+});
+
+describe("extractTextBody - additional cases", () => {
+  it("returns null for video-type messages", () => {
+    const event = buildEvent({ type: "video", text: undefined });
+    expect(extractTextBody(event)).toBeNull();
+  });
+
+  it("returns the text body for messages with extra fields", () => {
+    const event = buildEvent({
+      type: "text",
+      text: { body: "Message with context" },
+    });
+    expect(extractTextBody(event)).toBe("Message with context");
+  });
+});

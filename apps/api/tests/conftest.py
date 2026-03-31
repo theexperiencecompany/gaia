@@ -157,6 +157,10 @@ def pytest_configure(config):
         "integration: Integration tests (compiled graphs, mocked services)",
     )
     config.addinivalue_line(
+        "markers",
+        "service: Service integration tests (require real Postgres/Redis/MongoDB)",
+    )
+    config.addinivalue_line(
         "markers", "e2e: End-to-end tests (real or near-real services)"
     )
     config.addinivalue_line(

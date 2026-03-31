@@ -162,7 +162,7 @@ class GaiaCi:
                     "run",
                     "pytest",
                     "-m",
-                    "not integration and not composio",
+                    "not integration and not composio and not e2e and not service",
                     "--tb=short",
                     "-q",
                     "--cov=app",
@@ -172,6 +172,40 @@ class GaiaCi:
             )
             .stdout()
         )
+
+    @function
+    async def test_matrix(self, source: Source) -> str:
+        """Run API unit tests against Python 3.11 and 3.12 in parallel."""
+
+        async def _run_on_python(version: str) -> str:
+            return await (
+                dag.container()
+                .from_(f"ghcr.io/astral-sh/uv:python{version}-bookworm-slim")
+                .with_directory("/app", source, ignore=_IGNORE)
+                .with_workdir("/app/apps/api")
+                .with_exec(
+                    ["uv", "sync", "--frozen", "--group", "backend", "--group", "dev"]
+                )
+                .with_env_variable("ENV", "test")
+                .with_exec(
+                    [
+                        "uv",
+                        "run",
+                        "pytest",
+                        "-m",
+                        "not integration and not composio and not e2e and not service",
+                        "--tb=short",
+                        "-q",
+                    ]
+                )
+                .stdout()
+            )
+
+        py311, py312 = await asyncio.gather(
+            _run_on_python("3.11"),
+            _run_on_python("3.12"),
+        )
+        return f"=== Python 3.11 ===\n{py311}\n\n=== Python 3.12 ===\n{py312}"
 
     @function
     async def dead_code(self, source: Source) -> str:
@@ -254,7 +288,7 @@ class GaiaCi:
                     "run",
                     "pytest",
                     "-m",
-                    "integration",
+                    "integration or service",
                     "--tb=short",
                     "-q",
                 ]
@@ -368,7 +402,7 @@ class GaiaCi:
                     "run",
                     "pytest",
                     "-m",
-                    "not integration and not composio",
+                    "not integration and not composio and not e2e and not service",
                     "--tb=short",
                     "-q",
                     "--cov=app",
@@ -389,6 +423,59 @@ class GaiaCi:
             ["node", "scripts/ci/validate-release-manifest.mjs"]
         ).stdout()
 
+        pg = self.postgres_service()
+        redis = self.redis_service()
+        mongo = self.mongo_service()
+        service_test_task = (
+            self.ci_env(source)
+            .with_service_binding("postgres", pg)
+            .with_service_binding("redis", redis)
+            .with_service_binding("mongo", mongo)
+            .with_env_variable("ENV", "test")
+            .with_env_variable(
+                "DATABASE_URL",
+                "postgresql://gaia:gaia@postgres:5432/gaia_test",
+            )
+            .with_env_variable("REDIS_URL", "redis://redis:6379/0")
+            .with_env_variable(
+                "MONGODB_URL",
+                "mongodb://gaia:gaia@mongo:27017/gaia_test?authSource=admin",
+            )
+            .with_workdir("/app/apps/api")
+            .with_exec(
+                [
+                    "uv",
+                    "run",
+                    "pytest",
+                    "-m",
+                    "service",
+                    "--tb=short",
+                    "-q",
+                ]
+            )
+            .stdout()
+        )
+
+        trivy_task = (
+            dag.container()
+            .from_("aquasec/trivy:latest")
+            .with_directory("/src", source)
+            .with_exec(
+                [
+                    "trivy",
+                    "fs",
+                    "--exit-code",
+                    "0",  # Don't fail CI on first scan (informational)
+                    "--severity",
+                    "CRITICAL,HIGH",
+                    "--format",
+                    "table",
+                    "/src/apps/api",
+                ]
+            )
+            .stdout()
+        )
+
         results = await asyncio.gather(
             lint_task,
             type_check_task,
@@ -396,6 +483,8 @@ class GaiaCi:
             test_task,
             dead_code_task,
             validate_task,
+            service_test_task,
+            trivy_task,
         )
 
         labels = [
@@ -405,6 +494,8 @@ class GaiaCi:
             "TEST",
             "DEAD-CODE",
             "RELEASE-VALIDATION",
+            "SERVICE-TESTS",
+            "TRIVY-SCAN",
         ]
         sections = []
         for label, output in zip(labels, results):

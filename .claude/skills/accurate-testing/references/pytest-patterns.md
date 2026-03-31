@@ -9,6 +9,8 @@
 5. [Async Testing](#async-testing)
 6. [Factory Pattern](#factory-pattern)
 7. [Testing Exceptions](#testing-exceptions)
+8. [Integration Test Fixtures](#integration-test-fixtures)
+9. [Async Pub/Sub Testing](#async-pubsub-testing)
 
 ---
 
@@ -218,4 +220,112 @@ def test_api_error_includes_status():
         call_external_api(bad_params)
     assert exc_info.value.status_code == 422
     assert "validation" in exc_info.value.detail
+```
+
+---
+
+## Integration Test Fixtures
+
+### Overriding Root Mocks for Integration Tests
+
+Root `conftest.py` often mocks databases globally for speed. Integration tests need to override those mocks with real connections. Use `monkeypatch.setattr` on the module attribute — it automatically reverts after the test.
+
+```python
+# Root conftest.py (applies to all tests by default)
+@pytest.fixture(autouse=True)
+def mock_mongo(monkeypatch):
+    monkeypatch.setattr("app.db.mongo._get_mongodb_instance", MagicMock())
+
+# Integration conftest.py — override for this test directory only
+@pytest.fixture
+async def real_mongo(mongo_url):
+    client = AsyncIOMotorClient(mongo_url)
+    db = client["test_db"]
+    yield db
+    await client.drop_database("test_db")
+    client.close()
+
+@pytest.fixture
+async def conversations_collection(real_mongo, monkeypatch):
+    """Swap the module-level collection used by conversation_service."""
+    import app.services.conversation_service as conv_svc
+    coll = real_mongo["conversations"]
+    await coll.delete_many({})
+    monkeypatch.setattr(conv_svc, "conversations_collection", coll)
+    yield coll
+    await coll.delete_many({})
+```
+
+### Patching Module Singletons
+
+For services built on a module-level singleton (a shared client instantiated at import time), patch the singleton's attribute rather than individual methods. This one patch makes all production code in that module use the real resource.
+
+```python
+# The singleton: redis_cache = RedisCache()  (instantiated once at import)
+# All production code calls redis_cache.redis.publish(...), redis_cache.get(...), etc.
+
+@pytest.fixture
+async def real_redis(redis_url, monkeypatch):
+    from app.db.redis import redis_cache
+    client = Redis.from_url(redis_url, decode_responses=True)
+    await client.ping()
+    monkeypatch.setattr(redis_cache, "redis", client)  # one patch covers all callers
+    yield client
+    await client.flushdb()
+    await client.aclose()
+```
+
+The `monkeypatch` fixture automatically restores the original value after each test — no manual cleanup needed.
+
+---
+
+## Async Pub/Sub Testing
+
+When testing publisher/subscriber flows (Redis channels, message queues), run publisher and subscriber concurrently with `asyncio.gather`. A subscriber that starts after publishing has already completed will never receive messages.
+
+```python
+@pytest.mark.asyncio
+async def test_stream_delivers_all_chunks(real_redis):
+    from app.core.stream_manager import StreamManager
+
+    stream_id = "test-stream-1"
+    published: list[str] = []
+    received: list[str] = []
+
+    async def publisher():
+        await StreamManager.start_stream(stream_id, "conv1", "user1")
+        for i in range(3):
+            chunk = f"data: chunk-{i}\n\n"
+            await StreamManager.publish_chunk(stream_id, chunk)
+            published.append(chunk)
+        await StreamManager.complete_stream(stream_id)
+
+    async def subscriber():
+        async for chunk in StreamManager.subscribe_stream(stream_id):
+            received.append(chunk)
+
+    # Run both concurrently — subscriber must be active while publisher sends
+    await asyncio.gather(subscriber(), publisher())
+
+    assert received == published
+
+@pytest.mark.asyncio
+async def test_cancelled_stream_stops_subscriber(real_redis):
+    from app.core.stream_manager import StreamManager
+
+    stream_id = "test-cancel-1"
+
+    async def publisher():
+        await StreamManager.start_stream(stream_id, "conv1", "user1")
+        await StreamManager.publish_chunk(stream_id, "data: first\n\n")
+        await StreamManager.cancel_stream(stream_id)
+
+    chunks = []
+    async def subscriber():
+        async for chunk in StreamManager.subscribe_stream(stream_id):
+            chunks.append(chunk)
+
+    await asyncio.gather(subscriber(), publisher())
+    # Cancelled stream yields the chunks before cancellation, then stops
+    assert chunks == ["data: first\n\n"]
 ```
