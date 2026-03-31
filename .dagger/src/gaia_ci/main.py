@@ -278,7 +278,8 @@ class GaiaCi:
             .with_secret_variable(
                 "DATABASE_URL",
                 dag.set_secret(
-                    "db-url", "postgresql://gaia:gaia@postgres:5432/gaia_test"
+                    "db-url",
+                    "postgresql://gaia:gaia@postgres:5432/gaia_test",  # pragma: allowlist secret
                 ),
             )
             .with_secret_variable(
@@ -289,7 +290,7 @@ class GaiaCi:
                 "MONGODB_URL",
                 dag.set_secret(
                     "mongo-url",
-                    "mongodb://gaia:gaia@mongo:27017/gaia_test?authSource=admin",
+                    "mongodb://gaia:gaia@mongo:27017/gaia_test?authSource=admin",  # pragma: allowlist secret
                 ),
             )
             .with_workdir("/app/apps/api")
@@ -484,20 +485,20 @@ class GaiaCi:
 
         trivy_task = (
             dag.container()
-            .from_("aquasecurity/trivy:latest")
+            .from_("ghcr.io/aquasecurity/trivy:latest")
             .with_directory("/src", source)
+            # Entrypoint is `trivy`, so args start after it.
+            # expect=ANY: informational scan — never fail CI.
             .with_exec(
                 [
-                    "trivy",
-                    "fs",
-                    "--exit-code",
-                    "0",  # Don't fail CI on first scan (informational)
+                    "filesystem",
                     "--severity",
                     "CRITICAL,HIGH",
                     "--format",
                     "table",
                     "/src/apps/api",
-                ]
+                ],
+                expect=dagger.ReturnType.ANY,
             )
             .stdout()
         )
