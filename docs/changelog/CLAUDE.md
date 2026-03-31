@@ -4,7 +4,7 @@ This file documents the structure and conventions for `release-notes.mdx`.
 
 ## File
 
-`docs/changelog/release-notes.mdx` — registered in `docs.json` under the Changelog tab.
+`docs/release-notes.mdx` — registered in `docs.json` under the Release Notes tab.
 
 ## Entry Format
 
