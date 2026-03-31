@@ -8,11 +8,12 @@ This file documents the structure and conventions for `release-notes.mdx`.
 
 ## Entry Format
 
-Every release uses the Mintlify `<Update>` component:
+Every release uses the Mintlify `<Update>` component. For the per-app era (post-v0.11.0), each app section is wrapped in `<AppSection app="...">` for client-side filtering:
 
 ```mdx
-<Update label="Feb 27, 2026 (v0.16.0)" description="Changes to API, Web, Desktop, Mobile, Bots, CLI">
+<Update label="Feb 27, 2026" description="Changes to API, Web, Desktop, Mobile, Bots, CLI">
 
+<AppSection app="api">
 # [API v0.16.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.16.0)
 
 ## Features
@@ -20,25 +21,29 @@ Every release uses the Mintlify `<Update>` component:
 
 ## Bug Fixes
 - **Fix name**: What was fixed
+</AppSection>
 
+<AppSection app="web">
 ---
 
 # [Web v0.17.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.17.0)
 
 ## Features
 - ...
+</AppSection>
 
 </Update>
 ```
 
+The `FilterableChangelog` and `AppSection` components are defined in `docs/snippets/filterable-changelog.mdx` and imported at the top of `release-notes.mdx`.
+
 ## Label Convention
 
-Format: `ShortMonth Day, Year (vX.Y.Z)`
+Format: `ShortMonth Day, Year`
 
 - Short month names: Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec
-- Version in parentheses is the API version (the primary version identifier)
-- No `-beta` suffix in labels
-- Examples: `Feb 27, 2026 (v0.16.0)`, `Aug 2, 2025 (v0.1.0)`
+- No version number in the label
+- Examples: `Feb 27, 2026`, `Aug 2, 2025`
 
 ## Description Convention
 
@@ -93,10 +98,17 @@ Entries are in **reverse chronological order** (newest first).
 - Be comprehensive but concise: cover every meaningful change
 - Group related micro-changes into single bullet points
 
+## AppSection Rules
+
+- **First** app section in an Update: no `---` inside the wrapper
+- **Subsequent** app sections: include `---` at the top, before the `#` heading
+- `app` prop is always lowercase: `api`, `web`, `desktop`, `mobile`, `bots`, `cli`
+- Legacy "Platform" entries (pre-v0.11.0) are NOT wrapped — they have no per-app separation
+
 ## Adding a New Entry
 
 1. Determine the release date and which apps shipped
 2. For each app, read `gh release view {app}-{version}` and `git log --oneline {prev-tag}..{new-tag}`
-3. Write the entry at the TOP of the file (after frontmatter)
-4. Follow the format above exactly
+3. Write the entry at the TOP of the file (after the `<FilterableChangelog>` opening tag)
+4. Wrap each app section in `<AppSection app="...">` per the format above
 5. Update `docs.json` only if the page path changes (it shouldn't)
