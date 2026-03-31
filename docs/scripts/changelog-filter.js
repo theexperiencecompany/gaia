@@ -162,9 +162,9 @@
     // Clear button
     var clearBtn = document.createElement("button");
     clearBtn.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:5px;margin-top:-1px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Clear filters';
+      '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:5px;margin-top:-1px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Clear filters';
     clearBtn.style.cssText =
-      "margin-left:8px;padding:5px 12px;border-radius:6px;font-size:13px;font-weight:500;" +
+      "margin-left:8px;padding:7px 12px;border-radius:10px;font-size:13px;font-weight:500;" +
       "cursor:pointer;border:none;background:rgba(128,128,128,0.15);opacity:0.6;" +
       "font-family:inherit;line-height:1.4;white-space:nowrap;" +
       "transition:opacity 120ms ease;display:none;";
@@ -194,8 +194,12 @@
 
       document.querySelectorAll(".update-container").forEach(function (container) {
         var appSections = container.querySelectorAll("[data-cl-app]");
-        var hide = appSections.length > 0 &&
-          !Array.from(appSections).some(function (s) { return s.style.display !== "none"; });
+        var isLegacy = appSections.length === 0;
+        var hide = filter !== "all" && (
+          isLegacy
+            ? filter !== "api" && filter !== "web"
+            : !Array.from(appSections).some(function (s) { return s.style.display !== "none"; })
+        );
 
         container.style.display = hide ? "none" : "";
 
@@ -243,7 +247,7 @@
         "cursor:pointer;border:none;transition:all 120ms ease;" +
         "font-family:inherit;line-height:1.4;";
       styleBtn(btn, false);
-      btn.addEventListener("click", function () { applyFilter(key); });
+      btn.addEventListener("click", function () { applyFilter(active === key ? "all" : key); });
       return btn;
     }
 
