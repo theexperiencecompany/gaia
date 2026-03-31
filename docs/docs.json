@@ -98,6 +98,15 @@
         ]
       },
       {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Changelog",
+            "pages": ["changelog/release-notes"]
+          }
+        ]
+      },
+      {
         "tab": "Knowledge Base",
         "groups": [
           {
