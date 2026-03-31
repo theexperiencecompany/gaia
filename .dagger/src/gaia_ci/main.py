@@ -291,8 +291,10 @@ class GaiaCi:
                     "integration or service",
                     "--tb=short",
                     "-q",
-                    "-p",
-                    "no:xdist",
+                    # pytest.ini addopts includes -n 4 (xdist). Override it so we
+                    # run service tests in a single process — session-scoped async
+                    # fixtures don't work across multiple xdist workers.
+                    "--override-ini=addopts=--strict-markers",
                 ]
             )
             .stdout()
@@ -453,8 +455,9 @@ class GaiaCi:
                     "service",
                     "--tb=short",
                     "-q",
-                    "-p",
-                    "no:xdist",
+                    # Override pytest.ini addopts to drop -n 4 (xdist).
+                    # Session-scoped async fixtures don't work across xdist workers.
+                    "--override-ini=addopts=--strict-markers",
                 ]
             )
             .stdout()
