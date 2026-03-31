@@ -469,9 +469,6 @@ class TestComposioIntegrationConnection:
             }
         )
 
-        mock_redis = _make_mock_redis()
-        mock_collection = _make_mock_collection()
-
         with (
             patch(
                 "app.services.integrations.integration_connection_service.get_composio_service",
@@ -598,7 +595,7 @@ class TestSelfManagedIntegrationConnection:
                 AsyncMock(
                     return_value="https://accounts.google.com/o/oauth2/auth?scope=calendar&state=state_xyz"
                 ),
-            ) as mock_build_url,
+            ),
             patch(
                 "app.services.integrations.integration_connection_service.get_integration_scopes",
                 return_value=["https://www.googleapis.com/auth/calendar.events"],

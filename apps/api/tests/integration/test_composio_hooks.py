@@ -53,6 +53,7 @@ from app.utils.composio_hooks.user_id_hooks import extract_user_id_from_params
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_params(
     arguments: Dict[str, Any] | None = None,
     user_id: str = "",
@@ -65,6 +66,7 @@ def _make_params(
     if entity_id:
         params["entity_id"] = entity_id
     return params
+
 
 def _make_tool_schema(
     slug: str = "TEST_TOOL",
@@ -82,6 +84,7 @@ def _make_tool_schema(
     }
     return tool
 
+
 def _make_execution_response(
     data: Any = None,
     successful: bool = True,
@@ -96,9 +99,11 @@ def _make_execution_response(
         resp["data"]["error"] = error
     return resp
 
+
 # ---------------------------------------------------------------------------
 # 1. Hook Registry — core registration and execution
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestHookRegistry:
@@ -256,9 +261,11 @@ class TestHookRegistry:
         result = registry.execute_schema_modifiers("TOOL", "tk", schema)
         assert "[good]" in result.description
 
+
 # ---------------------------------------------------------------------------
 # 2. Conditional hook decorators (register_before_hook, register_after_hook)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestConditionalHookDecorators:
@@ -338,9 +345,11 @@ class TestConditionalHookDecorators:
         registry.execute_before_hooks("ANY_TOOL_2", "tk2", _make_params())
         assert call_count == 2
 
+
 # ---------------------------------------------------------------------------
 # 3. Master hooks (the top-level functions wired into Composio SDK)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestMasterHooks:
@@ -404,9 +413,11 @@ class TestMasterHooks:
         finally:
             hook_registry._schema_modifiers[:] = original_mods
 
+
 # ---------------------------------------------------------------------------
 # 4. Gmail before hooks — real logic with mocked stream writer
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestGmailBeforeHooks:
@@ -502,18 +513,18 @@ class TestGmailBeforeHooks:
             "app.utils.composio_hooks.gmail_hooks.get_stream_writer",
             return_value=writer_mock,
         ):
-            result = gmail_compose_before_hook(
-                "GMAIL_CREATE_EMAIL_DRAFT", "gmail", params
-            )
+            gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", params)
 
         writer_mock.assert_called_once()
         payload = writer_mock.call_args[0][0]
         assert "email_compose_data" in payload
         assert payload["email_compose_data"][0]["subject"] == "Draft subject"
 
+
 # ---------------------------------------------------------------------------
 # 5. Gmail after hooks — real logic with mocked stream writer
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestGmailAfterHooks:
@@ -641,9 +652,11 @@ class TestGmailAfterHooks:
         assert "HUGE_BASE64" not in str(result)
         assert "message" in result  # informational note
 
+
 # ---------------------------------------------------------------------------
 # 6. Gmail schema modifiers — real logic
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestGmailSchemaModifiers:
@@ -685,9 +698,11 @@ class TestGmailSchemaModifiers:
         assert props["format"]["default"] == "full"
         assert "SEARCH SYNTAX" in result.description
 
+
 # ---------------------------------------------------------------------------
 # 7. User ID extraction hook — real logic
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestUserIdExtractionHook:
@@ -752,9 +767,11 @@ class TestUserIdExtractionHook:
         result = extract_user_id_from_params("TOOL", "tk", params)
         assert result == params
 
+
 # ---------------------------------------------------------------------------
 # 8. Slack schema modifiers — real logic
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestSlackSchemaModifiers:
@@ -785,9 +802,11 @@ class TestSlackSchemaModifiers:
         assert props["count"]["default"] == 20
         assert "NEWEST FIRST" in result.description
 
+
 # ---------------------------------------------------------------------------
 # 9. End-to-end hook chain: before -> execute (mocked) -> after
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestEndToEndHookChain:
@@ -842,9 +861,11 @@ class TestEndToEndHookChain:
         assert final_result["summary"] == "Got 3 items"
         assert final_result["tool_used"] == "GMAIL_FETCH_EMAILS"
 
+
 # ---------------------------------------------------------------------------
 # 10. Custom tools registry
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestCustomToolsRegistry:
@@ -943,9 +964,11 @@ class TestCustomToolsRegistry:
         with pytest.raises(RuntimeError, match="not initialized"):
             registry._register_all_tools()
 
+
 # ---------------------------------------------------------------------------
 # 11. Twitter hooks — schema and response processing
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestTwitterHooks:
@@ -1006,9 +1029,11 @@ class TestTwitterHooks:
         assert result["tweets"][0]["author_username"] == "testuser"
         assert result["result_count"] == 1
 
+
 # ---------------------------------------------------------------------------
 # 12. Reddit hooks — response processing
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestRedditHooks:
@@ -1101,9 +1126,11 @@ class TestRedditHooks:
         assert result["body"] == "Great post!"
         assert "irrelevant_data" not in result
 
+
 # ---------------------------------------------------------------------------
 # 13. Hook failure propagation
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestHookFailurePropagation:
@@ -1166,9 +1193,11 @@ class TestHookFailurePropagation:
         result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "gmail", response)
         assert result == response["data"]
 
+
 # ---------------------------------------------------------------------------
 # 14. Context tool namespace helper
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestContextToolNamespace:

@@ -3,7 +3,6 @@ import {
   BlushBrush02Icon,
   BookOpen02Icon,
   ConnectIcon,
-  CreditCardPosIcon,
   GlobalIcon,
   Home01Icon,
   Idea01Icon,

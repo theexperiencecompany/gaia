@@ -56,9 +56,11 @@ FAKE_WORKFLOW_ID = "wf_abc123def456"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_trigger_config(trigger_type: str = "manual", **kwargs) -> TriggerConfig:
     """Build a TriggerConfig with sensible defaults."""
     return TriggerConfig(type=trigger_type, enabled=True, **kwargs)
+
 
 def _make_workflow_steps(count: int = 2) -> list[WorkflowStep]:
     """Build a list of WorkflowStep objects."""
@@ -71,6 +73,7 @@ def _make_workflow_steps(count: int = 2) -> list[WorkflowStep]:
         )
         for i in range(count)
     ]
+
 
 def _make_create_request(
     title: str = "Test Workflow",
@@ -87,6 +90,7 @@ def _make_create_request(
         steps=steps or _make_workflow_steps(2),
         generate_immediately=False,
     )
+
 
 def _make_workflow(
     workflow_id: str = FAKE_WORKFLOW_ID,
@@ -108,15 +112,18 @@ def _make_workflow(
         activated=activated,
     )
 
+
 def _workflow_as_doc(workflow: Workflow) -> dict:
     """Convert a Workflow to a MongoDB-style document dict."""
     doc = workflow.model_dump(mode="json")
     doc["_id"] = doc.pop("id")
     return doc
 
+
 # ---------------------------------------------------------------------------
 # TEST 1: Workflow CRUD Lifecycle
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestWorkflowCRUDLifecycle:
@@ -258,9 +265,11 @@ class TestWorkflowCRUDLifecycle:
 
         assert result is False
 
+
 # ---------------------------------------------------------------------------
 # TEST 2: Workflow Validation
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestWorkflowValidation:
@@ -311,9 +320,11 @@ class TestWorkflowValidation:
                 trigger_config=_make_trigger_config(),
             )
 
+
 # ---------------------------------------------------------------------------
 # TEST 3: Execution Tracking
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestExecutionTracking:
@@ -454,14 +465,17 @@ class TestExecutionTracking:
         assert response.has_more is True
         assert all(e.workflow_id == FAKE_WORKFLOW_ID for e in response.executions)
 
+
 async def aiter_docs(docs):
     """Async iterator helper for mock cursors."""
     for doc in docs:
         yield doc
 
+
 # ---------------------------------------------------------------------------
 # TEST 4: Trigger Registration
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestTriggerRegistration:
@@ -555,9 +569,11 @@ class TestTriggerRegistration:
         # Verify rollback: workflow was deleted
         mock_collection.delete_one.assert_awaited_once()
 
+
 # ---------------------------------------------------------------------------
 # TEST 5: Multi-step Workflow Execution
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestMultiStepWorkflowExecution:
@@ -659,9 +675,11 @@ class TestMultiStepWorkflowExecution:
         assert enriched[2]["title"] == "Send report"
         assert enriched[2]["category"] == "gmail"
 
+
 # ---------------------------------------------------------------------------
 # TEST 6: Execution Failure
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestExecutionFailure:
@@ -735,9 +753,11 @@ class TestExecutionFailure:
         assert inc_data["total_executions"] == 1
         assert inc_data["successful_executions"] == 1
 
+
 # ---------------------------------------------------------------------------
 # TEST 7: Slug Generation
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestSlugGeneration:
@@ -801,16 +821,16 @@ class TestSlugGeneration:
             "app.services.workflow.service.workflows_collection",
             mock_collection,
         ):
-            slug = await generate_unique_workflow_slug(
-                "Test Workflow", exclude_id="wf_self"
-            )
+            await generate_unique_workflow_slug("Test Workflow", exclude_id="wf_self")
 
         query_arg = mock_collection.find_one.call_args[0][0]
         assert query_arg["_id"] == {"$ne": "wf_self"}
 
+
 # ---------------------------------------------------------------------------
 # TEST 8: Queue Service
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestQueueService:
@@ -941,9 +961,11 @@ class TestQueueService:
             True,
         )
 
+
 # ---------------------------------------------------------------------------
 # TEST 9: Generation Service (parse and enrich)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestGenerationServiceParsing:
@@ -1002,9 +1024,11 @@ class TestGenerationServiceParsing:
                     title="Test Workflow",
                 )
 
+
 # ---------------------------------------------------------------------------
 # TEST 10: Activate / Deactivate Lifecycle
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestActivateDeactivateLifecycle:

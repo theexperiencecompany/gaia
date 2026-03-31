@@ -18,7 +18,6 @@ Key production modules under test
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -53,6 +52,7 @@ TEST_CONVERSATION_ID = "conv_001"
 # ---------------------------------------------------------------------------
 # In-memory MongoDB mock that simulates a real collection
 # ---------------------------------------------------------------------------
+
 
 class FakeMongoCollection:
     """In-memory MongoDB collection mock that supports the subset of Motor
@@ -162,6 +162,7 @@ class FakeMongoCollection:
         result.deleted_count = before - len(self._docs)
         return result
 
+
 class FakeCursor:
     """Fake async Motor cursor supporting sort() and to_list()."""
 
@@ -176,6 +177,7 @@ class FakeCursor:
         if length is not None:
             return self._results[:length]
         return self._results
+
 
 class FakeGridFSBucket:
     """Minimal fake GridFS bucket."""
@@ -193,17 +195,21 @@ class FakeGridFSBucket:
         stream.read = AsyncMock(return_value=b"gridfs content")
         return stream
 
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def fake_collection() -> FakeMongoCollection:
     return FakeMongoCollection()
 
+
 @pytest.fixture
 def fake_gridfs() -> FakeGridFSBucket:
     return FakeGridFSBucket()
+
 
 @pytest.fixture
 def vfs(
@@ -216,14 +222,17 @@ def vfs(
         instance._gridfs_bucket = fake_gridfs  # type: ignore[assignment]
         yield instance  # type: ignore[misc]
 
+
 @pytest.fixture
 def user_path() -> str:
     """Canonical user path prefix."""
     return f"/users/{TEST_USER_ID}"
 
+
 # ---------------------------------------------------------------------------
 # TEST 1: Write and read
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestWriteAndRead:
@@ -269,9 +278,11 @@ class TestWriteAndRead:
             assert parent_doc is not None
             assert parent_doc["node_type"] == VFSNodeType.FOLDER.value
 
+
 # ---------------------------------------------------------------------------
 # TEST 2: Path resolution
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestPathResolution:
@@ -355,9 +366,11 @@ class TestPathResolution:
         assert "gmail_agent" in path
         assert "search_emails" in path
 
+
 # ---------------------------------------------------------------------------
 # TEST 3: Nested paths
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestNestedPaths:
@@ -400,9 +413,11 @@ class TestNestedPaths:
             assert any("c.txt" in p for p in paths)
             assert listing.total_count >= 3
 
+
 # ---------------------------------------------------------------------------
 # TEST 4: Missing path
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestMissingPath:
@@ -458,9 +473,11 @@ class TestMissingPath:
             )
             assert deleted is False
 
+
 # ---------------------------------------------------------------------------
 # TEST 5: Large output archiving (VFS Compaction Middleware)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestLargeOutputArchiving:
@@ -549,9 +566,11 @@ class TestLargeOutputArchiving:
             assert stored_data["content"] == large_content
             assert stored_data["compaction_reason"].startswith("large_output")
 
+
 # ---------------------------------------------------------------------------
 # TEST 6: Archiving threshold (below threshold, NOT archived)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestArchivingThreshold:
@@ -633,9 +652,11 @@ class TestArchivingThreshold:
         assert should is True
         assert reason == "always_persist_tool"
 
+
 # ---------------------------------------------------------------------------
 # TEST 7: Content integrity (unicode / special characters)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestContentIntegrity:
@@ -695,9 +716,11 @@ class TestContentIntegrity:
 
             assert read_back == content
 
+
 # ---------------------------------------------------------------------------
 # TEST 8: Artifact metadata
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestArtifactMetadata:
@@ -767,7 +790,6 @@ class TestArtifactMetadata:
     ) -> None:
         with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", fake_collection):
             path = f"/users/{TEST_USER_ID}/global/executor/notes/timestamped.txt"
-            before = datetime.now(timezone.utc)
 
             await vfs.write(path, "content", user_id=TEST_USER_ID)
 
@@ -776,9 +798,11 @@ class TestArtifactMetadata:
             assert info.created_at is not None
             assert info.updated_at is not None
 
+
 # ---------------------------------------------------------------------------
 # TEST 9: Delete / cleanup
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestDeleteCleanup:
@@ -843,9 +867,11 @@ class TestDeleteCleanup:
             info_after = await vfs.info(path, user_id=TEST_USER_ID)
             assert info_after is None
 
+
 # ---------------------------------------------------------------------------
 # TEST 10: Summarization middleware
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestSummarizationMiddleware:
@@ -1001,9 +1027,11 @@ class TestSummarizationMiddleware:
             # 2 messages after filtering (below the trigger of 2), so should NOT trigger
             assert should is False
 
+
 # ---------------------------------------------------------------------------
 # Additional edge case tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestEdgeCases:

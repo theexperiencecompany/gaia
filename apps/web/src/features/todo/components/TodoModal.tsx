@@ -11,8 +11,8 @@ import {
   Tooltip,
   useDisclosure,
 } from "@heroui/react";
-import { PlusSignIcon, TaskAddIcon } from "@icons";
-import { useCallback, useEffect, useMemo } from "react";
+import { TaskAddIcon } from "@icons";
+import { useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";

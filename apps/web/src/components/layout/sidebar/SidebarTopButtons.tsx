@@ -8,7 +8,6 @@ import {
   ConnectIcon,
   Home11Icon,
   MessageMultiple02Icon,
-  TaskDailyIcon,
   // Target02Icon, // Temporarily disabled
   ZapIcon,
 } from "@icons";

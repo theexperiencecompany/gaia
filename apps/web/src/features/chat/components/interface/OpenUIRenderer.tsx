@@ -82,7 +82,7 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
               )
               .join("; ")
           : "Parse produced no root node";
-        console.error("[OpenUIRenderer] " + reason, {
+        console.error(`[OpenUIRenderer] ${reason}`, {
           rawCode: code,
           normalizedCode,
           unresolved: result.meta?.unresolved,

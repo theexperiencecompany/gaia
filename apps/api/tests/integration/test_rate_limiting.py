@@ -47,10 +47,10 @@ def frozen_time(iso: str) -> Generator[datetime, None, None]:
     module in the process, avoiding the transformers/torch NameError."""
     frozen = datetime.fromisoformat(iso).replace(tzinfo=timezone.utc)
 
-    original_rate_limits_datetime = __import__(
+    _original_rate_limits_datetime = __import__(
         "app.config.rate_limits", fromlist=["datetime"]
     ).datetime
-    original_tiered_datetime = __import__(
+    _original_tiered_datetime = __import__(
         "app.api.v1.middleware.tiered_rate_limiter", fromlist=["datetime"]
     ).datetime
 

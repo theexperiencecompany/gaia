@@ -175,7 +175,7 @@ class TestProviderInitialization:
         with patch(
             "app.agents.llm.client._get_available_providers", return_value=available
         ):
-            result = init_llm()
+            init_llm()
 
         # Primary is gemini, and configurable_alternatives is called with openai
         mock_gemini.configurable_alternatives.assert_called_once()
@@ -192,7 +192,7 @@ class TestProviderInitialization:
         with patch(
             "app.agents.llm.client._get_available_providers", return_value=available
         ):
-            result = init_llm(preferred_provider="openai")
+            init_llm(preferred_provider="openai")
 
         # openai should be primary — its configurable_alternatives should be called
         mock_openai.configurable_alternatives.assert_called_once()
@@ -243,7 +243,7 @@ class TestFreeLLMMode:
 
             with patch("app.agents.llm.client.ChatOpenAI") as mock_chat:
                 mock_chat.return_value = _make_mock_llm("free_llm")
-                result = init_llm(use_free=True)
+                init_llm(use_free=True)
 
                 mock_chat.assert_called_once()
                 call_kwargs = mock_chat.call_args[1]

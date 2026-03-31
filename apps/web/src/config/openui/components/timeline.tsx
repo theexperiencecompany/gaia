@@ -242,7 +242,6 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
             | "active"
             | "pending";
           const isActive = status === "active";
-          const isComplete = status === "complete";
           // When no active item exists, pending items look normal (not dimmed).
           // When an active item exists, only items after it look dimmed.
           const isDimmed =

@@ -277,7 +277,6 @@ class TestMultiTurnConversation:
         """Invoke the graph twice with the same thread_id. The second
         invocation must see messages from the first turn, proving
         PostgreSQL checkpointing persists state across turns."""
-        store_mock = _make_store_mock()
         fake_llm = create_fake_llm(["Response to turn 1", "Response to turn 2"])
 
         from langgraph.store.memory import InMemoryStore
@@ -761,7 +760,7 @@ class TestErrorDuringInvocation:
 
         # Capture state after successful turn
         state_before_error = await graph1.aget_state(config)
-        msg_count_before = len(state_before_error.values["messages"])
+        _msg_count_before = len(state_before_error.values["messages"])
 
         # Turn 2: LLM raises an error
         class ErrorLLM(FakeMessagesListChatModel):

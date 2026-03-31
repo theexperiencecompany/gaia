@@ -18,18 +18,6 @@ import pytest
 from bson import ObjectId
 from freezegun import freeze_time as _freeze_time
 
-# freezegun's module-restore logic collides with the transformers library
-# (references to torch at class-definition scope). Ignoring transformers
-# avoids NameError: name 'torch' is not defined during freeze_time teardown.
-_FREEZEGUN_IGNORE = ["transformers"]
-
-
-def freeze_time(*args, **kwargs):
-    """Wrapper that always passes ignore=['transformers']."""
-    kwargs.setdefault("ignore", _FREEZEGUN_IGNORE)
-    return _freeze_time(*args, **kwargs)
-
-
 from app.models.user_models import BioStatus
 from app.workers.lifecycle.startup import startup
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
@@ -45,6 +33,18 @@ from app.workers.tasks.workflow_tasks import (
     execute_workflow_by_id,
     process_workflow_generation_task,
 )
+
+# freezegun's module-restore logic collides with the transformers library
+# (references to torch at class-definition scope). Ignoring transformers
+# avoids NameError: name 'torch' is not defined during freeze_time teardown.
+_FREEZEGUN_IGNORE = ["transformers"]
+
+
+def freeze_time(*args, **kwargs):
+    """Wrapper that always passes ignore=['transformers']."""
+    kwargs.setdefault("ignore", _FREEZEGUN_IGNORE)
+    return _freeze_time(*args, **kwargs)
+
 
 # ---------------------------------------------------------------------------
 # Helpers

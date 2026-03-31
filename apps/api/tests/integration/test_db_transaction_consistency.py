@@ -53,8 +53,10 @@ from app.services.todos.todo_service import TodoService
 USER_ID = "user_txn_test_001"
 FAKE_USER: dict[str, Any] = {"user_id": USER_ID}
 
+
 def _oid() -> ObjectId:
     return ObjectId()
+
 
 def _make_insert_result(acknowledged: bool = True) -> MagicMock:
     result = MagicMock()
@@ -62,16 +64,19 @@ def _make_insert_result(acknowledged: bool = True) -> MagicMock:
     result.inserted_id = _oid()
     return result
 
+
 def _make_update_result(modified: int = 1, matched: int = 1) -> MagicMock:
     result = MagicMock()
     result.modified_count = modified
     result.matched_count = matched
     return result
 
+
 def _make_delete_result(deleted: int = 1) -> MagicMock:
     result = MagicMock()
     result.deleted_count = deleted
     return result
+
 
 def _stored_conversation(
     conversation_id: str,
@@ -88,9 +93,11 @@ def _stored_conversation(
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
 
+
 # ---------------------------------------------------------------------------
 # Conversation creation consistency
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestConversationCreationConsistency:
@@ -184,9 +191,11 @@ class TestConversationCreationConsistency:
 
         assert exc_info.value.status_code == 403
 
+
 # ---------------------------------------------------------------------------
 # Conversation deletion cleanup
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestConversationDeletionCleanup:
@@ -264,9 +273,11 @@ class TestConversationDeletionCleanup:
 
         assert exc_info.value.status_code == 404
 
+
 # ---------------------------------------------------------------------------
 # Todo creation with subtasks
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestTodoCreationWithSubtasks:
@@ -402,9 +413,11 @@ class TestTodoCreationWithSubtasks:
         for st in captured["subtasks"]:
             assert st["id"], "Service must assign IDs to subtasks that lack them"
 
+
 # ---------------------------------------------------------------------------
 # Todo sync integrity (sync_service)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestTodoSyncIntegrity:
@@ -471,9 +484,11 @@ class TestTodoSyncIntegrity:
 
         assert success is False
 
+
 # ---------------------------------------------------------------------------
 # Concurrent conversation updates
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestConcurrentConversationUpdates:
@@ -550,9 +565,11 @@ class TestConcurrentConversationUpdates:
         assert len(successes) == 1
         assert exceptions[0].status_code == 404
 
+
 # ---------------------------------------------------------------------------
 # Message ordering
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestMessageOrdering:
@@ -578,7 +595,7 @@ class TestMessageOrdering:
             "app.services.conversation_service.conversations_collection",
             mock_collection,
         ):
-            result = await update_messages(request, FAKE_USER)
+            await update_messages(request, FAKE_USER)
 
         assert len(pushed_messages) == 5
         for i, msg in enumerate(pushed_messages):
@@ -613,9 +630,11 @@ class TestMessageOrdering:
         assert pushed_messages[0]["message_id"]
         assert result["message_ids"][0] == pushed_messages[0]["message_id"]
 
+
 # ---------------------------------------------------------------------------
 # Partial failure handling
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestPartialFailureHandling:
@@ -690,9 +709,11 @@ class TestPartialFailureHandling:
         ):
             await TodoService.delete_todo(str(_oid()), USER_ID)
 
+
 # ---------------------------------------------------------------------------
 # Bulk operations
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestBulkOperations:
@@ -798,9 +819,11 @@ class TestBulkOperations:
         set_dict = update_call[0][1]["$set"]
         assert set_dict["priority"] == Priority.HIGH
 
+
 # ---------------------------------------------------------------------------
 # System conversation get-or-create
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.integration
 class TestSystemConversationGetOrCreate:

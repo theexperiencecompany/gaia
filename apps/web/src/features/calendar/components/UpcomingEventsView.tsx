@@ -10,7 +10,7 @@ import {
   Target02Icon,
 } from "@icons";
 import type React from "react";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { GoogleCalendarIcon } from "@/components/shared/icons";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import type { CardAction } from "@/features/chat/components/interface/BaseCardView";
