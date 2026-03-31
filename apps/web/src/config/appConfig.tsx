@@ -9,6 +9,7 @@ import {
   Idea01Icon,
   MapsIcon,
   MessageMultiple02Icon,
+  PackageOpenIcon,
   QuillWrite01Icon,
 } from "@icons";
 import type { ReactElement } from "react";
@@ -136,6 +137,13 @@ export const appConfig = {
           <QuillWrite01Icon width={20} height={20} color={"currentColor"} />
         ),
         description: "Read the latest updates and insights",
+      },
+      {
+        href: "https://docs.heygaia.io/release-notes",
+        label: "Release Notes",
+        icon: <PackageOpenIcon width={20} height={20} color={"currentColor"} />,
+        external: true,
+        description: "See what's new in every release",
       },
       {
         href: "https://docs.heygaia.io",

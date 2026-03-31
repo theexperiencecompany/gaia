@@ -9,6 +9,13 @@ rss: true
 
 # System Workflows, Agent Skills & Desktop Auto-Updates
 
+## [v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/v0.2.0)
+
+First stable monorepo release. Marks the transition from the beta series to a stable baseline, encompassing the launch of the CLI, bots, and desktop app alongside the API, web, and mobile improvements shipped across all preceding release cycles.
+
+---
+
+
 ## [API v0.16.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.16.0)
 
 ### Features
@@ -169,6 +176,33 @@ rss: true
 - **Windows PATH Detection**: Multi-package-manager PATH detection and Windows support for cross-platform compatibility
 - **Log Buffer Memory**: Extracted log buffer sizes to shared constants, reducing memory pressure in long-running sessions
 - **React Key Stability**: Improved LogWindow component key stability to reduce unnecessary re-renders during streaming
+</Update>
+
+<Update label="Feb 20, 2026" description="Bots, CLI">
+
+# Initial Bots & CLI Release
+
+## [Bots v1.0.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.0.0...bots-v1.1.0)
+
+### Foundation
+- **Shared Adapter Pattern**: `BaseBotAdapter` in `@gaia/shared` establishing the unified command dispatch system, GAIA API client, and platform-agnostic `RichMessageTarget` interface used by all three bots
+- **Bot API Key Authentication**: Dedicated middleware for authenticating bot-to-API requests independently from user session auth
+- **Nx Monorepo Integration**: All three bot packages integrated into the Nx workspace with build, lint, type-check, and release targets
+- **Docker Support**: Dockerfiles for each bot for containerized deployment alongside the rest of the GAIA stack
+- **E2E Test Package**: Dedicated `bots-e2e` test package with Vitest infrastructure for cross-bot integration testing
+
+---
+
+
+## [CLI v0.1.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.1.15...cli-v0.2.0)
+
+### Features
+- **Core Commands**: `init`, `setup`, `start`, `stop`, `status`, and `logs` commands covering the full self-hosting lifecycle
+- **Interactive Terminal UI**: Built with Ink (React-in-terminal) for a rich, step-by-step setup experience with live progress display
+- **Docker Compose Integration**: Full service orchestration via Docker Compose with prerequisite validation and detailed error messages
+- **Self-Host and Developer Modes**: `start` supports both a full self-hosted stack and a developer mode that runs only infrastructure services locally
+- **`--branch` Flag**: Clone a specific Git branch during `init` for development or testing against unreleased code
+- **npm Distribution**: Published to npm as `@heygaia/cli`, installable via `npx` or a `curl` install script
 </Update>
 
 <Update label="Feb 16, 2026" description="API, Web, Mobile, Desktop">
@@ -412,6 +446,18 @@ A landmark release that migrates GAIA to a full Nx monorepo, introduces voice mo
 - **Voice agent containerization**: Dockerized voice-agent worker with model preloading at build time and LiveKit model volume mounts
 - **Mise and Biome toolchain**: Adopted mise as the task runner and tool version manager, with Biome replacing ESLint and Prettier for TypeScript linting and formatting
 - **Pre-commit hooks**: Integrated prek-managed pre-commit hooks for automated code quality checks on every commit
+
+---
+
+
+## [Mobile v0.1.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.1.0)
+
+### Foundation
+- **Expo SDK 54**: Built on Expo SDK 54 with Expo Router v6, React Compiler enabled, and the new React Native architecture turned on
+- **UI Component Library**: 18+ reusable components built on @rn-primitives — avatar, button, card, checkbox, dialog, dropdown-menu, input, popover, raised-button, select, skeleton, toggle, tooltip, and more
+- **NativeWind Styling**: Tailwind CSS for React Native with a surface color system, custom spacing, and full light and dark theme support
+- **Icon System**: @hugeicons/react-native and Lucide React Native for consistent iconography across the app
+- **Feature-Based Architecture**: Code organized into features/auth/ and features/chat/ with co-located components, hooks, utilities, and types
 </Update>
 
 <Update label="Nov 23, 2025">

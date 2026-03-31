@@ -103,14 +103,11 @@ export default function SettingsMenu({
       action: () => window.open(docsLink?.href, "_blank"),
     },
     {
-      key: "changelog",
-      label: "Changelog",
+      key: "release-notes",
+      label: "Release Notes",
       icon: Layers01Icon,
       action: () =>
-        window.open(
-          "https://github.com/theexperiencecompany/gaia/releases",
-          "_blank",
-        ),
+        window.open("https://docs.heygaia.io/release-notes", "_blank"),
     },
     {
       key: "blog",

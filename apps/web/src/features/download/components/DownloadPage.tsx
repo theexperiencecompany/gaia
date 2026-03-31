@@ -361,6 +361,15 @@ function DesktopSection() {
             All releases
             <ArrowRight02Icon className="h-4 w-4" />
           </Link>
+          <Link
+            href="https://docs.heygaia.io/release-notes"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 transition hover:text-zinc-300"
+          >
+            Release Notes
+            <ArrowRight02Icon className="h-4 w-4" />
+          </Link>
         </div>
       }
     />
@@ -429,6 +438,19 @@ function MobileSection() {
           </div>
         </div>
       }
+      extraContent={
+        <div className="flex items-center gap-4 text-sm text-zinc-500">
+          <Link
+            href="https://docs.heygaia.io/release-notes"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 transition hover:text-zinc-300"
+          >
+            Release Notes
+            <ArrowRight02Icon className="h-4 w-4" />
+          </Link>
+        </div>
+      }
     />
   );
 }
@@ -445,6 +467,19 @@ function WebSection() {
       title="Get Started on the Web"
       description="No download required. Access GAIA directly from your browser."
       actions={<GetStartedButton />}
+      extraContent={
+        <div className="flex items-center gap-4 text-sm text-zinc-500">
+          <Link
+            href="https://docs.heygaia.io/release-notes"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 transition hover:text-zinc-300"
+          >
+            Release Notes
+            <ArrowRight02Icon className="h-4 w-4" />
+          </Link>
+        </div>
+      }
     />
   );
 }

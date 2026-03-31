@@ -63,6 +63,26 @@ Always invoke these via the `Skill` tool rather than doing the work ad-hoc:
 | `landing-page-copywriter` | Homepage copy (`introduction.mdx`) or feature landing pages |
 | `seo-geo` | Optimizing page titles, descriptions, and meta in `docs.json` or `knowledge/` pages |
 
+## Release Notes Image Convention
+
+The in-app "What's New" sidebar card parses `release-notes.mdx` to display the latest release. To include a hero image in the sidebar card, **place an image as the very first element inside the `<Update>` block**, before the H1 title:
+
+```mdx
+<Update label="Mar 15, 2026" description="API, Web">
+
+![Release hero](/images/changelog/release-mar-15-2026.webp)
+
+# Feature Title Here
+
+...
+</Update>
+```
+
+- Images must go in `images/changelog/` (not the root `images/` dir)
+- Name pattern: `release-{mon}-{dd}-{yyyy}.webp` (e.g. `release-mar-15-2026.webp`)
+- The image is optional — omitting it is fine, the card will render without one
+- The parser grabs **only the first image** in the block; any subsequent images are ignored for the card
+
 ## Non-obvious Patterns
 
 - **Navigation is not auto-discovered.** Adding an `.mdx` file does nothing until its path is added to `docs.json`. Always update both.
