@@ -1,8 +1,9 @@
 """Post-onboarding personalization service."""
 
 import asyncio
+import time
 from datetime import datetime, timezone
-from typing import List
+from typing import Any, List, Optional
 
 from shared.py.wide_events import log
 from app.core.websocket_manager import websocket_manager
@@ -47,29 +48,34 @@ async def emit_progress(
     )
 
 
-async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
+async def suggest_workflows_via_rag(
+    user_id: str, limit: int = 4, memories: Optional[List] = None
+) -> List[str]:
     """
     Use RAG to find similar workflows based on user memories.
 
     Args:
         user_id: User identifier
         limit: Number of workflows to suggest
+        memories: Pre-fetched memories list. If None, fetches from memory_service.
 
     Returns:
         List of workflow IDs
     """
     try:
-        # Get user memories
-        memories: MemorySearchResult = await memory_service.get_all_memories(
-            user_id=user_id
-        )
+        # Get user memories (skip if pre-fetched)
+        if memories is None:
+            memories_result: MemorySearchResult = await memory_service.get_all_memories(
+                user_id=user_id
+            )
+            memories = memories_result.memories
 
-        if not memories.memories:
+        if not memories:
             log.info(f"No memories found for user {user_id}, using default workflows")
             return await _get_default_workflows(limit)
 
         # Create query from memories
-        query_parts = [m.content for m in memories.memories]
+        query_parts = [m.content for m in memories]
         query_text = " ".join(query_parts)
 
         log.info(f"Searching workflows with RAG query for user {user_id}")
@@ -80,24 +86,31 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
         )
         results = chroma_client.similarity_search(query_text, k=10)
 
-        # Extract workflow IDs and verify they're public
-        workflow_ids: List[str] = []
+        # Batch verify all workflow IDs in a single query
+        candidate_ids = []
+        raw_id_map: dict[Any, str] = {}
         for doc in results:
             wf_id = doc.metadata.get("workflow_id")
             if not wf_id:
                 continue
-
-            # Verify workflow exists and is public
             try:
                 query_id = ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id
-                workflow = await workflows_collection.find_one(
-                    {"_id": query_id, "is_public": True}
-                )
-                if workflow and len(workflow_ids) < limit:
-                    workflow_ids.append(str(wf_id))
-            except Exception as e:
-                log.warning(f"Error verifying workflow {wf_id}: {e}")
+                candidate_ids.append(query_id)
+                raw_id_map[query_id] = str(wf_id)
+            except Exception:
                 continue  # nosec B112
+
+        workflow_ids: List[str] = []
+        if candidate_ids:
+            cursor = workflows_collection.find(
+                {"_id": {"$in": candidate_ids}, "is_public": True},
+                {"_id": 1},
+            )
+            async for wf_doc in cursor:
+                wf_str = raw_id_map.get(wf_doc["_id"], str(wf_doc["_id"]))
+                workflow_ids.append(wf_str)
+                if len(workflow_ids) >= limit:
+                    break
 
         # Fill with defaults if needed
         if len(workflow_ids) < limit:
@@ -205,8 +218,12 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         )
 
         # This may take time as it triggers email processing internally
+        t_mem = time.monotonic()
         memories_result = await memory_service.get_all_memories(user_id=user_id)
         memories = memories_result.memories
+        log.info(
+            f"[personalization:timing] get_all_memories: {time.monotonic() - t_mem:.1f}s ({len(memories)} memories)"
+        )
 
         # Memories retrieved - emit progress
         await emit_progress(
@@ -231,12 +248,15 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         )
 
         # Parallel tasks
-        workflow_task = asyncio.create_task(suggest_workflows_via_rag(user_id, 4))
+        t_parallel = time.monotonic()
+        workflow_task = asyncio.create_task(
+            suggest_workflows_via_rag(user_id, 4, memories=memories)
+        )
         personality_task = asyncio.create_task(
             generate_personality_phrase(user_id, memories, profession)
         )
-        bio_task = asyncio.create_task(generate_user_bio(user_id, memories))
-        metadata_task = asyncio.create_task(get_user_metadata(user_id))
+        bio_task = asyncio.create_task(generate_user_bio(user_id, memories, user=user))
+        metadata_task = asyncio.create_task(get_user_metadata(user_id, user=user))
 
         # Wait for all
         workflow_ids, personality_phrase, bio_result, metadata = await asyncio.gather(
@@ -245,6 +265,9 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             bio_task,
             metadata_task,
             return_exceptions=False,
+        )
+        log.info(
+            f"[personalization:timing] parallel tasks (workflows_rag + personality + bio + metadata): {time.monotonic() - t_parallel:.1f}s"
         )
 
         # Unpack bio result
@@ -267,11 +290,6 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         house = card_design["house"]
         overlay_color = card_design["overlay_color"]
         overlay_opacity = card_design["overlay_opacity"]
-
-        # Emit house assignment progress
-        await emit_progress(
-            user_id, "finalizing", f"🏠 Welcome to {house.title()}!", 90
-        )
 
         # Save to database (including account_number and member_since for persistence)
         await save_personalization_data(
@@ -323,9 +341,8 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         # PROCESSING: Still waiting for email processing - don't broadcast yet
         if bio_status in [BioStatus.COMPLETED, BioStatus.NO_GMAIL]:
             # Broadcast via WebSocket
-            # Get user name for complete card data
-            user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-            user_name = user_doc.get("name", "User") if user_doc else "User"
+            # Reuse the user doc fetched earlier for the user name
+            user_name = user.get("name", "User") if user else "User"
 
             personalization_data = {
                 "has_personalization": True,

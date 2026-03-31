@@ -26,7 +26,6 @@ export interface OnboardingState {
     selectedProfession: string | null;
   };
   userResponses: Record<string, string>;
-  isProcessing: boolean;
   isProcessingPhase: boolean;
   hasGmail: boolean;
   hasAnsweredCurrentQuestion: boolean;

@@ -3,19 +3,26 @@
 import {
   Brain01Icon,
   CheckListIcon,
+  CheckmarkCircle02Icon,
   FilterIcon,
   type IconProps,
   Mail01Icon,
   ZapIcon,
 } from "@icons";
-import { m } from "motion/react";
-import { useRouter } from "next/navigation";
+import { AnimatePresence, m } from "motion/react";
 import type { FC } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { apiService } from "@/lib/api/service";
+import { useEffect, useRef, useState } from "react";
+import {
+  STEP_BUILDING_PROFILE,
+  STEP_CREATING_TODOS,
+  STEP_CREATING_WORKFLOWS,
+  STEP_LEARNING_STYLE,
+  STEP_SCANNING_INBOX,
+  STEP_TRIAGING,
+} from "../constants/messages";
 
-const TIMEOUT_MS = 45_000;
-const SOFT_ESCAPE_MS = 15_000;
+const SOFT_ESCAPE_MS = 20_000;
+const SLOW_NOTICE_MS = 30_000;
 
 interface ProcessingStep {
   icon: FC<IconProps>;
@@ -27,27 +34,27 @@ const GMAIL_STEPS: ProcessingStep[] = [
   {
     icon: Mail01Icon,
     stage: "scanning_inbox",
-    activeText: "Scanning your inbox",
+    activeText: STEP_SCANNING_INBOX,
   },
   {
     icon: FilterIcon,
     stage: "triaging",
-    activeText: "Triaging by importance",
+    activeText: STEP_TRIAGING,
   },
   {
     icon: CheckListIcon,
     stage: "creating_todos",
-    activeText: "Creating action items",
+    activeText: STEP_CREATING_TODOS,
   },
   {
     icon: Brain01Icon,
     stage: "finding_profiles",
-    activeText: "Learning your style",
+    activeText: STEP_LEARNING_STYLE,
   },
   {
     icon: ZapIcon,
     stage: "creating_workflows",
-    activeText: "Setting up automations",
+    activeText: STEP_CREATING_WORKFLOWS,
   },
 ];
 
@@ -55,12 +62,17 @@ const NO_GMAIL_STEPS: ProcessingStep[] = [
   {
     icon: Brain01Icon,
     stage: "starting",
-    activeText: "Building your profile",
+    activeText: STEP_BUILDING_PROFILE,
+  },
+  {
+    icon: CheckListIcon,
+    stage: "creating_todos",
+    activeText: STEP_CREATING_TODOS,
   },
   {
     icon: ZapIcon,
     stage: "creating_workflows",
-    activeText: "Setting up automations",
+    activeText: STEP_CREATING_WORKFLOWS,
   },
 ];
 
@@ -70,6 +82,9 @@ interface OnboardingProcessingProps {
   intelligenceConversationId: string | null;
   onComplete: (conversationId: string) => void;
   processingProgress?: number;
+  onSoftEscapeReady?: () => void;
+  /** Map of stage name → latest backend message for that stage */
+  stageMessages?: Record<string, string>;
 }
 
 export const OnboardingProcessing = ({
@@ -78,12 +93,13 @@ export const OnboardingProcessing = ({
   intelligenceConversationId,
   onComplete,
   processingProgress,
+  onSoftEscapeReady,
+  stageMessages,
 }: OnboardingProcessingProps) => {
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
-  const [timedOut, setTimedOut] = useState(false);
-  const [showSoftEscape, setShowSoftEscape] = useState(false);
-  const router = useRouter();
   const completedRef = useRef(false);
+  const softEscapeShownRef = useRef(false);
+  const [showSlowNotice, setShowSlowNotice] = useState(false);
 
   // Navigate to chat when intelligence is complete
   useEffect(() => {
@@ -97,41 +113,37 @@ export const OnboardingProcessing = ({
     }
   }, [isIntelligenceComplete, intelligenceConversationId, onComplete]);
 
-  // Timeout — if intelligence pipeline hasn't completed in 45s, show fallback
+  // Soft escape — notify parent after 20s so it can render bottom CTA
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!completedRef.current) {
-        setTimedOut(true);
-      }
-    }, TIMEOUT_MS);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Soft escape — show "Skip to chat" after 15s if not yet complete
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!completedRef.current) {
-        setShowSoftEscape(true);
+      if (!completedRef.current && !softEscapeShownRef.current) {
+        softEscapeShownRef.current = true;
+        onSoftEscapeReady?.();
       }
     }, SOFT_ESCAPE_MS);
 
     return () => clearTimeout(timer);
+  }, [onSoftEscapeReady]);
+
+  // Show "taking longer" notice after 30s
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!completedRef.current) {
+        setShowSlowNotice(true);
+      }
+    }, SLOW_NOTICE_MS);
+
+    return () => clearTimeout(timer);
   }, []);
 
-  const handleSkipToChat = useCallback(async () => {
-    completedRef.current = true;
-    try {
-      await apiService.post("/onboarding/phase", { phase: "getting_started" });
-    } catch {
-      // non-blocking
-    }
-    router.push("/c");
-  }, [router]);
+  const activeStepIndex = Math.min(
+    Math.floor((processingProgress ?? 0) / (100 / steps.length)),
+    steps.length - 1,
+  );
 
   return (
     <m.div
-      className="mt-3 ml-[43px] flex flex-col gap-3 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl"
+      className="mt-3 flex flex-col gap-3 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
@@ -142,76 +154,96 @@ export const OnboardingProcessing = ({
         </p>
       )}
 
-      {timedOut ? (
-        <div role="alert" aria-live="assertive">
-          <m.div
-            className="flex flex-col gap-3"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+      <div className="flex flex-col gap-2.5" aria-live="polite">
+        {steps.map((step, i) => {
+          const Icon = step.icon;
+          const isDone = i < activeStepIndex;
+          const isActive = i === activeStepIndex;
+          const liveMessage = stageMessages?.[step.stage];
+          const displayText =
+            (isDone || isActive) && liveMessage ? liveMessage : step.activeText;
+
+          return (
+            <m.div
+              key={step.stage}
+              className="flex items-center gap-3"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                delay: i * 0.12,
+                duration: 0.3,
+                ease: [0.19, 1, 0.22, 1],
+              }}
+            >
+              <div className="relative size-4 shrink-0">
+                <AnimatePresence mode="wait">
+                  {isDone ? (
+                    <m.div
+                      key="check"
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="absolute inset-0"
+                    >
+                      <CheckmarkCircle02Icon className="size-4 text-emerald-500" />
+                    </m.div>
+                  ) : (
+                    <m.div
+                      key="icon"
+                      initial={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute inset-0"
+                    >
+                      <Icon
+                        className={
+                          isActive
+                            ? "size-4 text-primary animate-pulse"
+                            : "size-4 text-zinc-500"
+                        }
+                      />
+                    </m.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              <span
+                className={
+                  isDone
+                    ? "text-sm text-zinc-300"
+                    : isActive
+                      ? "text-sm font-medium text-zinc-200"
+                      : "text-sm text-zinc-500"
+                }
+              >
+                {displayText}
+              </span>
+            </m.div>
+          );
+        })}
+      </div>
+
+      <AnimatePresence>
+        {showSlowNotice && !isIntelligenceComplete && (
+          <m.p
+            className="text-xs text-zinc-500"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <span className="text-sm text-zinc-400">
-              This is taking longer than expected. Let&apos;s get you started —
-              I&apos;ll finish setting things up in the background.
-            </span>
-            <button
-              type="button"
-              onClick={handleSkipToChat}
-              className="cursor-pointer rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-            >
-              Get started
-            </button>
-          </m.div>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-col gap-2.5" aria-live="polite">
-            {steps.map((step, i) => {
-              const Icon = step.icon;
-              return (
-                <m.div
-                  key={step.stage}
-                  className="flex items-center gap-3"
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{
-                    delay: i * 0.12,
-                    duration: 0.3,
-                    ease: [0.19, 1, 0.22, 1],
-                  }}
-                >
-                  <Icon className="size-4 text-zinc-500" />
-                  <span className="text-sm text-zinc-500">
-                    {step.activeText}
-                  </span>
-                </m.div>
-              );
-            })}
-          </div>
+            Taking a bit longer than usual — hang tight.
+          </m.p>
+        )}
+      </AnimatePresence>
 
-          {processingProgress !== undefined && processingProgress > 0 && (
-            <p className="mt-3 text-xs text-zinc-600">
-              {Math.round(processingProgress)}% complete
-            </p>
-          )}
-
-          {showSoftEscape && !timedOut && (
-            <m.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5 }}
-            >
-              <button
-                type="button"
-                onClick={handleSkipToChat}
-                className="mt-4 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
-                Skip to chat →
-              </button>
-            </m.div>
-          )}
-        </>
-      )}
+      <m.div className="mt-3 h-0.5 w-full overflow-hidden rounded-full bg-zinc-700">
+        <m.div
+          className="h-full rounded-full bg-primary"
+          animate={{ width: `${processingProgress ?? 0}%` }}
+          transition={{ duration: 0.8, ease: [0.19, 1, 0.22, 1] }}
+        />
+      </m.div>
     </m.div>
   );
 };

@@ -2,7 +2,7 @@ import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
-import { ArrowUp02Icon } from "@icons";
+import { ArrowRight01Icon, ArrowUp02Icon } from "@icons";
 import { useEffect } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -19,6 +19,12 @@ interface OnboardingInputProps {
   onProfessionInputChange: (value: string) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
   onGmailSkip?: () => void;
+  /** When true, renders a plain free-chat input instead of question-driven UI */
+  isFreeChatMode?: boolean;
+  freeChatValue?: string;
+  onFreeChatChange?: (value: string) => void;
+  onFreeChatSubmit?: (e: React.FormEvent) => void;
+  isSending?: boolean;
 }
 
 export const OnboardingInput = ({
@@ -29,6 +35,11 @@ export const OnboardingInput = ({
   onProfessionInputChange,
   inputRef,
   onGmailSkip,
+  isFreeChatMode = false,
+  freeChatValue = "",
+  onFreeChatChange,
+  onFreeChatSubmit,
+  isSending = false,
 }: OnboardingInputProps) => {
   const { connectIntegration } = useIntegrations();
 
@@ -37,12 +48,10 @@ export const OnboardingInput = ({
       ? questions[onboardingState.currentQuestionIndex]
       : null;
 
-  // Focus the appropriate input when question changes
+  // Focus the appropriate input when question changes (Q&A phase only)
   useEffect(() => {
-    if (
-      !onboardingState.isProcessing &&
-      !onboardingState.hasAnsweredCurrentQuestion
-    ) {
+    if (isFreeChatMode) return;
+    if (!onboardingState.hasAnsweredCurrentQuestion) {
       setTimeout(() => {
         if (currentQuestion?.fieldName === FIELD_NAMES.PROFESSION) {
           const autocompleteInput = document.querySelector(
@@ -57,11 +66,60 @@ export const OnboardingInput = ({
       }, 500);
     }
   }, [
-    onboardingState.isProcessing,
+    isFreeChatMode,
     onboardingState.hasAnsweredCurrentQuestion,
     currentQuestion?.fieldName,
     inputRef,
   ]);
+
+  // Free-chat mode: plain text input for post-reveal conversation
+  if (isFreeChatMode) {
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && !e.shiftKey && freeChatValue.trim()) {
+        e.preventDefault();
+        onFreeChatSubmit?.(e as unknown as React.FormEvent);
+      }
+    };
+
+    return (
+      <form onSubmit={onFreeChatSubmit} className="mx-auto w-full max-w-2xl">
+        <div className="relative">
+          <Input
+            autoFocus
+            value={freeChatValue}
+            onChange={(e) => onFreeChatChange?.(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask me anything..."
+            radius="full"
+            variant="faded"
+            size="lg"
+            disabled={isSending}
+            classNames={{ inputWrapper: "pr-1" }}
+            endContent={
+              <Button
+                isIconOnly
+                type="submit"
+                disabled={!freeChatValue.trim() || isSending}
+                color={
+                  !freeChatValue.trim() || isSending ? "default" : "primary"
+                }
+                radius="full"
+                aria-label="Send message"
+                className={cn(
+                  isSending && "cursor-wait",
+                  !freeChatValue.trim() || isSending
+                    ? "text-zinc-500"
+                    : "text-black",
+                )}
+              >
+                <ArrowUp02Icon />
+              </Button>
+            }
+          />
+        </div>
+      </form>
+    );
+  }
 
   if (onboardingState.isProcessingPhase) return null;
   if (!currentQuestion) return null;
@@ -124,7 +182,8 @@ export const OnboardingInput = ({
               rel="noopener noreferrer"
               className="text-center text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
             >
-              How we use your data →
+              How we use your data{" "}
+              <ArrowRight01Icon className="inline size-3" />
             </a>
           </div>
         );
@@ -145,22 +204,16 @@ export const OnboardingInput = ({
               <Button
                 isIconOnly
                 type="submit"
-                disabled={
-                  !onboardingState.currentInputs.text.trim() ||
-                  onboardingState.isProcessing
-                }
+                disabled={!onboardingState.currentInputs.text.trim()}
                 color={
-                  !onboardingState.currentInputs.text.trim() ||
-                  onboardingState.isProcessing
+                  !onboardingState.currentInputs.text.trim()
                     ? "default"
                     : "primary"
                 }
                 radius="full"
                 aria-label="Send message"
                 className={cn(
-                  onboardingState.isProcessing && "cursor-wait",
-                  !onboardingState.currentInputs.text.trim() ||
-                    onboardingState.isProcessing
+                  !onboardingState.currentInputs.text.trim()
                     ? "text-zinc-500"
                     : "text-black",
                 )}

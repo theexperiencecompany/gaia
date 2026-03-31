@@ -85,6 +85,10 @@ async def complete_onboarding(
         if onboarding_data.timezone:
             update_fields["timezone"] = onboarding_data.timezone.strip()
 
+        # Persist focus if provided
+        if onboarding_data.focus and onboarding_data.focus.strip():
+            update_fields["onboarding.focus"] = onboarding_data.focus.strip()
+
         # Atomic update with conditions to prevent race conditions and duplicate onboarding
         updated_user = await users_collection.find_one_and_update(
             {

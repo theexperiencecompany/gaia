@@ -17,7 +17,7 @@ export function TodosRevealCard({ todos }: TodosRevealCardProps) {
       className="overflow-hidden rounded-2xl bg-zinc-800/60 p-4"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35 }}
+      transition={{ type: "spring", stiffness: 280, damping: 22 }}
     >
       <p className="mb-3 text-xs text-zinc-400">
         Created{" "}
@@ -26,13 +26,23 @@ export function TodosRevealCard({ todos }: TodosRevealCardProps) {
       </p>
       {displayedTodos.length > 0 && (
         <div className="flex flex-col gap-2">
-          {displayedTodos.map((todo) => (
-            <div key={todo.id} className="flex items-center gap-2">
+          {displayedTodos.map((todo, index) => (
+            <m.div
+              key={todo.id}
+              className="flex items-center gap-2"
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{
+                delay: index * 0.06,
+                duration: 0.25,
+                ease: [0.19, 1, 0.22, 1],
+              }}
+            >
               <CheckmarkCircle02Icon className="size-3.5 shrink-0 text-zinc-500" />
               <span className="truncate text-sm text-zinc-300">
                 {todo.title}
               </span>
-            </div>
+            </m.div>
           ))}
           {remainingCount > 0 && (
             <p className="text-xs text-zinc-500">+ {remainingCount} more</p>

@@ -22,6 +22,7 @@ async def generate_first_message(
     created_workflows: list[dict],
     social_profiles: list[dict],
     writing_style: Optional[WritingStyleProfile],
+    focus: str = "",
 ) -> str:
     """
     Generate GAIA's first message to a new user.
@@ -67,6 +68,7 @@ async def generate_first_message(
         prompt = FIRST_MESSAGE_GENERATION_PROMPT.format(
             name=name,
             profession=profession,
+            focus=focus or "not stated",
             writing_style_summary=writing_style_summary,
             social_profiles_text=social_profiles_text,
             total_scanned=total_scanned,
@@ -77,7 +79,7 @@ async def generate_first_message(
             workflows_created=workflows_text,
         )
 
-        llm = await providers.aget("llm_gemini_flash")
+        llm = await providers.aget("gemini_llm")
         if llm is None:
             raise RuntimeError("LLM provider not available")
         response = await llm.ainvoke([HumanMessage(content=prompt)])

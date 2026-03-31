@@ -1,39 +1,13 @@
 """Triage inbox emails for onboarding — find what matters and interesting patterns."""
 
-import json
-import re
 from typing import Optional
 
 from langchain_core.messages import HumanMessage
 from shared.py.wide_events import log
 
+from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.core.lazy_loader import providers
-from app.models.onboarding_models import EmailSummary, InboxTriage
-
-
-TRIAGE_PROMPT = """You are analyzing a user's inbox to surface what's most important.
-
-Here are their recent emails (sender, subject, snippet):
-{email_list}
-
-Your job:
-1. Identify the 5-10 most important emails that need attention or represent significant work
-2. For each, explain in one short sentence why it matters (e.g. "investor follow-up", "deadline Thursday", "team needs decision")
-3. Identify 2-5 interesting patterns across the full inbox (e.g. "Multiple emails from investor-type senders", "Recurring project X thread", "3 emails about upcoming deadline next week")
-
-Respond as JSON:
-{{
-  "important_emails": [
-    {{
-      "sender": "...",
-      "subject": "...",
-      "snippet": "...",
-      "why_important": "..."
-    }}
-  ],
-  "patterns": ["...", "..."]
-}}
-"""
+from app.models.onboarding_models import InboxTriage, InboxTriageOutput
 
 
 async def triage_inbox(
@@ -62,8 +36,13 @@ async def triage_inbox(
         unread = [e for e in emails if e.get("is_unread", False)]
 
         # Build compact email list for LLM (sender, subject, snippet only)
+        # Prioritize unread emails, then fill with recent read emails
+        read = [e for e in emails if not e.get("is_unread", False)]
+        # Take up to 30 unread + 20 most recent read, capped at 50
+        sampled = (unread[:30] + read[:20])[:50]
+
         email_lines = []
-        for e in emails[:200]:  # Cap at 200 for prompt size
+        for e in sampled:
             sender = e.get("sender", "Unknown")
             subject = e.get("subject", "(no subject)")
             snippet = e.get("snippet", "")[:100]
@@ -71,46 +50,26 @@ async def triage_inbox(
 
         email_list_text = "\n".join(email_lines)
 
-        llm = await providers.aget("llm_gemini_flash")
+        llm = await providers.aget("gemini_llm")
         if llm is None:
             raise RuntimeError("LLM provider not available")
-        prompt = TRIAGE_PROMPT.format(email_list=email_list_text)
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
 
-        # Parse JSON from response - strip markdown fences if present
-        content = response.content.strip()
-        content = re.sub(r"^```(?:json)?\s*", "", content)
-        content = re.sub(r"\s*```$", "", content)
-
-        result_data = json.loads(content)
-
-        important = []
-        for e in result_data.get("important_emails", []):
-            try:
-                important.append(
-                    EmailSummary(
-                        sender=e["sender"],
-                        subject=e["subject"],
-                        snippet=e.get("snippet", ""),
-                        why_important=e["why_important"],
-                    )
-                )
-            except (KeyError, TypeError) as parse_err:
-                log.warning(
-                    f"[inbox_triage] Skipping malformed email entry for user {user_id}: {parse_err}"
-                )
-                continue
+        structured_llm = llm.with_structured_output(InboxTriageOutput)
+        prompt = INBOX_TRIAGE_PROMPT.format(email_list=email_list_text)
+        result: InboxTriageOutput = await structured_llm.ainvoke(
+            [HumanMessage(content=prompt)]
+        )
 
         triage = InboxTriage(
             total_scanned=len(emails),
             total_unread=len(unread),
-            important_emails=important,
-            patterns=result_data.get("patterns", []),
+            important_emails=result.important_emails,
+            patterns=result.patterns,
         )
 
         log.info(
             f"[inbox_triage] Triaged {len(emails)} emails for user {user_id}. "
-            f"Important: {len(important)}, patterns: {len(triage.patterns)}"
+            f"Important: {len(triage.important_emails)}, patterns: {len(triage.patterns)}"
         )
         return triage
 

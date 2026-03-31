@@ -1,8 +1,8 @@
 """Utilities for generating user profile card data (holo card) and bio."""
 
 import random
-from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
 from bson import ObjectId
 
@@ -102,7 +102,9 @@ def generate_random_color() -> Tuple[str, int]:
     return color_string, opacity
 
 
-async def get_user_metadata(user_id: str) -> Dict[str, Any]:
+async def get_user_metadata(
+    user_id: str, user: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """
     Calculate user metadata for profile card.
 
@@ -112,38 +114,42 @@ async def get_user_metadata(user_id: str) -> Dict[str, Any]:
 
     Args:
         user_id: User ID
+        user: Pre-fetched user document (avoids redundant DB call)
 
     Returns:
         Dict with account_number and member_since
     """
     try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if user is None:
+            user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:
-            return {"account_number": 1, "member_since": "Nov 21, 2024"}
+            return {
+                "account_number": 1,
+                "member_since": datetime.now(timezone.utc).strftime("%b %d, %Y"),
+            }
 
         created_at = user.get("created_at")
 
-        # Calculate account number (sequential based on creation)
-        if created_at and isinstance(created_at, datetime):
-            count = await users_collection.count_documents(
-                {"created_at": {"$lt": created_at}}
-            )
-            account_number = count + 1
-        else:
-            account_number = 1
+        # Derive a stable account number from user_id ObjectId creation timestamp
+        # ObjectId encodes creation time — use epoch seconds as a unique, stable number
+        oid = ObjectId(user_id)
+        account_number = int(oid.generation_time.timestamp()) % 1_000_000
 
         # Format member since date
         member_since = (
             created_at.strftime("%b %d, %Y")
             if created_at and isinstance(created_at, datetime)
-            else "Nov 21, 2024"
+            else datetime.now(timezone.utc).strftime("%b %d, %Y")
         )
 
         return {"account_number": account_number, "member_since": member_since}
 
     except Exception:
         # Fallback to defaults on error
-        return {"account_number": 1, "member_since": "Nov 21, 2024"}
+        return {
+            "account_number": 1,
+            "member_since": datetime.now(timezone.utc).strftime("%b %d, %Y"),
+        }
 
 
 async def generate_personality_phrase(
@@ -204,7 +210,9 @@ async def generate_personality_phrase(
 
 
 async def generate_user_bio(
-    user_id: str, memories: List[MemoryEntry]
+    user_id: str,
+    memories: List[MemoryEntry],
+    user: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, BioStatus]:
     log.set(
         operation="generate_user_bio",
@@ -223,12 +231,14 @@ async def generate_user_bio(
     Args:
         user_id: User identifier
         memories: User's memories
+        user: Pre-fetched user document (avoids redundant DB call)
 
     Returns:
         Tuple of (bio_text, bio_status)
     """
     try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if user is None:
+            user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:
             return ("Welcome to GAIA!", BioStatus.NO_GMAIL)
 
@@ -262,7 +272,25 @@ async def generate_user_bio(
                     BioStatus.PROCESSING,
                 )
             else:
-                # No Gmail - use profession-based bio
+                # No Gmail — use focus-based bio if available, otherwise profession bio
+                focus = user.get("onboarding", {}).get("focus", "") if user else ""
+                if focus:
+                    try:
+                        focus_prompt = USER_BIO_PROMPT.format(
+                            name=name,
+                            profession=profession or "professional",
+                            memory_summary=f"Their stated current focus: {focus}",
+                        )
+                        llm = init_llm(preferred_provider="gemini")
+                        bio_response = await llm.ainvoke(focus_prompt)
+                        bio_content = (
+                            bio_response.content
+                            if isinstance(bio_response.content, str)
+                            else str(bio_response.content)
+                        )
+                        return (bio_content.strip(), BioStatus.NO_GMAIL)
+                    except Exception as e:
+                        log.warning(f"[profile_card] Focus bio generation failed: {e}")
                 default_bio = get_random_bio_for_profession(name, profession or "other")
                 return (default_bio, BioStatus.NO_GMAIL)
 

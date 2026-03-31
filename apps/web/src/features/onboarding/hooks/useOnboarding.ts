@@ -14,6 +14,12 @@ import { toast } from "@/lib/toast";
 import { batchSyncConversations } from "@/services/syncService";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
+import {
+  FOCUS_QUESTION,
+  PROCESSING_MSG_FOCUS,
+  PROCESSING_MSG_GMAIL,
+  PROCESSING_MSG_NO_GMAIL,
+} from "../constants/messages";
 import type { Message, OnboardingState } from "../types";
 
 const ONBOARDING_STORAGE_KEY = "gaia-onboarding-state";
@@ -24,15 +30,18 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
   const user = useUser();
   const { setUser } = useUserActions();
   const [isInitialized, setIsInitialized] = useState(false);
+  const [submissionError, setSubmissionError] = useState(false);
   const onboardingStartTracked = useRef(false);
   const processingStarted = useRef(false);
+  const [focusPending, setFocusPending] = useState(false);
   const pendingDataRef = useRef<{
     responses: Record<string, string>;
   } | null>(null);
 
-  const { refetch: refetchIntegrationStatus } = useFetchIntegrationStatus({
-    refetchOnMount: "always",
-  });
+  const { data: integrationStatus, refetch: refetchIntegrationStatus } =
+    useFetchIntegrationStatus({
+      refetchOnMount: "always",
+    });
 
   const [onboardingState, setOnboardingState] = useState<OnboardingState>(
     () => {
@@ -60,7 +69,6 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
           selectedProfession: null,
         },
         userResponses: {},
-        isProcessing: false,
         isProcessingPhase: false,
         hasGmail: false,
         hasAnsweredCurrentQuestion: false,
@@ -103,11 +111,13 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
 
   const submitOnboardingToBackend = useCallback(
     async (responses: Record<string, string>) => {
+      setSubmissionError(false);
       try {
         const onboardingData = {
           name: responses[FIELD_NAMES.NAME]?.trim() || "",
           profession: responses[FIELD_NAMES.PROFESSION] || "",
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          focus: responses[FIELD_NAMES.FOCUS] || "",
         };
 
         const response = await authApi.completeOnboarding(onboardingData);
@@ -140,6 +150,7 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
           // Already onboarded — proceed anyway
         } else {
           console.error("Onboarding submission failed:", error);
+          setSubmissionError(true);
         }
       }
     },
@@ -181,10 +192,51 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
   const submitResponse = useCallback(
     (responseText: string, rawValue?: string) => {
       if (
-        onboardingState.isProcessing ||
-        onboardingState.currentQuestionIndex >= questions.length
+        onboardingState.currentQuestionIndex >= questions.length &&
+        !focusPending
       )
         return;
+
+      // Handle the focus answer (submitted after Gmail skip, index is out of bounds)
+      if (focusPending) {
+        const newResponses = {
+          ...onboardingState.userResponses,
+          [FIELD_NAMES.FOCUS]: rawValue !== undefined ? rawValue : responseText,
+        };
+        setFocusPending(false);
+
+        const userMessage: Message = {
+          id: `user-${Date.now()}`,
+          type: "user",
+          content: responseText,
+          questionFieldName: FIELD_NAMES.FOCUS,
+        };
+
+        const processingMsg: Message = {
+          id: "processing",
+          type: "bot",
+          content: PROCESSING_MSG_FOCUS,
+        };
+
+        pendingDataRef.current = { responses: newResponses };
+
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
+        }
+
+        setOnboardingState((prev) => ({
+          ...prev,
+          messages: [...prev.messages, userMessage, processingMsg],
+          userResponses: newResponses,
+          currentInputs: { text: "", selectedProfession: null },
+          isProcessingPhase: true,
+          hasGmail: false,
+          hasAnsweredCurrentQuestion: true,
+          currentQuestionIndex: questions.length,
+        }));
+
+        return;
+      }
 
       const currentQuestion = questions[onboardingState.currentQuestionIndex];
 
@@ -203,14 +255,10 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
       const gmailConnected = isGmailQuestion && rawValue === "connected";
 
       if (isLastQuestion) {
-        // Store pending data before state update
         const newResponses = {
           ...onboardingState.userResponses,
           [currentQuestion.fieldName]:
             rawValue !== undefined ? rawValue : responseText,
-        };
-        pendingDataRef.current = {
-          responses: newResponses,
         };
 
         const userMessage: Message = {
@@ -220,12 +268,35 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
           questionFieldName: currentQuestion.fieldName,
         };
 
+        // When user skips Gmail, ask the focus question before processing
+        if (isGmailQuestion && !gmailConnected && !focusPending) {
+          setFocusPending(true);
+
+          const focusQuestion: Message = {
+            id: "focus-q",
+            type: "bot",
+            content: FOCUS_QUESTION,
+          };
+
+          setOnboardingState((prev) => ({
+            ...prev,
+            messages: [...prev.messages, userMessage, focusQuestion],
+            userResponses: newResponses,
+            currentInputs: { text: "", selectedProfession: null },
+            hasAnsweredCurrentQuestion: false,
+          }));
+          return;
+        }
+
+        // Store pending data and enter processing phase
+        pendingDataRef.current = { responses: newResponses };
+
         const processingMsg: Message = {
           id: "processing",
           type: "bot",
           content: gmailConnected
-            ? "Give me a moment. I'm going through your inbox and setting things up."
-            : "Give me a moment. I'm setting things up for you.",
+            ? PROCESSING_MSG_GMAIL
+            : PROCESSING_MSG_NO_GMAIL,
         };
 
         // Clear session storage before entering processing phase
@@ -238,7 +309,6 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
           messages: [...prev.messages, userMessage, processingMsg],
           userResponses: newResponses,
           currentInputs: { text: "", selectedProfession: null },
-          isProcessing: false,
           isProcessingPhase: true,
           hasGmail: gmailConnected,
           hasAnsweredCurrentQuestion: true,
@@ -283,15 +353,14 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
           currentQuestionIndex: nextIndex,
           userResponses: newResponses,
           currentInputs: { text: "", selectedProfession: null },
-          isProcessing: false,
           hasAnsweredCurrentQuestion: false,
         };
       });
     },
     [
-      onboardingState.isProcessing,
       onboardingState.currentQuestionIndex,
       onboardingState.userResponses,
+      focusPending,
     ],
   );
 
@@ -303,8 +372,10 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     if (oauthSuccess === "true") {
       toast.success("Gmail connected!");
       refetchIntegrationStatus();
+      // Clean all OAuth/integration params from URL
       const url = new URL(window.location.href);
       url.searchParams.delete("oauth_success");
+      url.searchParams.delete("integration");
       window.history.replaceState({}, "", url.toString());
       // Advance past the Gmail step now that OAuth succeeded
       submitResponse("Connected", "connected");
@@ -318,9 +389,33 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
       }
       const url = new URL(window.location.href);
       url.searchParams.delete("oauth_error");
+      url.searchParams.delete("integration");
       window.history.replaceState({}, "", url.toString());
     }
   }, [searchParams, refetchIntegrationStatus, submitResponse]);
+
+  // Auto-advance Gmail step if already connected (handles page refresh)
+  const gmailAutoAdvanced = useRef(false);
+  useEffect(() => {
+    if (gmailAutoAdvanced.current) return;
+    if (onboardingState.isProcessingPhase) return;
+
+    const currentQuestion = questions[onboardingState.currentQuestionIndex];
+    if (currentQuestion?.fieldName !== FIELD_NAMES.GMAIL) return;
+
+    const gmailStatus = integrationStatus?.integrations?.find(
+      (i: { integrationId: string }) => i.integrationId === "gmail",
+    );
+    if (gmailStatus?.connected) {
+      gmailAutoAdvanced.current = true;
+      submitResponse("Connected", "connected");
+    }
+  }, [
+    integrationStatus,
+    onboardingState.currentQuestionIndex,
+    onboardingState.isProcessingPhase,
+    submitResponse,
+  ]);
 
   // Called when user skips Gmail
   const handleGmailSkip = useCallback(() => {
@@ -349,7 +444,7 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
         {
           id: "processing",
           type: "bot" as const,
-          content: "Give me a moment. I'm setting things up for you.",
+          content: PROCESSING_MSG_NO_GMAIL,
         },
       ],
       currentQuestionIndex: questions.length,
@@ -362,7 +457,6 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
   const handleProfessionSelect = useCallback(
     (professionKey: React.Key | null) => {
       if (
-        onboardingState.isProcessing ||
         !professionKey ||
         typeof professionKey !== "string" ||
         !professionKey.trim()
@@ -372,42 +466,41 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
       const professionLabel = getDisplayText("profession", professionKey);
       submitResponse(professionLabel, professionKey);
     },
-    [onboardingState.isProcessing, submitResponse, getDisplayText],
+    [submitResponse, getDisplayText],
   );
 
-  const handleProfessionInputChange = useCallback(
-    (value: string) => {
-      if (!onboardingState.isProcessing) {
-        setOnboardingState((prev) => ({
-          ...prev,
-          currentInputs: {
-            ...prev.currentInputs,
-            selectedProfession: value,
-          },
-        }));
-      }
-    },
-    [onboardingState.isProcessing],
-  );
+  const handleProfessionInputChange = useCallback((value: string) => {
+    setOnboardingState((prev) => ({
+      ...prev,
+      currentInputs: {
+        ...prev.currentInputs,
+        selectedProfession: value,
+      },
+    }));
+  }, []);
 
-  const handleInputChange = useCallback(
-    (value: string) => {
-      if (!onboardingState.isProcessing) {
-        setOnboardingState((prev) => ({
-          ...prev,
-          currentInputs: {
-            ...prev.currentInputs,
-            text: value,
-          },
-        }));
-      }
-    },
-    [onboardingState.isProcessing],
-  );
+  const handleInputChange = useCallback((value: string) => {
+    setOnboardingState((prev) => ({
+      ...prev,
+      currentInputs: {
+        ...prev.currentInputs,
+        text: value,
+      },
+    }));
+  }, []);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+
+      // Handle focus answer submission (special case after gmail skip)
+      if (focusPending) {
+        const text = onboardingState.currentInputs.text.trim();
+        if (text) {
+          submitResponse(text, text);
+        }
+        return;
+      }
 
       if (onboardingState.currentQuestionIndex >= questions.length) return;
 
@@ -422,6 +515,7 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
       }
     },
     [
+      focusPending,
       onboardingState.currentQuestionIndex,
       onboardingState.currentInputs.text,
       submitResponse,
@@ -431,6 +525,11 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
   // Called by processing component when intelligence is complete
   const handleConversationReady = useCallback(
     async (conversationId: string) => {
+      if (skipAutoRedirect) {
+        // On /onboarding page: don't update phase or redirect — stay embedded
+        return;
+      }
+
       try {
         await apiService.post("/onboarding/phase", {
           phase: "getting_started",
@@ -439,11 +538,9 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
         // non-blocking
       }
 
-      if (!skipAutoRedirect) {
-        setTimeout(() => {
-          router.push(`/c/${conversationId}`);
-        }, 500);
-      }
+      setTimeout(() => {
+        router.push(`/c/${conversationId}`);
+      }, 500);
     },
     [router, skipAutoRedirect],
   );
@@ -462,8 +559,7 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
       const processingMsg: Message = {
         id: "processing",
         type: "bot",
-        content:
-          "Give me a moment. I'm going through your inbox and setting things up.",
+        content: PROCESSING_MSG_GMAIL,
       };
 
       setOnboardingState((prev) => ({
@@ -545,6 +641,18 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     [onboardingState.messages, onboardingState.userResponses],
   );
 
+  const handleRetrySubmission = useCallback(() => {
+    processingStarted.current = false;
+    pendingDataRef.current = { responses: onboardingState.userResponses };
+    setSubmissionError(false);
+
+    // Re-trigger the submission effect
+    const { responses } = pendingDataRef.current;
+    pendingDataRef.current = null;
+    processingStarted.current = true;
+    void submitOnboardingToBackend(responses);
+  }, [onboardingState.userResponses, submitOnboardingToBackend]);
+
   const handleRestart = useCallback(() => {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
@@ -570,7 +678,6 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
         selectedProfession: null,
       },
       userResponses: {},
-      isProcessing: false,
       isProcessingPhase: false,
       hasGmail: false,
       hasAnsweredCurrentQuestion: false,
@@ -581,6 +688,8 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
 
   return {
     onboardingState,
+    submissionError,
+    isFocusPending: focusPending,
     messagesEndRef,
     inputRef,
     handleProfessionSelect,
@@ -591,6 +700,7 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     handleSkipSetup,
     handleEditResponse,
     handleConversationReady,
+    handleRetrySubmission,
     handleRestart,
   };
 };

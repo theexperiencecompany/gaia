@@ -1,9 +1,9 @@
 import { m } from "motion/react";
+import type { ReactNode } from "react";
 
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
-import { InboxRevealCard } from "@/features/onboarding/components/reveal/InboxRevealCard";
 import { SocialProfilesRevealCard } from "@/features/onboarding/components/reveal/SocialProfilesRevealCard";
 import { TodosRevealCard } from "@/features/onboarding/components/reveal/TodosRevealCard";
 import { TriageRevealCard } from "@/features/onboarding/components/reveal/TriageRevealCard";
@@ -12,7 +12,6 @@ import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/
 
 import type { Message } from "../types";
 import type {
-  InboxScanResults,
   PersonalizationData,
   SocialProfilesResults,
   TodoResults,
@@ -22,6 +21,66 @@ import type {
 } from "../types/websocket";
 import { OnboardingProcessing } from "./OnboardingProcessing";
 
+const noop = () => {};
+
+const BOT_DEFAULTS = {
+  message_id: "",
+  date: undefined,
+  pinned: undefined,
+  fileIds: undefined,
+  fileData: undefined,
+  selectedTool: undefined,
+  toolCategory: undefined,
+  selectedWorkflow: undefined,
+  selectedCalendarEvent: undefined,
+  isConvoSystemGenerated: undefined,
+  follow_up_actions: undefined,
+  image_data: undefined,
+  memory_data: undefined,
+  todo_progress: undefined,
+  replyToMessage: undefined,
+  setOpenImage: noop,
+  setImageData: noop,
+  disableActions: true,
+} as const;
+
+const USER_DEFAULTS = {
+  message_id: "",
+  date: undefined,
+  pinned: undefined,
+  fileIds: undefined,
+  fileData: undefined,
+  selectedTool: undefined,
+  toolCategory: undefined,
+  selectedWorkflow: undefined,
+  selectedCalendarEvent: undefined,
+  isConvoSystemGenerated: undefined,
+  follow_up_actions: undefined,
+  image_data: undefined,
+  memory_data: undefined,
+  todo_progress: undefined,
+  replyToMessage: undefined,
+  disableActions: true,
+} as const;
+
+function OnboardingBotBubble({
+  text,
+  children,
+}: {
+  text: string;
+  children?: ReactNode;
+}) {
+  return (
+    <ChatBubbleBot {...BOT_DEFAULTS} text={text}>
+      {children}
+    </ChatBubbleBot>
+  );
+}
+
+function OnboardingUserBubble({ text }: { text: string }) {
+  return <ChatBubbleUser {...USER_DEFAULTS} text={text} />;
+}
+
 interface OnboardingMessagesProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
@@ -30,8 +89,11 @@ interface OnboardingMessagesProps {
   isIntelligenceComplete?: boolean;
   intelligenceConversationId?: string | null;
   onProcessingComplete?: (conversationId: string) => void;
+  isProcessingSkipped?: boolean;
   processingProgress?: number;
   onEditMessage?: (fieldName: string) => void;
+  onSoftEscapeReady?: () => void;
+  stageMessages?: Record<string, string>;
 }
 
 function renderRevealCard(
@@ -42,11 +104,6 @@ function renderRevealCard(
   const data: unknown = revealData;
 
   switch (revealStage) {
-    case "scanning_inbox":
-      if ("email_count" in revealData) {
-        return <InboxRevealCard {...(data as InboxScanResults)} />;
-      }
-      return null;
     case "learning_style":
       if ("style_summary" in revealData) {
         return <WritingStyleRevealCard {...(data as WritingStyleResults)} />;
@@ -96,8 +153,11 @@ export const OnboardingMessages = ({
   isIntelligenceComplete = false,
   intelligenceConversationId = null,
   onProcessingComplete,
+  isProcessingSkipped = false,
   processingProgress,
   onEditMessage,
+  onSoftEscapeReady,
+  stageMessages,
 }: OnboardingMessagesProps) => {
   const revealMessages = messages.filter((msg) => msg.type === "reveal");
 
@@ -111,7 +171,7 @@ export const OnboardingMessages = ({
           animate={{ opacity: 1, y: 0 }}
           transition={{
             duration: 0.4,
-            ease: "easeOut",
+            ease: [0.19, 1, 0.22, 1],
             delay: index * 0.05,
           }}
         >
@@ -122,61 +182,15 @@ export const OnboardingMessages = ({
                   ? renderRevealCard(message.revealStage, message.revealData)
                   : null;
               if (!card) return null;
-              return (
-                <ChatBubbleBot
-                  message_id={""}
-                  date={undefined}
-                  pinned={undefined}
-                  fileIds={undefined}
-                  fileData={undefined}
-                  selectedTool={undefined}
-                  toolCategory={undefined}
-                  selectedWorkflow={undefined}
-                  selectedCalendarEvent={undefined}
-                  isConvoSystemGenerated={undefined}
-                  follow_up_actions={undefined}
-                  image_data={undefined}
-                  memory_data={undefined}
-                  todo_progress={undefined}
-                  replyToMessage={undefined}
-                  setOpenImage={() => {}}
-                  setImageData={() => {}}
-                  text={message.content}
-                  disableActions={true}
-                  {...message}
-                >
-                  {card}
-                </ChatBubbleBot>
-              );
+              return card;
             })()
           ) : message.type === "bot" ? (
-            <ChatBubbleBot
-              message_id={""}
-              date={undefined}
-              pinned={undefined}
-              fileIds={undefined}
-              fileData={undefined}
-              selectedTool={undefined}
-              toolCategory={undefined}
-              selectedWorkflow={undefined}
-              selectedCalendarEvent={undefined}
-              isConvoSystemGenerated={undefined}
-              follow_up_actions={undefined}
-              image_data={undefined}
-              memory_data={undefined}
-              todo_progress={undefined}
-              replyToMessage={undefined}
-              setOpenImage={() => {}}
-              setImageData={() => {}}
-              text={message.content}
-              disableActions={true}
-              {...message}
-            >
+            <OnboardingBotBubble text={message.content}>
               {isProcessingPhase &&
                 index === messages.length - 1 &&
-                revealMessages.length === 0 && (
+                revealMessages.length === 0 &&
+                !isProcessingSkipped && (
                   <m.div
-                    className="ml-[43px]"
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{
@@ -191,10 +205,12 @@ export const OnboardingMessages = ({
                       intelligenceConversationId={intelligenceConversationId}
                       onComplete={onProcessingComplete ?? (() => {})}
                       processingProgress={processingProgress}
+                      onSoftEscapeReady={onSoftEscapeReady}
+                      stageMessages={stageMessages}
                     />
                   </m.div>
                 )}
-            </ChatBubbleBot>
+            </OnboardingBotBubble>
           ) : (
             <div className="group flex items-end justify-end gap-0">
               {message.questionFieldName &&
@@ -220,25 +236,7 @@ export const OnboardingMessages = ({
                     </svg>
                   </button>
                 )}
-              <ChatBubbleUser
-                text={message.content}
-                message_id={""}
-                date={undefined}
-                pinned={undefined}
-                fileIds={undefined}
-                fileData={undefined}
-                selectedTool={undefined}
-                toolCategory={undefined}
-                todo_progress={undefined}
-                selectedWorkflow={undefined}
-                selectedCalendarEvent={undefined}
-                isConvoSystemGenerated={undefined}
-                follow_up_actions={undefined}
-                image_data={undefined}
-                memory_data={undefined}
-                replyToMessage={undefined}
-                disableActions={true}
-              />
+              <OnboardingUserBubble text={message.content} />
             </div>
           )}
         </m.div>

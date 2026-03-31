@@ -1,6 +1,7 @@
 "use client";
 
 import { m } from "motion/react";
+import { WRITING_STYLE_LABEL } from "../../constants/messages";
 import type { WritingStyleResults } from "../../types/websocket";
 
 type WritingStyleRevealCardProps = WritingStyleResults;
@@ -13,12 +14,17 @@ export function WritingStyleRevealCard({
       className="overflow-hidden rounded-2xl bg-zinc-800/60 p-4"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35 }}
+      transition={{ type: "spring", stiffness: 280, damping: 22 }}
     >
-      <p className="mb-2 text-xs text-zinc-400">Your writing style</p>
-      <p className="border-l-2 border-zinc-600 pl-3 text-sm text-zinc-400">
+      <p className="mb-2 text-xs text-zinc-400">{WRITING_STYLE_LABEL}</p>
+      <m.p
+        className="pl-3 text-sm text-zinc-400"
+        initial={{ opacity: 0, x: -6 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: 0.06, duration: 0.25, ease: [0.19, 1, 0.22, 1] }}
+      >
         {style_summary}
-      </p>
+      </m.p>
     </m.div>
   );
 }

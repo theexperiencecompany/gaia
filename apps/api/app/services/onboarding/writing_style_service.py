@@ -1,40 +1,14 @@
 """Service to learn user writing style from their sent emails."""
 
-import json
-import re
 from typing import Optional
 
 from langchain_core.messages import HumanMessage
 from shared.py.wide_events import log
 
+from app.agents.prompts.onboarding_prompts import WRITING_STYLE_PROMPT
 from app.core.lazy_loader import providers
-from app.models.onboarding_models import WritingStyleProfile
+from app.models.onboarding_models import WritingStyleOutput, WritingStyleProfile
 from app.services.mail.mail_service import search_messages
-
-
-WRITING_STYLE_ANALYSIS_PROMPT = """Analyze these email excerpts written by the same person.
-Describe their writing style in a short paragraph (2-4 sentences) that could be used to
-instruct an AI to write emails that sound exactly like them.
-
-Focus on:
-- Length preference (short and direct vs detailed)
-- Formality level (casual, professional, or mixed)
-- Greeting and sign-off patterns (if any)
-- Tone (warm, direct, formal, humorous, etc.)
-- Any distinctive verbal patterns or habits
-
-Then provide 3-5 short direct quotes from the emails that best exemplify their style.
-Only include the style-relevant parts — no sensitive content, names, or details.
-
-Emails:
-{email_samples}
-
-Respond as JSON:
-{{
-  "summary": "...",
-  "sample_snippets": ["...", "...", "..."]
-}}
-"""
 
 
 async def learn_writing_style(
@@ -86,22 +60,19 @@ async def learn_writing_style(
 
         email_samples_text = "\n---\n".join(samples)
 
-        llm = await providers.aget("llm_gemini_flash")
+        llm = await providers.aget("gemini_llm")
         if llm is None:
             raise RuntimeError("LLM provider not available")
-        prompt = WRITING_STYLE_ANALYSIS_PROMPT.format(email_samples=email_samples_text)
-        response = await llm.ainvoke([HumanMessage(content=prompt)])
 
-        # Parse JSON from response - strip markdown fences if present
-        content = response.content.strip()
-        content = re.sub(r"^```(?:json)?\s*", "", content)
-        content = re.sub(r"\s*```$", "", content)
-
-        result_data = json.loads(content)
+        structured_llm = llm.with_structured_output(WritingStyleOutput)
+        prompt = WRITING_STYLE_PROMPT.format(email_samples=email_samples_text)
+        result_data: WritingStyleOutput = await structured_llm.ainvoke(
+            [HumanMessage(content=prompt)]
+        )
 
         profile = WritingStyleProfile(
-            summary=result_data["summary"],
-            sample_snippets=result_data.get("sample_snippets", [])[:5],
+            summary=result_data.summary,
+            sample_snippets=result_data.sample_snippets[:5],
         )
 
         log.info(
