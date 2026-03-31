@@ -13,6 +13,7 @@ import os
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from langgraph.checkpoint.base import empty_checkpoint
 
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
@@ -31,7 +32,7 @@ def postgres_url() -> str:
     )
 
 
-@pytest.fixture(scope="class")
+@pytest_asyncio.fixture(scope="class", loop_scope="class")
 async def manager(postgres_url: str) -> CheckpointerManager:  # type: ignore[misc]
     """One CheckpointerManager per test class, torn down after."""
     mgr = CheckpointerManager(conninfo=postgres_url)

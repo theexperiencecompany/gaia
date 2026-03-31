@@ -14,10 +14,8 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import AsyncGenerator
 
 import pytest
-import pytest_asyncio
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from redis.asyncio import Redis
@@ -41,33 +39,23 @@ def redis_url() -> str:
     return os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def mongo_client(mongodb_url: str) -> AsyncGenerator[AsyncIOMotorClient, None]:
-    client = AsyncIOMotorClient(mongodb_url)
-    await client.admin.command("ping")
-    yield client
-    client.close()
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def mongo_db(mongo_client: AsyncIOMotorClient):
-    return mongo_client["gaia_test"]
-
-
 # ---------------------------------------------------------------------------
 # Per-test isolation: clean collections + patch app singletons
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-async def conversations_collection(mongo_db, monkeypatch):
+async def conversations_collection(mongodb_url: str, monkeypatch):
     """
     Real MongoDB conversations collection, patched into the app singleton.
 
-    After this fixture, calling production code that imports
-    conversations_collection will write to the REAL test MongoDB, not a mock.
+    Creates a fresh Motor client per test to avoid event-loop cross-
+    contamination (session-scoped Motor clients are bound to the session
+    loop and cannot be reused by function-scoped async fixtures whose
+    asyncio_default_fixture_loop_scope is "function").
     """
-    coll = mongo_db["conversations"]
+    client = AsyncIOMotorClient(mongodb_url)
+    coll = client["gaia_test"]["conversations"]
     await coll.delete_many({})
 
     import app.services.conversation_service as conv_svc
@@ -77,6 +65,7 @@ async def conversations_collection(mongo_db, monkeypatch):
     yield coll
 
     await coll.delete_many({})
+    client.close()
 
 
 @pytest.fixture
