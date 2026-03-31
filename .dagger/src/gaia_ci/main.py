@@ -484,7 +484,7 @@ class GaiaCi:
 
         trivy_task = (
             dag.container()
-            .from_("aquasec/trivy:latest")
+            .from_("aquasecurity/trivy:latest")
             .with_directory("/src", source)
             .with_exec(
                 [
