@@ -39,9 +39,32 @@ def redis_url() -> str:
     return os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
+@pytest.fixture(scope="session")
+def postgres_url() -> str:
+    return os.environ.get(
+        "DATABASE_URL",
+        "postgresql://gaia:gaia@localhost:5432/gaia_test",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Per-test isolation: clean collections + patch app singletons
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def mongo_db(mongodb_url: str):
+    """
+    Real MongoDB database handle for tests that need arbitrary collections.
+
+    Creates a fresh Motor client per test to avoid event-loop cross-
+    contamination. Use this when you need to work with collections other
+    than 'conversations' (e.g., 'todos', 'reminders').
+    """
+    client = AsyncIOMotorClient(mongodb_url)
+    db = client["gaia_test"]
+    yield db
+    client.close()
 
 
 @pytest.fixture

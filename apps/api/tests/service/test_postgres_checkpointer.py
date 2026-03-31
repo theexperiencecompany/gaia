@@ -9,32 +9,22 @@ Requires: PostgreSQL service container (DATABASE_URL env var).
 
 from __future__ import annotations
 
-import os
 from uuid import uuid4
 
 import pytest
-import pytest_asyncio
 from langgraph.checkpoint.base import empty_checkpoint
 
 from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Fixtures (postgres_url comes from service/conftest.py)
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="class")
-def postgres_url() -> str:
-    return os.environ.get(
-        "DATABASE_URL",
-        "postgresql://gaia:gaia@localhost:5432/gaia_test",
-    )
-
-
-@pytest_asyncio.fixture(scope="class", loop_scope="class")
+@pytest.fixture
 async def manager(postgres_url: str) -> CheckpointerManager:  # type: ignore[misc]
-    """One CheckpointerManager per test class, torn down after."""
+    """Function-scoped CheckpointerManager for test isolation."""
     mgr = CheckpointerManager(conninfo=postgres_url)
     await mgr.setup()
     yield mgr  # type: ignore[misc]
@@ -47,7 +37,7 @@ async def manager(postgres_url: str) -> CheckpointerManager:  # type: ignore[mis
 
 
 def _thread_config(thread_id: str) -> dict:
-    return {"configurable": {"thread_id": thread_id}}
+    return {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
 
 
 # ---------------------------------------------------------------------------

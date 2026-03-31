@@ -357,6 +357,14 @@ run = "dagger call -s dead-code"
 description = "Run integration tests via Dagger (with live Postgres, Redis, MongoDB)"
 run = "dagger call -s integration-test"
 
+[tasks."ci:dagger:service"]
+description = "Run service-marked tests via Dagger (verbose, with live databases)"
+run = "dagger call -s service-test"
+
+[tasks."ci:dagger:test-matrix"]
+description = "Run API unit tests against Python 3.11 + 3.12 via Dagger"
+run = "dagger call -s test-matrix"
+
 [tasks."ci:dagger:debug"]
 description = "Run full quality gate with interactive debugging on failure"
 run = "dagger call quality-checks --interactive"

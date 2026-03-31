@@ -29,6 +29,15 @@ def _fake_stream(*chunks):
     return _gen
 
 
+def _make_usage_mock():
+    """Build a UsageMetadataCallbackHandler mock that returns a real dict for metadata."""
+    mock_cls = MagicMock()
+    instance = MagicMock()
+    instance.usage_metadata = {}
+    mock_cls.return_value = instance
+    return mock_cls
+
+
 @pytest.mark.service
 class TestChatPipelineReal:
     """Full pipeline: run_chat_stream_background with real Redis + MongoDB."""
@@ -58,7 +67,7 @@ class TestChatPipelineReal:
             ),
             patch(
                 "app.services.chat_service.UsageMetadataCallbackHandler",
-                MagicMock,
+                _make_usage_mock(),
             ),
         ):
             await run_chat_stream_background(
@@ -104,7 +113,7 @@ class TestChatPipelineReal:
             ),
             patch(
                 "app.services.chat_service.UsageMetadataCallbackHandler",
-                MagicMock,
+                _make_usage_mock(),
             ),
         ):
             await run_chat_stream_background(
@@ -139,7 +148,7 @@ class TestChatPipelineReal:
             ),
             patch(
                 "app.services.chat_service.UsageMetadataCallbackHandler",
-                MagicMock,
+                _make_usage_mock(),
             ),
         ):
             await run_chat_stream_background(

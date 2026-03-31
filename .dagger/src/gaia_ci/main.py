@@ -260,28 +260,46 @@ class GaiaCi:
             .as_service()
         )
 
-    @function
-    async def integration_test(self, source: Source) -> str:
-        """Run integration tests with live service containers (Postgres, Redis, MongoDB)."""
+    def _service_test_container(self, source: Source) -> dagger.Container:
+        """Create a test container wired to live Postgres, Redis, and MongoDB services.
+
+        Database credentials are injected via dagger.Secret so they never
+        appear in build logs or the Dagger TUI.
+        """
         pg = self.postgres_service()
         redis = self.redis_service()
         mongo = self.mongo_service()
-        return await (
+        return (
             self.ci_env(source)
             .with_service_binding("postgres", pg)
             .with_service_binding("redis", redis)
             .with_service_binding("mongo", mongo)
             .with_env_variable("ENV", "test")
-            .with_env_variable(
+            .with_secret_variable(
                 "DATABASE_URL",
-                "postgresql://gaia:gaia@postgres:5432/gaia_test",
+                dag.set_secret(
+                    "db-url", "postgresql://gaia:gaia@postgres:5432/gaia_test"
+                ),
             )
-            .with_env_variable("REDIS_URL", "redis://redis:6379/0")
-            .with_env_variable(
+            .with_secret_variable(
+                "REDIS_URL",
+                dag.set_secret("redis-url", "redis://redis:6379/0"),
+            )
+            .with_secret_variable(
                 "MONGODB_URL",
-                "mongodb://gaia:gaia@mongo:27017/gaia_test?authSource=admin",
+                dag.set_secret(
+                    "mongo-url",
+                    "mongodb://gaia:gaia@mongo:27017/gaia_test?authSource=admin",
+                ),
             )
             .with_workdir("/app/apps/api")
+        )
+
+    @function
+    async def integration_test(self, source: Source) -> str:
+        """Run integration tests with live service containers (Postgres, Redis, MongoDB)."""
+        return await (
+            self._service_test_container(source)
             .with_exec(
                 [
                     "uv",
@@ -294,6 +312,26 @@ class GaiaCi:
                     # pytest.ini addopts includes -n 4 (xdist). Override it so we
                     # run service tests in a single process — session-scoped async
                     # fixtures don't work across multiple xdist workers.
+                    "--override-ini=addopts=--strict-markers",
+                ]
+            )
+            .stdout()
+        )
+
+    @function
+    async def service_test(self, source: Source) -> str:
+        """Run only service-marked tests with live containers (Postgres, Redis, MongoDB)."""
+        return await (
+            self._service_test_container(source)
+            .with_exec(
+                [
+                    "uv",
+                    "run",
+                    "pytest",
+                    "-m",
+                    "service",
+                    "--tb=short",
+                    "-v",
                     "--override-ini=addopts=--strict-markers",
                 ]
             )
@@ -427,25 +465,8 @@ class GaiaCi:
             ["node", "scripts/ci/validate-release-manifest.mjs"]
         ).stdout()
 
-        pg = self.postgres_service()
-        redis = self.redis_service()
-        mongo = self.mongo_service()
         service_test_task = (
-            self.ci_env(source)
-            .with_service_binding("postgres", pg)
-            .with_service_binding("redis", redis)
-            .with_service_binding("mongo", mongo)
-            .with_env_variable("ENV", "test")
-            .with_env_variable(
-                "DATABASE_URL",
-                "postgresql://gaia:gaia@postgres:5432/gaia_test",
-            )
-            .with_env_variable("REDIS_URL", "redis://redis:6379/0")
-            .with_env_variable(
-                "MONGODB_URL",
-                "mongodb://gaia:gaia@mongo:27017/gaia_test?authSource=admin",
-            )
-            .with_workdir("/app/apps/api")
+            self._service_test_container(source)
             .with_exec(
                 [
                     "uv",
@@ -455,8 +476,6 @@ class GaiaCi:
                     "service",
                     "--tb=short",
                     "-q",
-                    # Override pytest.ini addopts to drop -n 4 (xdist).
-                    # Session-scoped async fixtures don't work across xdist workers.
                     "--override-ini=addopts=--strict-markers",
                 ]
             )

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
-from langchain_core.messages import AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from langsmith import traceable
 from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
@@ -287,7 +287,9 @@ def build_agent_config(
                 project_name="GAIA",
             )
         )
-    posthog_client = providers.get("posthog")
+    posthog_client = (
+        providers.get("posthog") if providers.is_available("posthog") else None
+    )
 
     if posthog_client is not None:
         callbacks.append(
@@ -493,7 +495,7 @@ async def execute_graph_silent(
             if metadata.get("silent"):
                 continue  # Skip silent chunks (e.g. follow-up actions generation)
 
-            if chunk and isinstance(chunk, AIMessageChunk):
+            if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
                 content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
                 if content and metadata.get("agent_name") == "comms_agent":
                     complete_message += content
@@ -677,7 +679,7 @@ async def execute_graph_streaming(
                 continue
 
             # Stream AI response content (only from comms_agent to avoid duplication)
-            if chunk and isinstance(chunk, AIMessageChunk):
+            if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
                 content = chunk.text
                 if content and metadata.get("agent_name") == "comms_agent":
                     yield format_sse_response(content)
