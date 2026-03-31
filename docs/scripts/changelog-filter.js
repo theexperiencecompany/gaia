@@ -114,7 +114,7 @@
       var h1Positions = [];
 
       elChildren.forEach(function (el, i) {
-        if (el.tagName === "H1") {
+        if (el.tagName === "H2") {
           var app = getApp(el.textContent);
           if (app) h1Positions.push({ index: i, app: app });
         }
@@ -213,29 +213,19 @@
         }
       });
 
-      // Fix first-visible h1 top margin
-      document.querySelectorAll("div.prose-sm").forEach(function (prose) {
-        var sections = Array.from(prose.querySelectorAll("[data-cl-app]"));
-        if (!sections.length) return;
-        var first = true;
-        sections.forEach(function (section) {
-          var h1 = section.querySelector("h1");
-          if (!h1) return;
-          if (first && section.style.display !== "none") {
-            h1.style.marginTop = "0";
-            first = false;
-          } else {
-            h1.style.marginTop = "";
-          }
-        });
+      // Fix first-visible release headline top margin
+      var firstHeadline = true;
+      document.querySelectorAll(".update-container").forEach(function (container) {
+        if (container.style.display === "none") return;
+        var prose = container.querySelector("div.prose-sm");
+        if (!prose) return;
+        var h1 = prose.querySelector("h1");
+        if (!h1) return;
+        h1.style.marginTop = firstHeadline ? "0" : "";
+        firstHeadline = false;
       });
 
-      // Own scroll highlighter when filtered, Mintlify's when "all"
-      if (filter === "all") {
-        stopTocHighlighter();
-      } else {
-        startTocHighlighter();
-      }
+      startTocHighlighter();
     }
 
     function createPill(label, key) {
