@@ -89,20 +89,15 @@
         ]
       },
       {
+        "tab": "Release Notes",
+        "pages": ["release-notes"]
+      },
+      {
         "tab": "Guides",
         "groups": [
           {
             "group": "Guides",
             "pages": ["guides/create-public-workflow"]
-          }
-        ]
-      },
-      {
-        "tab": "Changelog",
-        "groups": [
-          {
-            "group": "Changelog",
-            "pages": ["changelog/release-notes"]
           }
         ]
       },
