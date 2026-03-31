@@ -1,5 +1,8 @@
 """Integration test fixtures shared across all integration test modules."""
 
+from __future__ import annotations
+
+import os
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -10,8 +13,10 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
+from redis.asyncio import Redis
 from typing_extensions import Annotated
 
+from app.db.redis import redis_cache
 from tests.factories import make_config, make_user
 
 
@@ -75,3 +80,31 @@ def sample_user() -> dict:
 @pytest.fixture
 def sample_config() -> dict:
     return make_config()
+
+
+# ---------------------------------------------------------------------------
+# Real Redis fixture (skips if Redis unavailable)
+# ---------------------------------------------------------------------------
+
+_REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+
+@pytest.fixture
+async def real_redis(monkeypatch):
+    """Real Redis connection, patched into the app's redis_cache singleton.
+
+    Skips the test automatically if Redis is not reachable.
+    """
+    client = Redis.from_url(_REDIS_URL, decode_responses=True)
+    try:
+        await client.ping()
+    except (ConnectionError, OSError, Exception):
+        await client.aclose()
+        pytest.skip("Redis not available at " + _REDIS_URL)
+
+    monkeypatch.setattr(redis_cache, "redis", client)
+
+    yield client
+
+    await client.flushdb()
+    await client.aclose()
