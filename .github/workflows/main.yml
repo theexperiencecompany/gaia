@@ -49,6 +49,19 @@ jobs:
             }
             core.info(`Master PR policy passed: ${pr.head.ref} -> ${pr.base.ref}`);
 
+      # Pre-pull the Dagger engine image so it is in the Docker layer cache before
+      # Dagger starts. Without this, cold Blacksmith VMs pull ~1 GB from
+      # registry.dagger.io at engine startup, which exceeds Dagger's 10-minute
+      # engine-start timeout and causes a SIGKILL. Retries handle transient failures.
+      - name: Warm Dagger engine image
+        run: |
+          for i in 1 2 3; do
+            docker pull registry.dagger.io/engine:v0.20.3 && break
+            echo "Pull attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
+        timeout-minutes: 20
+
       # Run all quality checks via Dagger (lint, type-check, build, test, dead-code, release validation).
       # Everything runs inside the Dagger container -- no host toolchain setup needed.
       - name: Run quality checks
@@ -57,6 +70,7 @@ jobs:
           version: "0.20.3"
           dagger-flags: "--silent"
           call: quality-checks
+        timeout-minutes: 40
 
   # Only trigger image build/deploy planning on master after quality gate passes.
   trigger-build:
