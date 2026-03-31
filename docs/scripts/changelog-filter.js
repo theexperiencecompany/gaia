@@ -111,22 +111,22 @@
 
     proseDivs.forEach(function (div) {
       var elChildren = Array.from(div.children);
-      var h1Positions = [];
+      var h2Positions = [];
 
       elChildren.forEach(function (el, i) {
         if (el.tagName === "H2") {
           var app = getApp(el.textContent);
-          if (app) h1Positions.push({ index: i, app: app });
+          if (app) h2Positions.push({ index: i, app: app });
         }
       });
 
-      if (h1Positions.length === 0) return;
+      if (h2Positions.length === 0) return;
       anyTagged = true;
 
-      for (var i = h1Positions.length - 1; i >= 0; i--) {
-        var start = h1Positions[i].index;
-        var end = i + 1 < h1Positions.length ? h1Positions[i + 1].index : elChildren.length;
-        var app = h1Positions[i].app;
+      for (var i = h2Positions.length - 1; i >= 0; i--) {
+        var start = h2Positions[i].index;
+        var end = i + 1 < h2Positions.length ? h2Positions[i + 1].index : elChildren.length;
+        var app = h2Positions[i].app;
 
         var wrapper = document.createElement("div");
         wrapper.setAttribute("data-cl-app", app);
