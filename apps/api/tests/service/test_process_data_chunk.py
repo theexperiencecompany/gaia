@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -42,9 +42,9 @@ class TestProcessDataChunkReal:
         )
         chunk = f"data: {chunk_payload}\n\n"
 
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr(StreamManager, "publish_chunk", AsyncMock())
-            m.setattr(StreamManager, "update_progress", AsyncMock())
+        with patch("app.services.chat_service.stream_manager") as mock_sm:
+            mock_sm.publish_chunk = AsyncMock()
+            mock_sm.update_progress = AsyncMock()
 
             await _process_data_chunk(
                 stream_id,
@@ -68,15 +68,15 @@ class TestProcessDataChunkReal:
         todo_progress_accumulated: dict = {}
         follow_up_actions: list = []
 
-        # follow_up_actions are nested under other_data per extract_tool_data contract
+        # follow_up_actions are top-level in the chunk per extract_tool_data contract
         chunk_payload = json.dumps(
-            {"other_data": {"follow_up_actions": ["Draft email", "Schedule meeting"]}}
+            {"follow_up_actions": ["Draft email", "Schedule meeting"]}
         )
         chunk = f"data: {chunk_payload}\n\n"
 
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr(StreamManager, "publish_chunk", AsyncMock())
-            m.setattr(StreamManager, "update_progress", AsyncMock())
+        with patch("app.services.chat_service.stream_manager") as mock_sm:
+            mock_sm.publish_chunk = AsyncMock()
+            mock_sm.update_progress = AsyncMock()
 
             result_follow_up, _ = await _process_data_chunk(
                 stream_id,
@@ -104,9 +104,9 @@ class TestProcessDataChunkReal:
         )
         chunk = f"data: {chunk_payload}\n\n"
 
-        with pytest.MonkeyPatch.context() as m:
-            m.setattr(StreamManager, "publish_chunk", AsyncMock())
-            m.setattr(StreamManager, "update_progress", AsyncMock())
+        with patch("app.services.chat_service.stream_manager") as mock_sm:
+            mock_sm.publish_chunk = AsyncMock()
+            mock_sm.update_progress = AsyncMock()
 
             await _process_data_chunk(
                 stream_id,

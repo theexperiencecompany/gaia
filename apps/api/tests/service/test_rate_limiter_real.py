@@ -8,16 +8,33 @@ naming pattern, and concurrent increments are atomic.
 from __future__ import annotations
 
 import asyncio
+import types
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
+    TieredRateLimiter,
     tiered_limiter,
 )
 from app.config.rate_limits import RateLimitPeriod
 from app.models.payment_models import PlanType
+
+
+@pytest.fixture
+def real_rate_limiter(monkeypatch):
+    """Restore the real check_and_increment method for enforcement tests.
+
+    The root conftest patches tiered_limiter.check_and_increment with an AsyncMock
+    to prevent rate limit hits in regular tests. This fixture temporarily unbinds
+    that mock so service tests can test real enforcement behavior.
+    """
+    real_method = types.MethodType(
+        TieredRateLimiter.check_and_increment, tiered_limiter
+    )
+    monkeypatch.setattr(tiered_limiter, "check_and_increment", real_method)
+    return tiered_limiter
 
 
 @pytest.mark.service
@@ -59,7 +76,9 @@ class TestRateLimiterRedisKeys:
         )
         assert day_key != month_key
 
-    async def test_key_written_to_real_redis_on_increment(self, real_redis):
+    async def test_key_written_to_real_redis_on_increment(
+        self, real_redis, real_rate_limiter
+    ):
         """After check_and_increment, the Redis key must exist with value >= 1."""
         user_id = "incr-test-user-1"
         feature = "chat_messages"
@@ -70,20 +89,10 @@ class TestRateLimiterRedisKeys:
         )
         await real_redis.delete(day_key, month_key)
 
-        mock_sub = AsyncMock()
-        mock_sub.plan_type = PlanType.FREE
-
-        with (
-            patch(
-                "app.api.v1.middleware.tiered_rate_limiter.payment_service"
-                ".get_user_subscription_status",
-                new=AsyncMock(return_value=mock_sub),
-            ),
-            patch.object(
-                tiered_limiter,
-                "_sync_usage_real_time",
-                new=AsyncMock(),
-            ),
+        with patch.object(
+            tiered_limiter,
+            "_sync_usage_real_time",
+            new=AsyncMock(),
         ):
             await tiered_limiter.check_and_increment(
                 user_id=user_id,
@@ -103,7 +112,9 @@ class TestRateLimiterRedisKeys:
 class TestRateLimiterEnforcement:
     """Limit enforcement tests with real Redis state."""
 
-    async def test_request_rejected_when_daily_limit_reached(self, real_redis):
+    async def test_request_rejected_when_daily_limit_reached(
+        self, real_redis, real_rate_limiter
+    ):
         """check_and_increment must raise RateLimitExceededException when limit is met."""
         user_id = "limit-enforce-user-1"
         feature = "chat_messages"
@@ -117,12 +128,10 @@ class TestRateLimiterEnforcement:
         # Seed the daily counter at exactly the FREE daily limit (200)
         await real_redis.set(day_key, "200", ex=3600)
 
-        with (
-            patch.object(
-                tiered_limiter,
-                "_sync_usage_real_time",
-                new=AsyncMock(),
-            ),
+        with patch.object(
+            tiered_limiter,
+            "_sync_usage_real_time",
+            new=AsyncMock(),
         ):
             with pytest.raises(RateLimitExceededException) as exc_info:
                 await tiered_limiter.check_and_increment(
@@ -133,7 +142,9 @@ class TestRateLimiterEnforcement:
 
         assert exc_info.value.status_code == 429
 
-    async def test_request_allowed_below_daily_limit(self, real_redis):
+    async def test_request_allowed_below_daily_limit(
+        self, real_redis, real_rate_limiter
+    ):
         """check_and_increment must succeed when usage is below the limit."""
         user_id = "limit-enforce-user-2"
         feature = "chat_messages"
@@ -160,7 +171,9 @@ class TestRateLimiterEnforcement:
 
         assert isinstance(result, dict)
 
-    async def test_counter_increments_on_each_allowed_request(self, real_redis):
+    async def test_counter_increments_on_each_allowed_request(
+        self, real_redis, real_rate_limiter
+    ):
         """Each successful check_and_increment must advance the counter by 1."""
         user_id = "limit-enforce-user-3"
         feature = "chat_messages"

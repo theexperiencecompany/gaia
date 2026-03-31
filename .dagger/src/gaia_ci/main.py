@@ -291,6 +291,8 @@ class GaiaCi:
                     "integration or service",
                     "--tb=short",
                     "-q",
+                    "-p",
+                    "no:xdist",
                 ]
             )
             .stdout()
@@ -451,6 +453,8 @@ class GaiaCi:
                     "service",
                     "--tb=short",
                     "-q",
+                    "-p",
+                    "no:xdist",
                 ]
             )
             .stdout()

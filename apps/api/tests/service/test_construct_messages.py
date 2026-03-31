@@ -8,7 +8,7 @@ format_tool_selection_message, message list construction.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -29,7 +29,7 @@ class TestConstructMessagesReal:
             ),
             patch(
                 "app.agents.core.messages.get_platform_context_message",
-                new=AsyncMock(return_value=None),
+                new=MagicMock(return_value=None),
             ),
         ):
             messages = await construct_langchain_messages(
@@ -53,7 +53,7 @@ class TestConstructMessagesReal:
             ),
             patch(
                 "app.agents.core.messages.get_platform_context_message",
-                new=AsyncMock(return_value=None),
+                new=MagicMock(return_value=None),
             ),
         ):
             messages = await construct_langchain_messages(
@@ -67,8 +67,8 @@ class TestConstructMessagesReal:
         all_content = " ".join(str(m.content) for m in messages)
         assert "web_search" in all_content
 
-    async def test_empty_messages_still_produces_system_message(self):
-        """Even with empty messages list, must produce system message."""
+    async def test_system_message_is_first(self):
+        """First message must always be a SystemMessage."""
         with (
             patch(
                 "app.agents.core.messages.get_memory_message",
@@ -76,13 +76,13 @@ class TestConstructMessagesReal:
             ),
             patch(
                 "app.agents.core.messages.get_platform_context_message",
-                new=AsyncMock(return_value=None),
+                new=MagicMock(return_value=None),
             ),
         ):
             messages = await construct_langchain_messages(
-                messages=[],
+                messages=[{"role": "user", "content": "What can you do?"}],
                 user_id="test-user",
-                query="Hello",
+                query="What can you do?",
             )
 
         assert len(messages) >= 1

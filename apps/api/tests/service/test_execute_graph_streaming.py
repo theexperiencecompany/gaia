@@ -51,7 +51,9 @@ class TestExecuteGraphStreamingReal:
                     "configurable": {
                         "thread_id": "stream-test-1",
                         "user_id": "stream-user-1",
-                    }
+                    },
+                    # Required so execute_graph_streaming accumulates complete_message
+                    "agent_name": "comms_agent",
                 }
 
                 chunks = []
@@ -90,7 +92,8 @@ class TestExecuteGraphStreamingReal:
                     "configurable": {
                         "thread_id": "stream-test-2",
                         "user_id": "stream-user-2",
-                    }
+                    },
+                    "agent_name": "comms_agent",
                 }
 
                 chunks = []
@@ -129,7 +132,8 @@ class TestExecuteGraphStreamingReal:
                         "thread_id": "cancel-stream-test",
                         "user_id": "user-cancel",
                         "stream_id": stream_id,
-                    }
+                    },
+                    "agent_name": "comms_agent",
                 }
 
                 chunks = []
