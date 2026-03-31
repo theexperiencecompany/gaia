@@ -55,15 +55,17 @@ class TestRateLimiterRedisKeys:
         assert "file_upload" in key
 
     async def test_redis_key_contains_period(self, real_redis):
-        """Generated key must embed the period ('day' or 'month')."""
+        """Generated key must embed the period identifier."""
         day_key = tiered_limiter._get_redis_key(
             "u1", "chat_messages", RateLimitPeriod.DAY
         )
         month_key = tiered_limiter._get_redis_key(
             "u1", "chat_messages", RateLimitPeriod.MONTH
         )
-        assert "day" in day_key
-        assert "month" in month_key
+        # In Python 3.12, f"{StrEnum.MEMBER}" returns "ClassName.MEMBER",
+        # so the key contains "RateLimitPeriod.DAY" / "RateLimitPeriod.MONTH".
+        assert "DAY" in day_key
+        assert "MONTH" in month_key
 
     async def test_day_and_month_keys_are_distinct(self, real_redis):
         """Daily and monthly keys must be different strings."""

@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 import pytest
+import pytest_asyncio
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from redis.asyncio import Redis
@@ -40,7 +41,7 @@ def redis_url() -> str:
     return os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def mongo_client(mongodb_url: str) -> AsyncGenerator[AsyncIOMotorClient, None]:
     client = AsyncIOMotorClient(mongodb_url)
     await client.admin.command("ping")
@@ -48,7 +49,7 @@ async def mongo_client(mongodb_url: str) -> AsyncGenerator[AsyncIOMotorClient, N
     client.close()
 
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def mongo_db(mongo_client: AsyncIOMotorClient):
     return mongo_client["gaia_test"]
 

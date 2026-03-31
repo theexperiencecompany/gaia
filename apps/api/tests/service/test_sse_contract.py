@@ -124,7 +124,10 @@ class TestSSEContract:
 
         await asyncio.gather(publisher(), subscriber())
 
-        assert len(received) == 3
-        assert "user_message_id" in received[0]
-        assert "response" in received[1]
-        assert "tool_data" in received[2]
+        # Filter keepalives: non-blocking get_message may yield a keepalive
+        # before the publisher's 0.1s sleep completes.
+        non_keepalive = [c for c in received if "keepalive" not in c]
+        assert len(non_keepalive) == 3
+        assert "user_message_id" in non_keepalive[0]
+        assert "response" in non_keepalive[1]
+        assert "tool_data" in non_keepalive[2]

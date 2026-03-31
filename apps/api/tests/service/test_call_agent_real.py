@@ -15,7 +15,6 @@ import pytest
 
 from app.agents.core.agent import call_agent
 from app.agents.core.graph_builder.build_graph import build_comms_graph
-from app.agents.core.graph_manager import GraphManager
 from app.models.message_models import MessageRequestWithHistory
 from tests.helpers import create_fake_llm
 from tests.integration.agents.test_comms_agent_flow import (
@@ -47,17 +46,24 @@ class TestCallAgentReal:
             async with build_comms_graph(
                 chat_llm=fake_llm, in_memory_checkpointer=True
             ) as graph:
-                GraphManager._graphs["comms_agent"] = graph
-
                 body = MessageRequestWithHistory(
                     message="Hi there",
                     messages=[{"role": "user", "content": "Hi there"}],
                     conversation_id="call-agent-conv-1",
                 )
 
-                with patch(
-                    "app.agents.core.agent.store_user_message_memory",
-                    new=AsyncMock(),
+                with (
+                    patch(
+                        "app.agents.core.agent.store_user_message_memory",
+                        new=AsyncMock(),
+                    ),
+                    # GraphManager.get_graph uses providers.aget which is patched
+                    # globally by _common_patches[0] to return store_mock. Override
+                    # specifically for call_agent so it gets the real graph.
+                    patch(
+                        "app.agents.core.agent.GraphManager.get_graph",
+                        new=AsyncMock(return_value=graph),
+                    ),
                 ):
                     gen = await call_agent(
                         request=body,
