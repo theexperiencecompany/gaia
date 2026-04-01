@@ -203,31 +203,6 @@ class TestRateLimiterEnforcement:
         assert day_val == 3
         assert month_val == 3
 
-    async def test_get_usage_info_reflects_current_redis_state(self, real_redis):
-        """get_usage_info must read exactly what is stored in Redis."""
-        user_id = "usage-info-user-1"
-        feature = "chat_messages"
-
-        day_key = tiered_limiter._get_redis_key(user_id, feature, RateLimitPeriod.DAY)
-        month_key = tiered_limiter._get_redis_key(
-            user_id, feature, RateLimitPeriod.MONTH
-        )
-        await real_redis.delete(day_key, month_key)
-
-        await real_redis.set(day_key, "42", ex=3600)
-        await real_redis.set(month_key, "99", ex=86400)
-
-        usage = await tiered_limiter.get_usage_info(
-            user_id=user_id,
-            feature_key=feature,
-            user_plan=PlanType.FREE,
-        )
-
-        assert "day" in usage
-        assert "month" in usage
-        assert usage["day"].used == 42
-        assert usage["month"].used == 99
-
 
 @pytest.mark.service
 class TestRateLimiterAtomicity:

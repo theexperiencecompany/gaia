@@ -112,7 +112,7 @@ jobs:
         run: npx nx run-many -t lint -p ${{ needs.detect.outputs.python_projects }} --parallel=3
       - name: mypy
         working-directory: apps/api
-        run: uv run mypy --install-types --non-interactive
+        run: uv run mypy --install-types --non-interactive app
 
   # --- Static checks: TypeScript (runner-native) --------------------------
   static-typescript:

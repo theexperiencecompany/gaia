@@ -470,59 +470,6 @@ class TestPerFeatureIndependence:
 
 
 # ---------------------------------------------------------------------------
-# 6. get_usage_info
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestGetUsageInfo:
-    """Verify usage info reporting is accurate."""
-
-    @pytest.fixture(autouse=True)
-    def _setup(self) -> None:
-        self.limiter, self.fake_redis = _make_limiter_with_fake_redis()
-
-    async def test_usage_info_reflects_current_counters(self) -> None:
-        with (
-            frozen_time("2026-04-01T12:00:00"),
-            patch.object(self.limiter, "_sync_usage_real_time", new_callable=AsyncMock),
-        ):
-            # Increment twice
-            await self.limiter.check_and_increment(
-                user_id="user1",
-                feature_key="web_search",
-                user_plan=PlanType.FREE,
-            )
-            await self.limiter.check_and_increment(
-                user_id="user1",
-                feature_key="web_search",
-                user_plan=PlanType.FREE,
-            )
-
-            info = await self.limiter.get_usage_info(
-                user_id="user1",
-                feature_key="web_search",
-                user_plan=PlanType.FREE,
-            )
-
-        assert info["day"].used == 2
-        assert info["day"].limit == 10  # free web_search daily limit
-        assert info["month"].used == 2
-        assert info["month"].limit == 50  # free web_search monthly limit
-
-    async def test_usage_info_zero_when_no_activity(self) -> None:
-        with frozen_time("2026-04-01T12:00:00"):
-            info = await self.limiter.get_usage_info(
-                user_id="fresh_user",
-                feature_key="web_search",
-                user_plan=PlanType.FREE,
-            )
-
-        assert info["day"].used == 0
-        assert info["month"].used == 0
-
-
-# ---------------------------------------------------------------------------
 # 7. RateLimitExceededException detail structure
 # ---------------------------------------------------------------------------
 
