@@ -248,6 +248,10 @@ class TestGetPublicIntegration:
         with (
             patch(
                 "app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS",
+                new=[],
+            ),
+            patch(
+                "app.api.v1.endpoints.integrations.public.build_slug_lookup_pipeline",
                 side_effect=TypeError("boom"),
             ),
         ):

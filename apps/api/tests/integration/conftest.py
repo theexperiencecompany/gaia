@@ -43,6 +43,7 @@ async def memory_saver():
 
         pool = AsyncConnectionPool(
             conninfo=_POSTGRES_URL,
+            min_size=1,
             max_size=3,
             kwargs={"autocommit": True, "prepare_threshold": 0},
             open=False,
