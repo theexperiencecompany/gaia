@@ -134,8 +134,9 @@ class TestConversationQueriesReal:
         self, conversations_collection, make_conversation
     ):
         """Skip + limit must return the correct page of results."""
-        for _ in range(5):
-            await make_conversation("page-user")
+        now = datetime.now(timezone.utc)
+        for i in range(5):
+            await make_conversation("page-user", createdAt=now - timedelta(hours=i))
 
         page1 = (
             await conversations_collection.find({"user_id": "page-user"})

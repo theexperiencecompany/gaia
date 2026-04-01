@@ -150,7 +150,12 @@ class GaiaCi:
 
     @function
     async def test(self, source: Source) -> str:
-        """Run all tests (JS/TS via Nx + Python via pytest)."""
+        """Run all tests (JS/TS via Nx + Python via pytest).
+
+        Runs unit, integration, and e2e tests — all use in-process fakes and
+        require no external services. Service tests (real MongoDB/Redis/Postgres)
+        are run separately via service_test().
+        """
         return await (
             self.ci_env(source)
             .with_env_variable("ENV", "test")
@@ -162,7 +167,7 @@ class GaiaCi:
                     "run",
                     "pytest",
                     "-m",
-                    "not integration and not composio and not e2e and not service",
+                    "not composio and not service",
                     "--tb=short",
                     "-q",
                     "--cov=app",
@@ -193,7 +198,7 @@ class GaiaCi:
                         "run",
                         "pytest",
                         "-m",
-                        "not integration and not composio and not e2e and not service",
+                        "not composio and not service",
                         "--tb=short",
                         "-q",
                     ]
@@ -445,7 +450,7 @@ class GaiaCi:
                     "run",
                     "pytest",
                     "-m",
-                    "not integration and not composio and not e2e and not service",
+                    "not composio and not service",
                     "--tb=short",
                     "-q",
                     "--cov=app",
