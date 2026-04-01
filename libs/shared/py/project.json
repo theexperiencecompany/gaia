@@ -4,6 +4,7 @@
   "root": "libs/shared/py",
   "sourceRoot": "libs/shared/py",
   "projectType": "library",
+  "tags": ["scope:python"],
   "targets": {
     "lint": {
       "executor": "nx:run-commands",

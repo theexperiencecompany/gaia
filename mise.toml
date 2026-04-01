@@ -196,28 +196,28 @@ run = "nx affected -t build"
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.test]
-description = "Test all apps"
-run = "nx run-many -t test"
+description = "Run all JS/TS tests via Nx"
+run = "nx run-many -t test --parallel=3"
 
-[tasks."test:api"]
-description = "Run all API tests via Dagger (unit + integration + e2e + service, real services)"
-run = "dagger call integration-test"
+[tasks."test:affected"]
+description = "Test only affected projects"
+run = "nx affected -t test --parallel=3"
 
-[tasks."test:api:unit"]
-description = "Run API unit tests only (no real services needed)"
+[tasks."test:python"]
+description = "Run all Python tests with real services via Dagger"
+run = "dagger call -s test-python"
+
+[tasks."test:python:unit"]
+description = "Run Python unit tests only (no services, fast)"
 run = "cd apps/api && USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"
 
-[tasks."test:api:integration"]
-description = "Run API integration tests via Dagger (real services)"
-run = "dagger call integration-test"
+[tasks."test:python:coverage"]
+description = "Run Python tests with coverage via Dagger"
+run = "dagger call -s test-python-coverage"
 
-[tasks."test:api:e2e"]
-description = "Run API e2e tests via Dagger (real services)"
-run = "dagger call integration-test"
-
-[tasks."test:api:coverage"]
-description = "Run API tests with coverage via Dagger"
-run = "dagger call quality-checks"
+[tasks."test:typescript"]
+description = "Run JS/TS tests via Nx"
+run = "nx run-many -t test --parallel=3"
 
 [tasks."test:bots"]
 description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"
@@ -226,10 +226,6 @@ run = "cd apps/bots && pnpm vitest run"
 [tasks."test:cli"]
 description = "Run CLI tests"
 run = "cd packages/cli && pnpm vitest run"
-
-[tasks."test:affected"]
-description = "Test only affected projects"
-run = "nx affected -t test"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LINTING & FORMATTING
@@ -327,53 +323,29 @@ run = "nx affected:graph"
 # CI/CD COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Dagger (containerized CI, identical locally and in GitHub Actions) ──
+# ── Dagger (only for tasks that need service containers) ──
 
-[tasks."ci:dagger"]
-description = "Run full quality gate via Dagger (same as CI)"
+[tasks."ci:test-python"]
+description = "Run Python tests via Dagger with real services (same as CI)"
+run = "dagger call -s test-python"
+
+[tasks."ci:test-python:coverage"]
+description = "Run Python tests with coverage via Dagger"
+run = "dagger call -s test-python-coverage"
+
+[tasks."ci:quality"]
+description = "Run full quality gate via Dagger (local convenience, runs everything)"
 run = "dagger call -s quality-checks"
 
-[tasks."ci:dagger:lint"]
-description = "Run lint checks via Dagger"
-run = "dagger call -s lint"
-
-[tasks."ci:dagger:type-check"]
-description = "Run type-check via Dagger"
-run = "dagger call -s type-check"
-
-[tasks."ci:dagger:build"]
-description = "Run build via Dagger"
-run = "dagger call -s build"
-
-[tasks."ci:dagger:test"]
-description = "Run tests via Dagger"
-run = "dagger call -s test"
-
-[tasks."ci:dagger:dead-code"]
-description = "Run dead code detection via Dagger"
-run = "dagger call -s dead-code"
-
-[tasks."ci:dagger:integration"]
-description = "Run integration tests via Dagger (with live Postgres, Redis, MongoDB)"
-run = "dagger call -s integration-test"
-
-[tasks."ci:dagger:service"]
-description = "Run service-marked tests via Dagger (verbose, with live databases)"
-run = "dagger call -s service-test"
-
-[tasks."ci:dagger:test-matrix"]
-description = "Run API unit tests against Python 3.11 + 3.12 via Dagger"
-run = "dagger call -s test-matrix"
-
-[tasks."ci:dagger:debug"]
-description = "Run full quality gate with interactive debugging on failure"
+[tasks."ci:quality:debug"]
+description = "Run quality gate with interactive debugging on failure"
 run = "dagger call quality-checks --interactive"
 
-[tasks."ci:dagger:verbose"]
-description = "Run full quality gate with full TUI and debug logs"
+[tasks."ci:quality:verbose"]
+description = "Run quality gate with full TUI and debug logs"
 run = "dagger call -vv quality-checks"
 
-# ── Dagger Docker image builds ──
+# ── Docker image builds via Dagger ──
 
 [tasks."ci:docker"]
 description = "Build all Docker images via Dagger"
@@ -409,35 +381,27 @@ run = "dagger call -s docker-build --app bot-whatsapp"
 
 # ── GitHub Actions simulation (via act) ──
 
-[tasks."ci:desktop"]
+[tasks."ci:act:quality"]
+description = "Dry-run quality-checks workflow locally with act"
+run = "act workflow_dispatch -n -W .github/workflows/main.yml"
+
+[tasks."ci:act:quality:run"]
+description = "Actually run quality-checks workflow locally with act"
+run = "act workflow_dispatch -W .github/workflows/main.yml"
+
+[tasks."ci:act:desktop"]
 description = "Test desktop-release workflow locally with act (dry-run)"
 run = "act release --job build -n --eventpath .github/test-events/release.json"
 
-[tasks."ci:desktop:run"]
+[tasks."ci:act:desktop:run"]
 description = "Actually run desktop-release workflow locally with act"
 run = "act release --job build --eventpath .github/test-events/release.json"
 
-[tasks."ci:list"]
-description = "List all available GitHub Actions workflows"
-run = "act -l"
-
-[tasks."ci:release-please"]
-description = "Test release-please workflow locally with act (dry-run)"
-run = "act push -n --job release-please"
-
-[tasks."ci:quality"]
-description = "Test main.yml quality-checks workflow (dry-run)"
-run = "act pull_request -n --job quality-checks"
-
-[tasks."ci:quality:run"]
-description = "Actually run quality-checks locally with act"
-run = "act pull_request --job quality-checks"
-
-[tasks."ci:build"]
+[tasks."ci:act:build"]
 description = "Test build.yml workflow (dry-run)"
 run = "act workflow_call -n -W .github/workflows/build.yml"
 
-[tasks."ci:all"]
+[tasks."ci:act:list"]
 description = "List all jobs across all workflows"
 run = "act -l --workflows .github/workflows/"
 

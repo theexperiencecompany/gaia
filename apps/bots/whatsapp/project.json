@@ -4,6 +4,7 @@
   "root": "apps/bots/whatsapp",
   "sourceRoot": "apps/bots/whatsapp/src",
   "projectType": "application",
+  "tags": ["scope:typescript"],
   "release": {
     "docker": {
       "repositoryName": "theexperiencecompany/gaia-bot-whatsapp"

@@ -1,6 +1,7 @@
 {
   "name": "web",
   "root": "apps/web",
+  "tags": ["scope:typescript"],
   "sourceRoot": "apps/web/src",
   "targets": {
     "sync": {
