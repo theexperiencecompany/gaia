@@ -30,6 +30,8 @@ from uuid import uuid4
 
 import pytest
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.store.memory import InMemoryStore
 
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
@@ -108,8 +110,6 @@ async def memory_saver():
         yield checkpointer
         await pool.close()
     else:
-        from langgraph.checkpoint.memory import MemorySaver
-
         yield MemorySaver()
 
 
@@ -127,8 +127,6 @@ async def in_memory_store():
             await store.setup()
             yield store
     else:
-        from langgraph.store.memory import InMemoryStore
-
         yield InMemoryStore()
 
 

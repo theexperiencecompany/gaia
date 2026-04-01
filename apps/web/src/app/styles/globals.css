@@ -479,7 +479,6 @@
     width: 100%;
   }
 
-  /* biome-ignore lint/style/noDescendingSpecificity: MCP override needs higher specificity */
   .mcp-app-surface > div {
     /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
     display: block !important;
