@@ -9,7 +9,6 @@ from uuid import uuid4
 
 import pytest
 from langchain_core.messages import AIMessage
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
@@ -18,6 +17,10 @@ from typing_extensions import Annotated
 
 from app.db.redis import redis_cache
 from tests.factories import make_config, make_user
+
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES") == "1"
+_POSTGRES_URL = os.environ.get("DATABASE_URL", "")
+_REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
 class SimpleState(BaseModel):
@@ -28,9 +31,31 @@ class SimpleState(BaseModel):
 
 
 @pytest.fixture
-def memory_saver() -> MemorySaver:
-    """Provide a fresh in-memory checkpointer per test."""
-    return MemorySaver()
+async def memory_saver():
+    """LangGraph checkpointer.
+
+    Returns AsyncPostgresSaver backed by real Postgres when USE_REAL_SERVICES=1
+    (Dagger CI), otherwise falls back to in-process MemorySaver.
+    """
+    if _USE_REAL_SERVICES:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg_pool import AsyncConnectionPool
+
+        pool = AsyncConnectionPool(
+            conninfo=_POSTGRES_URL,
+            max_size=3,
+            kwargs={"autocommit": True, "prepare_threshold": 0},
+            open=False,
+        )
+        await pool.open(wait=True, timeout=30)
+        checkpointer = AsyncPostgresSaver(conn=pool)  # type: ignore[call-arg]
+        await checkpointer.setup()
+        yield checkpointer
+        await pool.close()
+    else:
+        from langgraph.checkpoint.memory import MemorySaver
+
+        yield MemorySaver()
 
 
 @pytest.fixture
@@ -40,9 +65,10 @@ def thread_config() -> dict:
 
 
 @pytest.fixture
-def compiled_graph(memory_saver: MemorySaver):
-    """Build a simple two-node graph (echo node) compiled with MemorySaver.
+def compiled_graph(memory_saver):
+    """Build a simple two-node graph (echo node) compiled with a checkpointer.
 
+    Uses AsyncPostgresSaver when USE_REAL_SERVICES=1, otherwise MemorySaver.
     The graph accepts messages in state, echoes the last human message
     content prefixed with 'Echo: ', and terminates.
     """
@@ -83,23 +109,25 @@ def sample_config() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Real Redis fixture (skips if Redis unavailable)
+# Real Redis fixture
 # ---------------------------------------------------------------------------
-
-_REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
 @pytest.fixture
 async def real_redis(monkeypatch):
     """Real Redis connection, patched into the app's redis_cache singleton.
 
-    Skips the test automatically if Redis is not reachable.
+    When USE_REAL_SERVICES=1 (Dagger CI), Redis is guaranteed to be running
+    and connection failures are fatal. Otherwise, the test is skipped if
+    Redis is not reachable so local runs without Docker still work.
     """
     client = Redis.from_url(_REDIS_URL, decode_responses=True)
     try:
         await client.ping()
     except (ConnectionError, OSError, Exception):
         await client.aclose()
+        if _USE_REAL_SERVICES:
+            raise  # In CI with real services, Redis must be running
         pytest.skip("Redis not available at " + _REDIS_URL)
 
     monkeypatch.setattr(redis_cache, "redis", client)

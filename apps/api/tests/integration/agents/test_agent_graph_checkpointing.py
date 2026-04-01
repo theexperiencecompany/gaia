@@ -41,7 +41,11 @@ from tests.helpers import (
 # Constants
 # ---------------------------------------------------------------------------
 
-POSTGRES_TEST_URL = "postgresql://gaia:gaia@localhost:5432/gaia_test"
+import os
+
+POSTGRES_TEST_URL = os.environ.get(
+    "DATABASE_URL", "postgresql://gaia:gaia@localhost:5432/gaia_test"
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -200,8 +204,10 @@ async def pg_checkpointer():
         timeout=10,
     )
     try:
-        await pool.open(wait=True, timeout=5)
+        await pool.open(wait=True, timeout=10)
     except Exception:
+        if os.environ.get("USE_REAL_SERVICES") == "1":
+            raise  # In CI with real services, Postgres must be running
         pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
 
     checkpointer = AsyncPostgresSaver(conn=pool)

@@ -265,21 +265,51 @@ class GaiaCi:
             .as_service()
         )
 
-    def _service_test_container(self, source: Source) -> dagger.Container:
-        """Create a test container wired to live Postgres, Redis, and MongoDB services.
+    @function
+    def chroma_service(self) -> dagger.Service:
+        """Start a ChromaDB service container."""
+        return (
+            dag.container()
+            .from_("chromadb/chroma:latest")
+            .with_exposed_port(8000)
+            .as_service()
+        )
 
-        Database credentials are injected via dagger.Secret so they never
-        appear in build logs or the Dagger TUI.
+    @function
+    def rabbitmq_service(self) -> dagger.Service:
+        """Start a RabbitMQ 3 service container."""
+        return (
+            dag.container()
+            .from_("rabbitmq:3-alpine")
+            .with_exposed_port(5672)
+            .as_service()
+        )
+
+    def _service_test_container(self, source: Source) -> dagger.Container:
+        """Create a test container wired to all live service containers.
+
+        Services: PostgreSQL, Redis, MongoDB, ChromaDB, RabbitMQ.
+        Credentials are injected via dagger.Secret so they never appear in
+        build logs or the Dagger TUI.
+        USE_REAL_SERVICES=1 tells conftest to skip infrastructure mocks and
+        use real connections instead.
         """
         pg = self.postgres_service()
         redis = self.redis_service()
         mongo = self.mongo_service()
+        chroma = self.chroma_service()
+        rabbitmq = self.rabbitmq_service()
         return (
             self.ci_env(source)
             .with_service_binding("postgres", pg)
             .with_service_binding("redis", redis)
             .with_service_binding("mongo", mongo)
+            .with_service_binding("chroma", chroma)
+            .with_service_binding("rabbitmq", rabbitmq)
             .with_env_variable("ENV", "test")
+            .with_env_variable("USE_REAL_SERVICES", "1")
+            .with_env_variable("CHROMADB_HOST", "chroma")
+            .with_env_variable("CHROMADB_PORT", "8000")
             .with_secret_variable(
                 "DATABASE_URL",
                 dag.set_secret(
@@ -298,12 +328,33 @@ class GaiaCi:
                     "mongodb://gaia:gaia@mongo:27017/gaia_test?authSource=admin",  # pragma: allowlist secret
                 ),
             )
+            # MONGO_DB is the env var that app/db/mongodb/mongodb.py reads via
+            # settings.MONGO_DB. Must match MONGODB_URL so _get_mongodb_instance()
+            # and the service test fixtures both hit the same database.
+            .with_secret_variable(
+                "MONGO_DB",
+                dag.set_secret(
+                    "mongo-db-url",
+                    "mongodb://gaia:gaia@mongo:27017/gaia_test?authSource=admin",  # pragma: allowlist secret
+                ),
+            )
+            .with_secret_variable(
+                "RABBITMQ_URL",
+                dag.set_secret(
+                    "rabbitmq-url",
+                    "amqp://guest:guest@rabbitmq/",  # pragma: allowlist secret
+                ),
+            )
             .with_workdir("/app/apps/api")
         )
 
     @function
     async def integration_test(self, source: Source) -> str:
-        """Run integration tests with live service containers (Postgres, Redis, MongoDB)."""
+        """Run all non-composio tests with full live service containers.
+
+        This is the comprehensive test pass: unit + integration + e2e + service,
+        all wired to real Postgres, Redis, MongoDB, ChromaDB, and RabbitMQ.
+        """
         return await (
             self._service_test_container(source)
             .with_exec(
@@ -312,12 +363,9 @@ class GaiaCi:
                     "run",
                     "pytest",
                     "-m",
-                    "integration or service",
+                    "not composio",
                     "--tb=short",
                     "-q",
-                    # pytest.ini addopts includes -n 4 (xdist). Override it so we
-                    # run service tests in a single process — session-scoped async
-                    # fixtures don't work across multiple xdist workers.
                     "--override-ini=addopts=--strict-markers",
                 ]
             )
@@ -326,7 +374,10 @@ class GaiaCi:
 
     @function
     async def service_test(self, source: Source) -> str:
-        """Run only service-marked tests with live containers (Postgres, Redis, MongoDB)."""
+        """Run service + integration + e2e tests with live containers.
+
+        All real-infrastructure tests: Postgres, Redis, MongoDB, ChromaDB, RabbitMQ.
+        """
         return await (
             self._service_test_container(source)
             .with_exec(
@@ -335,7 +386,7 @@ class GaiaCi:
                     "run",
                     "pytest",
                     "-m",
-                    "service",
+                    "service or integration or e2e",
                     "--tb=short",
                     "-v",
                     "--override-ini=addopts=--strict-markers",
@@ -440,8 +491,11 @@ class GaiaCi:
             .stdout()
         )
 
-        test_task = (
-            env.with_env_variable("ENV", "test")
+        # Single comprehensive test pass: all categories wired to real services.
+        # USE_REAL_SERVICES=1 inside _service_test_container tells conftest to
+        # skip infrastructure mocks and use real Postgres/Redis/MongoDB/Chroma.
+        all_tests_task = (
+            self._service_test_container(source)
             .with_exec(["npx", "nx", "run-many", "-t", "test", "--parallel=3"])
             .with_workdir("/app/apps/api")
             .with_exec(
@@ -450,12 +504,13 @@ class GaiaCi:
                     "run",
                     "pytest",
                     "-m",
-                    "not composio and not service",
+                    "not composio",
                     "--tb=short",
                     "-q",
                     "--cov=app",
                     "--cov-report=term-missing",
                     "--cov-fail-under=80",
+                    "--override-ini=addopts=--strict-markers",
                 ]
             )
             .stdout()
@@ -470,23 +525,6 @@ class GaiaCi:
         validate_task = env.with_exec(
             ["node", "scripts/ci/validate-release-manifest.mjs"]
         ).stdout()
-
-        service_test_task = (
-            self._service_test_container(source)
-            .with_exec(
-                [
-                    "uv",
-                    "run",
-                    "pytest",
-                    "-m",
-                    "service",
-                    "--tb=short",
-                    "-q",
-                    "--override-ini=addopts=--strict-markers",
-                ]
-            )
-            .stdout()
-        )
 
         trivy_task = (
             dag.container()
@@ -512,10 +550,9 @@ class GaiaCi:
             lint_task,
             type_check_task,
             build_task,
-            test_task,
+            all_tests_task,
             dead_code_task,
             validate_task,
-            service_test_task,
             trivy_task,
         )
 
@@ -523,10 +560,9 @@ class GaiaCi:
             "LINT",
             "TYPE-CHECK",
             "BUILD",
-            "TEST",
+            "TESTS (unit+integration+e2e+service)",
             "DEAD-CODE",
             "RELEASE-VALIDATION",
-            "SERVICE-TESTS",
             "TRIVY-SCAN",
         ]
         sections = []
