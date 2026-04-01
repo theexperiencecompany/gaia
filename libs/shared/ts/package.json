@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "@infisical/sdk": "^4.0.0",
-    "axios": "^1.7.0",
+    "axios": "^1.13.5",
     "dotenv": "^16.4.5",
     "string-similarity": "^4.0.4",
     "zod": "^3.25.0"

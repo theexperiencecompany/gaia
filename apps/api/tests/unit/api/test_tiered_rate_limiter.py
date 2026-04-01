@@ -15,6 +15,14 @@ from app.config.rate_limits import RateLimitPeriod
 from app.models.payment_models import PlanType
 
 
+def _noop_create_task(coro, **kwargs):
+    import asyncio as _asyncio
+
+    if _asyncio.iscoroutine(coro):
+        coro.close()
+    return MagicMock()
+
+
 # ---------------------------------------------------------------------------
 # RateLimitExceededException
 # ---------------------------------------------------------------------------
@@ -121,7 +129,10 @@ class TestCheckAndIncrement:
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
         self.limiter.redis.redis = redis_mock
 
-        with patch("app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task"):
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
+            side_effect=_noop_create_task,
+        ):
             result = await self.limiter.check_and_increment(
                 "user1", "chat_messages", PlanType.PRO
             )
@@ -170,7 +181,10 @@ class TestCheckAndIncrement:
         mock_limits.return_value = RateLimitConfig(day=0, month=0)
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=timezone.utc)
 
-        with patch("app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task"):
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
+            side_effect=_noop_create_task,
+        ):
             result = await self.limiter.check_and_increment(
                 "user1", "chat_messages", PlanType.FREE
             )
@@ -241,7 +255,10 @@ class TestCheckAndIncrement:
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
         self.limiter.redis.redis = redis_mock
 
-        with patch("app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task"):
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
+            side_effect=_noop_create_task,
+        ):
             await self.limiter.check_and_increment(
                 "user1", "chat_messages", PlanType.FREE
             )
@@ -278,10 +295,14 @@ class TestCheckAndIncrement:
         redis_mock.pipeline = MagicMock(return_value=pipe_mock)
         self.limiter.redis.redis = redis_mock
 
-        with pytest.raises(RateLimitExceededException):
-            await self.limiter.check_and_increment(
-                "user1", "chat_messages", PlanType.FREE
-            )
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.asyncio.create_task",
+            side_effect=_noop_create_task,
+        ):
+            with pytest.raises(RateLimitExceededException):
+                await self.limiter.check_and_increment(
+                    "user1", "chat_messages", PlanType.FREE
+                )
 
 
 # ---------------------------------------------------------------------------

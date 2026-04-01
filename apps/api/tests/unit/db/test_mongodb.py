@@ -546,10 +546,15 @@ class TestCreateAllIndexes:
         self, mock_log: MagicMock
     ) -> None:
         """A critical error in the orchestration itself should propagate."""
+
+        async def _gather_explodes(*coros, **_kwargs):
+            for c in coros:
+                c.close()
+            raise RuntimeError("gather exploded")
+
         with patch(
             "app.db.mongodb.indexes.asyncio.gather",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("gather exploded"),
+            side_effect=_gather_explodes,
         ):
             from app.db.mongodb.indexes import create_all_indexes
 
@@ -800,12 +805,17 @@ class TestIndexStatus:
 
     async def test_get_index_status_top_level_error(self) -> None:
         """A top-level exception should return an error dict."""
+
+        async def _gather_catastrophic(*coros, **_kwargs):
+            for c in coros:
+                c.close()
+            raise RuntimeError("catastrophic")
+
         # Force a top-level exception by making asyncio.gather raise
         with (
             patch(
                 "app.db.mongodb.indexes.asyncio.gather",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("catastrophic"),
+                side_effect=_gather_catastrophic,
             ),
             patch("app.db.mongodb.indexes.log"),
         ):

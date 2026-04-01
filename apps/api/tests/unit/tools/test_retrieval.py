@@ -1,5 +1,6 @@
 """Tests for app/agents/tools/core/retrieval.py — tool retrieval functions."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -147,6 +148,9 @@ class TestBuildSearchTasks:
         )
         # gmail search + general search (limited)
         assert len(tasks) == 2
+        for t in tasks:
+            if asyncio.iscoroutine(t):
+                t.close()
 
     def test_general_space_no_duplicate(self):
         from app.agents.tools.core.retrieval import _build_search_tasks
@@ -158,6 +162,9 @@ class TestBuildSearchTasks:
         )
         # Only one search for general (tool_space == general, skip second general search)
         assert len(tasks) == 1
+        for t in tasks:
+            if asyncio.iscoroutine(t):
+                t.close()
 
     def test_includes_subagent_searches(self):
         from app.agents.tools.core.retrieval import _build_search_tasks
@@ -169,6 +176,9 @@ class TestBuildSearchTasks:
         )
         # general + subagents search + public integrations search
         assert len(tasks) == 3
+        for t in tasks:
+            if asyncio.iscoroutine(t):
+                t.close()
 
     def test_tool_space_not_in_namespaces(self):
         from app.agents.tools.core.retrieval import _build_search_tasks
@@ -180,6 +190,9 @@ class TestBuildSearchTasks:
         )
         # Only general search (slack not in namespaces)
         assert len(tasks) == 1
+        for t in tasks:
+            if asyncio.iscoroutine(t):
+                t.close()
 
 
 # ---------------------------------------------------------------------------

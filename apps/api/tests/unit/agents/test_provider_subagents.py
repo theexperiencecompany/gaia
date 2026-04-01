@@ -1,5 +1,6 @@
 """Comprehensive unit tests for provider_subagents (app/agents/core/subagents/provider_subagents.py)."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +12,12 @@ from app.models.oauth_models import OAuthIntegration
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _noop_create_task(coro, **kwargs):
+    if asyncio.iscoroutine(coro):
+        coro.close()
+    return MagicMock()
 
 
 def _make_subagent_config(**overrides) -> SubAgentConfig:
@@ -387,7 +394,7 @@ class TestCreateSubagentForUser:
                 new_callable=AsyncMock,
                 return_value=mock_graph,
             ),
-            patch("asyncio.create_task"),
+            patch("asyncio.create_task", side_effect=_noop_create_task),
         ):
             result = await create_subagent_for_user("test_int", "user_123")
 
@@ -583,7 +590,7 @@ class TestCreateCustomMcpSubagent:
                 "app.agents.core.subagents.provider_subagents.derive_integration_namespace",
                 return_value="custom.example.com",
             ),
-            patch("asyncio.create_task"),
+            patch("asyncio.create_task", side_effect=_noop_create_task),
         ):
             mock_col.find_one = AsyncMock(return_value=custom_doc)
             result = await _create_custom_mcp_subagent("custom_abc", "user_123")
@@ -639,7 +646,7 @@ class TestCreateCustomMcpSubagent:
                 "app.agents.core.subagents.provider_subagents.derive_integration_namespace",
                 return_value="custom.example.com",
             ),
-            patch("asyncio.create_task"),
+            patch("asyncio.create_task", side_effect=_noop_create_task),
         ):
             mock_col.find_one = AsyncMock(return_value=custom_doc)
             await _create_custom_mcp_subagent("custom_abc", "user_123")
@@ -697,7 +704,7 @@ class TestCreateCustomMcpSubagent:
                 "app.agents.core.subagents.provider_subagents.derive_integration_namespace",
                 return_value="custom.example.com",
             ),
-            patch("asyncio.create_task"),
+            patch("asyncio.create_task", side_effect=_noop_create_task),
         ):
             mock_col.find_one = AsyncMock(return_value=custom_doc)
             await _create_custom_mcp_subagent("custom_abc", "user_123")
@@ -871,7 +878,7 @@ class TestRegisterSubagentProviders:
             register_subagent_providers,
         )
 
-        integration = MagicMock()
+        integration = MagicMock(spec=OAuthIntegration)
         integration.subagent_config = None
 
         with (

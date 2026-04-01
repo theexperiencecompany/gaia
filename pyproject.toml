@@ -1,6 +1,13 @@
 # Root workspace configuration for uv
 # This file defines the Python workspace members for the monorepo
 
+[tool.uv]
+constraint-dependencies = [
+  "aiohttp>=3.13.3",
+  "pyjwt>=2.12.0",
+  "urllib3>=2.6.3",
+]
+
 [tool.uv.workspace]
 members = [
   "libs",

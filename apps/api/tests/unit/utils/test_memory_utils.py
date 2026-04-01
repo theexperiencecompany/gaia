@@ -153,7 +153,7 @@ class TestCheckMemoryTaskYield:
     """Tests for checking if a memory task is complete and ready to yield."""
 
     def test_returns_data_when_task_done_and_not_yielded(self) -> None:
-        mock_task = MagicMock()
+        mock_task = MagicMock(spec=["done", "result"])
         mock_task.done.return_value = True
         mock_task.result.return_value = {"type": "memory_stored"}
 
@@ -162,7 +162,7 @@ class TestCheckMemoryTaskYield:
         assert yielded is True
 
     def test_returns_none_when_task_done_but_already_yielded(self) -> None:
-        mock_task = MagicMock()
+        mock_task = MagicMock(spec=["done", "result"])
         mock_task.done.return_value = True
 
         data, yielded = check_memory_task_yield(mock_task, True)

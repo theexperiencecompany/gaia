@@ -413,9 +413,14 @@ class TestCreateAllIndexes:
     ) -> None:
         from app.db.mongodb.indexes import create_all_indexes
 
+        async def _gather_critical(*coros, **_kwargs):
+            for c in coros:
+                c.close()
+            raise RuntimeError("critical")
+
         with patch(
             "app.db.mongodb.indexes.asyncio.gather",
-            side_effect=RuntimeError("critical"),
+            side_effect=_gather_critical,
         ):
             with pytest.raises(RuntimeError, match="critical"):
                 await create_all_indexes()
@@ -454,9 +459,12 @@ class TestGetIndexStatus:
     ) -> None:
         from app.db.mongodb.indexes import get_index_status
 
-        with patch(
-            "app.db.mongodb.indexes.asyncio.gather", side_effect=RuntimeError("boom")
-        ):
+        async def _gather_boom(*coros, **_kwargs):
+            for c in coros:
+                c.close()
+            raise RuntimeError("boom")
+
+        with patch("app.db.mongodb.indexes.asyncio.gather", side_effect=_gather_boom):
             result = await get_index_status()
         assert "error" in result
 

@@ -367,9 +367,9 @@ class TestAcallModel:
         with patch(
             "app.override.langgraph_bigtool.create_agent.MiddlewareExecutor"
         ) as mock_me_cls:
-            mock_me = AsyncMock()
+            mock_me = MagicMock()
             mock_me.execute_before_model = AsyncMock(return_value=_make_state())
-            mock_me.has_wrap_model_call.return_value = False
+            mock_me.has_wrap_model_call = MagicMock(return_value=False)
             mock_me.execute_after_model = AsyncMock(return_value=_make_state())
             mock_me_cls.return_value = mock_me
 
