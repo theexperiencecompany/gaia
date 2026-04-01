@@ -4,7 +4,11 @@ import { CheckmarkCircle02Icon } from "@icons";
 import { m } from "motion/react";
 import type { FC } from "react";
 
-const PLATFORMS = ["WhatsApp", "Telegram", "Discord"] as const;
+const PLATFORMS = [
+  { label: "Telegram", id: "telegram" },
+  { label: "Discord", id: "discord" },
+  { label: "Slack", id: "slack" },
+] as const;
 
 interface OnboardingPlatformConnectProps {
   onConnect: (platform: string) => void;
@@ -38,15 +42,15 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
       <div className="flex flex-wrap gap-2">
         {PLATFORMS.map((platform, index) => (
           <m.button
-            key={platform}
+            key={platform.id}
             type="button"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, delay: index * 0.08 }}
             className="cursor-pointer rounded-full border border-zinc-700/50 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700"
-            onClick={() => onConnect(platform)}
+            onClick={() => onConnect(platform.id)}
           >
-            {platform}
+            {platform.label}
           </m.button>
         ))}
       </div>

@@ -32,6 +32,7 @@ export interface OnboardingFlowData {
   conversationId: string | null;
   connectedPlatform: string | null;
   executedTodoId: string | null;
+  todoExecutionResult: string | null;
 }
 
 interface LoadingStatus {
@@ -51,6 +52,11 @@ export interface UseOnboardingFlowReturn {
   advanceToWorkflows: () => void;
   advanceToChat: () => void;
   executeTodo: (todoId: string) => void;
+  handleTodoExecutionEvent: (
+    todoId: string,
+    status: string,
+    result?: string,
+  ) => void;
   connectPlatform: (platform: string) => void;
   skipPlatformConnect: () => void;
   handleProgressEvent: (
@@ -73,6 +79,7 @@ const INITIAL_DATA: OnboardingFlowData = {
   conversationId: null,
   connectedPlatform: null,
   executedTodoId: null,
+  todoExecutionResult: null,
 };
 
 export function useOnboardingFlow(
@@ -237,36 +244,92 @@ export function useOnboardingFlow(
   }, []);
 
   const executeTodo = useCallback(
-    (todoId: string) => {
+    async (todoId: string) => {
       if (isExecutingTodo) return;
       setIsExecutingTodo(true);
       setExecutingTodoId(todoId);
 
-      // Simulate execution (the real endpoint will be called by the agent)
-      // For now, mark as completed after a brief period
-      setTimeout(() => {
+      try {
+        await apiService.post("/onboarding/execute-todo", {
+          todo_id: todoId,
+        });
+        // Execution started in background — WebSocket events will
+        // drive completion via handleTodoExecutionEvent below.
+      } catch {
+        // On failure, reset state so user can retry
+        setIsExecutingTodo(false);
+        setExecutingTodoId(null);
+      }
+    },
+    [isExecutingTodo],
+  );
+
+  // Called by the page when a todo execution WebSocket event arrives
+  const handleTodoExecutionEvent = useCallback(
+    (todoId: string, status: string, result?: string) => {
+      if (status === "completed" || status === "failed") {
         setCompletedTodoIds((prev) => new Set([...prev, todoId]));
         setIsExecutingTodo(false);
         setExecutingTodoId(null);
-        setData((prev) => ({ ...prev, executedTodoId: todoId }));
+        setData((prev) => ({
+          ...prev,
+          executedTodoId: todoId,
+          todoExecutionResult: result ?? null,
+        }));
 
         // Auto-advance to workflows after 2s
         setTimeout(() => {
           setStep({ type: "workflows_and_connect" });
         }, 2000);
-      }, 3000);
+      }
     },
-    [isExecutingTodo],
+    [],
   );
 
   const connectPlatform = useCallback(
-    (platform: string) => {
-      setData((prev) => ({ ...prev, connectedPlatform: platform }));
+    async (platform: string) => {
+      try {
+        const response = await apiService.get<{
+          auth_url: string | null;
+          auth_type: string;
+          instructions: string | null;
+          action_link: string | null;
+        }>(`/platform-links/${platform.toLowerCase()}/connect`, {
+          silent: true,
+        });
 
-      // Auto-advance to chat after a brief delay
-      setTimeout(() => {
-        advanceToChat();
-      }, 1500);
+        if (response.auth_url) {
+          // OAuth flow — open popup
+          const width = 600;
+          const height = 700;
+          const left = window.screenX + (window.innerWidth - width) / 2;
+          const top = window.screenY + (window.innerHeight - height) / 2;
+
+          const popup = window.open(
+            response.auth_url,
+            `Connect ${platform}`,
+            `width=${width},height=${height},left=${left},top=${top}`,
+          );
+
+          // Poll for popup close
+          const poll = setInterval(() => {
+            if (popup?.closed) {
+              clearInterval(poll);
+              setData((prev) => ({ ...prev, connectedPlatform: platform }));
+              setTimeout(() => advanceToChat(), 1500);
+            }
+          }, 500);
+        } else if (response.action_link) {
+          // Manual flow (Telegram) — open bot link in new tab
+          window.open(response.action_link, "_blank");
+          setData((prev) => ({ ...prev, connectedPlatform: platform }));
+          setTimeout(() => advanceToChat(), 2000);
+        }
+      } catch {
+        // If platform not configured, just record preference and move on
+        setData((prev) => ({ ...prev, connectedPlatform: platform }));
+        setTimeout(() => advanceToChat(), 1500);
+      }
     },
     [advanceToChat],
   );
@@ -287,6 +350,7 @@ export function useOnboardingFlow(
     advanceToWorkflows,
     advanceToChat,
     executeTodo,
+    handleTodoExecutionEvent,
     connectPlatform,
     skipPlatformConnect,
     handleProgressEvent,

@@ -5,8 +5,13 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
-from shared.py.wide_events import log
-from app.db.mongodb.collections import users_collection, workflows_collection
+from app.core.websocket_manager import websocket_manager
+from app.db.mongodb.collections import (
+    todos_collection,
+    users_collection,
+    workflows_collection,
+)
+from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import (
     BioStatus,
     OnboardingPhaseUpdateRequest,
@@ -21,9 +26,11 @@ from app.services.onboarding.onboarding_service import (
     queue_personalization,
     update_onboarding_preferences,
 )
+from app.services.user_service import get_user_by_id
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from app.core.websocket_manager import websocket_manager
+from pydantic import BaseModel
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -253,7 +260,9 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                 account_number = 1
 
             member_since = (
-                created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
+                created_at.strftime("%b %d, %Y")
+                if created_at
+                else datetime.now(timezone.utc).strftime("%b %d, %Y")
             )
 
         # Fetch full workflow objects in a single batch query
@@ -306,6 +315,28 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
         # For "no_gmail" and "completed" status, use the actual bio content
         # (no_gmail now has a default bio, completed has the full bio)
 
+        # Fetch stage data for reveal card reconstruction on page reload
+        raw_writing_style = onboarding.get("writing_style")
+        raw_social_profiles = onboarding.get("social_profiles", [])
+        triage_summary = onboarding.get("triage_summary")
+
+        onboarding_todos: list[dict] = []
+        try:
+            todo_cursor = (
+                todos_collection.find(
+                    {"user_id": user_id, "labels": "onboarding"},
+                    {"_id": 1, "title": 1},
+                )
+                .sort("created_at", -1)
+                .limit(5)
+            )
+            onboarding_todos = [
+                {"id": str(t["_id"]), "title": t.get("title", "")}
+                async for t in todo_cursor
+            ]
+        except Exception as e:
+            log.warning(f"Failed to fetch onboarding todos: {e}")
+
         return {
             "phase": phase,
             "has_personalization": has_personalization,
@@ -324,6 +355,17 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             "first_message_conversation_id": onboarding.get(
                 "first_message_conversation_id"
             ),
+            "writing_style": {"style_summary": raw_writing_style.get("summary", "")}
+            if raw_writing_style
+            else None,
+            "social_profiles": [
+                {"platform": p.get("platform", ""), "url": p.get("url", "")}
+                for p in raw_social_profiles
+            ]
+            if raw_social_profiles
+            else None,
+            "triage_summary": triage_summary,
+            "onboarding_todos": onboarding_todos if onboarding_todos else None,
         }
 
     except HTTPException:
@@ -332,4 +374,152 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
         log.error(f"Error fetching personalization: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail="Failed to fetch personalization data"
+        )
+
+
+class ExecuteTodoRequest(BaseModel):
+    todo_id: str
+
+
+class ExecuteTodoResponse(BaseModel):
+    success: bool
+    message: str
+    todo_id: str
+
+
+@router.post("/execute-todo", response_model=ExecuteTodoResponse)
+async def execute_onboarding_todo(
+    request: ExecuteTodoRequest,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+    user_timezone: str = Depends(get_user_timezone),
+) -> ExecuteTodoResponse:
+    """Execute a single onboarding todo via the agent. Runs in background, streams progress via WebSocket."""
+    user_id = str(user["_id"])
+    todo_id = request.todo_id
+
+    # Fetch the todo
+    todo_doc = await todos_collection.find_one(
+        {"_id": ObjectId(todo_id), "user_id": user_id}
+    )
+    if not todo_doc:
+        raise HTTPException(status_code=404, detail="Todo not found")
+
+    todo_title = todo_doc.get("title", "")
+    todo_description = todo_doc.get("description", "")
+
+    # Get onboarding conversation ID
+    user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+    conversation_id = (
+        user_doc.get("onboarding", {}).get("first_message_conversation_id")
+        if user_doc
+        else None
+    )
+    if not conversation_id:
+        raise HTTPException(status_code=400, detail="No onboarding conversation found")
+
+    # Emit executing status via WebSocket
+    await websocket_manager.broadcast_to_user(
+        user_id=user_id,
+        message={
+            "type": "onboarding_todo_executing",
+            "data": {"todo_id": todo_id, "status": "started"},
+        },
+    )
+
+    # Run agent execution in background
+    background_tasks.add_task(
+        _execute_todo_background,
+        user_id=user_id,
+        todo_id=todo_id,
+        todo_title=todo_title,
+        todo_description=todo_description,
+        conversation_id=conversation_id,
+        user_timezone=user_timezone,
+    )
+
+    return ExecuteTodoResponse(
+        success=True,
+        message="Todo execution started",
+        todo_id=todo_id,
+    )
+
+
+async def _execute_todo_background(
+    user_id: str,
+    todo_id: str,
+    todo_title: str,
+    todo_description: str,
+    conversation_id: str,
+    user_timezone: str,
+) -> None:
+    """Background task: execute a todo via the agent and broadcast results."""
+    # Lazy import to avoid circular imports (same pattern as workflow_tasks.py)
+    from app.agents.core.agent import call_agent_silent
+
+    try:
+        user_data = await get_user_by_id(user_id)
+        if not user_data:
+            log.error(f"[onboarding:execute-todo] User not found: {user_id}")
+            return
+
+        user_data["user_id"] = user_id
+
+        task_message = f"Execute this todo for me: {todo_title}" + (
+            f"\n\nContext: {todo_description}" if todo_description else ""
+        )
+
+        request = MessageRequestWithHistory(
+            message=task_message,
+            messages=[],
+            fileIds=[],
+            fileData=[],
+            selectedTool=None,
+            toolCategory=None,
+            selectedWorkflow=None,
+            selectedCalendarEvent=None,
+            replyToMessage=None,
+        )
+
+        user_time = datetime.now(timezone.utc)
+
+        complete_message, tool_data = await call_agent_silent(
+            request=request,
+            conversation_id=conversation_id,
+            user=user_data,
+            user_time=user_time,
+        )
+
+        # Broadcast completion
+        await websocket_manager.broadcast_to_user(
+            user_id=user_id,
+            message={
+                "type": "onboarding_todo_executed",
+                "data": {
+                    "todo_id": todo_id,
+                    "status": "completed",
+                    "result": complete_message[:500] if complete_message else "",
+                },
+            },
+        )
+
+        log.info(
+            f"[onboarding:execute-todo] Completed for user {user_id}, todo {todo_id}"
+        )
+
+    except Exception as e:
+        log.error(
+            f"[onboarding:execute-todo] Failed for user {user_id}, todo {todo_id}: {e}",
+            exc_info=True,
+        )
+        await websocket_manager.broadcast_to_user(
+            user_id=user_id,
+            message={
+                "type": "onboarding_todo_executed",
+                "data": {
+                    "todo_id": todo_id,
+                    "status": "failed",
+                    "result": "Something went wrong executing this todo.",
+                },
+            },
         )

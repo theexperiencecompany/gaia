@@ -26,6 +26,7 @@ export const useOnboardingWebSocket = (
     ) => void;
     onPersonalizationComplete?: (data: PersonalizationData) => void;
     onIntelligenceComplete?: (conversationId: string) => void;
+    onTodoExecution?: (todoId: string, status: string, result?: string) => void;
   },
 ): UseOnboardingWebSocketReturn => {
   const [personalizationData, setPersonalizationData] =
@@ -71,6 +72,55 @@ export const useOnboardingWebSocket = (
     }
   }, [stopPolling]);
 
+  // Replay stage data from API response as synthetic progress events
+  const replayStageData = useCallback((data: PersonalizationData) => {
+    if (data.writing_style?.style_summary) {
+      callbacksRef.current?.onProgress?.(
+        "learning_style",
+        "Writing style learned",
+        28,
+        { style_summary: data.writing_style.style_summary },
+      );
+    }
+    if (data.social_profiles && data.social_profiles.length > 0) {
+      callbacksRef.current?.onProgress?.(
+        "finding_profiles",
+        `Found ${data.social_profiles.length} profiles`,
+        45,
+        { profiles: data.social_profiles },
+      );
+    }
+    if (data.triage_summary) {
+      callbacksRef.current?.onProgress?.(
+        "scanning_inbox",
+        "Emails scanned",
+        25,
+        { email_count: data.triage_summary.total_scanned },
+      );
+      callbacksRef.current?.onProgress?.("triaging", "Inbox triaged", 65, {
+        total_scanned: data.triage_summary.total_scanned,
+        total_unread: data.triage_summary.total_unread,
+        important_emails: data.triage_summary.important_emails,
+      });
+    }
+    if (data.onboarding_todos && data.onboarding_todos.length > 0) {
+      callbacksRef.current?.onProgress?.(
+        "creating_todos",
+        `${data.onboarding_todos.length} action items`,
+        72,
+        { todos: data.onboarding_todos },
+      );
+    }
+    if (data.suggested_workflows && data.suggested_workflows.length > 0) {
+      callbacksRef.current?.onProgress?.(
+        "creating_workflows",
+        `${data.suggested_workflows.length} automations`,
+        85,
+        { workflows: data.suggested_workflows },
+      );
+    }
+  }, []);
+
   // Poll API as fallback for intelligence completion
   const startPolling = useCallback(() => {
     if (pollTimerRef.current) return;
@@ -82,24 +132,30 @@ export const useOnboardingWebSocket = (
       }
 
       try {
-        const data = await apiService.get<
-          PersonalizationData & { first_message_conversation_id?: string }
-        >("/onboarding/personalization", { silent: true });
+        const data = await apiService.get<PersonalizationData>(
+          "/onboarding/personalization",
+          { silent: true },
+        );
 
         if (data.has_personalization) {
           setPersonalizationData(data);
           setIsLoading(false);
+          callbacksRef.current?.onPersonalizationComplete?.(data);
         }
 
         if (data.first_message_conversation_id) {
+          replayStageData(data);
           setIntelligenceConversationId(data.first_message_conversation_id);
           stopPolling();
+          callbacksRef.current?.onIntelligenceComplete?.(
+            data.first_message_conversation_id,
+          );
         }
       } catch {
         // Ignore — keep polling
       }
     }, POLL_INTERVAL_MS);
-  }, [stopPolling]);
+  }, [stopPolling, replayStageData]);
 
   // Main effect: connect WebSocket + check API on mount
   useEffect(() => {
@@ -157,6 +213,16 @@ export const useOnboardingWebSocket = (
                 stopPolling();
                 callbacksRef.current?.onIntelligenceComplete?.(conversationId);
               }
+            } else if (
+              message.type === "onboarding_todo_executing" ||
+              message.type === "onboarding_todo_executed"
+            ) {
+              const { todo_id, status, result } = message.data as {
+                todo_id: string;
+                status: string;
+                result?: string;
+              };
+              callbacksRef.current?.onTodoExecution?.(todo_id, status, result);
             }
           } catch (error) {
             console.error("Error parsing WebSocket message:", error);
@@ -189,17 +255,26 @@ export const useOnboardingWebSocket = (
     // Check API immediately on mount (handles page reload / already-complete case)
     const checkOnMount = async () => {
       try {
-        const data = await apiService.get<
-          PersonalizationData & { first_message_conversation_id?: string }
-        >("/onboarding/personalization", { silent: true });
+        const data = await apiService.get<PersonalizationData>(
+          "/onboarding/personalization",
+          { silent: true },
+        );
 
         if (data.has_personalization) {
           setPersonalizationData(data);
           setIsLoading(false);
+          // Fire personalization callback so holo card data is available
+          callbacksRef.current?.onPersonalizationComplete?.(data);
         }
 
         if (data.first_message_conversation_id) {
+          // Replay stage data as synthetic progress events so reveal cards reconstruct
+          replayStageData(data);
           setIntelligenceConversationId(data.first_message_conversation_id);
+          // Fire intelligence callback so reveal cards complete and "Let's go" appears
+          callbacksRef.current?.onIntelligenceComplete?.(
+            data.first_message_conversation_id,
+          );
           return; // Already complete — no WebSocket needed
         }
       } catch {
@@ -214,7 +289,7 @@ export const useOnboardingWebSocket = (
     checkOnMount();
 
     return cleanup;
-  }, [enabled, startPolling, stopPolling, cleanup]);
+  }, [enabled, startPolling, stopPolling, cleanup, replayStageData]);
 
   return {
     personalizationData,

@@ -82,6 +82,7 @@ export default function Onboarding() {
       flow.handleIntelligenceComplete(conversationId);
       void handleConversationReady(conversationId);
     },
+    onTodoExecution: flow.handleTodoExecutionEvent,
   });
 
   // Auto-scroll on step changes and new content
