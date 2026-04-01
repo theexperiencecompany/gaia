@@ -52,7 +52,7 @@ os.environ.setdefault(
 # MagicMock to prevent hangs on connection attempts.
 # ---------------------------------------------------------------------------
 
-_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES") == "1"
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
 
 _mock_subscription = MagicMock()
 _mock_subscription.plan_type = "free"

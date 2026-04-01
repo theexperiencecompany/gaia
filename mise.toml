@@ -200,24 +200,24 @@ description = "Test all apps"
 run = "nx run-many -t test"
 
 [tasks."test:api"]
-description = "Run API tests (unit + integration)"
-run = "nx test api"
+description = "Run all API tests via Dagger (unit + integration + e2e + service, real services)"
+run = "dagger call integration-test"
 
 [tasks."test:api:unit"]
-description = "Run API unit tests only"
-run = "nx test:unit api"
+description = "Run API unit tests only (no real services needed)"
+run = "cd apps/api && USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"
 
 [tasks."test:api:integration"]
-description = "Run API integration tests only"
-run = "nx test:integration api"
+description = "Run API integration tests via Dagger (real services)"
+run = "dagger call integration-test"
 
 [tasks."test:api:e2e"]
-description = "Run API end-to-end tests"
-run = "nx test:e2e api"
+description = "Run API e2e tests via Dagger (real services)"
+run = "dagger call integration-test"
 
 [tasks."test:api:coverage"]
-description = "Run API tests with coverage report"
-run = "nx test:coverage api"
+description = "Run API tests with coverage via Dagger"
+run = "dagger call quality-checks"
 
 [tasks."test:bots"]
 description = "Test all bots (Discord, Slack, Telegram, WhatsApp)"

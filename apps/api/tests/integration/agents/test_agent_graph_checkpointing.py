@@ -206,7 +206,7 @@ async def pg_checkpointer():
     try:
         await pool.open(wait=True, timeout=10)
     except Exception:
-        if os.environ.get("USE_REAL_SERVICES") == "1":
+        if os.environ.get("USE_REAL_SERVICES", "1") == "1":
             raise  # In CI with real services, Postgres must be running
         pytest.skip("PostgreSQL not available at " + POSTGRES_TEST_URL)
 

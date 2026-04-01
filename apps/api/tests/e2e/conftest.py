@@ -13,7 +13,7 @@ When USE_REAL_SERVICES=1 (Dagger CI):
 - Checkpointer: AsyncPostgresSaver against real Postgres
 - Store: AsyncPostgresStore against real Postgres
 
-When USE_REAL_SERVICES is not set (local run without Docker):
+When USE_REAL_SERVICES=0 (opt-out, local run without Docker):
 - Checkpointer: MemorySaver (in-process fallback)
 - Store: InMemoryStore (in-process fallback)
 
@@ -37,7 +37,7 @@ from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel
 
-_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES") == "1"
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 
 

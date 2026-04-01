@@ -134,24 +134,24 @@ description = "Seed workflows"
 run = "uv run --group backend python scripts/seed_workflows.py"
 
 [tasks.test]
-description = "Run all tests (unit + integration)"
-run = "nx test api"
+description = "Run all API tests via Dagger (unit + integration + e2e + service, real services)"
+run = "cd ../.. && dagger call integration-test"
 
 [tasks."test:unit"]
-description = "Run unit tests only"
-run = "nx test:unit api"
+description = "Run unit tests only (no real services needed)"
+run = "USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"
 
 [tasks."test:integration"]
-description = "Run integration tests only"
-run = "nx test:integration api"
+description = "Run all tests via Dagger (real services)"
+run = "cd ../.. && dagger call integration-test"
 
 [tasks."test:e2e"]
-description = "Run end-to-end tests"
-run = "nx test:e2e api"
+description = "Run all tests via Dagger (real services)"
+run = "cd ../.. && dagger call integration-test"
 
 [tasks."test:coverage"]
-description = "Run tests with coverage report"
-run = "nx test:coverage api"
+description = "Run tests with coverage via Dagger quality checks"
+run = "cd ../.. && dagger call quality-checks"
 
 [tasks.clean]
 description = "Clean up __pycache__ and build artifacts"

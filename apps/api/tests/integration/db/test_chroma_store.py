@@ -39,7 +39,7 @@ from app.db.chroma.chroma_tools_store import (
     delete_tools_by_namespace,
 )
 
-_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES") == "1"
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
 _CHROMA_HOST = os.environ.get("CHROMADB_HOST", "localhost")
 _CHROMA_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
 
