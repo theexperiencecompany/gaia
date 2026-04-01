@@ -179,40 +179,6 @@ class GaiaCi:
         )
 
     @function
-    async def test_matrix(self, source: Source) -> str:
-        """Run API unit tests against Python 3.11 and 3.12 in parallel."""
-
-        async def _run_on_python(version: str) -> str:
-            return await (
-                dag.container()
-                .from_(f"ghcr.io/astral-sh/uv:python{version}-bookworm-slim")
-                .with_directory("/app", source, ignore=_IGNORE)
-                .with_workdir("/app/apps/api")
-                .with_exec(
-                    ["uv", "sync", "--frozen", "--group", "backend", "--group", "dev"]
-                )
-                .with_env_variable("ENV", "test")
-                .with_exec(
-                    [
-                        "uv",
-                        "run",
-                        "pytest",
-                        "-m",
-                        "not composio and not service",
-                        "--tb=short",
-                        "-q",
-                    ]
-                )
-                .stdout()
-            )
-
-        py311, py312 = await asyncio.gather(
-            _run_on_python("3.11"),
-            _run_on_python("3.12"),
-        )
-        return f"=== Python 3.11 ===\n{py311}\n\n=== Python 3.12 ===\n{py312}"
-
-    @function
     async def dead_code(self, source: Source) -> str:
         """Run dead code detection (vulture for Python, knip for TypeScript)."""
         return await (
