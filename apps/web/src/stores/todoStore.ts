@@ -308,11 +308,3 @@ export const useTodoStore = create<TodoStore>()(
     { name: "todo-store" },
   ),
 );
-
-// Selectors
-export const useTodos = () => useTodoStore((state) => state.todos);
-export const useTodoProjects = () => useTodoStore((state) => state.projects);
-export const useTodoLabels = () => useTodoStore((state) => state.labels);
-export const useTodoCounts = () => useTodoStore((state) => state.counts);
-export const useTodoLoading = () => useTodoStore((state) => state.loading);
-export const useTodoError = () => useTodoStore((state) => state.error);

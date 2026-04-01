@@ -12,7 +12,7 @@ from langchain_core.tools import BaseTool
 from langgraph_bigtool.graph import State as _BigtoolState
 
 
-def _replace_todos(left: list, right: list) -> list:
+def _replace_todos(_left: list, right: list) -> list:
     """Last-write-wins reducer for the todos channel."""
     return right
 

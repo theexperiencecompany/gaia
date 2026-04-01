@@ -6,9 +6,7 @@
 /**
  * Check if a value is a plain object (not null, not array)
  */
-export function isPlainObject(
-  value: unknown,
-): value is Record<string, unknown> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -30,7 +28,7 @@ function isTextContentObject(value: Record<string, unknown>): boolean {
 /**
  * Safely parse JSON string, returns null if invalid
  */
-export function safeJsonParse(value: string): unknown | null {
+function safeJsonParse(value: string): unknown | null {
   try {
     return JSON.parse(value);
   } catch {
@@ -41,7 +39,7 @@ export function safeJsonParse(value: string): unknown | null {
 /**
  * Check if a string looks like JSON (starts with { or [)
  */
-export function looksLikeJson(value: string): boolean {
+function looksLikeJson(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.startsWith("{") || trimmed.startsWith("[");
 }

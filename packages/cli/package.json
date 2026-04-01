@@ -47,12 +47,9 @@
     "ink": "^6.6.0",
     "ink-big-text": "^2.0.0",
     "ink-gradient": "^3.0.0",
-    "ink-image": "^2.0.0",
-    "ink-progress-bar": "^3.0.0",
     "ink-text-input": "^6.0.0",
     "react": "^19",
     "react-dom": "^19",
-    "remove": "^0.1.5",
     "simple-git": "^3.30.0"
   },
   "devDependencies": {

@@ -2,7 +2,6 @@
 Blog authentication dependencies using Bearer token.
 """
 
-from typing import Optional
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -48,24 +47,3 @@ async def verify_blog_token(
         )
 
     return credentials.credentials
-
-
-async def get_optional_blog_token(
-    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
-) -> Optional[str]:
-    """
-    Optional bearer token verification for endpoints that can be public or protected.
-
-    Args:
-        credentials: Optional HTTP Authorization credentials
-
-    Returns:
-        Optional[str]: The token if valid, None if not provided
-    """
-    if not credentials:
-        return None
-
-    try:
-        return await verify_blog_token(credentials)
-    except HTTPException:
-        return None

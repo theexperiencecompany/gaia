@@ -103,7 +103,7 @@ export const getFileIcon = (fileType: string, fileName: string) => {
   return <File01Icon className="h-6 w-6 text-zinc-400" />;
 };
 
-export const getFileExtension = (fileName: string) => {
+const getFileExtension = (fileName: string) => {
   const parts = fileName.split(".");
   return parts.length > 1 ? parts[parts.length - 1] : "";
 };

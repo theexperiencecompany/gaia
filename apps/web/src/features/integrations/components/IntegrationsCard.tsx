@@ -94,8 +94,6 @@ const IntegrationItem: React.FC<{
   );
 };
 
-export { IntegrationItem };
-
 export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   onClose,
   onIntegrationClick,

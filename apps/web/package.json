@@ -216,8 +216,6 @@
     "@types/node": "^24.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/string-similarity": "^4.0.2",
-    "@types/uuid": "^9.0.8",
     "depcheck": "^1.4.7",
     "schema-dts": "^1.1.5",
     "typescript": "^5.9.3",

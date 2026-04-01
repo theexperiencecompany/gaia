@@ -32,7 +32,7 @@ interface TodoItemProps {
   onPrefetchWorkflow?: (todoId: string) => void;
 }
 
-export const priorityColors = {
+const priorityColors = {
   [Priority.HIGH]: "danger",
   [Priority.MEDIUM]: "warning",
   [Priority.LOW]: "primary",

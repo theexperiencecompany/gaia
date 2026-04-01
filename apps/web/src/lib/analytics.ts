@@ -154,7 +154,7 @@ export function trackEvent(
 /**
  * Set user properties without tracking an event.
  */
-export function setUserProperties(properties: UserProperties): void {
+function setUserProperties(properties: UserProperties): void {
   posthog.people.set(properties);
 }
 
@@ -346,38 +346,3 @@ export function trackError(
     ...properties,
   });
 }
-
-/**
- * Create a group (for team/organization tracking).
- */
-export function setGroup(
-  groupType: string,
-  groupKey: string,
-  properties?: Record<string, unknown>,
-): void {
-  posthog.group(groupType, groupKey, properties);
-}
-
-/**
- * Opt user out of tracking.
- */
-export function optOut(): void {
-  posthog.opt_out_capturing();
-}
-
-/**
- * Opt user back into tracking.
- */
-export function optIn(): void {
-  posthog.opt_in_capturing();
-}
-
-/**
- * Check if capturing is active.
- */
-export function isCapturingEnabled(): boolean {
-  return !posthog.has_opted_out_capturing();
-}
-
-// Re-export posthog for advanced usage
-export { posthog };

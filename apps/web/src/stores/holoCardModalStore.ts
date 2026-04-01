@@ -19,6 +19,3 @@ export const useHoloCardModalStore = create<HoloCardModalStore>()(
     { name: "holoCardModal-store" },
   ),
 );
-
-export const useHoloCardModalOpen = () =>
-  useHoloCardModalStore((state) => state.open);

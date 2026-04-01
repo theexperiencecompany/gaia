@@ -5,7 +5,7 @@ import { THEME_COLOR } from "../constants.js";
 import { Footer } from "./Footer.js";
 import { Header } from "./Header.js";
 
-export const INIT_STEPS = [
+const INIT_STEPS = [
   "Welcome",
   "Prerequisites",
   "Setup Mode",

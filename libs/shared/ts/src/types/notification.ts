@@ -2,7 +2,6 @@ export enum NotificationStatus {
   PENDING = "pending",
   DELIVERED = "delivered",
   READ = "read",
-  SNOOZED = "snoozed",
   ARCHIVED = "archived",
 }
 
@@ -14,8 +13,6 @@ export enum NotificationActionType {
 }
 
 export enum NotificationActionStyle {
-  PRIMARY = "primary",
-  SECONDARY = "secondary",
   DANGER = "danger",
 }
 
