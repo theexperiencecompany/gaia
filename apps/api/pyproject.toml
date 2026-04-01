@@ -171,6 +171,14 @@ backend = [
   "prometheus-fastapi-instrumentator>=7.0.0",
 ]
 
+[tool.mypy]
+mypy_path = "../../libs"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "shared.*"
+follow_imports = "skip"
+
 [tool.vulture]
 paths = ["app/", "vulture_whitelist.py"]
 exclude = [

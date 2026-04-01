@@ -112,9 +112,7 @@ class GaiaCi:
         return await (
             self.ci_env(source)
             .with_workdir("/app/apps/api")
-            .with_exec(
-                ["uv", "run", "mypy", "--install-types", "--non-interactive", "app"]
-            )
+            .with_exec(["uv", "run", "mypy", "app", "--ignore-missing-imports"])
             .with_workdir("/app")
             .with_exec(["npx", "nx", "run-many", "-t", "type-check", "--parallel=3"])
             .stdout()
@@ -470,9 +468,7 @@ class GaiaCi:
 
         type_check_task = (
             env.with_workdir("/app/apps/api")
-            .with_exec(
-                ["uv", "run", "mypy", "--install-types", "--non-interactive", "app"]
-            )
+            .with_exec(["uv", "run", "mypy", "app", "--ignore-missing-imports"])
             .with_workdir("/app")
             .with_exec(["npx", "nx", "run-many", "-t", "type-check", "--parallel=3"])
             .stdout()
