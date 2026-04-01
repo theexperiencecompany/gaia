@@ -13,8 +13,9 @@ from typing import Optional
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
 from shared.py.wide_events import log
-from app.config.oauth_config import get_integration_by_id
+from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.services.memory_service import memory_service
+from app.services.oauth.oauth_service import check_integration_status
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage
 
@@ -231,3 +232,29 @@ async def create_agent_context_message(
     content = "\n".join(context_parts) + memories_section + skills_section
 
     return SystemMessage(content=content, memory_message=True)
+
+
+def get_subagent_by_id(subagent_id: str):
+    """Look up a subagent integration by ID or short_name. Returns None if not found."""
+    search_id = subagent_id.lower().strip()
+    for integ in OAUTH_INTEGRATIONS:
+        if integ.id.lower() == search_id or (
+            integ.short_name and integ.short_name.lower() == search_id
+        ):
+            if integ.subagent_config and integ.subagent_config.has_subagent:
+                return integ
+    return None
+
+
+async def check_subagent_integration(
+    integration_id: str,
+    user_id: str,
+) -> str | None:
+    """Return an error message if the integration is not connected, else None."""
+    try:
+        if await check_integration_status(integration_id, user_id):
+            return None
+        return f"Integration {integration_id} is not connected. Please connect it first."
+    except Exception as e:
+        log.warning(f"Integration check failed: {e}")
+        return None

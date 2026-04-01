@@ -184,9 +184,7 @@ class WorkflowSubagentRunner:
 
                 # Accumulate AI response content
                 if chunk and isinstance(chunk, AIMessageChunk):
-                    content = (
-                        chunk.text() if hasattr(chunk, "text") else str(chunk.content)
-                    )
+                    content = chunk.text
                     if content:
                         complete_message += content
 
@@ -197,7 +195,7 @@ class WorkflowSubagentRunner:
                             {
                                 "tool_output": {
                                     "tool_call_id": chunk.tool_call_id,
-                                    "output": chunk.text()[:3000],
+                                    "output": chunk.text[:3000],
                                 }
                             }
                         )

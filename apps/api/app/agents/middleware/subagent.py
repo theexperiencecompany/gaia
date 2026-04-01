@@ -1,5 +1,5 @@
 """
-SubagentMiddleware - Provides spawn_subagent tool for lightweight parallel task execution.
+SubagentMiddleware — exposes spawn_subagent tool for lightweight parallel task execution.
 
 Spawned subagents run a simple tool-calling loop (no full graph/checkpointer).
 When a tool_registry + store are configured, subagents get `retrieve_tools`
@@ -10,21 +10,20 @@ import asyncio
 from collections.abc import Mapping
 from typing import Annotated, Any, Optional, cast
 
+from app.agents.core.subagents.token_budget import (
+    _BUDGET_EXCEEDED_FOOTER,
+    _BUDGET_EXCEEDED_PROMPT,
+    SubagentTokenLimitError,
+    TokenBudgetCallbackHandler,
+)
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
 )
-from app.agents.tools.core.retrieval import (
-    get_retrieve_tools_function,
-)
+from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from shared.py.wide_events import log
-from app.constants.llm import SUBAGENT_RECURSION_LIMIT
-from langchain.agents.middleware.types import (
-    AgentMiddleware,
-    AgentState,
-    OmitFromInput,
-)
+from app.constants.llm import SUBAGENT_MAX_TOKENS, SUBAGENT_RECURSION_LIMIT
+from langchain.agents.middleware.types import AgentMiddleware, AgentState, OmitFromInput
 from langchain.tools import InjectedToolCallId
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -34,8 +33,45 @@ from langchain_core.tools import BaseTool, StructuredTool, tool
 from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
+from shared.py.wide_events import log
 
 _RETRIEVE_TOOLS_NAME = "retrieve_tools"
+_TOOL_CONCURRENCY = 8
+
+
+async def _invoke_tool(
+    tc: ToolCall,
+    tools_by_name: dict[str, BaseTool],
+    config: RunnableConfig,
+    dynamic: bool,
+) -> ToolMessage:
+    """Invoke a single tool call, returning a ToolMessage with the result or error."""
+    name = tc["name"]
+    tc_id = tc["id"]
+
+    if name not in tools_by_name:
+        hint = " Use retrieve_tools to discover and bind tools first." if dynamic else ""
+        return ToolMessage(
+            content=f"Unknown tool: {name}.{hint}",
+            tool_call_id=tc_id,
+            name=name,
+            status="error",
+        )
+    try:
+        result = await tools_by_name[name].ainvoke({**tc, "type": "tool_call"}, config=config)
+        return ToolMessage(content=str(result), tool_call_id=tc_id, name=name)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception(
+            "Subagent tool invocation failed for tool '{}' (tool_call_id={})", name, tc_id
+        )
+        return ToolMessage(
+            content="Tool error: internal failure while executing tool.",
+            tool_call_id=tc_id,
+            name=name,
+            status="error",
+        )
 
 
 class SubagentState(AgentState[Any]):
@@ -71,19 +107,15 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         self._excluded_tools.add("spawn_subagent")
         self._tool_space = tool_space
         self._store: BaseStore | None = store
-        self._tool_runtime_config = (
-            tool_runtime_config
-            if tool_runtime_config
-            else ToolRuntimeConfig(
-                initial_tool_names=["vfs_read", "vfs_cmd"],
-                enable_retrieve_tools=True,
-                include_subagents_in_retrieve=False,
-            )
+        self._tool_runtime_config = tool_runtime_config or ToolRuntimeConfig(
+            initial_tool_names=["vfs_read", "vfs_cmd"],
+            enable_retrieve_tools=True,
+            include_subagents_in_retrieve=False,
         )
-
         self.tools = [self._create_spawn_subagent_tool()]
 
-    def _create_spawn_subagent_tool(self):
+
+    def _create_spawn_subagent_tool(self) -> BaseTool:
         middleware = self
 
         @tool(description=SPAWN_SUBAGENT_DESCRIPTION)
@@ -96,61 +128,185 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         ) -> Command[Any]:
             """Spawn a subagent to handle a subtask with focused execution."""
             if middleware._llm is None:
-                return Command(
-                    update={
-                        "messages": [
-                            ToolMessage(
-                                content="Error: Subagent LLM not configured",
-                                tool_call_id=tool_call_id,
-                                status="error",
-                            )
-                        ]
-                    }
-                )
+                return Command(update={"messages": [ToolMessage(
+                    content="Error: Subagent LLM not configured",
+                    tool_call_id=tool_call_id,
+                    status="error",
+                )]})
 
             try:
                 result = await middleware._execute_subagent(
-                    task,
-                    context,
-                    config,
-                    inherited_tool_names=selected_tool_ids,
+                    task, context, config, inherited_tool_names=selected_tool_ids
                 )
-                return Command(
-                    update={
-                        "messages": [
-                            ToolMessage(
-                                content=result,
-                                tool_call_id=tool_call_id,
-                            )
-                        ]
-                    }
-                )
+                return Command(update={"messages": [ToolMessage(
+                    content=result, tool_call_id=tool_call_id
+                )]})
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 log.error(f"Subagent execution failed: {e}")
-                return Command(
-                    update={
-                        "messages": [
-                            ToolMessage(
-                                content=f"Subagent error: {str(e)}",
-                                tool_call_id=tool_call_id,
-                                status="error",
-                            )
-                        ]
-                    }
-                )
+                return Command(update={"messages": [ToolMessage(
+                    content=f"Subagent error: {e}",
+                    tool_call_id=tool_call_id,
+                    status="error",
+                )]})
 
         return spawn_subagent
 
-    def _build_retrieve_tool(
-        self,
-        config: RunnableConfig,
-    ) -> StructuredTool | None:
-        """Build a retrieve_tools StructuredTool with pre-bound store/config.
 
-        Returns None if store is not configured.
+    async def _execute_subagent(
+        self,
+        task: str,
+        context: str,
+        config: RunnableConfig,
+        inherited_tool_names: list[str] | None = None,
+    ) -> str:
+        """Run a lightweight tool-calling loop for the subagent.
+
+        A TokenBudgetCallbackHandler is injected so SubagentTokenLimitError
+        fires from on_llm_end when the budget is exceeded, stopping the loop
+        cleanly without starting a new one.
         """
+        if self._llm is None:
+            raise ValueError("LLM not configured for subagent execution")
+
+        patched_config: dict = self._inject_budget_callback(config)
+        llm: Any = self._llm.with_config(configurable=patched_config.get("configurable", {}))
+
+        tools_by_name, dynamic, retrieve_tool = self._build_child_toolset(
+            config=patched_config, inherited_tool_names=inherited_tool_names
+        )
+        bound_tool_names: set[str] = set(tools_by_name.keys())
+        llm_with_tools = llm.bind_tools(list(tools_by_name.values())) if tools_by_name else llm
+
+        user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
+        messages: list[Any] = [
+            SystemMessage(content=self._system_prompt),
+            HumanMessage(content=user_content),
+        ]
+
+        try:
+            return await self._tool_calling_loop(
+                llm=llm,
+                llm_with_tools=llm_with_tools,
+                messages=messages,
+                tools_by_name=tools_by_name,
+                bound_tool_names=bound_tool_names,
+                dynamic=dynamic,
+                retrieve_tool=retrieve_tool,
+                config=patched_config,
+            )
+        except SubagentTokenLimitError as e:
+            log.warning("spawn_subagent token limit reached", tokens_used=e.tokens_used, limit=e.limit)
+            messages.append(HumanMessage(content=_BUDGET_EXCEEDED_PROMPT))
+            final = cast(AIMessage, await llm.ainvoke(messages, config=patched_config))
+            content = str(final.content) if final.content else "Token limit reached."
+            return content + _BUDGET_EXCEEDED_FOOTER
+
+    async def _tool_calling_loop(
+        self,
+        llm: Any,
+        llm_with_tools: Any,
+        messages: list[Any],
+        tools_by_name: dict[str, BaseTool],
+        bound_tool_names: set[str],
+        dynamic: bool,
+        retrieve_tool: StructuredTool | None,
+        config: Any,
+    ) -> str:
+        """ReAct loop: call LLM → execute tools → repeat until done or max turns."""
+        semaphore = asyncio.Semaphore(_TOOL_CONCURRENCY)
+
+        for _turn in range(self._max_turns):
+            response = cast(AIMessage, await llm_with_tools.ainvoke(messages, config=config))
+            messages.append(response)
+
+            if not response.tool_calls:
+                return str(response.content) if response.content else "Task completed."
+
+            regular_calls: list[ToolCall] = []
+            for tc in response.tool_calls:
+                if tc["name"] == _RETRIEVE_TOOLS_NAME and dynamic and retrieve_tool:
+                    await self._handle_retrieve_tools(
+                        tc=tc,
+                        retrieve_tool=retrieve_tool,
+                        tools_by_name=tools_by_name,
+                        bound_tool_names=bound_tool_names,
+                        messages=messages,
+                    )
+                    llm_with_tools = llm.bind_tools(list(tools_by_name.values()))
+                else:
+                    regular_calls.append(tc)
+
+            if regular_calls:
+                async def _limited(tc: ToolCall) -> ToolMessage:
+                    async with semaphore:
+                        return await _invoke_tool(tc, tools_by_name, config, dynamic)
+
+                tool_messages = await asyncio.gather(*[_limited(tc) for tc in regular_calls])
+                messages.extend(tool_messages)
+
+        # Max turns reached — one final answer call without tools
+        final = await llm.ainvoke(messages, config=config)
+        if isinstance(final, AIMessage) and final.content:
+            return str(final.content)
+        return str(final) if final else "Max turns reached."
+
+    async def _handle_retrieve_tools(
+        self,
+        tc: ToolCall,
+        retrieve_tool: StructuredTool,
+        tools_by_name: dict[str, BaseTool],
+        bound_tool_names: set[str],
+        messages: list[Any],
+    ) -> None:
+        """Execute a retrieve_tools call and bind the returned tools."""
+        tc_id = tc["id"]
+        try:
+            result = await retrieve_tool.ainvoke(tc["args"])
+            newly_bound = self._bind_tools_from_registry(
+                result.get("tools_to_bind", []), tools_by_name, bound_tool_names
+            )
+            if newly_bound:
+                log.info(f"Subagent bound {len(newly_bound)} tools: {newly_bound}")
+            content = "\n".join(result.get("response", [])) or "No tools found."
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.error(f"Subagent retrieve_tools error: {e}")
+            content = f"retrieve_tools error: {e}"
+
+        messages.append(ToolMessage(content=content, tool_call_id=tc_id, name=_RETRIEVE_TOOLS_NAME))
+
+
+    def _build_child_toolset(
+        self,
+        config: Any,
+        inherited_tool_names: list[str] | None = None,
+    ) -> tuple[dict[str, BaseTool], bool, StructuredTool | None]:
+        """Build the tool map for a spawned subagent."""
+        retrieve_tool = self._build_retrieve_tool(config)
+        dynamic = retrieve_tool is not None and self._tool_registry is not None
+
+        tools_by_name: dict[str, BaseTool] = {}
+        bound_tool_names: set[str] = set()
+
+        self._bind_tools_from_registry(
+            self._tool_runtime_config.initial_tool_names, tools_by_name, bound_tool_names
+        )
+        if inherited_tool_names:
+            self._bind_tools_from_registry(inherited_tool_names, tools_by_name, bound_tool_names)
+        if dynamic and retrieve_tool:
+            tools_by_name[_RETRIEVE_TOOLS_NAME] = retrieve_tool
+
+        # Defensive fallback: bind everything if nothing resolved
+        if not tools_by_name:
+            tools_by_name = {t.name: t for t in self._collect_tools()}
+
+        return tools_by_name, dynamic, retrieve_tool
+
+    def _build_retrieve_tool(self, config: RunnableConfig) -> StructuredTool | None:
+        """Build a retrieve_tools tool bound to the current store and config."""
         if not self._tool_runtime_config.enable_retrieve_tools or self._store is None:
             return None
 
@@ -163,34 +319,22 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         async def retrieve_tools(
             query: Optional[str] = None,
             exact_tool_names: Optional[list[str]] = None,
-        ):
-            return await inner_fn(
-                store=store,
-                config=config,
-                query=query,
-                exact_tool_names=exact_tool_names,
-            )
+        ) -> Any:
+            return await inner_fn(store=store, config=config, query=query, exact_tool_names=exact_tool_names)
 
         retrieve_tools.__doc__ = inner_fn.__doc__
-
-        return StructuredTool.from_function(
-            coroutine=retrieve_tools,
-            name=_RETRIEVE_TOOLS_NAME,
-        )
+        return StructuredTool.from_function(coroutine=retrieve_tools, name=_RETRIEVE_TOOLS_NAME)
 
     def _collect_tools(self) -> list[BaseTool]:
         """Collect all eligible tools from available_tools and tool_registry."""
         tools: list[BaseTool] = []
-
         for t in self._available_tools:
             if hasattr(t, "name") and t.name not in self._excluded_tools:
                 tools.append(t)
-
         if self._tool_registry:
-            for name, registry_tool in self._tool_registry.items():
+            for name, t in self._tool_registry.items():
                 if name not in self._excluded_tools:
-                    tools.append(registry_tool)
-
+                    tools.append(t)
         return tools
 
     def _bind_tools_from_registry(
@@ -199,194 +343,26 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         tools_by_name: dict[str, BaseTool],
         bound_tool_names: set[str],
     ) -> list[str]:
-        """Resolve tool names from registry into tools_by_name. Returns newly bound names."""
-        newly_bound: list[str] = []
+        """Resolve tool names from the registry into tools_by_name. Returns newly bound names."""
         if not self._tool_registry:
-            return newly_bound
-
+            return []
+        newly_bound: list[str] = []
         for name in names:
             if name in bound_tool_names or name in self._excluded_tools:
                 continue
-            tool_instance = self._tool_registry.get(name)
-            if tool_instance is not None:
-                tools_by_name[name] = tool_instance
+            if (t := self._tool_registry.get(name)) is not None:
+                tools_by_name[name] = t
                 bound_tool_names.add(name)
                 newly_bound.append(name)
-
         return newly_bound
 
-    async def _execute_subagent(
-        self,
-        task: str,
-        context: str,
-        config: RunnableConfig,
-        inherited_tool_names: Optional[list[str]] = None,
-    ) -> str:
-        """Run a lightweight tool-calling loop for the subagent."""
-        if self._llm is None:
-            raise ValueError("LLM not configured for subagent execution")
+    def _inject_budget_callback(self, config: RunnableConfig) -> dict:
+        """Return a new config dict with a TokenBudgetCallbackHandler appended."""
+        cb = TokenBudgetCallbackHandler(SUBAGENT_MAX_TOKENS)
+        raw = config.get("callbacks")
+        existing: list[Any] = list(raw) if isinstance(raw, list) else []
+        return {**config, "callbacks": [*existing, cb]}
 
-        model_configurations = config.get("configurable", {})
-        llm: Any = self._llm.with_config(configurable=model_configurations)
-
-        tools_by_name, dynamic, retrieve_tool = self._build_child_toolset(
-            config=config,
-            inherited_tool_names=inherited_tool_names,
-        )
-        bound_tool_names: set[str] = set(tools_by_name.keys())
-
-        llm_with_tools = (
-            llm.bind_tools(list(tools_by_name.values())) if tools_by_name else llm
-        )
-
-        # Build initial messages
-        messages: list[Any] = [SystemMessage(content=self._system_prompt)]
-        user_content = (
-            f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
-        )
-        messages.append(HumanMessage(content=user_content))
-
-        # Tool-calling loop
-        for _turn in range(self._max_turns):
-            response = cast(
-                AIMessage, await llm_with_tools.ainvoke(messages, config=config)
-            )
-            messages.append(response)
-
-            if not response.tool_calls:
-                return str(response.content) if response.content else "Task completed."
-
-            regular_calls: list[ToolCall] = []
-            for tc in response.tool_calls:
-                name = tc["name"]
-                tc_id = tc["id"]
-
-                if (
-                    name == _RETRIEVE_TOOLS_NAME
-                    and dynamic
-                    and retrieve_tool is not None
-                ):
-                    try:
-                        result = await retrieve_tool.ainvoke(tc["args"])
-                        newly_bound = self._bind_tools_from_registry(
-                            result.get("tools_to_bind", []),
-                            tools_by_name,
-                            bound_tool_names,
-                        )
-                        if newly_bound:
-                            log.info(
-                                f"Subagent bound {len(newly_bound)} tools: {newly_bound}"
-                            )
-                        content = (
-                            "\n".join(result.get("response", [])) or "No tools found."
-                        )
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        log.error(f"Subagent retrieve_tools error: {e}")
-                        content = f"retrieve_tools error: {e}"
-
-                    messages.append(
-                        ToolMessage(content=content, tool_call_id=tc_id, name=name)
-                    )
-                    # Rebind LLM with updated tool set
-                    llm_with_tools = llm.bind_tools(list(tools_by_name.values()))
-                else:
-                    regular_calls.append(tc)
-
-            if not regular_calls:
-                continue
-
-            async def _invoke_tool(tc: ToolCall) -> ToolMessage:
-                name = tc["name"]
-                tc_id = tc["id"]
-                if name not in tools_by_name:
-                    hint = (
-                        " Use retrieve_tools to discover and bind tools first."
-                        if dynamic
-                        else ""
-                    )
-                    return ToolMessage(
-                        content=f"Unknown tool: {name}.{hint}",
-                        tool_call_id=tc_id,
-                        name=name,
-                        status="error",
-                    )
-                try:
-                    result = await tools_by_name[name].ainvoke(
-                        {**tc, "type": "tool_call"}, config=config
-                    )
-                    return ToolMessage(
-                        content=str(result), tool_call_id=tc_id, name=name
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    log.exception(
-                        "Subagent tool invocation failed for tool '{}' (tool_call_id={})",
-                        name,
-                        tc_id,
-                    )
-                    return ToolMessage(
-                        content="Tool error: internal failure while executing tool.",
-                        tool_call_id=tc_id,
-                        name=name,
-                        status="error",
-                    )
-
-            semaphore = asyncio.Semaphore(8)
-
-            async def _invoke_tool_limited(tc: ToolCall) -> ToolMessage:
-                async with semaphore:
-                    return await _invoke_tool(tc)
-
-            tool_messages: list[ToolMessage] = await asyncio.gather(
-                *[_invoke_tool_limited(tc) for tc in regular_calls]
-            )
-            messages.extend(tool_messages)
-
-        # Max turns reached — get final answer without tools
-        final = await llm.ainvoke(messages, config=config)
-        if isinstance(final, AIMessage) and final.content:
-            return str(final.content)
-        return str(final) if final else "Max turns reached."
-
-    def _build_child_toolset(
-        self,
-        config: RunnableConfig,
-        inherited_tool_names: Optional[list[str]] = None,
-    ) -> tuple[dict[str, BaseTool], bool, StructuredTool | None]:
-        """Build child subagent tool map from runtime config and parent state."""
-        retrieve_tool = self._build_retrieve_tool(config)
-        dynamic = retrieve_tool is not None and self._tool_registry is not None
-
-        tools_by_name: dict[str, BaseTool] = {}
-        bound_tool_names: set[str] = set()
-
-        # Bind configured initial tools first (regular tools, not special behavior tools).
-        self._bind_tools_from_registry(
-            self._tool_runtime_config.initial_tool_names,
-            tools_by_name,
-            bound_tool_names,
-        )
-
-        # Inherit tools currently bound by the parent agent in this turn.
-        if inherited_tool_names:
-            self._bind_tools_from_registry(
-                inherited_tool_names,
-                tools_by_name,
-                bound_tool_names,
-            )
-
-        if dynamic and retrieve_tool is not None:
-            tools_by_name[_RETRIEVE_TOOLS_NAME] = retrieve_tool
-
-        # If nothing resolved (defensive fallback), bind all eligible tools.
-        if not tools_by_name:
-            all_tools = self._collect_tools()
-            tools_by_name = {t.name: t for t in all_tools}
-
-        return tools_by_name, dynamic, retrieve_tool
 
     def set_llm(self, llm: LanguageModelLike) -> None:
         self._llm = llm
