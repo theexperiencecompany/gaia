@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type {
-  Article,
   HowTo,
   HowToStep,
   ImageObject,

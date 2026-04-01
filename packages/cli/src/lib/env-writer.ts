@@ -10,17 +10,6 @@ export interface EnvValues {
   [key: string]: string;
 }
 
-/**
- * Returns the canonical path to the API .env file.
- * Note: writeEnvFile() expects path.join(repoRoot, "apps", "api") as its repoPath
- * argument, so it writes to apps/api/.env correctly. These helpers exist so that
- * envFileExists() and readEnvFile() — which take the monorepo root — resolve
- * the same location.
- */
-function getApiEnvPath(repoRoot: string): string {
-  return path.join(repoRoot, "apps", "api", ".env");
-}
-
 function backupIfExists(filePath: string): void {
   if (fs.existsSync(filePath)) {
     fs.copyFileSync(filePath, `${filePath}.bak`);

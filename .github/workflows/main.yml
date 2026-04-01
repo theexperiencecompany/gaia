@@ -69,12 +69,14 @@ jobs:
       - name: Detect affected projects
         id: affected
         run: |
+          # --with-tag is not a valid Nx flag (silently ignored). Use --projects 'tag:...' instead.
+          # Nx outputs JSON arrays, so tr strips brackets/quotes to produce CSV.
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            PY=$(npx nx show projects --with-tag scope:python 2>/dev/null | paste -sd ',' - || echo "")
-            TS=$(npx nx show projects --with-tag scope:typescript 2>/dev/null | paste -sd ',' - || echo "")
+            PY=$(npx nx show projects --projects 'tag:scope:python' 2>/dev/null | tr -d '[]" ' || echo "")
+            TS=$(npx nx show projects --projects 'tag:scope:typescript' 2>/dev/null | tr -d '[]" ' || echo "")
           else
-            PY=$(npx nx show projects --affected --with-tag scope:python 2>/dev/null | paste -sd ',' - || echo "")
-            TS=$(npx nx show projects --affected --with-tag scope:typescript 2>/dev/null | paste -sd ',' - || echo "")
+            PY=$(npx nx show projects --affected --projects 'tag:scope:python' 2>/dev/null | tr -d '[]" ' || echo "")
+            TS=$(npx nx show projects --affected --projects 'tag:scope:typescript' 2>/dev/null | tr -d '[]" ' || echo "")
           fi
 
           echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
@@ -212,9 +214,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pip install --break-system-packages vulture
       - name: Dead code check
-        run: bash scripts/dead-code-check.sh
-        env:
-          PATH: "/home/runner/.local/bin:$PATH"
+        shell: bash
+        run: |
+          export PATH="/home/runner/.local/bin:$PATH"
+          bash scripts/dead-code-check.sh
 
   # --- Release validation (runner-native, always) -------------------------
   release-validation:

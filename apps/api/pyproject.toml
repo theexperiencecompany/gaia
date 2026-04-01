@@ -231,6 +231,11 @@ ignore_names = [
   "cls",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# vulture_whitelist.py contains bare names used as false-positive markers.
+# These are intentionally undefined — vulture reads them, Ruff should not flag them.
+"vulture_whitelist.py" = ["F821"]
+
 [tool.uv.sources]
 gaia-shared = { workspace = true }
 

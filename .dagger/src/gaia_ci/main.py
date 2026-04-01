@@ -54,20 +54,22 @@ class GaiaCi:
 
     @function
     def ci_env(self, source: Source) -> dagger.Container:
-        """Create a full CI environment using the pre-built CI base image.
+        """Create a full CI environment by building the base image from the Dockerfile.
 
-        The base image (ghcr.io/theexperiencecompany/gaia-ci-base:latest) ships
-        Node 22, Python 3.12, pnpm, and uv pre-installed, eliminating the
-        ~60-90s apt-get + pip install chain on every run.
+        The base image (infra/docker/ci-base.Dockerfile) ships Node 22,
+        Python 3.12, pnpm, and uv pre-installed. Dagger layer-caches
+        the build so subsequent runs skip the apt-get + pip install chain.
         """
         pnpm_cache = dag.cache_volume("pnpm-store")
         uv_cache = dag.cache_volume("uv-cache")
         nx_cache = dag.cache_volume("nx-cache")
         next_cache = dag.cache_volume("next-cache")
         pip_cache = dag.cache_volume("pip-cache")
+        base = source.directory("infra/docker").docker_build(
+            dockerfile="ci-base.Dockerfile",
+        )
         return (
-            dag.container()
-            .from_("ghcr.io/theexperiencecompany/gaia-ci-base:latest")
+            base
             # Mount caches
             .with_mounted_cache("/root/.local/share/pnpm/store", pnpm_cache)
             .with_mounted_cache("/root/.cache/uv", uv_cache)

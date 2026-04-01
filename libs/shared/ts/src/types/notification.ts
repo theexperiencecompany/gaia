@@ -13,6 +13,8 @@ export enum NotificationActionType {
 }
 
 export enum NotificationActionStyle {
+  PRIMARY = "primary",
+  SECONDARY = "secondary",
   DANGER = "danger",
 }
 
