@@ -347,6 +347,11 @@ async def run_executor_background(
         # Clean up tool event collector for this stream
         deregister_tool_event_collector(stream_id)
 
+        # For queued tasks: inbox is None, so chat_service never calls complete_stream.
+        # Publish DONE signal so the GET /stream/{stream_id} subscriber can close.
+        if inbox is None and not was_cancelled:
+            await StreamManager.complete_stream(stream_id)
+
         # Process next queued task if one exists.
         # Skip if cancelled — cancel_executor already cleared the queue.
         if not was_cancelled:
@@ -383,8 +388,10 @@ async def _process_next_queued_task(conversation_id: str) -> None:
         datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
     )
 
-    # Use a synthetic stream_id — no SSE channel exists for queued tasks
+    # New stream_id for this queued task — registered in Redis so the frontend
+    # can subscribe to it via GET /stream/{stream_id}.
     queued_stream_id = f"queued_{uuid4()}"
+    user_id: str = configurable.get("user_id", "")
 
     # Re-acquire the lock before spawning (same pattern as call_executor).
     # Store "stream_id:task_id" so cancel_executor can target by task_id.
@@ -396,6 +403,28 @@ async def _process_next_queued_task(conversation_id: str) -> None:
 
     # Register tool event collector for the queued task so tool_data is captured
     register_tool_event_collector(queued_stream_id)
+
+    # Register stream in Redis — required for GET /stream/{stream_id} ownership check
+    # and so the pub/sub channel exists before the frontend subscribes.
+    await StreamManager.start_stream(
+        stream_id=queued_stream_id,
+        conversation_id=conversation_id,
+        user_id=user_id,
+    )
+
+    # Notify frontend: open a new SSE connection to stream tool events live.
+    # Emitted BEFORE spawning the background task so the frontend can subscribe
+    # before the first tool event is published.
+    if user_id:
+        await websocket_manager.broadcast_to_user(
+            user_id,
+            {
+                "type": "executor.stream_started",
+                "stream_id": queued_stream_id,
+                "conversation_id": conversation_id,
+                "task_id": task_id,
+            },
+        )
 
     # Update stream_id in configurable so notify_comms/notify_executor
     # don't try to push to the now-closed original stream
