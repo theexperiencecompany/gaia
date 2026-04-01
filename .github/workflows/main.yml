@@ -69,14 +69,16 @@ jobs:
       - name: Detect affected projects
         id: affected
         run: |
-          # --with-tag is not a valid Nx flag (silently ignored). Use --projects 'tag:...' instead.
-          # Nx outputs JSON arrays, so tr strips brackets/quotes to produce CSV.
+          # nx show projects may output JSON arrays or one-per-line depending on version/env.
+          # Normalize both formats to comma-separated values.
+          normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
+
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            PY=$(npx nx show projects --projects 'tag:scope:python' 2>/dev/null | tr -d '[]" ' || echo "")
-            TS=$(npx nx show projects --projects 'tag:scope:typescript' 2>/dev/null | tr -d '[]" ' || echo "")
+            PY=$(npx nx show projects --projects 'tag:scope:python' 2>/dev/null | normalize || echo "")
+            TS=$(npx nx show projects --projects 'tag:scope:typescript' 2>/dev/null | normalize || echo "")
           else
-            PY=$(npx nx show projects --affected --projects 'tag:scope:python' 2>/dev/null | tr -d '[]" ' || echo "")
-            TS=$(npx nx show projects --affected --projects 'tag:scope:typescript' 2>/dev/null | tr -d '[]" ' || echo "")
+            PY=$(npx nx show projects --affected --projects 'tag:scope:python' 2>/dev/null | normalize || echo "")
+            TS=$(npx nx show projects --affected --projects 'tag:scope:typescript' 2>/dev/null | normalize || echo "")
           fi
 
           echo "python_projects=$PY" >> "$GITHUB_OUTPUT"

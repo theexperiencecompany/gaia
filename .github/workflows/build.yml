@@ -92,8 +92,8 @@ jobs:
       - name: Check affected projects
         id: affected
         run: |
-          AFFECTED_RAW="$(npx nx show projects --affected 2>/dev/null || true)"
-          AFFECTED="$(printf '%s\n' "$AFFECTED_RAW" | tr ' ' '\n' | sed '/^$/d')"
+          # nx may output JSON arrays or one-per-line; normalize to newline-separated.
+          AFFECTED="$(npx nx show projects --affected 2>/dev/null | tr -d '[]"' | tr ',' '\n' | sed '/^$/d' || true)"
 
           echo "Affected projects:"
           echo "$AFFECTED"
@@ -222,14 +222,15 @@ jobs:
       - name: Check if web is affected
         id: web-affected
         run: |
-          AFFECTED_RAW="$(npx nx show projects --affected 2>/dev/null || true)"
-          AFFECTED="$(printf '%s\n' "$AFFECTED_RAW" | tr ' ' '\n' | sed '/^$/d')"
+          # nx may output JSON arrays or one-per-line; normalize to newline-separated.
+          AFFECTED="$(npx nx show projects --affected 2>/dev/null | tr -d '[]"' | tr ',' '\n' | sed '/^$/d' || true)"
           if echo "$AFFECTED" | grep -qx "web"; then
             echo "web=true" >> $GITHUB_OUTPUT
           else
             echo "web=false" >> $GITHUB_OUTPUT
           fi
-          echo "Affected projects: $AFFECTED"
+          echo "Affected projects:"
+          echo "$AFFECTED"
 
       # Registry/buildx setup is only needed when web image should be rebuilt.
       - name: Log in to GHCR
