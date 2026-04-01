@@ -52,6 +52,18 @@ export function useBgMessageWebSocket() {
       return;
     }
 
+    // Remove streaming placeholder (id === task_id) if one exists in the store.
+    // The placeholder was created by useExecutorStream for live tool progress;
+    // now the final message is here, so the placeholder is no longer needed.
+    if (message.task_id) {
+      const state = useChatStore.getState();
+      const msgs = state.messagesByConversation[conversation_id] ?? [];
+      const hasPlaceholder = msgs.some((m) => m.id === message.task_id);
+      if (hasPlaceholder) {
+        useChatStore.getState().removeMessage(message.task_id, conversation_id);
+      }
+    }
+
     // Build IMessage for IndexedDB
     const iMessage: IMessage = {
       id: message.message_id,

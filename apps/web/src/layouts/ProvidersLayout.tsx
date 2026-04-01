@@ -7,6 +7,7 @@ import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsP
 import { Toaster } from "@/components/ui/Toaster";
 import LoginModal from "@/features/auth/components/LoginModal";
 import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSocket";
+import { useExecutorStream } from "@/features/chat/hooks/useExecutorStream";
 import { GlobalIntegrationModal } from "@/features/integrations/components/GlobalIntegrationModal";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
@@ -32,6 +33,9 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
   // Subscribe to background executor completion messages — inserts new
   // bot messages delivered via WebSocket (executor notifications, queued task results)
   useBgMessageWebSocket();
+
+  // Subscribe to queued executor SSE streams for live tool progress
+  useExecutorStream();
 
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();

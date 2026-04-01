@@ -333,4 +333,44 @@ export const chatApi = {
       },
     );
   },
+
+  subscribeToExecutorStream: async (
+    streamId: string,
+    onMessage: (event: EventSourceMessage) => void,
+    onClose: () => void,
+    onError: (err: Error) => void,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    let doneReceived = false;
+
+    await fetchEventSource(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}stream/${streamId}`,
+      {
+        method: "GET",
+        openWhenHidden: true,
+        headers: {
+          Accept: "text/event-stream",
+        },
+        credentials: "include",
+        signal,
+        onmessage(event) {
+          if (event.data === "[DONE]") {
+            doneReceived = true;
+            onClose();
+            return;
+          }
+          onMessage(event);
+        },
+        onclose() {
+          if (!doneReceived) {
+            onClose();
+          }
+        },
+        onerror(err) {
+          onError(err);
+          throw err; // stops retry attempts
+        },
+      },
+    );
+  },
 };
