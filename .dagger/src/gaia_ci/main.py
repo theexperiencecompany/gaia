@@ -184,6 +184,10 @@ class GaiaCi:
         return await (
             self.ci_env(source)
             .with_exec(["uv", "tool", "install", "vulture"])
+            .with_env_variable(
+                "PATH",
+                "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            )
             .with_exec(["bash", "scripts/dead-code-check.sh"])
             .stdout()
         )
@@ -484,6 +488,10 @@ class GaiaCi:
 
         dead_code_task = (
             env.with_exec(["uv", "tool", "install", "vulture"])
+            .with_env_variable(
+                "PATH",
+                "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            )
             .with_exec(["bash", "scripts/dead-code-check.sh"])
             .stdout()
         )
@@ -497,6 +505,8 @@ class GaiaCi:
             .from_("ghcr.io/aquasecurity/trivy:latest")
             .with_directory("/src", source)
             # Entrypoint is `trivy`, so args start after it.
+            # Scan the repo root so uv.lock (at root) and pyproject.toml are
+            # reachable. Skip node_modules/venvs to keep it fast.
             # expect=ANY: informational scan — never fail CI.
             .with_exec(
                 [
@@ -505,7 +515,9 @@ class GaiaCi:
                     "CRITICAL,HIGH",
                     "--format",
                     "table",
-                    "/src/apps/api",
+                    "--skip-dirs",
+                    "node_modules,.venv,dist,.next,out",
+                    "/src",
                 ],
                 expect=dagger.ReturnType.ANY,
             )

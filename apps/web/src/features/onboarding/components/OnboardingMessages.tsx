@@ -4,7 +4,7 @@ import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot"
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 
 import type { Message } from "../types";
-import OnboardingIntegrationButtons from "./OnboardingIntegrationButtons";
+import { OnboardingIntegrationButtons } from "./OnboardingIntegrationButtons";
 
 interface OnboardingMessagesProps {
   messages: Message[];

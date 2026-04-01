@@ -210,5 +210,3 @@ export const OnboardingIntegrationButtons: React.FC<
     </div>
   );
 };
-
-export default OnboardingIntegrationButtons;
