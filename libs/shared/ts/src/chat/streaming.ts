@@ -206,6 +206,19 @@ export interface StreamToolOutput {
   output: string;
 }
 
+export interface SubagentStartPayload {
+  subagent_id: string;
+  subagent_name: string;
+  agent_type: "handoff" | "spawned";
+  started_at: string;
+}
+
+export interface SubagentEndPayload {
+  subagent_id: string;
+  duration_ms: number;
+  token_count: number | null;
+}
+
 export interface TodoProgressSnapshot {
   source?: string;
   todos?: Array<{ id: string; content: string; status: string }>;
@@ -236,6 +249,8 @@ export type ChatStreamEvent =
     }
   | { type: "tool_data"; entry: StreamToolDataEntry }
   | { type: "tool_output"; output: StreamToolOutput }
+  | { type: "subagent_start"; payload: SubagentStartPayload }
+  | { type: "subagent_end"; payload: SubagentEndPayload }
   | { type: "todo_progress"; snapshot: TodoProgressSnapshot }
   | { type: "follow_up_actions"; actions: string[] }
   | { type: "unknown"; payload: JsonObject };
@@ -344,6 +359,38 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
       events.push({
         type: "tool_output",
         output: { tool_call_id: toolCallId, output },
+      });
+    }
+  }
+
+  if (isObject(payload.subagent_start)) {
+    const s = payload.subagent_start;
+    if (typeof s.subagent_id === "string" && typeof s.subagent_name === "string") {
+      events.push({
+        type: "subagent_start",
+        payload: {
+          subagent_id: s.subagent_id,
+          subagent_name: s.subagent_name,
+          agent_type: s.agent_type === "spawned" ? "spawned" : "handoff",
+          started_at:
+            typeof s.started_at === "string"
+              ? s.started_at
+              : new Date().toISOString(),
+        },
+      });
+    }
+  }
+
+  if (isObject(payload.subagent_end)) {
+    const e = payload.subagent_end;
+    if (typeof e.subagent_id === "string") {
+      events.push({
+        type: "subagent_end",
+        payload: {
+          subagent_id: e.subagent_id,
+          duration_ms: typeof e.duration_ms === "number" ? e.duration_ms : 0,
+          token_count: typeof e.token_count === "number" ? e.token_count : null,
+        },
       });
     }
   }
