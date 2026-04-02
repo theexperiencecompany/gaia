@@ -10,8 +10,10 @@ All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 """
 
 import re
+import time
 from datetime import datetime
 from typing import Annotated, Optional
+from uuid import uuid4
 
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.subagent_helpers import (
@@ -39,7 +41,11 @@ from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import (
     check_integration_status,
 )
-from app.utils.agent_utils import parse_subagent_id
+from app.utils.agent_utils import (
+    format_subagent_end_event,
+    format_subagent_start_event,
+    parse_subagent_id,
+)
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
@@ -479,13 +485,36 @@ async def handoff(
                     "name": platform_integ.name,
                 }
 
-        # Execute using shared streaming function
-        # Note: handoff tool_data is emitted by parent graph's updates stream
-        return await execute_subagent_stream(
+        # Resolve display name for the UI
+        subagent_display_name = (
+            integration_metadata["name"]
+            if integration_metadata
+            else agent_name.replace("_", " ").title()
+        )
+        subagent_invocation_id = str(uuid4())
+
+        # Bracket subagent execution with start/end events so the frontend can
+        # group this subagent's tool calls into a timeline block.
+        writer({"subagent_start": format_subagent_start_event(
+            subagent_name=subagent_display_name,
+            agent_type="handoff",
+            subagent_id=subagent_invocation_id,
+        )})
+
+        _started_ms = time.monotonic()
+        result = await execute_subagent_stream(
             ctx=ctx,
             stream_writer=writer,
             integration_metadata=integration_metadata,
         )
+        _duration_ms = int((time.monotonic() - _started_ms) * 1000)
+
+        writer({"subagent_end": format_subagent_end_event(
+            subagent_id=subagent_invocation_id,
+            duration_ms=_duration_ms,
+        )})
+
+        return result
 
     except Exception as e:
         log.error(f"Error in handoff to {subagent_id}: {e}", exc_info=True)
