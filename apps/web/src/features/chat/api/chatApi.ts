@@ -252,6 +252,11 @@ export const chatApi = {
       if (match) conversationId = match[1];
     }
 
+    // "new" is a UI sentinel for "create a new conversation" — backend expects null
+    if (conversationId === "new") {
+      conversationId = null;
+    }
+
     // Guard against double onClose — [DONE] in onmessage fires onClose, then
     // the SSE library fires onclose when the connection ends.  Without this
     // flag both would call onClose, causing duplicate cleanup / persistence.

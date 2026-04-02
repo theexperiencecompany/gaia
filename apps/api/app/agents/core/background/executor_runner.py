@@ -348,8 +348,10 @@ async def run_executor_background(
         deregister_tool_event_collector(stream_id)
 
         # For queued tasks: inbox is None, so chat_service never calls complete_stream.
-        # Publish DONE signal so the GET /stream/{stream_id} subscriber can close.
+        # Publish [DONE] chunk first so fetchEventSource sets doneReceived=true and
+        # does not retry the connection. Then publish DONE_SIGNAL to close the generator.
         if inbox is None and not was_cancelled:
+            await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
             await StreamManager.complete_stream(stream_id)
 
         # Process next queued task if one exists.

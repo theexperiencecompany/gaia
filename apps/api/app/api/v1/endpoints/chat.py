@@ -219,6 +219,26 @@ async def subscribe_executor_stream(
         )
 
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
+
+    # Race condition: executor finished before frontend subscribed.
+    # Return [DONE] immediately so the client closes cleanly.
+    if progress.get("is_complete"):
+        log.info(f"Executor stream {stream_id} already complete, returning [DONE]")
+
+        async def _already_done() -> AsyncGenerator[str, None]:
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            _already_done(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
     log.info(f"Client subscribed to executor stream {stream_id}")
 
     return StreamingResponse(
