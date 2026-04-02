@@ -20,6 +20,7 @@ import {
   GROUPED_TOOLS,
   type MCPAppData,
   type RateLimitData,
+  type SubagentGroupData,
   type ToolCallEntry,
   type ToolDataEntry,
   type ToolDataMap,
@@ -113,6 +114,7 @@ import RedditCommentSection from "./RedditCommentSection";
 import RedditCreatedSection from "./RedditCreatedSection";
 import RedditPostSection from "./RedditPostSection";
 import RedditSearchSection from "./RedditSearchSection";
+import SubagentThread from "./SubagentThread";
 import SupportTicketSection from "./SupportTicketSection";
 import TodoProgressSection from "./TodoProgressSection";
 import TodoSection from "./TodoSection";
@@ -409,6 +411,11 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     return (
       <ToolCallsSection key={`tool-calls-${index}`} tool_calls_data={calls} />
     );
+  },
+
+  subagent_group: (data, index) => {
+    const group = data as SubagentGroupData;
+    return <SubagentThread key={`subagent-${group.subagent_id}-${index}`} group={group} />;
   },
 
   reddit_data: (data) => {
