@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from datetime import datetime, timezone
 from typing import List, Optional, cast
 from uuid import uuid4
@@ -75,6 +76,45 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
         return cached_name
 
     return clean_id.replace("_", " ").title()
+
+
+def format_subagent_start_event(
+    subagent_name: str,
+    agent_type: str,
+    subagent_id: str,
+) -> dict:
+    """Format a subagent_start SSE payload.
+
+    Args:
+        subagent_name: Human-readable name shown in the UI (e.g. "Gmail", "Executor")
+        agent_type: "handoff" for integration subagents, "spawned" for lightweight agents
+        subagent_id: Unique ID for this subagent invocation (UUID string)
+    """
+    return {
+        "subagent_id": subagent_id,
+        "subagent_name": subagent_name,
+        "agent_type": agent_type,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def format_subagent_end_event(
+    subagent_id: str,
+    duration_ms: int,
+    token_count: Optional[int] = None,
+) -> dict:
+    """Format a subagent_end SSE payload.
+
+    Args:
+        subagent_id: Must match the subagent_id from the corresponding subagent_start event
+        duration_ms: Wall-clock milliseconds the subagent took to complete
+        token_count: Optional LLM token count (None until we wire up the counter)
+    """
+    return {
+        "subagent_id": subagent_id,
+        "duration_ms": duration_ms,
+        "token_count": token_count,
+    }
 
 
 async def format_tool_call_entry(
