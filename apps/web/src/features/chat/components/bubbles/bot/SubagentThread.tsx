@@ -1,6 +1,10 @@
 "use client";
 
-import React from "react";
+import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Brain02Icon, ZapIcon } from "@icons";
+import { m } from "motion/react";
+import { useState } from "react";
+import { ChevronDown } from "@/components/shared/icons";
 import type { SubagentGroupData } from "@/config/registries/toolRegistry";
 import ToolCallsSection from "./ToolCallsSection";
 
@@ -9,82 +13,94 @@ interface SubagentThreadProps {
 }
 
 /**
- * Renders an Option-B style "thread" block for a single subagent invocation.
+ * Renders a subagent invocation as a timeline entry consistent with ToolCallsSection.
  *
- * Shows a bordered box with:
- *   - Header: icon · name · type badge · running indicator or (duration + tokens)
- *   - Body: the subagent's tool calls via ToolCallsSection (reused as-is)
- *
- * Color scheme:
- *   - Purple border / tint → handoff subagents (integration agents)
- *   - Blue border / tint  → spawned subagents (lightweight task agents)
+ * Visual language matches the rest of the tool call UI:
+ *   - Same Accordion pattern, zinc colors, compact typography
+ *   - Icon column with the same rounded-lg + colored bg wrapper
+ *   - Indented body with left connector line (matches ToolCallsSection items)
  */
 export function SubagentThread({ group }: SubagentThreadProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const isRunning = group.completed_at === null;
   const isHandoff = group.agent_type === "handoff";
 
-  const containerCls = isHandoff
-    ? "border-purple-900/40 bg-purple-950/10"
-    : "border-blue-900/40 bg-blue-950/10";
-
-  const nameCls = isHandoff ? "text-purple-300" : "text-blue-300";
-
-  const badgeCls = isHandoff
-    ? "bg-purple-900/60 text-purple-300"
-    : "bg-blue-900/60 text-blue-300";
-
-  const badgeLabel = isHandoff ? "Subagent" : "Spawned";
-
-  const icon = isHandoff ? "↗" : "⚡";
+  const IconComponent = isHandoff ? Brain02Icon : ZapIcon;
+  const iconBg = isHandoff ? "bg-violet-900/50" : "bg-zinc-700";
+  const iconColor = isHandoff ? "text-violet-400" : "text-zinc-400";
+  const typeLabel = isHandoff ? "Subagent" : "Spawned";
 
   const durationLabel =
     group.duration_ms !== null
       ? `${(group.duration_ms / 1000).toFixed(1)}s`
       : null;
 
-  const tokenLabel =
-    group.token_count !== null
-      ? `${group.token_count.toLocaleString()} tok`
-      : null;
-
   return (
-    <div
-      className={`rounded-xl border overflow-hidden my-1.5 ${containerCls}`}
-    >
-      {/* Header */}
-      <div
-        className={`flex items-center gap-2 px-3 py-2 border-b ${
-          isHandoff ? "border-purple-900/30" : "border-blue-900/30"
-        }`}
+    <div className="w-fit max-w-140">
+      <Accordion
+        variant="light"
+        isCompact
+        hideIndicator
+        selectedKeys={isExpanded ? ["thread"] : []}
+        onSelectionChange={(keys) => {
+          const expanded =
+            keys === "all" || (keys instanceof Set && keys.has("thread"));
+          setIsExpanded(expanded);
+        }}
+        style={{ padding: 0 }}
+        itemClasses={{ trigger: "cursor-pointer py-0" }}
       >
-        <span className="text-sm leading-none">{icon}</span>
-        <span className={`text-xs font-semibold ${nameCls}`}>
-          {group.subagent_name}
-        </span>
-        <span
-          className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${badgeCls}`}
+        <AccordionItem
+          key="thread"
+          title={
+            <div className="flex w-full items-center hover:text-white text-zinc-500">
+              {/* Icon — same wrapper as ToolCallsSection items */}
+              <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
+                <div className="relative rounded-lg p-1">
+                  <m.div className={`absolute inset-0 rounded-lg ${iconBg}`} />
+                  <div className="relative">
+                    <IconComponent
+                      width={21}
+                      height={21}
+                      className={iconColor}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Name + type label */}
+              <div className="ml-2 flex min-w-0 flex-col">
+                <span className="text-xs font-medium transition-all duration-200">
+                  {group.subagent_name}
+                </span>
+                <span className="text-[11px] text-default-400">{typeLabel}</span>
+              </div>
+
+              <ChevronDown
+                className={`${isExpanded ? "rotate-180" : ""} ml-2 shrink-0 transition-all duration-200`}
+                width={18}
+                height={18}
+              />
+
+              {/* Duration / running state */}
+              <div className="ml-auto pl-3 text-[11px] text-zinc-600 shrink-0">
+                {isRunning ? (
+                  <span className="animate-pulse">running…</span>
+                ) : (
+                  durationLabel && <span>{durationLabel}</span>
+                )}
+              </div>
+            </div>
+          }
         >
-          {badgeLabel}
-        </span>
-
-        <div className="ml-auto flex items-center gap-2 text-[11px] text-zinc-500">
-          {isRunning ? (
-            <span className="animate-pulse">Running…</span>
-          ) : (
-            <>
-              {durationLabel && <span>⏱ {durationLabel}</span>}
-              {tokenLabel && <span>⚡ {tokenLabel}</span>}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Tool calls body — reuse existing ToolCallsSection */}
-      {group.tool_calls.length > 0 && (
-        <div className="px-2 py-1.5">
-          <ToolCallsSection tool_calls_data={group.tool_calls} />
-        </div>
-      )}
+          {/* Indented body — left line mirrors the connector lines in ToolCallsSection */}
+          <div className="ml-4 border-l border-default-100 pl-6 py-1">
+            {group.tool_calls.length > 0 && (
+              <ToolCallsSection tool_calls_data={group.tool_calls} />
+            )}
+          </div>
+        </AccordionItem>
+      </Accordion>
     </div>
   );
 }

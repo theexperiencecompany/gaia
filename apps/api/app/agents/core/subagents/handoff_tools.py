@@ -487,7 +487,7 @@ async def handoff(
 
         # Resolve display name for the UI
         subagent_display_name: str = (
-            str(integration_metadata["name"])
+            str(integration_metadata.get("name") or agent_name)
             if integration_metadata
             else agent_name.replace("_", " ").title()
         )
