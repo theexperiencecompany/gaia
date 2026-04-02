@@ -3,9 +3,15 @@ import {
   mergeToolOutputIntoToolData,
   parseChatStreamEvent,
   upsertTodoProgressToolData,
+  type SubagentStartPayload,
+  type SubagentEndPayload,
 } from "@shared/chat";
 import { useRef } from "react";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type {
+  ToolDataEntry,
+  SubagentGroupData,
+  ToolCallEntry,
+} from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -41,6 +47,10 @@ export const useChatStream = () => {
   // Guard against double invocation of handleStreamClose — it's called from both
   // onmessage (on [DONE]) and onclose (on connection close) in chatApi.ts.
   const streamCloseHandledRef = useRef(false);
+
+  // Tracks the currently-running subagent so tool_calls and outputs are routed
+  // into the correct subagent_group entry rather than the top-level tool_data array.
+  const activeSubagentIdRef = useRef<string | null>(null);
 
   // Unified ref storage
   const refs = useRef({
@@ -176,6 +186,54 @@ export const useChatStream = () => {
   };
 
   const handleToolData = (toolData: ToolDataEntry) => {
+    // Route tool_calls_data entries into the active subagent group when one is running.
+    if (
+      activeSubagentIdRef.current !== null &&
+      toolData.tool_name === "tool_calls_data"
+    ) {
+      const existingToolData = refs.current.botMessage?.tool_data ?? [];
+      const updatedToolData = existingToolData.map((entry) => {
+        if (entry.tool_name !== "subagent_group") return entry;
+        const data = entry.data as SubagentGroupData;
+        if (data.subagent_id !== activeSubagentIdRef.current) return entry;
+        return {
+          ...entry,
+          data: {
+            ...data,
+            tool_calls: [...data.tool_calls, toolData.data as ToolCallEntry],
+          },
+        };
+      });
+      updateBotMessage({ tool_data: updatedToolData });
+
+      // Still show the loading indicator for the active tool call
+      if (typeof toolData.data === "object" && toolData.data !== null) {
+        const d = toolData.data as Record<string, unknown>;
+        if (typeof d.message === "string" && d.message.length > 0) {
+          setLoadingText(d.message, {
+            toolName: typeof d.tool_name === "string" ? d.tool_name : undefined,
+            toolCategory:
+              typeof d.tool_category === "string" ? d.tool_category : undefined,
+            integrationName:
+              typeof d.integration_name === "string"
+                ? d.integration_name
+                : undefined,
+            iconUrl: typeof d.icon_url === "string" ? d.icon_url : undefined,
+            showCategory: (d.show_category as boolean) ?? true,
+          });
+        }
+      }
+
+      const conversationId =
+        refs.current.newConversation.id ||
+        useChatStore.getState().activeConversationId;
+      if (refs.current.botMessage?.message_id && conversationId) {
+        updateBotMessageInStore(conversationId);
+      }
+      return;
+    }
+
+    // --- existing handleToolData logic below (unchanged) ---
     // Append tool_data entry to botMessage.tool_data
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
     updateBotMessage({
@@ -213,6 +271,37 @@ export const useChatStream = () => {
     tool_call_id: string;
     output: string;
   }) => {
+    // Route tool outputs into the active subagent group's tool_calls when one is running.
+    if (activeSubagentIdRef.current !== null) {
+      const existingToolData = refs.current.botMessage?.tool_data ?? [];
+      const updatedToolData = existingToolData.map((entry) => {
+        if (entry.tool_name !== "subagent_group") return entry;
+        const data = entry.data as SubagentGroupData;
+        if (data.subagent_id !== activeSubagentIdRef.current) return entry;
+        return {
+          ...entry,
+          data: {
+            ...data,
+            tool_calls: data.tool_calls.map((tc) =>
+              tc.tool_call_id === toolOutput.tool_call_id
+                ? { ...tc, output: toolOutput.output }
+                : tc,
+            ),
+          },
+        };
+      });
+      updateBotMessage({ tool_data: updatedToolData });
+
+      const conversationId =
+        refs.current.newConversation.id ||
+        useChatStore.getState().activeConversationId;
+      if (refs.current.botMessage?.message_id && conversationId) {
+        updateBotMessageInStore(conversationId);
+      }
+      return;
+    }
+
+    // --- existing handleToolOutput logic below (unchanged) ---
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
     const updatedToolData = mergeToolOutputIntoToolData(
       existingToolData,
@@ -220,6 +309,65 @@ export const useChatStream = () => {
     );
 
     updateBotMessage({ tool_data: updatedToolData });
+
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
+  const handleSubagentStart = (payload: SubagentStartPayload) => {
+    const group: SubagentGroupData = {
+      subagent_id: payload.subagent_id,
+      subagent_name: payload.subagent_name,
+      agent_type: payload.agent_type,
+      tool_calls: [],
+      duration_ms: null,
+      token_count: null,
+      started_at: payload.started_at,
+      completed_at: null,
+    };
+
+    const newEntry = {
+      tool_name: "subagent_group" as const,
+      tool_category: "subagent",
+      data: group,
+      timestamp: payload.started_at,
+    };
+
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    updateBotMessage({ tool_data: [...existingToolData, newEntry] });
+    activeSubagentIdRef.current = payload.subagent_id;
+
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
+  const handleSubagentEnd = (payload: SubagentEndPayload) => {
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const updatedToolData = existingToolData.map((entry) => {
+      if (entry.tool_name !== "subagent_group") return entry;
+      const data = entry.data as SubagentGroupData;
+      if (data.subagent_id !== payload.subagent_id) return entry;
+      return {
+        ...entry,
+        data: {
+          ...data,
+          duration_ms: payload.duration_ms,
+          token_count: payload.token_count,
+          completed_at: new Date().toISOString(),
+        },
+      };
+    });
+
+    updateBotMessage({ tool_data: updatedToolData });
+    activeSubagentIdRef.current = null;
 
     const conversationId =
       refs.current.newConversation.id ||
@@ -594,6 +742,16 @@ export const useChatStream = () => {
         if (parsed.type === "main_response_complete") {
           console.log("[handleStreamEvent] Received main_response_complete");
           handleMainResponseComplete();
+          continue;
+        }
+
+        if (parsed.type === "subagent_start") {
+          handleSubagentStart(parsed.payload);
+          continue;
+        }
+
+        if (parsed.type === "subagent_end") {
+          handleSubagentEnd(parsed.payload);
           continue;
         }
 
