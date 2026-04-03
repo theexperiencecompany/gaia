@@ -185,7 +185,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
 };
 
 // Skeleton component for loading state
-export const PublicIntegrationCardSkeleton: React.FC = () => {
+const PublicIntegrationCardSkeleton: React.FC = () => {
   return (
     <div className="relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70">
       <div className="flex items-start gap-3">

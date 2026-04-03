@@ -385,13 +385,14 @@ export default function MemoryManagement({
             {selectedTab === "graph" &&
               (loading ? (
                 <div className="flex h-full items-center justify-center">
-                  <Image
-                    alt="GAIA Logo"
-                    src={"/images/logos/logo.webp"}
-                    width={30}
-                    height={30}
-                    className="animate-spin"
-                  />
+                  <div className="animate-spin">
+                    <Image
+                      alt="GAIA Logo"
+                      src={"/images/logos/logo.webp"}
+                      width={30}
+                      height={30}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="h-[80vh]">

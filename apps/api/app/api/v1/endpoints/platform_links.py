@@ -214,4 +214,15 @@ async def initiate_platform_connect(
             action_link=f"https://t.me/{bot_username}",
         )
 
+    # WhatsApp manual flow (no OAuth)
+    if platform == "whatsapp":
+        phone_number = settings.WHATSAPP_PHONE_NUMBER
+        log.set(outcome="success", auth_type="manual")
+        return InitiatePlatformConnectResponse(
+            auth_url=None,
+            auth_type="manual",
+            instructions="Open WhatsApp and send /auth to the GAIA WhatsApp number to link your account.",
+            action_link=f"https://wa.me/{phone_number}" if phone_number else None,
+        )
+
     raise HTTPException(status_code=501, detail=f"{platform} OAuth not configured")

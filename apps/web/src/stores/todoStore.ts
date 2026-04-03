@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
 import { todoApi } from "@/features/todo/api/todoApi";
+import { startWorkflowPolling } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
+import { toast } from "@/lib/toast";
 import type {
   Project,
   Todo,
@@ -9,6 +11,14 @@ import type {
   TodoFilters,
   TodoUpdate,
 } from "@/types/features/todoTypes";
+import type { Workflow } from "@/types/features/workflowTypes";
+
+interface CachedWorkflowStatus {
+  has_workflow: boolean;
+  is_generating: boolean;
+  workflow: Workflow | null;
+  cachedAt: number;
+}
 
 interface TodoCounts {
   inbox: number;
@@ -24,7 +34,9 @@ interface TodoState {
   labels: { name: string; count: number }[];
   counts: TodoCounts;
   loading: boolean;
+  initialLoading: boolean;
   error: string | null;
+  workflowStatusCache: Record<string, CachedWorkflowStatus>;
 }
 
 interface TodoActions {
@@ -35,6 +47,7 @@ interface TodoActions {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   addTodo: (todo: Todo) => void;
+  replaceTodo: (tempId: string, todo: Todo) => void;
   updateTodoOptimistic: (todoId: string, updates: Partial<Todo>) => void;
   removeTodo: (todoId: string) => void;
   loadTodos: (filters?: TodoFilters) => Promise<void>;
@@ -45,6 +58,7 @@ interface TodoActions {
   loadLabels: () => Promise<void>;
   loadCounts: () => Promise<void>;
   refreshAll: () => Promise<void>;
+  prefetchWorkflowStatus: (todoId: string) => Promise<void>;
 }
 
 type TodoStore = TodoState & TodoActions;
@@ -61,7 +75,9 @@ const initialState: TodoState = {
     overdue: 0,
   },
   loading: false,
+  initialLoading: true,
   error: null,
+  workflowStatusCache: {},
 };
 
 export const useTodoStore = create<TodoStore>()(
@@ -78,6 +94,15 @@ export const useTodoStore = create<TodoStore>()(
 
       addTodo: (todo) =>
         set((state) => ({ todos: [todo, ...state.todos] }), false, "addTodo"),
+
+      replaceTodo: (tempId, todo) =>
+        set(
+          (state) => ({
+            todos: state.todos.map((t) => (t.id === tempId ? todo : t)),
+          }),
+          false,
+          "replaceTodo",
+        ),
 
       updateTodoOptimistic: (todoId, updates) =>
         set(
@@ -103,33 +128,59 @@ export const useTodoStore = create<TodoStore>()(
         set({ loading: true, error: null });
         try {
           const fetchedTodos = await todoApi.getAllTodos(filters);
-          set({ todos: fetchedTodos, loading: false });
+          set({ todos: fetchedTodos, loading: false, initialLoading: false });
         } catch (err) {
           const error =
             err instanceof Error ? err.message : "Failed to load todos";
-          set({ error, loading: false });
+          set({ error, loading: false, initialLoading: false });
           console.error("Failed to load todos:", err);
         }
       },
 
       createTodo: async (todoData) => {
         set({ error: null });
-        try {
-          const newTodo = await todoApi.createTodo(todoData);
 
-          // Optimistically add to current list
-          get().addTodo(newTodo);
+        // Build optimistic todo with a temp ID so it appears in the list immediately
+        const tempId = `optimistic-${Date.now()}`;
+        const now = new Date().toISOString();
+        const optimisticTodo: Todo = {
+          id: tempId,
+          user_id: "",
+          title: todoData.title,
+          description: todoData.description,
+          labels: todoData.labels,
+          due_date: todoData.due_date,
+          due_date_timezone: todoData.due_date_timezone,
+          priority: todoData.priority,
+          project_id: todoData.project_id ?? "",
+          completed: false,
+          subtasks: todoData.subtasks ?? [],
+          created_at: now,
+          updated_at: now,
+        };
 
-          // Refresh counts in background
-          get().loadCounts().catch(console.error);
+        // Add immediately — modal can close before the API responds
+        get().addTodo(optimisticTodo);
 
-          return newTodo;
-        } catch (err) {
-          const error =
-            err instanceof Error ? err.message : "Failed to create todo";
-          set({ error });
-          throw err;
-        }
+        // Fire API in background; replace or rollback when it settles
+        todoApi
+          .createTodo(todoData)
+          .then((newTodo) => {
+            get().replaceTodo(tempId, newTodo);
+            get().loadCounts().catch(console.error);
+            toast.info("Generating workflow...");
+            // Poll for workflow completion as fallback (WS may not deliver from ARQ worker)
+            startWorkflowPolling(newTodo.id);
+          })
+          .catch((err) => {
+            get().removeTodo(tempId);
+            const error =
+              err instanceof Error ? err.message : "Failed to create task";
+            set({ error });
+            toast.error(error);
+          });
+
+        return optimisticTodo;
       },
 
       updateTodo: async (todoId, updates) => {
@@ -225,15 +276,35 @@ export const useTodoStore = create<TodoStore>()(
           actions.loadCounts(),
         ]);
       },
+
+      prefetchWorkflowStatus: async (todoId) => {
+        // Skip optimistic todos — they don't exist on the server yet
+        if (todoId.startsWith("optimistic-")) return;
+        const CACHE_TTL_MS = 30_000; // 30 seconds
+        const existing = get().workflowStatusCache[todoId];
+        if (existing && Date.now() - existing.cachedAt < CACHE_TTL_MS) return;
+        try {
+          const status = await todoApi.getWorkflowStatus(todoId);
+          set(
+            (state) => ({
+              workflowStatusCache: {
+                ...state.workflowStatusCache,
+                [todoId]: {
+                  has_workflow: status.has_workflow,
+                  is_generating: status.is_generating,
+                  workflow: status.workflow,
+                  cachedAt: Date.now(),
+                },
+              },
+            }),
+            false,
+            "prefetchWorkflowStatus",
+          );
+        } catch {
+          // Silently ignore prefetch errors
+        }
+      },
     }),
     { name: "todo-store" },
   ),
 );
-
-// Selectors
-export const useTodos = () => useTodoStore((state) => state.todos);
-export const useTodoProjects = () => useTodoStore((state) => state.projects);
-export const useTodoLabels = () => useTodoStore((state) => state.labels);
-export const useTodoCounts = () => useTodoStore((state) => state.counts);
-export const useTodoLoading = () => useTodoStore((state) => state.loading);
-export const useTodoError = () => useTodoStore((state) => state.error);

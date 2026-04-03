@@ -6,6 +6,7 @@ import {
   DiscordIcon,
   Notification01Icon,
   TelegramIcon,
+  WhatsappIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type { ChannelPreferences } from "@/features/settings/api/settings-api";
@@ -18,10 +19,11 @@ export function NotificationSection() {
   const [channels, setChannels] = useState<ChannelPreferences>({
     telegram: false,
     discord: false,
+    whatsapp: false,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [updatingChannel, setUpdatingChannel] = useState<
-    "telegram" | "discord" | null
+    "telegram" | "discord" | "whatsapp" | null
   >(null);
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export function NotificationSection() {
   }, []);
 
   const handleToggle = useCallback(
-    async (platform: "telegram" | "discord", enabled: boolean) => {
+    async (platform: "telegram" | "discord" | "whatsapp", enabled: boolean) => {
       setUpdatingChannel(platform);
       const previous = channels[platform];
       setChannels((prev) => ({ ...prev, [platform]: enabled }));
@@ -112,6 +114,18 @@ export function NotificationSection() {
             void handleToggle("discord", val);
           }}
           disabled={updatingChannel === "discord"}
+        />
+        <SettingsSwitchRow
+          icon={WhatsappIcon}
+          iconColor="#25D366"
+          iconBg="rgba(37,211,102,0.15)"
+          title="WhatsApp"
+          subtitle="Receive alerts via your connected WhatsApp bot"
+          value={channels.whatsapp}
+          onValueChange={(val) => {
+            handleToggle("whatsapp", val);
+          }}
+          disabled={updatingChannel === "whatsapp"}
           isLast
         />
       </SettingsGroup>

@@ -49,5 +49,5 @@ def extract_tool_calls(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     tool_calls: list[dict[str, Any]] = []
     for msg in messages:
         if isinstance(msg, AIMessage) and msg.tool_calls:
-            tool_calls.extend(msg.tool_calls)
+            tool_calls.extend(msg.tool_calls)  # type: ignore[arg-type]
     return tool_calls

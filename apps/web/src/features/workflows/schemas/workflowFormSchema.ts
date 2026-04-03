@@ -58,7 +58,7 @@ const integrationTriggerConfigSchema = z
     type: z.string(),
     enabled: z.boolean(),
   })
-  .passthrough(); // Allow any additional properties
+  .catchall(z.unknown()); // Allow any additional properties
 
 // Combined trigger config - tries built-in first, then falls back to generic
 const triggerConfigSchema = z.union([
@@ -76,8 +76,8 @@ export const workflowFormSchema = z.object({
   description: z
     .string()
     .max(300, "Description too long (max 300 characters)")
-    .optional()
-    .transform((val) => val?.trim() || undefined),
+    .transform((val) => val.trim() || undefined)
+    .optional(),
   prompt: z.string().min(1, "Prompt is required").max(5000, "Prompt too long"),
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),

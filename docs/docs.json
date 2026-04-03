@@ -1,6 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "maple",
+  "scripts": ["/scripts/changelog-filter.js"],
   "name": "GAIA Documentation",
   "colors": {
     "primary": "#00bbff",
@@ -46,10 +47,7 @@
           },
           {
             "group": "CLI",
-            "pages": [
-              "cli/installation",
-              "cli/commands"
-            ]
+            "pages": ["cli/installation", "cli/commands"]
           },
           {
             "group": "Self-Hosting",
@@ -94,6 +92,10 @@
         ]
       },
       {
+        "tab": "Release Notes",
+        "pages": ["release-notes"]
+      },
+      {
         "tab": "Guides",
         "groups": [
           {
@@ -115,10 +117,7 @@
           },
           {
             "group": "Automation",
-            "pages": [
-              "guides/building-workflows",
-              "guides/marketplace"
-            ]
+            "pages": ["guides/building-workflows", "guides/marketplace"]
           },
           {
             "group": "Apps & Platforms",

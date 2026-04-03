@@ -229,7 +229,6 @@ class StreamManager:
                 data = message["data"]
                 if isinstance(data, bytes):
                     data = data.decode("utf-8")
-                chunks_received += 1
 
                 # Handle control signals
                 if data == STREAM_DONE_SIGNAL:
@@ -255,6 +254,7 @@ class StreamManager:
                     break
 
                 # Forward chunk to client
+                chunks_received += 1
                 yield data
 
             if chunks_received == 0:

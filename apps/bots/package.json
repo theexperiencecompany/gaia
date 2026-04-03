@@ -7,7 +7,8 @@
     "@gaia/shared": "workspace:*",
     "@gaia/bot-discord": "workspace:*",
     "@gaia/bot-slack": "workspace:*",
-    "@gaia/bot-telegram": "workspace:*"
+    "@gaia/bot-telegram": "workspace:*",
+    "@gaia/bot-whatsapp": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^4.0.15"

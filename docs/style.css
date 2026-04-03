@@ -43,6 +43,15 @@ img {
   padding-bottom: 6px;
 }
 
+/* Reduce right TOC sidebar width */
+#table-of-contents-layout {
+  width: 18rem !important;
+}
+
+#table-of-contents {
+  width: 15.5rem !important;
+}
+
 .dark #page-context-menu > button:not(#page-context-menu-button) {
   border: none;
   border-left: 1px solid #ffffff20;

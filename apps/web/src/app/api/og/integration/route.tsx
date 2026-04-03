@@ -76,19 +76,22 @@ export async function GET(request: Request) {
       ? getIconPaths(iconConfig.icon)
       : null;
 
-    // If no known icon, try to fetch external icon as base64
-    // This allows ICO, SVG, and other formats to be rendered
-    let externalIconBase64: string | null = null;
-    if (!knownIconPath && !iconPathData && integration?.iconUrl) {
-      externalIconBase64 = await fetchImageAsBase64(integration.iconUrl);
-    }
-
     const categoryLabel =
       category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
     const truncatedDesc = truncateText(description, 200);
 
     const allText = `${name}${truncatedDesc}${categoryLabel}by ${creatorName}${cloneCount} clones${toolCount} toolsGAIA`;
-    const loadedFonts = await loadFonts(name, allText);
+
+    // Start icon fetch and font loading in parallel - they are independent
+    const iconFetchPromise =
+      !knownIconPath && !iconPathData && integration?.iconUrl
+        ? fetchImageAsBase64(integration.iconUrl)
+        : Promise.resolve(null);
+
+    const [externalIconBase64, loadedFonts] = await Promise.all([
+      iconFetchPromise,
+      loadFonts(name, allText),
+    ]);
 
     return new ImageResponse(
       <div

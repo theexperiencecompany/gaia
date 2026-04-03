@@ -18,6 +18,13 @@ import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
 import { RaisedButton } from "../ui/raised-button";
 import { NavbarMenu } from "./NavbarMenu";
 
+const NAVBAR_ITEMS = [
+  { type: "dropdown", label: "Product", menu: "product" },
+  { type: "link", label: "Pricing", href: "/pricing" },
+  { type: "link", label: "Manifesto", href: "/manifesto" },
+  { type: "dropdown", label: "Resources", menu: "resources" },
+] as const;
+
 export default function Navbar() {
   const pathname = usePathname();
   const isMobileScreen = useMediaQuery("(max-width: 990px)");
@@ -35,20 +42,9 @@ export default function Navbar() {
       setIsScrolled(window.scrollY > scrollThreshold);
     };
 
-    window.addEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  // Define navbar items - can be single links or dropdown menus
-  const navbarItems = [
-    { type: "dropdown", label: "Product", menu: "product" },
-    { type: "link", label: "Pricing", href: "/pricing" },
-    { type: "link", label: "Manifesto", href: "/manifesto" },
-    { type: "dropdown", label: "Resources", menu: "resources" },
-    // { type: "link", label: "Download", href: "/download" },
-    // { type: "dropdown", label: "Company", menu: "company" },
-    // { type: "dropdown", label: "Socials", menu: "socials" },
-  ] as const;
 
   // Function to control backdrop blur
   const toggleBackdrop = (show: boolean) => {
@@ -123,7 +119,7 @@ export default function Navbar() {
             <MobileMenu />
           ) : (
             <div className="flex items-center gap-1 rounded-lg px-1 py-1">
-              {navbarItems.map((item) =>
+              {NAVBAR_ITEMS.map((item) =>
                 item.type === "link" ? (
                   <Link
                     key={item.href}

@@ -45,7 +45,9 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
                 {document.title}
               </span>
               <div className="flex gap-2 text-xs opacity-70">
-                <span>Modified: {formatDate(document.modified_time)}</span>
+                <span suppressHydrationWarning>
+                  Modified: {formatDate(document.modified_time)}
+                </span>
                 {action && (
                   <span className="capitalize">
                     {action === "create"

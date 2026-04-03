@@ -106,7 +106,7 @@ export function PricingCards({
   });
 
   // Sort plans: Free first, then by amount
-  const sortedPlans = filteredPlans.sort((a: Plan, b: Plan) => {
+  const sortedPlans = filteredPlans.toSorted((a: Plan, b: Plan) => {
     if (a.amount === 0) return -1;
     if (b.amount === 0) return 1;
     return a.amount - b.amount;

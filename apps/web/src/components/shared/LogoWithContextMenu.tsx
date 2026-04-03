@@ -1,7 +1,13 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Copy01Icon, DownloadCircle01Icon, FolderLibraryIcon } from "@icons";
+import {
+  Copy01Icon,
+  DownloadCircle01Icon,
+  FolderLibraryIcon,
+  Layers01Icon,
+  PackageOpenIcon,
+} from "@icons";
 import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
@@ -151,6 +157,14 @@ export function LogoWithContextMenu({
       label: "Download Wordmark as PNG",
       icon: <DownloadCircle01Icon className="size-5 shrink-0" />,
       onClick: handleDownloadWordmark,
+    },
+    {
+      id: "release-notes",
+      type: "link",
+      label: "Release Notes",
+      href: "https://docs.heygaia.io/release-notes",
+      icon: <PackageOpenIcon className="size-5 shrink-0" />,
+      target: "_blank",
     },
     {
       id: "brand-assets",

@@ -209,8 +209,9 @@ class TestMemoryNode:
             ) as mock_background,
             patch(
                 "app.agents.core.nodes.memory_node.asyncio.create_task",
-                side_effect=lambda coro, **kw: coro.close()
-                or MagicMock(add_done_callback=MagicMock()),
+                side_effect=lambda coro, **kw: (
+                    coro.close() or MagicMock(add_done_callback=MagicMock())
+                ),
             ) as mock_create,
         ):
             result = await memory_node(state, config, store)

@@ -310,19 +310,16 @@ export default function Tired() {
   // Use refs so observers don't re-create on state changes
   const hasAnimatedRef = useRef(false);
   const isLeavingRef = useRef(false);
+  hasAnimatedRef.current = hasAnimated;
+  isLeavingRef.current = isLeaving;
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 640);
     check();
-    window.addEventListener("resize", check);
+    window.addEventListener("resize", check, { passive: true });
     return () => window.removeEventListener("resize", check);
   }, []);
-
-  useEffect(() => {
-    hasAnimatedRef.current = hasAnimated;
-    isLeavingRef.current = isLeaving;
-  }, [hasAnimated, isLeaving]);
 
   useEffect(() => {
     const el = containerRef.current;

@@ -9,7 +9,8 @@ icon: "terminal"
 The GAIA CLI is the primary way to set up GAIA. It handles repository setup, environment configuration, and service management through an interactive wizard.
 
 <Info>
-For installation instructions, see [CLI Installation](/cli/installation). For the full command reference, see [CLI Commands](/cli/commands).
+  For installation instructions, see [CLI Installation](/cli/installation). For
+  the full command reference, see [CLI Commands](/cli/commands).
 </Info>
 
 ## Quick Start
@@ -47,19 +48,20 @@ The `gaia init` command walks you through:
     Verifies Git and Docker are installed, then checks for port conflicts and suggests alternatives. Mise is only checked for developer mode.
   </Step>
 
-  <Step title="Repository Setup">
-    Clones the GAIA repository to your chosen directory with progress tracking.
-  </Step>
+<Step title="Repository Setup">
+  Clones the GAIA repository to your chosen directory with progress tracking.
+</Step>
 
-  <Step title="Tool Installation (Developer Mode)">
-    Installs required development tools (Node.js, Python, uv, Nx) via Mise.
-  </Step>
+<Step title="Tool Installation (Developer Mode)">
+  Installs required development tools (Node.js, Python, uv, Nx) via Mise.
+</Step>
 
-  <Step title="Environment Configuration">
-    Choose between **Self-Host (Docker)** or **Developer Mode (Local)**, then configure environment variables either:
-    - **Manually**: Interactive prompts for each variable with descriptions and defaults
-    - **Via Infisical**: Enter your Infisical credentials for secret management
-  </Step>
+<Step title="Environment Configuration">
+  Choose between **Self-Host (Docker)** or **Developer Mode (Local)**, then
+  configure environment variables either: - **Manually**: Interactive prompts
+  for each variable with descriptions and defaults - **Via Infisical**: Enter
+  your Infisical credentials for secret management
+</Step>
 
   <Step title="Project Setup">
     - Self-Host mode: Builds/pulls and starts Docker services
@@ -109,16 +111,14 @@ Port overrides are saved to `infra/docker/.env` inside your GAIA repo and persis
 
 To change port assignments after setup, edit `infra/docker/.env` directly:
 
-| Variable | Service | Default |
-|----------|---------|---------|
-| `API_HOST_PORT` | API | 8000 |
-| `WEB_HOST_PORT` | Web | 3000 |
-| `POSTGRES_HOST_PORT` | PostgreSQL | 5432 |
-| `REDIS_HOST_PORT` | Redis | 6379 |
-| `MONGO_HOST_PORT` | MongoDB | 27017 |
-| `RABBITMQ_HOST_PORT` | RabbitMQ | 5672 |
-| `CHROMADB_HOST_PORT` | ChromaDB | 8080 |
+| Variable             | Service    | Default |
+| -------------------- | ---------- | ------- |
+| `API_HOST_PORT`      | API        | 8000    |
+| `WEB_HOST_PORT`      | Web        | 3000    |
+| `POSTGRES_HOST_PORT` | PostgreSQL | 5432    |
+| `REDIS_HOST_PORT`    | Redis      | 6379    |
+| `MONGO_HOST_PORT`    | MongoDB    | 27017   |
+| `RABBITMQ_HOST_PORT` | RabbitMQ   | 5672    |
+| `CHROMADB_HOST_PORT` | ChromaDB   | 8080    |
 
-<Info>
-Restart services after editing: `gaia stop && gaia start`
-</Info>
+<Info>Restart services after editing: `gaia stop && gaia start`</Info>

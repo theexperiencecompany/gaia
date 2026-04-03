@@ -11,7 +11,16 @@ from app.services.file_service import (
     update_file_service,
     upload_file_service,
 )
-from fastapi import APIRouter, Body, Depends, File, Form, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 
 router = APIRouter()
 
@@ -41,27 +50,34 @@ async def upload_file_endpoint(
     if not user_id:
         return {"error": "User ID is required"}
 
-    result = await upload_file_service(
-        file=file,
-        user_id=user_id,
-        conversation_id=conversation_id,
-    )
+    try:
+        result = await upload_file_service(
+            file=file,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
 
-    log.set(
-        user={"id": user_id},
-        operation="upload",
-        file_id=result["file_id"],
-        file_name=result["filename"],
-        mime_type=result.get("type", "file"),
-        outcome="success",
-    )
-    return FileData(
-        fileId=result["file_id"],
-        url=result["url"],
-        filename=result["filename"],
-        message="File uploaded successfully",
-        type=result.get("type", "file"),
-    )
+        log.set(
+            user={"id": user_id},
+            operation="upload",
+            file_id=result["file_id"],
+            file_name=result["filename"],
+            mime_type=result.get("type", "file"),
+            outcome="success",
+        )
+        return FileData(
+            fileId=result["file_id"],
+            url=result["url"],
+            filename=result["filename"],
+            message="File uploaded successfully",
+            type=result.get("type", "file"),
+        )
+    except Exception as e:
+        log.error(f"Error uploading file: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload file",
+        )
 
 
 @router.put("/{file_id}", status_code=status.HTTP_200_OK)
@@ -88,16 +104,23 @@ async def update_file_endpoint(
     if not user_id:
         return {"error": "User ID is required"}
 
-    result = await update_file_service(
-        file_id=file_id,
-        user_id=user_id,
-        update_data=update_data,
-    )
+    try:
+        result = await update_file_service(
+            file_id=file_id,
+            user_id=user_id,
+            update_data=update_data,
+        )
 
-    log.set(
-        user={"id": user_id}, operation="update", file_id=file_id, outcome="success"
-    )
-    return result
+        log.set(
+            user={"id": user_id}, operation="update", file_id=file_id, outcome="success"
+        )
+        return result
+    except Exception as e:
+        log.error(f"Error updating file {file_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update file",
+        )
 
 
 @router.delete("/{file_id}", status_code=status.HTTP_200_OK)
@@ -117,15 +140,22 @@ async def delete_file_endpoint(
     Returns:
         Success message with deleted file information
     """
-    result = await delete_file_service(
-        file_id=file_id,
-        user_id=user.get("user_id", None),
-    )
+    try:
+        result = await delete_file_service(
+            file_id=file_id,
+            user_id=user.get("user_id", None),
+        )
 
-    log.set(
-        user={"id": user.get("user_id")},
-        operation="delete",
-        file_id=file_id,
-        outcome="success",
-    )
-    return result
+        log.set(
+            user={"id": user.get("user_id")},
+            operation="delete",
+            file_id=file_id,
+            outcome="success",
+        )
+        return result
+    except Exception as e:
+        log.error(f"Error deleting file {file_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete file",
+        )

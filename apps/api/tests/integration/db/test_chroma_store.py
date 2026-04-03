@@ -1,9 +1,17 @@
-"""Integration tests for ChromaStore using an ephemeral in-memory ChromaDB client.
+"""Integration tests for ChromaStore.
 
-These tests exercise the ChromaStore wrapper (app.db.chroma.chroma_store) and
-the tool-indexing helpers (app.db.chroma.chroma_tools_store) without hitting a
-real ChromaDB server.  chromadb.EphemeralClient() provides full in-process
-coverage at zero infrastructure cost.
+Tests exercise ChromaStore (app.db.chroma.chroma_store) and the tool-indexing
+helpers (app.db.chroma.chroma_tools_store).
+
+Client strategy
+---------------
+USE_REAL_SERVICES=1 (Dagger CI): uses the real AsyncHttpClient connected to
+the chroma service container.  This tests the full HTTP protocol path.
+
+Otherwise (local run): falls back to _AsyncEphemeralWrapper, an in-process
+synchronous EphemeralClient wrapped in an async shim.  chromadb 1.x has no
+AsyncEphemeralClient, so the shim provides the same async interface at zero
+infrastructure cost.
 
 Key production modules under test
 ----------------------------------
@@ -14,6 +22,9 @@ Key production modules under test
 - app.db.chroma.chroma_tools_store.delete_tools_by_namespace
 """
 
+from __future__ import annotations
+
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import chromadb
@@ -28,9 +39,13 @@ from app.db.chroma.chroma_tools_store import (
     delete_tools_by_namespace,
 )
 
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
+_CHROMA_HOST = os.environ.get("CHROMADB_HOST", "localhost")
+_CHROMA_PORT = int(os.environ.get("CHROMADB_PORT", "8000"))
+
 
 # ---------------------------------------------------------------------------
-# Async wrapper for synchronous EphemeralClient
+# Async wrapper for synchronous EphemeralClient (local fallback)
 # chromadb.AsyncEphemeralClient does not exist in chromadb 1.x – this wrapper
 # exposes the same async interface that ChromaStore expects by delegating to the
 # synchronous EphemeralClient under the hood.
@@ -118,14 +133,28 @@ class _AsyncEphemeralWrapper:
 
 
 @pytest.fixture
-def ephemeral_client():
-    """Return a fresh async-wrapped ephemeral ChromaDB client per test."""
-    client = _AsyncEphemeralWrapper()
-    yield client
-    # Clean up – list and delete every collection created during the test
-    collections = client._sync.list_collections()
-    for col in collections:
-        client._sync.delete_collection(col.name)
+async def ephemeral_client():
+    """Return a ChromaDB client per test.
+
+    Uses real AsyncHttpClient against the chroma service when USE_REAL_SERVICES=1,
+    otherwise falls back to the in-process _AsyncEphemeralWrapper.
+    Each test starts with a clean slate (all collections deleted before and after).
+    """
+    if _USE_REAL_SERVICES:
+        client = await chromadb.AsyncHttpClient(host=_CHROMA_HOST, port=_CHROMA_PORT)
+        # Wipe any collections left by a previous test
+        for col in await client.list_collections():
+            await client.delete_collection(col.name)
+        yield client
+        for col in await client.list_collections():
+            await client.delete_collection(col.name)
+    else:
+        client = _AsyncEphemeralWrapper()
+        yield client
+        # Clean up – list and delete every collection created during the test
+        collections = client._sync.list_collections()
+        for col in collections:
+            client._sync.delete_collection(col.name)
 
 
 @pytest.fixture

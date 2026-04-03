@@ -151,7 +151,16 @@ export default async function RootLayout({
           crossOrigin="anonymous"
         />
         <link rel="dns-prefetch" href="https://uptime.betterstackcdn.com" />
-        <link rel="dns-prefetch" href="https://us.i.posthog.com" />
+        <link
+          rel="preconnect"
+          href="https://us.i.posthog.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preconnect"
+          href="https://api.heygaia.io"
+          crossOrigin="anonymous"
+        />
         <link
           rel="preload"
           as="image"
@@ -186,6 +195,18 @@ export default async function RootLayout({
           type="image/webp"
         />
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title="GAIA RSS Feed"
+          href="/feed.xml"
+        />
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title="GAIA Blog RSS Feed"
+          href="/blog/rss.xml"
+        />
       </head>
       <body className={`dark ${defaultFont.className}`}>
         <NextIntlClientProvider locale={locale} messages={{}}>

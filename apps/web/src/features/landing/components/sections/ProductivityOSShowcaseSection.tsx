@@ -249,7 +249,7 @@ export default function ProductivityOSShowcaseSection() {
   }, [isInView]);
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} className="min-h-screen flex items-center">
       <ShowcaseSectionLayout
         DemoComponent={
           <ProductivityOSDemo

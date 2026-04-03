@@ -26,7 +26,6 @@ from app.services.chat_service import (
     _save_conversation_async,
     extract_tool_data,
     run_chat_stream_background,
-    update_conversation_messages,
 )
 
 
@@ -607,10 +606,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -642,10 +637,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=_done_only_stream()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -682,10 +673,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -715,10 +702,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -745,10 +728,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=_done_only_stream()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -780,10 +759,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(side_effect=RuntimeError("agent exploded")),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -831,10 +806,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(side_effect=RuntimeError("network timeout")),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -876,10 +847,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(side_effect=RuntimeError("agent down")),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
@@ -916,10 +883,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=agent_with_nostream()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -964,10 +927,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=agent_with_nostream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -1002,10 +961,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=agent_that_yields_many()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -1051,10 +1006,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=agent_with_tool_data()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -1109,10 +1060,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=agent_with_output()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
@@ -1162,10 +1109,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=agent_with_follow_up()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -1210,10 +1153,6 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=partial_agent()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.services.chat_service._save_conversation_async",
@@ -1261,10 +1200,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -1300,10 +1235,6 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=_done_only_stream()),
             ),
             patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
@@ -1320,128 +1251,3 @@ class TestRunChatStreamBackground:
             )
 
         mock_desc.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# update_conversation_messages — legacy synchronous scheduler
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestUpdateConversationMessages:
-    def test_schedules_update_messages_task(self, test_user, basic_body):
-        background_tasks = MagicMock()
-
-        with patch("app.services.chat_service._process_token_usage_and_cost"):
-            update_conversation_messages(
-                background_tasks=background_tasks,
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_legacy",
-                complete_message="Legacy response",
-            )
-
-        # Must schedule an update_messages background task
-        assert background_tasks.add_task.called
-        call_args_list = background_tasks.add_task.call_args_list
-        task_funcs = [call.args[0].__name__ for call in call_args_list]
-        assert "update_messages" in task_funcs
-
-    def test_schedules_token_processing_when_metadata_present(
-        self, test_user, basic_body
-    ):
-        background_tasks = MagicMock()
-        metadata = {"model": {"input_tokens": 10, "output_tokens": 5}}
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="conv_legacy",
-            complete_message="response",
-            metadata=metadata,
-        )
-
-        call_args_list = background_tasks.add_task.call_args_list
-        task_funcs = [call.args[0].__name__ for call in call_args_list]
-        assert "_process_token_usage_and_cost" in task_funcs
-
-    def test_does_not_schedule_token_processing_without_metadata(
-        self, test_user, basic_body
-    ):
-        background_tasks = MagicMock()
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="conv_legacy",
-            complete_message="response",
-            metadata={},
-        )
-
-        call_args_list = background_tasks.add_task.call_args_list
-        task_funcs = [call.args[0].__name__ for call in call_args_list]
-        assert "_process_token_usage_and_cost" not in task_funcs
-
-    def test_update_request_has_correct_conversation_id(self, test_user, basic_body):
-        background_tasks = MagicMock()
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="target_conv_id",
-            complete_message="response",
-        )
-
-        # Find the update_messages task call
-        update_call = next(
-            c
-            for c in background_tasks.add_task.call_args_list
-            if c.args[0].__name__ == "update_messages"
-        )
-        request_arg = update_call.args[1]
-        assert request_arg.conversation_id == "target_conv_id"
-
-    def test_bot_message_id_is_set_when_provided(self, test_user, basic_body):
-        background_tasks = MagicMock()
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="conv_id",
-            complete_message="response",
-            bot_message_id="my_bot_msg_id",
-        )
-
-        update_call = next(
-            c
-            for c in background_tasks.add_task.call_args_list
-            if c.args[0].__name__ == "update_messages"
-        )
-        request_arg = update_call.args[1]
-        bot_msg = request_arg.messages[1]
-        assert bot_msg.message_id == "my_bot_msg_id"
-
-    def test_user_message_id_is_set_when_provided(self, test_user, basic_body):
-        background_tasks = MagicMock()
-
-        update_conversation_messages(
-            background_tasks=background_tasks,
-            body=basic_body,
-            user=test_user,
-            conversation_id="conv_id",
-            complete_message="response",
-            user_message_id="my_user_msg_id",
-        )
-
-        update_call = next(
-            c
-            for c in background_tasks.add_task.call_args_list
-            if c.args[0].__name__ == "update_messages"
-        )
-        request_arg = update_call.args[1]
-        user_msg = request_arg.messages[0]
-        assert user_msg.message_id == "my_user_msg_id"

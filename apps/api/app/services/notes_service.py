@@ -138,7 +138,7 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
             )
 
             # Update the existing document in ChromaDB (no return value expected)
-            await chroma_notes_collection.update_document(  # type: ignore[func-returns-value]
+            await chroma_notes_collection.update_document(  # type: ignore[func-returns-value,misc]
                 document_id=note_id,
                 document=Document(
                     page_content=update_data["plaintext"],

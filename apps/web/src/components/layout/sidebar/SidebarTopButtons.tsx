@@ -3,16 +3,16 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import {
-  Calendar03Icon,
+  // Calendar03Icon, // Temporarily disabled
   CheckListIcon,
   ConnectIcon,
-  DashboardSquare02Icon,
+  Home11Icon,
   MessageMultiple02Icon,
-  Target02Icon,
+  // Target02Icon, // Temporarily disabled
   ZapIcon,
 } from "@icons";
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   getNavigationShortcut,
   ShortcutKeysDisplay,
@@ -32,7 +32,6 @@ export default function SidebarTopButtons() {
   const pathname = usePathname();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const { plans } = usePricing();
-  const [unreadCount, setUnreadCount] = useState(0);
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const { notifications } = useNotifications({
     status: NotificationStatus.DELIVERED,
@@ -44,11 +43,9 @@ export default function SidebarTopButtons() {
   );
   const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
 
-  useEffect(() => {
-    setUnreadCount(
-      notifications.filter((n) => n.status !== NotificationStatus.READ).length,
-    );
-  }, [notifications]);
+  const unreadCount = notifications.filter(
+    (n) => n.status !== NotificationStatus.READ,
+  ).length;
 
   const isRouteActive = (route: string) => {
     if (route === "/c") {
@@ -60,23 +57,24 @@ export default function SidebarTopButtons() {
   const buttonData = [
     {
       route: "/dashboard",
-      icon: <DashboardSquare02Icon />,
-      label: "Dashboard",
+      icon: <Home11Icon />,
+      label: "Home",
     },
-    {
-      route: "/calendar",
-      icon: <Calendar03Icon />,
-      label: "Calendar",
-    },
-    {
-      route: "/goals",
-      icon: <Target02Icon />,
-      label: "Goals",
-    },
+    // Temporarily disabled — Calendar and Goals features are not yet ready.
+    // {
+    //   route: "/calendar",
+    //   icon: <Calendar03Icon />,
+    //   label: "Calendar",
+    // },
+    // {
+    //   route: "/goals",
+    //   icon: <Target02Icon />,
+    //   label: "Goals",
+    // },
     {
       route: "/todos",
       icon: <CheckListIcon />,
-      label: "Todos",
+      label: "Tasks",
     },
     {
       route: "/integrations",

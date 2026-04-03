@@ -41,18 +41,6 @@ export function findTriggerSchema(
 }
 
 /**
- * Normalize a trigger identifier to the frontend slug.
- * Converts composio_slug to slug if needed.
- */
-export function normalizeTriggerSlug(
-  schemas: TriggerSchema[] | undefined,
-  slugOrComposioSlug: string,
-): string {
-  const schema = findTriggerSchema(schemas, slugOrComposioSlug);
-  return schema?.slug ?? slugOrComposioSlug;
-}
-
-/**
  * Get trigger display information using backend schemas and handler registry.
  */
 export function getTriggerDisplayInfo(
@@ -106,26 +94,4 @@ export function getTriggerDisplayInfo(
     label: displayInfo.label,
     integration,
   };
-}
-
-/**
- * Get trigger-enabled integrations for WorkflowModal dropdown.
- */
-export function getTriggerEnabledIntegrations(
-  integrations: Integration[],
-  schemas: TriggerSchema[],
-) {
-  return schemas
-    .map((schema) => {
-      const integration = findIntegration(integrations, schema.integration_id);
-      return {
-        id: schema.slug,
-        integrationId: schema.integration_id,
-        name: schema.name,
-        description: schema.description,
-        integration,
-        triggerType: schema.slug,
-      };
-    })
-    .filter((t) => t.integration);
 }

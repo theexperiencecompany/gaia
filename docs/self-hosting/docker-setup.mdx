@@ -151,23 +151,21 @@ The Docker Compose setup includes the following services:
 
   </Accordion>
 
-{" "}
-
-<Accordion icon="server" title="Backend (gaia-backend)">
-  **FastAPI Python Application** 
-  - Port: 8000 
-  - Auto-reload enabled in development 
-  - RESTful API and WebSocket support 
-  
-  ```yaml 
-  gaia-backend:
-    container_name: gaia-backend
-    build: ./apps/api
-    ports:
-      - "8000:80"
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--reload"]
-  ```
-</Accordion>
+  <Accordion icon="server" title="Backend (gaia-backend)">
+    **FastAPI Python Application** 
+    - Port: 8000 
+    - Auto-reload enabled in development 
+    - RESTful API and WebSocket support 
+    
+    ```yaml 
+    gaia-backend:
+      container_name: gaia-backend
+      build: ./apps/api
+      ports:
+        - "8000:80"
+      command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--reload"]
+    ```
+  </Accordion>
 
   <Accordion icon="database" title="Databases">
     **PostgreSQL** (Port: 5432)

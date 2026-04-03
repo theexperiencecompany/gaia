@@ -11,7 +11,7 @@ import {
   ModalHeader,
 } from "@heroui/react";
 import { KeyIcon } from "@icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 
 interface BearerTokenModalProps {
@@ -57,26 +57,29 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
     onClose();
   };
 
-  // Keyboard shortcut handler for Cmd/Ctrl + Enter to submit
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (!isOpen || isLoading) return;
-
-      const modifierKey = isMac ? e.metaKey : e.ctrlKey;
-      if (modifierKey && e.key === "Enter") {
-        e.preventDefault();
-        handleSubmit();
-      }
-    },
-    [isOpen, isLoading, isMac, handleSubmit],
-  );
+  const keyDownStateRef = useRef({ isLoading, isMac, handleSubmit });
+  keyDownStateRef.current = { isLoading, isMac, handleSubmit };
 
   useEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [isOpen, handleKeyDown]);
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const {
+        isLoading: loading,
+        isMac: mac,
+        handleSubmit: submit,
+      } = keyDownStateRef.current;
+      if (loading) return;
+      const modifierKey = mac ? e.metaKey : e.ctrlKey;
+      if (modifierKey && e.key === "Enter") {
+        e.preventDefault();
+        submit();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
 
   return (
     <Modal

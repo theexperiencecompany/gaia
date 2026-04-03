@@ -73,7 +73,7 @@ const initialState: UIState = {
   menuAccordionExpanded: true,
 };
 
-export const useUIStore = create<UIStore>()(
+const useUIStore = create<UIStore>()(
   devtools(
     persist(
       (set) => ({
@@ -198,13 +198,5 @@ export const useIntegrationsAccordion = () =>
     useShallow((state) => ({
       isExpanded: state.integrationsAccordionExpanded,
       setExpanded: state.setIntegrationsAccordionExpanded,
-    })),
-  );
-
-export const useMenuAccordion = () =>
-  useUIStore(
-    useShallow((state) => ({
-      isExpanded: state.menuAccordionExpanded,
-      setExpanded: state.setMenuAccordionExpanded,
     })),
   );

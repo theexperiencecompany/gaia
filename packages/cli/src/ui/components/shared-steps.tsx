@@ -65,7 +65,7 @@ export const ErrorStep: React.FC<{ message: string }> = ({ message }) => (
   </Box>
 );
 
-export const CheckItem: React.FC<{
+const CheckItem: React.FC<{
   label: string;
   status: "pending" | "success" | "error" | "missing";
 }> = ({ label, status }) => (

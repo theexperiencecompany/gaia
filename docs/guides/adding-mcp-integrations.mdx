@@ -24,10 +24,12 @@ MCP servers use one of three authentication methods. GAIA detects the right one 
     The server is publicly accessible. Provide the URL and you're connected.
   </Card>
   <Card title="Bearer Token" icon="key">
-    The server requires an API key. Provide your key alongside the URL and GAIA sends it with every request.
+    The server requires an API key. Provide your key alongside the URL and GAIA
+    sends it with every request.
   </Card>
   <Card title="OAuth 2.1" icon="shield-check">
-    The server uses OAuth. GAIA handles the full flow — PKCE, token refresh, and dynamic client registration — so you don't have to.
+    The server uses OAuth. GAIA handles the full flow — PKCE, token refresh, and
+    dynamic client registration — so you don't have to.
   </Card>
 </CardGroup>
 
@@ -51,6 +53,7 @@ Go to the **Integrations** page and click **New Integration** in the Custom sect
     | **Description** | No | A short description of what the integration does |
     | **Server URL** | Yes | The MCP server endpoint. Must start with `http://` or `https://` |
     | **API Key / Bearer Token** | No | If the server requires a static API key, enter it here. Leave empty for OAuth or no-auth servers |
+
   </Step>
   <Step title="Click Create">
     GAIA probes the server to determine its authentication requirements and connects automatically.
@@ -78,7 +81,8 @@ Provide the **Name** and **Server URL**, then click **Create**. Leave the API Ke
 4. Connect and import tools once authorization is complete
 
 <Tip>
-  You don't need to know which auth type a server uses before connecting. Just provide the URL and GAIA figures out the rest.
+  You don't need to know which auth type a server uses before connecting. Just
+  provide the URL and GAIA figures out the rest.
 </Tip>
 
 ## What Happens After Connecting
@@ -88,7 +92,8 @@ Once connected, GAIA indexes every tool the MCP server exposes into its vector s
 You'll see a confirmation with the number of tools imported — for example: "Connected to Notion MCP with 12 tools!"
 
 <Note>
-  If a connection fails, the integration is still saved. You can retry from the Integrations page at any time.
+  If a connection fails, the integration is still saved. You can retry from the
+  Integrations page at any time.
 </Note>
 
 ## Publishing to the Marketplace
@@ -96,7 +101,8 @@ You'll see a confirmation with the number of tools imported — for example: "Co
 Built or configured an MCP server that others would find useful? You can publish it to the GAIA community marketplace. Published integrations appear in the public directory and any GAIA user can install them with a single click.
 
 <Warning>
-  Test your integration thoroughly before publishing. Make sure all tools work reliably and the server is stable.
+  Test your integration thoroughly before publishing. Make sure all tools work
+  reliably and the server is stable.
 </Warning>
 
 ## Popular MCP Servers
@@ -111,7 +117,8 @@ Here are some widely-used MCP servers worth connecting:
     Run API collections and manage your Postman workspace.
   </Card>
   <Card title="Context7" icon="book">
-    Pull up-to-date documentation for any library directly into your conversation.
+    Pull up-to-date documentation for any library directly into your
+    conversation.
   </Card>
   <Card title="GitHub" icon="github">
     Manage repositories, issues, pull requests, and code search.

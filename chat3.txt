@@ -1,0 +1,1612 @@
+╭─── Claude Code v2.1.89 ──────────────────────────────────────────────────────╮
+│                                                    │ Recent activity         │
+│                 Welcome back aryan!                │ No recent activity      │
+│                                                    │ ─────────────────────── │
+│                       ▐▛███▜▌                      │ What's new              │
+│                      ▝▜█████▛▘                     │ Added `"defer"` permis… │
+│                        ▘▘ ▝▝                       │ Added `CLAUDE_CODE_NO_… │
+│     Opus 4.6 (1M context) · Claude Max ·           │ Added `PermissionDenie… │
+│     aryan.k.randeriya@gmail.com's Organization     │ /release-notes for more │
+│               ~/Projects/GAIA/gaia-1               │                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+⏺ Now let me check the Nx project list to understand the full scope.
+
+⏺ Bash(npx nx show projects 2>/dev/null | sort)
+  ⎿  [
+       "bot-telegram",
+       "bot-whatsapp",
+     … +14 lines (ctrl+o to expand)
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Good. Now I have everything I need. Let me write the plan.
+
+⏺ Write(.agents/plans/2026-04-01-ci-pipeline-restructure.md)
+  ⎿  Wrote 752 lines to .agents/plans/2026-04-01-ci-pipeline-restructure.md
+      1 # CI Pipeline Restructure — Split Quality Checks into Focused Job
+        s
+      2 
+      3 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-p
+        lans to implement this plan task-by-task.
+      4 
+      5 **Goal:** Replace the monolithic `quality-checks` job with focuse
+        d, conditional jobs that leverage Nx affected detection to skip i
+        rrelevant work.
+      6 
+      7 **Architecture:** Add a lightweight `detect` job (runs on the GH 
+        Actions runner, not Dagger) that uses `nrwl/nx-set-shas` + `nx sh
+        ow projects --affected` to determine which scopes changed — exact
+        ly how `build.yml` already works. Each downstream job checks the 
+        detect outputs and only runs if its scope is relevant. Inside Dag
+        ger, functions stay largely as-is (they're already split). The `q
+        uality_checks()` orchestrator function stays for local convenienc
+        e (`dagger call quality-checks`) but CI stops using it.
+      8 
+      9 **Tech Stack:** GitHub Actions, Dagger (Python SDK), Nx affected 
+        detection
+     … +742 lines (ctrl+o to expand)
+
+⏺ Plan saved to .agents/plans/2026-04-01-ci-pipeline-restructure.md.
+
+  Summary
+
+  Problem: One monolithic quality-checks job runs 7 things in parallel inside a
+  single Dagger call. Everything waits for everything, lint failures are hidden
+  behind 30-minute test runs, and tests with 5 service containers spin up even
+  for docs-only changes.
+
+  Solution: Split into focused jobs with Nx affected detection:
+
+  detect (ubuntu-latest, ~30s)         ← uses nx show projects --affected
+    │                                     (same pattern as build.yml)
+    │
+    ├─► static-checks-backend   if: has_backend
+    ├─► static-checks-frontend   if: has_frontend
+    ├─► dead-code                if: either
+    ├─► release-validation       always
+    ├─► trivy-scan               always (non-blocking)
+    │
+    ├─► build                    if: has_frontend (backend build is noop)
+    │
+    ├─► test-backend             if: has_backend (with 5 service containers)
+    ├─► test-frontend            if: has_frontend
+    │
+    └─► quality-gate             summary job for branch protection
+
+  Key design choices:
+  - Affected detection runs outside Dagger (on the runner) since .git isn't in
+  the Dagger context. Matches the existing build.yml pattern.
+  - Test naming fixed: test_backend() (all Python tests with live services) and
+  test_frontend() (JS/TS tests) instead of the confusing test() vs
+  integration_test() split.
+  - quality_checks() stays as a local convenience (dagger call quality-checks
+  still works).
+  - Each job is visible in the GitHub Actions UI with independent pass/fail
+  status.
+  - Backend-only changes skip frontend build + tests entirely (and vice versa).
+
+  Plan complete. Two execution options:
+
+  1. Subagent-Driven (this session) — I dispatch fresh subagent per task, review
+   between tasks, fast iteration
+
+  2. Parallel Session (separate) — Open new session with executing-plans, batch
+  execution with checkpoints
+
+  Which approach?
+
+✻ Brewed for 4m 28s
+
+❯ review the plan. only write the final decisions not the alternate fucking     
+bullshit. and tell me, like what is the best approach like talk to me and       
+brainstorm only a bit. how can we properly use nx affected shit for this, but   
+still use dagger like how to make them play together perfectly                  
+
+⏺ You're right, the plan has too much noise. Let me cut to the real
+  conversation.
+
+  The core tension: Nx affected needs .git, Dagger excludes .git
+
+  Your _IGNORE list strips .git from the Dagger context (rightfully — it's huge
+  and slows down filesync). But without git history, nx affected can't work
+  inside the container. So nx run-many runs everything regardless of what
+  changed.
+
+  build.yml already solved this — it runs nx show projects --affected on the 
+  runner (outside Dagger), then uses the results to conditionally skip Docker
+  builds. Same pattern here.
+
+  How to make them play together
+
+  The plan currently proposes coarse boolean flags (has_backend/has_frontend).
+  That's wasteful. If you change one bot, you still lint all 6 backend projects.
+
+  Better: pass the actual affected project list into Dagger.
+
+  detect job (ubuntu-latest, ~30s):
+    → nx show projects --affected
+    → outputs: backend_projects="api,bot-discord"  frontend_projects=""
+
+  static-checks-backend:
+    → dagger call static-checks-backend --projects="api,bot-discord"
+    → inside Dagger: nx run-many -t lint -p api,bot-discord
+
+  Nx already resolves the dependency graph for you. If shared-python changes, nx
+   show projects --affected returns
+  api,voice-agent,shared-python,bot-discord,... because they all depend on it.
+  You just forward that list.
+
+  The Dagger functions get an optional projects param:
+  - CI passes it → runs only affected projects
+  - Local use omits it → dagger call lint runs everything (same as today)
+
+  The test split is structural, not cosmetic
+
+  Backend tests need 5 service containers (Postgres, Redis, Mongo, Chroma,
+  RabbitMQ). Frontend tests need nothing. That's why they must be separate jobs
+  — you don't want to spin up databases when only CSS changed.
+
+  Your current naming is confusing:
+  - test() runs JS tests AND Python tests without services
+  - integration_test() runs Python tests WITH services
+  - service_test() runs only service-marked tests WITH services
+
+  New naming:
+  - test_backend() — all Python tests with live services. Period.
+  - test_frontend() — JS/TS tests via Nx. Period.
+  - test() — convenience, runs both (for local use)
+
+  The old test() running Python tests without services was a half-measure. You
+  already have USE_REAL_SERVICES=1 wired up. Just always run with real services
+  — that's what gets deployed.
+
+  The Dagger overhead question
+
+  Each job rebuilds ci_env() (installs pnpm, uv, deps). On Blacksmith, each job
+  gets a fresh VM, so Dagger cache volumes aren't shared. That's ~60-90s per
+  job. With 7 jobs, that's ~10 min of setup.
+
+  But the monolith already takes 30-40 minutes wall clock. With the split, your
+  longest path is detect (30s) → static-checks-backend (3 min) → test-backend 
+  (15 min) = ~19 min. The parallelism more than compensates.
+
+  What I'd actually ship
+
+  detect                          (ubuntu-latest, 30s)
+    │
+    ├─► static-checks-backend    (lint + mypy, skipped if no backend projects)
+    ├─► static-checks-frontend   (lint + tsc, skipped if no frontend projects)
+    ├─► dead-code                (vulture + knip)
+    ├─► release-validation       (always, fast)
+    ├─► trivy-scan               (always, non-blocking)
+    │
+    ├─► build                    (frontend only, depends on
+  static-checks-frontend)
+    │
+    ├─► test-backend             (with services, depends on
+  static-checks-backend)
+    ├─► test-frontend            (depends on build)
+    │
+    └─► quality-gate             (summary job for branch protection)
+
+  Each Dagger function accepts --projects so Nx only runs on affected projects
+  inside the container.
+
+  quality_checks() stays for dagger call quality-checks locally.
+
+  Should I rewrite the plan with just this and implement it?
+
+✻ Baked for 1m 10s
+
+❯ i feel like this 19 miutes is way too long too, what should we improve in the 
+ flow                                                                           
+
+⏺ The 19 min comes from making tests wait for static checks. That's actually a
+  regression from the current monolith which runs everything in parallel.
+
+  Drop the sequential gates. There's no real reason test-backend needs to wait
+  for lint to pass. If lint fails, you see it in 2 minutes regardless. Meanwhile
+   tests are already running.
+
+  detect (30s)
+    │
+    ├─► static-checks-backend    (~3 min)
+    ├─► static-checks-frontend   (~3 min)
+    ├─► dead-code                (~2 min)
+    ├─► release-validation       (~30s)
+    ├─► trivy-scan               (~2 min)
+    ├─► build                    (~5 min)
+    ├─► test-frontend            (~3 min)
+    ├─► test-backend             (~15 min)  ← the bottleneck
+    │
+    └─► quality-gate (waits for all)
+
+  Critical path: 30s + 15 min = ~16 min. Better, but test-backend is still the
+  bottleneck.
+
+  What's actually slow in test-backend
+
+  Roughly:
+  - ci_env() rebuild (apt-get, pnpm install, uv sync): ~60-90s
+  - Service containers starting (5 of them): ~30s
+  - Actual pytest execution with coverage: ~12-13 min
+
+  Three things that would cut this significantly
+
+  1. pytest-xdist for parallel test execution
+
+  You're running pytest on a 4-vCPU runner but executing tests sequentially.
+  Adding -n auto distributes across cores.
+
+  "uv", "run", "pytest", "-n", "auto", "-m", "not composio", ...
+
+  Typical speedup: 2-3x. So 12 min → 4-6 min.
+
+  This is the single biggest win. Everything else is optimizing seconds.
+
+  2. Pre-built CI base image
+
+  ci_env() runs apt-get update, installs Python, git, build-essential, corepack,
+   uv — identical every single time. Publish a base image once:
+
+  # ghcr.io/theexperiencecompany/gaia-ci-base:latest
+  FROM node:22.15.1-bookworm-slim
+  RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-pip python3-venv python3-dev git curl build-essential
+  libpq-dev \
+      && apt-get clean && rm -rf /var/lib/apt/lists/*
+  RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+  RUN pip install --break-system-packages uv
+
+  Then ci_env() becomes:
+  dag.container()
+      .from_("ghcr.io/theexperiencecompany/gaia-ci-base:latest")
+      .with_mounted_cache(...)
+      .with_directory("/app", source)
+      .with_exec(["pnpm", "install", "--frozen-lockfile"])
+      .with_exec(["uv", "sync", "--frozen", ...])
+
+  Saves ~30-40s per job. Across 7 parallel jobs that's not huge on wall clock,
+  but it's less flaky and cleaner.
+
+  3. Move coverage to a separate non-blocking check
+
+  --cov + --cov-report=term-missing + --cov-fail-under=80 adds overhead to every
+   test run. Coverage instrumentation slows pytest down ~10-20%. Run it as a
+  separate informational job, or only enforce on master pushes, not every PR.
+
+  With these changes
+
+  detect (30s)
+    ├─► test-backend (60s setup + 30s services + 5 min parallel tests) = ~7 min
+    ├─► everything else finishes in < 5 min
+    └─► quality-gate
+
+  Critical path: ~8 min
+
+  That's a 4-5x improvement from the current 30-40 min monolith.
+
+  The priorities in order of impact:
+  1. pytest-xdist — biggest win, easiest change (add one dependency + one flag)
+  2. All parallel, no sequential gates — just remove the needs dependencies
+  3. Pre-built base image — moderate win, one-time setup
+  4. Coverage as separate check — nice to have
+
+  Want me to fold these into the plan and implement?
+
+✻ Churned for 1m 3s
+
+❯ yeah sure let's do all of this. also can't we do it like in parallel like     
+quality checks is 1 step that leads to trigger build. is this proper? should    
+thigns be happening in parallel here or?? like can we add room for improvemnet  
+there                                                                           
+
+⏺ Good catch. Right now on master the flow is strictly sequential:
+
+  quality-checks (30-40 min) → build.yml (Docker build ~5 min) → deploy (~5 min)
+
+  Docker builds don't need test results. They just need the code to compile. So
+  on master, we can start Docker builds in parallel with tests:
+
+  detect
+    ├─► static checks (parallel)
+    ├─► tests (parallel)
+    ├─► docker-build (master only, parallel)  ← starts immediately
+    │
+    └─► quality-gate → trigger-deploy (needs: quality-gate + docker-build)
+
+  This shaves ~5 min off the master deploy pipeline because Docker images are
+  ready by the time tests finish.
+
+  Let me rewrite the plan clean — final decisions only — and then implement.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Now I have the full picture. On the trigger-build question: the clean fix is
+  to add push: branches: [master] to build.yml so Docker builds start
+  immediately on master push, parallel with quality checks. Then deploy needs
+  both to pass. But that requires cross-workflow coordination (status checks or
+  workflow_run), which is a separate PR. The quality checks restructure (30-40
+  min → ~8 min) is the 4x win. The build overlap saves ~5 min on top. Let's do
+  the big win first.
+
+  Let me rewrite the plan clean and implement.
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Write(.agents/plans/2026-04-01-ci-pipeline-restructure.md)
+  ⎿  Added 335 lines, removed 340 lines
+        1 -# CI Pipeline Restructure — Split Quality Checks into Focused 
+          -Jobs                                                          
+        1 +# CI Pipeline Restructure                                     
+        2  
+        3  > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executin
+           g-plans to implement this plan task-by-task.
+        4  
+        5 -**Goal:** Replace the monolithic `quality-checks` job with foc
+          -used, conditional jobs that leverage Nx affected detection to 
+          -skip irrelevant work.                                         
+        5 +**Goal:** Replace the monolithic `quality-checks` job with foc
+          +used, parallel, conditional jobs. Leverage Nx affected detecti
+          +on to skip irrelevant work. Add pytest-xdist for parallel test
+          + execution. Add a pre-built CI base image. Move coverage to a 
+          +separate non-blocking check.                                  
+        6  
+        7 -**Architecture:** Add a lightweight `detect` job (runs on the 
+          -GH Actions runner, not Dagger) that uses `nrwl/nx-set-shas` + 
+          -`nx show projects --affected` to determine which scopes change
+          -d — exactly how `build.yml` already works. Each downstream job
+          - checks the detect outputs and only runs if its scope is relev
+          -ant. Inside Dagger, functions stay largely as-is (they're alre
+          -ady split). The `quality_checks()` orchestrator function stays
+          - for local convenience (`dagger call quality-checks`) but CI s
+          -tops using it.                                                
+        7 +**Architecture:** A lightweight `detect` job runs `nx show pro
+          +jects --affected` on the GH Actions runner (same pattern as `b
+          +uild.yml`). All quality jobs run in parallel after detect, wit
+          +h no sequential gates. Dagger functions accept an optional `pr
+          +ojects` parameter so Nx only runs affected projects inside the
+          + container. A `quality-gate` summary job gates branch protecti
+          +on and the downstream `trigger-build`.                        
+        8  
+        9 -**Tech Stack:** GitHub Actions, Dagger (Python SDK), Nx affect
+          -ed detection                                                  
+        9 +**Tech Stack:** GitHub Actions, Dagger (Python SDK), Nx affect
+          +ed detection, pytest-xdist                                    
+       10  
+       11  ---
+       12  
+       13 -## Design Decisions                                           
+       13 +## Flow                                                       
+       14  
+       15 -### Why detect affected outside Dagger?                       
+       15 +```                                                           
+       16 +detect (ubuntu-latest, ~30s)                                  
+       17 +  │                                                           
+       18 +  ├─► static-checks-backend   (if: has_backend, ~3 min)       
+       19 +  ├─► static-checks-frontend  (if: has_frontend, ~3 min)      
+       20 +  ├─► build                   (if: has_frontend, ~5 min)      
+       21 +  ├─► test-backend             (if: has_backend, ~5-7 min with
+          + xdist)                                                       
+       22 +  ├─► test-frontend            (if: has_frontend, ~3 min)     
+       23 +  ├─► dead-code               (if: has_backend || has_frontend
+          +, ~2 min)                                                     
+       24 +  ├─► release-validation      (always, ~30s)                  
+       25 +  ├─► trivy-scan              (always, non-blocking, ~2 min)  
+       26 +  │                                                           
+       27 +  └─► quality-gate            (summary, gates branch protectio
+          +n)                                                            
+       28 +        │                                                     
+       29 +        └─► trigger-build     (master only, calls build.yml)  
+       30 +```                                                           
+       31  
+       17 -`.git` is in Dagger's `_IGNORE` list, so `nx affected` can't w
+          -ork inside the container. Rather than passing git history into
+          - Dagger (slow, complex), we follow the pattern `build.yml` alr
+          -eady established: run `nx show projects --affected` on the run
+          -ner, pass results as job outputs.                             
+       32 +All jobs after detect run in parallel. No sequential gates. Cr
+          +itical path: **detect (30s) + test-backend (~7 min) = ~8 min.*
+          +*                                                             
+       33  
+       19 -### Why not pass `--projects` to Dagger functions?            
+       34 +---                                                           
+       35  
+       21 -Overkill. The actual cost of `nx run-many -t lint` linting all
+          - projects is ~30 seconds. The big win is skipping entire jobs 
+          -(tests with 5 service containers) when only docs or frontend c
+          -hanged. Job-level `if:` conditions are simpler and more visibl
+          -e in the GitHub Actions UI.                                   
+       36 +## Affected detection                                         
+       37  
+       23 -### Test naming clarity                                       
+       38 +`.git` is in Dagger's `_IGNORE` list, so `nx affected` can't r
+          +un inside the container. Detection runs on the GH Actions runn
+          +er (cheap `ubuntu-latest`), passing affected project lists to 
+          +Dagger functions.                                             
+       39  
+       25 -Current state:                                                
+       26 -- `test()` — runs JS tests AND Python tests (no services)     
+       27 -- `integration_test()` — runs ALL Python tests with services  
+       28 -- `service_test()` — runs only service-marked Python tests wit
+          -h services                                                    
+       40 +| Scope | Projects |                                          
+       41 +|-------|----------|                                          
+       42 +| `has_backend` | `api`, `voice-agent`, `shared-python`, `bot-
+          +discord`, `bot-slack`, `bot-telegram`, `bot-whatsapp` |       
+       43 +| `has_frontend` | `web`, `desktop`, `mobile`, `shared-typescr
+          +ipt`, `docs` |                                                
+       44  
+       30 -The user correctly pointed out that calling `test` for JS and 
+          -`integration-test` for Python doesn't make sense. Both should 
+          -be "tests" in their respective domains.                       
+       45 +`workflow_dispatch` forces both scopes.                       
+       46  
+       32 -New naming:                                                   
+       33 -- `test_frontend()` — JS/TS tests via Nx                      
+       34 -- `test_backend()` — ALL Python tests with live services (repl
+          -aces both `test()` Python portion and `integration_test()`)   
+       35 -- Keep `service_test()` for local use (run just the service-ma
+          -rked subset)                                                  
+       36 -- `test()` stays as a convenience that runs both              
+       47 +Dagger functions accept an optional `projects` parameter. When
+          + provided, Nx uses `-p {projects}` to run only affected projec
+          +ts. When omitted (local use), Nx runs everything.             
+       48  
+       38 -### Affected scope categories                                 
+       49 +## Test naming                                                
+       50  
+       40 -Based on the Nx project graph:                                
+       51 +- `test_backend()` — all Python tests with live services (Post
+          +gres, Redis, Mongo, Chroma, RabbitMQ). Uses pytest-xdist (`-n 
+          +auto`) for parallel execution.                                
+       52 +- `test_frontend()` — JS/TS tests via Nx.                     
+       53 +- `test()` — convenience, runs both (for local use).          
+       54 +- `integration_test()` and `service_test()` stay for targeted 
+          +local use.                                                    
+       55  
+       42 -| Scope | Projects | Triggers |                               
+       43 -|-------|----------|----------|                               
+       44 -| `has_backend` | `api`, `voice-agent`, `shared-python`, `bot-
+          -*` | Python lint, mypy, backend tests, dead-code (vulture) |  
+       45 -| `has_frontend` | `web`, `desktop`, `mobile`, `shared-typescr
+          -ipt`, `docs` | TS lint, tsc, frontend tests, build, dead-code 
+          -(knip) |                                                      
+       46 -| `has_any` | any project | release-validation, trivy-scan |  
+       56 +## Performance improvements                                   
+       57  
+       48 -Lint and type-check run per-scope. Build runs if frontend is a
+          -ffected (backend build is a noop). Tests run per-scope. Dead-c
+          -ode runs both halves conditionally.                           
+       58 +1. **pytest-xdist**: `-n auto` distributes tests across CPU co
+          +res. 4-vCPU runner = ~3x speedup. 12 min → 4-6 min.           
+       59 +2. **Pre-built CI base image**: `ghcr.io/theexperiencecompany/
+          +gaia-ci-base:latest` with Node, Python, pnpm, uv pre-installed
+          +. Saves ~30-40s per job.                                      
+       60 +3. **Coverage as separate non-blocking check**: `--cov` adds ~
+          +10-20% overhead. Move to informational-only. Enforce on master
+          + only via a separate `coverage` job.                          
+       61  
+       50 ----                                                           
+       62 +## Branch protection                                          
+       63  
+       52 -## New CI Architecture                                        
+       64 +The `quality-gate` summary job is the single required check fo
+          +r branch protection. It passes when all sub-jobs pass or are s
+          +kipped. No need to update branch protection rules when adding/
+          +removing jobs.                                                
+       65  
+       54 -```                                                           
+       55 -detect (lightweight, ~30s)                                    
+       56 -  │                                                           
+       57 -  ├── outputs: has_backend, has_frontend, affected_list       
+       58 -  │                                                           
+       59 -  ▼                                                           
+       60 -┌─────────────────────────────────────────────────────────┐   
+       61 -│  FAST GATE (parallel, each ~1-3 min)                    │   
+       62 -│                                                          │  
+       63 -│  lint-backend ──────── if: has_backend                  │   
+       64 -│  lint-frontend ─────── if: has_frontend                 │   
+       65 -│  type-check-backend ── if: has_backend                  │   
+       66 -│  type-check-frontend ─ if: has_frontend                 │   
+       67 -│  dead-code ──────────── if: has_backend || has_frontend │   
+       68 -│  release-validation ── always                           │   
+       69 -│  trivy-scan ─────────── always (non-blocking)           │   
+       70 -└─────────────────────────────────────────────────────────┘   
+       71 -  │                                                           
+       72 -  ▼                                                           
+       73 -┌─────────────────────────────────────────────────────────┐   
+       74 -│  BUILD GATE (~5-8 min)                                   │  
+       75 -│  build ──────────────── if: has_frontend                │   
+       76 -│  (backend build is nx:noop, skip it)                    │   
+       77 -└─────────────────────────────────────────────────────────┘   
+       78 -  │                                                           
+       79 -  ▼                                                           
+       80 -┌─────────────────────────────────────────────────────────┐   
+       81 -│  TEST GATE (parallel, ~10-20 min)                        │  
+       82 -│  test-frontend ──────── if: has_frontend                │   
+       83 -│  test-backend ─────────  if: has_backend                │   
+       84 -│  (backend spins up 5 service containers)                │   
+       85 -└─────────────────────────────────────────────────────────┘   
+       86 -  │                                                           
+       87 -  ▼                                                           
+       88 -trigger-build (existing, on master only)                      
+       89 -```                                                           
+       66 +---                                                           
+       67  
+       91 -### Simplification: merge lint + type-check per scope         
+       68 +## Task 1: Create the CI base image Dockerfile                
+       69  
+       93 -Actually, splitting lint-backend and type-check-backend into s
+          -eparate jobs adds 6 jobs. Each job has ~60s of Dagger overhead
+          - (engine start, container build). Running lint + type-check to
+          -gether per scope is better:                                   
+       70 +**Files:**                                                    
+       71 +- Create: `infra/docker/ci-base.Dockerfile`                   
+       72  
+       95 -```                                                           
+       96 -detect                                                        
+       97 -  │                                                           
+       98 -  ├─► static-checks-backend  (lint + type-check, if: has_backe
+          -nd)                                                           
+       99 -  ├─► static-checks-frontend (lint + type-check, if: has_front
+          -end)                                                          
+      100 -  ├─► dead-code              (vulture + knip, if: has_backend 
+          -|| has_frontend)                                              
+      101 -  ├─► release-validation     (always)                         
+      102 -  ├─► trivy-scan             (always, non-blocking)           
+      103 -  │                                                           
+      104 -  ▼ (all above pass)                                          
+      105 -  ├─► build                  (if: has_frontend)               
+      106 -  │                                                           
+      107 -  ▼ (build passes)                                            
+      108 -  ├─► test-frontend          (if: has_frontend)               
+      109 -  ├─► test-backend           (if: has_backend, with services) 
+      110 -  │                                                           
+      111 -  ▼                                                           
+      112 -  trigger-build (master only)                                 
+      113 -```                                                           
+       73 +```dockerfile                                                 
+       74 +FROM node:22.15.1-bookworm-slim                               
+       75  
+      115 -That's **7 focused jobs** (+ detect + trigger-build) instead o
+          -f 1 monolith. Each is visible in the GitHub Actions UI, each c
+          -an fail independently, and irrelevant jobs are skipped entirel
+          -y.                                                            
+       76 +RUN apt-get update \                                          
+       77 +    && apt-get install -y --no-install-recommends \           
+       78 +       python3 python3-pip python3-venv python3-dev \         
+       79 +       git curl build-essential libpq-dev \                   
+       80 +    && apt-get clean \                                        
+       81 +    && rm -rf /var/lib/apt/lists/*                            
+       82  
+      117 ----                                                           
+       83 +RUN corepack enable && corepack prepare pnpm@10.17.1 --activat
+          +e                                                             
+       84  
+      119 -## File Changes                                               
+       85 +RUN pip install --break-system-packages uv                    
+       86 +```                                                           
+       87  
+      121 -### Files to modify:                                          
+      122 -- `.github/workflows/main.yml` — restructure into multi-job wo
+          -rkflow                                                        
+      123 -- `.dagger/src/gaia_ci/main.py` — add new functions, extract t
+          -rivy, rename test functions                                   
+       88 +Build and push (one-time, then automated via a separate workfl
+          +ow or manual rebuild when tooling versions change):           
+       89  
+      125 -### Files unchanged:                                          
+      126 -- `.github/workflows/build.yml` — already works correctly     
+      127 -- `nx.json` — already has proper config                       
+      128 -- `mise.toml` — update task names after Dagger changes        
+       90 +```bash                                                       
+       91 +docker build -f infra/docker/ci-base.Dockerfile -t ghcr.io/the
+          +experiencecompany/gaia-ci-base:latest .                       
+       92 +docker push ghcr.io/theexperiencecompany/gaia-ci-base:latest  
+       93 +```                                                           
+       94  
+       95  ---
+       96  
+      132 -## Task 1: Add new Dagger functions                           
+       97 +## Task 2: Update Dagger pipeline                             
+       98  
+       99  **Files:**
+      100  - Modify: `.dagger/src/gaia_ci/main.py`
+      101  
+      137 -### Step 1: Add `static_checks_backend()` function            
+      102 +### Step 1: Update `ci_env()` to use pre-built base image     
+      103  
+      139 -Add after `validate_release()` (line ~201):                   
+      104 +Replace the `from_("node:22.15.1-bookworm-slim")` + apt-get + 
+          +corepack + pip chain with:                                    
+      105  
+      106  ```python
+      107  @function
+      143 -async def static_checks_backend(self, source: Source) -> str: 
+      108 +def ci_env(self, source: Source) -> dagger.Container:         
+      109 +    """Create a full CI environment from pre-built base image.
+          +"""                                                           
+      110 +    pnpm_cache = dag.cache_volume("pnpm-store")               
+      111 +    uv_cache = dag.cache_volume("uv-cache")                   
+      112 +    nx_cache = dag.cache_volume("nx-cache")                   
+      113 +    next_cache = dag.cache_volume("next-cache")               
+      114 +    pip_cache = dag.cache_volume("pip-cache")                 
+      115 +    return (                                                  
+      116 +        dag.container()                                       
+      117 +        .from_("ghcr.io/theexperiencecompany/gaia-ci-base:late
+          +st")                                                          
+      118 +        .with_mounted_cache("/root/.local/share/pnpm/store", p
+          +npm_cache)                                                    
+      119 +        .with_mounted_cache("/root/.cache/uv", uv_cache)      
+      120 +        .with_mounted_cache("/root/.cache/pip", pip_cache)    
+      121 +        .with_mounted_cache("/app/.nx/cache", nx_cache)       
+      122 +        .with_mounted_cache("/app/apps/web/.next/cache", next_
+          +cache)                                                        
+      123 +        .with_directory("/app", source)                       
+      124 +        .with_workdir("/app")                                 
+      125 +        .with_exec(["pnpm", "install", "--frozen-lockfile"])  
+      126 +        .with_exec(                                           
+      127 +            [                                                 
+      128 +                "uv",                                         
+      129 +                "sync",                                       
+      130 +                "--frozen",                                   
+      131 +                "--package",                                  
+      132 +                "gaia",                                       
+      133 +                "--group",                                    
+      134 +                "backend",                                    
+      135 +                "--group",                                    
+      136 +                "dev",                                        
+      137 +            ]                                                 
+      138 +        )                                                     
+      139 +    )                                                         
+      140 +```                                                           
+      141 +                                                              
+      142 +### Step 2: Add `static_checks_backend()` and `static_checks_f
+          +rontend()`                                                    
+      143 +                                                              
+      144 +```python                                                     
+      145 +@function                                                     
+      146 +async def static_checks_backend(                              
+      147 +    self,                                                     
+      148 +    source: Source,                                           
+      149 +    projects: Annotated[str, Doc("Comma-separated Nx project n
+          +ames to check")] = "",                                        
+      150 +) -> str:                                                     
+      151      """Run backend static analysis: Ruff linting + mypy type c
+           hecking."""
+      152      env = self.ci_env(source)
+      146 -    lint_task = (                                             
+      147 -        env.with_exec(["npx", "nx", "run-many", "-t", "lint", 
+          -"-p", "api,voice-agent,shared-python,bot-discord,bot-slack,bot
+          --telegram", "--parallel=3"])                                  
+      148 -        .stdout()                                             
+      149 -    )                                                         
+      153 +    lint_cmd = ["npx", "nx", "run-many", "-t", "lint", "--para
+          +llel=3"]                                                      
+      154 +    tc_cmd = ["npx", "nx", "run-many", "-t", "type-check", "--
+          +parallel=3"]                                                  
+      155 +    if projects:                                              
+      156 +        lint_cmd.extend(["-p", projects])                     
+      157 +        tc_cmd.extend(["-p", projects])                       
+      158 +                                                              
+      159 +    lint_task = env.with_exec(lint_cmd).stdout()              
+      160      type_check_task = (
+      161          env.with_workdir("/app/apps/api")
+      162          .with_exec(["uv", "run", "mypy", "--install-types", "-
+           -non-interactive"])
+      163          .with_workdir("/app")
+      154 -        .with_exec(["npx", "nx", "run-many", "-t", "type-check
+          -", "-p", "api,voice-agent,shared-python", "--parallel=3"])    
+      164 +        .with_exec(tc_cmd)                                    
+      165          .stdout()
+      166      )
+      167      lint_out, tc_out = await asyncio.gather(lint_task, type_ch
+           eck_task)
+      168      return f"{'=' * 60}\n LINT (backend)\n{'=' * 60}\n{lint_ou
+           t}\n\n{'=' * 60}\n TYPE-CHECK (backend)\n{'=' * 60}\n{tc_out}"
+      159 -```                                                           
+      169  
+      161 -### Step 2: Add `static_checks_frontend()` function           
+      162 -                                                              
+      163 -```python                                                     
+      170  @function
+      165 -async def static_checks_frontend(self, source: Source) -> str:
+      171 +async def static_checks_frontend(                             
+      172 +    self,                                                     
+      173 +    source: Source,                                           
+      174 +    projects: Annotated[str, Doc("Comma-separated Nx project n
+          +ames to check")] = "",                                        
+      175 +) -> str:                                                     
+      176      """Run frontend static analysis: Biome linting + TypeScrip
+           t type checking."""
+      177      env = self.ci_env(source)
+      168 -    lint_task = (                                             
+      169 -        env.with_exec(["npx", "nx", "run-many", "-t", "lint", 
+          -"-p", "web,desktop,mobile,shared-typescript,docs", "--parallel
+          -=3"])                                                         
+      170 -        .stdout()                                             
+      171 -    )                                                         
+      172 -    type_check_task = (                                       
+      173 -        env.with_exec(["npx", "nx", "run-many", "-t", "type-ch
+          -eck", "-p", "web,desktop,mobile,shared-typescript", "--paralle
+          -l=3"])                                                        
+      174 -        .stdout()                                             
+      175 -    )                                                         
+      178 +    lint_cmd = ["npx", "nx", "run-many", "-t", "lint", "--para
+          +llel=3"]                                                      
+      179 +    tc_cmd = ["npx", "nx", "run-many", "-t", "type-check", "--
+          +parallel=3"]                                                  
+      180 +    if projects:                                              
+      181 +        lint_cmd.extend(["-p", projects])                     
+      182 +        tc_cmd.extend(["-p", projects])                       
+      183 +                                                              
+      184 +    lint_task = env.with_exec(lint_cmd).stdout()              
+      185 +    type_check_task = env.with_exec(tc_cmd).stdout()          
+      186      lint_out, tc_out = await asyncio.gather(lint_task, type_ch
+           eck_task)
+      187      return f"{'=' * 60}\n LINT (frontend)\n{'=' * 60}\n{lint_o
+           ut}\n\n{'=' * 60}\n TYPE-CHECK (frontend)\n{'=' * 60}\n{tc_out
+           }"
+      188  ```
+      189  
+      180 -### Step 3: Add `test_frontend()` function                    
+      190 +### Step 3: Add `test_backend()` with pytest-xdist            
+      191  
+      192  ```python
+      193  @function
+      184 -async def test_frontend(self, source: Source) -> str:         
+      185 -    """Run frontend tests (JS/TS via Nx)."""                  
+      186 -    return await (                                            
+      187 -        self.ci_env(source)                                   
+      188 -        .with_env_variable("ENV", "test")                     
+      189 -        .with_exec(["npx", "nx", "run-many", "-t", "test", "-p
+          -", "web,desktop,mobile,shared-typescript", "--parallel=3"])   
+      190 -        .stdout()                                             
+      191 -    )                                                         
+      192 -```                                                           
+      193 -                                                              
+      194 -### Step 4: Add `test_backend()` function                     
+      195 -                                                              
+      196 -This replaces the Python portion of `test()` and absorbs `inte
+          -gration_test()`. All Python tests run with live services — no 
+          -more split between "unit without services" and "integration wi
+          -th services".                                                 
+      197 -                                                              
+      198 -```python                                                     
+      199 -@function                                                     
+      194  async def test_backend(self, source: Source) -> str:
+      201 -    """Run all backend Python tests with live service containe
+          -rs.                                                           
+      195 +    """Run all backend Python tests with live service containe
+          +rs and parallel execution.                                    
+      196  
+      197      Spins up PostgreSQL, Redis, MongoDB, ChromaDB, and RabbitM
+           Q.
+      204 -    Runs all non-composio tests with coverage enforcement.    
+      198 +    Uses pytest-xdist (-n auto) for parallel test execution.  
+      199      """
+      200      return await (
+      201          self._service_test_container(source)
+      202 +        .with_exec(["uv", "pip", "install", "pytest-xdist"])  
+      203          .with_exec(
+      204              [
+      205                  "uv",
+      206                  "run",
+      207                  "pytest",
+      208 +                "-n",                                         
+      209 +                "auto",                                       
+      210                  "-m",
+      211                  "not composio",
+      212                  "--tb=short",
+      213                  "-q",
+      217 -                "--cov=app",                                  
+      218 -                "--cov-report=term-missing",                  
+      219 -                "--cov-fail-under=80",                        
+      214                  "--override-ini=addopts=--strict-markers",
+      215              ]
+      216          )
+     ...
+      218      )
+      219  ```
+      220  
+      227 -### Step 5: Add `trivy_scan()` as a standalone function       
+      221 +### Step 4: Add `test_frontend()`                             
+      222  
+      229 -Extract the inline trivy logic from `quality_checks()`:       
+      223 +```python                                                     
+      224 +@function                                                     
+      225 +async def test_frontend(                                      
+      226 +    self,                                                     
+      227 +    source: Source,                                           
+      228 +    projects: Annotated[str, Doc("Comma-separated Nx project n
+          +ames to test")] = "",                                         
+      229 +) -> str:                                                     
+      230 +    """Run frontend tests (JS/TS via Nx)."""                  
+      231 +    cmd = ["npx", "nx", "run-many", "-t", "test", "--parallel=
+          +3"]                                                           
+      232 +    if projects:                                              
+      233 +        cmd.extend(["-p", projects])                          
+      234 +    return await (                                            
+      235 +        self.ci_env(source)                                   
+      236 +        .with_env_variable("ENV", "test")                     
+      237 +        .with_exec(cmd)                                       
+      238 +        .stdout()                                             
+      239 +    )                                                         
+      240 +```                                                           
+      241  
+      242 +### Step 5: Add `trivy_scan()` as standalone function         
+      243 +                                                              
+      244  ```python
+      245  @function
+      246  async def trivy_scan(self, source: Source) -> str:
+      234 -    """Run Trivy security scan for CRITICAL and HIGH vulnerabi
+          -lities (informational, never fails CI)."""                    
+      247 +    """Run Trivy security scan for CRITICAL and HIGH vulnerabi
+          +lities (informational)."""                                    
+      248      return await (
+      249          dag.container()
+      250          .from_("ghcr.io/aquasecurity/trivy:latest")
+     ...
+      266      )
+      267  ```
+      268  
+      256 -### Step 6: Update `quality_checks()` to use new functions    
+      269 +### Step 6: Add `coverage()` as a separate check              
+      270  
+      258 -Keep it as a local convenience that calls all the new function
+          -s:                                                            
+      271 +```python                                                     
+      272 +@function                                                     
+      273 +async def coverage(self, source: Source) -> str:              
+      274 +    """Run backend test coverage report (informational, does n
+          +ot fail CI)."""                                               
+      275 +    return await (                                            
+      276 +        self._service_test_container(source)                  
+      277 +        .with_exec(["uv", "pip", "install", "pytest-xdist"])  
+      278 +        .with_exec(                                           
+      279 +            [                                                 
+      280 +                "uv",                                         
+      281 +                "run",                                        
+      282 +                "pytest",                                     
+      283 +                "-n",                                         
+      284 +                "auto",                                       
+      285 +                "-m",                                         
+      286 +                "not composio",                               
+      287 +                "--tb=short",                                 
+      288 +                "-q",                                         
+      289 +                "--cov=app",                                  
+      290 +                "--cov-report=term-missing",                  
+      291 +                "--override-ini=addopts=--strict-markers",    
+      292 +            ],                                                
+      293 +            expect=dagger.ReturnType.ANY,                     
+      294 +        )                                                     
+      295 +        .stdout()                                             
+      296 +    )                                                         
+      297 +```                                                           
+      298  
+      299 +### Step 7: Update `quality_checks()` to use new functions    
+      300 +                                                              
+      301  ```python
+      302  @function
+      303  async def quality_checks(self, source: Source) -> str:
+      263 -    """Run the full quality gate in parallel (convenience func
+          -tion for local use)."""                                       
+      304 +    """Run the full quality gate in parallel (convenience for 
+          +local use)."""                                                
+      305      results = await asyncio.gather(
+      306          self.static_checks_backend(source),
+      307          self.static_checks_frontend(source),
+     ...
+      328      return "\n\n".join(sections)
+      329  ```
+      330  
+      290 -### Step 7: Verify Dagger functions list                      
+      331 +### Step 8: Add pytest-xdist to dev dependencies              
+      332  
+      292 -Run: `dagger functions 2>&1 | head -30`                       
+      333 +**Files:**                                                    
+      334 +- Modify: `apps/api/pyproject.toml`                           
+      335  
+      294 -Expected: new functions appear: `static-checks-backend`, `stat
+          -ic-checks-frontend`, `test-frontend`, `test-backend`, `trivy-s
+          -can`                                                          
+      336 +Add `pytest-xdist` to the dev dependency group so it's availab
+          +le in the uv sync.                                            
+      337  
+      338  ---
+      339  
+      298 -## Task 2: Restructure main.yml                               
+      340 +## Task 3: Rewrite main.yml                                   
+      341  
+      342  **Files:**
+      343  - Modify: `.github/workflows/main.yml`
+      344  
+      303 -Replace the current single-job structure with:                
+      304 -                                                              
+      345  ```yaml
+      346  name: Quality Checks
+      347  
+      348  on:
+      349    pull_request:
+      310 -    branches:                                                 
+      311 -      - develop                                               
+      312 -      - master                                                
+      350 +    branches: [develop, master]                               
+      351    push:
+      314 -    branches:                                                 
+      315 -      - master                                                
+      352 +    branches: [master]                                        
+      353    workflow_dispatch:
+      354  
+      318 -# Cancel superseded runs on the same PR/branch.               
+      355  concurrency:
+      356    group: ${{ github.workflow }}-${{ github.ref }}
+      357    cancel-in-progress: true
+      358  
+      359  jobs:
+      324 -  # ── Gate: enforce master promotion policy ─────────────────
+          -─                                                             
+      360 +  # ── Policy: master promotion guard ────────────────────────
+          +─                                                             
+      361    policy:
+      326 -    runs-on: ubuntu-latest                                    
+      362      if: github.event_name == 'pull_request' && github.base_ref
+            == 'master'
+      363 +    runs-on: ubuntu-latest                                    
+      364      steps:
+      365        - name: Enforce master promotion policy
+      366          uses: actions/github-script@v7
+      367          with:
+      368            github-token: ${{ secrets.GITHUB_TOKEN }}
+      369            script: |
+      334 -            const isAllowedMasterSource = (ref) =>            
+      335 -              ref === "develop" || (typeof ref === "string" &&
+          - ref.startsWith("release-please--"));                         
+      370              const pr = context.payload.pull_request;
+      337 -            if (pr.base.ref === "master" && !isAllowedMasterSo
+          -urce(pr.head.ref)) {                                          
+      338 -              core.setFailed(                                 
+      339 -                `PRs to master must come from develop or relea
+          -se-please branches. Received '${pr.head.ref}' -> '${pr.base.re
+          -f}'.`,                                                        
+      340 -              );                                              
+      371 +            const allowed = pr.head.ref === "develop" || pr.he
+          +ad.ref.startsWith("release-please--");                        
+      372 +            if (!allowed) {                                   
+      373 +              core.setFailed(`PRs to master must come from dev
+          +elop or release-please branches. Got '${pr.head.ref}'.`);     
+      374              }
+      375  
+      343 -  # ── Detect: which scopes are affected? ────────────────────
+          -─                                                             
+      376 +  # ── Detect: Nx affected scopes ────────────────────────────
+          +─                                                             
+      377    detect:
+      378      runs-on: ubuntu-latest
+      379      outputs:
+      380        has_backend: ${{ steps.scope.outputs.has_backend }}
+      381        has_frontend: ${{ steps.scope.outputs.has_frontend }}
+      382 +      backend_projects: ${{ steps.scope.outputs.backend_projec
+          +ts }}                                                         
+      383 +      frontend_projects: ${{ steps.scope.outputs.frontend_proj
+          +ects }}                                                       
+      384      steps:
+      350 -      - name: Checkout                                        
+      351 -        uses: actions/checkout@v4                             
+      385 +      - uses: actions/checkout@v4                             
+      386          with:
+      387            fetch-depth: 0
+      354 -                                                              
+      355 -      - name: Set Nx SHAs                                     
+      356 -        uses: nrwl/nx-set-shas@v4                             
+      388 +      - uses: nrwl/nx-set-shas@v4                             
+      389          with:
+      390            main-branch-name: master
+      359 -                                                              
+      360 -      - name: Setup pnpm                                      
+      361 -        uses: pnpm/action-setup@v4                            
+      391 +      - uses: pnpm/action-setup@v4                            
+      392          with:
+      393            version: 10.17.1
+      364 -                                                              
+      365 -      - name: Setup Node.js                                   
+      366 -        uses: actions/setup-node@v4                           
+      394 +      - uses: actions/setup-node@v4                           
+      395          with:
+      396            node-version: "22.15.1"
+      369 -          cache: "pnpm"                                       
+      370 -                                                              
+      371 -      - name: Install dependencies                            
+      372 -        run: pnpm install --frozen-lockfile                   
+      373 -                                                              
+      397 +          cache: pnpm                                         
+      398 +      - run: pnpm install --frozen-lockfile                   
+      399        - name: Detect affected scopes
+      400          id: scope
+      401          run: |
+      402            AFFECTED_RAW="$(npx nx show projects --affected 2>/d
+           ev/null || true)"
+      403            AFFECTED="$(printf '%s\n' "$AFFECTED_RAW" | tr ' ' '
+           \n' | sed '/^$/d')"
+      404 +          echo "Affected projects: $AFFECTED"                 
+      405  
+      380 -          echo "Affected projects:"                           
+      381 -          echo "$AFFECTED"                                    
+      406 +          BACKEND_PROJS=""                                    
+      407 +          FRONTEND_PROJS=""                                   
+      408  
+      383 -          has_backend=false                                   
+      384 -          has_frontend=false                                  
+      385 -                                                              
+      386 -          # Backend scope: api, voice-agent, shared-python, bo
+          -ts                                                            
+      409            for proj in api voice-agent shared-python bot-discor
+           d bot-slack bot-telegram bot-whatsapp; do
+      410              if echo "$AFFECTED" | grep -qx "$proj"; then
+      389 -              has_backend=true                                
+      390 -              break                                           
+      411 +              BACKEND_PROJS="${BACKEND_PROJS:+$BACKEND_PROJS,}
+          +$proj"                                                        
+      412              fi
+      413            done
+      414  
+      394 -          # Frontend scope: web, desktop, mobile, shared-types
+          -cript, docs                                                   
+      415            for proj in web desktop mobile shared-typescript doc
+           s; do
+      416              if echo "$AFFECTED" | grep -qx "$proj"; then
+      397 -              has_frontend=true                               
+      398 -              break                                           
+      417 +              FRONTEND_PROJS="${FRONTEND_PROJS:+$FRONTEND_PROJ
+          +S,}$proj"                                                     
+      418              fi
+      419            done
+      420  
+      402 -          # Force both on workflow_dispatch (manual runs shoul
+          -d check everything)                                           
+      421 +          # Force all on workflow_dispatch                    
+      422            if [ "${{ github.event_name }}" = "workflow_dispatch
+           " ]; then
+      404 -            has_backend=true                                  
+      405 -            has_frontend=true                                 
+      423 +            BACKEND_PROJS="api,voice-agent,shared-python,bot-d
+          +iscord,bot-slack,bot-telegram,bot-whatsapp"                   
+      424 +            FRONTEND_PROJS="web,desktop,mobile,shared-typescri
+          +pt,docs"                                                      
+      425            fi
+      426  
+      427 +          has_backend=$( [ -n "$BACKEND_PROJS" ] && echo true 
+          +|| echo false )                                               
+      428 +          has_frontend=$( [ -n "$FRONTEND_PROJS" ] && echo tru
+          +e || echo false )                                             
+      429 +                                                              
+      430            echo "has_backend=$has_backend" >> "$GITHUB_OUTPUT"
+      431            echo "has_frontend=$has_frontend" >> "$GITHUB_OUTPUT
+           "
+      410 -          echo "Scopes => backend: $has_backend, frontend: $ha
+          -s_frontend"                                                   
+      432 +          echo "backend_projects=$BACKEND_PROJS" >> "$GITHUB_O
+          +UTPUT"                                                        
+      433 +          echo "frontend_projects=$FRONTEND_PROJS" >> "$GITHUB
+          +_OUTPUT"                                                      
+      434 +          echo "Scopes => backend: $has_backend ($BACKEND_PROJ
+          +S), frontend: $has_frontend ($FRONTEND_PROJS)"                
+      435  
+      436    # ── Warm: pre-pull Dagger engine image ────────────────────
+           ─
+      437    warm-engine:
+     ...
+      446            done
+      447          timeout-minutes: 20
+      448  
+      425 -  # ── Fast gate: static checks (parallel) ───────────────────
+          -─                                                             
+      449 +  # ── All checks run in parallel after detect + warm ────────
+          +─                                                             
+      450  
+      451    static-checks-backend:
+      452      needs: [detect, warm-engine]
+     ...
+      455      permissions:
+      456        contents: read
+      457      steps:
+      434 -      - name: Checkout                                        
+      435 -        uses: actions/checkout@v4                             
+      458 +      - uses: actions/checkout@v4                             
+      459          with:
+      460            fetch-depth: 0
+      438 -      - name: Run backend static checks                       
+      461 +      - name: Backend lint + type-check                       
+      462          uses: dagger/dagger-for-github@v8.4.1
+      463          with:
+      464            version: "0.20.3"
+      465            dagger-flags: "--silent"
+      443 -          call: static-checks-backend                         
+      466 +          call: static-checks-backend --projects=${{ needs.det
+          +ect.outputs.backend_projects }}                               
+      467          timeout-minutes: 15
+      468  
+      469    static-checks-frontend:
+     ...
+      473      permissions:
+      474        contents: read
+      475      steps:
+      453 -      - name: Checkout                                        
+      454 -        uses: actions/checkout@v4                             
+      476 +      - uses: actions/checkout@v4                             
+      477          with:
+      478            fetch-depth: 0
+      457 -      - name: Run frontend static checks                      
+      479 +      - name: Frontend lint + type-check                      
+      480          uses: dagger/dagger-for-github@v8.4.1
+      481          with:
+      482            version: "0.20.3"
+      483            dagger-flags: "--silent"
+      462 -          call: static-checks-frontend                        
+      484 +          call: static-checks-frontend --projects=${{ needs.de
+          +tect.outputs.frontend_projects }}                             
+      485          timeout-minutes: 15
+      486  
+      465 -  dead-code:                                                  
+      487 +  build:                                                      
+      488      needs: [detect, warm-engine]
+      467 -    if: needs.detect.outputs.has_backend == 'true' || needs.de
+          -tect.outputs.has_frontend == 'true'                           
+      489 +    if: needs.detect.outputs.has_frontend == 'true'           
+      490      runs-on: blacksmith-4vcpu-ubuntu-2404
+      491      permissions:
+      492        contents: read
+      493      steps:
+      472 -      - name: Checkout                                        
+      473 -        uses: actions/checkout@v4                             
+      494 +      - uses: actions/checkout@v4                             
+      495          with:
+      496            fetch-depth: 0
+      476 -      - name: Run dead code detection                         
+      497 +      - name: Build                                           
+      498          uses: dagger/dagger-for-github@v8.4.1
+      499          with:
+      500            version: "0.20.3"
+      501            dagger-flags: "--silent"
+      481 -          call: dead-code                                     
+      482 -        timeout-minutes: 10                                   
+      502 +          call: build                                         
+      503 +        timeout-minutes: 15                                   
+      504  
+      484 -  release-validation:                                         
+      485 -    needs: [warm-engine]                                      
+      505 +  test-backend:                                               
+      506 +    needs: [detect, warm-engine]                              
+      507 +    if: needs.detect.outputs.has_backend == 'true'            
+      508      runs-on: blacksmith-4vcpu-ubuntu-2404
+      509      permissions:
+      510        contents: read
+      511      steps:
+      490 -      - name: Checkout                                        
+      491 -        uses: actions/checkout@v4                             
+      512 +      - uses: actions/checkout@v4                             
+      513          with:
+      514            fetch-depth: 0
+      494 -      - name: Validate release manifest                       
+      515 +      - name: Backend tests (with services + xdist)           
+      516          uses: dagger/dagger-for-github@v8.4.1
+      517          with:
+      518            version: "0.20.3"
+      519            dagger-flags: "--silent"
+      499 -          call: validate-release                              
+      500 -        timeout-minutes: 5                                    
+      520 +          call: test-backend                                  
+      521 +        timeout-minutes: 25                                   
+      522  
+      502 -  trivy-scan:                                                 
+      503 -    needs: [warm-engine]                                      
+      523 +  test-frontend:                                              
+      524 +    needs: [detect, warm-engine]                              
+      525 +    if: needs.detect.outputs.has_frontend == 'true'           
+      526      runs-on: blacksmith-4vcpu-ubuntu-2404
+      527      permissions:
+      528        contents: read
+      507 -    continue-on-error: true                                   
+      529      steps:
+      509 -      - name: Checkout                                        
+      510 -        uses: actions/checkout@v4                             
+      530 +      - uses: actions/checkout@v4                             
+      531          with:
+      532            fetch-depth: 0
+      513 -      - name: Run Trivy security scan                         
+      533 +      - name: Frontend tests                                  
+      534          uses: dagger/dagger-for-github@v8.4.1
+      535          with:
+      536            version: "0.20.3"
+      537            dagger-flags: "--silent"
+      518 -          call: trivy-scan                                    
+      538 +          call: test-frontend --projects=${{ needs.detect.outp
+          +uts.frontend_projects }}                                      
+      539 +        timeout-minutes: 15                                   
+      540 +                                                              
+      541 +  dead-code:                                                  
+      542 +    needs: [detect, warm-engine]                              
+      543 +    if: needs.detect.outputs.has_backend == 'true' || needs.de
+          +tect.outputs.has_frontend == 'true'                           
+      544 +    runs-on: blacksmith-4vcpu-ubuntu-2404                     
+      545 +    permissions:                                              
+      546 +      contents: read                                          
+      547 +    steps:                                                    
+      548 +      - uses: actions/checkout@v4                             
+      549 +        with:                                                 
+      550 +          fetch-depth: 0                                      
+      551 +      - name: Dead code detection                             
+      552 +        uses: dagger/dagger-for-github@v8.4.1                 
+      553 +        with:                                                 
+      554 +          version: "0.20.3"                                   
+      555 +          dagger-flags: "--silent"                            
+      556 +          call: dead-code                                     
+      557          timeout-minutes: 10
+      558  
+      521 -  # ── Build gate ────────────────────────────────────────────
+          -─                                                             
+      522 -                                                              
+      523 -  build:                                                      
+      524 -    needs: [detect, static-checks-frontend]                   
+      525 -    if: needs.detect.outputs.has_frontend == 'true'           
+      559 +  release-validation:                                         
+      560 +    needs: [warm-engine]                                      
+      561      runs-on: blacksmith-4vcpu-ubuntu-2404
+      562      permissions:
+      563        contents: read
+      564      steps:
+      530 -      - name: Checkout                                        
+      531 -        uses: actions/checkout@v4                             
+      565 +      - uses: actions/checkout@v4                             
+      566          with:
+      567            fetch-depth: 0
+      534 -      - name: Build frontend                                  
+      568 +      - name: Validate release manifest                       
+      569          uses: dagger/dagger-for-github@v8.4.1
+      570          with:
+      571            version: "0.20.3"
+      572            dagger-flags: "--silent"
+      539 -          call: build                                         
+      540 -        timeout-minutes: 15                                   
+      573 +          call: validate-release                              
+      574 +        timeout-minutes: 5                                    
+      575  
+      542 -  # ── Test gate ─────────────────────────────────────────────
+          -─                                                             
+      543 -                                                              
+      544 -  test-frontend:                                              
+      545 -    needs: [detect, build]                                    
+      546 -    if: needs.detect.outputs.has_frontend == 'true'           
+      576 +  trivy-scan:                                                 
+      577 +    needs: [warm-engine]                                      
+      578      runs-on: blacksmith-4vcpu-ubuntu-2404
+      579      permissions:
+      580        contents: read
+      581 +    continue-on-error: true                                   
+      582      steps:
+      551 -      - name: Checkout                                        
+      552 -        uses: actions/checkout@v4                             
+      583 +      - uses: actions/checkout@v4                             
+      584          with:
+      585            fetch-depth: 0
+      555 -      - name: Run frontend tests                              
+      586 +      - name: Trivy security scan                             
+      587          uses: dagger/dagger-for-github@v8.4.1
+      588          with:
+      589            version: "0.20.3"
+      590            dagger-flags: "--silent"
+      560 -          call: test-frontend                                 
+      561 -        timeout-minutes: 15                                   
+      591 +          call: trivy-scan                                    
+      592 +        timeout-minutes: 10                                   
+      593  
+      563 -  test-backend:                                               
+      564 -    needs: [detect, static-checks-backend]                    
+      594 +  coverage:                                                   
+      595 +    needs: [detect, warm-engine]                              
+      596      if: needs.detect.outputs.has_backend == 'true'
+      597      runs-on: blacksmith-4vcpu-ubuntu-2404
+      598      permissions:
+      599        contents: read
+      600 +    continue-on-error: true                                   
+      601      steps:
+      570 -      - name: Checkout                                        
+      571 -        uses: actions/checkout@v4                             
+      602 +      - uses: actions/checkout@v4                             
+      603          with:
+      604            fetch-depth: 0
+      574 -      - name: Run backend tests                               
+      605 +      - name: Coverage report                                 
+      606          uses: dagger/dagger-for-github@v8.4.1
+      607          with:
+      608            version: "0.20.3"
+      609            dagger-flags: "--silent"
+      579 -          call: test-backend                                  
+      580 -        timeout-minutes: 30                                   
+      610 +          call: coverage                                      
+      611 +        timeout-minutes: 25                                   
+      612  
+      582 -  # ── Downstream: trigger build/deploy on master ────────────
+          -─                                                             
+      613 +  # ── Quality gate: single required check for branch protecti
+          +on                                                            
+      614 +  quality-gate:                                               
+      615 +    needs: [static-checks-backend, static-checks-frontend, bui
+          +ld, test-backend, test-frontend, dead-code, release-validation
+          +]                                                             
+      616 +    if: always()                                              
+      617 +    runs-on: ubuntu-latest                                    
+      618 +    steps:                                                    
+      619 +      - name: Check all gates                                 
+      620 +        run: |                                                
+      621 +          results='${{ toJSON(needs.*.result) }}'             
+      622 +          if echo "$results" | grep -qE '"failure"|"cancelled"
+          +'; then                                                       
+      623 +            echo "Quality gate failed"                        
+      624 +            echo "$results"                                   
+      625 +            exit 1                                            
+      626 +          fi                                                  
+      627 +          echo "All quality gates passed"                     
+      628  
+      629 +  # ── Trigger downstream build/deploy on master ─────────────
+          +─                                                             
+      630    trigger-build:
+      585 -    needs: [detect, static-checks-backend, static-checks-front
+          -end, dead-code, release-validation, build, test-frontend, test
+          --backend]                                                     
+      586 -    # Run if on master AND all required checks either passed o
+          -r were skipped.                                               
+      587 -    if: |                                                     
+      588 -      always() &&                                             
+      589 -      github.ref == 'refs/heads/master' &&                    
+      590 -      !contains(needs.*.result, 'failure') &&                 
+      591 -      !contains(needs.*.result, 'cancelled')                  
+      631 +    needs: [quality-gate]                                     
+      632 +    if: github.ref == 'refs/heads/master'                     
+      633      uses: ./.github/workflows/build.yml
+      634      secrets: inherit
+      635  ```
+      636  
+      596 -**Key details in this YAML:**                                 
+      597 -                                                              
+      598 -1. **`concurrency` with `cancel-in-progress: true`** — superse
+          -des stale runs on the same PR. The old config didn't have this
+          -.                                                             
+      599 -                                                              
+      600 -2. **`detect` runs on `ubuntu-latest`** (cheapest runner) — it
+          - only needs Node + pnpm to run `nx show projects --affected`. 
+          -No Dagger needed.                                             
+      601 -                                                              
+      602 -3. **`warm-engine` runs in parallel with `detect`** — no waste
+          -d time.                                                       
+      603 -                                                              
+      604 -4. **`policy` is a separate job** — only runs on master PRs, d
+          -oesn't block other jobs.                                      
+      605 -                                                              
+      606 -5. **`test-backend` depends on `static-checks-backend`** (not 
+          -`build`) — backend build is a noop, so no point waiting for th
+          -e frontend build step.                                        
+      607 -                                                              
+      608 -6. **`test-frontend` depends on `build`** — frontend tests may
+          - need built artifacts.                                        
+      609 -                                                              
+      610 -7. **`trigger-build` uses `always()` with failure checks** — s
+          -o skipped jobs don't block master deploys. If backend isn't af
+          -fected, `static-checks-backend` is skipped (not failed), and t
+          -he deploy still proceeds.                                     
+      611 -                                                              
+      612 -8. **`trigger-build` needs all jobs listed** — GitHub Actions 
+          -requires explicit `needs` for the `if` to reference them.     
+      613 -                                                              
+      637  ---
+      638  
+      616 -## Task 3: Update mise.toml CI tasks                          
+      639 +## Task 4: Update mise.toml CI tasks                          
+      640  
+      641  **Files:**
+      642  - Modify: `mise.toml`
+      643  
+      621 -Update the dagger task section to match new function names:   
+      644 +Replace the CI dagger task block. Add new tasks, remove `ci:da
+          +gger:test-matrix`:                                            
+      645  
+      646  ```toml
+      647  [tasks."ci:dagger"]
+     ...
+      649  run = "dagger call -s quality-checks"
+      650  
+      651  [tasks."ci:dagger:static:backend"]
+      629 -description = "Run backend static checks (lint + type-check) v
+          -ia Dagger"                                                    
+      652 +description = "Run backend lint + type-check via Dagger"      
+      653  run = "dagger call -s static-checks-backend"
+      654  
+      655  [tasks."ci:dagger:static:frontend"]
+      633 -description = "Run frontend static checks (lint + type-check) 
+          -via Dagger"                                                   
+      656 +description = "Run frontend lint + type-check via Dagger"     
+      657  run = "dagger call -s static-checks-frontend"
+      658  
+      659  [tasks."ci:dagger:lint"]
+     ...
+      673  run = "dagger call -s test"
+      674  
+      675  [tasks."ci:dagger:test:backend"]
+      653 -description = "Run backend tests via Dagger (with live Postgre
+          -s, Redis, MongoDB, ChromaDB, RabbitMQ)"                       
+      676 +description = "Run backend tests via Dagger (with live service
+          +s + xdist)"                                                   
+      677  run = "dagger call -s test-backend"
+      678  
+      679  [tasks."ci:dagger:test:frontend"]
+     ...
+      688  description = "Run Trivy security scan via Dagger"
+      689  run = "dagger call -s trivy-scan"
+      690  
+      691 +[tasks."ci:dagger:coverage"]                                  
+      692 +description = "Run backend test coverage report via Dagger"   
+      693 +run = "dagger call -s coverage"                               
+      694 +                                                              
+      695  [tasks."ci:dagger:integration"]
+      669 -description = "Run integration tests via Dagger (with live Pos
+          -tgres, Redis, MongoDB)"                                       
+      696 +description = "Run integration tests via Dagger (with live ser
+          +vices)"                                                       
+      697  run = "dagger call -s integration-test"
+      698  
+      699  [tasks."ci:dagger:service"]
+      673 -description = "Run service-marked tests via Dagger (verbose, w
+          -ith live databases)"                                          
+      700 +description = "Run service-marked tests via Dagger (verbose)" 
+      701  run = "dagger call -s service-test"
+      702  
+      703  [tasks."ci:dagger:debug"]
+     ...
+      709  run = "dagger call -vv quality-checks"
+      710  ```
+      711  
+      685 -Remove `ci:dagger:test-matrix` (the function was already remov
+          -ed from main.py).                                             
+      686 -                                                              
+      712  ---
+      713  
+      689 -## Task 4: Update workflows README                            
+      714 +## Task 5: Add pytest-xdist dependency                        
+      715  
+      716  **Files:**
+      692 -- Modify: `.github/workflows/README.md`                       
+      717 +- Modify: `apps/api/pyproject.toml`                           
+      718  
+      694 -Update the documentation to reflect the new job structure. Doc
+          -ument:                                                        
+      695 -- The `detect` → `fast gate` → `build gate` → `test gate` flow
+      696 -- How affected detection works                                
+      697 -- Which jobs run for backend-only vs frontend-only vs full cha
+          -nges                                                          
+      698 -- That `workflow_dispatch` forces both scopes                 
+      719 +Add `pytest-xdist` to the `[dependency-groups] dev` section.  
+      720  
+      721  ---
+      722  
+      702 -## Task 5: Verify end-to-end                                  
+      723 +## Task 6: Update workflows README                            
+      724  
+      704 -### Step 1: Verify Dagger functions compile                   
+      725 +**Files:**                                                    
+      726 +- Modify: `.github/workflows/README.md`                       
+      727  
+      706 -Run: `cd /Users/aryan/Projects/GAIA/gaia-1 && dagger functions
+          - 2>&1`                                                        
+      728 +Update the mermaid diagram and per-workflow steps to reflect: 
+      729 +- `detect` → all jobs parallel → `quality-gate` → `trigger-bui
+          +ld`                                                           
+      730 +- Affected detection scopes and project list passthrough      
+      731 +- Coverage as non-blocking informational check                
+      732  
+      708 -Expected: all new functions listed without errors.            
+      733 +---                                                           
+      734  
+      710 -### Step 2: Test individual functions locally                 
+      735 +## Task 7: Verify                                             
+      736  
+      712 -Run: `dagger call -s static-checks-backend 2>&1 | tail -5`    
+      713 -Run: `dagger call -s static-checks-frontend 2>&1 | tail -5`   
+      714 -Run: `dagger call -s test-frontend 2>&1 | tail -5`            
+      715 -Run: `dagger call -s trivy-scan 2>&1 | tail -5`               
+      737 +1. `dagger functions` — all new functions listed              
+      738 +2. `dagger call -s static-checks-backend` — runs successfully 
+      739 +3. `dagger call -s test-backend` — runs with xdist            
+      740 +4. `dagger call -s trivy-scan` — runs standalone              
+      741 +5. `dagger call -s quality-checks` — full gate still works    
+      742  
+      717 -### Step 3: Validate workflow YAML syntax                     
+      718 -                                                              
+      719 -Run: `npx action-validator .github/workflows/main.yml` or use 
+          -`act --list` to validate.                                     
+      720 -                                                              
+      721 -### Step 4: Test full quality gate still works                
+      722 -                                                              
+      723 -Run: `dagger call -s quality-checks 2>&1 | tail -20`          
+      724 -                                                              
+      743  ---
+      744  
+      727 -## Risk Considerations                                        
+      745 +## Future: parallel Docker builds on master                   
+      746  
+      729 -1. **Dagger container rebuild per job**: Each job calls `ci_en
+          -v()` which installs deps. Dagger's cache volumes (`pnpm-store`
+          -, `uv-cache`, `nx-cache`) are shared across calls on the same 
+          -runner, but **not across different runner instances**. On Blac
+          -ksmith, each job may get a different VM. This means ~60-90s ov
+          -erhead per job for `pnpm install` + `uv sync` (cached but not 
+          -instant). Total overhead for 7 jobs: ~7-10 min of setup vs ~1 
+          -min for the monolith. **Mitigation**: the parallelism more tha
+          -n compensates — wall clock time drops because the slow jobs (t
+          -ests) start earlier.                                          
+      730 -                                                              
+      731 -2. **`trigger-build` with `always()`**: Using `always()` means
+          - it evaluates even if upstream jobs are cancelled. The `!conta
+          -ins(needs.*.result, 'cancelled')` guard prevents this, but tes
+          -t carefully.                                                  
+      732 -                                                              
+      733 -3. **Skipped jobs and required checks**: If you have branch pr
+          -otection rules requiring `quality-checks` to pass, you'll need
+          - to update them to require the new job names. Consider using a
+          - final `quality-gate` summary job that all branch protection r
+          -ules point to.                                                
+      734 -                                                              
+      735 -### Optional: Add a `quality-gate` summary job                
+      736 -                                                              
+      737 -```yaml                                                       
+      738 -quality-gate:                                                 
+      739 -  needs: [static-checks-backend, static-checks-frontend, dead-
+          -code, release-validation, build, test-frontend, test-backend] 
+      740 -  if: always()                                                
+      741 -  runs-on: ubuntu-latest                                      
+      742 -  steps:                                                      
+      743 -    - name: Check all gates                                   
+      744 -      run: |                                                  
+      745 -        if echo '${{ toJSON(needs.*.result) }}' | grep -qE '"f
+          -ailure"|"cancelled"'; then                                    
+      746 -          echo "One or more quality gates failed"             
+      747 -          exit 1                                              
+      748 -        fi                                                    
+      749 -        echo "All quality gates passed"                       
+      750 -```                                                           
+      751 -                                                              
+      752 -This gives branch protection a single job name (`quality-gate`
+          -) to require, regardless of which sub-jobs are skipped.       
+      747 +On master push, `build.yml` waits for the full quality gate be
+          +fore starting Docker builds. These could run in parallel (Dock
+          +er builds don't need test results). Add `push: branches: [mast
+          +er]` to `build.yml` triggers, with deploy gated on both qualit
+          +y-gate and Docker build completion via status checks. Separate
+          + PR.                                                          
+
+⏺ Plan rewritten. Clean, final decisions only.
+
+  The key insight you pushed on: no sequential gates. The old plan had
+  static-checks → build → tests as a chain. That's slower than the current
+  monolith which already runs everything in parallel. Now everything fires in
+  parallel after detect, and the critical path is just detect (30s) + 
+  test-backend (~7 min with xdist) = ~8 min.
+
+  The affected project list gets passed through to Dagger functions
+  (--projects=api,bot-discord), so Nx only runs on what changed inside the
+  container too.
+
+  Two execution options:
+
+  1. Subagent-Driven (this session) — I dispatch a subagent per task, review
+  between tasks
+
+  2. Parallel Session (separate) — open new session with executing-plans
+
+  Which approach?
+
+✻ Cogitated for 3m 25s
+
+❯ /buddy pet 
+  ⎿  petted Soup

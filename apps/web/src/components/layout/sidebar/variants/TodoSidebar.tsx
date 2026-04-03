@@ -13,7 +13,7 @@ import {
   Tag01Icon,
 } from "@icons";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import { priorityTextColors } from "@/features/todo/components/TodoItem";
@@ -23,6 +23,58 @@ import { usePathname } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 import { Priority } from "@/types/features/todoTypes";
 import { accordionItemStyles } from "../constants";
+
+const HighPriorityIcon = () => (
+  <Flag02Icon
+    width={18}
+    height={18}
+    style={{ color: priorityTextColors[Priority.HIGH] }}
+  />
+);
+
+const MediumPriorityIcon = () => (
+  <Flag02Icon
+    width={18}
+    height={18}
+    style={{ color: priorityTextColors[Priority.MEDIUM] }}
+  />
+);
+
+const LowPriorityIcon = () => (
+  <Flag02Icon
+    width={18}
+    height={18}
+    style={{ color: priorityTextColors[Priority.LOW] }}
+  />
+);
+
+const LabelTagIcon = () => <Tag01Icon width={18} height={18} />;
+
+function ProjectIcon({ color }: { color?: string }) {
+  return (
+    <div className="flex items-center">
+      <Folder02Icon className="w-[20px]" style={{ color }} />
+    </div>
+  );
+}
+
+const PRIORITY_MENU_ITEMS = [
+  {
+    label: "High Priority",
+    icon: HighPriorityIcon,
+    href: "/todos/priority/high",
+  },
+  {
+    label: "Medium Priority",
+    icon: MediumPriorityIcon,
+    href: "/todos/priority/medium",
+  },
+  {
+    label: "Low Priority",
+    icon: LowPriorityIcon,
+    href: "/todos/priority/low",
+  },
+];
 
 type MenuItem = {
   label: string;
@@ -139,99 +191,72 @@ export default function TodoSidebar() {
   //   }
   // };
 
-  const mainMenuItems: MenuItem[] = [
-    {
-      label: "Inbox",
-      icon: InboxIcon,
-      href: "/todos",
-      count: counts.inbox,
-    },
-    {
-      label: "Today",
-      icon: Calendar01Icon,
-      href: "/todos/today",
-      count: counts.today,
-    },
-    {
-      label: "Upcoming",
-      icon: CalendarUpload02Icon,
-      href: "/todos/upcoming",
-      count: counts.upcoming,
-    },
-    {
-      label: "Completed",
-      icon: InboxCheckIcon,
-      href: "/todos/completed",
-      count: counts.completed,
-    },
-  ];
-
-  // Priority items
-  const priorityMenuItems: MenuItem[] = [
-    {
-      label: "High Priority",
-      icon: () => (
-        <Flag02Icon
-          width={18}
-          height={18}
-          style={{ color: priorityTextColors[Priority.HIGH] }}
-        />
-      ),
-      href: "/todos/priority/high",
-    },
-    {
-      label: "Medium Priority",
-      icon: () => (
-        <Flag02Icon
-          width={18}
-          height={18}
-          style={{ color: priorityTextColors[Priority.MEDIUM] }}
-        />
-      ),
-      href: "/todos/priority/medium",
-    },
-    {
-      label: "Low Priority",
-      icon: () => (
-        <Flag02Icon
-          width={18}
-          height={18}
-          style={{ color: priorityTextColors[Priority.LOW] }}
-        />
-      ),
-      href: "/todos/priority/low",
-    },
-  ];
+  const mainMenuItems: MenuItem[] = useMemo(
+    () => [
+      {
+        label: "Inbox",
+        icon: InboxIcon,
+        href: "/todos",
+        count: counts.inbox,
+      },
+      {
+        label: "Today",
+        icon: Calendar01Icon,
+        href: "/todos/today",
+        count: counts.today,
+      },
+      {
+        label: "Upcoming",
+        icon: CalendarUpload02Icon,
+        href: "/todos/upcoming",
+        count: counts.upcoming,
+      },
+      {
+        label: "Completed",
+        icon: InboxCheckIcon,
+        href: "/todos/completed",
+        count: counts.completed,
+      },
+    ],
+    [counts.inbox, counts.today, counts.upcoming, counts.completed],
+  );
 
   // Label items - show top 5 most used labels or empty state
-  const labelMenuItems: MenuItem[] =
-    labels.length > 0
-      ? labels.slice(0, 5).map((label) => ({
-          label: label.name,
-          icon: () => <Tag01Icon width={18} height={18} />,
-          href: `/todos/label/${encodeURIComponent(label.name)}`,
-          count: label.count,
-        }))
-      : [];
-
-  // Project color component
-  const ProjectIcon = ({ color }: { color?: string }) => {
-    return (
-      <div className="flex items-center">
-        <Folder02Icon className="w-[20px]" style={{ color }} />
-      </div>
-    );
-  };
+  const labelMenuItems: MenuItem[] = useMemo(
+    () =>
+      labels.length > 0
+        ? labels.slice(0, 5).map((label) => ({
+            label: label.name,
+            icon: LabelTagIcon,
+            href: `/todos/label/${encodeURIComponent(label.name)}`,
+            count: label.count,
+          }))
+        : [],
+    [labels],
+  );
 
   // Project items - convert projects to menu items or empty state
-  const projectMenuItems: MenuItem[] = projects
-    .filter((p) => !p.is_default)
-    .map((project) => ({
-      label: project.name,
-      icon: () => <ProjectIcon color={project.color} />,
-      href: `/todos/project/${project.id}`,
-      count: project.todo_count,
-    }));
+  const projectMenuItems: MenuItem[] = useMemo(
+    () =>
+      projects
+        .filter((p) => !p.is_default)
+        .map((project) => {
+          const color = project.color;
+          const ProjectColorIcon = ({
+            className: _className,
+          }: {
+            className?: string;
+          }) => <ProjectIcon color={color} />;
+          ProjectColorIcon.displayName = `ProjectIcon_${project.id}`;
+          return {
+            label: project.name,
+            icon: ProjectColorIcon,
+            href: `/todos/project/${project.id}`,
+            count: project.todo_count,
+          };
+        }),
+    [projects],
+  );
 
   return (
     <>
@@ -272,7 +297,7 @@ export default function TodoSidebar() {
             {/* Priorities */}
             <SidebarSection
               title="Priorities"
-              items={priorityMenuItems}
+              items={PRIORITY_MENU_ITEMS}
               activeItem={pathname}
               onItemClick={handleNavigation}
             />

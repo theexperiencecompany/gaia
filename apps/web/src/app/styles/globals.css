@@ -480,15 +480,20 @@
   }
 
   .mcp-app-surface > div {
-    display: block;
-    height: 100%;
-    width: 100%;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    display: block !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    height: 100% !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    width: 100% !important;
   }
 
   .mcp-app-surface iframe {
     display: block;
-    height: 100%;
-    width: 100%;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    height: 100% !important;
+    /* biome-ignore lint/complexity/noImportantStyles: override third-party MCP app styles */
+    width: 100% !important;
   }
 
   .chat_bubble {
@@ -636,6 +641,26 @@
     justify-content: flex-start;
     min-height: 70vh;
     padding: 2rem 0 2rem -0.5rem;
+  }
+
+  /* content-visibility: skip rendering off-screen items in long lists */
+  .cv-auto {
+    content-visibility: auto;
+  }
+
+  .cv-chat-message {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 120px;
+  }
+
+  .cv-notification-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 100px;
+  }
+
+  .cv-todo-item {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 60px;
   }
 
   .navbar {

@@ -26,42 +26,61 @@ interface MermaidInstance {
   contentLoaded: () => void;
 }
 
+// Module-level guard: mermaid SDK should only be initialized once per app load,
+// not per component mount (advanced-init-once pattern).
+let mermaidInstance: MermaidInstance | null = null;
+let mermaidInitPromise: Promise<MermaidInstance> | null = null;
+
+function getMermaidInstance(): Promise<MermaidInstance> {
+  if (mermaidInstance) return Promise.resolve(mermaidInstance);
+  if (mermaidInitPromise) return mermaidInitPromise;
+
+  mermaidInitPromise = import("mermaid").then((mermaidModule) => {
+    mermaidModule.default.initialize({
+      startOnLoad: true,
+      theme: "dark",
+      flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: "linear",
+      },
+      // Disable unused diagram types to reduce bundle size
+      gantt: {
+        useMaxWidth: false,
+      },
+      journey: {
+        useMaxWidth: false,
+      },
+      timeline: {
+        useMaxWidth: false,
+      },
+      // Disable cytoscape layouts to prevent loading cytoscape
+      elk: {
+        mergeEdges: false,
+      },
+    });
+    mermaidInstance = mermaidModule.default;
+    return mermaidInstance;
+  });
+
+  return mermaidInitPromise;
+}
+
 // Dynamic import for mermaid library
 const useMermaid = () => {
-  const [mermaid, setMermaid] = useState<MermaidInstance | null>(null);
+  const [mermaid, setMermaid] = useState<MermaidInstance | null>(
+    mermaidInstance,
+  );
 
   useEffect(() => {
-    const loadMermaid = async () => {
-      if (!mermaid) {
-        const mermaidModule = await import("mermaid");
-        mermaidModule.default.initialize({
-          startOnLoad: true,
-          theme: "dark",
-          flowchart: {
-            useMaxWidth: true,
-            htmlLabels: true,
-            curve: "linear",
-          },
-          // Disable unused diagram types to reduce bundle size
-          gantt: {
-            useMaxWidth: false,
-          },
-          journey: {
-            useMaxWidth: false,
-          },
-          timeline: {
-            useMaxWidth: false,
-          },
-          // Disable cytoscape layouts to prevent loading cytoscape
-          elk: {
-            mergeEdges: false,
-          },
-        });
-        setMermaid(mermaidModule.default);
-      }
+    if (mermaid) return;
+    let cancelled = false;
+    getMermaidInstance().then((instance) => {
+      if (!cancelled) setMermaid(instance);
+    });
+    return () => {
+      cancelled = true;
     };
-
-    loadMermaid();
   }, [mermaid]);
 
   return mermaid;

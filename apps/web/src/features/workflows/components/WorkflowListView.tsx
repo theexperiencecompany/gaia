@@ -1,9 +1,17 @@
 "use client";
 
-import { WorkflowSquare05Icon } from "@icons";
+import {
+  AlertCircleIcon,
+  InformationCircleIcon,
+  MagicWand01Icon,
+  WorkflowSquare05Icon,
+  ZapIcon,
+} from "@icons";
 import { useRouter } from "next/navigation";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useMemo } from "react";
+import type { CardAction } from "@/features/chat/components/interface/BaseCardView";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
+import { useAppendToInput } from "@/stores/composerStore";
 import type { Workflow } from "@/types/features/workflowTypes";
 import WorkflowIcons from "./shared/WorkflowIcons";
 
@@ -54,6 +62,7 @@ interface WorkflowListViewProps {
 
 const WorkflowListView = memo(({ workflows = [] }: WorkflowListViewProps) => {
   const router = useRouter();
+  const appendToInput = useAppendToInput();
 
   const handleWorkflowClick = useCallback(
     (workflowId: string) => {
@@ -67,6 +76,55 @@ const WorkflowListView = memo(({ workflows = [] }: WorkflowListViewProps) => {
 
   const isEmpty = workflows.length === 0;
 
+  const actions: CardAction[] = useMemo(
+    () => [
+      {
+        key: "suggest-workflows",
+        icon: <MagicWand01Icon className="size-4 text-zinc-400" />,
+        label: "Suggest new workflows",
+        description:
+          "Analyse my email and calendar patterns and propose automations",
+        onPress: () =>
+          appendToInput(
+            "Based on my email, calendar, and todo patterns, suggest 5 high-impact workflows I should set up in GAIA. For each one, explain what it would automate and how much time it would save me.",
+          ),
+      },
+      {
+        key: "audit-health",
+        icon: <AlertCircleIcon className="size-4 text-zinc-400" />,
+        label: "Audit workflow health",
+        description:
+          "Check which workflows haven't triggered recently and flag broken ones",
+        onPress: () =>
+          appendToInput(
+            "Review my active workflows and check their recent activity. Identify any that haven't triggered in a while, seem broken, or may need updating. Give me a health report.",
+          ),
+      },
+      {
+        key: "explain-workflows",
+        icon: <InformationCircleIcon className="size-4 text-zinc-400" />,
+        label: "Explain my workflows",
+        description: "Get a plain-English summary of what each workflow does",
+        onPress: () =>
+          appendToInput(
+            "Give me a plain-English summary of each of my active workflows — what triggers them, what they do, and what problem they're solving for me.",
+          ),
+      },
+      {
+        key: "optimise",
+        icon: <ZapIcon className="size-4 text-zinc-400" />,
+        label: "Optimise a workflow",
+        description:
+          "Review a specific workflow and suggest improvements to its steps",
+        onPress: () =>
+          appendToInput(
+            "Pick the workflow that seems most complex or most frequently triggered and suggest specific improvements to its steps, triggers, or logic to make it more reliable or efficient.",
+          ),
+      },
+    ],
+    [appendToInput],
+  );
+
   return (
     <BaseCardView
       title="Workflows"
@@ -75,6 +133,7 @@ const WorkflowListView = memo(({ workflows = [] }: WorkflowListViewProps) => {
       emptyMessage="No workflows created yet"
       errorMessage="Failed to load workflows"
       path="/workflows"
+      actions={actions}
     >
       <div className="space-y-2 p-4">
         {displayWorkflows.map((workflow) => (

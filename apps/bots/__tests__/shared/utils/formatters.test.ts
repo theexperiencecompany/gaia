@@ -2,6 +2,7 @@ import type { Conversation, Todo, Workflow } from "@gaia/shared";
 import {
   convertToSlackMrkdwn,
   convertToTelegramMarkdown,
+  convertToWhatsAppMarkdown,
   formatAuthRequiredMessage,
   formatBotError,
   formatConversation,
@@ -268,6 +269,67 @@ describe("convertToSlackMrkdwn", () => {
   it("preserves code blocks unchanged", () => {
     const input = "```\nsome code\n```";
     expect(convertToSlackMrkdwn(input)).toBe(input);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// convertToWhatsAppMarkdown
+// ---------------------------------------------------------------------------
+describe("convertToWhatsAppMarkdown", () => {
+  it("converts **bold** to *bold*", () => {
+    expect(convertToWhatsAppMarkdown("Hello **world**")).toBe("Hello *world*");
+  });
+
+  it("converts ***bold italic*** to *bold*", () => {
+    expect(convertToWhatsAppMarkdown("***text***")).toBe("*text*");
+  });
+
+  it("converts [label](url) to label (url)", () => {
+    expect(convertToWhatsAppMarkdown("[Click here](https://example.com)")).toBe(
+      "Click here (https://example.com)",
+    );
+  });
+
+  it("converts # Heading to *Heading*", () => {
+    expect(convertToWhatsAppMarkdown("# My Heading")).toBe("*My Heading*");
+  });
+
+  it("converts ## Sub Heading to *Sub Heading*", () => {
+    expect(convertToWhatsAppMarkdown("## Sub Heading")).toBe("*Sub Heading*");
+  });
+
+  it("strips > quote prefix", () => {
+    expect(convertToWhatsAppMarkdown("> quoted text")).toBe("quoted text");
+  });
+
+  it("removes --- horizontal rule", () => {
+    expect(convertToWhatsAppMarkdown("above\n---\nbelow")).toBe(
+      "above\n\nbelow",
+    );
+  });
+
+  it("preserves code blocks unchanged", () => {
+    const input = "```\nconst x = 1;\n```";
+    expect(convertToWhatsAppMarkdown(input)).toBe(input);
+  });
+
+  it("does not convert **bold** inside code blocks", () => {
+    const input = "```\n**not bold**\n```";
+    expect(convertToWhatsAppMarkdown(input)).toBe(input);
+  });
+
+  it("handles mixed content with code blocks, bold, and links", () => {
+    const input =
+      "**bold** and [link](https://x.com)\n```\ncode **here**\n```\n**more**";
+    const result = convertToWhatsAppMarkdown(input);
+    expect(result).toContain("*bold*");
+    expect(result).toContain("link (https://x.com)");
+    expect(result).toContain("```\ncode **here**\n```");
+    expect(result).toContain("*more*");
+  });
+
+  it("converts field values with **Name:** pattern to *Name:*", () => {
+    expect(convertToWhatsAppMarkdown("**Name:** Aryan")).toBe("*Name:* Aryan");
   });
 });
 

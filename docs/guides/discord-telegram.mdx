@@ -27,6 +27,7 @@ Setup is the same on both platforms: link your account, then start chatting.
     **Discord:** Add the bot to your server via [this link](https://heygaia.io/discord-bot), or join the [GAIA community server](https://discord.heygaia.io). You can also DM the bot directly.
 
     **Telegram:** Search for [@heygaia_bot](https://t.me/heygaia_bot) and open a private chat. Send `/start` to begin.
+
   </Step>
 
   <Step title="Link your GAIA account">
@@ -37,6 +38,7 @@ Setup is the same on both platforms: link your account, then start chatting.
     ```
 
     Once linked, GAIA carries over your preferences, integrations, and conversation history everywhere.
+
   </Step>
 
   <Step title="Send your first message">
@@ -47,11 +49,13 @@ Setup is the same on both platforms: link your account, then start chatting.
     ```
 
     Or just type freely in a DM — both bots pass plain-text messages to GAIA without any command prefix.
+
   </Step>
 </Steps>
 
 <Tip>
-  DMs are the most private way to use GAIA. In a DM, only you and the bot see the conversation.
+  DMs are the most private way to use GAIA. In a DM, only you and the bot see
+  the conversation.
 </Tip>
 
 ## What you can do
@@ -72,44 +76,45 @@ In DMs, skip the `/gaia` prefix — just type your message.
 
 Create, view, complete, and delete todos without touching the web app.
 
-| Command | What it does |
-|---|---|
-| `/todo list` | Show all active todos |
-| `/todo add <title>` | Create a new todo |
-| `/todo complete <id>` | Mark a todo as done |
-| `/todo delete <id>` | Delete a todo |
+| Command               | What it does          |
+| --------------------- | --------------------- |
+| `/todo list`          | Show all active todos |
+| `/todo add <title>`   | Create a new todo     |
+| `/todo complete <id>` | Mark a todo as done   |
+| `/todo delete <id>`   | Delete a todo         |
 
 ### Workflows
 
 Trigger your automations from chat.
 
-| Command | What it does |
-|---|---|
-| `/workflow list` | List all your workflows |
-| `/workflow get <id>` | View workflow details |
+| Command                  | What it does            |
+| ------------------------ | ----------------------- |
+| `/workflow list`         | List all your workflows |
+| `/workflow get <id>`     | View workflow details   |
 | `/workflow execute <id>` | Run a workflow manually |
 
 ### Conversations
 
 Pick up where you left off or start fresh.
 
-| Command | What it does |
-|---|---|
-| `/conversations` | Browse your conversation history |
-| `/new` | Start a fresh conversation |
-| `/stop` | Cancel the current response and reset |
+| Command          | What it does                          |
+| ---------------- | ------------------------------------- |
+| `/conversations` | Browse your conversation history      |
+| `/new`           | Start a fresh conversation            |
+| `/stop`          | Cancel the current response and reset |
 
 ### Utilities
 
-| Command | What it does |
-|---|---|
-| `/status` | Check if the bot and API are online |
+| Command     | What it does                                          |
+| ----------- | ----------------------------------------------------- |
+| `/status`   | Check if the bot and API are online                   |
 | `/settings` | View your account settings and connected integrations |
-| `/help` | Show all available commands |
-| `/unlink` | Disconnect your account from GAIA |
+| `/help`     | Show all available commands                           |
+| `/unlink`   | Disconnect your account from GAIA                     |
 
 <Note>
-  For a complete command reference including subcommand options and examples, see the [Bot Commands Reference](/bots/commands).
+  For a complete command reference including subcommand options and examples,
+  see the [Bot Commands Reference](/bots/commands).
 </Note>
 
 ## Discord-only features
@@ -148,7 +153,9 @@ Create new workflows directly from Discord:
 ```
 
 <Tip>
-  "Summarize with GAIA" and "Add as Todo" work on any message in the server — not just your own. Use them to pull action items out of team discussions without breaking the conversation.
+  "Summarize with GAIA" and "Add as Todo" work on any message in the server —
+  not just your own. Use them to pull action items out of team discussions
+  without breaking the conversation.
 </Tip>
 
 ## Telegram-only features
@@ -167,17 +174,17 @@ Telegram keeps things simple. There's no server to join and no permissions to co
 
 ## Platform comparison
 
-| Feature | Discord | Telegram |
-|---|---|---|
-| Slash commands | Yes (with autocomplete) | Yes (with autocomplete) |
-| Free-text DMs | Yes | Yes |
-| @Mention in groups | Yes | Yes |
-| Rich embeds | Yes (native embeds) | No (Markdown fallback) |
-| Ephemeral replies | Yes (only you see them) | No (all messages visible in chat) |
-| Context menu actions | Yes (Summarize, Add as Todo) | No |
-| Workflow creation | Yes (`/workflow create`) | No |
-| Server/group required | No (DMs work standalone) | No (private chat only) |
-| Setup complexity | Add bot to server or DM directly | Open a chat and send `/start` |
+| Feature               | Discord                          | Telegram                          |
+| --------------------- | -------------------------------- | --------------------------------- |
+| Slash commands        | Yes (with autocomplete)          | Yes (with autocomplete)           |
+| Free-text DMs         | Yes                              | Yes                               |
+| @Mention in groups    | Yes                              | Yes                               |
+| Rich embeds           | Yes (native embeds)              | No (Markdown fallback)            |
+| Ephemeral replies     | Yes (only you see them)          | No (all messages visible in chat) |
+| Context menu actions  | Yes (Summarize, Add as Todo)     | No                                |
+| Workflow creation     | Yes (`/workflow create`)         | No                                |
+| Server/group required | No (DMs work standalone)         | No (private chat only)            |
+| Setup complexity      | Add bot to server or DM directly | Open a chat and send `/start`     |
 
 ## Tips for getting more out of GAIA
 
@@ -187,30 +194,46 @@ Telegram keeps things simple. There's no server to join and no permissions to co
 - **Start fresh when switching topics.** Run `/new` to clear conversation context before asking about something unrelated. It helps GAIA give more focused answers.
 
 <Warning>
-  Your GAIA account must be linked via `/auth` before most commands work. If a command returns an authentication error, run `/auth` and complete the sign-in flow.
+  Your GAIA account must be linked via `/auth` before most commands work. If a
+  command returns an authentication error, run `/auth` and complete the sign-in
+  flow.
 </Warning>
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---|---|
-| Bot does not respond | Check that the bot is online with `/status`. On Discord, verify the bot has **Send Messages** and **Use Slash Commands** permissions in your channel. |
-| Authentication link expired | Run `/auth` again to get a fresh link. |
-| Commands missing from autocomplete | On Discord, the server admin may need to re-deploy commands. On Telegram, send `/start` to refresh. |
-| Long responses are cut off | Discord truncates messages at 2,000 characters. GAIA splits longer responses into multiple messages automatically. Telegram has a 4,096-character limit per message. |
-| Markdown looks broken on Telegram | Some advanced formatting isn't supported. GAIA falls back to plain text when Telegram can't parse the formatting. |
+| Problem                            | Solution                                                                                                                                                             |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bot does not respond               | Check that the bot is online with `/status`. On Discord, verify the bot has **Send Messages** and **Use Slash Commands** permissions in your channel.                |
+| Authentication link expired        | Run `/auth` again to get a fresh link.                                                                                                                               |
+| Commands missing from autocomplete | On Discord, the server admin may need to re-deploy commands. On Telegram, send `/start` to refresh.                                                                  |
+| Long responses are cut off         | Discord truncates messages at 2,000 characters. GAIA splits longer responses into multiple messages automatically. Telegram has a 4,096-character limit per message. |
+| Markdown looks broken on Telegram  | Some advanced formatting isn't supported. GAIA falls back to plain text when Telegram can't parse the formatting.                                                    |
 
 ## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Connect Your Apps" icon="plug" href="/guides/connecting-integrations">
-    Link Gmail, Calendar, GitHub, and 60+ other tools so GAIA can act on your behalf.
+  <Card
+    title="Connect Your Apps"
+    icon="plug"
+    href="/guides/connecting-integrations"
+  >
+    Link Gmail, Calendar, GitHub, and 60+ other tools so GAIA can act on your
+    behalf.
   </Card>
-  <Card title="Build a Workflow" icon="bolt" href="/guides/marketplace#publishing-a-workflow">
+  <Card
+    title="Build a Workflow"
+    icon="bolt"
+    href="/guides/marketplace#publishing-a-workflow"
+  >
     Create automations you can trigger from any platform with a single command.
   </Card>
-  <Card title="Chat Effectively" icon="comments" href="/guides/chatting-effectively">
-    Learn prompting techniques that help GAIA give better, more actionable answers.
+  <Card
+    title="Chat Effectively"
+    icon="comments"
+    href="/guides/chatting-effectively"
+  >
+    Learn prompting techniques that help GAIA give better, more actionable
+    answers.
   </Card>
   <Card title="Commands Reference" icon="terminal" href="/bots/commands">
     Full list of every bot command with examples and platform-specific notes.

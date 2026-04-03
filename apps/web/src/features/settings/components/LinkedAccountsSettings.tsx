@@ -3,7 +3,6 @@
 import { Button } from "@heroui/button";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { TelegramIcon } from "@/components/shared/icons";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -45,14 +44,14 @@ const PLATFORMS: PlatformConfig[] = [
     color: "#0088cc",
     connectedDescription: "Message your bot on Telegram to chat with GAIA",
   },
-  // {
-  //   id: "whatsapp",
-  //   name: "WhatsApp",
-  //   image: "/images/icons/macos/whatsapp.webp",
-  //   color: "#25D366",
-  //   description: "Connect GAIA to WhatsApp (Beta)",
-  //   connectedDescription: "Message GAIA on WhatsApp",
-  // },
+  {
+    id: "whatsapp",
+    name: "WhatsApp",
+    image: "/images/icons/macos/whatsapp.webp",
+    color: "#25D366",
+    description: "Connect GAIA to WhatsApp (Beta)",
+    connectedDescription: "Message GAIA on WhatsApp",
+  },
 ];
 
 export default function LinkedAccountsSettings() {
@@ -124,14 +123,23 @@ export default function LinkedAccountsSettings() {
             setConnectingPlatform(null);
           }
         }, 500);
-      } else if (data.instructions && platformId === "telegram") {
-        toast.info("Connect Bot", {
+      } else if (data.auth_type === "manual" && data.instructions) {
+        const platformConfig = PLATFORMS.find((p) => p.id === platformId);
+        toast.info(`Connect ${platformConfig?.name ?? platformId}`, {
           description: data.instructions,
           duration: 10000,
-          icon: <TelegramIcon />,
+          icon: platformConfig?.image ? (
+            <Image
+              src={platformConfig.image}
+              alt={platformConfig.name}
+              width={20}
+              height={20}
+              className="rounded"
+            />
+          ) : undefined,
           ...(data.action_link && {
             action: {
-              label: "Open Bot",
+              label: "Open",
               onClick: () => window.open(data.action_link, "_blank"),
             },
           }),
@@ -235,7 +243,7 @@ export default function LinkedAccountsSettings() {
               <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
                 /gaia
               </code>{" "}
-              in Discord or Slack, or just message the Telegram bot
+              in Discord or Slack, or just message the Telegram or WhatsApp bot
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 text-zinc-600">•</span>

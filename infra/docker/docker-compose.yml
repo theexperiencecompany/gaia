@@ -255,6 +255,26 @@ services:
     networks:
       - gaia_network
 
+  # WhatsApp Bot
+  whatsapp-bot:
+    container_name: whatsapp-bot
+    profiles: ["bots", "all"]
+    build:
+      context: ../..
+      dockerfile: apps/bots/Dockerfile
+      args:
+        BOT_NAME: whatsapp
+    env_file:
+      - ../../apps/bots/.env
+    ports:
+      - "${WHATSAPP_WEBHOOK_PORT:-3001}:3001"
+    restart: on-failure
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
   # Voice Agent Worker
   voice-agent-worker:
     container_name: voice-agent-worker
@@ -280,6 +300,89 @@ services:
     volumes:
       - voice_agent_models:/home/appuser/.cache/huggingface
     restart: on-failure
+    networks:
+      - gaia_network
+
+  # ---------------------------------------------------------------------------
+  # Metrics exporters
+  # ---------------------------------------------------------------------------
+
+  # cAdvisor — Docker container CPU / memory / network / disk metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=30s"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # Blackbox Exporter — HTTP probe for services without Prometheus metrics (e.g. ChromaDB)
+  blackbox_exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox_exporter
+    volumes:
+      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # Node Exporter — host CPU / memory / disk / network metrics
+  node_exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node_exporter
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # MongoDB Exporter
+  mongodb_exporter:
+    image: percona/mongodb_exporter:0.43
+    container_name: mongodb_exporter
+    command:
+      - "--mongodb.uri=mongodb://mongo:27017"
+      - "--collect-all"
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.0
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: redis_exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - gaia_network
 
@@ -318,7 +421,11 @@ services:
     networks:
       - gaia_network
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -329,6 +436,10 @@ services:
     image: grafana/promtail:3.3.2
     container_name: promtail
     user: root
+    # Prevent log feedback loop — Promtail's own stdout must not be captured by
+    # Docker, or JSON parse errors spiral into tens of GB of disk usage.
+    logging:
+      driver: "none"
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock

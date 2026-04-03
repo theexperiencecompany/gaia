@@ -48,9 +48,9 @@ export function TrackToggle({
       className={cn(className)}
       {...props}
     >
-      <IconComponent
-        className={cn("!w-6 !h-6 text-white", pending && "animate-spin")}
-      />
+      <div className={pending ? "animate-spin" : ""}>
+        <IconComponent className="!w-6 !h-6 text-white" />
+      </div>
     </Button>
   );
 }

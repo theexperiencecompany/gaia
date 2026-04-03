@@ -12,6 +12,7 @@
 8. [Missing Error Path Coverage](#8-missing-error-path-coverage)
 9. [Shared State Leaks](#9-shared-state-leaks)
 10. [Test Category Misuse](#10-test-category-misuse)
+11. [Logic Duplication](#11-logic-duplication)
 
 ---
 
@@ -298,3 +299,60 @@ def clear_cache():
 - **Unit**: Zero I/O. No DB, no network, no filesystem. Mocks at the boundary.
 - **Integration**: Real code, mocked external services. Uses real DB clients with test instances or in-memory alternatives.
 - **E2E**: Real pipeline. Mocks only the LLM and external SaaS APIs. Tests the full request path.
+
+---
+
+## 11. Logic Duplication
+
+**Pattern**: The test manually reimplements what a production function does instead of calling that function. The test and the production code contain the same logic.
+
+```python
+# Production: app/services/conversation_service.py
+async def update_messages(conversation_id: str, messages: list[MessageModel]) -> None:
+    await conversations_collection.update_one(
+        {"_id": ObjectId(conversation_id)},
+        {
+            "$push": {"messages": {"$each": [m.model_dump() for m in messages]}},
+            "$currentDate": {"updatedAt": True},
+        },
+    )
+
+# ANTI-PATTERN — test reimplements the $push logic instead of calling update_messages
+async def test_conversation_saves_messages(mongo_db):
+    coll = mongo_db["conversations"]
+    await coll.insert_one({"_id": ObjectId("abc"), "messages": []})
+
+    # Test manually does what update_messages does — duplicates production logic
+    await coll.update_one(
+        {"_id": ObjectId("abc")},
+        {"$push": {"messages": {"$each": [{"role": "user", "content": "hi"}]}}},
+    )
+    doc = await coll.find_one({"_id": ObjectId("abc")})
+    assert len(doc["messages"]) == 1
+```
+
+**Why it's dangerous**: If you rename the field, change the query shape, or introduce a bug in `update_messages`, this test still passes — it never called `update_messages`. Deleting the production function leaves the test green.
+
+**The tell**: The test contains `$push`, `model_dump()`, `$currentDate`, or any other logic that lives inside the function being tested. If you see production-style query syntax inside a test, you've duplicated instead of called.
+
+**Fix**: Call the real function. Patch only its external dependency (the collection).
+
+```python
+from app.services.conversation_service import update_messages
+
+async def test_update_messages_appends_to_conversation(mongo_db, monkeypatch):
+    import app.services.conversation_service as conv_svc
+    coll = mongo_db["conversations"]
+    monkeypatch.setattr(conv_svc, "conversations_collection", coll)
+
+    conv_id = str(ObjectId())
+    await coll.insert_one({"_id": ObjectId(conv_id), "messages": []})
+
+    msg = MessageModel(role="user", content="hello")
+    await update_messages(conv_id, [msg])   # calls the real function
+
+    doc = await coll.find_one({"_id": ObjectId(conv_id)})
+    assert len(doc["messages"]) == 1
+    assert doc["messages"][0]["content"] == "hello"
+    assert "updatedAt" in doc   # proves $currentDate ran
+```

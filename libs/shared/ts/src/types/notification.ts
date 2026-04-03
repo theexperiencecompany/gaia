@@ -2,7 +2,6 @@ export enum NotificationStatus {
   PENDING = "pending",
   DELIVERED = "delivered",
   READ = "read",
-  SNOOZED = "snoozed",
   ARCHIVED = "archived",
 }
 

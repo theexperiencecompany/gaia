@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Cancel01Icon, LinkBackwardIcon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useComposerUI } from "@/stores/composerStore";
 import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
 
@@ -58,21 +58,26 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
 }) => {
   const { isSlashCommandDropdownOpen } = useComposerUI();
 
+  const onRemoveRef = useRef(onRemove);
+  onRemoveRef.current = onRemove;
+  const isSlashCommandOpenRef = useRef(isSlashCommandDropdownOpen);
+  isSlashCommandOpenRef.current = isSlashCommandDropdownOpen;
+
   // Handle Escape key to close the indicator
   useEffect(() => {
-    if (!replyToMessage || !onRemove) return;
+    if (!replyToMessage) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle escape if slash command dropdown is NOT open
-      if (e.key === "Escape" && !isSlashCommandDropdownOpen) {
+      if (e.key === "Escape" && !isSlashCommandOpenRef.current) {
         e.preventDefault();
-        onRemove();
+        onRemoveRef.current?.();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [replyToMessage, onRemove, isSlashCommandDropdownOpen]);
+  }, [replyToMessage]);
 
   const handleClick = () => {
     if (replyToMessage && onNavigate) {

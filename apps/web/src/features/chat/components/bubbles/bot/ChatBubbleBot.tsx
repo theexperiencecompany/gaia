@@ -90,17 +90,21 @@ export default function ChatBubbleBot(
         onMouseOver={handleMouseOver}
         onMouseOut={handleMouseOut}
         className="relative flex flex-col"
+        style={{ contentVisibility: "auto", containIntrinsicSize: "0 120px" }}
       >
         <div className="flex items-end gap-1">
           <div className="relative bottom-0 min-w-10 shrink-0">
             {showBubbleChrome && (
-              <Image
-                alt="GAIA Logo"
-                src={"/images/logos/logo.webp"}
-                width={30}
-                height={30}
+              <div
                 className={`${isLoading && isLastMessage ? "animate-spin" : ""} relative z-5 transition duration-900`}
-              />
+              >
+                <Image
+                  alt="GAIA Logo"
+                  src={"/images/logos/logo.webp"}
+                  width={30}
+                  height={30}
+                />
+              </div>
             )}
           </div>
 
@@ -135,7 +139,10 @@ export default function ChatBubbleBot(
               }}
             >
               {date && !disableActions && (
-                <span className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400 select-text">
+                <span
+                  className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400 select-text"
+                  suppressHydrationWarning
+                >
                   {parseDate(date)}
                 </span>
               )}

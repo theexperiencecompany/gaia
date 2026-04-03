@@ -508,8 +508,6 @@ export class GaiaClient {
         userName: data.user_name ?? null,
         accountCreatedAt: data.account_created_at ?? null,
         profileImageUrl: data.profile_image_url ?? null,
-        selectedModelName: data.selected_model_name ?? null,
-        selectedModelIconUrl: data.selected_model_icon_url ?? null,
         connectedIntegrations:
           data.connected_integrations?.map(
             (i: { name: string; logo_url?: string; status: string }) => ({

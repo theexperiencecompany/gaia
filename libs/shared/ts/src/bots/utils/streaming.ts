@@ -2,7 +2,7 @@
  * Shared streaming chat handler for all bot platforms.
  *
  * This module eliminates ~250 lines of duplicated streaming logic across
- * Discord, Slack, and Telegram bots. Each bot provides thin callbacks:
+ * Discord, Slack, Telegram, and WhatsApp bots. Each bot provides thin callbacks:
  *
  *   editMessage   - Update the "Thinking..." message with new content
  *   onAuthError   - Show auth URL when user isn't linked
@@ -33,7 +33,7 @@ export type MessageEditor = (text: string) => Promise<void>;
 export type NewMessageSender = (text: string) => Promise<MessageEditor>;
 
 export const STREAMING_DEFAULTS: Record<
-  "discord" | "slack" | "telegram",
+  "discord" | "slack" | "telegram" | "whatsapp",
   StreamingOptions
 > = {
   discord: {
@@ -50,6 +50,11 @@ export const STREAMING_DEFAULTS: Record<
     editIntervalMs: 1000,
     streaming: true,
     platform: "telegram",
+  },
+  whatsapp: {
+    editIntervalMs: 2000,
+    streaming: false,
+    platform: "whatsapp",
   },
 };
 

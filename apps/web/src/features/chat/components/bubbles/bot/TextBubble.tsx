@@ -37,6 +37,10 @@ import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer"
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
+import {
+  parseOpenUISegments,
+  splitByBreaksPreservingFences,
+} from "@/features/chat/utils/openUIParser";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations/components/IntegrationListSection";
 import type {
@@ -94,6 +98,7 @@ import type {
 } from "@/types/features/twitterTypes";
 import type { WeatherData } from "@/types/features/weatherTypes";
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
+import OpenUIRenderer from "../../interface/OpenUIRenderer";
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
 import CalendarEventSection from "./CalendarEventSection";
@@ -604,32 +609,10 @@ export default function TextBubble({
 
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
         (() => {
-          // Use cleaned text without thinking tags
           const displayText = parsedContent.cleanText || "";
-          const textParts = splitMessageByBreaks(displayText);
-          // const hasMultipleParts = textParts.length > 1;
-
-          const renderBubbleContent = (
-            content: string,
-            showDisclaimer: boolean,
-          ) => (
-            <div className="flex flex-col gap-3">
-              <MarkdownRenderer content={content} isStreaming={loading} />
-              {!!disclaimer && showDisclaimer && (
-                <Chip
-                  className="text-xs font-medium text-warning-500"
-                  color="warning"
-                  size="sm"
-                  startContent={
-                    <Alert01Icon className="text-warning-500" height={17} />
-                  }
-                  variant="flat"
-                >
-                  {disclaimer}
-                </Chip>
-              )}
-            </div>
-          );
+          const textParts = displayText.includes(":::openui")
+            ? splitByBreaksPreservingFences(displayText)
+            : splitMessageByBreaks(displayText);
 
           return (
             <div className="flex flex-col">
@@ -637,48 +620,129 @@ export default function TextBubble({
                 const isFirst = index === 0;
                 const isLast = index === textParts.length - 1;
                 const isSingle = textParts.length === 1;
+                const segments = parseOpenUISegments(part, !!loading);
+                const hasOpenUI = segments.some((s) => s.type === "openui");
 
-                // Emoji detection for this specific part
-                const isEmojiOnly = isOnlyEmojis(part);
-                const emojiCount = isEmojiOnly ? getEmojiCount(part) : 0;
+                // ── Pure markdown part — normal iMessage bubble ──────────────
+                if (!hasOpenUI) {
+                  const isEmojiOnly = isOnlyEmojis(part);
+                  const emojiCount = isEmojiOnly ? getEmojiCount(part) : 0;
 
-                // Single message should show tail (use last styling)
-                // Otherwise: first = no tail, middle = no tail, last = show tail
-                let groupedClasses = isSingle
-                  ? "imessage-grouped-last"
-                  : isFirst
-                    ? "imessage-grouped-first mb-1.5"
-                    : isLast
-                      ? "imessage-grouped-last"
-                      : "imessage-grouped-middle mb-1.5";
+                  let groupedClasses = isSingle
+                    ? "imessage-grouped-last"
+                    : isFirst
+                      ? "imessage-grouped-first mb-1.5"
+                      : isLast
+                        ? "imessage-grouped-last"
+                        : "imessage-grouped-middle mb-1.5";
 
-                let bubbleClassName = "imessage-bubble imessage-from-them";
+                  let bubbleClassName = "imessage-bubble imessage-from-them";
+                  let textClass = "";
 
-                // Construct styles for emoji-only messages
-                let textClass = "";
-
-                if (isEmojiOnly) {
-                  if (emojiCount === 1) {
-                    bubbleClassName = "select-none";
-                    groupedClasses = "";
-                    textClass = "text-[4rem] leading-none";
-                  } else if (emojiCount === 2) {
-                    textClass = "text-5xl";
-                  } else if (emojiCount === 3) {
-                    textClass = "text-4xl";
+                  if (isEmojiOnly) {
+                    if (emojiCount === 1) {
+                      bubbleClassName = "select-none";
+                      groupedClasses = "";
+                      textClass = "text-[4rem] leading-none";
+                    } else if (emojiCount === 2) {
+                      textClass = "text-5xl";
+                    } else if (emojiCount === 3) {
+                      textClass = "text-4xl";
+                    }
                   }
+
+                  return (
+                    <div
+                      // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
+                      key={`${baseId}-text-part-${index}`}
+                      className={`${bubbleClassName} ${groupedClasses}`}
+                    >
+                      <div className={textClass}>
+                        <div className="flex flex-col gap-3">
+                          <MarkdownRenderer
+                            content={part}
+                            isStreaming={loading}
+                          />
+                          {!!disclaimer && isLast && (
+                            <Chip
+                              className="text-xs font-medium text-warning-500"
+                              color="warning"
+                              size="sm"
+                              startContent={
+                                <Alert01Icon
+                                  className="text-warning-500"
+                                  height={17}
+                                />
+                              }
+                              variant="flat"
+                            >
+                              {disclaimer}
+                            </Chip>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
                 }
 
+                // ── Mixed part: openui segments render OUTSIDE the bubble ────
+                // OpenUI components use bg-zinc-800 which would be invisible
+                // inside the imessage-from-them bubble (same background color).
+                // Markdown segments get their own compact bubbles; openui
+                // segments are rendered at the same level as tool cards.
+                const lastMdIdx = segments.reduce(
+                  (acc, s, i) =>
+                    s.type === "markdown" && s.content.trim() ? i : acc,
+                  -1,
+                );
+
                 return (
-                  <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
-                    key={`${baseId}-text-part-${index}`}
-                    className={`${bubbleClassName} ${groupedClasses}`}
-                  >
-                    <div className={textClass}>
-                      {renderBubbleContent(part, isLast)}
-                    </div>
-                  </div>
+                  // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
+                  <React.Fragment key={`${baseId}-text-part-${index}`}>
+                    {segments.map((seg, segIdx) => {
+                      const segKey = `${baseId}-seg-${index}-${segIdx}`;
+                      if (seg.type === "openui") {
+                        return (
+                          <OpenUIRenderer
+                            key={segKey}
+                            code={seg.content}
+                            isStreaming={!!loading && !seg.isComplete}
+                          />
+                        );
+                      }
+                      if (!seg.content.trim()) return null;
+                      const isLastMdInLastPart = isLast && segIdx === lastMdIdx;
+                      return (
+                        <div
+                          key={segKey}
+                          className={`imessage-bubble imessage-from-them ${isLastMdInLastPart ? "imessage-grouped-last" : "imessage-grouped-first"} mb-1.5`}
+                        >
+                          <MarkdownRenderer
+                            content={seg.content}
+                            isStreaming={
+                              !!loading && segIdx === segments.length - 1
+                            }
+                          />
+                          {!!disclaimer && isLastMdInLastPart && (
+                            <Chip
+                              className="text-xs font-medium text-warning-500"
+                              color="warning"
+                              size="sm"
+                              startContent={
+                                <Alert01Icon
+                                  className="text-warning-500"
+                                  height={17}
+                                />
+                              }
+                              variant="flat"
+                            >
+                              {disclaimer}
+                            </Chip>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
                 );
               })}
             </div>

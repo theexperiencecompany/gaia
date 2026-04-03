@@ -3,6 +3,7 @@
   "root": "apps/desktop",
   "sourceRoot": "apps/desktop/src",
   "projectType": "application",
+  "tags": ["scope:typescript"],
   "targets": {
     "sync": {
       "executor": "nx:run-commands",

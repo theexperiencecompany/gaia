@@ -1,6 +1,7 @@
 {
   "name": "docs",
   "root": "docs",
+  "tags": ["scope:typescript"],
   "targets": {
     "dev": {
       "executor": "nx:run-commands",

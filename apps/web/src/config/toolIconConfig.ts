@@ -26,7 +26,7 @@ export {
 };
 
 /** Web-specific: maps integration key names to their public image URLs */
-export const webIconUrls: Record<string, string> = {
+const webIconUrls: Record<string, string> = {
   gmail: "/images/icons/gmail.svg",
   googledocs: "/images/icons/googledocs.webp",
   googlesheets: "/images/icons/googlesheets.webp",

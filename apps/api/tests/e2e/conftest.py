@@ -8,13 +8,22 @@ Uses REAL GAIA production nodes and graph builder infrastructure:
 
 Mocks only:
 - LLM: BindableToolsFakeModel (no real LLM calls; supports bind_tools())
-- Store: langgraph.store.memory.InMemoryStore (no ChromaDB)
-- Checkpointer: MemorySaver (no PostgreSQL)
+
+When USE_REAL_SERVICES=1 (Dagger CI):
+- Checkpointer: AsyncPostgresSaver against real Postgres
+- Store: AsyncPostgresStore against real Postgres
+
+When USE_REAL_SERVICES=0 (opt-out, local run without Docker):
+- Checkpointer: MemorySaver (in-process fallback)
+- Store: InMemoryStore (in-process fallback)
 
 If filter_messages_node or manage_system_prompts_node are deleted or
 mis-imported, these fixtures (and every test using them) will fail.
 """
 
+from __future__ import annotations
+
+import os
 from typing import Any, cast
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -29,6 +38,9 @@ from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_no
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel
+
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
+_POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 
 
 def build_gaia_test_graph(
@@ -74,15 +86,48 @@ def build_gaia_test_graph(
 
 
 @pytest.fixture
-def memory_saver() -> MemorySaver:
-    """Fresh in-memory checkpointer (replaces PostgreSQL)."""
-    return MemorySaver()
+async def memory_saver():
+    """LangGraph checkpointer.
+
+    Returns AsyncPostgresSaver backed by real Postgres when USE_REAL_SERVICES=1
+    (Dagger CI), otherwise falls back to in-process MemorySaver.
+    Each test gets a fresh pool so thread-scoped state never leaks between tests.
+    """
+    if _USE_REAL_SERVICES:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg_pool import AsyncConnectionPool
+
+        pool = AsyncConnectionPool(
+            conninfo=_POSTGRES_URL,
+            min_size=1,
+            max_size=3,
+            kwargs={"autocommit": True, "prepare_threshold": 0},
+            open=False,
+        )
+        await pool.open(wait=True, timeout=30)
+        checkpointer = AsyncPostgresSaver(conn=pool)  # type: ignore[call-arg]
+        await checkpointer.setup()
+        yield checkpointer
+        await pool.close()
+    else:
+        yield MemorySaver()
 
 
 @pytest.fixture
-def in_memory_store() -> InMemoryStore:
-    """Fresh in-memory store (replaces ChromaDB)."""
-    return InMemoryStore()
+async def in_memory_store():
+    """LangGraph store.
+
+    Returns AsyncPostgresStore backed by real Postgres when USE_REAL_SERVICES=1
+    (Dagger CI), otherwise falls back to in-process InMemoryStore.
+    """
+    if _USE_REAL_SERVICES:
+        from langgraph.store.postgres import AsyncPostgresStore
+
+        async with AsyncPostgresStore.from_conn_string(_POSTGRES_URL) as store:
+            await store.setup()
+            yield store
+    else:
+        yield InMemoryStore()
 
 
 @pytest.fixture

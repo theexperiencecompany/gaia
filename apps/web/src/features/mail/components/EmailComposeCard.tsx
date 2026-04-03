@@ -286,7 +286,7 @@ export default function EmailComposeCard({
     } catch (error) {
       if (error instanceof z.ZodError) {
         const newErrors: Record<string, string> = {};
-        error.errors.forEach((err) => {
+        error.issues.forEach((err) => {
           if (err.path[0]) {
             newErrors[err.path[0].toString()] = err.message;
           }
@@ -304,7 +304,7 @@ export default function EmailComposeCard({
       return true;
     } catch (error) {
       if (error instanceof z.ZodError) {
-        setCustomEmailError(error.errors[0]?.message || "Invalid email");
+        setCustomEmailError(error.issues[0]?.message || "Invalid email");
       }
       return false;
     }

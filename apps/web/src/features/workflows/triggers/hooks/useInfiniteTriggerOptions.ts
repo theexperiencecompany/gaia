@@ -1,12 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 
-export interface TriggerOption {
-  value: string;
-  label: string;
-  [key: string]: unknown;
-}
-
 export const useInfiniteTriggerOptions = (
   integrationId: string,
   triggerSlug: string,

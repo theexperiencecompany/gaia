@@ -100,13 +100,13 @@ flowchart TD
 ### `.github/workflows/main.yml`
 1. Enter from PRs targeting `develop`/`master` and pushes to `master`.
 2. Run master promotion policy guard (`develop` or `release-please--*` to `master`).
-3. Install toolchains and dependencies, validate release manifest, run affected quality checks.
+3. Delegate the full quality gate to the Dagger module via `dagger call quality-checks`. All toolchain setup, dependency installation, linting, type-checking, building, testing, dead code detection, and release manifest validation run inside the Dagger container. No host-level pre-flight steps.
 4. If run is a successful push on `master`, call `build.yml`.
 
 ### `.github/workflows/build.yml`
 1. Start two build lanes: `docker-release` and `docker-web`.
-2. `docker-release`: detect affected backend/bot projects, release relevant images, optionally sync Discord commands.
-3. `docker-web`: detect `web` changes and build/push web image only when affected.
+2. `docker-release`: detect affected backend/bot projects, publish images to GHCR via Dagger, optionally sync Discord commands.
+3. `docker-web`: detect `web` changes and build/push web image via Dagger only when affected.
 4. `deployment-plan` waits for both lanes and computes `backend_deploy` / `frontend_deploy`.
 5. Trigger `deploy.yml` and/or `deploy-frontend.yml` based on plan outputs.
 
@@ -146,8 +146,8 @@ flowchart TD
 2. Validate PR title against configured semantic type list.
 
 ## File Map
-- `.github/workflows/main.yml`: CI quality gate and master promotion policy.
-- `.github/workflows/build.yml`: image build/release lanes, deploy planning, deploy triggers.
+- `.github/workflows/main.yml`: CI quality gate and master promotion policy — delegates to Dagger for quality checks.
+- `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
 - `.github/workflows/deploy.yml`: production backend and bot deployment to GCP VM.
 - `.github/workflows/deploy-frontend.yml`: frontend sync path for Vercel source repository.
 - `.github/workflows/release-please.yml`: release PR/tag automation and CLI publish dispatch.

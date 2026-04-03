@@ -161,6 +161,30 @@ export function convertToSlackMrkdwn(text: string): string {
 }
 
 /**
+ * Converts standard CommonMark Markdown to WhatsApp-compatible formatting.
+ *
+ * WhatsApp supports: `*bold*`, `_italic_`, `~strikethrough~`, `` `code` ``,
+ * ` ```code``` `. Links are shown as bare URLs (WhatsApp auto-links them).
+ *
+ * Converts `**bold**` → `*bold*`, `[label](url)` → `label (url)`,
+ * strips `# headers` to bold, strips blockquote `>` prefixes and horizontal rules.
+ * Code blocks are preserved unchanged.
+ */
+export function convertToWhatsAppMarkdown(text: string): string {
+  return applyOutsideCodeBlocks(
+    text,
+    (segment) =>
+      segment
+        .replaceAll(/\*\*\*([^*]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
+        .replaceAll(/\*\*([^*]+)\*\*/g, "*$1*") // **bold** → *bold*
+        .replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
+        .replaceAll(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
+        .replaceAll(/^>\s*/gm, "") // > quote → strip prefix
+        .replaceAll(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
+  );
+}
+
+/**
  * Formats authentication required message with clear onboarding steps.
  */
 export function formatAuthRequiredMessage(
@@ -264,6 +288,10 @@ export function formatBotError(error: unknown): string {
     message.includes("AI is processing your request")
   ) {
     return "⏳ Your request is taking longer than usual. Try a simpler question or wait a moment and try again.";
+  }
+
+  if (message.includes("ECONNREFUSED") || message.includes("ETIMEDOUT")) {
+    return "🔌 The GAIA backend is unavailable. Please try again in a moment.";
   }
 
   if (

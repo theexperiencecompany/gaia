@@ -161,7 +161,7 @@ backend = [
   "idna==3.10",
   "joblib==1.4.2",
   "more-itertools==10.6.0",
-  "protobuf==5.29.5",
+  "protobuf==5.29.6",
   "markdown-it-py==3.0.0",
   "mdurl==0.1.2",
   "pyinstrument>=5.1.1",
@@ -170,6 +170,79 @@ backend = [
   "opik>=1.9.47",
   "prometheus-fastapi-instrumentator>=7.0.0",
 ]
+
+[tool.mypy]
+mypy_path = "../../libs"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "shared.*"
+follow_imports = "skip"
+
+[tool.vulture]
+paths = ["app/", "vulture_whitelist.py"]
+exclude = [
+  ".venv/",
+  "*/__pycache__/",
+  "*/migrations/",
+  "tests/",
+]
+min_confidence = 60
+
+# Framework decorators that register functions externally (vulture can't trace them)
+ignore_decorators = [
+  # FastAPI route handlers
+  "@router.get",
+  "@router.post",
+  "@router.put",
+  "@router.delete",
+  "@router.patch",
+  "@router.head",
+  "@router.options",
+  "@router.api_route",
+  "@router.websocket",
+  "@app.get",
+  "@app.post",
+  "@app.middleware",
+  "@app.exception_handler",
+  "@app.on_event",
+  # Pydantic validators / serializers
+  "@field_validator",
+  "@model_validator",
+  "@field_serializer",
+  "@model_serializer",
+  "@computed_field",
+  "@validate_call",
+  # Pytest
+  "@pytest.fixture",
+  # Celery / ARQ
+  "@cron",
+  "@func",
+  # Composio hooks
+  "@action_listener",
+  "@trigger_listener",
+  # LangGraph
+  "@tool",
+]
+
+# Names that are framework-consumed, not referenced in user code
+ignore_names = [
+  # Pydantic BaseSettings / BaseModel internals
+  "model_config",
+  "model_fields",
+  "model_rebuild",
+  # Starlette middleware
+  "dispatch",
+  # ARQ worker
+  "WorkerSettings",
+  # pytest
+  "cls",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# vulture_whitelist.py contains bare names used as false-positive markers.
+# These are intentionally undefined — vulture reads them, Ruff should not flag them.
+"vulture_whitelist.py" = ["F821"]
 
 [tool.uv.sources]
 gaia-shared = { workspace = true }

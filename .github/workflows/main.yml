@@ -2,121 +2,322 @@ name: Quality Checks
 
 # Primary CI gate: validates code quality and enforces branch promotion policy.
 on:
-  # PR validation for both integration (develop) and production promotion (master).
   pull_request:
     branches:
       - develop
       - master
-  # Push checks on master; successful runs trigger downstream build/deploy workflow.
   push:
     branches:
       - master
-  # Manual trigger for ad-hoc CI execution.
   workflow_dispatch:
 
-jobs:
-  # Runs lint/type/build checks and enforces master branch workflow rules.
-  quality-checks:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    permissions:
-      contents: write
-      pull-requests: read
-      actions: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
+env:
+  DAGGER_VERSION: "0.20.3"
+
+jobs:
+  # --- Detect affected projects -------------------------------------------
+  detect:
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      has_python: ${{ steps.affected.outputs.has_python }}
+      has_typescript: ${{ steps.affected.outputs.has_typescript }}
+      python_projects: ${{ steps.affected.outputs.python_projects }}
+      typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
     steps:
-      # Full history improves Nx affected/base-head resolution.
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Enforce that master only receives changes promoted from develop or release-please.
       - name: Enforce master promotion policy
         if: github.event_name == 'pull_request' && github.base_ref == 'master'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const isAllowedMasterSource = (ref) =>
-              ref === "develop" || (typeof ref === "string" && ref.startsWith("release-please--"));
-
+            const isAllowed = (ref) =>
+              ref === "develop" || ref.startsWith("release-please--");
             const pr = context.payload.pull_request;
-            if (pr.base.ref === "master" && !isAllowedMasterSource(pr.head.ref)) {
+            if (pr.base.ref === "master" && !isAllowed(pr.head.ref)) {
               core.setFailed(
-                `PRs to master must come from develop or release-please branches. Received '${pr.head.ref}' -> '${pr.base.ref}'.`,
+                `PRs to master must come from develop or release-please. Got '${pr.head.ref}'.`
               );
-              return;
             }
-            core.info(`Master PR policy passed: ${pr.head.ref} -> ${pr.base.ref}`);
 
-      # Compute NX_BASE/NX_HEAD for affected-task execution.
-      - name: Set Nx SHAs
-        uses: nrwl/nx-set-shas@v4
+      - uses: nrwl/nx-set-shas@v4
         with:
-          main-branch-name: master
+          main-branch-name: develop
 
-      # Toolchain bootstrap for Node + Python quality checks.
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 10.17.1
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22.15.1"
           cache: "pnpm"
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v6
+      - run: pnpm install --frozen-lockfile
+
+      - name: Detect affected projects
+        id: affected
+        run: |
+          # nx show projects may output JSON arrays or one-per-line depending on version/env.
+          # Normalize both formats to comma-separated values.
+          normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PY=$(npx nx show projects --projects 'tag:scope:python' 2>/dev/null | normalize || echo "")
+            TS=$(npx nx show projects --projects 'tag:scope:typescript' 2>/dev/null | normalize || echo "")
+          else
+            PY=$(npx nx show projects --affected --projects 'tag:scope:python' 2>/dev/null | normalize || echo "")
+            TS=$(npx nx show projects --affected --projects 'tag:scope:typescript' 2>/dev/null | normalize || echo "")
+          fi
+
+          echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
+          echo "typescript_projects=$TS" >> "$GITHUB_OUTPUT"
+          echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+          echo "Affected Python:     $PY"
+          echo "Affected TypeScript: $TS"
+
+  # --- Static checks: Python (runner-native) ------------------------------
+  static-python:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
         with:
-          enable-cache: true
-
-      # Install workspace dependencies once for all checks.
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Guard against release manifest/version drift before releases are cut.
-      - name: Validate release manifest versions
-        run: node scripts/ci/validate-release-manifest.mjs
-
-      - name: Sync Python dependencies (Nx cached)
-        run: npx nx sync api
-        # env:
-        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
-
-      - name: Install prek
-        run: uv tool install prek
-
-      - name: Install mypy types
-        run: uv run mypy --install-types --non-interactive
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pip install --break-system-packages uv
+      - name: Sync Python deps
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Ruff lint
+        run: npx nx run-many -t lint -p ${{ needs.detect.outputs.python_projects }} --parallel=3
+      - name: mypy
         working-directory: apps/api
+        run: uv run mypy app --ignore-missing-imports
 
-      - name: Install vulture
-        run: uv tool install vulture
+  # --- Static checks: TypeScript (runner-native) --------------------------
+  static-typescript:
+    needs: [detect]
+    if: needs.detect.outputs.has_typescript == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Biome lint
+        run: npx nx run-many -t lint -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
+      - name: TypeScript type-check
+        run: npx nx run-many -t type-check -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
 
-      - name: Dead code check
-        run: bash scripts/dead-code-check.sh
-        # Temporarily disable --strict flag.
-
-      # Execute only checks impacted by the current change-set.
-      - name: Run affected quality checks
-        run: npx nx affected -t lint type-check build test --parallel=3
+  # --- Build (runner-native, typescript only) -----------------------------
+  build:
+    needs: [detect]
+    if: needs.detect.outputs.has_typescript == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: npx nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
-          # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
-      # Run API unit tests (excludes integration tests that need live credentials).
-      - name: Run API tests
-        run: |
-          cd apps/api
-          uv run pytest -m "not integration and not composio" --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30
+  # --- Test: Python (Dagger -- needs service containers) ------------------
+  test-python:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Blacksmith NVMe layer cache persists the Dagger engine image (~1GB) and
+      # the gaia-ci-base image across runs. After first run, both pull near-instantly.
+      - uses: useblacksmith/setup-docker-builder@v1
+      - name: Run Python tests
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          dagger-flags: "--silent"
+          call: test-python
+        timeout-minutes: 18
+
+  # --- Test: TypeScript (runner-native) -----------------------------------
+  test-typescript:
+    needs: [detect]
+    if: needs.detect.outputs.has_typescript == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Run TypeScript tests
+        run: npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
           ENV: test
 
-  # Only trigger image build/deploy planning on master after quality gate passes.
+  # --- Dead code analysis (runner-native) ---------------------------------
+  dead-code:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pip install --break-system-packages vulture
+      - name: Dead code check
+        shell: bash
+        run: |
+          export PATH="/home/runner/.local/bin:$PATH"
+          bash scripts/dead-code-check.sh
+
+  # --- Release validation (runner-native, always) -------------------------
+  release-validation:
+    needs: [detect]
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/ci/validate-release-manifest.mjs
+
+  # --- Trivy scan (non-blocking) ------------------------------------------
+  trivy-scan:
+    needs: [detect]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          severity: "CRITICAL,HIGH"
+          format: "table"
+          scan-ref: "."
+
+  # --- Coverage (master only, non-blocking) -------------------------------
+  coverage:
+    needs: [detect]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.detect.outputs.has_python == 'true'
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: useblacksmith/setup-docker-builder@v1
+      - name: Run coverage
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: ${{ env.DAGGER_VERSION }}
+          dagger-flags: "--silent"
+          call: test-python-coverage
+        timeout-minutes: 28
+
+  # --- Quality gate (branch protection target) ----------------------------
+  quality-gate:
+    if: always()
+    needs:
+      - static-python
+      - static-typescript
+      - build
+      - test-python
+      - test-typescript
+      - dead-code
+      - release-validation
+      # trivy-scan deliberately excluded (non-blocking)
+      # coverage deliberately excluded (master-only, non-blocking)
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate results
+        run: |
+          echo "Job results:"
+          echo "  static-python:      ${{ needs.static-python.result }}"
+          echo "  static-typescript:  ${{ needs.static-typescript.result }}"
+          echo "  build:              ${{ needs.build.result }}"
+          echo "  test-python:        ${{ needs.test-python.result }}"
+          echo "  test-typescript:    ${{ needs.test-typescript.result }}"
+          echo "  dead-code:          ${{ needs.dead-code.result }}"
+          echo "  release-validation: ${{ needs.release-validation.result }}"
+
+          for r in \
+            "${{ needs.static-python.result }}" \
+            "${{ needs.static-typescript.result }}" \
+            "${{ needs.build.result }}" \
+            "${{ needs.test-python.result }}" \
+            "${{ needs.test-typescript.result }}" \
+            "${{ needs.dead-code.result }}" \
+            "${{ needs.release-validation.result }}"; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "::error::Required job result: $r"
+              exit 1
+            fi
+          done
+          echo "All required jobs passed or were skipped."
+
+  # --- Trigger Docker build (master only) ---------------------------------
   trigger-build:
-    needs: [quality-checks]
+    needs: [quality-gate]
     if: github.ref == 'refs/heads/master'
     uses: ./.github/workflows/build.yml
     secrets: inherit # pragma: allowlist secret

@@ -1,9 +1,31 @@
+"use client";
+
 import { Button } from "@heroui/button";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownSection,
+  DropdownTrigger,
+} from "@heroui/dropdown";
 import { Tooltip } from "@heroui/tooltip";
-import { RedoIcon } from "@icons";
-import Link from "next/link";
+import {
+  ArrowUpRight01Icon,
+  RedoIcon,
+  SquareArrowUpRight02Icon,
+  ZapIcon,
+} from "@icons";
 import type React from "react";
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
+
+export interface CardAction {
+  key: string;
+  label: string;
+  description: string;
+  icon?: React.ReactNode;
+  onPress?: () => void;
+  href?: string;
+}
 
 interface BaseCardViewProps {
   title: string;
@@ -25,6 +47,7 @@ interface BaseCardViewProps {
   connectIcon?: React.ReactNode;
   path?: string;
   onRefresh?: () => void;
+  actions?: CardAction[];
 }
 
 const BaseCardView: React.FC<BaseCardViewProps> = ({
@@ -47,8 +70,11 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
   connectIcon,
   path,
   onRefresh,
+  actions,
 }) => {
   const containerClassName = `flex h-full w-full flex-col ${className} rounded-3xl`;
+  const hasMenu = path || (actions && actions.length > 0);
+  const hasActions = actions && actions.length > 0;
 
   return (
     <div className={containerClassName}>
@@ -66,22 +92,80 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                 isDisabled={isFetching}
                 className="min-w-0 text-zinc-400 transition-all duration-200 hover:bg-zinc-800"
               >
-                <RedoIcon
-                  className={`h-4 w-4 transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
-                />
+                <div
+                  className={`transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
+                >
+                  <RedoIcon className="h-4 w-4" />
+                </div>
               </Button>
             </Tooltip>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          {path && (
-            <Link href={path}>
-              <Button size="sm" color="primary" variant="light">
-                View All
+        {hasMenu && (
+          <Dropdown
+            placement="bottom-end"
+            backdrop="opaque"
+            classNames={{ content: "" }}
+          >
+            <DropdownTrigger>
+              <Button
+                size="sm"
+                variant="flat"
+                endContent={<ArrowUpRight01Icon className="h-3.5 w-3.5" />}
+                className="text-xs text-zinc-400"
+              >
+                Ask GAIA
               </Button>
-            </Link>
-          )}
-        </div>
+            </DropdownTrigger>
+            <DropdownMenu
+              aria-label={`${title} actions`}
+              className="w-100"
+              itemClasses={{ description: "whitespace-normal" }}
+            >
+              {hasActions ? (
+                <DropdownSection title="Ask GAIA" showDivider={!!path}>
+                  {actions.map((action) => (
+                    <DropdownItem
+                      key={action.key}
+                      description={action.description}
+                      startContent={
+                        action.icon ?? (
+                          <ZapIcon className="size-4 text-default-500" />
+                        )
+                      }
+                      onPress={action.onPress}
+                    >
+                      {action.label}
+                    </DropdownItem>
+                  ))}
+                </DropdownSection>
+              ) : (
+                // Empty fragment needed to satisfy DropdownMenu's children type when only path is present
+                <DropdownSection aria-label="empty" className="hidden">
+                  <DropdownItem key="__empty__">{"" as string}</DropdownItem>
+                </DropdownSection>
+              )}
+              {path ? (
+                <DropdownSection aria-label="Navigation">
+                  <DropdownItem
+                    key="view-all"
+                    href={path}
+                    description={`Open full ${title.toLowerCase()} page`}
+                    startContent={
+                      <SquareArrowUpRight02Icon className="size-4 text-primary" />
+                    }
+                  >
+                    View All
+                  </DropdownItem>
+                </DropdownSection>
+              ) : (
+                <DropdownSection aria-label="empty" className="hidden">
+                  <DropdownItem key="__empty2__">{"" as string}</DropdownItem>
+                </DropdownSection>
+              )}
+            </DropdownMenu>
+          </Dropdown>
+        )}
       </div>
 
       <div className="h-full flex-1 px-4 pb-4">

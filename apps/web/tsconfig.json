@@ -27,6 +27,9 @@
       "@shared/*": ["../../libs/shared/ts/src/*"],
       "@icons": [
         "../../node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded"
+      ],
+      "@react-types/shared": [
+        "./node_modules/@react-types/shared/src/index.d.ts"
       ]
     }
   },

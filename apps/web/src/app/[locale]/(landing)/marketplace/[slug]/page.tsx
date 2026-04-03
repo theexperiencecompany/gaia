@@ -192,7 +192,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (!integration) {
     return {
-      title: "Integration Not Found | GAIA",
+      title: "Integration Not Found",
     };
   }
 
@@ -205,7 +205,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const seoDescription = generateIntegrationDescription(integration);
 
-  const title = `${generateIntegrationTitle(integrationName, integration.category)} | GAIA`;
+  const title = generateIntegrationTitle(integrationName, integration.category);
   const ogTitle = `${integrationName} AI Integration - Connect ${integrationName} to Your AI Assistant`;
 
   return {

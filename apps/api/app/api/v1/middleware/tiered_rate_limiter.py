@@ -170,28 +170,6 @@ class TieredRateLimiter:
 
         return usage_info
 
-    async def get_usage_info(
-        self, user_id: str, feature_key: str, user_plan: PlanType
-    ) -> Dict[str, UsageInfo]:
-        current_limits = get_limits_for_plan(feature_key, user_plan)
-        usage_info = {}
-
-        for period in [RateLimitPeriod.DAY, RateLimitPeriod.MONTH]:
-            limit = getattr(current_limits, period.value)
-            if limit <= 0:
-                continue
-
-            redis_key = self._get_redis_key(user_id, feature_key, period)
-            current_usage = await self.redis.get(redis_key)
-            current_usage = int(current_usage) if current_usage else 0
-            reset_time = get_reset_time(period)
-
-            usage_info[period.value] = UsageInfo(
-                used=current_usage, limit=limit, reset_time=reset_time
-            )
-
-        return usage_info
-
     async def _sync_usage_real_time(
         self,
         user_id: str,

@@ -1,21 +1,33 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { type ReactNode, Suspense } from "react";
 
 import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
-import LoginModal from "@/features/auth/components/LoginModal";
-import { GlobalIntegrationModal } from "@/features/integrations/components/GlobalIntegrationModal";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
+import { useTodoWorkflowGlobalListener } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
 
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
 import { HeroUIProvider } from "@/layouts/HeroUIProvider";
 import QueryProvider from "@/layouts/QueryProvider";
 import { useWebSocketConnection } from "@/lib/websocket/useWebSocketConnection";
+
+const LoginModal = dynamic(
+  () => import("@/features/auth/components/LoginModal"),
+  { ssr: false },
+);
+const GlobalIntegrationModal = dynamic(
+  () =>
+    import("@/features/integrations/components/GlobalIntegrationModal").then(
+      (m) => ({ default: m.GlobalIntegrationModal }),
+    ),
+  { ssr: false },
+);
 
 export default function ProvidersLayout({ children }: { children: ReactNode }) {
   // Populate the notification store on app load
@@ -26,6 +38,9 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   // Subscribe to notification events — updates the shared store directly
   useNotificationWebSocket();
+
+  // Subscribe to workflow generation events — updates todo store globally
+  useTodoWorkflowGlobalListener();
 
   return (
     <HeroUIProvider>

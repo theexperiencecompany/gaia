@@ -42,7 +42,10 @@ export const PinCard: React.FC<PinCardProps> = ({
         {message.response.length > 350 ? "..." : ""}
       </div>
 
-      <div className="mt-auto text-xs text-foreground-500">
+      <div
+        className="mt-auto text-xs text-foreground-500"
+        suppressHydrationWarning
+      >
         {parseDate(message.date as string)}
       </div>
     </Link>

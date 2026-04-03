@@ -94,8 +94,6 @@ const IntegrationItem: React.FC<{
   );
 };
 
-export { IntegrationItem };
-
 export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   onClose,
   onIntegrationClick,
@@ -168,8 +166,8 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
         >
           <div onClick={(e) => e.stopPropagation()}>
             <div className="grid grid-cols-2 gap-2 pl-1">
-              {[...integrations]
-                .sort((a, b) => {
+              {integrations
+                .toSorted((a, b) => {
                   // Connected first, then alphabetically
                   const aOrder = statusOrder[a.status] ?? 99;
                   const bOrder = statusOrder[b.status] ?? 99;

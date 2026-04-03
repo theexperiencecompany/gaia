@@ -43,6 +43,7 @@ async def _core_agent_logic(
     user_model_config: Optional[ModelConfig] = None,
     trigger_context: Optional[dict] = None,
     usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
+    source: Optional[str] = None,
 ):
     """Core agent initialization logic shared between streaming and silent execution modes.
 
@@ -134,6 +135,7 @@ async def call_agent(
     user_model_config: Optional[ModelConfig] = None,
     usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
     stream_id: Optional[str] = None,
+    source: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Execute agent in streaming mode for interactive chat.
@@ -152,6 +154,7 @@ async def call_agent(
             user_time,
             user_model_config,
             usage_metadata_callback=usage_metadata_callback,
+            source=source,
         )
 
         # Add stream_id to config for cancellation checking
@@ -180,6 +183,7 @@ async def call_agent_silent(
     usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
     user_model_config: Optional[ModelConfig] = None,
     trigger_context: Optional[dict] = None,
+    source: Optional[str] = None,
 ) -> tuple[str, dict]:
     """
     Execute agent in silent mode for background processing.
@@ -195,6 +199,7 @@ async def call_agent_silent(
             user_model_config,
             trigger_context,
             usage_metadata_callback=usage_metadata_callback,
+            source=source,
         )
 
         result = await execute_graph_silent(graph, initial_state, config)

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { cache } from "react";
 import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
 import {
@@ -12,6 +13,15 @@ import {
   generateUseCaseMetadata,
   generateUseCaseStructuredData,
 } from "@/utils/seoUtils";
+
+/**
+ * Cached explore workflows fetch for per-request deduplication.
+ * Called by both generateMetadata and the page component — without
+ * React.cache() the axios-based fetch would run twice per request.
+ */
+const getExploreWorkflowsCached = cache((limit: number, offset: number) =>
+  workflowApi.getExploreWorkflows(limit, offset),
+);
 
 interface PageProps {
   params: Promise<{ readonly slug: string }>;
@@ -70,7 +80,7 @@ export async function generateMetadata({
 
   // First, attempt to find the use-case in explore workflows (API)
   try {
-    const resp = await workflowApi.getExploreWorkflows(200, 0);
+    const resp = await getExploreWorkflowsCached(200, 0);
     const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
     if (found) {
       const workflowAsUseCase: UseCase = {
@@ -125,7 +135,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   let communityWorkflow: Workflow | null = null;
 
   try {
-    const resp = await workflowApi.getExploreWorkflows(200, 0);
+    const resp = await getExploreWorkflowsCached(200, 0);
     const found = resp.workflows.find((w) => w.id === slug || w.slug === slug);
     if (found) {
       // If the URL uses the old ID but the workflow has a real slug, redirect

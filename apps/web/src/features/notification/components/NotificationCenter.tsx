@@ -22,6 +22,7 @@ export function NotificationCenter({
   className = "",
 }: NotificationCenterProps) {
   const [activeTab, setActiveTab] = useState<"unread" | "all">("unread");
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const router = useRouter();
 
   const notificationOptions = useMemo(
@@ -47,9 +48,12 @@ export function NotificationCenter({
     const unreadIds = notifications
       .filter((n) => n.status === NotificationStatus.DELIVERED)
       .map((n) => n.id);
-
-    if (unreadIds.length > 0) {
+    if (unreadIds.length === 0) return;
+    setIsMarkingAllRead(true);
+    try {
       await bulkMarkAsRead(unreadIds);
+    } finally {
+      setIsMarkingAllRead(false);
     }
   };
 
@@ -146,7 +150,13 @@ export function NotificationCenter({
           {/* Footer */}
           <div className="flex w-full items-center justify-evenly gap-3 p-3">
             {unreadCount > 0 && (
-              <Button size="sm" fullWidth onPress={handleMarkAllAsRead}>
+              <Button
+                size="sm"
+                fullWidth
+                onPress={handleMarkAllAsRead}
+                isLoading={isMarkingAllRead}
+                isDisabled={isMarkingAllRead}
+              >
                 Mark all as read
               </Button>
             )}

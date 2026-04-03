@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type {
-  Article,
   HowTo,
   HowToStep,
   ImageObject,
@@ -20,10 +19,7 @@ function toAbsoluteUrl(url: string): string {
 /**
  * Extracts description from markdown content for meta descriptions
  */
-export function extractDescription(
-  markdown: string,
-  maxLength: number = 160,
-): string {
+function extractDescription(markdown: string, maxLength: number = 160): string {
   if (!markdown) return "";
 
   // Remove markdown syntax
@@ -96,40 +92,6 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
 
     alternates: { canonical: canonicalUrl },
     robots: { index: true, follow: true },
-  };
-}
-
-/**
- * Generates JSON-LD structured data for a blog post
- */
-export function generateBlogStructuredData(
-  blog: BlogPost,
-): WithContext<Article> {
-  const absoluteImageUrl = toAbsoluteUrl(blog.image || "/og-image.webp");
-
-  return {
-    "@context": "https://schema.org",
-    "@type": "BlogPosting",
-    headline: blog.title,
-    description: extractDescription(blog.content),
-    image: absoluteImageUrl,
-    author: blog.authors.map((author) => ({
-      "@type": "Person",
-      name: author.name,
-      jobTitle: author.role,
-    })),
-    publisher: {
-      "@type": "Organization",
-      name: "GAIA",
-      logo: {
-        "@type": "ImageObject",
-        url: toAbsoluteUrl("/images/logos/logo.webp"),
-      } as ImageObject,
-    } as Organization,
-    datePublished: blog.date,
-    url: `${siteConfig.url}/blog/${blog.slug}`,
-    articleSection: blog.category,
-    inLanguage: "en-US",
   };
 }
 

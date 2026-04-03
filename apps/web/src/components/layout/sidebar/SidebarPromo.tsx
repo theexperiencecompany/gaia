@@ -5,7 +5,7 @@ import { CancelIcon, ZapIcon } from "@icons";
 import { useEffect, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 
-const STORAGE_KEY = "sidebar-promo-collapsed";
+const STORAGE_KEY = "sidebar-promo-collapsed:v1";
 
 interface SidebarPromoProps {
   price: number;
@@ -16,14 +16,22 @@ export function SidebarPromo({ price, onUpgrade }: SidebarPromoProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) setIsCollapsed(JSON.parse(stored));
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) setIsCollapsed(JSON.parse(stored));
+    } catch {
+      // localStorage unavailable (e.g. incognito/Safari) — use default
+    }
   }, []);
 
   const handleCollapse = () => {
     const newState = true;
     setIsCollapsed(newState);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+    } catch {
+      // localStorage unavailable — state still updated in memory
+    }
   };
 
   return (

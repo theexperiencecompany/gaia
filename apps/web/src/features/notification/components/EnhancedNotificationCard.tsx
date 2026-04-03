@@ -179,7 +179,10 @@ export const EnhancedNotificationCard = ({
               </div>
             )}
 
-          <span className="inline-block text-[11px] text-zinc-600">
+          <span
+            className="inline-block text-[11px] text-zinc-600"
+            suppressHydrationWarning
+          >
             {formattedDate}
           </span>
         </div>

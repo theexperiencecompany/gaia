@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence } from "motion/react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
@@ -39,8 +39,6 @@ export default function ChatRenderer({
   const { conversations } = useConversationList();
   const [openGeneratedImage, setOpenGeneratedImage] = useState<boolean>(false);
   const [openMemoryModal, setOpenMemoryModal] = useState<boolean>(false);
-  const searchParams = useSearchParams();
-  const messageId = searchParams.get("messageId");
   const { isLoading } = useLoading();
   const { loadingText, loadingTextKey, toolInfo } = useLoadingText();
   const { id: convoIdParam } = useParams<{ id: string }>();
@@ -150,6 +148,9 @@ export default function ChatRenderer({
   }, [filteredMessages]);
 
   useEffect(() => {
+    const messageId = new URLSearchParams(window.location.search).get(
+      "messageId",
+    );
     if (
       messageId &&
       messagesWithDeduplicatedToolCalls.length > 0 &&
@@ -158,7 +159,7 @@ export default function ChatRenderer({
       scrollToMessage(messageId);
       scrolledToMessageRef.current = messageId;
     }
-  }, [messageId, messagesWithDeduplicatedToolCalls]);
+  }, [messagesWithDeduplicatedToolCalls]);
 
   const scrollToMessage = (messageId: string) => {
     if (!messageId) return;

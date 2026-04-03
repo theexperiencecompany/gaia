@@ -43,13 +43,6 @@ export interface CalendarSelectorProps {
   onCalendarSelect: (calendarId: string) => void;
 }
 
-export interface CalendarEventDialogProps {
-  event?: GoogleCalendarEvent | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  mode?: "view" | "create";
-}
-
 export interface GoogleCalendarPerson {
   email: string;
   self?: boolean;
@@ -138,19 +131,6 @@ export interface SingleTimeEvent extends BaseEvent {
 }
 
 export type CalendarEvent = TimedEvent | SingleTimeEvent;
-
-export interface EventCardProps {
-  event: CalendarEvent;
-  isDummy?: boolean;
-  onDummyAddEvent?: () => void;
-}
-
-export interface UnifiedCalendarEventsListProps {
-  events: CalendarEvent[];
-  isDummy?: boolean;
-  onDummyAddEvent?: (index: number) => void;
-  disableAnimation?: boolean;
-}
 
 export interface EventCreatePayload {
   summary: string;

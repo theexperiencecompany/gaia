@@ -77,11 +77,13 @@ export default function DemoWorkflowCard({
                   exit={{ opacity: 0, scale: 0.8 }}
                   className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5"
                 >
-                  <Loading03Icon
-                    width={10}
-                    height={10}
-                    className="animate-spin text-primary"
-                  />
+                  <div className="animate-spin">
+                    <Loading03Icon
+                      width={10}
+                      height={10}
+                      className="text-primary"
+                    />
+                  </div>
                   <span className="text-[9px] font-medium text-primary">
                     Running
                   </span>

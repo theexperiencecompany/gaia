@@ -10,21 +10,6 @@ export interface EnvValues {
   [key: string]: string;
 }
 
-/**
- * Returns the canonical path to the API .env file.
- * Note: writeEnvFile() expects path.join(repoRoot, "apps", "api") as its repoPath
- * argument, so it writes to apps/api/.env correctly. These helpers exist so that
- * envFileExists() and readEnvFile() — which take the monorepo root — resolve
- * the same location.
- */
-export function getApiEnvPath(repoRoot: string): string {
-  return path.join(repoRoot, "apps", "api", ".env");
-}
-
-export function getWebEnvPath(repoRoot: string): string {
-  return path.join(repoRoot, "apps", "web", ".env.local");
-}
-
 function backupIfExists(filePath: string): void {
   if (fs.existsSync(filePath)) {
     fs.copyFileSync(filePath, `${filePath}.bak`);
@@ -163,7 +148,7 @@ export function writeWebEnvFile(
   fs.writeFileSync(webEnvPath, lines.join("\n"), "utf-8");
 }
 
-export const DOCKER_PORT_VAR_MAP: Record<number, string> = {
+const DOCKER_PORT_VAR_MAP: Record<number, string> = {
   8000: "API_HOST_PORT",
   5432: "POSTGRES_HOST_PORT",
   6379: "REDIS_HOST_PORT",
@@ -321,52 +306,4 @@ export function readDockerComposePortOverrides(
   }
 
   return overrides;
-}
-
-/**
- * Check if the API .env file exists. Pass the monorepo root as repoRoot.
- */
-export function envFileExists(repoRoot: string): boolean {
-  return fs.existsSync(getApiEnvPath(repoRoot));
-}
-
-/**
- * Read and parse the API .env file. Pass the monorepo root as repoRoot.
- */
-export function readEnvFile(repoRoot: string): EnvValues {
-  const envPath = getApiEnvPath(repoRoot);
-
-  if (!fs.existsSync(envPath)) {
-    return {};
-  }
-
-  const content = fs.readFileSync(envPath, "utf-8");
-  const values: EnvValues = {};
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith("#")) {
-      const [key, ...valueParts] = trimmed.split("=");
-      if (key) {
-        let value = valueParts.join("=").trim();
-        // Check if value is quoted
-        const isQuoted =
-          (value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"));
-        if (isQuoted) {
-          // Strip matching quotes, don't touch content
-          value = value.slice(1, -1);
-        } else {
-          // Remove inline comments only for unquoted values
-          const commentIdx = value.indexOf(" #");
-          if (commentIdx !== -1) {
-            value = value.substring(0, commentIdx).trim();
-          }
-        }
-        values[key.trim()] = value;
-      }
-    }
-  }
-
-  return values;
 }

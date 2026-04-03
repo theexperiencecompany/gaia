@@ -44,21 +44,6 @@ export async function checkGit(): Promise<CheckResult> {
   }
 }
 
-export async function checkDocker(): Promise<CheckResult> {
-  try {
-    await execa("docker", ["--version"]);
-  } catch {
-    return "error";
-  }
-
-  try {
-    await execa("docker", ["info"], { timeout: 5000 });
-    return "success";
-  } catch {
-    return "error";
-  }
-}
-
 export async function checkDockerDetailed(): Promise<PrerequisiteInfo> {
   let installed = false;
   let working = false;
@@ -124,38 +109,6 @@ export async function installMise(): Promise<boolean> {
     return true;
   } catch {
     return false;
-  }
-}
-
-export async function checkPorts(
-  ports: number[],
-): Promise<{ available: boolean; conflict?: number }> {
-  try {
-    const net = await import("node:net");
-
-    const checkPort = (port: number): Promise<boolean> => {
-      return new Promise((resolve) => {
-        const server = net.createServer();
-        server.once("error", () => {
-          resolve(false);
-        });
-        server.once("listening", () => {
-          server.close(() => resolve(true));
-        });
-        server.listen(port);
-      });
-    };
-
-    for (const port of ports) {
-      const isFree = await checkPort(port);
-      if (!isFree) {
-        return { available: false, conflict: port };
-      }
-    }
-
-    return { available: true };
-  } catch {
-    return { available: true };
   }
 }
 

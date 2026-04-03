@@ -137,7 +137,10 @@ export default function UsageSettings() {
                     color={getProgressColor(periodData.percentage)}
                     className="flex-1"
                   />
-                  <span className="shrink-0 text-xs text-zinc-500">
+                  <span
+                    className="shrink-0 text-xs text-zinc-500"
+                    suppressHydrationWarning
+                  >
                     {periodData.used.toLocaleString()} /{" "}
                     {periodData.limit.toLocaleString()}
                   </span>

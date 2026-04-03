@@ -90,6 +90,9 @@ class CommonSettings(BaseAppSettings):
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
 
+    # Internal service URLs (Docker network)
+    WHATSAPP_BOT_URL: str = "http://whatsapp-bot:3001"  # NOSONAR python:S5332 — internal Docker network URL, TLS not applicable
+
     # ----------------------------------------------
     # Observability
     # ----------------------------------------------
@@ -228,6 +231,7 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     COMPOSIO_WEBHOOK_SECRET: str
     DODO_WEBHOOK_PAYMENTS_SECRET: str = ""
+    KAPSO_WEBHOOK_SECRET: str
 
     # ----------------------------------------------
     # Content Management
@@ -291,6 +295,11 @@ class ProductionSettings(CommonSettings):
     SLACK_SIGNING_SECRET: Optional[str] = None
     SLACK_APP_TOKEN: Optional[str] = None
     TELEGRAM_BOT_TOKEN: Optional[str] = None
+    KAPSO_API_KEY: Optional[str] = None
+    KAPSO_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_PHONE_NUMBER: Optional[str] = (
+        None  # E.164 without +, e.g. "15551234567" — used for wa.me links
+    )
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)
@@ -364,10 +373,16 @@ class DevelopmentSettings(CommonSettings):
     FIRECRAWL_API_KEY: Optional[str] = None
 
     # ----------------------------------------------
+    # Internal Service URLs (localhost in dev, Docker hostnames in prod)
+    # ----------------------------------------------
+    WHATSAPP_BOT_URL: str = "http://localhost:3001"
+
+    # ----------------------------------------------
     # Webhook Secrets & Security
     # ----------------------------------------------
     COMPOSIO_WEBHOOK_SECRET: Optional[str] = None
     DODO_WEBHOOK_PAYMENTS_SECRET: Optional[str] = None
+    KAPSO_WEBHOOK_SECRET: Optional[str] = None
 
     # Voice Agent Configuration
     LIVEKIT_URL: Optional[str] = None
@@ -452,6 +467,11 @@ class DevelopmentSettings(CommonSettings):
     SLACK_SIGNING_SECRET: Optional[str] = None
     SLACK_APP_TOKEN: Optional[str] = None
     TELEGRAM_BOT_TOKEN: Optional[str] = None
+    KAPSO_API_KEY: Optional[str] = None
+    KAPSO_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_PHONE_NUMBER: Optional[str] = (
+        None  # E.164 without +, e.g. "15551234567" — used for wa.me links
+    )
 
     # ----------------------------------------------
     # Bot OAuth Configuration (Optional)

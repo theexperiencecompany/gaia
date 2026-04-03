@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
@@ -11,6 +11,12 @@ import { wsManager } from "@/lib/websocket/WebSocketManager";
  */
 export function useWebSocketConnection() {
   const user = useUser();
+
+  // Keep user email in a ref so the visibility handler always sees the latest
+  // value without needing to re-subscribe the event listener
+  // (advanced-event-handler-refs pattern).
+  const userEmailRef = useRef(user?.email);
+  userEmailRef.current = user?.email;
 
   // Initialize WebSocket connection
   useEffect(() => {
@@ -45,10 +51,10 @@ export function useWebSocketConnection() {
     }
   }, [user?.email]);
 
-  // Handle page visibility changes
+  // Handle page visibility changes — subscribe once, read latest email from ref
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && user?.email) {
+      if (document.visibilityState === "visible" && userEmailRef.current) {
         if (!wsManager.isConnected) {
           console.log("[WebSocket] Page became visible, reconnecting...");
           wsManager.connect();
@@ -60,7 +66,7 @@ export function useWebSocketConnection() {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [user?.email]);
+  }, []);
 
   return {
     isConnected: wsManager.isConnected,

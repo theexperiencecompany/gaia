@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
 import { BlogList } from "@/features/blog/components/BlogList";
+import type { BlogPostMeta } from "@/lib/blog";
 import { getAllBlogPosts } from "@/lib/blog";
 import {
   generateBreadcrumbSchema,
@@ -53,13 +54,19 @@ export default async function BlogPage() {
       "BlogPosting",
     );
 
+    // Strip content before crossing the RSC→client boundary — BlogList only
+    // needs metadata fields (slug, title, date, authors, category, image, featured).
+    const blogsMeta: BlogPostMeta[] = blogs.map(
+      ({ content: _content, ...meta }) => meta,
+    );
+
     return (
       <>
         <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
         <div className="flex min-h-screen w-screen justify-center py-28">
           <div className="w-full max-w-(--breakpoint-lg) space-y-2">
             <h1 className="font-serif text-6xl">Blog</h1>
-            <BlogList blogs={blogs} />
+            <BlogList blogs={blogsMeta} />
           </div>
         </div>
       </>

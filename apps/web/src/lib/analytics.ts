@@ -7,7 +7,7 @@ import posthog from "posthog-js";
  * Provides type-safe event tracking with consistent naming conventions.
  */
 
-const ANALYTICS_STORAGE_KEY = "gaia_analytics_state";
+const ANALYTICS_STORAGE_KEY = "gaia_analytics_state:v1";
 
 // Event name constants for consistent tracking
 export const ANALYTICS_EVENTS = {
@@ -154,7 +154,7 @@ export function trackEvent(
 /**
  * Set user properties without tracking an event.
  */
-export function setUserProperties(properties: UserProperties): void {
+function setUserProperties(properties: UserProperties): void {
   posthog.people.set(properties);
 }
 
@@ -165,15 +165,20 @@ interface AnalyticsState {
   discoveredFeatures: string[];
 }
 
+// Module-level cache to avoid repeated localStorage reads within the same session
+let analyticsStateCache: AnalyticsState | null = null;
+
 function getAnalyticsState(): AnalyticsState {
   if (typeof window === "undefined") {
     return { hassentFirstMessage: false, discoveredFeatures: [] };
   }
+  if (analyticsStateCache !== null) return analyticsStateCache;
   try {
     const stored = localStorage.getItem(ANALYTICS_STORAGE_KEY);
-    return stored
-      ? JSON.parse(stored)
+    analyticsStateCache = stored
+      ? (JSON.parse(stored) as AnalyticsState)
       : { hassentFirstMessage: false, discoveredFeatures: [] };
+    return analyticsStateCache;
   } catch {
     return { hassentFirstMessage: false, discoveredFeatures: [] };
   }
@@ -183,10 +188,9 @@ function updateAnalyticsState(updates: Partial<AnalyticsState>): void {
   if (typeof window === "undefined") return;
   try {
     const current = getAnalyticsState();
-    localStorage.setItem(
-      ANALYTICS_STORAGE_KEY,
-      JSON.stringify({ ...current, ...updates }),
-    );
+    const next = { ...current, ...updates };
+    analyticsStateCache = next;
+    localStorage.setItem(ANALYTICS_STORAGE_KEY, JSON.stringify(next));
   } catch {
     // Silently fail if localStorage is unavailable
   }
@@ -342,38 +346,3 @@ export function trackError(
     ...properties,
   });
 }
-
-/**
- * Create a group (for team/organization tracking).
- */
-export function setGroup(
-  groupType: string,
-  groupKey: string,
-  properties?: Record<string, unknown>,
-): void {
-  posthog.group(groupType, groupKey, properties);
-}
-
-/**
- * Opt user out of tracking.
- */
-export function optOut(): void {
-  posthog.opt_out_capturing();
-}
-
-/**
- * Opt user back into tracking.
- */
-export function optIn(): void {
-  posthog.opt_in_capturing();
-}
-
-/**
- * Check if capturing is active.
- */
-export function isCapturingEnabled(): boolean {
-  return !posthog.has_opted_out_capturing();
-}
-
-// Re-export posthog for advanced usage
-export { posthog };

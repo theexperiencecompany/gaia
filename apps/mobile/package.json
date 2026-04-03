@@ -15,7 +15,6 @@
     "analyze": "expo export --platform ios --source-maps && npx source-map-explorer dist/_expo/static/js/ios/*.js"
   },
   "dependencies": {
-    "@dev-plugins/react-query": "^0.4.0",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/roboto-mono": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
@@ -54,12 +53,10 @@
     "expo-system-ui": "~55.0.9",
     "expo-web-browser": "~55.0.9",
     "heroui-native": "1.0.0-beta.9",
-    "lucide-react-native": "^0.562.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.2",
     "react-native-gesture-handler": "~2.30.0",
-    "react-native-keyboard-aware-scroll-view": "^0.9.5",
     "react-native-reanimated": "~4.2.1",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
@@ -75,13 +72,8 @@
   },
   "devDependencies": {
     "@react-native-community/cli": "latest",
-    "@tailwindcss/postcss": "^4.1.18",
     "@types/react": "^19.2.14",
     "dotenv-cli": "^11.0.0",
-    "eslint": "^9.25.0",
-    "eslint-config-expo": "~55.0.0",
-    "postcss": "^8.5.6",
-    "prettier-plugin-tailwindcss": "^0.5.14",
     "reactotron-react-native": "^5.1.18",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.2"

@@ -85,7 +85,7 @@ export default function UseCaseSection({
   // Generate categories dynamically from the actual data
   const dynamicCategories = Array.from(
     new Set(exploreWorkflows.flatMap((uc) => uc.categories || [])),
-  ).sort();
+  ).toSorted();
 
   const allCategories = [
     ...(hideAllCategory ? [] : ["all"]),

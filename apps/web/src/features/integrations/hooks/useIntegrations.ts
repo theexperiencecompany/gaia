@@ -117,11 +117,14 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       userIntegrations.map((ui) => ui.integrationId),
     );
 
+    // Build a Map for O(1) status lookups
+    const statusMap = new Map(statuses.map((s) => [s.integrationId, s]));
+
     // Add platform integrations that user hasn't added yet
     const availablePlatformIntegrations: Integration[] = platformConfigs
       .filter((pi) => !userIntegrationIds.has(pi.id))
       .map((pi) => {
-        const status = statuses.find((s) => s.integrationId === pi.id);
+        const status = statusMap.get(pi.id);
         return {
           ...pi,
           source: "platform" as const,
@@ -142,7 +145,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       ...availablePlatformIntegrations,
     ];
 
-    return allIntegrations.sort((a, b) => {
+    return allIntegrations.toSorted((a, b) => {
       const priorityA = statusPriority[a.status] ?? 3;
       const priorityB = statusPriority[b.status] ?? 3;
 

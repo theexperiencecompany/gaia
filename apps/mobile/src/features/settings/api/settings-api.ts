@@ -56,6 +56,7 @@ export interface UserStats {
 export interface ChannelPreferences {
   telegram: boolean;
   discord: boolean;
+  whatsapp: boolean;
 }
 
 export const settingsApi = {
@@ -101,7 +102,7 @@ export const settingsApi = {
   },
 
   updateChannelPreference(
-    platform: "telegram" | "discord",
+    platform: "telegram" | "discord" | "whatsapp",
     enabled: boolean,
   ): Promise<UpdatePreferencesResponse> {
     return apiService.put<UpdatePreferencesResponse>(

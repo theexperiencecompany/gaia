@@ -1595,16 +1595,14 @@ class MCPClient:
                 server_url
             )
             if matching_integration_id is None:
-                log.warning(
-                    "No active MCP session found for server_url: %s", server_url
-                )
+                log.warning(f"No active MCP session found for server_url: {server_url}")
                 return None
 
             await self.ensure_connected(matching_integration_id)
 
             matching_client = self._clients.get(matching_integration_id)
             if matching_client is None:
-                log.warning("No active MCP client found for server_url: %s", server_url)
+                log.warning(f"No active MCP client found for server_url: {server_url}")
                 return None
 
             session = matching_client.get_session(matching_integration_id)
@@ -1639,17 +1637,12 @@ class MCPClient:
 
         except asyncio.TimeoutError:
             log.warning(
-                "Timeout reading UI resource %s from %s (10s)",
-                resource_uri,
-                server_url,
+                f"Timeout reading UI resource {resource_uri} from {server_url} (10s)"
             )
             return None
         except Exception as e:
             log.warning(
-                "Failed to read UI resource %s from %s: %s",
-                resource_uri,
-                server_url,
-                e,
+                f"Failed to read UI resource {resource_uri} from {server_url}: {e}"
             )
             return None
 

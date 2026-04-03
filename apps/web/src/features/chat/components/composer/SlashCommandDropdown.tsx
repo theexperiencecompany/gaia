@@ -349,7 +349,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     const uniqueCategories = Array.from(
       new Set(matches.map((match) => match.tool.category)),
     );
-    return ["all", ...uniqueCategories.sort()];
+    return ["all", ...uniqueCategories.toSorted()];
   }, [matches, externalCategories]);
 
   // Build a map of category ID -> { displayName, iconUrl } for efficient lookup

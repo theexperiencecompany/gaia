@@ -466,3 +466,472 @@ class TestListConversations:
             assert set(bot_sources).issubset(set(excluded)), (
                 "Bot sources must be excluded from conversation listings"
             )
+
+
+# ---------------------------------------------------------------------------
+# update_messages
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestUpdateMessages:
+    async def test_updates_messages_successfully(self, mock_collection, test_user):
+        from app.services.conversation_service import update_messages
+        from app.models.chat_models import UpdateMessagesRequest, MessageModel
+
+        mock_result = MagicMock()
+        mock_result.modified_count = 1
+        mock_collection.update_one = AsyncMock(return_value=mock_result)
+
+        msg = MessageModel(type="user", response="Hello")
+        request = UpdateMessagesRequest(
+            conversation_id="conv_abc",
+            messages=[msg],
+        )
+
+        result = await update_messages(request, test_user)
+
+        assert result["conversation_id"] == "conv_abc"
+        assert result["message"] == "Messages updated"
+        assert result["modified_count"] == 1
+        assert len(result["message_ids"]) == 1
+
+    async def test_raises_404_when_conversation_not_found(
+        self, mock_collection, test_user
+    ):
+        from app.services.conversation_service import update_messages
+        from app.models.chat_models import UpdateMessagesRequest, MessageModel
+
+        mock_result = MagicMock()
+        mock_result.modified_count = 0
+        mock_collection.update_one = AsyncMock(return_value=mock_result)
+
+        msg = MessageModel(type="user", response="Hello")
+        request = UpdateMessagesRequest(
+            conversation_id="conv_missing",
+            messages=[msg],
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_messages(request, test_user)
+
+        assert exc_info.value.status_code == 404
+
+    async def test_strips_none_values_from_messages(self, mock_collection, test_user):
+        from app.services.conversation_service import update_messages
+        from app.models.chat_models import UpdateMessagesRequest, MessageModel
+
+        mock_result = MagicMock()
+        mock_result.modified_count = 1
+        mock_collection.update_one = AsyncMock(return_value=mock_result)
+
+        msg = MessageModel(type="user", response="Hi", disclaimer=None)
+        request = UpdateMessagesRequest(
+            conversation_id="conv_abc",
+            messages=[msg],
+        )
+
+        await update_messages(request, test_user)
+
+        call_args = mock_collection.update_one.call_args
+        pushed_messages = call_args[0][1]["$push"]["messages"]["$each"]
+        assert len(pushed_messages) == 1
+        # None values should be stripped
+        assert "disclaimer" not in pushed_messages[0]
+
+
+# ---------------------------------------------------------------------------
+# pin_message
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPinMessage:
+    async def test_pins_message_successfully(self, mock_collection, test_user):
+        from app.services.conversation_service import pin_message
+
+        mock_collection.find_one = AsyncMock(
+            return_value={
+                "_id": ObjectId(),
+                "user_id": "user_123",
+                "conversation_id": "conv_abc",
+                "messages": [
+                    {"message_id": "msg_1", "response": "Hello"},
+                ],
+            }
+        )
+        mock_result = MagicMock()
+        mock_result.modified_count = 1
+        mock_collection.update_one = AsyncMock(return_value=mock_result)
+
+        result = await pin_message("conv_abc", "msg_1", True, test_user)
+
+        assert result["pinned"] is True
+        assert "pinned successfully" in result["message"]
+
+    async def test_unpins_message(self, mock_collection, test_user):
+        from app.services.conversation_service import pin_message
+
+        mock_collection.find_one = AsyncMock(
+            return_value={
+                "_id": ObjectId(),
+                "messages": [{"message_id": "msg_1"}],
+            }
+        )
+        mock_result = MagicMock()
+        mock_result.modified_count = 1
+        mock_collection.update_one = AsyncMock(return_value=mock_result)
+
+        result = await pin_message("conv_abc", "msg_1", False, test_user)
+
+        assert result["pinned"] is False
+        assert "unpinned successfully" in result["message"]
+
+    async def test_raises_404_conversation_not_found(self, mock_collection, test_user):
+        from app.services.conversation_service import pin_message
+
+        mock_collection.find_one = AsyncMock(return_value=None)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await pin_message("conv_abc", "msg_1", True, test_user)
+
+        assert exc_info.value.status_code == 404
+
+    async def test_raises_404_message_not_found(self, mock_collection, test_user):
+        from app.services.conversation_service import pin_message
+
+        mock_collection.find_one = AsyncMock(
+            return_value={
+                "_id": ObjectId(),
+                "messages": [{"message_id": "msg_other"}],
+            }
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await pin_message("conv_abc", "msg_nonexistent", True, test_user)
+
+        assert exc_info.value.status_code == 404
+
+    async def test_raises_404_update_failed(self, mock_collection, test_user):
+        from app.services.conversation_service import pin_message
+
+        mock_collection.find_one = AsyncMock(
+            return_value={
+                "_id": ObjectId(),
+                "messages": [{"message_id": "msg_1"}],
+            }
+        )
+        mock_result = MagicMock()
+        mock_result.modified_count = 0
+        mock_collection.update_one = AsyncMock(return_value=mock_result)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await pin_message("conv_abc", "msg_1", True, test_user)
+
+        assert exc_info.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# get_starred_messages
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGetStarredMessages:
+    async def test_returns_pinned_messages(self, mock_collection, test_user):
+        from app.services.conversation_service import get_starred_messages
+
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(
+            return_value=[
+                {
+                    "conversation_id": "conv_1",
+                    "message": {"message_id": "m1", "response": "test", "pinned": True},
+                },
+            ]
+        )
+        mock_collection.aggregate = MagicMock(return_value=mock_cursor)
+
+        with patch(
+            "app.services.conversation_service.convert_legacy_tool_data",
+            side_effect=lambda x: x,
+        ):
+            result = await get_starred_messages(test_user)
+
+        assert len(result["results"]) == 1
+        assert result["results"][0]["conversation_id"] == "conv_1"
+
+    async def test_returns_empty_results(self, mock_collection, test_user):
+        from app.services.conversation_service import get_starred_messages
+
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(return_value=[])
+        mock_collection.aggregate = MagicMock(return_value=mock_cursor)
+
+        result = await get_starred_messages(test_user)
+
+        assert result["results"] == []
+
+
+# ---------------------------------------------------------------------------
+# create_system_conversation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCreateSystemConversation:
+    async def test_creates_system_conversation(self, mock_collection):
+        from app.services.conversation_service import create_system_conversation
+
+        mock_result = MagicMock()
+        mock_result.acknowledged = True
+        mock_collection.insert_one = AsyncMock(return_value=mock_result)
+
+        result = await create_system_conversation(
+            "user_123", "Email Actions", SystemPurpose.EMAIL_PROCESSING
+        )
+
+        assert result["user_id"] == "user_123"
+        assert result["is_system_generated"] is True
+        assert result["system_purpose"] == SystemPurpose.EMAIL_PROCESSING
+        assert result["detail"] == "System conversation created successfully"
+
+    async def test_raises_500_on_not_acknowledged(self, mock_collection):
+        from app.services.conversation_service import create_system_conversation
+
+        mock_result = MagicMock()
+        mock_result.acknowledged = False
+        mock_collection.insert_one = AsyncMock(return_value=mock_result)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await create_system_conversation("user_123", "Test", SystemPurpose.OTHER)
+
+        assert exc_info.value.status_code == 500
+
+    async def test_raises_500_on_exception(self, mock_collection):
+        from app.services.conversation_service import create_system_conversation
+
+        mock_collection.insert_one = AsyncMock(side_effect=Exception("DB error"))
+
+        with pytest.raises(HTTPException) as exc_info:
+            await create_system_conversation("user_123", "Test", SystemPurpose.OTHER)
+
+        assert exc_info.value.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# get_or_create_system_conversation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGetOrCreateSystemConversation:
+    async def test_returns_existing_conversation(self, mock_collection):
+        from app.services.conversation_service import get_or_create_system_conversation
+
+        existing = {
+            "_id": ObjectId(),
+            "user_id": "user_123",
+            "conversation_id": "conv_sys",
+            "is_system_generated": True,
+            "system_purpose": "email_processing",
+        }
+        mock_collection.find_one = AsyncMock(return_value=existing)
+
+        result = await get_or_create_system_conversation(
+            "user_123", SystemPurpose.EMAIL_PROCESSING
+        )
+
+        assert result["conversation_id"] == "conv_sys"
+        assert isinstance(result["_id"], str)
+
+    async def test_creates_new_when_not_found(self, mock_collection):
+        from app.services.conversation_service import get_or_create_system_conversation
+
+        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_result = MagicMock()
+        mock_result.acknowledged = True
+        mock_collection.insert_one = AsyncMock(return_value=mock_result)
+
+        result = await get_or_create_system_conversation(
+            "user_123", SystemPurpose.EMAIL_PROCESSING
+        )
+
+        assert result["is_system_generated"] is True
+        assert result["description"] == "Email Actions & Notifications"
+
+    async def test_uses_custom_description(self, mock_collection):
+        from app.services.conversation_service import get_or_create_system_conversation
+
+        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_result = MagicMock()
+        mock_result.acknowledged = True
+        mock_collection.insert_one = AsyncMock(return_value=mock_result)
+
+        result = await get_or_create_system_conversation(
+            "user_123", SystemPurpose.OTHER, description="Custom Desc"
+        )
+
+        assert result["description"] == "Custom Desc"
+
+    async def test_default_description_fallback(self, mock_collection):
+        from app.services.conversation_service import get_or_create_system_conversation
+
+        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_result = MagicMock()
+        mock_result.acknowledged = True
+        mock_collection.insert_one = AsyncMock(return_value=mock_result)
+
+        result = await get_or_create_system_conversation(
+            "user_123", SystemPurpose.REMINDER_PROCESSING
+        )
+
+        assert result["description"] == "Reminder Management"
+
+
+# ---------------------------------------------------------------------------
+# batch_sync_conversations
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBatchSyncConversations:
+    async def test_returns_empty_when_no_user_id(self, mock_collection):
+        from app.services.conversation_service import batch_sync_conversations
+        from app.models.chat_models import BatchSyncRequest
+
+        request = BatchSyncRequest(conversations=[])
+        with pytest.raises(HTTPException) as exc_info:
+            await batch_sync_conversations(request, {})
+
+        assert exc_info.value.status_code == 403
+
+    async def test_returns_empty_for_empty_conversations(
+        self, mock_collection, test_user
+    ):
+        from app.services.conversation_service import batch_sync_conversations
+        from app.models.chat_models import BatchSyncRequest
+
+        request = BatchSyncRequest(conversations=[])
+        result = await batch_sync_conversations(request, test_user)
+
+        assert result == {"conversations": []}
+
+    async def test_returns_updated_conversations(self, mock_collection, test_user):
+        from app.services.conversation_service import batch_sync_conversations
+        from app.models.chat_models import BatchSyncRequest, ConversationSyncItem
+
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(
+            return_value=[
+                {
+                    "conversation_id": "conv_1",
+                    "description": "Updated Chat",
+                    "messages": [],
+                }
+            ]
+        )
+        mock_collection.aggregate = MagicMock(return_value=mock_cursor)
+
+        request = BatchSyncRequest(
+            conversations=[
+                ConversationSyncItem(
+                    conversation_id="conv_1",
+                    last_updated="2024-01-01T00:00:00Z",
+                ),
+            ]
+        )
+
+        with patch(
+            "app.services.conversation_service.convert_conversation_messages",
+            side_effect=lambda x: x,
+        ):
+            result = await batch_sync_conversations(request, test_user)
+
+        assert len(result["conversations"]) == 1
+        assert result["conversations"][0]["conversation_id"] == "conv_1"
+
+    async def test_handles_no_last_updated(self, mock_collection, test_user):
+        from app.services.conversation_service import batch_sync_conversations
+        from app.models.chat_models import BatchSyncRequest, ConversationSyncItem
+
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(return_value=[])
+        mock_collection.aggregate = MagicMock(return_value=mock_cursor)
+
+        request = BatchSyncRequest(
+            conversations=[
+                ConversationSyncItem(
+                    conversation_id="conv_1",
+                    last_updated=None,
+                ),
+            ]
+        )
+
+        with patch(
+            "app.services.conversation_service.convert_conversation_messages",
+            side_effect=lambda x: x,
+        ):
+            result = await batch_sync_conversations(request, test_user)
+
+        assert "conversations" in result
+
+    async def test_handles_invalid_timestamp(self, mock_collection, test_user):
+        from app.services.conversation_service import batch_sync_conversations
+        from app.models.chat_models import BatchSyncRequest, ConversationSyncItem
+
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(return_value=[])
+        mock_collection.aggregate = MagicMock(return_value=mock_cursor)
+
+        request = BatchSyncRequest(
+            conversations=[
+                ConversationSyncItem(
+                    conversation_id="conv_1",
+                    last_updated="not-a-date",
+                ),
+            ]
+        )
+
+        with patch(
+            "app.services.conversation_service.convert_conversation_messages",
+            side_effect=lambda x: x,
+        ):
+            result = await batch_sync_conversations(request, test_user)
+
+        assert "conversations" in result
+
+    async def test_converts_datetime_in_messages(self, mock_collection, test_user):
+        from app.services.conversation_service import batch_sync_conversations
+        from app.models.chat_models import BatchSyncRequest, ConversationSyncItem
+
+        dt = datetime(2024, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(
+            return_value=[
+                {
+                    "conversation_id": "conv_1",
+                    "createdAt": dt,
+                    "messages": [
+                        {"message_id": "m1", "timestamp": dt},
+                    ],
+                }
+            ]
+        )
+        mock_collection.aggregate = MagicMock(return_value=mock_cursor)
+
+        request = BatchSyncRequest(
+            conversations=[
+                ConversationSyncItem(conversation_id="conv_1"),
+            ]
+        )
+
+        with patch(
+            "app.services.conversation_service.convert_conversation_messages",
+            side_effect=lambda x: x,
+        ):
+            result = await batch_sync_conversations(request, test_user)
+
+        conv = result["conversations"][0]
+        assert isinstance(conv["createdAt"], str)
+        assert isinstance(conv["messages"][0]["timestamp"], str)

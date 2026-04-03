@@ -35,21 +35,33 @@ os.environ.setdefault(
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
 
+# ---------------------------------------------------------------------------
+# Infrastructure mock strategy
+#
+# USE_REAL_SERVICES=1 is set by the Dagger service container (see
+# .dagger/src/gaia_ci/main.py _service_test_container). When set, real
+# Postgres/Redis/MongoDB/ChromaDB are available and we skip the global
+# _get_mongodb_instance mock so integration, e2e, and service tests reach
+# the actual database.
+#
+# Unit tests that need isolated DB behaviour use the mock_mongodb fixture
+# (tests/unit/conftest.py), which patches _get_collection at a higher level
+# and is unaffected by this decision.
+#
+# Without USE_REAL_SERVICES (local pytest run without Docker), we keep the
+# MagicMock to prevent hangs on connection attempts.
+# ---------------------------------------------------------------------------
 
-# Patch Infisical, MongoDB ping, and rate limiting immediately so
-# module-level imports don't hang and request-time decorators don't
-# try to connect to external services.
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
+
 _mock_subscription = MagicMock()
 _mock_subscription.plan_type = "free"
 
-_patches = [
+# Always mock: Infisical secrets and rate limiting. These are external SaaS
+# services that must never be called in any test environment.
+_always_patches = [
     patch("app.config.secrets.inject_infisical_secrets", return_value=None),
     patch("shared.py.secrets.inject_infisical_secrets", return_value=None),
-    patch(
-        "app.db.mongodb.collections._get_mongodb_instance",
-        return_value=MagicMock(),
-    ),
-    # Rate limiting patches — must persist across all requests, not just app creation.
     patch(
         "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
         new_callable=AsyncMock,
@@ -58,8 +70,25 @@ _patches = [
     patch(
         "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
         new_callable=AsyncMock,
+        return_value={},
     ),
 ]
+
+# Only mock MongoDB when real services are NOT available. When
+# USE_REAL_SERVICES=1 the Dagger container has real MongoDB running and
+# integration/e2e/service tests should reach it.
+_infra_patches = (
+    []
+    if _USE_REAL_SERVICES
+    else [
+        patch(
+            "app.db.mongodb.collections._get_mongodb_instance",
+            return_value=MagicMock(),
+        ),
+    ]
+)
+
+_patches = [*_always_patches, *_infra_patches]
 for p in _patches:
     p.start()
 
@@ -156,6 +185,10 @@ def pytest_configure(config):
         "integration: Integration tests (compiled graphs, mocked services)",
     )
     config.addinivalue_line(
+        "markers",
+        "service: Service integration tests (require real Postgres/Redis/MongoDB)",
+    )
+    config.addinivalue_line(
         "markers", "e2e: End-to-end tests (real or near-real services)"
     )
     config.addinivalue_line(
@@ -200,7 +233,7 @@ def test_app() -> FastAPI:
 @pytest.fixture
 async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     """Async HTTP client bound to the test app."""
-    transport = ASGITransport(app=test_app)
+    transport = ASGITransport(app=test_app, raise_app_exceptions=False)
     async with AsyncClient(
         transport=transport,
         base_url="http://test",  # NOSONAR
@@ -215,7 +248,7 @@ async def unauthed_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None
 
     original = test_app.dependency_overrides.pop(get_current_user, None)
     try:
-        transport = ASGITransport(app=test_app)
+        transport = ASGITransport(app=test_app, raise_app_exceptions=False)
         async with AsyncClient(
             transport=transport,
             base_url="http://test",  # NOSONAR

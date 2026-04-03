@@ -94,7 +94,9 @@ class ReminderScheduler(BaseSchedulerService):
                     "scheduled_at must be provided or repeat must be specified"
                 )
 
-        reminder = ReminderModel(**reminder_data.model_dump(), user_id=user_id)
+        reminder_dict = reminder_data.model_dump()
+        reminder_dict["scheduled_at"] = schedule_config.scheduled_at
+        reminder = ReminderModel(**reminder_dict, user_id=user_id)
 
         # Insert into MongoDB
         result = await reminders_collection.insert_one(

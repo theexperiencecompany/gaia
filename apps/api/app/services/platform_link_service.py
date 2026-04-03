@@ -84,7 +84,7 @@ class PlatformLinkService:
         user_id: str,
         platform: str,
         platform_user_id: str,
-        use_object_id: bool = False,
+        _use_object_id: bool = False,
         profile: Optional[dict] = None,
     ) -> dict:
         """
@@ -167,7 +167,7 @@ class PlatformLinkService:
 
     @staticmethod
     async def unlink_account(
-        user_id: str, platform: str, use_object_id: bool = False
+        user_id: str, platform: str, _use_object_id: bool = False
     ) -> dict:
         """
         Unlink a platform account from a GAIA user.

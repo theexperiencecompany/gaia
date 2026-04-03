@@ -41,14 +41,21 @@ async def search_messages_endpoint(query: str, user: dict = Depends(get_current_
             "scope": ["messages", "conversations", "notes"],
         },
     )
-    results = await search_messages(query, user_id)
-    result_count = (
-        len(results.get("messages", []))
-        + len(results.get("conversations", []))
-        + len(results.get("notes", []))
-    )
-    log.set(search={"result_count": result_count})
-    return results
+    try:
+        results = await search_messages(query, user_id)
+        result_count = (
+            len(results.get("messages", []))
+            + len(results.get("conversations", []))
+            + len(results.get("notes", []))
+        )
+        log.set(search={"result_count": result_count})
+        return results
+    except Exception as e:
+        log.error(f"Error searching messages: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Search failed",
+        )
 
 
 def extract_emails(text: str) -> list:

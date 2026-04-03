@@ -251,6 +251,26 @@ async def create_todo_indexes():
             todos_collection.create_index(
                 [("user_id", 1), ("subtasks.id", 1)], sparse=True
             ),
+            # For workflow_id lookups (sparse — most todos won't have workflow_id)
+            todos_collection.create_index(
+                [("user_id", 1), ("workflow_id", 1)], sparse=True, name="user_workflow"
+            ),
+            # For date range + created_at sort queries
+            todos_collection.create_index(
+                [("user_id", 1), ("due_date", 1), ("created_at", -1)],
+                sparse=True,
+                name="user_due_created",
+            ),
+            # For completed + due_date queries (overdue/today filters)
+            todos_collection.create_index(
+                [("user_id", 1), ("completed", 1), ("due_date", 1)],
+                name="user_completed_due",
+            ),
+            # For project + due_date queries
+            todos_collection.create_index(
+                [("user_id", 1), ("project_id", 1), ("due_date", 1)],
+                name="user_project_due",
+            ),
         )
 
     except Exception as e:

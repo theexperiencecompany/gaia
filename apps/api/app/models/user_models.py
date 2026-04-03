@@ -37,9 +37,6 @@ class UserUpdateResponse(BaseModel):
         None, description="URL of the user's profile picture"
     )
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
-    selected_model: Optional[str] = Field(
-        None, description="ID of the user's selected AI model"
-    )
 
 
 class OnboardingPreferences(BaseModel):

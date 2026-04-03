@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Cancel01Icon } from "@icons";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useEffectEvent } from "react";
 import {
   type RightSidebarVariant,
   useRightSidebar,
@@ -24,20 +24,20 @@ export default function RightSidebar({
   const artifactWidth = "clamp(520px, 46vw, 980px)";
 
   // Close sidebar on Escape key
+  const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === "Escape" && isOpen) {
+      close();
+    }
+  });
+
   useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        close();
-      }
-    };
     if (typeof window !== "undefined")
       window.addEventListener("keydown", handleKeyDown);
     return () => {
       if (typeof window !== "undefined")
         window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, close]);
+  }, []);
 
   const closeButton = (
     <div className="flex w-full items-center justify-end px-3 pt-3 pb-1">
@@ -53,54 +53,62 @@ export default function RightSidebar({
     </div>
   );
 
-  if (variant === "artifact") {
-    return (
-      <aside
-        className="relative flex h-full min-h-0 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950 transition-[width,min-width] duration-300 ease-in-out"
-        style={{
-          width: isOpen ? artifactWidth : "0px",
-          minWidth: isOpen ? artifactWidth : "0px",
-          overflow: "hidden",
-        }}
-      >
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
-          {children}
-        </div>
-      </aside>
-    );
-  }
+  const isSheet = variant === "sheet";
+  const isArtifact = variant === "artifact";
+  const isSidebar = variant === "sidebar";
+  const sheetOpen = isSheet && isOpen;
 
-  if (variant === "sidebar") {
-    return (
-      <aside
-        className="relative flex min-h-0 shrink-0 flex-col bg-secondary-bg transition-[width,min-width] duration-300 ease-in-out"
-        style={{
-          width: isOpen ? sidebarWidth : "0px",
-          minWidth: isOpen ? sidebarWidth : "0px",
-          overflow: "hidden",
-        }}
-      >
-        {isOpen && closeButton}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          {children}
-        </div>
-      </aside>
-    );
-  }
-
-  // Sheet variant (overlay)
   return (
-    <aside
-      className="absolute top-0 right-0 z-50 flex h-full min-h-0 flex-col overflow-hidden bg-secondary-bg transition-transform duration-300 ease-in-out"
-      style={{
-        width: "380px",
-        transform: isOpen ? "translateX(0)" : "translateX(100%)",
-      }}
-    >
-      {isOpen && closeButton}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {children}
-      </div>
-    </aside>
+    <>
+      {/* Sheet variant (overlay) — always mounted so translateX(100%) is painted
+          before the first open, giving CSS transitions a starting state. */}
+      <aside
+        className="absolute top-0 right-0 z-50 flex h-full min-h-0 flex-col overflow-hidden bg-secondary-bg transition-transform duration-300 ease-in-out"
+        style={{
+          width: "380px",
+          transform: sheetOpen ? "translateX(0)" : "translateX(100%)",
+          pointerEvents: sheetOpen ? "auto" : "none",
+        }}
+        aria-hidden={!sheetOpen}
+      >
+        {sheetOpen && closeButton}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {isSheet ? children : null}
+        </div>
+      </aside>
+
+      {/* Artifact variant */}
+      {isArtifact && (
+        <aside
+          className="relative flex h-full min-h-0 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950 transition-[width,min-width] duration-300 ease-in-out"
+          style={{
+            width: isOpen ? artifactWidth : "0px",
+            minWidth: isOpen ? artifactWidth : "0px",
+            overflow: "hidden",
+          }}
+        >
+          <div className="flex h-full min-h-0 flex-col overflow-hidden">
+            {children}
+          </div>
+        </aside>
+      )}
+
+      {/* Sidebar variant */}
+      {isSidebar && (
+        <aside
+          className="relative flex min-h-0 shrink-0 flex-col bg-secondary-bg transition-[width,min-width] duration-300 ease-in-out"
+          style={{
+            width: isOpen ? sidebarWidth : "0px",
+            minWidth: isOpen ? sidebarWidth : "0px",
+            overflow: "hidden",
+          }}
+        >
+          {isOpen && closeButton}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {children}
+          </div>
+        </aside>
+      )}
+    </>
   );
 }

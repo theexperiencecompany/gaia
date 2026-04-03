@@ -8,16 +8,19 @@ import SelectedToolIndicator from "@/features/chat/components/composer/SelectedT
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
+import type { FileData } from "@/types/shared/fileTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
 import ChatBubble_Actions from "../actions/ChatBubble_Actions";
 import ChatBubbleFilePreview from "./ChatBubbleFilePreview";
 
+const DEFAULT_FILE_DATA: FileData[] = [];
+
 export default function ChatBubbleUser({
   text,
   date,
   message_id,
-  fileData = [],
+  fileData = DEFAULT_FILE_DATA,
   selectedTool,
   toolCategory,
   selectedWorkflow,
@@ -56,7 +59,10 @@ export default function ChatBubbleUser({
   }
 
   return (
-    <div className="group flex w-full justify-end gap-3">
+    <div
+      className="group flex w-full justify-end gap-3"
+      style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
+    >
       <div className="flex flex-col items-end gap-1">
         {/* Bubble content + avatar aligned at bottom */}
         <div className="flex items-end gap-1" id={message_id}>
@@ -133,7 +139,10 @@ export default function ChatBubbleUser({
         {!disableActions && (
           <div className="flex flex-col items-end gap-1 pr-13 pb-1 opacity-0 transition-all group-hover:opacity-100">
             {date && (
-              <span className="flex flex-col text-xs text-zinc-400 select-text">
+              <span
+                className="flex flex-col text-xs text-zinc-400 select-text"
+                suppressHydrationWarning
+              >
                 {parseDate(date)}
               </span>
             )}

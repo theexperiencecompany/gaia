@@ -62,6 +62,40 @@ with patch("app.services.chat_service.llm_client.invoke") as mock_llm:
     result = run_chat_stream(msg)  # runs real logic, fake LLM
 ```
 
+**Law 2b: Patch Module Singletons, Not Individual Functions**
+
+When production code uses a module-level singleton (a shared client, cache, or connection object), patch the singleton's attribute directly. This ensures all production code that touches the singleton — including code several layers deep — uses the real test resource without any function-level patching.
+
+```python
+# Production: redis_cache = RedisCache()  (module singleton)
+# StreamManager uses redis_cache.redis internally
+
+# WRONG — patches one function, misses all others that use redis_cache
+with patch("app.core.stream_manager.StreamManager.publish_chunk") as mock:
+    ...  # other methods still use the broken/missing redis_cache.redis
+
+# RIGHT — patch the singleton attribute; all production code sees real Redis
+from app.db.redis import redis_cache
+
+@pytest.fixture
+async def real_redis(monkeypatch):
+    client = Redis.from_url("redis://localhost:6379", decode_responses=True)
+    await client.ping()
+    monkeypatch.setattr(redis_cache, "redis", client)   # one patch, everything works
+    yield client
+    await client.flushdb()
+    await client.aclose()
+
+async def test_stream_publishes(real_redis):
+    await StreamManager.start_stream("s1", "conv1", "user1")
+    await StreamManager.publish_chunk("s1", "data: hello\n\n")
+    chunks = []
+    async for chunk in StreamManager.subscribe_stream("s1"):
+        chunks.append(chunk)
+        break
+    assert chunks[0] == "data: hello\n\n"
+```
+
 ### Law 3: Assert on Production Behavior
 
 Assert on what the production code actually does — return values, state mutations, raised exceptions, emitted events.
@@ -112,6 +146,7 @@ When writing or reviewing tests, check for these red flags. For detailed example
 | Assertions only check `mock.called` or `mock.call_count` | Proves nothing about production behavior |
 | Test defines a fake implementation of the thing being tested | Circular — testing your fake, not production code |
 | `# mimicking`, `# simplified version of` in comments | Admission that production code is not under test |
+| Test manually reimplements what a production function does | Duplication — if you delete the function, test still passes |
 | All tests pass when production code is broken | The entire suite is false confidence |
 
 ## Mock Hierarchy (What to Mock Where)

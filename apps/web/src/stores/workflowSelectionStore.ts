@@ -94,15 +94,10 @@ export const useWorkflowSelectionStore = create<WorkflowSelectionStore>()(
         name: "workflow-selection-storage",
         partialize: (state) => ({
           selectedWorkflow: state.selectedWorkflow,
+          autoSend: state.autoSend,
         }),
       },
     ),
     { name: "workflow-selection-store" },
   ),
 );
-
-// Selectors
-export const useSelectedWorkflow = () =>
-  useWorkflowSelectionStore((state) => state.selectedWorkflow);
-export const useWorkflowAutoSend = () =>
-  useWorkflowSelectionStore((state) => state.autoSend);

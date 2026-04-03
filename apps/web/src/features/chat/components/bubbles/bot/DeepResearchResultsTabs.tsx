@@ -212,7 +212,7 @@ function SearchMetadata({ metadata }: SearchMetadataProps) {
             <span className="font-medium">{metadata.query}</span>
           </div>
         )}
-        {metadata.elapsed_time && (
+        {metadata.elapsed_time != null && metadata.elapsed_time > 0 && (
           <div className="flex items-center justify-between">
             <span className="text-foreground-500">Processing Time:</span>
             <span className="font-medium">
@@ -220,14 +220,15 @@ function SearchMetadata({ metadata }: SearchMetadataProps) {
             </span>
           </div>
         )}
-        {metadata.total_content_size && (
-          <div className="flex items-center justify-between">
-            <span className="text-foreground-500">Content Size:</span>
-            <span className="font-medium">
-              {(metadata.total_content_size / 1024).toFixed(2)} KB
-            </span>
-          </div>
-        )}
+        {metadata.total_content_size != null &&
+          metadata.total_content_size > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-foreground-500">Content Size:</span>
+              <span className="font-medium">
+                {(metadata.total_content_size / 1024).toFixed(2)} KB
+              </span>
+            </div>
+          )}
       </div>
     </div>
   );

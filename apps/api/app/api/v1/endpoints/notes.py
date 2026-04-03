@@ -4,7 +4,7 @@ Router module for note-related endpoints.
 This module contains endpoints for creating, retrieving, updating, and deleting notes.
 """
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from shared.py.wide_events import log
@@ -38,9 +38,16 @@ async def create_note_endpoint(
         NoteResponse: The created note.
     """
     log.set(operation="create_note")
-    result = await create_note_service(note, user["user_id"])
-    log.set(outcome="success")
-    return result
+    try:
+        result = await create_note_service(note, user["user_id"])
+        log.set(outcome="success")
+        return result
+    except Exception as e:
+        log.error(f"Error creating note: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create note",
+        )
 
 
 @router.get("/notes/{note_id}", response_model=NoteResponse)
@@ -56,10 +63,17 @@ async def get_note_endpoint(note_id: str, user: dict = Depends(get_current_user)
         NoteResponse: The retrieved note.
     """
     log.set(operation="get_note")
-    result = await get_note(note_id, user["user_id"])
-    log.set(note_id=note_id)
-    log.set(outcome="success")
-    return result
+    try:
+        result = await get_note(note_id, user["user_id"])
+        log.set(note_id=note_id)
+        log.set(outcome="success")
+        return result
+    except Exception as e:
+        log.error(f"Error getting note {note_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve note",
+        )
 
 
 @router.get("/notes", response_model=list[NoteResponse])
@@ -74,10 +88,17 @@ async def get_all_notes_endpoint(user: dict = Depends(get_current_user)):
         list[NoteResponse]: A list of the user's notes.
     """
     log.set(operation="list_notes")
-    notes = await get_all_notes(user["user_id"])
-    log.set(result_count=len(notes))
-    log.set(outcome="success")
-    return notes
+    try:
+        notes = await get_all_notes(user["user_id"])
+        log.set(result_count=len(notes))
+        log.set(outcome="success")
+        return notes
+    except Exception as e:
+        log.error(f"Error listing notes: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve notes",
+        )
 
 
 @router.put("/notes/{note_id}", response_model=NoteResponse)
@@ -99,10 +120,17 @@ async def update_note_endpoint(
         NoteResponse: The updated note.
     """
     log.set(operation="update_note")
-    result = await update_note(note_id, note, user["user_id"])
-    log.set(note_id=note_id)
-    log.set(outcome="success")
-    return result
+    try:
+        result = await update_note(note_id, note, user["user_id"])
+        log.set(note_id=note_id)
+        log.set(outcome="success")
+        return result
+    except Exception as e:
+        log.error(f"Error updating note {note_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update note",
+        )
 
 
 @router.delete("/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -119,6 +147,13 @@ async def delete_note_endpoint(
         user (dict): The authenticated user information.
     """
     log.set(operation="delete_note")
-    await delete_note(note_id, user["user_id"])
-    log.set(note_id=note_id)
-    log.set(outcome="success")
+    try:
+        await delete_note(note_id, user["user_id"])
+        log.set(note_id=note_id)
+        log.set(outcome="success")
+    except Exception as e:
+        log.error(f"Error deleting note {note_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete note",
+        )

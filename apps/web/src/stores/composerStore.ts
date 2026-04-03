@@ -292,14 +292,3 @@ export const useComposerUI = () =>
       setIsSlashCommandDropdownOpen: state.setIsSlashCommandDropdownOpen,
     })),
   );
-
-export const useComposerActions = () =>
-  useComposerStore(
-    useShallow((state) => ({
-      resetComposer: state.resetComposer,
-      setInputText: state.setInputText,
-      appendToInputText: state.appendToInputText,
-      clearPendingPrompt: state.clearPendingPrompt,
-      setPendingPrompt: state.setPendingPrompt,
-    })),
-  );

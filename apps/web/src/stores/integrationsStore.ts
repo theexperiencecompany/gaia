@@ -43,10 +43,3 @@ export const useIntegrationsStore = create<IntegrationsStore>()(
     { name: "integrations-store" },
   ),
 );
-
-// Selectors
-export const useIntegrationsSearchQuery = () =>
-  useIntegrationsStore((state) => state.searchQuery);
-
-export const useIntegrationsCategory = () =>
-  useIntegrationsStore((state) => state.selectedCategory);

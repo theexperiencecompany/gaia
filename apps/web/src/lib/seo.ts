@@ -63,7 +63,7 @@ export const siteConfig = {
 } as const;
 
 // Common keywords for all pages
-export const commonKeywords = [
+const commonKeywords = [
   "GAIA",
   "GAIA AI",
   "heygaia",
@@ -81,7 +81,7 @@ export const commonKeywords = [
 /**
  * Generate canonical URL for a page
  */
-export function getCanonicalUrl(path: string): string {
+function getCanonicalUrl(path: string): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   // Return relative URL - metadataBase in layout will handle absolute URL
   return cleanPath;

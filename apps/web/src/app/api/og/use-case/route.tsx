@@ -37,28 +37,23 @@ export async function GET(request: NextRequest) {
 
     let workflow = null;
     try {
-      // First try explore endpoint (has creator info)
-      const exploreResponse = await fetch(`${apiBaseUrl}/workflows/explore`, {
-        cache: "no-store",
-      });
+      const [exploreResponse, communityResponse] = await Promise.all([
+        fetch(`${apiBaseUrl}/workflows/explore`, { cache: "no-store" }),
+        fetch(`${apiBaseUrl}/workflows/community?limit=100`, {
+          cache: "no-store",
+        }),
+      ]);
+
       if (exploreResponse.ok) {
         const data = await exploreResponse.json();
         workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
       }
 
-      // If not in explore, try community endpoint (has creator info)
-      if (!workflow) {
-        const communityResponse = await fetch(
-          `${apiBaseUrl}/workflows/community?limit=100`,
-          { cache: "no-store" },
-        );
-        if (communityResponse.ok) {
-          const data = await communityResponse.json();
-          workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
-        }
+      if (!workflow && communityResponse.ok) {
+        const data = await communityResponse.json();
+        workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
       }
 
-      // If still not found, try public endpoint (may not have full creator info)
       if (!workflow) {
         const publicResponse = await fetch(
           `${apiBaseUrl}/workflows/public/${slug}`,

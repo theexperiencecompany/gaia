@@ -8,7 +8,6 @@ const delay = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
 
 export const DEV_LOG_FILE = "dev-start.log";
-export const WEB_LOG_FILE = "web-start.log";
 export const DEV_PID_FILE = ".gaia-dev.pid";
 
 export interface StopServicesOptions {
@@ -252,55 +251,6 @@ export async function detectSetupMode(
   if (content.includes("mongodb://localhost:")) return "developer";
 
   return "developer";
-}
-
-export async function checkUrl(url: string, retries = 30): Promise<boolean> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (res.ok) return true;
-    } catch {
-      // ignore
-    }
-    await delay(1000);
-  }
-  return false;
-}
-
-export async function areServicesRunning(repoPath: string): Promise<boolean> {
-  const dockerComposePath = path.join(repoPath, "infra/docker");
-  try {
-    const mode = await detectSetupMode(repoPath);
-    const args = ["compose"];
-    if (mode === "selfhost") {
-      args.push("-f", "docker-compose.selfhost.yml");
-    }
-    if (fs.existsSync(path.join(dockerComposePath, ".env"))) {
-      args.push("--env-file", ".env");
-    }
-    args.push("ps", "--format", "json", "--status", "running");
-
-    const { execa: run } = await import("execa");
-    const { stdout } = await run("docker", args, {
-      cwd: dockerComposePath,
-    });
-    const lines = stdout.trim().split("\n").filter(Boolean);
-    // Only count lines that are valid JSON (ignore warnings/notices)
-    let count = 0;
-    for (const line of lines) {
-      try {
-        JSON.parse(line);
-        count++;
-      } catch {
-        // Skip non-JSON lines (Docker warnings, deprecation notices)
-      }
-    }
-    return count >= 3;
-  } catch {
-    return false;
-  }
 }
 
 export async function runCommand(

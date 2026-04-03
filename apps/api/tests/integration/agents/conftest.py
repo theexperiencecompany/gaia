@@ -9,7 +9,6 @@ from langchain_core.language_models.fake_chat_models import (
 )
 from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
@@ -76,11 +75,12 @@ def agent_graph_with_tools(simple_tool, tool_calling_llm, memory_saver):
 
 
 @pytest.fixture
-def echo_graph(memory_saver: MemorySaver):
+def echo_graph(memory_saver):
     """Fake echo graph that replies with 'Echo: <last message content>'.
 
     Kept for backward compatibility with any tests that depend on this fixture.
     The graph simply echoes the last human message content back as an AI message.
+    Uses real Postgres checkpointer when USE_REAL_SERVICES=1, otherwise MemorySaver.
     """
 
     def echo_node(state: SimpleState) -> dict[str, Any]:

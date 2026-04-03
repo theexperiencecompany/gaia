@@ -9,7 +9,7 @@ import { Input, Textarea } from "@heroui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CalendarIcon, File01Icon, UserCircle02Icon } from "@icons";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { type TeamMember, teamApi } from "@/features/team/api/teamApi";
@@ -45,7 +45,7 @@ export default function CreateBlogPage() {
   const router = useRouter();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedAuthors, setSelectedAuthors] = useState<TeamMember[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, startSubmitTransition] = useTransition();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const {
@@ -162,37 +162,35 @@ Happy writing! 🚀`,
   // Check if bearer token is configured
   const bearerToken = process.env.NEXT_PUBLIC_BLOG_BEARER_TOKEN;
 
-  const onSubmit = async (data: BlogFormData) => {
-    setIsSubmitting(true);
+  const onSubmit = (data: BlogFormData) => {
+    startSubmitTransition(async () => {
+      try {
+        // Create FormData to handle file upload
+        const formData = new FormData();
 
-    try {
-      // Create FormData to handle file upload
-      const formData = new FormData();
+        // Add all blog data
+        formData.append("title", data.title);
+        formData.append("slug", data.slug);
+        formData.append("content", data.content);
+        formData.append("category", data.category);
+        formData.append("date", data.date);
 
-      // Add all blog data
-      formData.append("title", data.title);
-      formData.append("slug", data.slug);
-      formData.append("content", data.content);
-      formData.append("category", data.category);
-      formData.append("date", data.date);
+        // Add authors as JSON string
+        formData.append("authors", JSON.stringify(data.authors));
 
-      // Add authors as JSON string
-      formData.append("authors", JSON.stringify(data.authors));
+        // Add image file if selected
+        if (selectedFile) {
+          formData.append("image", selectedFile);
+        }
 
-      // Add image file if selected
-      if (selectedFile) {
-        formData.append("image", selectedFile);
+        await blogApi.createBlogWithFormData(formData, bearerToken!);
+        toast.success("Blog post created successfully!");
+        router.push("/blog");
+      } catch (error) {
+        console.error("Failed to create blog post:", error);
+        toast.error("Failed to create blog post. Please try again.");
       }
-
-      await blogApi.createBlogWithFormData(formData, bearerToken!);
-      toast.success("Blog post created successfully!");
-      router.push("/blog");
-    } catch (error) {
-      console.error("Failed to create blog post:", error);
-      toast.error("Failed to create blog post. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   if (!bearerToken) {

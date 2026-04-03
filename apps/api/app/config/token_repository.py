@@ -10,7 +10,7 @@ Note: User authentication via WorkOS is handled separately by the WorkOSAuthMidd
 
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import httpx
 from shared.py.wide_events import log
@@ -222,22 +222,6 @@ class TokenRepository:
 
             return oauth_token
 
-    async def update_token(
-        self, user_id: str, provider: str, token: Dict[str, Any]
-    ) -> OAuth2Token:
-        """
-        Update an existing token with new data (typically after refresh).
-
-        Args:
-            user_id: The ID of the user
-            provider: The OAuth provider
-            token: The new token data
-
-        Returns:
-            OAuth2Token: The updated token object
-        """
-        return await self.store_token(user_id, provider, token)
-
     async def _refresh_google_token(self, refresh_token: str) -> Optional[OAuth2Token]:
         """
         Refresh a Google OAuth token using the refresh token.
@@ -413,133 +397,6 @@ class TokenRepository:
                 log.error(f"Error revoking token: {str(e)}")
                 await session.rollback()
                 return False
-
-    async def revoke_all_tokens(self, user_id: str) -> bool:
-        """
-        Revoke all integration tokens for a user.
-
-        Args:
-            user_id: The ID of the user
-
-        Returns:
-            True if successful, False otherwise
-        """
-        async with get_db_session() as session:
-            # Find all tokens for this user
-            stmt = select(OAuthToken).where(OAuthToken.user_id == user_id)
-            result = await session.execute(stmt)
-            tokens = result.scalars().all()
-
-            if not tokens:
-                log.warning(f"No tokens found for user {user_id}")
-                return True  # Consider it success if there's nothing to delete
-
-            try:
-                # Delete all token records for this user
-                for token in tokens:
-                    await session.delete(token)
-
-                await session.commit()
-                log.info(f"Successfully revoked all tokens for user {user_id}")
-                return True
-            except Exception as e:
-                log.error(f"Error revoking all tokens: {str(e)}")
-                await session.rollback()
-                return False
-
-    async def get_authorized_scopes(self, user_id: str, provider: str) -> List[str]:
-        """
-        Get all authorized scopes for a user and provider.
-
-        Args:
-            user_id: The ID of the user
-            provider: The OAuth provider (google, slack, etc.)
-
-        Returns:
-            List of authorized scope strings
-        """
-
-        async with get_db_session() as session:
-            # Query the specific provider token
-            stmt = select(OAuthToken).where(
-                OAuthToken.user_id == user_id, OAuthToken.provider == provider
-            )
-            result = await session.execute(stmt)
-            token_record = result.scalar_one_or_none()
-
-            if not token_record:
-                log.warning(f"No {provider} token found for user {user_id}")
-                return []
-
-            # Get scopes from the token record
-            if not token_record.scopes:
-                # Try to get scopes from token data
-                try:
-                    token_data = json.loads(token_record.token_data)
-                    scope = token_data.get("scope", "")
-                    if scope:
-                        return scope.split()
-                except Exception as e:
-                    log.error(f"Error parsing token data: {str(e)}")
-                return []
-
-            # Return scopes from the token record
-            return token_record.scopes.split()
-
-    async def list_user_tokens(self, user_id: str) -> Dict[str, Any]:
-        """
-        List all available tokens and their providers for a user.
-
-        Args:
-            user_id: The ID of the user
-
-        Returns:
-            Dictionary with information about the user's tokens
-        """
-        result = {
-            "user_id": user_id,
-            "available_providers": [],
-            "token_count": 0,  # nosec B105 - integer count, not a password
-            "tokens": [],
-        }
-
-        async with get_db_session() as session:
-            # Find all tokens for this user
-            stmt = select(OAuthToken).where(OAuthToken.user_id == user_id)
-            query_result = await session.execute(stmt)
-            tokens = query_result.scalars().all()
-
-            # Populate token information
-            providers = []
-            token_details = []
-
-            for token in tokens:
-                providers.append(token.provider)
-
-                # Get token expiration info
-                expires_at_str = None
-                if token.expires_at:
-                    expires_at_str = token.expires_at.isoformat()
-
-                # Add token details
-                token_details.append(
-                    {
-                        "id": token.id,
-                        "provider": token.provider,
-                        "has_refresh_token": bool(token.refresh_token),
-                        "expires_at": expires_at_str,
-                        "scopes": token.scopes.split() if token.scopes else [],
-                        "updated_at": token.updated_at.isoformat()
-                        if token.updated_at
-                        else None,
-                    }
-                )
-
-            result["available_providers"] = providers
-            result["token_count"] = len(tokens)
-            result["tokens"] = token_details
-
-        return result
 
     async def get_token_by_auth_token(
         self, access_token: str, renew_if_expired: bool = False

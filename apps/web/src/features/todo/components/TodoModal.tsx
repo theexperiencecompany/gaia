@@ -11,12 +11,13 @@ import {
   Tooltip,
   useDisclosure,
 } from "@heroui/react";
-import { PlusSignIcon } from "@icons";
-import { useCallback, useEffect, useMemo } from "react";
+import { TaskAddIcon } from "@icons";
+import { useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
+import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
@@ -196,26 +197,7 @@ export default function TodoModal({
     }
   }, [isOpen, mode, todo, setFormData]);
 
-  // Keyboard shortcut handler for Cmd/Ctrl + Enter to submit
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (!isOpen || loading) return;
-
-      const modifierKey = isMac ? e.metaKey : e.ctrlKey;
-      if (modifierKey && e.key === "Enter") {
-        e.preventDefault();
-        handleSubmit();
-      }
-    },
-    [isOpen, loading, isMac, handleSubmit],
-  );
-
-  useEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [isOpen, handleKeyDown]);
+  useModalKeyboardSubmit({ isOpen, loading, isMac, handleSubmit });
 
   const handleDateChange = (date?: string, timezone?: string) => {
     setFormData((prev) => ({
@@ -276,7 +258,7 @@ export default function TodoModal({
           color="primary"
           size="sm"
           variant="flat"
-          startContent={<PlusSignIcon className="h-4 w-4 outline-0" />}
+          startContent={<TaskAddIcon className="h-4 w-4 outline-0" />}
           onPress={onOpen}
           data-keyboard-shortcut="create-todo"
         >

@@ -27,11 +27,8 @@ from app.models.chat_models import (
     tool_fields,
 )
 from app.models.message_models import MessageRequestWithHistory
-from app.models.models_models import ModelConfig
 from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
-from app.services.file_service import get_files
-from app.services.model_service import get_user_selected_model
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -43,6 +40,7 @@ async def run_chat_stream_background(
     user: dict,
     user_time: datetime,
     conversation_id: str,
+    source: Optional[str] = None,
 ) -> None:
     """
     Run chat streaming in background, publishing chunks to Redis.
@@ -68,18 +66,8 @@ async def run_chat_stream_background(
             user=user,
             user_time=user_time,
             conversation_id=conversation_id,
+            source=source,
         )
-
-
-async def _get_user_model_config(user_id: Optional[str]) -> Optional[ModelConfig]:
-    """Fetch the user-selected model config, returning None on failure."""
-    if not user_id:
-        return None
-    try:
-        return await get_user_selected_model(user_id)
-    except Exception as e:
-        log.warning(f"Could not get user's selected model: {e}")
-        return None
 
 
 def _set_stream_log_context(
@@ -88,7 +76,6 @@ def _set_stream_log_context(
     conversation_id: str,
     stream_id: str,
     is_new_conversation: bool,
-    user_model_config: Optional[ModelConfig],
 ) -> None:
     """Attach structured log context for the stream."""
     log.set(
@@ -110,13 +97,6 @@ def _set_stream_log_context(
         user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
         selected_tool=body.selectedTool,
     )
-    if user_model_config:
-        log.set(
-            model=ModelContext(
-                name=user_model_config.model_id,
-                provider=user_model_config.model_provider.value,
-            )
-        )
 
 
 def _start_description_task(
@@ -325,6 +305,7 @@ async def _run_chat_stream(
     user: dict,
     user_time: datetime,
     conversation_id: str,
+    source: Optional[str] = None,
 ) -> None:
     complete_message = ""
     tool_data: Dict[str, Any] = {"tool_data": []}
@@ -343,14 +324,12 @@ async def _run_chat_stream(
         )
 
         user_id = user.get("user_id")
-        user_model_config = await _get_user_model_config(user_id)
         _set_stream_log_context(
             body,
             user_id,
             conversation_id,
             stream_id,
             is_new_conversation,
-            user_model_config,
         )
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
@@ -375,9 +354,9 @@ async def _run_chat_stream(
             user=user,
             conversation_id=conversation_id,
             user_time=user_time,
-            user_model_config=user_model_config,
             usage_metadata_callback=usage_metadata_callback,
             stream_id=stream_id,
+            source=source,
         ):
             if await stream_manager.is_cancelled(stream_id):
                 is_cancelled = True
@@ -546,12 +525,7 @@ async def _save_conversation_async(
     user_message_id: str,
     bot_message_id: str,
 ) -> None:
-    """
-    Save conversation to MongoDB (called from background task).
-
-    This is the async version of update_conversation_messages,
-    called directly instead of via BackgroundTasks.
-    """
+    """Save conversation to MongoDB (called from background task)."""
     user_id = user.get("user_id")
 
     # Process token usage
@@ -675,125 +649,6 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
 
     except json.JSONDecodeError:
         return {}
-
-
-async def initialize_conversation(
-    body: MessageRequestWithHistory, user: dict
-) -> tuple[str, Optional[str], str, str]:
-    """Initialize a conversation or use an existing one."""
-    conversation_id = body.conversation_id or None
-    init_chunk = None
-    user_message_id = str(uuid4())
-    bot_message_id = str(uuid4())
-
-    if conversation_id is None:
-        last_message = body.messages[-1] if body.messages else None
-
-        conversation = await create_conversation(
-            last_message,
-            user=user,
-            selectedTool=body.selectedTool,
-            selectedWorkflow=body.selectedWorkflow,
-            generate_description=False,
-        )
-        conversation_id = conversation.get("conversation_id", "")
-
-        init_chunk = f"""data: {
-            json.dumps(
-                {
-                    "conversation_id": conversation_id,
-                    "conversation_description": conversation.get("description"),
-                    "user_message_id": user_message_id,
-                    "bot_message_id": bot_message_id,
-                }
-            )
-        }\n\n"""
-
-        return conversation_id, init_chunk, user_message_id, bot_message_id
-
-    init_chunk = f"""data: {
-        json.dumps(
-            {
-                "user_message_id": user_message_id,
-                "bot_message_id": bot_message_id,
-            }
-        )
-    }\n\n"""
-
-    uploaded_files = await get_files(
-        user_id=user.get("user_id"),
-        conversation_id=conversation_id,
-    )
-    log.info(f"{uploaded_files=}")
-
-    return conversation_id, init_chunk, user_message_id, bot_message_id
-
-
-def update_conversation_messages(
-    background_tasks: Any,
-    body: MessageRequestWithHistory,
-    user: dict,
-    conversation_id: str,
-    complete_message: str,
-    tool_data: Dict[str, Any] = {},
-    metadata: Dict[str, Any] = {},
-    user_message_id: Optional[str] = None,
-    bot_message_id: Optional[str] = None,
-    follow_up_actions: List[str] = [],
-) -> None:
-    """Schedule conversation update in the background (legacy)."""
-    if metadata and user.get("user_id"):
-        background_tasks.add_task(
-            _process_token_usage_and_cost, user_id=user["user_id"], metadata=metadata
-        )
-
-    bot_timestamp = datetime.now(timezone.utc)
-    user_timestamp = bot_timestamp - timedelta(milliseconds=100)
-
-    user_content = (
-        body.messages[-1].get("content")
-        if body.messages and len(body.messages) > 0
-        else None
-    ) or body.message
-    user_message = MessageModel(
-        type="user",
-        response=user_content,
-        date=user_timestamp.isoformat(),
-        fileIds=body.fileIds,
-        fileData=body.fileData,
-        selectedTool=body.selectedTool,
-        toolCategory=body.toolCategory,
-        selectedWorkflow=body.selectedWorkflow,
-        replyToMessage=body.replyToMessage,
-    )
-
-    if user_message_id:
-        user_message.message_id = user_message_id
-
-    bot_message = MessageModel(
-        type="bot",
-        response=complete_message,
-        date=bot_timestamp.isoformat(),
-        fileIds=body.fileIds,
-        metadata=metadata,
-        follow_up_actions=follow_up_actions,
-    )
-
-    if bot_message_id:
-        bot_message.message_id = bot_message_id
-
-    if tool_data:
-        for key, value in tool_data.items():
-            setattr(bot_message, key, value)
-
-    background_tasks.add_task(
-        update_messages,
-        UpdateMessagesRequest(
-            conversation_id=conversation_id,
-            messages=[user_message, bot_message],
-        ),
-        user=user,
-    )
 
 
 async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) -> None:

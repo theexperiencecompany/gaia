@@ -22,6 +22,11 @@ const NOTIFICATION_PLATFORMS = [
     name: "Discord",
     image: "/images/icons/macos/discord.webp",
   },
+  {
+    id: "whatsapp" as const,
+    name: "WhatsApp",
+    image: "/images/icons/macos/whatsapp.webp",
+  },
 ];
 
 export default function NotificationSettings() {
@@ -31,7 +36,8 @@ export default function NotificationSettings() {
   const [channelPrefs, setChannelPrefs] = useState<{
     telegram: boolean;
     discord: boolean;
-  }>({ telegram: true, discord: true });
+    whatsapp: boolean;
+  }>({ telegram: true, discord: true, whatsapp: true });
   const [loading, setLoading] = useState(true);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 
@@ -58,7 +64,7 @@ export default function NotificationSettings() {
   }, []);
 
   const handleToggle = async (
-    platform: "telegram" | "discord",
+    platform: "telegram" | "discord" | "whatsapp",
     enabled: boolean,
   ) => {
     setTogglingPlatform(platform);
