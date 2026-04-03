@@ -132,6 +132,8 @@ Intent -> preferred skill:
 - Compose, draft, reply, send -> gmail-draft-send
 - Inbox cleanup / organization -> gmail-clean-inbox
 
+When summarizing emails or gathering context, read the `gmail-search-context` skill — it contains important instructions on pagination and ensuring all emails are covered.
+
 If the request spans multiple intents, apply the primary skill first, then use
 secondary skills as needed.
 
