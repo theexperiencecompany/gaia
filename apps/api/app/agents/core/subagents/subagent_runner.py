@@ -30,6 +30,7 @@ from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import build_agent_config
 from app.models.models_models import ModelConfig
 from app.services.oauth.oauth_service import check_integration_status
+from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
 from app.utils.stream_utils import extract_tool_entries_from_update
 from langchain_core.messages import (
     AIMessageChunk,
@@ -233,8 +234,8 @@ async def prepare_subagent_execution(
 
 async def execute_subagent_stream(
     ctx: SubagentExecutionContext,
-    stream_writer=None,
-    integration_metadata: Optional[dict] = None,
+    stream_writer: Optional[StreamWriterCallable] = None,
+    integration_metadata: Optional[IntegrationMetadata] = None,
     subagent_id: Optional[str] = None,
 ) -> str:
     """

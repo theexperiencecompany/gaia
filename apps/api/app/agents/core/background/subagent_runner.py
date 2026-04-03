@@ -20,14 +20,18 @@ from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
 )
-from app.utils.agent_utils import format_subagent_end_event, format_subagent_start_event
+from app.utils.agent_utils import (
+    IntegrationMetadata,
+    format_subagent_end_event,
+    format_subagent_start_event,
+)
 
 
 async def run_subagent_background(
     ctx: SubagentExecutionContext,
     stream_id: str,
     executor_inbox: asyncio.Queue[Any],
-    integration_metadata: Optional[dict] = None,
+    integration_metadata: Optional[IntegrationMetadata] = None,
     subagent_id: Optional[str] = None,
     display_name: Optional[str] = None,
     tool_category: Optional[str] = None,

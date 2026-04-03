@@ -9,7 +9,6 @@ for dynamic discovery instead of binding all tools upfront.
 import asyncio
 import time
 from collections.abc import Mapping
-from datetime import datetime, timezone
 from typing import Annotated, Any, Optional, cast
 from uuid import uuid4
 
@@ -39,7 +38,12 @@ from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
-from app.utils.agent_utils import format_subagent_end_event, format_subagent_start_event
+from app.utils.agent_utils import (
+    StreamWriterCallable,
+    emit_subagent_tool_calls,
+    format_subagent_end_event,
+    format_subagent_start_event,
+)
 
 _RETRIEVE_TOOLS_NAME = "retrieve_tools"
 
@@ -255,7 +259,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         context: str,
         config: RunnableConfig,
         inherited_tool_names: Optional[list[str]] = None,
-        stream_writer: Any = None,
+        stream_writer: Optional[StreamWriterCallable] = None,
         subagent_id: Optional[str] = None,
     ) -> str:
         """Run a lightweight tool-calling loop for the subagent."""
@@ -336,26 +340,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             # Emit tool_data for each call so the frontend can show them in the
             # spawned subagent's row before results arrive.
             if stream_writer and subagent_id:
-                now = datetime.now(timezone.utc).isoformat()
-                for tc in regular_calls:
-                    tool_name_str = tc["name"]
-                    tool_entry: dict[str, Any] = {
-                        "tool_name": "tool_calls_data",
-                        "tool_category": tool_name_str,
-                        "data": {
-                            "tool_name": tool_name_str,
-                            "tool_category": tool_name_str,
-                            "message": tool_name_str.replace("_", " ").title(),
-                            "show_category": True,
-                            "tool_call_id": tc.get("id"),
-                            "inputs": tc.get("args", {}),
-                            "icon_url": None,
-                            "integration_name": None,
-                        },
-                        "timestamp": now,
-                        "subagent_id": subagent_id,
-                    }
-                    stream_writer({"tool_data": tool_entry})
+                emit_subagent_tool_calls(stream_writer, subagent_id, regular_calls)
 
             async def _invoke_tool(tc: ToolCall) -> ToolMessage:
                 name = tc["name"]

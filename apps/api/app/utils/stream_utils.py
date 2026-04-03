@@ -21,13 +21,13 @@ from shared.py.wide_events import ChatContext, log
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
 from app.models.message_models import MessageRequestWithHistory
-from app.utils.agent_utils import format_tool_call_entry
+from app.utils.agent_utils import IntegrationMetadata, format_tool_call_entry
 
 
 async def extract_tool_entries_from_update(
     state_update: dict,
     emitted_tool_calls: set[str],
-    integration_metadata: Optional[dict] = None,
+    integration_metadata: Optional[IntegrationMetadata] = None,
 ) -> list[tuple[str, dict]]:
     """
     Extract tool_data entries from a LangGraph state update.
@@ -41,7 +41,7 @@ async def extract_tool_entries_from_update(
                       Expected structure: {"messages": [AIMessage with tool_calls, ...]}
         emitted_tool_calls: Set of already-emitted tool_call_ids.
                             Modified in place to track new emissions.
-        integration_metadata: Optional dict with {icon_url, integration_id, name}
+        integration_metadata: Optional IntegrationMetadata with icon_url, integration_id, name
                               for custom MCP integrations. If provided, applied
                               to all tool entries.
 

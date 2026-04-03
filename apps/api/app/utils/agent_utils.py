@@ -1,7 +1,8 @@
 import json
 import re
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import List, Optional, cast
+from typing import Any, List, Optional, TypedDict, cast
 from uuid import uuid4
 
 from langchain_core.messages import ToolCall
@@ -24,6 +25,17 @@ from app.services.conversation_service import update_messages
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )
+
+# Type for the stream_writer callable used across agent execution paths.
+StreamWriterCallable = Callable[[dict[str, Any]], None]
+
+
+class IntegrationMetadata(TypedDict, total=False):
+    """Metadata for a custom MCP integration, used to decorate tool events."""
+
+    icon_url: Optional[str]
+    integration_id: Optional[str]
+    name: Optional[str]
 
 
 def parse_subagent_id(subagent_id: str) -> tuple[str, Optional[str]]:
@@ -112,6 +124,41 @@ def format_subagent_end_event(
         "duration_ms": duration_ms,
         "token_count": token_count,
     }
+
+
+def emit_subagent_tool_calls(
+    stream_writer: StreamWriterCallable,
+    subagent_id: str,
+    tool_calls: list[ToolCall],
+) -> None:
+    """Emit tool_data events for each tool call made inside a spawned subagent.
+
+    Called from SubagentMiddleware._execute_subagent before parallel tool
+    invocation so the frontend can show tools as they are dispatched.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    for tc in tool_calls:
+        tool_name_str = tc["name"]
+        stream_writer(
+            {
+                "tool_data": {
+                    "tool_name": "tool_calls_data",
+                    "tool_category": tool_name_str,
+                    "data": {
+                        "tool_name": tool_name_str,
+                        "tool_category": tool_name_str,
+                        "message": tool_name_str.replace("_", " ").title(),
+                        "show_category": True,
+                        "tool_call_id": tc.get("id"),
+                        "inputs": tc.get("args", {}),
+                        "icon_url": None,
+                        "integration_name": None,
+                    },
+                    "timestamp": now,
+                    "subagent_id": subagent_id,
+                }
+            }
+        )
 
 
 async def format_tool_call_entry(

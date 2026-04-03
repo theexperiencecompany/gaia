@@ -11,8 +11,10 @@ All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 
 import asyncio
 import re
+import time
 from datetime import datetime
 from typing import Annotated, Optional
+from uuid import uuid4
 
 from app.agents.core.background.inbox import (
     get_executor_inbox,
@@ -39,13 +41,18 @@ from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
 from app.helpers.agent_helpers import build_agent_config
+from app.utils.agent_utils import (
+    IntegrationMetadata,
+    format_subagent_end_event,
+    format_subagent_start_event,
+    parse_subagent_id,
+)
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import (
     check_integration_status,
 )
-from app.utils.agent_utils import parse_subagent_id
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
@@ -478,23 +485,23 @@ async def handoff(
             stream_id=stream_id,
         )
 
-        integration_metadata = None
+        integration_metadata: Optional[IntegrationMetadata] = None
         if is_custom:
             integration = await _get_subagent_by_id(int_id)
             if isinstance(integration, dict):
-                integration_metadata = {
-                    "icon_url": integration.get("icon_url"),
-                    "integration_id": int_id,
-                    "name": str(integration.get("name", int_id)),
-                }
+                integration_metadata = IntegrationMetadata(
+                    icon_url=integration.get("icon_url"),
+                    integration_id=int_id,
+                    name=str(integration.get("name", int_id)),
+                )
         else:
             platform_integ = get_integration_by_id(int_id)
             if platform_integ:
-                integration_metadata = {
-                    "icon_url": getattr(platform_integ, "icon_url", None),
-                    "integration_id": int_id,
-                    "name": platform_integ.name,
-                }
+                integration_metadata = IntegrationMetadata(
+                    icon_url=getattr(platform_integ, "icon_url", None),
+                    integration_id=int_id,
+                    name=platform_integ.name,
+                )
 
         # Background mode: spawn subagent as asyncio task and return immediately.
         # Caller must use wait_for_subagents() to collect results.
@@ -520,15 +527,29 @@ async def handoff(
                     f"[WARNING: background handoff fell back to blocking — {fallback_reason}] "
                 )
                 writer = get_stream_writer()
+                fb_sa_id = str(uuid4())
+                fb_display = str(integration_metadata.get("name", agent_name)) if integration_metadata else agent_name
+                fb_icon = integration_metadata.get("icon_url") if integration_metadata else None
+                fb_cat = integration_metadata.get("integration_id", int_id) if integration_metadata else int_id
+                writer({"subagent_start": format_subagent_start_event(
+                    subagent_name=fb_display, agent_type="handoff", subagent_id=fb_sa_id,
+                    icon_url=fb_icon, tool_category=fb_cat,
+                )})
+                fb_start = time.monotonic()
                 blocking_result = await execute_subagent_stream(
-                    ctx=ctx,
-                    stream_writer=writer,
-                    integration_metadata=integration_metadata,
+                    ctx=ctx, stream_writer=writer, integration_metadata=integration_metadata, subagent_id=fb_sa_id,
                 )
+                writer({"subagent_end": format_subagent_end_event(
+                    subagent_id=fb_sa_id, duration_ms=int((time.monotonic() - fb_start) * 1000),
+                )})
                 return f"{fallback_prefix}{blocking_result}"
             # At this point executor_inbox is non-None, which means stream_id was
             # non-None (executor_inbox only comes from get_executor_inbox(stream_id)).
             assert stream_id is not None  # noqa: S101 — invariant guaranteed above
+            bg_sa_id = str(uuid4())
+            bg_display = str(integration_metadata.get("name", agent_name)) if integration_metadata else agent_name
+            bg_icon = integration_metadata.get("icon_url") if integration_metadata else None
+            bg_cat = integration_metadata.get("integration_id", int_id) if integration_metadata else int_id
             increment_pending_subagents(stream_id)
             bg_task = asyncio.create_task(
                 run_subagent_background(
@@ -536,6 +557,10 @@ async def handoff(
                     stream_id=stream_id or "",
                     executor_inbox=executor_inbox,
                     integration_metadata=integration_metadata,
+                    subagent_id=bg_sa_id,
+                    display_name=bg_display,
+                    tool_category=bg_cat,
+                    icon_url=bg_icon,
                 )
             )
             _background_subagent_tasks.add(bg_task)
@@ -548,13 +573,42 @@ async def handoff(
         # Blocking (default): execute synchronously and return result
         writer = get_stream_writer()
 
+        # Generate a unique subagent_id for this invocation and propagate
+        # into configurable so nested spawned subagents can reference it as parent
+        sa_id = str(uuid4())
+        ctx.configurable["subagent_id"] = sa_id
+        ctx.config.setdefault("configurable", {})["subagent_id"] = sa_id
+        display_name = str(integration_metadata.get("name", agent_name)) if integration_metadata else agent_name
+        icon_url_val = integration_metadata.get("icon_url") if integration_metadata else None
+        tool_cat_val = integration_metadata.get("integration_id", int_id) if integration_metadata else int_id
+
+        # Emit subagent_start event
+        writer({"subagent_start": format_subagent_start_event(
+            subagent_name=display_name,
+            agent_type="handoff",
+            subagent_id=sa_id,
+            icon_url=icon_url_val,
+            tool_category=tool_cat_val,
+        )})
+
+        start_time = time.monotonic()
+
         # Execute using shared streaming function
-        # Note: handoff tool_data is emitted by parent graph's updates stream
-        return await execute_subagent_stream(
+        result = await execute_subagent_stream(
             ctx=ctx,
             stream_writer=writer,
             integration_metadata=integration_metadata,
+            subagent_id=sa_id,
         )
+
+        # Emit subagent_end event
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        writer({"subagent_end": format_subagent_end_event(
+            subagent_id=sa_id,
+            duration_ms=duration_ms,
+        )})
+
+        return result
 
     except Exception as e:
         log.error(f"Error in handoff to {subagent_id}: {e}", exc_info=True)
