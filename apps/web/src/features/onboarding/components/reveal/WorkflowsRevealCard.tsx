@@ -17,7 +17,7 @@ export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
       className="overflow-hidden rounded-2xl bg-zinc-800/60 p-4"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35 }}
+      transition={{ type: "spring", stiffness: 280, damping: 22 }}
     >
       <p className="mb-3 text-xs text-zinc-400">
         Created{" "}
@@ -27,9 +27,16 @@ export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
       {displayedWorkflows.length > 0 && (
         <div className="flex flex-col gap-2">
           {displayedWorkflows.map((workflow, index) => (
-            <div
+            <m.div
               key={workflow.id ?? `workflow-${index}`}
               className="flex items-start gap-2"
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{
+                delay: index * 0.06,
+                duration: 0.25,
+                ease: [0.19, 1, 0.22, 1],
+              }}
             >
               <ZapIcon className="mt-0.5 size-3.5 shrink-0 text-zinc-500" />
               <div>
@@ -40,7 +47,7 @@ export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
                   </p>
                 )}
               </div>
-            </div>
+            </m.div>
           ))}
           {remainingCount > 0 && (
             <p className="text-xs text-zinc-500">+ {remainingCount} more</p>

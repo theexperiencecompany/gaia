@@ -65,6 +65,9 @@ export interface BotMessageData extends BaseMessageData {
   // Retry callbacks
   onRetry?: () => void;
   isRetrying?: boolean;
+
+  // Animation
+  animateParts?: boolean;
 }
 
 // Message type for conversations (combines user and bot data)

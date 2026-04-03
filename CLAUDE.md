@@ -242,6 +242,7 @@ When asked to find bugs or issues in the code, **only report problems that a rea
 
 - **Plans must go in `.agents/plans/`** — never create plan files anywhere else. This directory is gitignored.
 - **Plans must be comprehensive** — include architecture decisions, step-by-step implementation, edge cases, and rollback considerations before writing any code.
+- **Plans contain only final decisions** — never include thought process, reasoning, pros/cons debates, or "why I chose X over Y" commentary. A plan is a spec, not a journal. If it reads like someone thinking out loud, rewrite it.
 - Use the `writing-plans` skill before starting any significant implementation.
 
 ### Testing

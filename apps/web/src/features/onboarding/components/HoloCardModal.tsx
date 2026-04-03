@@ -112,7 +112,13 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
       personalizationData?.user_bio ||
       "A passionate individual exploring new possibilities and making an impact.",
     account_number: `#${personalizationData?.account_number || "00000"}`,
-    member_since: personalizationData?.member_since || "Nov 21, 2024",
+    member_since:
+      personalizationData?.member_since ||
+      new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
     overlay_color: personalizationData?.overlay_color || "rgba(0,0,0,0)",
     overlay_opacity: personalizationData?.overlay_opacity ?? 40,
     holo_card_id: personalizationData?.holo_card_id,

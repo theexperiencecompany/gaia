@@ -1,14 +1,6 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
-export type ContextStatus =
-  | "idle"
-  | "gathering"
-  | "parsing_emails"
-  | "building_graph"
-  | "complete"
-  | "error";
-
 export enum OnboardingPhase {
   INITIAL = "initial",
   PERSONALIZATION_PENDING = "personalization_pending",
@@ -18,8 +10,6 @@ export enum OnboardingPhase {
 }
 
 interface OnboardingState {
-  contextStatus: ContextStatus;
-  contextMessage: string | null;
   phase: OnboardingPhase | null;
   isPhaseLoading: boolean;
   /** Whether the holo card has already been shown this session */
@@ -27,8 +17,6 @@ interface OnboardingState {
 }
 
 interface OnboardingActions {
-  setContextStatus: (status: ContextStatus) => void;
-  setContextMessage: (message: string | null) => void;
   setPhase: (phase: OnboardingPhase | null) => void;
   setPhaseLoading: (loading: boolean) => void;
   setHoloCardShown: (shown: boolean) => void;
@@ -38,8 +26,6 @@ interface OnboardingActions {
 type OnboardingStore = OnboardingState & OnboardingActions;
 
 const initialState: OnboardingState = {
-  contextStatus: "idle",
-  contextMessage: null,
   phase: null,
   isPhaseLoading: false,
   holoCardShown: false,
@@ -49,8 +35,6 @@ export const useOnboardingStore = create<OnboardingStore>()(
   devtools(
     (set) => ({
       ...initialState,
-      setContextStatus: (status) => set({ contextStatus: status }),
-      setContextMessage: (message) => set({ contextMessage: message }),
       setPhase: (phase) => set({ phase }),
       setPhaseLoading: (loading) => set({ isPhaseLoading: loading }),
       setHoloCardShown: (shown) => set({ holoCardShown: shown }),

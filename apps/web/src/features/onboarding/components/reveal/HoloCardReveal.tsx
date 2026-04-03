@@ -86,14 +86,19 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
       ) : (
         <m.button
           type="button"
-          aria-label="Click to reveal your personalized GAIA card"
+          aria-label="Tap to reveal your personalized GAIA card"
           className="group relative cursor-pointer"
           onClick={revealState === "shimmer" ? handleShimmerClick : undefined}
           animate={
-            revealState === "vibrating" ? { x: [0, -4, 4, -4, 4, 0] } : { x: 0 }
+            revealState === "vibrating"
+              ? {
+                  scale: [1, 1.03, 1.03, 1, 1, 1, 1, 1, 1, 1],
+                  x: [0, 0, 0, -6, 6, -6, 6, -4, 4, -2, 2, 0],
+                }
+              : { x: 0, scale: 1 }
           }
           transition={
-            revealState === "vibrating" ? { duration: 0.3 } : undefined
+            revealState === "vibrating" ? { duration: 0.55 } : undefined
           }
           onAnimationComplete={
             revealState === "vibrating" ? handleVibrationComplete : undefined
@@ -138,9 +143,11 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
           {/* Click to reveal overlay */}
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <div className="animate-pulse rounded-full bg-white/20 px-8 py-4 backdrop-blur-md">
-              <p className="font-serif text-2xl text-white">Click to Reveal</p>
+              <p className="font-serif text-2xl text-white">
+                Tap to reveal your card
+              </p>
             </div>
-            <p className="text-sm text-zinc-400">Your GAIA Card awaits ✨</p>
+            <p className="text-sm text-zinc-400">Personalized just for you</p>
           </div>
         </m.button>
       )}

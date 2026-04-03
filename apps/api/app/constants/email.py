@@ -10,5 +10,5 @@ NO_SUBJECT = "[No Subject]"
 
 # Email processing limits
 EMAIL_QUERY = "in:inbox"
-MAX_RESULTS = 100
+MAX_RESULTS = 500
 BATCH_SIZE = 50

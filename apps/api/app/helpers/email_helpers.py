@@ -1,5 +1,6 @@
 """Helper functions for email processing."""
 
+import time
 import unicodedata
 from datetime import datetime, timezone
 from typing import Dict, List
@@ -154,6 +155,7 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
         user_context = _build_user_context(user_name, user_email)
 
         # Store with configurable async_mode
+        t0_mem0 = time.monotonic()
         success = await memory_service.store_memory_batch(
             messages=messages,
             user_id=user_id,
@@ -167,15 +169,18 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
             async_mode=async_mode,
             custom_instructions=f"{user_context}\n\n{EMAIL_MEMORY_EXTRACTION_PROMPT}",
         )
+        mem0_elapsed = time.monotonic() - t0_mem0
 
         mode_str = "async queue" if async_mode else "synchronously"
         if success:
             log.info(
-                f"Stored batch of {len(messages)} emails to Mem0 {mode_str} for user {user_id}"
+                f"[timing] Mem0 store_memory_batch ({len(messages)} emails, {mode_str}): "
+                f"{mem0_elapsed:.1f}s — OK"
             )
         else:
             log.warning(
-                f"Failed to store batch of {len(messages)} emails to Mem0 for user {user_id}"
+                f"[timing] Mem0 store_memory_batch ({len(messages)} emails, {mode_str}): "
+                f"{mem0_elapsed:.1f}s — FAILED"
             )
 
     except Exception as e:

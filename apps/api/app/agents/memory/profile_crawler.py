@@ -39,7 +39,7 @@ async def crawl_profile_url(
 
             async with AsyncWebCrawler(verbose=False) as crawler:
                 # Add timeout to prevent hanging
-                result = await asyncio.wait_for(crawler.arun(url=url), timeout=30.0)
+                result = await asyncio.wait_for(crawler.arun(url=url), timeout=15.0)
 
                 if not result:
                     raise ValueError("Crawler returned None")

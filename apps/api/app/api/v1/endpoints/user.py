@@ -231,7 +231,9 @@ async def get_public_holo_card(card_id: str):
                 account_number = 1
 
             member_since = (
-                created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
+                created_at.strftime("%b %d, %Y")
+                if created_at
+                else datetime.now(timezone.utc).strftime("%b %d, %Y")
             )
 
         log.set(outcome="success")

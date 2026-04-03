@@ -145,6 +145,9 @@ class OnboardingRequest(BaseModel):
     timezone: Optional[str] = Field(
         None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
     )
+    focus: Optional[str] = Field(
+        None, max_length=500, description="User's current primary focus or goal"
+    )
 
     @field_validator("name")
     @classmethod

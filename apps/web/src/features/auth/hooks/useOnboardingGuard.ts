@@ -4,10 +4,11 @@ import { usePathname } from "@/i18n/navigation";
 
 import { useUser } from "./useUser";
 
-/** Phases where the intelligence pipeline is still running — user should stay on /onboarding */
+/** Phases where the user should stay on /onboarding */
 const PROCESSING_PHASES = new Set([
   "personalization_pending",
   "personalization_complete",
+  "getting_started",
 ]);
 
 export const useOnboardingGuard = () => {

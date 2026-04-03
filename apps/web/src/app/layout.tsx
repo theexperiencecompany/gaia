@@ -2,6 +2,7 @@ import "./styles/globals.css";
 
 import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Agentation } from "agentation";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { NextIntlClientProvider } from "next-intl";
@@ -227,6 +228,7 @@ export default async function RootLayout({
 
         <VercelAnalytics />
         <AnalyticsLayout />
+        {process.env.NODE_ENV === "development" && <Agentation />}
       </body>
     </html>
   );

@@ -487,13 +487,16 @@ class MemoryService:
                 # Log details about what was stored
                 if success_count == 0:
                     self.logger.warning(
-                        f"Mem0 returned 0 memories from {len(messages)} messages in {batch_elapsed:.2f}s. "
+                        f"[timing] Mem0 API: {len(messages)} msgs → 0 memories in {batch_elapsed:.2f}s. "
                         f"Response: {result}"
                     )
                 else:
-                    # Log sample of events
-                    events = [r.get("event", "UNKNOWN") for r in results_list[:5]]
-                    self.logger.debug(f"Sample events: {events}")
+                    events = [r.get("event", "UNKNOWN") for r in results_list]
+                    event_counts = {e: events.count(e) for e in set(events)}
+                    self.logger.info(
+                        f"[timing] Mem0 API: {len(messages)} msgs → {success_count} memories "
+                        f"in {batch_elapsed:.2f}s {event_counts}"
+                    )
 
                 return success_count > 0
             elif isinstance(result, list):

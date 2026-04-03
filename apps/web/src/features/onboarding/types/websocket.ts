@@ -27,6 +27,20 @@ export interface PersonalizationData {
     description: string;
     steps: Array<{ category: string }>;
   }>;
+  // Stage data for reveal card reconstruction on page reload
+  writing_style?: { style_summary: string } | null;
+  social_profiles?: Array<{ platform: string; url: string }> | null;
+  triage_summary?: {
+    total_scanned: number;
+    total_unread: number;
+    important_emails: Array<{
+      sender: string;
+      subject: string;
+      why_important: string;
+    }>;
+  } | null;
+  onboarding_todos?: Array<{ id: string; title: string }> | null;
+  first_message_conversation_id?: string;
 }
 
 export interface PersonalizationCompleteMessage {

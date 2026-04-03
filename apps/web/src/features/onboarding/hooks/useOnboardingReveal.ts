@@ -105,6 +105,8 @@ function sortByStageOrder(stages: PendingStage[]): PendingStage[] {
   });
 }
 
+const HUNG_PIPELINE_TIMEOUT_MS = 60_000;
+
 export function useOnboardingReveal(): UseOnboardingRevealReturn {
   const [revealMessages, setRevealMessages] = useState<Message[]>([]);
   const [progress, setProgress] = useState<number>(0);
@@ -119,7 +121,9 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
   const messageCounterRef = useRef(0);
   const pendingStagesRef = useRef<PendingStage[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hungTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intelligenceCompleteRef = useRef<boolean>(false);
+  const revealFinishedRef = useRef<boolean>(false);
   const holoCardDataRef = useRef<PersonalizationData | null>(null);
   const shownStagesRef = useRef<Set<string>>(new Set());
   const inboxEmailCountRef = useRef<number | null>(null);
@@ -129,41 +133,33 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    if (hungTimeoutRef.current !== null) {
+      clearTimeout(hungTimeoutRef.current);
+      hungTimeoutRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
     return () => stopInterval();
   }, [stopInterval]);
 
-  const drainAndFinish = useCallback(() => {
+  const finishReveal = useCallback(() => {
+    if (revealFinishedRef.current) return;
+    revealFinishedRef.current = true;
     stopInterval();
-
-    const remaining = sortByStageOrder(pendingStagesRef.current.splice(0));
-    const drainedMessages: Message[] = [];
-
-    for (const pending of remaining) {
-      if (!shownStagesRef.current.has(pending.stage)) {
-        shownStagesRef.current.add(pending.stage);
-        drainedMessages.push(
-          buildRevealMessage(pending.stage, pending.results, messageCounterRef),
-        );
-      }
-    }
 
     const holoData = holoCardDataRef.current;
     const holoMessage = holoData
       ? buildHoloCardMessage(holoData, messageCounterRef)
       : null;
 
-    if (drainedMessages.length > 0 || holoMessage !== null) {
-      setRevealMessages((prev) => {
-        const next = [...prev, ...drainedMessages];
-        if (holoMessage !== null) {
-          next.push(holoMessage);
-        }
-        return next;
-      });
-    }
+    setRevealMessages((prev) => {
+      const next = [...prev];
+      if (holoMessage !== null) {
+        next.push(holoMessage);
+      }
+      return next;
+    });
 
     setIsRevealComplete(true);
   }, [stopInterval]);
@@ -171,6 +167,17 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
   const startIntervalIfNeeded = useCallback(() => {
     if (intervalRef.current !== null) {
       return;
+    }
+
+    // Safety net: if the pipeline hangs and nothing completes within 60s,
+    // drain whatever we have and finish the reveal sequence.
+    if (hungTimeoutRef.current === null) {
+      hungTimeoutRef.current = setTimeout(() => {
+        if (!intelligenceCompleteRef.current) {
+          intelligenceCompleteRef.current = true;
+          finishReveal();
+        }
+      }, HUNG_PIPELINE_TIMEOUT_MS);
     }
 
     intervalRef.current = setInterval(() => {
@@ -191,11 +198,12 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
         return;
       }
 
+      // All cards shown — finish with holo card + bridging message
       if (intelligenceCompleteRef.current) {
-        drainAndFinish();
+        finishReveal();
       }
-    }, 3500);
-  }, [drainAndFinish]);
+    }, 2000);
+  }, [finishReveal]);
 
   const handleProgressEvent = useCallback(
     (
@@ -259,13 +267,48 @@ export function useOnboardingReveal(): UseOnboardingRevealReturn {
     [],
   );
 
+  const drainAllPending = useCallback(() => {
+    const pending = pendingStagesRef.current;
+    sortByStageOrder(pending);
+    const newMessages: Message[] = [];
+    while (pending.length > 0) {
+      const next = pending.shift();
+      if (next !== undefined && !shownStagesRef.current.has(next.stage)) {
+        shownStagesRef.current.add(next.stage);
+        newMessages.push(
+          buildRevealMessage(next.stage, next.results, messageCounterRef),
+        );
+      }
+    }
+    if (newMessages.length > 0) {
+      setRevealMessages((prev) => [...prev, ...newMessages]);
+    }
+  }, []);
+
   const handleIntelligenceComplete = useCallback(
     (conversationId: string) => {
+      if (intelligenceCompleteRef.current) return;
       intelligenceCompleteRef.current = true;
       setIntelligenceConversationId(conversationId);
-      drainAndFinish();
+
+      const pendingCount = pendingStagesRef.current.length;
+      const shownCount = shownStagesRef.current.size;
+
+      // If few cards to show (e.g. no-Gmail path), drain immediately and finish
+      // instead of making the user wait through the 2s drip interval.
+      if (pendingCount + shownCount <= 2) {
+        drainAllPending();
+        // Small delay so the last card renders before holo card appears
+        setTimeout(() => {
+          finishReveal();
+        }, 800);
+        return;
+      }
+
+      // Otherwise drip remaining cards at 2s intervals for a richer reveal
+      startIntervalIfNeeded();
     },
-    [drainAndFinish],
+    [startIntervalIfNeeded, drainAllPending, finishReveal],
   );
 
   return {

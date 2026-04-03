@@ -31,6 +31,7 @@ export const FIELD_NAMES = {
   NAME: "name",
   PROFESSION: "profession",
   GMAIL: "gmail",
+  FOCUS: "focus",
 } as const;
 
 export const questions: Question[] = [

@@ -127,6 +127,7 @@
     "@vercel/analytics": "^1.6.1",
     "@vercel/speed-insights": "^1.2.0",
     "@xyflow/react": "^12.8.4",
+    "agentation": "^3.0.2",
     "animated-number-react": "^0.1.2",
     "axios": "^1.13.5",
     "canvas-confetti": "^1.9.3",
