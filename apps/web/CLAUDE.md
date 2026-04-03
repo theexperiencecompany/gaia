@@ -105,7 +105,7 @@ Use `loadFeatureTranslations` to lazy-load per-feature message files rather than
 
 ## Non-obvious Patterns
 
-**Icons** — import from `@icons` (aliased to `@theexperiencecompany/gaia-icons/solid-rounded`). The alias is set in both `next.config.mjs` (webpack + turbopack) and `tsconfig.json`. To swap the icon variant globally, change the alias value in `next.config.mjs` — one place changes everything.
+**Icons** — import from `@icons` (aliased to `@theexperiencecompany/gaia-icons/solid-rounded`). The alias is set in both `next.config.mjs` (webpack + turbopack) and `tsconfig.json`. To swap the icon variant globally, change the alias value in `next.config.mjs` — one place changes everything. Exception: use `ChevronRight` from `@/components/shared/icons` for chevron indicators — `@icons` does not have a chevron-right equivalent.
 
 **Standalone output** — `output: "standalone"` is required so the Electron desktop app can bundle the Next.js build. Do not remove it.
 

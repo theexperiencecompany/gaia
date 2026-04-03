@@ -6,16 +6,15 @@ import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot"
 import {
   OnboardingInput,
   OnboardingMessages,
-  OnboardingProcessing,
   OnboardingProgress,
 } from "@/features/onboarding/components";
 import { OnboardingPlatformConnect } from "@/features/onboarding/components/OnboardingPlatformConnect";
 import { OnboardingTodoCards } from "@/features/onboarding/components/OnboardingTodoCards";
 import { OnboardingWorkflowCards } from "@/features/onboarding/components/OnboardingWorkflowCards";
 import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
+import { TriageRevealCard } from "@/features/onboarding/components/reveal/TriageRevealCard";
 import {
   RETRY_LABEL,
-  SOFT_ESCAPE_LABEL,
   SUBMISSION_ERROR_MSG,
 } from "@/features/onboarding/constants/messages";
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
@@ -58,7 +57,6 @@ export default function Onboarding() {
     handleInputChange,
     handleSubmit,
     handleGmailSkip,
-    handleSkipSetup,
     handleEditResponse,
     handleConversationReady,
     handleRetrySubmission,
@@ -66,6 +64,11 @@ export default function Onboarding() {
   } = useOnboarding(true);
 
   const flow = useOnboardingFlow(onboardingState.isProcessingPhase);
+
+  const handleRestartAll = useCallback(() => {
+    flow.reset();
+    handleRestart();
+  }, [flow, handleRestart]);
 
   const {
     chatMessages,
@@ -131,13 +134,7 @@ export default function Onboarding() {
       <OnboardingProgress
         currentStep={progressStep}
         totalSteps={6}
-        onRestart={handleRestart}
-        onSkipSetup={
-          flow.step.type === "question" &&
-          onboardingState.currentQuestionIndex > 0
-            ? handleSkipSetup
-            : undefined
-        }
+        onRestart={handleRestartAll}
         processingProgress={
           flow.step.type === "loading" ? flow.progress : undefined
         }
@@ -162,46 +159,26 @@ export default function Onboarding() {
               flow.step.type === "loading" ? flow.progress : undefined
             }
             onEditMessage={handleEditResponse}
-            onSoftEscapeReady={flow.advanceToTodos}
-            stageMessages={{}}
-          />
-
-          {/* ── Loading: Streaming status messages ── */}
-          {flow.step.type === "loading" && (
-            <m.div
-              className="mt-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3 }}
-            >
-              <OnboardingProcessing
-                hasGmail={onboardingState.hasGmail}
-                isIntelligenceComplete={false}
-                intelligenceConversationId={null}
-                onComplete={() => {}}
-                processingProgress={flow.progress}
-                onSoftEscapeReady={flow.advanceToTodos}
-              />
-            </m.div>
-          )}
-
-          {/* ── Todos step ── */}
-          {flow.step.type === "todos" && (
-            <m.div
-              className="mt-4 space-y-4"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
-            >
-              <ChatBubbleBot
-                {...BOT_BUBBLE_DEFAULTS}
-                text={
-                  flow.data.triageSummary
-                    ? "I went through your inbox and found a few things that need attention:"
-                    : "I set up some tasks based on your profile:"
-                }
-              >
-                <div className="mt-3">
+            stageMessages={flow.stageMessages}
+            processingContinuation={
+              flow.step.type === "todos"
+                ? flow.data.triageSummary
+                  ? "Went through your inbox. Here's what needs attention:"
+                  : "Set up some tasks based on your profile:"
+                : undefined
+            }
+            processingContinuationChildren={
+              flow.step.type === "todos" ? (
+                <div className="mt-3 ml-10.75 space-y-3">
+                  {flow.data.triageSummary && (
+                    <TriageRevealCard
+                      total_scanned={flow.data.triageSummary.total_scanned}
+                      total_unread={flow.data.triageSummary.total_unread}
+                      important_emails={
+                        flow.data.triageSummary.important_emails
+                      }
+                    />
+                  )}
                   <OnboardingTodoCards
                     todos={flow.data.todos}
                     onExecuteTodo={flow.executeTodo}
@@ -209,28 +186,10 @@ export default function Onboarding() {
                     executingTodoId={flow.executingTodoId}
                     completedTodoIds={flow.completedTodoIds}
                   />
-                  {!flow.isExecutingTodo &&
-                    flow.completedTodoIds.size === 0 && (
-                      <m.p
-                        className="mt-3 text-xs text-zinc-500"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.5 }}
-                      >
-                        Pick one to run now, or{" "}
-                        <button
-                          type="button"
-                          className="cursor-pointer text-zinc-400 underline transition-colors hover:text-zinc-200"
-                          onClick={flow.advanceToWorkflows}
-                        >
-                          skip to automations
-                        </button>
-                      </m.p>
-                    )}
                 </div>
-              </ChatBubbleBot>
-            </m.div>
-          )}
+              ) : undefined
+            }
+          />
 
           {/* ── Workflows + Platform Connect step ── */}
           {flow.step.type === "workflows_and_connect" && (
@@ -243,7 +202,7 @@ export default function Onboarding() {
               {flow.data.workflows.length > 0 && (
                 <ChatBubbleBot
                   {...BOT_BUBBLE_DEFAULTS}
-                  text="I also set up a few automations that'll run on their own:"
+                  text="Also set up some automations that'll run on their own:"
                 >
                   <div className="mt-3">
                     <OnboardingWorkflowCards workflows={flow.data.workflows} />
@@ -253,7 +212,7 @@ export default function Onboarding() {
 
               <ChatBubbleBot
                 {...BOT_BUBBLE_DEFAULTS}
-                text="Want me to send your daily briefing straight to your phone?"
+                text="Want your daily briefing sent straight to your phone?"
               >
                 <div className="mt-3">
                   <OnboardingPlatformConnect
@@ -370,22 +329,8 @@ export default function Onboarding() {
             onProfessionInputChange={handleProfessionInputChange}
             inputRef={inputRef}
             onGmailSkip={handleGmailSkip}
+            isFocusPending={isFocusPending}
           />
-        ) : flow.step.type === "loading" ? (
-          <m.div
-            className="flex flex-col items-center gap-2"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 20, ease: [0.19, 1, 0.22, 1] }}
-          >
-            <button
-              type="button"
-              onClick={flow.advanceToChat}
-              className="cursor-pointer text-sm text-zinc-500 transition-colors hover:text-zinc-300"
-            >
-              {SOFT_ESCAPE_LABEL}
-            </button>
-          </m.div>
         ) : null}
       </div>
     </div>

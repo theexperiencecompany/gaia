@@ -50,7 +50,6 @@ from app.helpers.email_helpers import (
 )
 from app.services.mail.mail_service import search_messages
 from app.services.memory_service import memory_service
-from app.services.onboarding.post_onboarding_service import emit_progress
 from shared.py.wide_events import log
 
 
@@ -140,7 +139,7 @@ async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]
 
 
 async def _search_platform_emails(
-    user_id: str, platform: str, query: str, max_results: int = 50
+    user_id: str, platform: str, query: str, max_results: int = 10
 ) -> List[Dict]:
     """
     Search Gmail for emails from a specific platform.
@@ -261,18 +260,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         _extract_profiles_from_parallel_searches(user_id)
     )
 
-    # Emit initial progress
-    try:
-        await emit_progress(
-            user_id,
-            "exploring",
-            "🌌 Exploring your universe...",
-            15,
-            {"current": 0, "total": MAX_RESULTS},
-        )
-    except Exception as e:
-        log.warning(f"Failed to emit initial progress: {e}")
-
     # Check for last scan timestamp
     last_scan_timestamp = None
     if user:
@@ -320,19 +307,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
             # Update stats
             total_fetched += len(batch_emails)
-
-            # Emit progress update
-            try:
-                progress_percent = min(15 + int((total_fetched / MAX_RESULTS) * 40), 55)
-                await emit_progress(
-                    user_id,
-                    "exploring",
-                    "🌌 Exploring your universe...",
-                    progress_percent,
-                    {"current": total_fetched, "total": MAX_RESULTS},
-                )
-            except Exception as e:
-                log.warning(f"Failed to emit progress update: {e}")
 
             # Process content (platform emails automatically excluded)
             t0_parse = time.monotonic()

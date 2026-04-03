@@ -1,11 +1,11 @@
 """
-OnboardingIntelligenceService — orchestrates the new onboarding pipeline.
+OnboardingIntelligenceService — orchestrates the onboarding pipeline.
 
 Phase 1 (parallel, 5-45%):
   - fetch_emails_for_onboarding (1 month received)
   - learn_writing_style (last 100 sent)
   - process_gmail_emails_to_memory (existing pipeline)
-  - process_post_onboarding_personalization (existing — holo card, bio, house)
+  - _run_holo_card (house, bio, personality phrase, card design)
 
 Phase 2 (needs Phase 1 emails, 50-85%):
   - triage_inbox
@@ -46,16 +46,24 @@ from app.models.onboarding_models import (
 from app.models.todo_models import Priority, TodoModel
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.composio.composio_service import get_composio_service
+from app.services.memory_service import memory_service
 from app.services.onboarding.first_message_service import generate_first_message
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.post_onboarding_service import (
-    process_post_onboarding_personalization,
+    save_personalization_data,
+    suggest_workflows_via_rag,
 )
 from app.services.onboarding.social_profile_service import extract_social_profiles
 from app.services.onboarding.writing_style_service import learn_writing_style
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.todo_service import TodoService
 from app.services.workflow.service import WorkflowService
+from app.utils.profile_card import (
+    generate_personality_phrase,
+    generate_profile_card_design,
+    generate_user_bio,
+    get_user_metadata,
+)
 from app.utils.seeding_utils import seed_onboarding_conversation
 
 
@@ -66,16 +74,26 @@ class _TodoSpec(BaseModel):
     description: str = Field(
         description="Context and what the output will be — 1-2 sentences"
     )
+    source_sender: str = Field(
+        default="",
+        description="The sender of the email this todo was created from. Empty string if not from a specific email.",
+    )
+    source_subject: str = Field(
+        default="",
+        description="The subject line of the email this todo was created from. Empty string if not from a specific email.",
+    )
 
 
 class _TodoListFromEmails(BaseModel):
     todos: list[_TodoSpec] = Field(
-        description="List of GAIA-actionable todo items, max 5"
+        description="List of exactly 3 GAIA-actionable todo items"
     )
 
 
 class _FocusTodoList(BaseModel):
-    todos: list[str] = Field(description="List of 3 GAIA-actionable todo titles")
+    todos: list[str] = Field(
+        description="List of 3 GAIA-actionable todo titles — each under 60 characters, starts with a verb"
+    )
 
 
 async def _emit_progress(
@@ -189,15 +207,42 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
         phase1_tasks.extend([_fetch_emails(), _learn_style(), _store_to_memory()])
 
-    # Always run personalization (holo card, bio, house) in parallel
-    async def _run_personalization() -> None:
+    # Always run holo card generation (house, bio, phrase, design) in parallel
+    async def _run_holo_card() -> None:
         t0 = time.monotonic()
-        await process_post_onboarding_personalization(user_id)
-        log.info(
-            f"[intelligence:timing] run_personalization: {time.monotonic() - t0:.1f}s"
-        )
+        try:
+            metadata = await get_user_metadata(user_id, user=user_doc)
+            card_design = generate_profile_card_design()
+            memories_result = await memory_service.get_all_memories(user_id=user_id)
+            memories = memories_result.memories
+            phrase, bio_result = await asyncio.gather(
+                generate_personality_phrase(user_id, memories, profession),
+                generate_user_bio(user_id, memories, user=user_doc),
+            )
+            user_bio, bio_status = bio_result
+            workflow_ids = await suggest_workflows_via_rag(
+                user_id, 4, memories=memories
+            )
+            await save_personalization_data(
+                user_id,
+                card_design["house"],
+                phrase,
+                user_bio,
+                bio_status,
+                workflow_ids,
+                metadata["account_number"],
+                metadata["member_since"],
+                card_design["overlay_color"],
+                card_design["overlay_opacity"],
+            )
+            log.info(
+                f"[intelligence:timing] holo_card: {time.monotonic() - t0:.1f}s "
+                f"(house={card_design['house']}, bio_status={bio_status})"
+            )
+        except Exception as e:
+            log.error(f"[intelligence] Holo card generation failed: {e}", exc_info=True)
 
-    phase1_tasks.append(_run_personalization())
+    phase1_tasks.append(_run_holo_card())
 
     phase1_start = time.monotonic()
     phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
@@ -433,15 +478,16 @@ async def _create_focus_todos(
 
         async def _create_one(title: str) -> Optional[dict]:
             try:
+                safe_title = title[:80].rsplit(" ", 1)[0] if len(title) > 80 else title
                 todo = TodoModel(
-                    title=title[:100],
-                    description=f"Created from your focus: {focus[:100]}",
+                    title=safe_title,
+                    description=f"Created from your focus: {focus[:200]}",
                     labels=["onboarding"],
                     priority=Priority.MEDIUM,
                     project_id=None,
                 )
                 result = await TodoService.create_todo(todo, user_id)
-                return {"id": str(result.id), "title": title[:100]}
+                return {"id": str(result.id), "title": safe_title}
             except Exception as e:
                 log.warning(f"[intelligence] Failed to create focus todo: {e}")
                 return None
@@ -480,20 +526,31 @@ async def _create_todos_from_triage(
 
         async def _create_one(spec: _TodoSpec) -> Optional[dict]:
             try:
+                safe_title = (
+                    spec.title[:80].rsplit(" ", 1)[0]
+                    if len(spec.title) > 80
+                    else spec.title
+                )
                 todo = TodoModel(
-                    title=spec.title[:100],
+                    title=safe_title,
                     description=spec.description[:500],
                     labels=["onboarding"],
                     priority=Priority.MEDIUM,
                     project_id=None,
                 )
                 result = await TodoService.create_todo(todo, user_id)
-                return {"id": str(result.id), "title": spec.title[:100]}
+                todo_dict: dict = {"id": str(result.id), "title": safe_title}
+                if spec.source_sender or spec.source_subject:
+                    todo_dict["source_email"] = {
+                        "sender": spec.source_sender,
+                        "subject": spec.source_subject,
+                    }
+                return todo_dict
             except Exception as e:
                 log.warning(f"[intelligence] Failed to create todo: {e}")
                 return None
 
-        results = await asyncio.gather(*[_create_one(s) for s in parsed.todos[:5]])
+        results = await asyncio.gather(*[_create_one(s) for s in parsed.todos[:3]])
         created = [r for r in results if r is not None]
         log.info(
             f"[intelligence] Created {len(created)} LLM-generated todos from triage"

@@ -7,7 +7,6 @@ interface OnboardingProgressProps {
   currentStep: number;
   totalSteps: number;
   onRestart?: () => void;
-  onSkipSetup?: () => void;
   processingProgress?: number;
 }
 
@@ -15,7 +14,6 @@ export const OnboardingProgress = ({
   currentStep,
   totalSteps,
   onRestart,
-  onSkipSetup,
   processingProgress,
 }: OnboardingProgressProps) => {
   const baseId = useId();
@@ -90,17 +88,6 @@ export const OnboardingProgress = ({
           <ReloadIcon size={14} />
           Restart Onboarding
         </Button>
-      )}
-
-      {onSkipSetup && currentStep > 0 && (
-        <button
-          type="button"
-          onClick={onSkipSetup}
-          className="fixed right-3 bottom-12 text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-          aria-label="Skip setup and go straight to GAIA"
-        >
-          Skip setup
-        </button>
       )}
     </nav>
   );

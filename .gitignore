@@ -129,3 +129,6 @@ docs/superpowers
 superpowers/
 
 .beads/
+
+.nx/polygraph
+.claude/settings.local.json

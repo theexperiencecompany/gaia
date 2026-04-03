@@ -23,7 +23,6 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
-    queue_personalization,
     update_onboarding_preferences,
 )
 from app.services.user_service import get_user_by_id
@@ -42,13 +41,7 @@ async def complete_user_onboarding(
     user: dict = Depends(get_current_user),
     tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
 ):
-    """
-    Complete user onboarding by storing preferences.
-
-    Flow:
-    - If user has Gmail connected: Email processor will trigger personalization after parsing
-    - If no Gmail: Queue personalization ARQ job directly
-    """
+    """Complete user onboarding by storing preferences and queuing the intelligence pipeline."""
     log.set(
         user={"id": user["user_id"]},
         onboarding={
@@ -66,7 +59,6 @@ async def complete_user_onboarding(
             user_timezone=tz_info[0],
         )
 
-        # Always queue intelligence task — handles Gmail, no-Gmail, email processed/unprocessed
         try:
             from app.utils.redis_utils import RedisPoolManager
 
@@ -77,8 +69,6 @@ async def complete_user_onboarding(
             log.info(f"Queued onboarding intelligence for user {user['user_id']}")
         except Exception as e:
             log.error(f"Failed to queue intelligence task: {e}", exc_info=True)
-            # Fallback: queue legacy personalization directly
-            background_tasks.add_task(queue_personalization, user["user_id"])
 
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user
@@ -399,7 +389,7 @@ async def execute_onboarding_todo(
     user_timezone: str = Depends(get_user_timezone),
 ) -> ExecuteTodoResponse:
     """Execute a single onboarding todo via the agent. Runs in background, streams progress via WebSocket."""
-    user_id = str(user["_id"])
+    user_id = user.get("user_id") or str(user["_id"])
     todo_id = request.todo_id
 
     # Fetch the todo

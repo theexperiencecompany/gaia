@@ -37,22 +37,21 @@ export const FIELD_NAMES = {
 export const questions: Question[] = [
   {
     id: "1",
-    question:
-      "Hi there. I'm GAIA, your personal AI assistant. What should I call you?",
+    question: "Hey! I'm GAIA. What should I call you?",
     placeholder: "Enter your name...",
     fieldName: FIELD_NAMES.NAME,
   },
   {
     id: "2",
     question:
-      "What's your profession or main area of focus? This helps me treat your calendar, emails, and tasks appropriately.",
+      "What do you do? This helps me handle your emails, calendar, and tasks the right way.",
     placeholder: "e.g., Software Developer, Student, Designer...",
     fieldName: FIELD_NAMES.PROFESSION,
   },
   {
     id: "3",
     question:
-      "Last step — connect your Gmail and I'll scan your inbox, surface what matters, and set up your first action items.",
+      "Last thing. Connect your Gmail and I'll go through your inbox, find what matters, and set up your first action items.",
     placeholder: "",
     fieldName: FIELD_NAMES.GMAIL,
   },

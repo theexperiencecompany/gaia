@@ -15,7 +15,12 @@ export type OnboardingStep =
   | { type: "chat" };
 
 export interface OnboardingFlowData {
-  todos: Array<{ id: string; title: string; description?: string }>;
+  todos: Array<{
+    id: string;
+    title: string;
+    description?: string;
+    source_email?: { sender: string; subject: string };
+  }>;
   workflows: Array<{ id?: string; title: string; description?: string }>;
   triageSummary: {
     total_scanned: number;
@@ -45,10 +50,10 @@ export interface UseOnboardingFlowReturn {
   data: OnboardingFlowData;
   loadingStatuses: LoadingStatus[];
   progress: number;
+  stageMessages: Record<string, string>;
   isExecutingTodo: boolean;
   executingTodoId: string | null;
   completedTodoIds: Set<string>;
-  advanceToTodos: () => void;
   advanceToWorkflows: () => void;
   advanceToChat: () => void;
   executeTodo: (todoId: string) => void;
@@ -67,6 +72,7 @@ export interface UseOnboardingFlowReturn {
   ) => void;
   handlePersonalizationComplete: (data: PersonalizationData) => void;
   handleIntelligenceComplete: (conversationId: string) => void;
+  reset: () => void;
 }
 
 const INITIAL_DATA: OnboardingFlowData = {
@@ -92,6 +98,9 @@ export function useOnboardingFlow(
   const [data, setData] = useState<OnboardingFlowData>(INITIAL_DATA);
   const [loadingStatuses, setLoadingStatuses] = useState<LoadingStatus[]>([]);
   const [progress, setProgress] = useState(0);
+  const [stageMessages, setStageMessages] = useState<Record<string, string>>(
+    {},
+  );
   const [isExecutingTodo, setIsExecutingTodo] = useState(false);
   const [executingTodoId, setExecutingTodoId] = useState<string | null>(null);
   const [completedTodoIds, setCompletedTodoIds] = useState<Set<string>>(
@@ -108,17 +117,6 @@ export function useOnboardingFlow(
     }
   }, [isProcessingPhase, step.type]);
 
-  // Auto-transition from loading → todos when data is ready
-  useEffect(() => {
-    if (
-      step.type === "loading" &&
-      intelligenceCompleteRef.current &&
-      todosReadyRef.current
-    ) {
-      setStep({ type: "todos" });
-    }
-  }, [step.type, data.todos]);
-
   const handleProgressEvent = useCallback(
     (
       stage: string,
@@ -133,6 +131,11 @@ export function useOnboardingFlow(
           ...prev,
           { message, timestamp: Date.now() },
         ]);
+      }
+
+      // Track latest message per stage for the processing step indicator
+      if (stage && message) {
+        setStageMessages((prev) => ({ ...prev, [stage]: message }));
       }
 
       if (!results) return;
@@ -162,10 +165,15 @@ export function useOnboardingFlow(
             const todos = results.todos as Array<{
               id: string;
               title: string;
+              source_email?: { sender: string; subject: string };
             }>;
             if (todos.length > 0) {
               todosReadyRef.current = true;
               setData((prev) => ({ ...prev, todos }));
+              // Advance to todos immediately — don't wait for the full pipeline
+              setStep((prev) =>
+                prev.type === "loading" ? { type: "todos" } : prev,
+              );
             }
           }
           break;
@@ -218,18 +226,10 @@ export function useOnboardingFlow(
     intelligenceCompleteRef.current = true;
     setData((prev) => ({ ...prev, conversationId }));
 
-    // If we have todos, auto-advance from loading
-    if (todosReadyRef.current) {
-      setStep({ type: "todos" });
-    } else {
-      // No todos — skip to workflows or chat
-      todosReadyRef.current = true;
-      setStep({ type: "workflows_and_connect" });
-    }
-  }, []);
-
-  const advanceToTodos = useCallback(() => {
-    setStep({ type: "todos" });
+    // If still on loading (no todos were created), skip to workflows
+    setStep((prev) =>
+      prev.type === "loading" ? { type: "workflows_and_connect" } : prev,
+    );
   }, []);
 
   const advanceToWorkflows = useCallback(() => {
@@ -338,15 +338,28 @@ export function useOnboardingFlow(
     advanceToChat();
   }, [advanceToChat]);
 
+  const reset = useCallback(() => {
+    setStep({ type: "question", index: 0 });
+    setData(INITIAL_DATA);
+    setLoadingStatuses([]);
+    setProgress(0);
+    setStageMessages({});
+    setIsExecutingTodo(false);
+    setExecutingTodoId(null);
+    setCompletedTodoIds(new Set());
+    intelligenceCompleteRef.current = false;
+    todosReadyRef.current = false;
+  }, []);
+
   return {
     step,
     data,
     loadingStatuses,
     progress,
+    stageMessages,
     isExecutingTodo,
     executingTodoId,
     completedTodoIds,
-    advanceToTodos,
     advanceToWorkflows,
     advanceToChat,
     executeTodo,
@@ -356,5 +369,6 @@ export function useOnboardingFlow(
     handleProgressEvent,
     handlePersonalizationComplete,
     handleIntelligenceComplete,
+    reset,
   };
 }

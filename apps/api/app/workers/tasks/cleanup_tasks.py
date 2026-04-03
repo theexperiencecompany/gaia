@@ -75,12 +75,12 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                 try:
                     # Queue personalization job instead of running directly
                     job = await pool.enqueue_job(
-                        "process_personalization_task", user_id
+                        "process_onboarding_intelligence_task", user_id
                     )
 
                     if job:
                         log.info(
-                            f"Re-queued personalization for stuck user {user_id} "
+                            f"Re-queued intelligence for stuck user {user_id} "
                             f"(status={bio_status}, last_update={updated_at}, job_id={job.job_id})"
                         )
                         queued_count += 1

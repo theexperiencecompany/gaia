@@ -252,6 +252,8 @@ async def add_contact_to_resend(
     user_email: str, user_name: Optional[str] = None
 ) -> None:
     """Add new user contact to Resend audience."""
+    if not settings.RESEND_AUDIENCE_ID:
+        return
     try:
         # Split name into first and last name
         first_name = ""

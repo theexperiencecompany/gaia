@@ -83,7 +83,13 @@ async def generate_first_message(
         if llm is None:
             raise RuntimeError("LLM provider not available")
         response = await llm.ainvoke([HumanMessage(content=prompt)])
-        message = response.content.strip()
+        content = response.content
+        if isinstance(content, list):
+            content = "".join(
+                block.get("text", "") if isinstance(block, dict) else str(block)
+                for block in content
+            )
+        message = content.strip()
 
         log.info(f"[first_message] Generated for {user_id}: {message[:80]}...")
         return message

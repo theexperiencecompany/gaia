@@ -21,7 +21,6 @@ import {
   STEP_TRIAGING,
 } from "../constants/messages";
 
-const SOFT_ESCAPE_MS = 20_000;
 const SLOW_NOTICE_MS = 30_000;
 
 interface ProcessingStep {
@@ -37,6 +36,11 @@ const GMAIL_STEPS: ProcessingStep[] = [
     activeText: STEP_SCANNING_INBOX,
   },
   {
+    icon: Brain01Icon,
+    stage: "finding_profiles",
+    activeText: STEP_LEARNING_STYLE,
+  },
+  {
     icon: FilterIcon,
     stage: "triaging",
     activeText: STEP_TRIAGING,
@@ -45,11 +49,6 @@ const GMAIL_STEPS: ProcessingStep[] = [
     icon: CheckListIcon,
     stage: "creating_todos",
     activeText: STEP_CREATING_TODOS,
-  },
-  {
-    icon: Brain01Icon,
-    stage: "finding_profiles",
-    activeText: STEP_LEARNING_STYLE,
   },
   {
     icon: ZapIcon,
@@ -82,7 +81,6 @@ interface OnboardingProcessingProps {
   intelligenceConversationId: string | null;
   onComplete: (conversationId: string) => void;
   processingProgress?: number;
-  onSoftEscapeReady?: () => void;
   /** Map of stage name → latest backend message for that stage */
   stageMessages?: Record<string, string>;
 }
@@ -93,12 +91,10 @@ export const OnboardingProcessing = ({
   intelligenceConversationId,
   onComplete,
   processingProgress,
-  onSoftEscapeReady,
   stageMessages,
 }: OnboardingProcessingProps) => {
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
   const completedRef = useRef(false);
-  const softEscapeShownRef = useRef(false);
   const [showSlowNotice, setShowSlowNotice] = useState(false);
 
   // Navigate to chat when intelligence is complete
@@ -113,18 +109,6 @@ export const OnboardingProcessing = ({
     }
   }, [isIntelligenceComplete, intelligenceConversationId, onComplete]);
 
-  // Soft escape — notify parent after 20s so it can render bottom CTA
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!completedRef.current && !softEscapeShownRef.current) {
-        softEscapeShownRef.current = true;
-        onSoftEscapeReady?.();
-      }
-    }, SOFT_ESCAPE_MS);
-
-    return () => clearTimeout(timer);
-  }, [onSoftEscapeReady]);
-
   // Show "taking longer" notice after 30s
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -136,10 +120,18 @@ export const OnboardingProcessing = ({
     return () => clearTimeout(timer);
   }, []);
 
-  const activeStepIndex = Math.min(
-    Math.floor((processingProgress ?? 0) / (100 / steps.length)),
-    steps.length - 1,
-  );
+  // Determine active step from which stages have been seen, not from progress %
+  const activeStepIndex = (() => {
+    if (!stageMessages) return 0;
+    let lastSeenIndex = -1;
+    for (let i = 0; i < steps.length; i++) {
+      if (stageMessages[steps[i].stage]) {
+        lastSeenIndex = i;
+      }
+    }
+    // The active step is the one after the last completed, or 0 if none seen
+    return Math.min(lastSeenIndex + 1, steps.length - 1);
+  })();
 
   return (
     <m.div
@@ -232,7 +224,7 @@ export const OnboardingProcessing = ({
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3 }}
           >
-            Taking a bit longer than usual — hang tight.
+            Taking a bit longer than usual, hang tight.
           </m.p>
         )}
       </AnimatePresence>

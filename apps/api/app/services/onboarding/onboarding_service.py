@@ -9,29 +9,11 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingRequest,
 )
-from app.utils.redis_utils import RedisPoolManager
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
 from pymongo import ReturnDocument
-
-
-async def queue_personalization(user_id: str) -> None:
-    """Queue post-onboarding personalization as an ARQ background task."""
-    try:
-        pool = await RedisPoolManager.get_pool()
-        job = await pool.enqueue_job("process_personalization_task", user_id)
-
-        if job:
-            log.info(
-                f"Queued personalization for user {user_id} with job ID {job.job_id}"
-            )
-        else:
-            log.error(f"Failed to queue personalization for user {user_id}")
-
-    except Exception as e:
-        log.error(f"Error queuing personalization for user {user_id}: {e}")
 
 
 async def complete_onboarding(

@@ -265,7 +265,7 @@ async def seed_onboarding_todo(user_id: str) -> None:
                 "🔍 Search and filter todos by label, priority, or date\n\n"
                 "Complete the subtasks to learn by doing, then create your first real todo!"
             ),
-            labels=["onboarding", "tutorial", "getting-started"],
+            labels=["tutorial", "getting-started"],
             priority=Priority.HIGH,
             due_date=due_date,
             due_date_timezone="UTC",

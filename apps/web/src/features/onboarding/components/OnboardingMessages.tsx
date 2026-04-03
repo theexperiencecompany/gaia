@@ -92,8 +92,11 @@ interface OnboardingMessagesProps {
   isProcessingSkipped?: boolean;
   processingProgress?: number;
   onEditMessage?: (fieldName: string) => void;
-  onSoftEscapeReady?: () => void;
   stageMessages?: Record<string, string>;
+  /** Text to append to the processing message via <NEW_MESSAGE_BREAK> */
+  processingContinuation?: string;
+  /** Children to render below the processing bubble (e.g. todo cards) */
+  processingContinuationChildren?: ReactNode;
 }
 
 function renderRevealCard(
@@ -156,8 +159,9 @@ export const OnboardingMessages = ({
   isProcessingSkipped = false,
   processingProgress,
   onEditMessage,
-  onSoftEscapeReady,
   stageMessages,
+  processingContinuation,
+  processingContinuationChildren,
 }: OnboardingMessagesProps) => {
   const revealMessages = messages.filter((msg) => msg.type === "reveal");
 
@@ -185,12 +189,19 @@ export const OnboardingMessages = ({
               return card;
             })()
           ) : message.type === "bot" ? (
-            <OnboardingBotBubble text={message.content}>
+            <OnboardingBotBubble
+              text={
+                message.id === "processing" && processingContinuation
+                  ? `${message.content}<NEW_MESSAGE_BREAK>${processingContinuation}`
+                  : message.content
+              }
+            >
               {isProcessingPhase &&
                 index === messages.length - 1 &&
                 revealMessages.length === 0 &&
                 !isProcessingSkipped && (
                   <m.div
+                    className="ml-10.75"
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{
@@ -205,11 +216,11 @@ export const OnboardingMessages = ({
                       intelligenceConversationId={intelligenceConversationId}
                       onComplete={onProcessingComplete ?? (() => {})}
                       processingProgress={processingProgress}
-                      onSoftEscapeReady={onSoftEscapeReady}
                       stageMessages={stageMessages}
                     />
                   </m.div>
                 )}
+              {message.id === "processing" && processingContinuationChildren}
             </OnboardingBotBubble>
           ) : (
             <div className="group flex items-end justify-end gap-0">

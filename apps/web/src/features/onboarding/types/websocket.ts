@@ -91,7 +91,11 @@ export interface TriageResults {
 }
 
 export interface TodoResults {
-  todos: Array<{ id: string; title: string }>;
+  todos: Array<{
+    id: string;
+    title: string;
+    source_email?: { sender: string; subject: string };
+  }>;
 }
 
 export interface WorkflowResults {

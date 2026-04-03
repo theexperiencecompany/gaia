@@ -10,7 +10,6 @@ from app.workers.tasks import (
     generate_workflow_steps,
     process_gmail_emails_to_memory,
     process_onboarding_intelligence_task,
-    process_personalization_task,
     process_reminder,
     process_workflow_generation_task,
     store_memories_batch,
@@ -28,7 +27,6 @@ WorkerSettings.functions = [
     generate_workflow_steps,
     process_gmail_emails_to_memory,
     process_onboarding_intelligence_task,
-    process_personalization_task,
     store_memories_batch,
     cleanup_stuck_personalization,
 ]

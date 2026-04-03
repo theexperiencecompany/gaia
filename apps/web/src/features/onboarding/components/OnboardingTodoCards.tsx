@@ -1,11 +1,18 @@
 "use client";
 
-import { ArrowRight01Icon, CheckmarkCircle02Icon } from "@icons";
+import { ArrowRight01Icon, CheckmarkCircle02Icon, Mail01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import { useState } from "react";
 
+interface OnboardingTodo {
+  id: string;
+  title: string;
+  description?: string;
+  source_email?: { sender: string; subject: string };
+}
+
 interface OnboardingTodoCardsProps {
-  todos: Array<{ id: string; title: string; description?: string }>;
+  todos: OnboardingTodo[];
   onExecuteTodo: (todoId: string) => void;
   isExecuting: boolean;
   executingTodoId: string | null;
@@ -13,6 +20,12 @@ interface OnboardingTodoCardsProps {
 }
 
 const MAX_VISIBLE = 5;
+
+function extractSenderName(sender: string): string {
+  const match = sender.match(/^([^<]+)</);
+  if (match) return match[1].trim();
+  return sender.split("@")[0] ?? sender;
+}
 
 export function OnboardingTodoCards({
   todos,
@@ -52,19 +65,11 @@ export function OnboardingTodoCards({
             <m.div
               key={todo.id}
               layout
-              className={`relative overflow-hidden rounded-2xl border bg-zinc-800/60 shadow-sm transition-colors ${
-                active
-                  ? "border-l-2 border-l-violet-500 border-t-zinc-700/50 border-r-zinc-700/50 border-b-zinc-700/50"
-                  : completed
-                    ? "border-zinc-700/30"
-                    : "border-zinc-700/50"
+              className={`relative overflow-hidden rounded-2xl bg-zinc-800/60 ${
+                active ? "border-l-2 border-l-violet-500" : ""
               }`}
               initial={{ opacity: 0, y: 12, scale: 0.97 }}
-              animate={{
-                opacity: completed ? 0.6 : 1,
-                y: 0,
-                scale: 1,
-              }}
+              animate={{ opacity: completed ? 0.6 : 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.95 }}
               transition={{
                 delay: index * 0.06,
@@ -74,9 +79,6 @@ export function OnboardingTodoCards({
               }}
               onMouseEnter={() => setHoveredId(todo.id)}
               onMouseLeave={() => setHoveredId(null)}
-              whileHover={
-                !active && !completed ? { y: -2, scale: 1.01 } : undefined
-              }
             >
               {active && (
                 <m.div
@@ -90,8 +92,8 @@ export function OnboardingTodoCards({
                 />
               )}
 
-              <div className="relative flex items-center gap-3 px-4 py-3">
-                <div className="shrink-0">
+              <div className="relative flex items-start gap-3 px-4 py-3 pr-28">
+                <div className="mt-0.5 shrink-0">
                   {completed ? (
                     <m.div
                       initial={{ scale: 0 }}
@@ -127,29 +129,42 @@ export function OnboardingTodoCards({
                   >
                     {todo.title}
                   </p>
-                  {todo.description && (
+                  {todo.source_email && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <Mail01Icon className="size-3 shrink-0 text-zinc-500" />
+                      <span className="truncate text-xs text-zinc-500">
+                        <span className="text-zinc-400">
+                          {extractSenderName(todo.source_email.sender)}
+                        </span>
+                        {todo.source_email.subject && (
+                          <>
+                            <span className="mx-1 text-zinc-600">·</span>
+                            {todo.source_email.subject}
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {!todo.source_email && todo.description && (
                     <p className="mt-0.5 truncate text-xs text-zinc-400">
                       {todo.description}
                     </p>
                   )}
                 </div>
 
-                <AnimatePresence>
-                  {hovered && !isExecuting && (
-                    <m.button
-                      type="button"
-                      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-700/60 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600/60"
-                      initial={{ opacity: 0, x: 8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 8 }}
-                      transition={{ duration: 0.15 }}
-                      onClick={() => handleExecute(todo.id)}
-                    >
-                      Run now
-                      <ArrowRight01Icon className="size-3" />
-                    </m.button>
-                  )}
-                </AnimatePresence>
+                <button
+                  type="button"
+                  aria-hidden={!hovered || isExecuting}
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 rounded-lg bg-zinc-700/60 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-opacity duration-150 hover:bg-zinc-600/60 ${
+                    hovered && !isExecuting
+                      ? "opacity-100"
+                      : "pointer-events-none opacity-0"
+                  }`}
+                  onClick={() => handleExecute(todo.id)}
+                >
+                  Run now
+                  <ArrowRight01Icon className="size-3" />
+                </button>
               </div>
             </m.div>
           );

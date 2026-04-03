@@ -9,10 +9,10 @@ export const PROCESSING_MSG_NO_GMAIL =
 export const PROCESSING_MSG_FOCUS = "Got it. Setting things up around that.";
 
 export const FOCUS_QUESTION =
-  "Got it. One last thing — what's your biggest focus right now? This helps me set up your first action items.";
+  "Got it. What's the one thing you most need to get done this week?";
 
 export const BACKGROUND_PROCESSING_MSG =
-  "I'm still setting things up in the background. Feel free to ask me anything — I'll bring your results as they come in.";
+  "Still setting things up in the background. Feel free to ask me anything and I'll bring your results as they come in.";
 
 export const SOFT_ESCAPE_LABEL = "Chat while I work \u2192";
 
