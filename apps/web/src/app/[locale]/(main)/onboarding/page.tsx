@@ -186,6 +186,18 @@ export default function Onboarding() {
                     executingTodoId={flow.executingTodoId}
                     completedTodoIds={flow.completedTodoIds}
                   />
+                  {flow.data.conversationId && !flow.isExecutingTodo && (
+                    <m.button
+                      type="button"
+                      onClick={flow.advanceToWorkflows}
+                      className="ml-10.75 cursor-pointer text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 1.5, duration: 0.4 }}
+                    >
+                      Skip for now
+                    </m.button>
+                  )}
                 </div>
               ) : undefined
             }
@@ -202,7 +214,7 @@ export default function Onboarding() {
               {flow.data.workflows.length > 0 && (
                 <ChatBubbleBot
                   {...BOT_BUBBLE_DEFAULTS}
-                  text="Also set up some automations that'll run on their own:"
+                  text="Here's what I set up to run on a recurring basis:"
                 >
                   <div className="mt-3">
                     <OnboardingWorkflowCards workflows={flow.data.workflows} />
@@ -212,7 +224,7 @@ export default function Onboarding() {
 
               <ChatBubbleBot
                 {...BOT_BUBBLE_DEFAULTS}
-                text="Want your daily briefing sent straight to your phone?"
+                text="Get notifications and talk to me on the go:"
               >
                 <div className="mt-3">
                   <OnboardingPlatformConnect

@@ -28,7 +28,7 @@ export interface PersonalizationData {
     steps: Array<{ category: string }>;
   }>;
   // Stage data for reveal card reconstruction on page reload
-  writing_style?: { style_summary: string } | null;
+  writing_style?: { style_summary: string; sample_snippets?: string[] } | null;
   social_profiles?: Array<{ platform: string; url: string }> | null;
   triage_summary?: {
     total_scanned: number;
@@ -68,6 +68,7 @@ export interface InboxScanResults {
 
 export interface WritingStyleResults {
   style_summary: string;
+  sample_snippets?: string[];
 }
 
 export interface SocialProfileResult {

@@ -177,6 +177,43 @@ Write a conversational first message. Rules:
 - Under 120 words. No emojis. No bullet points. No cards. No "Great!" or "Sure!". Talk like a competent colleague.
 """
 
+WORKFLOW_CREATION_PROMPT = """You are GAIA setting up automations for a new user. Create exactly 2 workflows tailored to their actual context.
+
+User profile:
+- Profession: {profession}
+- Current focus: {focus}
+- Has Gmail connected: {has_gmail}
+
+Inbox insights:
+- Key patterns: {inbox_patterns}
+- Key senders / email types: {email_senders_summary}
+
+Writing style: {writing_style_summary}
+
+Requirements for each workflow:
+- Must save this person 20+ minutes per week — be specific, not generic
+- Must be grounded in their actual profession and inbox patterns above
+- Title: under 60 chars, starts with a verb or noun, no buzzwords
+- Description: 1-2 sentences — what triggers it, what it does, what output it produces
+
+BAD (too generic):
+- "Daily Email Summary" — everyone gets this, no specificity
+- "Task Reminder" — vague, could apply to anyone
+- "Weekly Report" — no context-specificity
+
+GOOD (specific to user context):
+- "Flag investor emails and draft follow-ups" — for a founder with investor threads in inbox
+- "Summarize new bug reports with reproduction steps" — for a developer with GitHub alerts
+- "Compile competitor coverage into weekly digest" — for marketing with competitor email patterns
+
+Return JSON only:
+{{
+  "workflows": [
+    {{"title": "...", "description": "..."}},
+    {{"title": "...", "description": "..."}}
+  ]
+}}"""
+
 ONBOARDING_FIRST_CONVERSATION_SYSTEM_PROMPT = """You are GAIA, a proactive personal AI assistant having your first real conversation with {name}.
 
 You already processed their inbox and set things up. This context is from that processing:

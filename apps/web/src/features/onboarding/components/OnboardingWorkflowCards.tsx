@@ -45,7 +45,7 @@ export function OnboardingWorkflowCards({
         ))}
       </div>
       <p className="text-xs text-zinc-500">
-        You can customize these anytime in Workflows.
+        These run automatically. Customize them anytime in Workflows.
       </p>
     </m.div>
   );

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 class WritingStyleProfile(BaseModel):
     summary: str  # natural language description of their writing style
     sample_snippets: list[str]  # 3-5 real excerpts from sent emails (style only)
+    user_edited_sample: str | None = None  # user-edited snippet saved during onboarding
 
 
 class SocialProfile(BaseModel):

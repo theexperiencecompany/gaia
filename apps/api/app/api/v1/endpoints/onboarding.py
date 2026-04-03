@@ -1,5 +1,10 @@
 from datetime import datetime, timezone
 
+from bson import ObjectId
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
+from shared.py.wide_events import log
+
 from app.api.v1.dependencies.oauth_dependencies import (
     GET_USER_TZ_TYPE,
     get_current_user,
@@ -25,11 +30,9 @@ from app.services.onboarding.onboarding_service import (
     get_user_onboarding_status,
     update_onboarding_preferences,
 )
+from app.services.onboarding.social_profile_service import save_confirmed_profiles
+from app.services.onboarding.writing_style_service import save_user_edited_sample
 from app.services.user_service import get_user_by_id
-from bson import ObjectId
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from pydantic import BaseModel
-from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -126,7 +129,6 @@ async def update_onboarding_phase(
             f"[update_onboarding_phase] Updating phase to {phase} for user {user_id}"
         )
 
-        # Update the phase in database
         result = await users_collection.update_one(
             {"_id": ObjectId(user_id)},
             {
@@ -147,7 +149,6 @@ async def update_onboarding_phase(
             f"[update_onboarding_phase] Successfully updated phase to {phase} for user {user_id}, modified_count={result.modified_count}"
         )
 
-        # Send WebSocket notification about phase update
         try:
             await websocket_manager.broadcast_to_user(
                 user_id=user_id,
@@ -228,7 +229,6 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
 
         onboarding = user_doc.get("onboarding", {})
         user_bio = onboarding.get("user_bio", "")
-        # Check the phase to determine if personalization is complete
         phase = onboarding.get("phase", "initial")
         log.info(
             f"[get_onboarding_personalization] User {user_id} has phase: {phase}, bio_status: {onboarding.get('bio_status')}"
@@ -239,7 +239,6 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             "completed",
         ]
 
-        # Get stored metadata or calculate if not stored (for older users)
         account_number = onboarding.get("account_number")
         member_since = onboarding.get("member_since")
 
@@ -259,7 +258,6 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                 else datetime.now(timezone.utc).strftime("%b %d, %Y")
             )
 
-        # Fetch full workflow objects in a single batch query
         workflow_ids = onboarding.get("suggested_workflows", [])
         workflows = []
         if workflow_ids:
@@ -270,7 +268,6 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                 ]
                 cursor = workflows_collection.find({"_id": {"$in": query_ids}})
                 wf_docs = {str(wf["_id"]): wf async for wf in cursor}
-                # Preserve original order from workflow_ids
                 for wf_id in workflow_ids:
                     wf = wf_docs.get(str(wf_id))
                     if wf:
@@ -285,16 +282,12 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             except Exception as e:
                 log.error(f"Error fetching workflows: {str(e)}", exc_info=True)
 
-        # Determine what bio to show based on bio_status
         bio_status = onboarding.get("bio_status", "pending")
         display_bio = user_bio
 
-        # Override bio display based on status
         if bio_status in ["processing", BioStatus.PROCESSING]:
             display_bio = "Processing your insights... Please check back in a moment."
         elif bio_status in ["pending", BioStatus.PENDING]:
-            # Check if user has Gmail via Composio to show appropriate message
-
             composio_service = get_composio_service()
             connection_status = await composio_service.check_connection_status(
                 ["gmail"], str(user_id)
@@ -306,10 +299,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                 )
             else:
                 display_bio = "Setting up your profile..."
-        # For "no_gmail" and "completed" status, use the actual bio content
-        # (no_gmail now has a default bio, completed has the full bio)
 
-        # Fetch stage data for reveal card reconstruction on page reload
         raw_writing_style = onboarding.get("writing_style")
         raw_social_profiles = onboarding.get("social_profiles", [])
         triage_summary = onboarding.get("triage_summary")
@@ -349,7 +339,10 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             "first_message_conversation_id": onboarding.get(
                 "first_message_conversation_id"
             ),
-            "writing_style": {"style_summary": raw_writing_style.get("summary", "")}
+            "writing_style": {
+                "style_summary": raw_writing_style.get("summary", ""),
+                "sample_snippets": raw_writing_style.get("sample_snippets", []),
+            }
             if raw_writing_style
             else None,
             "social_profiles": [
@@ -392,7 +385,6 @@ async def execute_onboarding_todo(
     user_id = user.get("user_id") or str(user["_id"])
     todo_id = request.todo_id
 
-    # Fetch the todo
     todo_doc = await todos_collection.find_one(
         {"_id": ObjectId(todo_id), "user_id": user_id}
     )
@@ -402,7 +394,6 @@ async def execute_onboarding_todo(
     todo_title = todo_doc.get("title", "")
     todo_description = todo_doc.get("description", "")
 
-    # Get onboarding conversation ID
     user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
     conversation_id = (
         user_doc.get("onboarding", {}).get("first_message_conversation_id")
@@ -412,7 +403,6 @@ async def execute_onboarding_todo(
     if not conversation_id:
         raise HTTPException(status_code=400, detail="No onboarding conversation found")
 
-    # Emit executing status via WebSocket
     await websocket_manager.broadcast_to_user(
         user_id=user_id,
         message={
@@ -421,7 +411,6 @@ async def execute_onboarding_todo(
         },
     )
 
-    # Run agent execution in background
     background_tasks.add_task(
         _execute_todo_background,
         user_id=user_id,
@@ -448,7 +437,6 @@ async def _execute_todo_background(
     user_timezone: str,
 ) -> None:
     """Background task: execute a todo via the agent and broadcast results."""
-    # Lazy import to avoid circular imports (same pattern as workflow_tasks.py)
     from app.agents.core.agent import call_agent_silent
 
     try:
@@ -484,7 +472,6 @@ async def _execute_todo_background(
             user_time=user_time,
         )
 
-        # Broadcast completion
         await websocket_manager.broadcast_to_user(
             user_id=user_id,
             message={
@@ -517,3 +504,55 @@ async def _execute_todo_background(
                 },
             },
         )
+
+
+# ── Writing style edit ────────────────────────────────────────────────────────
+
+
+class WritingStyleEditRequest(BaseModel):
+    edited_sample: str
+
+
+@router.post("/writing-style", response_model=dict)
+async def save_writing_style(
+    request: WritingStyleEditRequest,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Save a user-edited writing style sample from the onboarding reveal card."""
+    user_id: str = user["user_id"]
+    log.set(user={"id": user_id}, onboarding={"operation": "save_writing_style"})
+    try:
+        await save_user_edited_sample(user_id, request.edited_sample.strip())
+        return {"success": True}
+    except Exception as e:
+        log.error(f"[onboarding] Failed to save writing style: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save writing style")
+
+
+# ── Social profiles confirm ───────────────────────────────────────────────────
+
+
+class SocialProfileItem(BaseModel):
+    platform: str
+    url: str
+
+
+class SocialProfilesConfirmRequest(BaseModel):
+    profiles: list[SocialProfileItem]
+
+
+@router.post("/social-profiles", response_model=dict)
+async def confirm_social_profiles(
+    request: SocialProfilesConfirmRequest,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Save user-confirmed (and optionally edited) social profiles from onboarding."""
+    user_id: str = user["user_id"]
+    log.set(user={"id": user_id}, onboarding={"operation": "confirm_social_profiles"})
+    try:
+        profiles = [p.model_dump() for p in request.profiles]
+        await save_confirmed_profiles(user_id, profiles)
+        return {"success": True, "saved": len(profiles)}
+    except Exception as e:
+        log.error(f"[onboarding] Failed to save social profiles: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save social profiles")

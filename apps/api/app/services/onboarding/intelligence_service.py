@@ -7,14 +7,13 @@ Phase 1 (parallel, 5-45%):
   - process_gmail_emails_to_memory (existing pipeline)
   - _run_holo_card (house, bio, personality phrase, card design)
 
-Phase 2 (needs Phase 1 emails, 50-85%):
+Phase 2 (sequential, 50-85%):
   - triage_inbox
   - create todos from important emails
-  - provision Gmail system workflows (if connected)
-  - create profession-specific workflow
+  - create 2 LLM-generated workflows using inbox context + profile (+ provision Gmail system workflows)
 
 Phase 3 (90-100%):
-  - generate_first_message
+  - generate_first_message (now receives created_workflows)
   - seed_onboarding_conversation
 """
 
@@ -30,6 +29,7 @@ from shared.py.wide_events import log
 from app.agents.prompts.onboarding_prompts import (
     FOCUS_TODOS_PROMPT,
     TRIAGE_TODOS_PROMPT,
+    WORKFLOW_CREATION_PROMPT,
 )
 from app.core.lazy_loader import providers
 from app.core.websocket_manager import websocket_manager
@@ -194,7 +194,10 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 results={
                     "style_summary": writing_style.summary[:200]
                     if writing_style and writing_style.summary
-                    else ""
+                    else "",
+                    "sample_snippets": writing_style.sample_snippets[:3]
+                    if writing_style and writing_style.sample_snippets
+                    else [],
                 },
             )
 
@@ -278,11 +281,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     created_todos: list[dict] = []
     created_workflows: list[dict] = []
 
-    # Start workflow creation in parallel — it doesn't depend on triage
-    workflow_task = asyncio.create_task(
-        _create_onboarding_workflows(user_id, profession, has_gmail, focus)
-    )
-
     if emails:
         t_triage = time.monotonic()
         triage = await triage_inbox(user_id, emails)
@@ -342,35 +340,19 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 results={"todos": created_todos},
             )
 
-    # Emit workflows progress
+    # Create workflows after triage — use inbox context for specificity
     await _emit_progress(user_id, "creating_workflows", "Setting up automations", 75)
-
-    # Start first message generation in parallel with workflow await
-    phase3_start = time.monotonic()
-    await _emit_progress(user_id, "preparing", "Preparing your workspace", 90)
-
-    t_msg = time.monotonic()
-    first_message_task = asyncio.create_task(
-        generate_first_message(
-            user_id=user_id,
-            name=name,
-            profession=profession,
-            triage=triage,
-            created_todos=created_todos,
-            created_workflows=[],  # Don't wait for workflows
-            social_profiles=[p.model_dump() for p in social_profiles],
-            writing_style=writing_style,
-            focus=focus,
-        )
-    )
-
-    # Await both in parallel
+    t_wf = time.monotonic()
     try:
-        created_workflows = await workflow_task
+        created_workflows = await _create_onboarding_workflows(
+            user_id, profession, has_gmail, focus, triage, writing_style
+        )
     except Exception as e:
         log.warning(f"[intelligence] Workflow creation failed: {e}")
         created_workflows = []
-
+    log.info(
+        f"[intelligence:timing] create_workflows: {time.monotonic() - t_wf:.1f}s ({len(created_workflows)} workflows)"
+    )
     await _emit_progress(
         user_id,
         "creating_workflows",
@@ -382,7 +364,22 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         f"[intelligence:timing] Phase 2 total: {time.monotonic() - phase2_start:.1f}s"
     )
 
-    first_message = await first_message_task
+    # ── Phase 3: First message + seed conversation ────────────────────────────
+    phase3_start = time.monotonic()
+    await _emit_progress(user_id, "preparing", "Preparing your workspace", 90)
+
+    t_msg = time.monotonic()
+    first_message = await generate_first_message(
+        user_id=user_id,
+        name=name,
+        profession=profession,
+        triage=triage,
+        created_todos=created_todos,
+        created_workflows=created_workflows,
+        social_profiles=[p.model_dump() for p in social_profiles],
+        writing_style=writing_style,
+        focus=focus,
+    )
     log.info(
         f"[intelligence:timing] generate_first_message: {time.monotonic() - t_msg:.1f}s"
     )
@@ -562,44 +559,17 @@ async def _create_todos_from_triage(
         return []
 
 
-_PROFESSION_WORKFLOW_MAP: dict[str, tuple[str, str]] = {
-    "founder": (
-        "Daily Founder Briefing",
-        "Every morning, scan inbox for investor and partner emails, research senders, and compile a prioritized briefing of what needs attention today.",
-    ),
-    "entrepreneur": (
-        "Daily Founder Briefing",
-        "Every morning, scan inbox for investor and partner emails, research senders, and compile a prioritized briefing of what needs attention today.",
-    ),
-    "developer": (
-        "PR & Bug Triage",
-        "When a customer bug report or PR review request arrives, extract the key details, check for related open issues, and create a structured todo with reproduction steps.",
-    ),
-    "engineer": (
-        "PR & Bug Triage",
-        "When a customer bug report or PR review request arrives, extract the key details, check for related open issues, and create a structured todo with reproduction steps.",
-    ),
-    "marketing": (
-        "Daily Campaign Snapshot",
-        "Every morning, scan inbox for platform notification emails, extract key metrics, and compile a performance snapshot.",
-    ),
-    "student": (
-        "Deadline Tracker",
-        "Monitor academic emails for deadlines, assignments, and professor updates. Create todos with reverse-planned subtasks when a new deadline is found.",
-    ),
-    "manager": (
-        "Team Pulse",
-        "Daily scan of team communication emails and threads. Flag blockers, action items awaiting your decision, and anything overdue.",
-    ),
-    "designer": (
-        "Feedback Tracker",
-        "Monitor client and stakeholder emails for design feedback. Create structured todos with feedback quotes and suggested next steps.",
-    ),
-    "sales": (
-        "Pipeline Daily Brief",
-        "Every morning, scan inbox for prospect and client emails, identify follow-ups needed, and compile a prioritized outreach list.",
-    ),
-}
+class _WorkflowSpec(BaseModel):
+    title: str = Field(
+        description="Workflow title — under 60 chars, starts with a verb or noun"
+    )
+    description: str = Field(
+        description="1-2 sentences: what triggers it, what it does, what output it produces"
+    )
+
+
+class _WorkflowList(BaseModel):
+    workflows: list[_WorkflowSpec] = Field(description="Exactly 2 workflow specs")
 
 
 async def _create_onboarding_workflows(
@@ -607,73 +577,113 @@ async def _create_onboarding_workflows(
     profession: str,
     has_gmail: bool,
     focus: str = "",
+    triage: Optional[InboxTriage] = None,
+    writing_style: Optional[WritingStyleProfile] = None,
 ) -> list[dict]:
-    """Provision system workflows for Gmail (if connected) and one profession-specific workflow."""
-    created: list[dict] = []
+    """
+    Create 2 LLM-generated workflows tailored to the user's inbox context and profile.
+    Runs Gmail system workflow provisioning in parallel.
+    """
 
-    profession_key = profession.lower() if profession else ""
-    config = _PROFESSION_WORKFLOW_MAP.get(profession_key)
-    if not config:
-        config = (
-            "Daily Briefing",
-            "Every morning at 9am, summarize unread emails by priority, today's meetings, and open todos into a concise daily brief.",
-        )
-    title, description = config
-
-    async def _provision_gmail() -> Optional[dict]:
+    # Provision Gmail system workflows (fire-and-forget alongside LLM call)
+    async def _provision_gmail() -> None:
         if not has_gmail:
-            return None
+            return
         try:
             await provision_system_workflows(user_id, "gmail", "Gmail")
-            return {"title": "Gmail System Workflows"}
         except Exception as e:
             log.warning(f"[intelligence] Failed to provision Gmail workflows: {e}")
-            return None
 
-    async def _create_profession_wf() -> Optional[dict]:
+    # Build context for LLM
+    inbox_patterns = (
+        "; ".join(triage.patterns[:3])
+        if triage and triage.patterns
+        else "no patterns detected"
+    )
+    email_senders_summary = (
+        ", ".join(e.sender for e in triage.important_emails[:5])
+        if triage and triage.important_emails
+        else "no email data"
+    )
+    writing_style_summary = (
+        writing_style.summary[:150] if writing_style else "not analyzed"
+    )
+
+    async def _create_llm_workflows() -> list[dict]:
         try:
-            request = CreateWorkflowRequest(
-                title=title,
-                description=description,
-                prompt=description,
-                trigger_config=TriggerConfig(type=TriggerType.SCHEDULE),
-                generate_immediately=False,
+            prompt = WORKFLOW_CREATION_PROMPT.format(
+                profession=profession or "professional",
+                focus=focus or "not specified",
+                has_gmail=has_gmail,
+                inbox_patterns=inbox_patterns,
+                email_senders_summary=email_senders_summary,
+                writing_style_summary=writing_style_summary,
             )
-            workflow = await WorkflowService.create_workflow(request, user_id)
-            return {"id": str(workflow.id), "title": title}
+            llm = await providers.aget("gemini_llm")
+            if llm is None:
+                raise RuntimeError("LLM provider not available")
+            structured_llm = llm.with_structured_output(_WorkflowList)
+            parsed: _WorkflowList = await structured_llm.ainvoke(
+                [HumanMessage(content=prompt)]
+            )
+            created: list[dict] = []
+            for spec in parsed.workflows[:2]:
+                try:
+                    safe_title = spec.title[:80]
+                    safe_desc = spec.description[:500]
+                    request = CreateWorkflowRequest(
+                        title=safe_title,
+                        description=safe_desc,
+                        prompt=safe_desc,
+                        trigger_config=TriggerConfig(type=TriggerType.SCHEDULE),
+                        generate_immediately=False,
+                    )
+                    workflow = await WorkflowService.create_workflow(request, user_id)
+                    created.append(
+                        {
+                            "id": str(workflow.id),
+                            "title": safe_title,
+                            "description": safe_desc,
+                        }
+                    )
+                except Exception as e:
+                    log.warning(
+                        f"[intelligence] Failed to create workflow from spec: {e}"
+                    )
+            return created
         except Exception as e:
-            log.warning(f"[intelligence] Failed to create profession workflow: {e}")
-            return None
+            log.warning(
+                f"[intelligence] LLM workflow creation failed, using fallback: {e}"
+            )
+            return await _create_fallback_workflow(user_id, profession, focus)
 
-    tasks: list[Any] = [_provision_gmail(), _create_profession_wf()]
+    workflows, _ = await asyncio.gather(_create_llm_workflows(), _provision_gmail())
+    return workflows
 
-    if not has_gmail and focus:
-        focus_title = "Focus Workflow"
-        focus_description = f"When working on: {focus[:200]}. Track progress, set reminders, and report back on completion."
 
-        async def _create_focus_wf() -> Optional[dict]:
-            try:
-                request = CreateWorkflowRequest(
-                    title=focus_title,
-                    description=focus_description,
-                    prompt=focus_description,
-                    trigger_config=TriggerConfig(type=TriggerType.SCHEDULE),
-                    generate_immediately=False,
-                )
-                workflow = await WorkflowService.create_workflow(request, user_id)
-                return {
-                    "id": str(workflow.id),
-                    "title": focus_title,
-                    "description": focus_description,
-                }
-            except Exception as e:
-                log.warning(f"[intelligence] Failed to create focus workflow: {e}")
-                return None
-
-        tasks.append(_create_focus_wf())
-
-    results = await asyncio.gather(*tasks)
-    for r in results:
-        if r is not None:
-            created.append(r)
-    return created
+async def _create_fallback_workflow(
+    user_id: str,
+    profession: str,
+    focus: str = "",
+) -> list[dict]:
+    """Fallback: create one generic daily briefing workflow when LLM fails."""
+    title = "Daily Briefing"
+    description = (
+        f"Every morning, summarize unread emails by priority, today's meetings, and open todos. "
+        f"Focus: {focus[:100]}."
+        if focus
+        else "Every morning at 9am, summarize unread emails by priority, today's meetings, and open todos."
+    )
+    try:
+        request = CreateWorkflowRequest(
+            title=title,
+            description=description,
+            prompt=description,
+            trigger_config=TriggerConfig(type=TriggerType.SCHEDULE),
+            generate_immediately=False,
+        )
+        workflow = await WorkflowService.create_workflow(request, user_id)
+        return [{"id": str(workflow.id), "title": title, "description": description}]
+    except Exception as e:
+        log.warning(f"[intelligence] Fallback workflow creation failed: {e}")
+        return []

@@ -1,12 +1,14 @@
-"""Service to learn user writing style from their sent emails."""
+"""Service to learn and save user writing style."""
 
 from typing import Optional
 
+from bson import ObjectId
 from langchain_core.messages import HumanMessage
 from shared.py.wide_events import log
 
 from app.agents.prompts.onboarding_prompts import WRITING_STYLE_PROMPT
 from app.core.lazy_loader import providers
+from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import WritingStyleOutput, WritingStyleProfile
 from app.services.mail.mail_service import search_messages
 
@@ -86,3 +88,15 @@ async def learn_writing_style(
             exc_info=True,
         )
         return None
+
+
+async def save_user_edited_sample(user_id: str, edited_sample: str) -> None:
+    """
+    Persist a user-edited writing style sample to MongoDB.
+    This becomes the canonical reference used when composing emails on behalf of the user.
+    """
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"onboarding.writing_style.user_edited_sample": edited_sample}},
+    )
+    log.info(f"[writing_style] Saved user-edited sample for {user_id}")

@@ -1,7 +1,9 @@
-"""Extract social profile URLs from email sender info and snippets."""
+"""Extract and save social profile URLs from email sender info and snippets."""
 
+from bson import ObjectId
 from shared.py.wide_events import log
 
+from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import SocialProfile
 
 # Platform domains mapped to canonical platform names.
@@ -142,3 +144,20 @@ def extract_social_profiles(emails: list[dict]) -> list[SocialProfile]:
         f"from {len(emails)} emails"
     )
     return profiles
+
+
+async def save_confirmed_profiles(user_id: str, profiles: list[dict]) -> None:
+    """
+    Persist user-confirmed social profiles to MongoDB, overwriting extracted ones.
+
+    Args:
+        user_id: The user's ID.
+        profiles: List of dicts with 'platform' and 'url' keys.
+    """
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"onboarding.social_profiles": profiles}},
+    )
+    log.info(
+        f"[social_profiles] Saved {len(profiles)} confirmed profiles for {user_id}"
+    )

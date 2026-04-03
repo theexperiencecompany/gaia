@@ -6,8 +6,8 @@ import type { FC } from "react";
 
 const PLATFORMS = [
   { label: "Telegram", id: "telegram" },
+  { label: "WhatsApp", id: "whatsapp" },
   { label: "Discord", id: "discord" },
-  { label: "Slack", id: "slack" },
 ] as const;
 
 interface OnboardingPlatformConnectProps {
@@ -31,7 +31,7 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
       >
         <CheckmarkCircle02Icon className="size-4 text-emerald-500" />
         <span className="text-sm text-zinc-400">
-          Your daily briefing will arrive on {connectedPlatform}
+          Connected. Your briefing will arrive on {connectedPlatform}.
         </span>
       </m.div>
     );

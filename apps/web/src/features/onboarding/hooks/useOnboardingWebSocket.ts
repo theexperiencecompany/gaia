@@ -79,7 +79,12 @@ export const useOnboardingWebSocket = (
         "learning_style",
         "Writing style learned",
         28,
-        { style_summary: data.writing_style.style_summary },
+        {
+          style_summary: data.writing_style.style_summary,
+          ...(data.writing_style.sample_snippets && {
+            sample_snippets: data.writing_style.sample_snippets,
+          }),
+        },
       );
     }
     if (data.social_profiles && data.social_profiles.length > 0) {

@@ -31,7 +31,7 @@ export interface OnboardingFlowData {
       why_important: string;
     }>;
   } | null;
-  writingStyle: { style_summary: string } | null;
+  writingStyle: { style_summary: string; sample_snippets?: string[] } | null;
   socialProfiles: Array<{ platform: string; url: string }>;
   holoCardData: PersonalizationData | null;
   conversationId: string | null;
@@ -195,6 +195,9 @@ export function useOnboardingFlow(
               ...prev,
               writingStyle: {
                 style_summary: results.style_summary as string,
+                sample_snippets: Array.isArray(results.sample_snippets)
+                  ? (results.sample_snippets as string[])
+                  : undefined,
               },
             }));
           }
