@@ -76,13 +76,14 @@ async def verify_composio_webhook_signature(request: Request):
     else:
         raise HTTPException(status_code=401, detail="Invalid signature format")
 
-    # Create the signed content (webhook_id.timestamp.body)
-    signed_content = f"{webhook_id}.{timestamp}.{body.decode('utf-8')}"
+    # Create the signed content (webhook_id.timestamp.body) as bytes
+    # Avoid decoding 143KB body to string and re-encoding
+    signed_content = webhook_id.encode() + b"." + timestamp.encode() + b"." + body
 
     # Generate expected signature
     expected_signature = hmac.new(
         settings.COMPOSIO_WEBHOOK_SECRET.encode(),
-        signed_content.encode(),
+        signed_content,
         hashlib.sha256,
     ).digest()
 

@@ -59,6 +59,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/user/logout",
             "/health",
             "/api/v1/bot",  # Bot endpoints use separate auth middleware
+            "/api/v1/webhook",  # Webhook endpoints use signature verification
+            "/metrics",
         ]
         # agent only paths
         self.agent_only_paths = ["/api/v1/chat-stream"]

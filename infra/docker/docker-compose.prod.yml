@@ -18,9 +18,11 @@ services:
         "80",
         "--no-access-log",
         "--workers",
-        "1",
+        "2",
         "--timeout-keep-alive",
         "65",
+        "--timeout-graceful-shutdown",
+        "30",
         "--h11-max-incomplete-event-size",
         "16777216",
       ]
