@@ -192,7 +192,6 @@ export const TOOLS_MESSAGE_KEYS = Object.keys(
 export const GROUPED_TOOLS = new Set<ToolName>([
   "search_results",
   "reddit_data",
-  "tool_calls_data",
   "integration_connection_required",
   "integration_list_data",
   "rate_limit_data",

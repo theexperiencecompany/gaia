@@ -227,7 +227,7 @@ export interface SubagentStartPayload {
 
 export interface SubagentEndPayload {
   subagent_id: string;
-  duration_ms: number;
+  duration_ms: number | undefined;
   token_count: number | null;
 }
 
@@ -379,17 +379,29 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
 
   if (isObject(payload.subagent_start)) {
     const s = payload.subagent_start;
-    if (typeof s.subagent_id === "string" && typeof s.subagent_name === "string") {
+    if (
+      typeof s.subagent_id === "string" &&
+      typeof s.subagent_name === "string"
+    ) {
       events.push({
         type: "subagent_start",
         payload: {
           subagent_id: s.subagent_id,
           subagent_name: s.subagent_name,
-          agent_type: (typeof s.agent_type === "string" ? s.agent_type : "handoff") as "handoff" | "spawned",
-          started_at: typeof s.started_at === "string" ? s.started_at : new Date().toISOString(),
+          agent_type: (typeof s.agent_type === "string"
+            ? s.agent_type
+            : "handoff") as "handoff" | "spawned",
+          started_at:
+            typeof s.started_at === "string"
+              ? s.started_at
+              : new Date().toISOString(),
           icon_url: typeof s.icon_url === "string" ? s.icon_url : undefined,
-          tool_category: typeof s.tool_category === "string" ? s.tool_category : undefined,
-          parent_subagent_id: typeof s.parent_subagent_id === "string" ? s.parent_subagent_id : undefined,
+          tool_category:
+            typeof s.tool_category === "string" ? s.tool_category : undefined,
+          parent_subagent_id:
+            typeof s.parent_subagent_id === "string"
+              ? s.parent_subagent_id
+              : undefined,
         },
       });
     }
@@ -402,7 +414,8 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
         type: "subagent_end",
         payload: {
           subagent_id: e.subagent_id,
-          duration_ms: typeof e.duration_ms === "number" ? e.duration_ms : 0,
+          duration_ms:
+            typeof e.duration_ms === "number" ? e.duration_ms : undefined,
           token_count: typeof e.token_count === "number" ? e.token_count : null,
         },
       });

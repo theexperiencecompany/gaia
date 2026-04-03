@@ -118,7 +118,9 @@ import TodoProgressSection from "./TodoProgressSection";
 import TodoSection from "./TodoSection";
 import TwitterSearchSection from "./TwitterSearchSection";
 import TwitterUserSection from "./TwitterUserSection";
-import UnifiedToolThread from "./UnifiedToolThread";
+import UnifiedToolThread, {
+  type EnrichedSubagentGroup,
+} from "./UnifiedToolThread";
 
 // Map of tool_name -> renderer function for unified tool_data rendering
 type RendererMap = {
@@ -571,7 +573,7 @@ export default function TextBubble({
       tool_data?.forEach((entry) => {
         const toolName = entry.tool_name as ToolName;
 
-        // Collect tool_calls_data into a flat array
+        // tool_calls_data is handled separately via UnifiedToolThread — excluded from GROUPED_TOOLS and TOOL_RENDERERS
         if (toolName === "tool_calls_data") {
           const calls = Array.isArray(entry.data)
             ? (entry.data as ToolCallEntry[])
@@ -603,18 +605,11 @@ export default function TextBubble({
         }),
       );
 
-      // Enriched type adds handoff_input/output to subagent groups
-      type Enriched = SubagentGroupData & {
-        handoff_input?: string;
-        handoff_output?: string;
-        nested_subagents: Enriched[];
-      };
-
       // If backend provided subagent_group entries, use them.
       // Otherwise, synthesize groups from flat tool calls using
       // "Handing off to X" / "Spawning subagent" as delimiters.
       let finalToolCalls: ToolCallEntry[] = toolCalls;
-      let finalGroups: Enriched[] = [];
+      let finalGroups: EnrichedSubagentGroup[] = [];
 
       if (subagentGroups.length > 0) {
         // --- Backend-provided groups: deduplicate + enrich ---
@@ -637,15 +632,15 @@ export default function TextBubble({
               )
             : toolCalls;
 
-        const deepEnrich = (g: SubagentGroupData): Enriched => ({
+        const deepEnrich = (g: SubagentGroupData): EnrichedSubagentGroup => ({
           ...g,
           nested_subagents: g.nested_subagents.map(deepEnrich),
         });
         finalGroups = subagentGroups.map(deepEnrich);
 
         // Enrich with input/output from handoff/spawn tool calls
-        const allGroups: Enriched[] = [];
-        const collectAll = (groups: Enriched[]) => {
+        const allGroups: EnrichedSubagentGroup[] = [];
+        const collectAll = (groups: EnrichedSubagentGroup[]) => {
           for (const g of groups) {
             allGroups.push(g);
             collectAll(g.nested_subagents);
@@ -708,7 +703,7 @@ export default function TextBubble({
             if (!hasSpawnCall || spawnIdx >= rootSpawned.length) continue;
             // Move the next unmatched spawned subagent into this group
             const spawned = rootSpawned[spawnIdx++];
-            g.nested_subagents.push(spawned as Enriched);
+            g.nested_subagents.push(spawned as EnrichedSubagentGroup);
           }
           // Remove nested spawned groups from the root list
           const nestedIds = new Set(
@@ -721,14 +716,17 @@ export default function TextBubble({
           );
         }
       } else if (toolCalls.length > 0) {
+        // Synthesis fallback: reconstruct subagent groups from flat tool calls for messages
+        // persisted before subagent_group backend support was added (pre-2025-04).
+        // Can be removed once all pre-2025-04 messages are no longer surfaced in production.
         // --- No backend groups: synthesize from flat tool calls ---
         // "Handing off to X" starts a handoff group; subsequent tool calls
         // with matching tool_category go into that group.
         // "Spawning subagent" starts a spawned group; subsequent tool calls
         // until next handoff/spawn or end go into that group.
         const topLevel: ToolCallEntry[] = [];
-        const syntheticGroups: Enriched[] = [];
-        let currentGroup: Enriched | null = null;
+        const syntheticGroups: EnrichedSubagentGroup[] = [];
+        let currentGroup: EnrichedSubagentGroup | null = null;
 
         for (const tc of toolCalls) {
           const msg = (tc.message || "").toLowerCase();
@@ -771,7 +769,7 @@ export default function TextBubble({
               tc.inputs && typeof tc.inputs === "object"
                 ? (tc.inputs as Record<string, unknown>).task
                 : undefined;
-            const spawnGroup: Enriched = {
+            const spawnGroup: EnrichedSubagentGroup = {
               subagent_id:
                 tc.tool_call_id || `synth-spawn-${syntheticGroups.length}`,
               subagent_name: "Task Agent",

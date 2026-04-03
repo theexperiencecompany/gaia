@@ -4,7 +4,7 @@ import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Spinner } from "@heroui/spinner";
 import { ToolsIcon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type {
@@ -64,15 +64,21 @@ export default function UnifiedToolThread({
     return lookup;
   }, [integrations]);
 
-  const getIconUrl = (call: ToolCallEntry): string | undefined => {
-    if (call.icon_url) return call.icon_url;
-    return integrationLookup.get(call.tool_category)?.iconUrl;
-  };
+  const getIconUrl = useCallback(
+    (call: ToolCallEntry): string | undefined => {
+      if (call.icon_url) return call.icon_url;
+      return integrationLookup.get(call.tool_category)?.iconUrl;
+    },
+    [integrationLookup],
+  );
 
-  const getIntegrationName = (call: ToolCallEntry): string | undefined => {
-    if (call.integration_name) return call.integration_name;
-    return integrationLookup.get(call.tool_category)?.name;
-  };
+  const getIntegrationName = useCallback(
+    (call: ToolCallEntry): string | undefined => {
+      if (call.integration_name) return call.integration_name;
+      return integrationLookup.get(call.tool_category)?.name;
+    },
+    [integrationLookup],
+  );
 
   // Build interleaved timeline — tools first, then subagents (matching emission order)
   const timeline = useMemo<TimelineItem[]>(() => {
@@ -98,10 +104,8 @@ export default function UnifiedToolThread({
     return count;
   }, [tool_calls, subagent_groups]);
 
-  if (timeline.length === 0) return null;
-
   // Stacked icons — deduplicated by category across all items
-  const renderStackedIcons = () => {
+  const stackedIcons = useMemo(() => {
     const seenCategories = new Set<string>();
     const uniqueIcons: { category: string; iconUrl?: string }[] = [];
 
@@ -161,7 +165,9 @@ export default function UnifiedToolThread({
         )}
       </div>
     );
-  };
+  }, [timeline, integrationLookup, getIconUrl]);
+
+  if (timeline.length === 0) return null;
 
   return (
     <div className="w-fit max-w-140">
@@ -182,7 +188,7 @@ export default function UnifiedToolThread({
           key="tools"
           title={
             <div className="flex items-center hover:text-white text-zinc-500">
-              {renderStackedIcons()}
+              {stackedIcons}
               <span className="text-xs font-medium transition-colors duration-200">
                 Used {totalToolCount} tool
                 {totalToolCount !== 1 ? "s" : ""}
@@ -376,7 +382,7 @@ function SubagentRow({
     </div>
   );
 
-  // While running: show name + spinner + live tool calls as they arrive
+  // Running mode: show spinner + live tool calls, collapsible
   if (isRunning) {
     return (
       <div className="flex items-stretch gap-2">
@@ -420,6 +426,7 @@ function SubagentRow({
     );
   }
 
+  // Completed mode: show duration + collapsed/expanded tool history
   return (
     <div className="flex items-stretch gap-2">
       <div className="flex flex-col items-center self-stretch">

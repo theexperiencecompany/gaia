@@ -6,7 +6,7 @@ import {
   type SubagentStartPayload,
   upsertTodoProgressToolData,
 } from "@shared/chat";
-import { useRef } from "react";
+import { useCallback, useRef } from "react";
 import type {
   SubagentGroupData,
   ToolCallEntry,
@@ -77,6 +77,9 @@ export const useChatStream = () => {
 
   // Add ref to track if a stream is already in progress
   const streamInProgressRef = useRef(false);
+
+  // Debounce timer ref for batching IndexedDB writes during tool events
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Guard against double invocation of handleStreamClose — it's called from both
   // onmessage (on [DONE]) and onclose (on connection close) in chatApi.ts.
@@ -273,12 +276,12 @@ export const useChatStream = () => {
         refs.current.newConversation.id ||
         useChatStore.getState().activeConversationId;
       if (refs.current.botMessage?.message_id && conversationId) {
-        updateBotMessageInStore(conversationId);
+        schedulePersist(conversationId);
       }
       return;
     }
 
-    // --- existing handleToolData logic below (unchanged) ---
+    // Root-level tool_data entry — not associated with a subagent
     // Append tool_data entry to botMessage.tool_data
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
     updateBotMessage({
@@ -308,7 +311,7 @@ export const useChatStream = () => {
       refs.current.newConversation.id ||
       useChatStore.getState().activeConversationId;
     if (refs.current.botMessage?.message_id && conversationId) {
-      updateBotMessageInStore(conversationId);
+      schedulePersist(conversationId);
     }
   };
 
@@ -339,12 +342,12 @@ export const useChatStream = () => {
         refs.current.newConversation.id ||
         useChatStore.getState().activeConversationId;
       if (refs.current.botMessage?.message_id && conversationId) {
-        updateBotMessageInStore(conversationId);
+        schedulePersist(conversationId);
       }
       return;
     }
 
-    // --- existing handleToolOutput logic below (unchanged) ---
+    // Root-level tool_output — not associated with a subagent
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
     const updatedToolData = mergeToolOutputIntoToolData(
       existingToolData,
@@ -357,7 +360,7 @@ export const useChatStream = () => {
       refs.current.newConversation.id ||
       useChatStore.getState().activeConversationId;
     if (refs.current.botMessage?.message_id && conversationId) {
-      updateBotMessageInStore(conversationId);
+      schedulePersist(conversationId);
     }
   };
 
@@ -381,18 +384,14 @@ export const useChatStream = () => {
     // If this subagent was spawned from within another subagent, nest it inside the parent.
     if (payload.parent_subagent_id) {
       const parentId = payload.parent_subagent_id;
-      const updatedToolData = existingToolData.map((entry) => {
-        if (entry.tool_name !== "subagent_group") return entry;
-        const data = entry.data as SubagentGroupData;
-        if (data.subagent_id !== parentId) return entry;
-        return {
-          ...entry,
-          data: {
-            ...data,
-            nested_subagents: [...data.nested_subagents, group],
-          },
-        };
-      });
+      const updatedToolData = updateSubagentInToolData(
+        existingToolData,
+        parentId,
+        (g) => ({
+          ...g,
+          nested_subagents: [...g.nested_subagents, group],
+        }),
+      );
       updateBotMessage({ tool_data: updatedToolData });
     } else {
       const newEntry = {
@@ -408,7 +407,7 @@ export const useChatStream = () => {
       refs.current.newConversation.id ||
       useChatStore.getState().activeConversationId;
     if (refs.current.botMessage?.message_id && conversationId) {
-      updateBotMessageInStore(conversationId);
+      schedulePersist(conversationId);
     }
   };
 
@@ -419,7 +418,7 @@ export const useChatStream = () => {
       payload.subagent_id,
       (g) => ({
         ...g,
-        duration_ms: payload.duration_ms,
+        duration_ms: payload.duration_ms ?? null,
         token_count: payload.token_count,
         completed_at: new Date().toISOString(),
       }),
@@ -431,7 +430,7 @@ export const useChatStream = () => {
       refs.current.newConversation.id ||
       useChatStore.getState().activeConversationId;
     if (refs.current.botMessage?.message_id && conversationId) {
-      updateBotMessageInStore(conversationId);
+      schedulePersist(conversationId);
     }
   };
 
@@ -459,7 +458,7 @@ export const useChatStream = () => {
       refs.current.newConversation.id ||
       useChatStore.getState().activeConversationId;
     if (refs.current.botMessage?.message_id && conversationId) {
-      updateBotMessageInStore(conversationId);
+      schedulePersist(conversationId);
     }
   };
 
@@ -775,6 +774,20 @@ export const useChatStream = () => {
     useChatStore.getState().addOrUpdateMessage(updatedMessage);
   };
 
+  // Debounced store update — batches rapid tool events to avoid IndexedDB write storms
+  const schedulePersist = useCallback(
+    (conversationId: string) => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = setTimeout(() => {
+        updateBotMessageInStore(conversationId);
+        persistTimerRef.current = null;
+      }, 250);
+    },
+    // updateBotMessageInStore reads only from refs — it is stable across renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   const handleStreamEvent = async (
     event: EventSourceMessage,
   ): Promise<undefined | string> => {
@@ -974,6 +987,11 @@ export const useChatStream = () => {
         refs.current.newConversation.id ||
         useChatStore.getState().activeConversationId;
 
+      // Flush any pending debounced persist and do a final immediate write
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
       // Update the store with final message state BEFORE hiding loading
       // This prevents the gap where loading is hidden but message isn't updated
       if (refs.current.botMessage?.message_id && conversationId) {
