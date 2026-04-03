@@ -36,6 +36,32 @@ import fetchDate from "@/utils/date/dateUtils";
 import { useLoadingText } from "./useLoadingText";
 import { parseStreamData } from "./useStreamDataParser";
 
+/** Recursively find and update a SubagentGroupData by ID anywhere in the tree. */
+const updateSubagentGroup = (
+  group: SubagentGroupData,
+  targetId: string,
+  updater: (g: SubagentGroupData) => SubagentGroupData,
+): SubagentGroupData => {
+  if (group.subagent_id === targetId) return updater(group);
+  return {
+    ...group,
+    nested_subagents: group.nested_subagents.map((nested) =>
+      updateSubagentGroup(nested, targetId, updater),
+    ),
+  };
+};
+
+/** Apply updateSubagentGroup across the full tool_data list. */
+const updateSubagentInToolData = (
+  toolData: ToolDataEntry[],
+  targetId: string,
+  updater: (g: SubagentGroupData) => SubagentGroupData,
+): ToolDataEntry[] =>
+  toolData.map((entry) => {
+    if (entry.tool_name !== "subagent_group") return entry;
+    return { ...entry, data: updateSubagentGroup(entry.data as SubagentGroupData, targetId, updater) };
+  });
+
 export const useChatStream = () => {
   const { setIsLoading, setAbortController } = useLoading();
   const { convoMessages } = useConversation();
@@ -47,10 +73,6 @@ export const useChatStream = () => {
   // Guard against double invocation of handleStreamClose — it's called from both
   // onmessage (on [DONE]) and onclose (on connection close) in chatApi.ts.
   const streamCloseHandledRef = useRef(false);
-
-  // Tracks the currently-running subagent so tool_calls and outputs are routed
-  // into the correct subagent_group entry rather than the top-level tool_data array.
-  const activeSubagentIdRef = useRef<string | null>(null);
 
   // Unified ref storage
   const refs = useRef({
@@ -185,25 +207,16 @@ export const useChatStream = () => {
     };
   };
 
-  const handleToolData = (toolData: ToolDataEntry) => {
-    // Route tool_calls_data entries into the active subagent group when one is running.
-    if (
-      activeSubagentIdRef.current !== null &&
-      toolData.tool_name === "tool_calls_data"
-    ) {
+  const handleToolData = (toolData: ToolDataEntry & { subagent_id?: string }) => {
+    // Route tool_calls_data entries into the matching subagent group by event's own subagent_id.
+    if (toolData.subagent_id && toolData.tool_name === "tool_calls_data") {
+      const targetSubagentId = toolData.subagent_id;
       const existingToolData = refs.current.botMessage?.tool_data ?? [];
-      const updatedToolData = existingToolData.map((entry) => {
-        if (entry.tool_name !== "subagent_group") return entry;
-        const data = entry.data as SubagentGroupData;
-        if (data.subagent_id !== activeSubagentIdRef.current) return entry;
-        return {
-          ...entry,
-          data: {
-            ...data,
-            tool_calls: [...data.tool_calls, toolData.data as ToolCallEntry],
-          },
-        };
-      });
+      const updatedToolData = updateSubagentInToolData(
+        existingToolData,
+        targetSubagentId,
+        (g) => ({ ...g, tool_calls: [...g.tool_calls, toolData.data as ToolCallEntry] }),
+      );
       updateBotMessage({ tool_data: updatedToolData });
 
       // Still show the loading indicator for the active tool call
@@ -270,26 +283,24 @@ export const useChatStream = () => {
   const handleToolOutput = (toolOutput: {
     tool_call_id: string;
     output: string;
+    subagent_id?: string;
   }) => {
-    // Route tool outputs into the active subagent group's tool_calls when one is running.
-    if (activeSubagentIdRef.current !== null) {
+    // Route tool outputs into the matching subagent group by event's own subagent_id.
+    if (toolOutput.subagent_id) {
+      const targetSubagentId = toolOutput.subagent_id;
       const existingToolData = refs.current.botMessage?.tool_data ?? [];
-      const updatedToolData = existingToolData.map((entry) => {
-        if (entry.tool_name !== "subagent_group") return entry;
-        const data = entry.data as SubagentGroupData;
-        if (data.subagent_id !== activeSubagentIdRef.current) return entry;
-        return {
-          ...entry,
-          data: {
-            ...data,
-            tool_calls: data.tool_calls.map((tc) =>
-              tc.tool_call_id === toolOutput.tool_call_id
-                ? { ...tc, output: toolOutput.output }
-                : tc,
-            ),
-          },
-        };
-      });
+      const updatedToolData = updateSubagentInToolData(
+        existingToolData,
+        targetSubagentId,
+        (g) => ({
+          ...g,
+          tool_calls: g.tool_calls.map((tc) =>
+            tc.tool_call_id === toolOutput.tool_call_id
+              ? { ...tc, output: toolOutput.output }
+              : tc,
+          ),
+        }),
+      );
       updateBotMessage({ tool_data: updatedToolData });
 
       const conversationId =
@@ -328,18 +339,38 @@ export const useChatStream = () => {
       token_count: null,
       started_at: payload.started_at,
       completed_at: null,
-    };
-
-    const newEntry = {
-      tool_name: "subagent_group" as const,
-      tool_category: "subagent",
-      data: group,
-      timestamp: payload.started_at,
+      icon_url: payload.icon_url ?? null,
+      tool_category: payload.tool_category ?? null,
+      nested_subagents: [],
     };
 
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
-    updateBotMessage({ tool_data: [...existingToolData, newEntry] });
-    activeSubagentIdRef.current = payload.subagent_id;
+
+    // If this subagent was spawned from within another subagent, nest it inside the parent.
+    if (payload.parent_subagent_id) {
+      const parentId = payload.parent_subagent_id;
+      const updatedToolData = existingToolData.map((entry) => {
+        if (entry.tool_name !== "subagent_group") return entry;
+        const data = entry.data as SubagentGroupData;
+        if (data.subagent_id !== parentId) return entry;
+        return {
+          ...entry,
+          data: {
+            ...data,
+            nested_subagents: [...data.nested_subagents, group],
+          },
+        };
+      });
+      updateBotMessage({ tool_data: updatedToolData });
+    } else {
+      const newEntry = {
+        tool_name: "subagent_group" as const,
+        tool_category: "subagent",
+        data: group,
+        timestamp: payload.started_at,
+      };
+      updateBotMessage({ tool_data: [...existingToolData, newEntry] });
+    }
 
     const conversationId =
       refs.current.newConversation.id ||
@@ -351,23 +382,18 @@ export const useChatStream = () => {
 
   const handleSubagentEnd = (payload: SubagentEndPayload) => {
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
-    const updatedToolData = existingToolData.map((entry) => {
-      if (entry.tool_name !== "subagent_group") return entry;
-      const data = entry.data as SubagentGroupData;
-      if (data.subagent_id !== payload.subagent_id) return entry;
-      return {
-        ...entry,
-        data: {
-          ...data,
-          duration_ms: payload.duration_ms,
-          token_count: payload.token_count,
-          completed_at: new Date().toISOString(),
-        },
-      };
-    });
+    const updatedToolData = updateSubagentInToolData(
+      existingToolData,
+      payload.subagent_id,
+      (g) => ({
+        ...g,
+        duration_ms: payload.duration_ms,
+        token_count: payload.token_count,
+        completed_at: new Date().toISOString(),
+      }),
+    );
 
     updateBotMessage({ tool_data: updatedToolData });
-    activeSubagentIdRef.current = null;
 
     const conversationId =
       refs.current.newConversation.id ||

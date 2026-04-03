@@ -144,6 +144,8 @@ async def _process_data_chunk(
     tool_outputs: Dict[str, str],
     todo_progress_accumulated: Dict[str, Any],
     follow_up_actions: List[str],
+    subagent_starts: Dict[str, Any],
+    subagent_ends: Dict[str, Any],
 ) -> tuple[List[str], bool]:
     """
     Process a 'data: ' prefixed agent chunk.
@@ -166,6 +168,19 @@ async def _process_data_chunk(
         snapshot = chunk_json["todo_progress"]
         source = snapshot.get("source", "executor")
         todo_progress_accumulated[source] = snapshot
+
+    # Accumulate subagent lifecycle events for group reconstruction before save
+    if chunk_json:
+        if "subagent_start" in chunk_json:
+            s = chunk_json["subagent_start"]
+            sid = s.get("subagent_id")
+            if sid:
+                subagent_starts[sid] = s
+        if "subagent_end" in chunk_json:
+            e = chunk_json["subagent_end"]
+            sid = e.get("subagent_id")
+            if sid:
+                subagent_ends[sid] = e
 
     new_data = extract_tool_data(chunk_payload)
     if new_data:
@@ -298,6 +313,75 @@ def _inject_todo_progress(
         )
 
 
+def _reconstruct_subagent_groups(
+    tool_data: Dict[str, Any],
+    subagent_starts: Dict[str, Any],
+    subagent_ends: Dict[str, Any],
+) -> None:
+    """Group flat tool_data entries (tagged with subagent_id) into subagent_group
+    entries before persistence, so the frontend can restore the SubagentThread UI
+    after a page refresh.
+
+    Flat entries emitted during streaming carry a top-level ``subagent_id`` field.
+    Here we move them into the ``tool_calls`` list of the matching group, handle
+    parent_subagent_id nesting, and fill in duration/completion data from the
+    corresponding subagent_end event.
+    """
+    if not subagent_starts:
+        return
+
+    now = datetime.now(timezone.utc).isoformat()
+    flat_entries: List[ToolDataEntry] = tool_data.get("tool_data", [])
+
+    # Build an initial group dict for every started subagent
+    groups: Dict[str, Dict[str, Any]] = {}
+    for subagent_id, start in subagent_starts.items():
+        end = subagent_ends.get(subagent_id, {})
+        groups[subagent_id] = {
+            "subagent_id": subagent_id,
+            "subagent_name": start.get("subagent_name", ""),
+            "agent_type": start.get("agent_type", "spawned"),
+            "tool_calls": [],
+            "duration_ms": end.get("duration_ms"),
+            "token_count": end.get("token_count"),
+            "started_at": start.get("started_at", now),
+            "completed_at": now if subagent_id in subagent_ends else None,
+            "icon_url": start.get("icon_url"),
+            "tool_category": start.get("tool_category"),
+            "nested_subagents": [],
+        }
+
+    # Route subagent-tagged entries into their group; keep top-level entries separate
+    top_level: List[ToolDataEntry] = []
+    for entry in flat_entries:
+        target_id: Optional[str] = entry.get("subagent_id")  # type: ignore[assignment]
+        if target_id and target_id in groups and entry.get("tool_name") == "tool_calls_data":
+            groups[target_id]["tool_calls"].append(entry.get("data", {}))
+        else:
+            # Strip the subagent_id field from entries that didn't match any group
+            # (shouldn't happen, but keep the data intact)
+            top_level.append(entry)
+
+    # Nest child groups inside their parent's nested_subagents list
+    root_groups: List[Dict[str, Any]] = []
+    for subagent_id, group in groups.items():
+        parent_id: Optional[str] = subagent_starts[subagent_id].get("parent_subagent_id")
+        if parent_id and parent_id in groups:
+            groups[parent_id]["nested_subagents"].append(group)
+        else:
+            root_groups.append(group)
+
+    # Rebuild: top-level tool_data entries first, then one subagent_group per root group
+    tool_data["tool_data"] = top_level + [
+        {
+            "tool_name": "subagent_group",
+            "data": group,
+            "timestamp": group["started_at"],
+        }
+        for group in root_groups
+    ]
+
+
 async def _run_chat_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
@@ -309,6 +393,8 @@ async def _run_chat_stream(
     tool_data: Dict[str, Any] = {"tool_data": []}
     tool_outputs: Dict[str, str] = {}
     todo_progress_accumulated: Dict[str, Any] = {}
+    subagent_starts: Dict[str, Any] = {}
+    subagent_ends: Dict[str, Any] = {}
     user_message_id = str(uuid4())
     bot_message_id = str(uuid4())
     is_new_conversation = body.conversation_id is None
@@ -389,6 +475,8 @@ async def _run_chat_stream(
                         tool_outputs,
                         todo_progress_accumulated,
                         follow_up_actions,
+                        subagent_starts,
+                        subagent_ends,
                     )
                 except Exception as e:
                     log.error(f"Error processing chunk: {e}")
@@ -443,6 +531,7 @@ async def _run_chat_stream(
         # Merge tool outputs into tool_data entries and inject todo_progress before saving
         _merge_tool_outputs(tool_data, tool_outputs)
         _inject_todo_progress(tool_data, todo_progress_accumulated)
+        _reconstruct_subagent_groups(tool_data, subagent_starts, subagent_ends)
 
         # Always save conversation to MongoDB
         await _save_conversation_async(

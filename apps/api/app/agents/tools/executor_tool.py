@@ -1,8 +1,6 @@
 """Executor tool for comms agent to delegate tasks to executor agent."""
 
 import asyncio
-import time
-from uuid import uuid4
 from datetime import datetime
 from typing import Annotated
 
@@ -10,7 +8,6 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.utils.agent_utils import format_subagent_start_event, format_subagent_end_event
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from shared.py.wide_events import log
@@ -72,26 +69,7 @@ async def call_executor(
 
         # Execute with streaming using shared function
         writer = get_stream_writer()
-
-        executor_invocation_id = str(uuid4())
-        writer({"subagent_start": format_subagent_start_event(
-            subagent_name="Executor",
-            agent_type="spawned",
-            subagent_id=executor_invocation_id,
-        )})
-
-        _started_ms = time.monotonic()
-        result = await execute_subagent_stream(
-            ctx=ctx,
-            stream_writer=writer,
-        )
-        _duration_ms = int((time.monotonic() - _started_ms) * 1000)
-
-        writer({"subagent_end": format_subagent_end_event(
-            subagent_id=executor_invocation_id,
-            duration_ms=_duration_ms,
-        )})
-
+        result = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
         return result
 
     except asyncio.CancelledError:

@@ -303,6 +303,7 @@ async def execute_subagent_stream(
     stream_writer: Any = None,
     integration_metadata: dict | None = None,
     max_tokens: int = SUBAGENT_MAX_TOKENS,
+    subagent_id: str | None = None,
 ) -> str:
     """Execute a subagent graph with streaming. Returns the complete message string.
 
@@ -317,14 +318,26 @@ async def execute_subagent_stream(
 
     config, budget_cb = inject_token_budget(ctx.config, max_tokens)
 
+    # Inject this invocation's ID as parent_subagent_id so any spawn_subagent
+    # tool called from within this subagent graph can tag itself as a child.
+    if subagent_id:
+        configurable = config.get("configurable", {})
+        config = {**config, "configurable": {**configurable, "parent_subagent_id": subagent_id}}
+
     try:
         async for ev in _iter_subagent_events(ctx, config, emitted_tool_calls, integration_metadata):
             if ev.kind == "content":
                 complete_message += ev.data
             elif ev.kind == "tool_data" and stream_writer:
-                stream_writer({"tool_data": ev.data})
+                payload = dict(ev.data)
+                if subagent_id:
+                    payload["subagent_id"] = subagent_id
+                stream_writer({"tool_data": payload})
             elif ev.kind == "tool_output" and stream_writer:
-                stream_writer({"tool_output": {"tool_call_id": ev.tool_call_id, "output": ev.data}})
+                tool_output: dict = {"tool_call_id": ev.tool_call_id, "output": ev.data}
+                if subagent_id:
+                    tool_output["subagent_id"] = subagent_id
+                stream_writer({"tool_output": tool_output})
             elif ev.kind == "custom" and stream_writer:
                 stream_writer(ev.data)
     except SubagentTokenLimitError as e:

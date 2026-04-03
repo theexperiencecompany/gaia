@@ -8,7 +8,6 @@ export type ToolName =
   | "calendar_delete_options"
   | "calendar_edit_options"
   | "calendar_fetch_data"
-  | "calendar_list_fetch_data"
   | "search_results"
   | "deep_research_results"
   | "contacts_data"
@@ -73,7 +72,6 @@ export interface ToolDataMap {
   calendar_delete_options: GenericToolData[];
   calendar_edit_options: GenericToolData[];
   calendar_fetch_data: GenericToolData[];
-  calendar_list_fetch_data: GenericToolData[];
   search_results: GenericToolData;
   deep_research_results: GenericToolData;
   contacts_data: GenericToolData[];
@@ -120,7 +118,6 @@ export function isKnownTool(name: string): name is ToolName {
     "calendar_delete_options",
     "calendar_edit_options",
     "calendar_fetch_data",
-    "calendar_list_fetch_data",
     "search_results",
     "deep_research_results",
     "contacts_data",

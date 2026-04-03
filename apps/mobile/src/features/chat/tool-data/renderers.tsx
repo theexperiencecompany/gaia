@@ -149,16 +149,6 @@ const TOOL_RENDERERS: Record<
     );
   },
 
-  calendar_list_fetch_data: (data, baseKey) => {
-    const calendars = Array.isArray(data) ? data : [data];
-    return (
-      <CalendarFetchCard
-        key={baseKey}
-        data={calendars as CalendarFetchItem[]}
-      />
-    );
-  },
-
   weather_data: (data, baseKey) => (
     <WeatherCard key={baseKey} data={data as WeatherData} />
   ),

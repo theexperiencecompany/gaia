@@ -6,6 +6,7 @@ import { m } from "motion/react";
 import { useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import type { SubagentGroupData } from "@/config/registries/toolRegistry";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import ToolCallsSection from "./ToolCallsSection";
 
 interface SubagentThreadProps {
@@ -24,11 +25,29 @@ export function SubagentThread({ group }: SubagentThreadProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const isRunning = group.completed_at === null;
   const isHandoff = group.agent_type === "handoff";
-
-  const IconComponent = isHandoff ? Brain02Icon : ZapIcon;
-  const iconBg = isHandoff ? "bg-violet-900/50" : "bg-zinc-700";
-  const iconColor = isHandoff ? "text-violet-400" : "text-zinc-400";
   const typeLabel = isHandoff ? "Subagent" : "Spawned";
+
+  const iconNode = isHandoff
+    ? (getToolCategoryIcon(
+        group.tool_category ?? "subagent",
+        { width: 21, height: 21 },
+        group.icon_url ?? undefined,
+      ) ?? (
+        <div className="relative rounded-lg p-1">
+          <m.div className="absolute inset-0 rounded-lg bg-violet-900/50" />
+          <div className="relative">
+            <Brain02Icon width={21} height={21} className="text-violet-400" />
+          </div>
+        </div>
+      ))
+    : (
+      <div className="relative rounded-lg p-1">
+        <m.div className="absolute inset-0 rounded-lg bg-zinc-700" />
+        <div className="relative">
+          <ZapIcon width={21} height={21} className="text-zinc-400" />
+        </div>
+      </div>
+    );
 
   const durationLabel =
     group.duration_ms !== null
@@ -56,16 +75,7 @@ export function SubagentThread({ group }: SubagentThreadProps) {
             <div className="flex w-full items-center hover:text-white text-zinc-500">
               {/* Icon — same wrapper as ToolCallsSection items */}
               <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
-                <div className="relative rounded-lg p-1">
-                  <m.div className={`absolute inset-0 rounded-lg ${iconBg}`} />
-                  <div className="relative">
-                    <IconComponent
-                      width={21}
-                      height={21}
-                      className={iconColor}
-                    />
-                  </div>
-                </div>
+                {iconNode}
               </div>
 
               {/* Name + type label */}
@@ -97,6 +107,13 @@ export function SubagentThread({ group }: SubagentThreadProps) {
           <div className="ml-4 border-l border-default-100 pl-6 py-1">
             {group.tool_calls.length > 0 && (
               <ToolCallsSection tool_calls_data={group.tool_calls} />
+            )}
+            {group.nested_subagents.length > 0 && (
+              <div className={group.tool_calls.length > 0 ? "mt-3" : ""}>
+                {group.nested_subagents.map((nested) => (
+                  <SubagentThread key={nested.subagent_id} group={nested} />
+                ))}
+              </div>
             )}
           </div>
         </AccordionItem>

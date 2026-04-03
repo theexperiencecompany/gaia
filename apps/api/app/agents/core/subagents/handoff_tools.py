@@ -499,6 +499,8 @@ async def handoff(
             subagent_name=subagent_display_name,
             agent_type="handoff",
             subagent_id=subagent_invocation_id,
+            icon_url=integration_metadata.get("icon_url") if integration_metadata else None,
+            tool_category=int_id,
         )})
 
         _started_ms = time.monotonic()
@@ -506,6 +508,7 @@ async def handoff(
             ctx=ctx,
             stream_writer=writer,
             integration_metadata=integration_metadata,
+            subagent_id=subagent_invocation_id,
         )
         _duration_ms = int((time.monotonic() - _started_ms) * 1000)
 

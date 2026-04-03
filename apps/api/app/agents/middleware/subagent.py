@@ -7,8 +7,10 @@ for dynamic discovery instead of binding all tools upfront.
 """
 
 import asyncio
+import time
 from collections.abc import Mapping
 from typing import Annotated, Any, Optional, cast
+from uuid import uuid4
 
 from app.agents.core.subagents.token_budget import (
     _BUDGET_EXCEEDED_FOOTER,
@@ -23,6 +25,7 @@ from app.agents.prompts.spawn_subagent_prompts import (
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.llm import SUBAGENT_MAX_TOKENS, SUBAGENT_RECURSION_LIMIT
+from app.utils.agent_utils import format_subagent_end_event, format_subagent_start_event
 from langchain.agents.middleware.types import AgentMiddleware, AgentState, OmitFromInput
 from langchain.tools import InjectedToolCallId
 from langchain_core.language_models import LanguageModelLike
@@ -30,6 +33,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langchain_core.messages.tool import ToolCall
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
+from langgraph.config import get_stream_writer
 from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
@@ -135,9 +139,27 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 )]})
 
             try:
+                writer = get_stream_writer()
+                invocation_id = str(uuid4())
+                parent_subagent_id: str | None = config.get("configurable", {}).get("parent_subagent_id")
+                writer({"subagent_start": format_subagent_start_event(
+                    subagent_name="Task Agent",
+                    agent_type="spawned",
+                    subagent_id=invocation_id,
+                    parent_subagent_id=parent_subagent_id,
+                )})
+                _t0 = time.monotonic()
                 result = await middleware._execute_subagent(
-                    task, context, config, inherited_tool_names=selected_tool_ids
+                    task, context, config,
+                    inherited_tool_names=selected_tool_ids,
+                    stream_writer=writer,
+                    subagent_id=invocation_id,
                 )
+                _duration_ms = int((time.monotonic() - _t0) * 1000)
+                writer({"subagent_end": format_subagent_end_event(
+                    subagent_id=invocation_id,
+                    duration_ms=_duration_ms,
+                )})
                 return Command(update={"messages": [ToolMessage(
                     content=result, tool_call_id=tool_call_id
                 )]})
@@ -160,6 +182,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         context: str,
         config: RunnableConfig,
         inherited_tool_names: list[str] | None = None,
+        stream_writer: Any = None,
+        subagent_id: str | None = None,
     ) -> str:
         """Run a lightweight tool-calling loop for the subagent.
 
@@ -195,6 +219,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 dynamic=dynamic,
                 retrieve_tool=retrieve_tool,
                 config=patched_config,
+                stream_writer=stream_writer,
+                subagent_id=subagent_id,
             )
         except SubagentTokenLimitError as e:
             log.warning("spawn_subagent token limit reached", tokens_used=e.tokens_used, limit=e.limit)
@@ -213,6 +239,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         dynamic: bool,
         retrieve_tool: StructuredTool | None,
         config: Any,
+        stream_writer: Any = None,
+        subagent_id: str | None = None,
     ) -> str:
         """ReAct loop: call LLM → execute tools → repeat until done or max turns."""
         semaphore = asyncio.Semaphore(_TOOL_CONCURRENCY)
@@ -245,6 +273,36 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
                 tool_messages = await asyncio.gather(*[_limited(tc) for tc in regular_calls])
                 messages.extend(tool_messages)
+
+                # Emit tool_data + tool_output events so the frontend can render
+                # this subagent's tool calls inside its SubagentThread block.
+                if stream_writer and subagent_id:
+                    for tc, tm in zip(regular_calls, tool_messages):
+                        tool_name: str = tc["name"]
+                        stream_writer({"tool_data": {
+                            "tool_name": "tool_calls_data",
+                            "tool_category": tool_name,
+                            "subagent_id": subagent_id,
+                            "data": {
+                                "tool_name": tool_name,
+                                "tool_category": tool_name,
+                                "message": tool_name.replace("_", " ").title(),
+                                "tool_call_id": tc["id"],
+                                "inputs": tc.get("args", {}),
+                            },
+                            "timestamp": None,
+                        }})
+                        raw_output = tm.content
+                        output_str = (
+                            raw_output[:3000]
+                            if isinstance(raw_output, str)
+                            else str(raw_output)[:3000]
+                        )
+                        stream_writer({"tool_output": {
+                            "tool_call_id": tm.tool_call_id,
+                            "output": output_str,
+                            "subagent_id": subagent_id,
+                        }})
 
         # Max turns reached — one final answer call without tools
         final = await llm.ainvoke(messages, config=config)

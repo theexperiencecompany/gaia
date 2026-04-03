@@ -199,11 +199,13 @@ export interface StreamToolDataEntry {
   data: unknown;
   timestamp?: string | null;
   tool_category?: string;
+  subagent_id?: string;
 }
 
 export interface StreamToolOutput {
   tool_call_id: string;
   output: string;
+  subagent_id?: string;
 }
 
 export interface SubagentStartPayload {
@@ -211,6 +213,9 @@ export interface SubagentStartPayload {
   subagent_name: string;
   agent_type: "handoff" | "spawned";
   started_at: string;
+  icon_url?: string;
+  tool_category?: string;
+  parent_subagent_id?: string;
 }
 
 export interface SubagentEndPayload {
@@ -274,6 +279,8 @@ const toToolDataEntry = (value: unknown): StreamToolDataEntry | null => {
         : undefined,
     tool_category:
       typeof value.tool_category === "string" ? value.tool_category : undefined,
+    subagent_id:
+      typeof value.subagent_id === "string" ? value.subagent_id : undefined,
   };
 };
 
@@ -358,7 +365,14 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     if (typeof toolCallId === "string" && typeof output === "string") {
       events.push({
         type: "tool_output",
-        output: { tool_call_id: toolCallId, output },
+        output: {
+          tool_call_id: toolCallId,
+          output,
+          subagent_id:
+            typeof payload.tool_output.subagent_id === "string"
+              ? payload.tool_output.subagent_id
+              : undefined,
+        },
       });
     }
   }
@@ -376,6 +390,13 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
             typeof s.started_at === "string"
               ? s.started_at
               : new Date().toISOString(),
+          icon_url: typeof s.icon_url === "string" ? s.icon_url : undefined,
+          tool_category:
+            typeof s.tool_category === "string" ? s.tool_category : undefined,
+          parent_subagent_id:
+            typeof s.parent_subagent_id === "string"
+              ? s.parent_subagent_id
+              : undefined,
         },
       });
     }

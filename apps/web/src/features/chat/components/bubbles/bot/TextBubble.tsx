@@ -27,7 +27,6 @@ import {
   type ToolName,
 } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
-import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
@@ -52,7 +51,6 @@ import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
   CalendarFetchData,
-  CalendarListFetchData,
   CalendarOptions,
 } from "@/types/features/calendarTypes";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
@@ -253,14 +251,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     <CalendarListCard
       key={`tool-cal-fetch-${index}`}
       events={(Array.isArray(data) ? data : [data]) as CalendarFetchData[]}
-    />
-  ),
-  calendar_list_fetch_data: (data, index) => (
-    <CalendarListFetchCard
-      key={`tool-cal-list-${index}`}
-      calendars={
-        (Array.isArray(data) ? data : [data]) as CalendarListFetchData[]
-      }
     />
   ),
 

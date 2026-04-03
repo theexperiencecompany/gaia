@@ -115,6 +115,12 @@ export interface SubagentGroupData {
   token_count: number | null;
   started_at: string;
   completed_at: string | null;
+  /** Integration icon URL forwarded from the backend (used by SubagentThread) */
+  icon_url: string | null;
+  /** Integration category ID used for icon lookup (e.g. "gmail", "googlecalendar") */
+  tool_category: string | null;
+  /** Spawned subagents launched from within this subagent (nested in the UI) */
+  nested_subagents: SubagentGroupData[];
 }
 
 export const TOOL_REGISTRY = {
@@ -131,7 +137,6 @@ export const TOOL_REGISTRY = {
   calendar_delete_options: null as unknown as CalendarDeleteOptions[],
   calendar_edit_options: null as unknown as CalendarEditOptions[],
   calendar_fetch_data: null as unknown as CalendarFetchData[],
-  calendar_list_fetch_data: null as unknown as CalendarListFetchData[],
   support_ticket_data: null as unknown as SupportTicketData[],
   reddit_data: null as unknown as RedditData,
   document_data: null as unknown as DocumentData,

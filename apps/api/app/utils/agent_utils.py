@@ -1,6 +1,5 @@
 import json
 import re
-import time
 from datetime import datetime, timezone
 from typing import List, Optional, cast
 from uuid import uuid4
@@ -82,6 +81,9 @@ def format_subagent_start_event(
     subagent_name: str,
     agent_type: str,
     subagent_id: str,
+    icon_url: str | None = None,
+    tool_category: str | None = None,
+    parent_subagent_id: str | None = None,
 ) -> dict:
     """Format a subagent_start SSE payload.
 
@@ -89,13 +91,23 @@ def format_subagent_start_event(
         subagent_name: Human-readable name shown in the UI (e.g. "Gmail", "Executor")
         agent_type: "handoff" for integration subagents, "spawned" for lightweight agents
         subagent_id: Unique ID for this subagent invocation (UUID string)
+        icon_url: Optional URL for the integration icon (forwarded to the frontend)
+        tool_category: Integration ID used by the frontend to look up the icon config
+        parent_subagent_id: If set, this subagent is nested inside the parent's SubagentThread
     """
-    return {
+    payload: dict = {
         "subagent_id": subagent_id,
         "subagent_name": subagent_name,
         "agent_type": agent_type,
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
+    if icon_url:
+        payload["icon_url"] = icon_url
+    if tool_category:
+        payload["tool_category"] = tool_category
+    if parent_subagent_id:
+        payload["parent_subagent_id"] = parent_subagent_id
+    return payload
 
 
 def format_subagent_end_event(

@@ -14,7 +14,6 @@ from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any, Dict, List
 
 import httpx
-from shared.py.wide_events import log
 from app.decorators import with_doc
 from app.models.calendar_models import (
     AddRecurrenceInput,
@@ -59,6 +58,7 @@ from app.templates.docstrings.calendar_tool_docs import (
 from app.utils.context_utils import execute_tool
 from composio import Composio
 from langgraph.config import get_config, get_stream_writer
+from shared.py.wide_events import log
 
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
 
@@ -173,19 +173,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         log.set(tool={"integration": "google_calendar", "action": "list_calendars"})
         access_token = _get_access_token(auth_credentials)
         calendars = calendar_service.list_calendars(access_token, short=request.short)
-
-        # Stream calendar list to frontend
-        writer = get_stream_writer()
-        if calendars:
-            writer(
-                {
-                    "calendar_list_fetch_data": [
-                        _format_calendar_for_stream(cal)
-                        for cal in calendars
-                        if isinstance(cal, dict)
-                    ]
-                }
-            )
 
         return {"calendars": calendars}
 

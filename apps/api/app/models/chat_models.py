@@ -45,7 +45,6 @@ tool_fields = [
     "people_search_data",
     "support_ticket_data",
     "calendar_fetch_data",
-    "calendar_list_fetch_data",
     "weather_data",
     "search_results",
     "deep_research_results",
