@@ -354,6 +354,91 @@ async def _resolve_subagent(
 _background_subagent_tasks: set[asyncio.Task[None]] = set()
 
 
+async def _build_integration_metadata(
+    is_custom: bool, int_id: str
+) -> Optional[IntegrationMetadata]:
+    """Build display metadata for a resolved subagent integration."""
+    if is_custom:
+        integration = await _get_subagent_by_id(int_id)
+        if isinstance(integration, dict):
+            return IntegrationMetadata(
+                icon_url=integration.get("icon_url"),
+                integration_id=int_id,
+                name=str(integration.get("name") or int_id),
+            )
+        return None
+    platform_integ = get_integration_by_id(int_id)
+    if platform_integ:
+        return IntegrationMetadata(
+            icon_url=getattr(platform_integ, "icon_url", None),
+            integration_id=int_id,
+            name=platform_integ.name,
+        )
+    return None
+
+
+def _resolve_display_metadata(
+    metadata: Optional[IntegrationMetadata],
+    fallback_name: str,
+    fallback_category: str,
+) -> tuple[str, Optional[str], str]:
+    """Extract display name, icon URL, and tool category from integration metadata."""
+    if not metadata:
+        return fallback_name, None, fallback_category
+    return (
+        str(metadata.get("name") or fallback_name),
+        metadata.get("icon_url"),
+        str(metadata.get("integration_id") or fallback_category),
+    )
+
+
+async def _run_blocking_handoff(
+    ctx: SubagentExecutionContext,
+    metadata: Optional[IntegrationMetadata],
+    agent_name: str,
+    int_id: str,
+) -> str:
+    """Run a handoff subagent synchronously, emitting lifecycle SSE events."""
+    writer = get_stream_writer()
+    sa_id = str(uuid4())
+    display, icon_url, tool_category = _resolve_display_metadata(
+        metadata, agent_name, int_id
+    )
+
+    # Propagate this subagent's UUID into config so nested spawned subagents
+    # can reference it as parent_subagent_id.
+    ctx.configurable["subagent_id"] = sa_id
+    ctx.config.setdefault("configurable", {})["subagent_id"] = sa_id
+
+    writer(
+        {
+            "subagent_start": format_subagent_start_event(
+                subagent_name=display,
+                agent_type="handoff",
+                subagent_id=sa_id,
+                icon_url=icon_url,
+                tool_category=tool_category,
+            )
+        }
+    )
+    start_time = time.monotonic()
+    result = await execute_subagent_stream(
+        ctx=ctx,
+        stream_writer=writer,
+        integration_metadata=metadata,
+        subagent_id=sa_id,
+    )
+    writer(
+        {
+            "subagent_end": format_subagent_end_event(
+                subagent_id=sa_id,
+                duration_ms=int((time.monotonic() - start_time) * 1000),
+            )
+        }
+    )
+    return result
+
+
 @tool
 async def handoff(
     subagent_id: Annotated[
@@ -419,7 +504,6 @@ async def handoff(
         ):
             return int_id_or_error or "Unknown error resolving subagent"
 
-        # Type assertion after null check - these are guaranteed to be str at this point
         agent_name: str = resolved_agent_name
         int_id: str = int_id_or_error
         log.set(
@@ -463,7 +547,7 @@ async def handoff(
             user_id=user_id,
         )
 
-        # Build messages using shared helper (includes context message - fixes the bug!)
+        # Build initial messages
         messages = await build_initial_messages(
             system_message=system_message,
             agent_name=agent_name,
@@ -485,23 +569,7 @@ async def handoff(
             stream_id=stream_id,
         )
 
-        integration_metadata: Optional[IntegrationMetadata] = None
-        if is_custom:
-            integration = await _get_subagent_by_id(int_id)
-            if isinstance(integration, dict):
-                integration_metadata = IntegrationMetadata(
-                    icon_url=integration.get("icon_url"),
-                    integration_id=int_id,
-                    name=str(integration.get("name", int_id)),
-                )
-        else:
-            platform_integ = get_integration_by_id(int_id)
-            if platform_integ:
-                integration_metadata = IntegrationMetadata(
-                    icon_url=getattr(platform_integ, "icon_url", None),
-                    integration_id=int_id,
-                    name=platform_integ.name,
-                )
+        integration_metadata = await _build_integration_metadata(is_custom, int_id)
 
         # Background mode: spawn subagent as asyncio task and return immediately.
         # Caller must use wait_for_subagents() to collect results.
@@ -521,40 +589,26 @@ async def handoff(
                     f"handoff background=True but cannot dispatch: {fallback_reason}; "
                     "falling back to blocking execution"
                 )
-                # Fall through to blocking execution below, but capture the warning
-                # so it is prepended to the result for visibility.
                 fallback_prefix = (
-                    f"[WARNING: background handoff fell back to blocking — {fallback_reason}] "
+                    "[WARNING: background handoff fell back to blocking"
+                    f" — {fallback_reason}] "
                 )
-                writer = get_stream_writer()
-                fb_sa_id = str(uuid4())
-                fb_display = str(integration_metadata.get("name", agent_name)) if integration_metadata else agent_name
-                fb_icon = integration_metadata.get("icon_url") if integration_metadata else None
-                fb_cat = integration_metadata.get("integration_id", int_id) if integration_metadata else int_id
-                writer({"subagent_start": format_subagent_start_event(
-                    subagent_name=fb_display, agent_type="handoff", subagent_id=fb_sa_id,
-                    icon_url=fb_icon, tool_category=fb_cat,
-                )})
-                fb_start = time.monotonic()
-                blocking_result = await execute_subagent_stream(
-                    ctx=ctx, stream_writer=writer, integration_metadata=integration_metadata, subagent_id=fb_sa_id,
+                blocking_result = await _run_blocking_handoff(
+                    ctx, integration_metadata, agent_name, int_id
                 )
-                writer({"subagent_end": format_subagent_end_event(
-                    subagent_id=fb_sa_id, duration_ms=int((time.monotonic() - fb_start) * 1000),
-                )})
                 return f"{fallback_prefix}{blocking_result}"
-            # At this point executor_inbox is non-None, which means stream_id was
-            # non-None (executor_inbox only comes from get_executor_inbox(stream_id)).
-            assert stream_id is not None  # noqa: S101 — invariant guaranteed above
+            # stream_id is guaranteed non-None here: executor_inbox is only
+            # returned when stream_id is truthy (guard on line above).
+            sid: str = str(stream_id)
             bg_sa_id = str(uuid4())
-            bg_display = str(integration_metadata.get("name", agent_name)) if integration_metadata else agent_name
-            bg_icon = integration_metadata.get("icon_url") if integration_metadata else None
-            bg_cat = integration_metadata.get("integration_id", int_id) if integration_metadata else int_id
-            increment_pending_subagents(stream_id)
+            bg_display, bg_icon, bg_cat = _resolve_display_metadata(
+                integration_metadata, agent_name, int_id
+            )
+            increment_pending_subagents(sid)
             bg_task = asyncio.create_task(
                 run_subagent_background(
                     ctx=ctx,
-                    stream_id=stream_id or "",
+                    stream_id=sid,
                     executor_inbox=executor_inbox,
                     integration_metadata=integration_metadata,
                     subagent_id=bg_sa_id,
@@ -566,49 +620,17 @@ async def handoff(
             _background_subagent_tasks.add(bg_task)
             bg_task.add_done_callback(_background_subagent_tasks.discard)
             log.info(
-                f"Subagent {agent_name} dispatched to background for stream {stream_id}"
+                f"Subagent {agent_name} dispatched to background for stream {sid}"
             )
-            return f"Subagent {agent_name} started in background. Call wait_for_subagents() when ready to collect results."
+            return (
+                f"Subagent {agent_name} started in background. "
+                "Call wait_for_subagents() when ready to collect results."
+            )
 
         # Blocking (default): execute synchronously and return result
-        writer = get_stream_writer()
-
-        # Generate a unique subagent_id for this invocation and propagate
-        # into configurable so nested spawned subagents can reference it as parent
-        sa_id = str(uuid4())
-        ctx.configurable["subagent_id"] = sa_id
-        ctx.config.setdefault("configurable", {})["subagent_id"] = sa_id
-        display_name = str(integration_metadata.get("name", agent_name)) if integration_metadata else agent_name
-        icon_url_val = integration_metadata.get("icon_url") if integration_metadata else None
-        tool_cat_val = integration_metadata.get("integration_id", int_id) if integration_metadata else int_id
-
-        # Emit subagent_start event
-        writer({"subagent_start": format_subagent_start_event(
-            subagent_name=display_name,
-            agent_type="handoff",
-            subagent_id=sa_id,
-            icon_url=icon_url_val,
-            tool_category=tool_cat_val,
-        )})
-
-        start_time = time.monotonic()
-
-        # Execute using shared streaming function
-        result = await execute_subagent_stream(
-            ctx=ctx,
-            stream_writer=writer,
-            integration_metadata=integration_metadata,
-            subagent_id=sa_id,
+        return await _run_blocking_handoff(
+            ctx, integration_metadata, agent_name, int_id
         )
-
-        # Emit subagent_end event
-        duration_ms = int((time.monotonic() - start_time) * 1000)
-        writer({"subagent_end": format_subagent_end_event(
-            subagent_id=sa_id,
-            duration_ms=duration_ms,
-        )})
-
-        return result
 
     except Exception as e:
         log.error(f"Error in handoff to {subagent_id}: {e}", exc_info=True)
