@@ -189,6 +189,25 @@ async def process_data_chunk(
     except json.JSONDecodeError:
         chunk_json = None
 
+    # Forward subagent lifecycle events to the client and accumulate for persistence
+    if chunk_json:
+        if "subagent_start" in chunk_json:
+            tool_data.setdefault("subagent_starts", {})[
+                chunk_json["subagent_start"]["subagent_id"]
+            ] = chunk_json["subagent_start"]
+            await stream_manager.publish_chunk(
+                stream_id,
+                f"data: {json.dumps({'subagent_start': chunk_json['subagent_start']})}\n\n",
+            )
+        if "subagent_end" in chunk_json:
+            tool_data.setdefault("subagent_ends", {})[
+                chunk_json["subagent_end"]["subagent_id"]
+            ] = chunk_json["subagent_end"]
+            await stream_manager.publish_chunk(
+                stream_id,
+                f"data: {json.dumps({'subagent_end': chunk_json['subagent_end']})}\n\n",
+            )
+
     if chunk_json and "todo_progress" in chunk_json:
         snapshot = chunk_json["todo_progress"]
         source = snapshot.get("source", "executor")
@@ -365,3 +384,65 @@ async def publish_description_if_ready(
     except Exception as e:
         log.error(f"Failed to get conversation description: {e}")
     return None  # Clear to prevent duplicate sends
+
+
+def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
+    """Group flat tool_data entries tagged with subagent_id into subagent_group
+    entries for MongoDB persistence. Mutates tool_data in place.
+
+    Uses subagent_starts/subagent_ends accumulated by process_data_chunk.
+    """
+    subagent_starts: dict[str, Any] = tool_data.pop("subagent_starts", {})
+    subagent_ends: dict[str, Any] = tool_data.pop("subagent_ends", {})
+
+    if not subagent_starts:
+        return
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Build groups from start events
+    groups: dict[str, dict[str, Any]] = {}
+    for subagent_id, start in subagent_starts.items():
+        end = subagent_ends.get(subagent_id, {})
+        groups[subagent_id] = {
+            "subagent_id": subagent_id,
+            "subagent_name": start.get("subagent_name", ""),
+            "agent_type": start.get("agent_type", "spawned"),
+            "tool_calls": [],
+            "duration_ms": end.get("duration_ms"),
+            "token_count": end.get("token_count"),
+            "started_at": start.get("started_at", now),
+            "completed_at": now if subagent_id in subagent_ends else None,
+            "icon_url": start.get("icon_url"),
+            "tool_category": start.get("tool_category"),
+            "nested_subagents": [],
+        }
+
+    # Route subagent-tagged entries into their group
+    flat_entries: list[dict[str, Any]] = tool_data.get("tool_data", [])
+    top_level: list[dict[str, Any]] = []
+    for entry in flat_entries:
+        target_id: Optional[str] = entry.get("subagent_id")
+        if target_id and target_id in groups and entry.get("tool_name") == "tool_calls_data":
+            groups[target_id]["tool_calls"].append(entry.get("data", {}))
+        else:
+            top_level.append(entry)
+
+    # Nest child groups inside their parent
+    root_groups: list[dict[str, Any]] = []
+    for subagent_id, group in groups.items():
+        parent_id: Optional[str] = subagent_starts[subagent_id].get("parent_subagent_id")
+        if parent_id and parent_id in groups:
+            groups[parent_id]["nested_subagents"].append(group)
+        else:
+            root_groups.append(group)
+
+    # Rebuild tool_data
+    tool_data["tool_data"] = top_level + [
+        {
+            "tool_name": "subagent_group",
+            "data": group,
+            "timestamp": group["started_at"],
+        }
+        for group in root_groups
+    ]

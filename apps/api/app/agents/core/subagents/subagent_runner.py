@@ -235,6 +235,7 @@ async def execute_subagent_stream(
     ctx: SubagentExecutionContext,
     stream_writer=None,
     integration_metadata: Optional[dict] = None,
+    subagent_id: Optional[str] = None,
 ) -> str:
     """
     Execute subagent with streaming and tool tracking.
@@ -257,10 +258,21 @@ async def execute_subagent_stream(
     complete_message = ""
     emitted_tool_calls: set[str] = set()
 
+    # Inject the UUID subagent_id into configurable so nested spawn_subagent
+    # tool calls can read the correct parent_subagent_id via
+    # configurable.get("subagent_id").
+    run_config = ctx.config
+    if subagent_id:
+        base_configurable = ctx.config.get("configurable", {})
+        run_config = {
+            **ctx.config,
+            "configurable": {**base_configurable, "subagent_id": subagent_id},
+        }
+
     async for event in ctx.subagent_graph.astream(
         ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
-        config=ctx.config,
+        config=run_config,
     ):
         # Check for cancellation
         if ctx.stream_id and await stream_manager.is_cancelled(ctx.stream_id):
@@ -282,7 +294,10 @@ async def execute_subagent_stream(
                 )
                 for tc_id, tool_entry in entries:
                     if stream_writer:
-                        stream_writer({"tool_data": tool_entry})
+                        chunk_data: dict = {"tool_data": tool_entry}
+                        if subagent_id:
+                            chunk_data["tool_data"] = {**tool_entry, "subagent_id": subagent_id}
+                        stream_writer(chunk_data)
             continue
 
         if stream_mode == "messages":
@@ -304,14 +319,13 @@ async def execute_subagent_stream(
                     else str(chunk.content)[:3000]
                 )
                 if stream_writer:
-                    stream_writer(
-                        {
-                            "tool_output": {
-                                "tool_call_id": chunk.tool_call_id,
-                                "output": output,
-                            }
-                        }
-                    )
+                    tool_output_data: dict = {
+                        "tool_call_id": chunk.tool_call_id,
+                        "output": output,
+                    }
+                    if subagent_id:
+                        tool_output_data["subagent_id"] = subagent_id
+                    stream_writer({"tool_output": tool_output_data})
             continue
 
         if stream_mode == "custom":

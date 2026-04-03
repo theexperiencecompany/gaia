@@ -77,6 +77,43 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
     return clean_id.replace("_", " ").title()
 
 
+def format_subagent_start_event(
+    subagent_name: str,
+    agent_type: str,
+    subagent_id: str,
+    icon_url: Optional[str] = None,
+    tool_category: Optional[str] = None,
+    parent_subagent_id: Optional[str] = None,
+) -> dict:
+    """Format a subagent_start SSE payload."""
+    payload: dict = {
+        "subagent_id": subagent_id,
+        "subagent_name": subagent_name,
+        "agent_type": agent_type,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if icon_url:
+        payload["icon_url"] = icon_url
+    if tool_category:
+        payload["tool_category"] = tool_category
+    if parent_subagent_id:
+        payload["parent_subagent_id"] = parent_subagent_id
+    return payload
+
+
+def format_subagent_end_event(
+    subagent_id: str,
+    duration_ms: int,
+    token_count: Optional[int] = None,
+) -> dict:
+    """Format a subagent_end SSE payload."""
+    return {
+        "subagent_id": subagent_id,
+        "duration_ms": duration_ms,
+        "token_count": token_count,
+    }
+
+
 async def format_tool_call_entry(
     tool_call: ToolCall,
     icon_url: Optional[str] = None,

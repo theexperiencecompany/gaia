@@ -9,6 +9,7 @@ subagents complete and collect their results.
 """
 
 import asyncio
+import time
 from typing import Any, Optional
 
 from shared.py.wide_events import log
@@ -19,6 +20,7 @@ from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
 )
+from app.utils.agent_utils import format_subagent_end_event, format_subagent_start_event
 
 
 async def run_subagent_background(
@@ -26,6 +28,10 @@ async def run_subagent_background(
     stream_id: str,
     executor_inbox: asyncio.Queue[Any],
     integration_metadata: Optional[dict] = None,
+    subagent_id: Optional[str] = None,
+    display_name: Optional[str] = None,
+    tool_category: Optional[str] = None,
+    icon_url: Optional[str] = None,
 ) -> None:
     """Run a provider subagent in the background and push result to executor_inbox.
 
@@ -40,11 +46,38 @@ async def run_subagent_background(
     """
     try:
         writer = make_redis_stream_writer(stream_id)
+
+        if subagent_id:
+            writer(
+                {
+                    "subagent_start": format_subagent_start_event(
+                        subagent_name=display_name or ctx.agent_name,
+                        agent_type="handoff",
+                        subagent_id=subagent_id,
+                        icon_url=icon_url,
+                        tool_category=tool_category,
+                    )
+                }
+            )
+
+        start_time = time.monotonic()
         result = await execute_subagent_stream(
             ctx=ctx,
             stream_writer=writer,
             integration_metadata=integration_metadata,
+            subagent_id=subagent_id,
         )
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+
+        if subagent_id:
+            writer(
+                {
+                    "subagent_end": format_subagent_end_event(
+                        subagent_id=subagent_id,
+                        duration_ms=duration_ms,
+                    )
+                }
+            )
         log.info(
             f"Background subagent {ctx.agent_name} completed for stream {stream_id}"
         )

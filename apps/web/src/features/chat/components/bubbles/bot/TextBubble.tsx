@@ -20,6 +20,7 @@ import {
   GROUPED_TOOLS,
   type MCPAppData,
   type RateLimitData,
+  type SubagentGroupData,
   type ToolCallEntry,
   type ToolDataEntry,
   type ToolDataMap,
@@ -32,7 +33,6 @@ import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadC
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
-import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
 import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
@@ -118,6 +118,7 @@ import TodoProgressSection from "./TodoProgressSection";
 import TodoSection from "./TodoSection";
 import TwitterSearchSection from "./TwitterSearchSection";
 import TwitterUserSection from "./TwitterUserSection";
+import UnifiedToolThread from "./UnifiedToolThread";
 
 // Map of tool_name -> renderer function for unified tool_data rendering
 type RendererMap = {
@@ -398,18 +399,8 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
 
-  tool_calls_data: (data, index) => {
-    // When grouped, data is ToolCallEntry[][] (array of arrays)
-    // Flatten to ToolCallEntry[] using flat(1)
-    // Deduplication is handled at the ChatRenderer level
-    const calls = (
-      Array.isArray(data) ? data.flat(1) : [data]
-    ) as ToolCallEntry[];
-
-    return (
-      <ToolCallsSection key={`tool-calls-${index}`} tool_calls_data={calls} />
-    );
-  },
+  // tool_calls_data and subagent_group are handled together by UnifiedToolThread
+  // (see processedTools logic below) — they are NOT rendered through TOOL_RENDERERS.
 
   reddit_data: (data) => {
     const items = (Array.isArray(data) ? data : [data]) as RedditData[];
@@ -568,36 +559,286 @@ export default function TextBubble({
     return parseThinkingFromText(text?.toString() || "");
   }, [text]);
 
-  const processedTools = React.useMemo(() => {
-    const grouped = new Map<ToolName, ToolDataMap[ToolName][]>();
-    const individual: ToolDataEntry[] = [];
+  // Separate tool_calls_data + subagent_group from other tool_data entries.
+  // The former are merged into a single UnifiedToolThread component.
+  const { unifiedToolCalls, unifiedSubagentGroups, processedTools } =
+    React.useMemo(() => {
+      const grouped = new Map<ToolName, ToolDataMap[ToolName][]>();
+      const individual: ToolDataEntry[] = [];
+      const toolCalls: ToolCallEntry[] = [];
+      const subagentGroups: SubagentGroupData[] = [];
 
-    tool_data?.forEach((entry) => {
-      const toolName = entry.tool_name as ToolName;
-      if (GROUPED_TOOLS.has(toolName)) {
-        if (!grouped.has(toolName)) grouped.set(toolName, []);
-        grouped.get(toolName)!.push(entry.data);
-      } else {
-        individual.push(entry);
+      tool_data?.forEach((entry) => {
+        const toolName = entry.tool_name as ToolName;
+
+        // Collect tool_calls_data into a flat array
+        if (toolName === "tool_calls_data") {
+          const calls = Array.isArray(entry.data)
+            ? (entry.data as ToolCallEntry[])
+            : [entry.data as ToolCallEntry];
+          toolCalls.push(...calls);
+          return;
+        }
+
+        // Collect subagent_group entries
+        if (toolName === "subagent_group") {
+          subagentGroups.push(entry.data as SubagentGroupData);
+          return;
+        }
+
+        if (GROUPED_TOOLS.has(toolName)) {
+          if (!grouped.has(toolName)) grouped.set(toolName, []);
+          grouped.get(toolName)!.push(entry.data);
+        } else {
+          individual.push(entry);
+        }
+      });
+
+      const groupedEntries: ToolDataEntry[] = Array.from(grouped.entries()).map(
+        ([toolName, dataArray]) => ({
+          tool_name: toolName,
+          tool_category: "",
+          data: dataArray as ToolDataMap[ToolName],
+          timestamp: null,
+        }),
+      );
+
+      // Enriched type adds handoff_input/output to subagent groups
+      type Enriched = SubagentGroupData & {
+        handoff_input?: string;
+        handoff_output?: string;
+        nested_subagents: Enriched[];
+      };
+
+      // If backend provided subagent_group entries, use them.
+      // Otherwise, synthesize groups from flat tool calls using
+      // "Handing off to X" / "Spawning subagent" as delimiters.
+      let finalToolCalls: ToolCallEntry[] = toolCalls;
+      let finalGroups: Enriched[] = [];
+
+      if (subagentGroups.length > 0) {
+        // --- Backend-provided groups: deduplicate + enrich ---
+        const subagentToolCallIds = new Set<string>();
+        const collectIds = (groups: SubagentGroupData[]) => {
+          for (const g of groups) {
+            for (const tc of g.tool_calls) {
+              if (tc.tool_call_id) subagentToolCallIds.add(tc.tool_call_id);
+            }
+            collectIds(g.nested_subagents);
+          }
+        };
+        collectIds(subagentGroups);
+
+        finalToolCalls =
+          subagentToolCallIds.size > 0
+            ? toolCalls.filter(
+                (tc) =>
+                  !tc.tool_call_id || !subagentToolCallIds.has(tc.tool_call_id),
+              )
+            : toolCalls;
+
+        const deepEnrich = (g: SubagentGroupData): Enriched => ({
+          ...g,
+          nested_subagents: g.nested_subagents.map(deepEnrich),
+        });
+        finalGroups = subagentGroups.map(deepEnrich);
+
+        // Enrich with input/output from handoff/spawn tool calls
+        const allGroups: Enriched[] = [];
+        const collectAll = (groups: Enriched[]) => {
+          for (const g of groups) {
+            allGroups.push(g);
+            collectAll(g.nested_subagents);
+          }
+        };
+        collectAll(finalGroups);
+
+        const remaining: ToolCallEntry[] = [];
+        const unmatchedSpawned = allGroups.filter(
+          (g) => g.agent_type === "spawned",
+        );
+        let si = 0;
+        for (const tc of finalToolCalls) {
+          const msg = (tc.message || "").toLowerCase();
+          const isHandoff =
+            tc.tool_name === "handoff" || msg.startsWith("handing off to");
+          const isSpawn =
+            tc.tool_name === "spawn_subagent" || msg === "spawning subagent";
+          if (!isHandoff && !isSpawn) {
+            remaining.push(tc);
+            continue;
+          }
+          const task =
+            tc.inputs && typeof tc.inputs === "object"
+              ? (tc.inputs as Record<string, unknown>).task
+              : undefined;
+          const output = tc.output;
+          if (isHandoff) {
+            const matched = allGroups.find(
+              (g) =>
+                g.agent_type === "handoff" &&
+                msg.includes(g.subagent_name.toLowerCase()),
+            );
+            if (matched) {
+              if (typeof task === "string" && task)
+                matched.handoff_input = task;
+              if (output) matched.handoff_output = output;
+            }
+          } else if (si < unmatchedSpawned.length) {
+            const matched = unmatchedSpawned[si++];
+            if (typeof task === "string" && task) matched.handoff_input = task;
+            if (output) matched.handoff_output = output;
+          }
+        }
+        finalToolCalls = remaining;
+
+        // Frontend nesting inference: if spawned subagents are at the root level but
+        // a handoff group contains a spawn_subagent tool call, nest them inside that group.
+        // This handles data saved before parent_subagent_id was propagated correctly.
+        const rootSpawned = finalGroups.filter(
+          (g) => g.agent_type === "spawned",
+        );
+        if (rootSpawned.length > 0) {
+          let spawnIdx = 0;
+          for (const g of finalGroups) {
+            if (g.agent_type !== "handoff") continue;
+            const hasSpawnCall = g.tool_calls.some(
+              (tc) => tc.tool_name === "spawn_subagent",
+            );
+            if (!hasSpawnCall || spawnIdx >= rootSpawned.length) continue;
+            // Move the next unmatched spawned subagent into this group
+            const spawned = rootSpawned[spawnIdx++];
+            g.nested_subagents.push(spawned as Enriched);
+          }
+          // Remove nested spawned groups from the root list
+          const nestedIds = new Set(
+            finalGroups
+              .filter((g) => g.agent_type === "handoff")
+              .flatMap((g) => g.nested_subagents.map((n) => n.subagent_id)),
+          );
+          finalGroups = finalGroups.filter(
+            (g) => !nestedIds.has(g.subagent_id),
+          );
+        }
+      } else if (toolCalls.length > 0) {
+        // --- No backend groups: synthesize from flat tool calls ---
+        // "Handing off to X" starts a handoff group; subsequent tool calls
+        // with matching tool_category go into that group.
+        // "Spawning subagent" starts a spawned group; subsequent tool calls
+        // until next handoff/spawn or end go into that group.
+        const topLevel: ToolCallEntry[] = [];
+        const syntheticGroups: Enriched[] = [];
+        let currentGroup: Enriched | null = null;
+
+        for (const tc of toolCalls) {
+          const msg = (tc.message || "").toLowerCase();
+          const isHandoff =
+            tc.tool_name === "handoff" || msg.startsWith("handing off to");
+          const isSpawn =
+            tc.tool_name === "spawn_subagent" || msg === "spawning subagent";
+
+          if (isHandoff) {
+            // Close previous group
+            if (currentGroup) {
+              syntheticGroups.push(currentGroup);
+              currentGroup = null;
+            }
+            // Extract name from "Handing off to {Name}"
+            const nameMatch = (tc.message || "").match(/handing off to (.+)/i);
+            const name = nameMatch ? nameMatch[1] : "Subagent";
+            const task =
+              tc.inputs && typeof tc.inputs === "object"
+                ? (tc.inputs as Record<string, unknown>).task
+                : undefined;
+            currentGroup = {
+              subagent_id: tc.tool_call_id || `synth-${syntheticGroups.length}`,
+              subagent_name: name,
+              agent_type: "handoff",
+              tool_calls: [],
+              duration_ms: null,
+              token_count: null,
+              started_at: "",
+              completed_at: "synthetic",
+              icon_url: null,
+              tool_category: null,
+              nested_subagents: [],
+              handoff_input: typeof task === "string" ? task : undefined,
+              handoff_output: tc.output || undefined,
+            };
+          } else if (isSpawn) {
+            // Spawned subagent — nest inside current handoff if one is active
+            const task =
+              tc.inputs && typeof tc.inputs === "object"
+                ? (tc.inputs as Record<string, unknown>).task
+                : undefined;
+            const spawnGroup: Enriched = {
+              subagent_id:
+                tc.tool_call_id || `synth-spawn-${syntheticGroups.length}`,
+              subagent_name: "Task Agent",
+              agent_type: "spawned",
+              tool_calls: [],
+              duration_ms: null,
+              token_count: null,
+              started_at: "",
+              completed_at: "synthetic",
+              icon_url: null,
+              tool_category: "spawn_subagent",
+              nested_subagents: [],
+              handoff_input: typeof task === "string" ? task : undefined,
+              handoff_output: tc.output || undefined,
+            };
+            if (currentGroup) {
+              currentGroup.nested_subagents.push(spawnGroup);
+            } else {
+              syntheticGroups.push(spawnGroup);
+            }
+          } else if (currentGroup) {
+            // Tool call belongs to the current group
+            currentGroup.tool_calls.push(tc);
+          } else {
+            topLevel.push(tc);
+          }
+        }
+        if (currentGroup) syntheticGroups.push(currentGroup);
+
+        // Infer tool_category for handoff groups from their tool calls
+        for (const g of syntheticGroups) {
+          if (g.agent_type === "handoff" && g.tool_calls.length > 0) {
+            const cat = g.tool_calls.find(
+              (tc) =>
+                tc.tool_category &&
+                tc.tool_category !== "unknown" &&
+                tc.tool_category !== "plan_tasks" &&
+                tc.tool_category !== "retrieve_tools",
+            )?.tool_category;
+            if (cat) g.tool_category = cat;
+          }
+        }
+
+        finalToolCalls = topLevel;
+        finalGroups = syntheticGroups;
       }
-    });
 
-    const groupedEntries: ToolDataEntry[] = Array.from(grouped.entries()).map(
-      ([toolName, dataArray]) => ({
-        tool_name: toolName,
-        tool_category: "",
-        data: dataArray as ToolDataMap[ToolName],
-        timestamp: null,
-      }),
-    );
-
-    return [...groupedEntries, ...individual];
-  }, [tool_data]);
+      return {
+        unifiedToolCalls: finalToolCalls,
+        unifiedSubagentGroups: finalGroups,
+        processedTools: [...groupedEntries, ...individual],
+      };
+    }, [tool_data]);
 
   return (
     <>
       {parsedContent.thinking && (
         <ThinkingBubble thinkingContent={parsedContent.thinking} />
+      )}
+
+      {/* Unified tool thread — merges tool_calls_data + subagent_group */}
+      {(unifiedToolCalls.length > 0 || unifiedSubagentGroups.length > 0) && (
+        <UnifiedToolThread
+          key={`${baseId}-unified-tools`}
+          tool_calls={unifiedToolCalls}
+          subagent_groups={unifiedSubagentGroups}
+        />
       )}
 
       {processedTools.map((entry, index) => {

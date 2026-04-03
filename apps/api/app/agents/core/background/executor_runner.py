@@ -42,6 +42,7 @@ from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
+from app.utils.stream_utils import reconstruct_subagent_groups
 
 # Prevent GC of background tasks spawned from the queue
 _queued_executor_tasks: set[asyncio.Task] = set()
@@ -322,14 +323,39 @@ async def run_executor_background(
         # MongoDB, and pushes via WebSocket.
         if result_text and not was_cancelled:
             collected_tool_data: Optional[List[Dict[str, Any]]] = None
-            # Collect tool_data from the event collector
-            collector = get_tool_event_collector(stream_id)
-            if collector:
-                collected_tool_data = [
-                    e["tool_data"] for e in collector if "tool_data" in e
-                ]
-                if not collected_tool_data:
-                    collected_tool_data = None
+            # Only attach tool_data to the notification for queued tasks — live streaming
+            # tasks already have tool_data saved on the comms ack message by chat_service.
+            # inbox is None only for queued tasks; live tasks always have an inbox.
+            if inbox is None:
+                collector = get_tool_event_collector(stream_id)
+                if collector:
+                    accumulated: Dict[str, Any] = {"tool_data": []}
+                    tool_outputs: Dict[str, str] = {}
+                    for evt in collector:
+                        if "tool_data" in evt:
+                            accumulated["tool_data"].append(evt["tool_data"])
+                        if "tool_output" in evt:
+                            out = evt["tool_output"]
+                            tid, val = out.get("tool_call_id"), out.get("output")
+                            if tid and val:
+                                tool_outputs[tid] = val
+                        if "subagent_start" in evt:
+                            accumulated.setdefault("subagent_starts", {})[
+                                evt["subagent_start"]["subagent_id"]
+                            ] = evt["subagent_start"]
+                        if "subagent_end" in evt:
+                            accumulated.setdefault("subagent_ends", {})[
+                                evt["subagent_end"]["subagent_id"]
+                            ] = evt["subagent_end"]
+                    # Merge outputs into tool entries
+                    for entry in accumulated["tool_data"]:
+                        data = entry.get("data", {})
+                        if isinstance(data, dict):
+                            tc_id = data.get("tool_call_id")
+                            if tc_id and tc_id in tool_outputs:
+                                data["output"] = tool_outputs[tc_id]
+                    reconstruct_subagent_groups(accumulated)
+                    collected_tool_data = accumulated.get("tool_data") or None
 
             try:
                 await _deliver_bg_notification(

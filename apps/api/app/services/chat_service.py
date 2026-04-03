@@ -39,6 +39,7 @@ from app.utils.stream_utils import (
     merge_tool_outputs,
     process_data_chunk,
     publish_description_if_ready,
+    reconstruct_subagent_groups,
     recover_stream_state,
     set_stream_log_context,
 )
@@ -225,6 +226,7 @@ async def _run_chat_stream(
         )
         merge_tool_outputs(tool_data, tool_outputs)
         inject_todo_progress(tool_data, todo_progress_accumulated)
+        reconstruct_subagent_groups(tool_data)
 
         await _save_conversation_async(
             body=body,
@@ -264,27 +266,39 @@ async def _run_chat_stream(
                     )
 
             # Update the saved bot message with executor tool_data.
-            executor_td = [
-                e["tool_data"]
-                for e in executor_tool_events
-                if "tool_data" in e
-            ]
+            # Build a temporary tool_data dict from executor events so we can run
+            # reconstruct_subagent_groups (same as the main-graph save path).
+            executor_accumulated: Dict[str, Any] = {"tool_data": []}
             executor_outputs: Dict[str, str] = {}
             for evt in executor_tool_events:
+                if "tool_data" in evt:
+                    executor_accumulated["tool_data"].append(evt["tool_data"])
                 if "tool_output" in evt:
                     out = evt["tool_output"]
                     tid = out.get("tool_call_id")
                     val = out.get("output")
                     if tid and val:
                         executor_outputs[tid] = val
+                if "subagent_start" in evt:
+                    executor_accumulated.setdefault("subagent_starts", {})[
+                        evt["subagent_start"]["subagent_id"]
+                    ] = evt["subagent_start"]
+                if "subagent_end" in evt:
+                    executor_accumulated.setdefault("subagent_ends", {})[
+                        evt["subagent_end"]["subagent_id"]
+                    ] = evt["subagent_end"]
 
-            for entry in executor_td:
+            # Merge outputs into flat tool_calls_data entries before reconstruction
+            for entry in executor_accumulated["tool_data"]:
                 if entry.get("tool_name") == "tool_calls_data":
                     data = entry.get("data", {})
                     if isinstance(data, dict):
                         tcid = data.get("tool_call_id")
                         if tcid and tcid in executor_outputs:
                             data["output"] = executor_outputs[tcid]
+
+            reconstruct_subagent_groups(executor_accumulated)
+            executor_td = executor_accumulated.get("tool_data", [])
 
             if executor_td:
                 try:
@@ -348,6 +362,7 @@ async def _run_chat_stream(
                 )
                 merge_tool_outputs(tool_data, tool_outputs)
                 inject_todo_progress(tool_data, todo_progress_accumulated)
+                reconstruct_subagent_groups(tool_data)
                 await _save_conversation_async(
                     body=body,
                     user=user,
