@@ -10,13 +10,24 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "Edit|Write|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -z \"$f\" ] && exit 0; root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); case \"$f\" in *.ts|*.tsx|*.js|*.jsx) \"$root/node_modules/.bin/biome\" check --write \"$f\" 2>&1 || true;; *.py) uvx ruff format \"$f\" && uvx ruff check --fix \"$f\" || true;; esac",
-            "timeout": 30,
-            "statusMessage": "Formatting..."
+            "command": "code-review-graph update",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "code-review-graph status --json",
+            "timeout": 3000
           }
         ]
       }
