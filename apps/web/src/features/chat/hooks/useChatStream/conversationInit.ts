@@ -1,14 +1,17 @@
+import { streamController } from "@/features/chat/utils/streamController";
 import { trackConversationCreated } from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
 import { useChatStore } from "@/stores/chatStore";
-import { streamController } from "@/features/chat/utils/streamController";
 import { createIMessage } from "./messageBuilder";
 import type { StreamContext } from "./types";
 
 export const createConversationInitHandlers = (
   ctx: StreamContext,
-  persistBotMessage: (conversationId: string, messageId: string) => Promise<void>,
+  persistBotMessage: (
+    conversationId: string,
+    messageId: string,
+  ) => Promise<void>,
 ) => {
   const { refs } = ctx;
 

@@ -9,7 +9,7 @@ import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils"
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
-import MarkdownRenderer from "../../interface/MarkdownRenderer";
+import MarkdownRenderer from "../../../interface/MarkdownRenderer";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";

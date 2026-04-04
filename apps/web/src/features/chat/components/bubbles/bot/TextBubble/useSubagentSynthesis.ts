@@ -128,8 +128,7 @@ export const useSubagentSynthesis = (
               msg.includes(g.subagent_name.toLowerCase()),
           );
           if (matched) {
-            if (typeof task === "string" && task)
-              matched.handoff_input = task;
+            if (typeof task === "string" && task) matched.handoff_input = task;
             if (output) matched.handoff_output = output;
           }
         } else if (si < unmatchedSpawned.length) {
@@ -143,9 +142,7 @@ export const useSubagentSynthesis = (
       // Frontend nesting inference: if spawned subagents are at the root level but
       // a handoff group contains a spawn_subagent tool call, nest them inside that group.
       // This handles data saved before parent_subagent_id was propagated correctly.
-      const rootSpawned = finalGroups.filter(
-        (g) => g.agent_type === "spawned",
-      );
+      const rootSpawned = finalGroups.filter((g) => g.agent_type === "spawned");
       if (rootSpawned.length > 0) {
         let spawnIdx = 0;
         for (const g of finalGroups) {
@@ -164,9 +161,7 @@ export const useSubagentSynthesis = (
             .filter((g) => g.agent_type === "handoff")
             .flatMap((g) => g.nested_subagents.map((n) => n.subagent_id)),
         );
-        finalGroups = finalGroups.filter(
-          (g) => !nestedIds.has(g.subagent_id),
-        );
+        finalGroups = finalGroups.filter((g) => !nestedIds.has(g.subagent_id));
       }
     } else if (toolCalls.length > 0) {
       // Synthesis fallback: reconstruct subagent groups from flat tool calls for messages

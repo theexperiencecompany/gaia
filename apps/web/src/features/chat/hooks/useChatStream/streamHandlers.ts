@@ -55,7 +55,13 @@ export const createStreamHandlers = (deps: StreamHandlerDeps) => {
     handleConversationDescriptionUpdate,
   } = deps;
 
-  const { refs, streamInProgressRef, setIsLoading, setLoadingText, resetLoadingText } = ctx;
+  const {
+    refs,
+    streamInProgressRef,
+    setIsLoading,
+    setLoadingText,
+    resetLoadingText,
+  } = ctx;
 
   const handleToolData = (
     toolData: ToolDataEntry & { subagent_id?: string },

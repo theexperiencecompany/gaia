@@ -1,8 +1,8 @@
 import type { MutableRefObject } from "react";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import type { MessageType } from "@/types/features/convoTypes";
-import type { FileData } from "@/types/shared/fileTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
+import type { FileData } from "@/types/shared/fileTypes";
 
 export type PendingStreamArgs = [
   inputText: string,
