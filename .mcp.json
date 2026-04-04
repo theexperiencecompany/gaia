@@ -4,6 +4,11 @@
       "command": "dagger",
       "args": ["-s", "mcp"],
       "env": {}
+    },
+    "code-review-graph": {
+      "command": "uvx",
+      "args": ["code-review-graph", "serve"],
+      "type": "stdio"
     }
   }
 }
