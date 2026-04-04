@@ -2,10 +2,8 @@ import type { UserInfo } from "@/features/auth/api/authApi";
 
 export interface Message {
   id: string;
-  type: "bot" | "user" | "reveal";
+  type: "bot" | "user";
   content: string;
-  revealStage?: string;
-  revealData?: Record<string, unknown>;
   questionFieldName?: string;
 }
 

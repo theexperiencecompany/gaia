@@ -3,22 +3,8 @@ import type { ReactNode } from "react";
 
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
-import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
-import { SocialProfilesRevealCard } from "@/features/onboarding/components/reveal/SocialProfilesRevealCard";
-import { TodosRevealCard } from "@/features/onboarding/components/reveal/TodosRevealCard";
-import { TriageRevealCard } from "@/features/onboarding/components/reveal/TriageRevealCard";
-import { WorkflowsRevealCard } from "@/features/onboarding/components/reveal/WorkflowsRevealCard";
-import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/WritingStyleRevealCard";
 
 import type { Message } from "../types";
-import type {
-  PersonalizationData,
-  SocialProfilesResults,
-  TodoResults,
-  TriageResults,
-  WorkflowResults,
-  WritingStyleResults,
-} from "../types/websocket";
 import { OnboardingProcessing } from "./OnboardingProcessing";
 
 const noop = () => {};
@@ -99,55 +85,6 @@ interface OnboardingMessagesProps {
   processingContinuationChildren?: ReactNode;
 }
 
-function renderRevealCard(
-  revealStage: string,
-  revealData: Record<string, unknown>,
-): React.ReactNode {
-  // Single cast to unknown so individual branches can narrow safely
-  const data: unknown = revealData;
-
-  switch (revealStage) {
-    case "learning_style":
-      if ("style_summary" in revealData) {
-        return <WritingStyleRevealCard {...(data as WritingStyleResults)} />;
-      }
-      return null;
-    case "finding_profiles":
-      if ("profiles" in revealData) {
-        return (
-          <SocialProfilesRevealCard {...(data as SocialProfilesResults)} />
-        );
-      }
-      return null;
-    case "triaging":
-      if ("important_emails" in revealData) {
-        return <TriageRevealCard {...(data as TriageResults)} />;
-      }
-      return null;
-    case "creating_todos":
-      if ("todos" in revealData) {
-        return <TodosRevealCard {...(data as TodoResults)} />;
-      }
-      return null;
-    case "creating_workflows":
-      if ("workflows" in revealData) {
-        return <WorkflowsRevealCard {...(data as WorkflowResults)} />;
-      }
-      return null;
-    case "holo_card": {
-      if ("personalizationData" in revealData) {
-        const { personalizationData } = data as {
-          personalizationData: PersonalizationData;
-        };
-        return <HoloCardReveal personalizationData={personalizationData} />;
-      }
-      return null;
-    }
-    default:
-      return null;
-  }
-}
-
 export const OnboardingMessages = ({
   messages,
   messagesEndRef,
@@ -163,8 +100,6 @@ export const OnboardingMessages = ({
   processingContinuation,
   processingContinuationChildren,
 }: OnboardingMessagesProps) => {
-  const revealMessages = messages.filter((msg) => msg.type === "reveal");
-
   return (
     <>
       {messages.map((message, index) => (
@@ -179,16 +114,7 @@ export const OnboardingMessages = ({
             delay: index * 0.05,
           }}
         >
-          {message.type === "reveal" ? (
-            (() => {
-              const card =
-                message.revealStage && message.revealData
-                  ? renderRevealCard(message.revealStage, message.revealData)
-                  : null;
-              if (!card) return null;
-              return card;
-            })()
-          ) : message.type === "bot" ? (
+          {message.type === "bot" ? (
             <OnboardingBotBubble
               text={
                 message.id === "processing" && processingContinuation
@@ -198,7 +124,6 @@ export const OnboardingMessages = ({
             >
               {isProcessingPhase &&
                 index === messages.length - 1 &&
-                revealMessages.length === 0 &&
                 !isProcessingSkipped && (
                   <m.div
                     className="ml-10.75"

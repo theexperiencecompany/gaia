@@ -12,7 +12,9 @@ import { OnboardingPlatformConnect } from "@/features/onboarding/components/Onbo
 import { OnboardingTodoCards } from "@/features/onboarding/components/OnboardingTodoCards";
 import { OnboardingWorkflowCards } from "@/features/onboarding/components/OnboardingWorkflowCards";
 import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
+import { SocialProfilesRevealCard } from "@/features/onboarding/components/reveal/SocialProfilesRevealCard";
 import { TriageRevealCard } from "@/features/onboarding/components/reveal/TriageRevealCard";
+import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/WritingStyleRevealCard";
 import {
   RETRY_LABEL,
   SUBMISSION_ERROR_MSG,
@@ -170,6 +172,17 @@ export default function Onboarding() {
             processingContinuationChildren={
               flow.step.type === "todos" ? (
                 <div className="mt-3 ml-10.75 space-y-3">
+                  {flow.data.writingStyle && (
+                    <WritingStyleRevealCard
+                      style_summary={flow.data.writingStyle.style_summary}
+                      sample_snippets={flow.data.writingStyle.sample_snippets}
+                    />
+                  )}
+                  {flow.data.socialProfiles.length > 0 && (
+                    <SocialProfilesRevealCard
+                      profiles={flow.data.socialProfiles}
+                    />
+                  )}
                   {flow.data.triageSummary && (
                     <TriageRevealCard
                       total_scanned={flow.data.triageSummary.total_scanned}
