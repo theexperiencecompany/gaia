@@ -33,6 +33,8 @@ export interface PersonalizationData {
   triage_summary?: {
     total_scanned: number;
     total_unread: number;
+    summary?: string;
+    patterns?: string[];
     important_emails: Array<{
       sender: string;
       subject: string;
@@ -84,6 +86,8 @@ export interface TriageResults {
   total_scanned: number;
   total_unread: number;
   email_count?: number;
+  summary?: string;
+  patterns?: string[];
   important_emails: Array<{
     sender: string;
     subject: string;

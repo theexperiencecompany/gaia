@@ -14,6 +14,13 @@ export type OnboardingStep =
   | { type: "workflows_and_connect" }
   | { type: "chat" };
 
+export type RevealPhase =
+  | "writing_style"
+  | "social_profiles"
+  | "triage"
+  | "todos"
+  | "complete";
+
 export interface OnboardingFlowData {
   todos: Array<{
     id: string;
@@ -25,6 +32,8 @@ export interface OnboardingFlowData {
   triageSummary: {
     total_scanned: number;
     total_unread: number;
+    summary?: string;
+    patterns?: string[];
     important_emails: Array<{
       sender: string;
       subject: string;
@@ -51,9 +60,12 @@ export interface UseOnboardingFlowReturn {
   loadingStatuses: LoadingStatus[];
   progress: number;
   stageMessages: Record<string, string>;
+  completedStages: Set<string>;
   isExecutingTodo: boolean;
   executingTodoId: string | null;
   completedTodoIds: Set<string>;
+  revealPhase: RevealPhase;
+  advanceRevealPhase: () => void;
   advanceToWorkflows: () => void;
   advanceToChat: () => void;
   executeTodo: (todoId: string) => void;
@@ -101,6 +113,10 @@ export function useOnboardingFlow(
   const [stageMessages, setStageMessages] = useState<Record<string, string>>(
     {},
   );
+  const [completedStages, setCompletedStages] = useState<Set<string>>(
+    new Set(),
+  );
+  const [revealPhase, setRevealPhase] = useState<RevealPhase>("writing_style");
   const [isExecutingTodo, setIsExecutingTodo] = useState(false);
   const [executingTodoId, setExecutingTodoId] = useState<string | null>(null);
   const [completedTodoIds, setCompletedTodoIds] = useState<Set<string>>(
@@ -138,6 +154,11 @@ export function useOnboardingFlow(
         setStageMessages((prev) => ({ ...prev, [stage]: message }));
       }
 
+      // Mark stage as completed only when the backend sends results
+      if (stage && results) {
+        setCompletedStages((prev) => new Set([...prev, stage]));
+      }
+
       if (!results) return;
 
       // Accumulate data from pipeline stages
@@ -151,6 +172,8 @@ export function useOnboardingFlow(
               triageSummary: {
                 total_scanned: results.total_scanned as number,
                 total_unread: results.total_unread as number,
+                summary: (results.summary as string) ?? "",
+                patterns: (results.patterns as string[]) ?? [],
                 important_emails: (results.important_emails ?? []) as Array<{
                   sender: string;
                   subject: string;
@@ -234,6 +257,29 @@ export function useOnboardingFlow(
       prev.type === "loading" ? { type: "workflows_and_connect" } : prev,
     );
   }, []);
+
+  const advanceRevealPhase = useCallback(() => {
+    setRevealPhase((prev) => {
+      const order: RevealPhase[] = [
+        "writing_style",
+        "social_profiles",
+        "triage",
+        "todos",
+        "complete",
+      ];
+      const currentIdx = order.indexOf(prev);
+      for (let i = currentIdx + 1; i < order.length; i++) {
+        const next = order[i];
+        if (next === "writing_style" && !data.writingStyle) continue;
+        if (next === "social_profiles" && data.socialProfiles.length === 0)
+          continue;
+        if (next === "triage" && !data.triageSummary) continue;
+        if (next === "todos" && data.todos.length === 0) continue;
+        return next;
+      }
+      return "complete";
+    });
+  }, [data]);
 
   const advanceToWorkflows = useCallback(() => {
     setStep({ type: "workflows_and_connect" });
@@ -347,6 +393,8 @@ export function useOnboardingFlow(
     setLoadingStatuses([]);
     setProgress(0);
     setStageMessages({});
+    setCompletedStages(new Set());
+    setRevealPhase("writing_style");
     setIsExecutingTodo(false);
     setExecutingTodoId(null);
     setCompletedTodoIds(new Set());
@@ -360,9 +408,12 @@ export function useOnboardingFlow(
     loadingStatuses,
     progress,
     stageMessages,
+    completedStages,
     isExecutingTodo,
     executingTodoId,
     completedTodoIds,
+    revealPhase,
+    advanceRevealPhase,
     advanceToWorkflows,
     advanceToChat,
     executeTodo,

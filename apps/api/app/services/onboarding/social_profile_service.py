@@ -6,6 +6,16 @@ from shared.py.wide_events import log
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import SocialProfile
 
+# URLs containing these are marketing/newsletter links, not user profiles.
+_TRACKING_INDICATORS = ("utm_source=", "utm_medium=", "utm_campaign=")
+
+
+def _is_tracking_url(url: str) -> bool:
+    """Return True if the URL contains marketing tracking parameters."""
+    lower = url.lower()
+    return any(ind in lower for ind in _TRACKING_INDICATORS)
+
+
 # Platform domains mapped to canonical platform names.
 # Each tuple is (domain_substring, platform_name).
 _PLATFORM_DOMAINS: list[tuple[str, str]] = [
@@ -112,6 +122,7 @@ def extract_social_profiles(emails: list[dict]) -> list[SocialProfile]:
         Deduplicated list of SocialProfile objects found.
     """
     seen_urls: set[str] = set()
+    seen_platforms: set[str] = set()
     profiles: list[SocialProfile] = []
 
     for email in emails:
@@ -127,6 +138,8 @@ def extract_social_profiles(emails: list[dict]) -> list[SocialProfile]:
 
         urls = _extract_urls_from_text(combined)
         for url in urls:
+            if _is_tracking_url(url):
+                continue
             platform = _classify_url(url)
             if platform is None:
                 continue
@@ -136,7 +149,11 @@ def extract_social_profiles(emails: list[dict]) -> list[SocialProfile]:
             normalized = url.rstrip("/")
             if normalized in seen_urls:
                 continue
+            # One profile per platform
+            if platform in seen_platforms:
+                continue
             seen_urls.add(normalized)
+            seen_platforms.add(platform)
             profiles.append(SocialProfile(platform=platform, url=url))
 
     log.info(

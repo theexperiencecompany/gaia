@@ -9,10 +9,29 @@ from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.core.lazy_loader import providers
 from app.models.onboarding_models import InboxTriage, InboxTriageOutput
 
+_NOISE_SENDERS = (
+    "noreply@",
+    "no-reply@",
+    "mailer-daemon@",
+    "notifications@",
+    "donotreply@",
+)
+
+
+def _is_noise_email(email: dict) -> bool:
+    """Return True if the email is automated noise unlikely to need user action."""
+    sender = email.get("sender", "").lower()
+    snippet = email.get("snippet", "").lower()[:200]
+    return any(sender.startswith(prefix) for prefix in _NOISE_SENDERS) or (
+        "unsubscribe" in snippet
+    )
+
 
 async def triage_inbox(
     user_id: str,
     emails: list[dict],
+    profession: str = "",
+    focus: str = "",
 ) -> Optional[InboxTriage]:
     """
     Triage a list of emails to surface what's important.
@@ -20,6 +39,8 @@ async def triage_inbox(
     Args:
         user_id: The user's ID
         emails: List of email dicts with sender, subject, snippet, is_unread
+        profession: User's profession for context-aware triaging
+        focus: User's current focus for context-aware triaging
 
     Returns:
         InboxTriage or None if triage fails
@@ -28,16 +49,19 @@ async def triage_inbox(
         return InboxTriage(
             total_scanned=0,
             total_unread=0,
+            summary="",
             important_emails=[],
             patterns=[],
         )
 
     try:
-        unread = [e for e in emails if e.get("is_unread", False)]
+        # Filter noise before prioritizing
+        filtered = [e for e in emails if not _is_noise_email(e)]
+        unread = [e for e in filtered if e.get("is_unread", False)]
 
         # Build compact email list for LLM (sender, subject, snippet only)
         # Prioritize unread emails, then fill with recent read emails
-        read = [e for e in emails if not e.get("is_unread", False)]
+        read = [e for e in filtered if not e.get("is_unread", False)]
         # Take up to 30 unread + 20 most recent read, capped at 50
         sampled = (unread[:30] + read[:20])[:50]
 
@@ -55,14 +79,22 @@ async def triage_inbox(
             raise RuntimeError("LLM provider not available")
 
         structured_llm = llm.with_structured_output(InboxTriageOutput)
-        prompt = INBOX_TRIAGE_PROMPT.format(email_list=email_list_text)
+        prompt = INBOX_TRIAGE_PROMPT.format(
+            email_list=email_list_text,
+            profession=profession or "not specified",
+            focus=focus or "not specified",
+        )
         result: InboxTriageOutput = await structured_llm.ainvoke(
             [HumanMessage(content=prompt)]
         )
 
+        # Count unread from ALL emails (not just filtered)
+        all_unread = [e for e in emails if e.get("is_unread", False)]
+
         triage = InboxTriage(
             total_scanned=len(emails),
-            total_unread=len(unread),
+            total_unread=len(all_unread),
+            summary=result.summary,
             important_emails=result.important_emails,
             patterns=result.patterns,
         )

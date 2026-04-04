@@ -2,7 +2,7 @@
 
 import random
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from bson import ObjectId
 
@@ -14,9 +14,7 @@ from app.agents.prompts.onboarding_prompts import (
 from shared.py.wide_events import log
 from app.constants.profession_bios import get_random_bio_for_profession
 from app.db.mongodb.collections import users_collection
-from app.models.memory_models import MemoryEntry
 from app.models.user_models import BioStatus
-from app.services.composio.composio_service import get_composio_service
 
 # Available houses for user assignment
 HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
@@ -153,31 +151,27 @@ async def get_user_metadata(
 
 
 async def generate_personality_phrase(
-    user_id: str, memories: List[MemoryEntry], profession: str = ""
+    user_id: str, context_summary: str, profession: str = ""
 ) -> str:
-    log.set(
-        operation="generate_personality_phrase",
-        user_id=user_id,
-        profession=profession,
-        memory_count=len(memories),
-    )
     """
     Generate a unique 2-3 word personality phrase using LLM.
 
     Args:
         user_id: User identifier
-        memories: User's memories for context
+        context_summary: Structured context (triage summary, writing style, profiles, etc.)
         profession: User's profession (optional)
 
     Returns:
         Generated personality phrase (e.g., "Digital Alchemist")
     """
+    log.set(
+        operation="generate_personality_phrase",
+        user_id=user_id,
+        profession=profession,
+    )
     try:
-        # Summarize memories
-        memory_summary = "\n".join([m.content for m in memories])
-
         prompt = PERSONALITY_PHRASE_PROMPT.format(
-            profession=profession, memory_summary=memory_summary
+            profession=profession, memory_summary=context_summary
         )
 
         llm = init_llm(preferred_provider="gemini").bind(temperature=1.2, top_k=80)
@@ -211,31 +205,21 @@ async def generate_personality_phrase(
 
 async def generate_user_bio(
     user_id: str,
-    memories: List[MemoryEntry],
+    context_summary: str,
     user: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, BioStatus]:
-    log.set(
-        operation="generate_user_bio",
-        user_id=user_id,
-        memory_count=len(memories),
-    )
     """
-    Generate user bio paragraph using LLM based on memories.
-
-    Flow:
-    - If no memories + Gmail + not processed → PROCESSING (waiting)
-    - If no memories + Gmail + processed → COMPLETED (fallback bio)
-    - If no memories + no Gmail → NO_GMAIL (profession bio)
-    - If memories exist → COMPLETED (LLM-generated bio)
+    Generate user bio paragraph using LLM based on structured context.
 
     Args:
         user_id: User identifier
-        memories: User's memories
+        context_summary: Structured context (triage summary, writing style, profiles, etc.)
         user: Pre-fetched user document (avoids redundant DB call)
 
     Returns:
         Tuple of (bio_text, bio_status)
     """
+    log.set(operation="generate_user_bio", user_id=user_id)
     try:
         if user is None:
             user = await users_collection.find_one({"_id": ObjectId(user_id)})
@@ -247,58 +231,13 @@ async def generate_user_bio(
             user.get("onboarding", {}).get("preferences", {}).get("profession", "")
         )
 
-        # Check Gmail connection status
-        composio_service = get_composio_service()
-        connection_status = await composio_service.check_connection_status(
-            ["gmail"], str(user_id)
-        )
-        has_gmail = connection_status.get("gmail", False)
-
-        # Handle case: No memories
-        if not memories:
-            email_processed = user.get("email_memory_processed", False)
-
-            if has_gmail and email_processed:
-                # Emails processed but no memories - use fallback
-                log.warning(
-                    f"Email processed but no memories for user {user_id}. Using fallback bio."
-                )
-                default_bio = get_random_bio_for_profession(name, profession or "other")
-                return (default_bio, BioStatus.COMPLETED)
-            elif has_gmail:
-                # Gmail connected but emails not processed yet
-                return (
-                    "Processing your insights... Please check back in a moment.",
-                    BioStatus.PROCESSING,
-                )
-            else:
-                # No Gmail — use focus-based bio if available, otherwise profession bio
-                focus = user.get("onboarding", {}).get("focus", "") if user else ""
-                if focus:
-                    try:
-                        focus_prompt = USER_BIO_PROMPT.format(
-                            name=name,
-                            profession=profession or "professional",
-                            memory_summary=f"Their stated current focus: {focus}",
-                        )
-                        llm = init_llm(preferred_provider="gemini")
-                        bio_response = await llm.ainvoke(focus_prompt)
-                        bio_content = (
-                            bio_response.content
-                            if isinstance(bio_response.content, str)
-                            else str(bio_response.content)
-                        )
-                        return (bio_content.strip(), BioStatus.NO_GMAIL)
-                    except Exception as e:
-                        log.warning(f"[profile_card] Focus bio generation failed: {e}")
-                default_bio = get_random_bio_for_profession(name, profession or "other")
-                return (default_bio, BioStatus.NO_GMAIL)
-
-        # Generate bio from memories using LLM
-        memory_summary = "\n".join([m.content for m in memories])
+        # No context available — use profession-based fallback
+        if not context_summary.strip():
+            default_bio = get_random_bio_for_profession(name, profession or "other")
+            return (default_bio, BioStatus.NO_GMAIL)
 
         prompt = USER_BIO_PROMPT.format(
-            name=name, profession=profession, memory_summary=memory_summary[:10000]
+            name=name, profession=profession, memory_summary=context_summary[:10000]
         )
 
         llm = init_llm(preferred_provider="gemini")
@@ -315,30 +254,7 @@ async def generate_user_bio(
 
     except Exception as e:
         log.error(f"Error generating user bio: {e}", exc_info=True)
-
-        # Fallback on error
-        try:
-            composio_service = get_composio_service()
-            connection_status = await composio_service.check_connection_status(
-                ["gmail"], str(user_id)
-            )
-            has_gmail = connection_status.get("gmail", False)
-
-            if has_gmail:
-                return (
-                    "Processing your insights... Please check back in a moment.",
-                    BioStatus.PROCESSING,
-                )
-            else:
-                return (
-                    "Connect your Gmail to unlock your personalized GAIA bio",
-                    BioStatus.NO_GMAIL,
-                )
-        except:  # noqa: E722
-            return (
-                "Connect your Gmail to unlock your personalized GAIA bio",
-                BioStatus.NO_GMAIL,
-            )
+        return ("Welcome to GAIA!", BioStatus.NO_GMAIL)
 
 
 def generate_profile_card_design() -> Dict[str, Any]:

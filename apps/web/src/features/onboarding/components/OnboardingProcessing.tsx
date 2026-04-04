@@ -6,6 +6,7 @@ import {
   CheckmarkCircle02Icon,
   FilterIcon,
   type IconProps,
+  Loading03Icon,
   Mail01Icon,
   ZapIcon,
 } from "@icons";
@@ -83,6 +84,8 @@ interface OnboardingProcessingProps {
   processingProgress?: number;
   /** Map of stage name → latest backend message for that stage */
   stageMessages?: Record<string, string>;
+  /** Stages that have received a completion event (with results) from the backend */
+  completedStages?: Set<string>;
 }
 
 export const OnboardingProcessing = ({
@@ -92,6 +95,7 @@ export const OnboardingProcessing = ({
   onComplete,
   processingProgress,
   stageMessages,
+  completedStages,
 }: OnboardingProcessingProps) => {
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
   const completedRef = useRef(false);
@@ -120,17 +124,27 @@ export const OnboardingProcessing = ({
     return () => clearTimeout(timer);
   }, []);
 
-  // Determine active step from which stages have been seen, not from progress %
+  // Determine active step based on which stages have received completion events.
+  // A stage is "done" only when the backend sends results — not on interim batch
+  // events. This keeps a stage active (pulsing) while its counter is updating.
   const activeStepIndex = (() => {
-    if (!stageMessages) return 0;
-    let lastSeenIndex = -1;
+    let lastCompletedIndex = -1;
     for (let i = 0; i < steps.length; i++) {
-      if (stageMessages[steps[i].stage]) {
-        lastSeenIndex = i;
+      if (completedStages?.has(steps[i].stage)) {
+        lastCompletedIndex = i;
       }
     }
-    // The active step is the one after the last completed, or 0 if none seen
-    return Math.min(lastSeenIndex + 1, steps.length - 1);
+    // If no stages are complete yet but some have messages, show the first
+    // messaged stage as active (not done) so scanning_inbox pulses while counting.
+    if (lastCompletedIndex === -1 && stageMessages) {
+      for (let i = 0; i < steps.length; i++) {
+        if (stageMessages[steps[i].stage]) {
+          return i;
+        }
+      }
+      return 0;
+    }
+    return Math.min(lastCompletedIndex + 1, steps.length - 1);
   })();
 
   return (
@@ -158,7 +172,7 @@ export const OnboardingProcessing = ({
           return (
             <m.div
               key={step.stage}
-              className="flex items-center gap-3"
+              className="flex items-center gap-3 justify-between"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{
@@ -202,14 +216,28 @@ export const OnboardingProcessing = ({
               <span
                 className={
                   isDone
-                    ? "text-sm text-zinc-300"
+                    ? "flex-1 text-sm text-zinc-300"
                     : isActive
-                      ? "text-sm font-medium text-zinc-200"
-                      : "text-sm text-zinc-500"
+                      ? "flex-1 text-sm font-medium text-zinc-200"
+                      : "flex-1 text-sm text-zinc-500"
                 }
               >
                 {displayText}
               </span>
+              <AnimatePresence>
+                {isActive && !isIntelligenceComplete && (
+                  <m.div
+                    key="spinner"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.2 }}
+                    className="shrink-0"
+                  >
+                    <Loading03Icon className="size-4 text-zinc-500 animate-spin" />
+                  </m.div>
+                )}
+              </AnimatePresence>
             </m.div>
           );
         })}
@@ -224,7 +252,7 @@ export const OnboardingProcessing = ({
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3 }}
           >
-            Taking a bit longer than usual, hang tight.
+            Still working on it. This may take another minute or two.
           </m.p>
         )}
       </AnimatePresence>

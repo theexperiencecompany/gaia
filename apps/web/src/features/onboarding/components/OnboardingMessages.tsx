@@ -79,6 +79,7 @@ interface OnboardingMessagesProps {
   processingProgress?: number;
   onEditMessage?: (fieldName: string) => void;
   stageMessages?: Record<string, string>;
+  completedStages?: Set<string>;
   /** Text to append to the processing message via <NEW_MESSAGE_BREAK> */
   processingContinuation?: string;
   /** Children to render below the processing bubble (e.g. todo cards) */
@@ -97,6 +98,7 @@ export const OnboardingMessages = ({
   processingProgress,
   onEditMessage,
   stageMessages,
+  completedStages,
   processingContinuation,
   processingContinuationChildren,
 }: OnboardingMessagesProps) => {
@@ -142,6 +144,7 @@ export const OnboardingMessages = ({
                       onComplete={onProcessingComplete ?? (() => {})}
                       processingProgress={processingProgress}
                       stageMessages={stageMessages}
+                      completedStages={completedStages}
                     />
                   </m.div>
                 )}

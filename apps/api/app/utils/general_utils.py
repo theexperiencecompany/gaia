@@ -76,6 +76,7 @@ def transform_gmail_message(msg) -> Dict:
         return ""
 
     def transform_composio(m):
+        labels = m.get("labelIds", [])
         return {
             **m,
             "id": m.get("messageId", ""),
@@ -88,13 +89,15 @@ def transform_gmail_message(msg) -> Dict:
             "time": get_time(m),
             "snippet": m.get("snippet", m.get("messageText", "")),
             "body": m.get("body", m.get("messageText", "")),
-            "isThread": bool(m.get("threadId") and len(m.get("labelIds", [])) > 0),
+            "isThread": bool(m.get("threadId") and len(labels) > 0),
+            "is_unread": "UNREAD" in labels,
         }
 
     def transform_gmail_api(m):
         headers = {
             h["name"]: h["value"] for h in m.get("payload", {}).get("headers", [])
         }
+        labels = m.get("labelIds", [])
         return {
             **m,
             "id": m.get("id", ""),
@@ -107,7 +110,8 @@ def transform_gmail_message(msg) -> Dict:
             "time": get_time(m),
             "snippet": m.get("snippet", ""),
             "body": decode_message_body(m),
-            "isThread": bool(m.get("threadId") and len(m.get("labelIds", [])) > 0),
+            "isThread": bool(m.get("threadId") and len(labels) > 0),
+            "is_unread": "UNREAD" in labels,
         }
 
     # Detect and transform

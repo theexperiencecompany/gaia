@@ -32,3 +32,17 @@ export const STEP_BUILDING_PROFILE = "Building your profile";
 // ── Reveal card labels ───────────────────────────────────────────────────────
 
 export const WRITING_STYLE_LABEL = "Your writing style";
+
+// ── Reveal sequence GAIA bubble intros ──────────────────────────────────────
+
+export const REVEAL_WRITING_STYLE_INTRO =
+  "Here's what I learned about how you write:";
+
+export const REVEAL_SOCIAL_PROFILES_INTRO =
+  "Here are the profiles I found. Feel free to edit them if they're wrong, it helps me understand you better.";
+
+export const REVEAL_TRIAGE_INTRO =
+  "Here's what I found going through your inbox:";
+
+export const REVEAL_TODOS_INTRO =
+  "Based on what I found, here are some things I can help with:";

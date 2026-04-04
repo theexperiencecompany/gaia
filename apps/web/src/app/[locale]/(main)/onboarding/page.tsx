@@ -9,12 +9,9 @@ import {
   OnboardingProgress,
 } from "@/features/onboarding/components";
 import { OnboardingPlatformConnect } from "@/features/onboarding/components/OnboardingPlatformConnect";
-import { OnboardingTodoCards } from "@/features/onboarding/components/OnboardingTodoCards";
+import { OnboardingRevealSequence } from "@/features/onboarding/components/OnboardingRevealSequence";
 import { OnboardingWorkflowCards } from "@/features/onboarding/components/OnboardingWorkflowCards";
 import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
-import { SocialProfilesRevealCard } from "@/features/onboarding/components/reveal/SocialProfilesRevealCard";
-import { TriageRevealCard } from "@/features/onboarding/components/reveal/TriageRevealCard";
-import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/WritingStyleRevealCard";
 import {
   RETRY_LABEL,
   SUBMISSION_ERROR_MSG,
@@ -162,56 +159,30 @@ export default function Onboarding() {
             }
             onEditMessage={handleEditResponse}
             stageMessages={flow.stageMessages}
+            completedStages={flow.completedStages}
             processingContinuation={
               flow.step.type === "todos"
                 ? flow.data.triageSummary
-                  ? "Went through your inbox. Here's what needs attention:"
+                  ? "Went through your inbox. Here's what I found:"
                   : "Set up some tasks based on your profile:"
                 : undefined
             }
             processingContinuationChildren={
               flow.step.type === "todos" ? (
-                <div className="mt-3 ml-10.75 space-y-3">
-                  {flow.data.writingStyle && (
-                    <WritingStyleRevealCard
-                      style_summary={flow.data.writingStyle.style_summary}
-                      sample_snippets={flow.data.writingStyle.sample_snippets}
-                    />
-                  )}
-                  {flow.data.socialProfiles.length > 0 && (
-                    <SocialProfilesRevealCard
-                      profiles={flow.data.socialProfiles}
-                    />
-                  )}
-                  {flow.data.triageSummary && (
-                    <TriageRevealCard
-                      total_scanned={flow.data.triageSummary.total_scanned}
-                      total_unread={flow.data.triageSummary.total_unread}
-                      important_emails={
-                        flow.data.triageSummary.important_emails
-                      }
-                    />
-                  )}
-                  <OnboardingTodoCards
-                    todos={flow.data.todos}
-                    onExecuteTodo={flow.executeTodo}
-                    isExecuting={flow.isExecutingTodo}
-                    executingTodoId={flow.executingTodoId}
-                    completedTodoIds={flow.completedTodoIds}
-                  />
-                  {flow.data.conversationId && !flow.isExecutingTodo && (
-                    <m.button
-                      type="button"
-                      onClick={flow.advanceToWorkflows}
-                      className="ml-10.75 cursor-pointer text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 1.5, duration: 0.4 }}
-                    >
-                      Skip for now
-                    </m.button>
-                  )}
-                </div>
+                <OnboardingRevealSequence
+                  revealPhase={flow.revealPhase}
+                  onAdvance={flow.advanceRevealPhase}
+                  writingStyle={flow.data.writingStyle}
+                  socialProfiles={flow.data.socialProfiles}
+                  triageSummary={flow.data.triageSummary}
+                  todos={flow.data.todos}
+                  onExecuteTodo={flow.executeTodo}
+                  isExecutingTodo={flow.isExecutingTodo}
+                  executingTodoId={flow.executingTodoId}
+                  completedTodoIds={flow.completedTodoIds}
+                  conversationId={flow.data.conversationId}
+                  onSkipTodos={flow.advanceToWorkflows}
+                />
               ) : undefined
             }
           />

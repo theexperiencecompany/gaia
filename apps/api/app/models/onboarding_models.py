@@ -22,6 +22,7 @@ class EmailSummary(BaseModel):
 class InboxTriage(BaseModel):
     total_scanned: int
     total_unread: int
+    summary: str = ""
     important_emails: list[EmailSummary]
     patterns: list[str]
 
@@ -32,6 +33,9 @@ class InboxTriage(BaseModel):
 class InboxTriageOutput(BaseModel):
     """Structured output for inbox triage LLM call."""
 
+    summary: str = Field(
+        description="2-3 sentence overview of the inbox written conversationally to the user"
+    )
     important_emails: list[EmailSummary] = Field(
         description="5-10 most important emails that need attention"
     )
@@ -42,8 +46,8 @@ class WritingStyleOutput(BaseModel):
     """Structured output for writing style analysis LLM call."""
 
     summary: str = Field(
-        description="2-4 sentence description of writing style for AI to mimic"
+        description="2-3 sentence writing style profile as AI instructions. Specific about greetings, sign-offs, sentence structure, habits."
     )
     sample_snippets: list[str] = Field(
-        description="3-5 short direct quotes exemplifying the style"
+        description="3-5 short real quotes (1-2 sentences) showing greetings, sign-offs, characteristic phrasing"
     )

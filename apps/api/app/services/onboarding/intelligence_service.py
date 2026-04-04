@@ -46,7 +46,6 @@ from app.models.onboarding_models import (
 from app.models.todo_models import Priority, TodoModel
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.composio.composio_service import get_composio_service
-from app.services.memory_service import memory_service
 from app.services.onboarding.first_message_service import generate_first_message
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.post_onboarding_service import (
@@ -102,6 +101,7 @@ async def _emit_progress(
     message: str,
     progress: int,
     results: Optional[dict] = None,
+    details: Optional[dict] = None,
 ) -> None:
     """Emit a WebSocket progress event to the user."""
     try:
@@ -112,6 +112,8 @@ async def _emit_progress(
         }
         if results is not None:
             payload["results"] = results
+        if details is not None:
+            payload["details"] = details
         await websocket_manager.broadcast_to_user(
             user_id=user_id,
             message={"type": "personalization_progress", "data": payload},
@@ -165,7 +167,19 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             nonlocal emails
             t0 = time.monotonic()
             await _emit_progress(user_id, "scanning_inbox", "Scanning your inbox", 10)
-            fetched = await fetch_emails_for_onboarding(user_id, months=1)
+
+            async def _on_batch(current: int) -> None:
+                await _emit_progress(
+                    user_id,
+                    "scanning_inbox",
+                    f"Scanning your inbox... {current} emails",
+                    10,
+                    details={"current": current},
+                )
+
+            fetched = await fetch_emails_for_onboarding(
+                user_id, months=1, on_batch=_on_batch
+            )
             emails = fetched
             count = len(fetched)
             log.info(
@@ -192,7 +206,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 "Writing style learned",
                 28,
                 results={
-                    "style_summary": writing_style.summary[:200]
+                    "style_summary": writing_style.summary
                     if writing_style and writing_style.summary
                     else "",
                     "sample_snippets": writing_style.sample_snippets[:3]
@@ -201,51 +215,19 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 },
             )
 
+        memory_result: dict = {}
+
         async def _store_to_memory() -> None:
+            nonlocal memory_result
             t0 = time.monotonic()
-            await process_gmail_to_memory(user_id)
+            memory_result = await process_gmail_to_memory(user_id)
             log.info(
                 f"[intelligence:timing] store_to_memory: {time.monotonic() - t0:.1f}s"
             )
 
         phase1_tasks.extend([_fetch_emails(), _learn_style(), _store_to_memory()])
 
-    # Always run holo card generation (house, bio, phrase, design) in parallel
-    async def _run_holo_card() -> None:
-        t0 = time.monotonic()
-        try:
-            metadata = await get_user_metadata(user_id, user=user_doc)
-            card_design = generate_profile_card_design()
-            memories_result = await memory_service.get_all_memories(user_id=user_id)
-            memories = memories_result.memories
-            phrase, bio_result = await asyncio.gather(
-                generate_personality_phrase(user_id, memories, profession),
-                generate_user_bio(user_id, memories, user=user_doc),
-            )
-            user_bio, bio_status = bio_result
-            workflow_ids = await suggest_workflows_via_rag(
-                user_id, 4, memories=memories
-            )
-            await save_personalization_data(
-                user_id,
-                card_design["house"],
-                phrase,
-                user_bio,
-                bio_status,
-                workflow_ids,
-                metadata["account_number"],
-                metadata["member_since"],
-                card_design["overlay_color"],
-                card_design["overlay_opacity"],
-            )
-            log.info(
-                f"[intelligence:timing] holo_card: {time.monotonic() - t0:.1f}s "
-                f"(house={card_design['house']}, bio_status={bio_status})"
-            )
-        except Exception as e:
-            log.error(f"[intelligence] Holo card generation failed: {e}", exc_info=True)
-
-    phase1_tasks.append(_run_holo_card())
+    # Holo card generation moved to Phase 2 (needs triage data)
 
     phase1_start = time.monotonic()
     phase1_results = await asyncio.gather(*phase1_tasks, return_exceptions=True)
@@ -258,9 +240,18 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 f"[intelligence] Phase 1 task {i} failed: {result}", exc_info=result
             )
 
-    # Extract social profiles from fetched emails (CPU-only, no I/O)
-    if emails:
-        social_profiles = extract_social_profiles(emails)
+    # Use Track B (LLM-based) profile results, fall back to Track A (URL scanning)
+    if has_gmail:
+        track_b_profiles = memory_result.get("extracted_profiles", [])
+        if track_b_profiles:
+            social_profiles = [
+                SocialProfile(platform=p["platform"], url=p["url"])
+                for p in track_b_profiles
+            ]
+        elif emails:
+            social_profiles = extract_social_profiles(emails)
+
+    if social_profiles:
         await _emit_progress(
             user_id,
             "finding_profiles",
@@ -283,7 +274,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     if emails:
         t_triage = time.monotonic()
-        triage = await triage_inbox(user_id, emails)
+        triage = await triage_inbox(user_id, emails, profession=profession, focus=focus)
         log.info(
             f"[intelligence:timing] triage_inbox: {time.monotonic() - t_triage:.1f}s"
         )
@@ -298,6 +289,8 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 results={
                     "total_scanned": triage.total_scanned,
                     "total_unread": triage.total_unread,
+                    "summary": triage.summary,
+                    "patterns": triage.patterns,
                     "important_emails": [
                         {
                             "sender": e.sender,
@@ -311,7 +304,9 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
             await _emit_progress(user_id, "creating_todos", "Creating action items", 68)
             t_todos = time.monotonic()
-            created_todos = await _create_todos_from_triage(user_id, triage)
+            created_todos = await _create_todos_from_triage(
+                user_id, triage, profession=profession, focus=focus
+            )
             log.info(
                 f"[intelligence:timing] create_todos: {time.monotonic() - t_todos:.1f}s ({len(created_todos)} todos)"
             )
@@ -357,9 +352,59 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         user_id,
         "creating_workflows",
         f"{len(created_workflows)} automations ready",
-        85,
+        80,
         results={"workflows": created_workflows},
     )
+
+    # Holo card generation — uses triage data instead of raw memories
+    t_holo = time.monotonic()
+    try:
+        # Build structured context from pipeline results
+        context_parts: list[str] = []
+        if triage:
+            context_parts.append(f"Inbox summary: {triage.summary}")
+            if triage.patterns:
+                context_parts.append(f"Inbox patterns: {'; '.join(triage.patterns)}")
+            if triage.important_emails:
+                senders = ", ".join(e.sender for e in triage.important_emails[:5])
+                context_parts.append(f"Key contacts: {senders}")
+        if writing_style:
+            context_parts.append(f"Writing style: {writing_style.summary}")
+        if social_profiles:
+            platforms = ", ".join(f"{p.platform}: {p.url}" for p in social_profiles)
+            context_parts.append(f"Social profiles: {platforms}")
+        if focus:
+            context_parts.append(f"Current focus: {focus}")
+        context_summary = "\n".join(context_parts)
+
+        metadata = await get_user_metadata(user_id, user=user_doc)
+        card_design = generate_profile_card_design()
+        phrase, bio_result = await asyncio.gather(
+            generate_personality_phrase(user_id, context_summary, profession),
+            generate_user_bio(user_id, context_summary, user=user_doc),
+        )
+        user_bio, bio_status = bio_result
+        workflow_ids = await suggest_workflows_via_rag(user_id, 4)
+        await save_personalization_data(
+            user_id,
+            card_design["house"],
+            phrase,
+            user_bio,
+            bio_status,
+            workflow_ids,
+            metadata["account_number"],
+            metadata["member_since"],
+            card_design["overlay_color"],
+            card_design["overlay_opacity"],
+        )
+        log.info(
+            f"[intelligence:timing] holo_card: {time.monotonic() - t_holo:.1f}s "
+            f"(house={card_design['house']}, bio_status={bio_status})"
+        )
+    except Exception as e:
+        log.error(f"[intelligence] Holo card generation failed: {e}", exc_info=True)
+
+    await _emit_progress(user_id, "building_profile", "Building your profile", 88)
     log.info(
         f"[intelligence:timing] Phase 2 total: {time.monotonic() - phase2_start:.1f}s"
     )
@@ -396,6 +441,8 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         update_fields["onboarding.triage_summary"] = {
             "total_scanned": triage.total_scanned,
             "total_unread": triage.total_unread,
+            "summary": triage.summary,
+            "patterns": triage.patterns,
             "important_emails": [
                 {
                     "sender": e.sender,
@@ -500,6 +547,8 @@ async def _create_focus_todos(
 async def _create_todos_from_triage(
     user_id: str,
     triage: InboxTriage,
+    profession: str = "",
+    focus: str = "",
 ) -> list[dict]:
     """Create GAIA-actionable todos from important emails using structured LLM output."""
     emails_context = "\n".join(
@@ -509,7 +558,9 @@ async def _create_todos_from_triage(
 
     prompt = TRIAGE_TODOS_PROMPT.format(
         emails_context=emails_context,
-        format_instructions="Return a JSON object with a 'todos' key containing a list of todo objects, each with 'title' and 'description'.",
+        profession=profession or "not specified",
+        focus=focus or "not specified",
+        format_instructions="Return a JSON object with a 'todos' key containing a list of todo objects, each with 'title', 'description', 'source_sender', and 'source_subject'.",
     )
 
     try:

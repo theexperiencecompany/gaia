@@ -1,15 +1,21 @@
-INBOX_TRIAGE_PROMPT = """You are analyzing a user's inbox to surface what's most important.
+INBOX_TRIAGE_PROMPT = """You are analyzing a user's inbox to surface what matters most to them.
+
+User context:
+- Profession: {profession}
+- Current focus: {focus}
 
 Here are their recent emails (sender, subject, snippet):
 {email_list}
 
 Your job:
-1. Identify the 5-10 most important emails that need attention or represent significant work
-2. For each, explain in one short sentence why it matters (e.g. "investor follow-up", "deadline Thursday", "team needs decision")
-3. Identify 2-5 interesting patterns across the full inbox (e.g. "Multiple emails from investor-type senders", "Recurring project X thread", "3 emails about upcoming deadline next week")
+1. Write a 2-3 sentence summary of what this inbox looks like. What topics dominate, who the key people are, what the overall vibe is. Write directly to the user, conversationally.
+2. Identify the 5-10 most important emails that need this user's personal attention. For each, ask: "Would this specific person, given their profession and focus, need to personally act on this?" Skip newsletters, marketing, automated notifications, and anything not requiring a human decision.
+3. For each, explain in one sentence why it matters to this specific user.
+4. Identify 2-5 patterns across the full inbox.
 
 Respond as JSON:
 {{
+  "summary": "Your inbox is mostly...",
   "important_emails": [
     {{
       "sender": "...",
@@ -23,26 +29,22 @@ Respond as JSON:
 """
 
 WRITING_STYLE_PROMPT = """Analyze these email excerpts written by the same person.
-Describe their writing style in a short paragraph (2-4 sentences) that could be used to
-instruct an AI to write emails that sound exactly like them.
+Create a concise writing style profile that captures how they actually communicate.
 
-Focus on:
-- Length preference (short and direct vs detailed)
-- Formality level (casual, professional, or mixed)
-- Greeting and sign-off patterns (if any)
-- Tone (warm, direct, formal, humorous, etc.)
-- Any distinctive verbal patterns or habits
-
-Then provide 3-5 short direct quotes from the emails that best exemplify their style.
-Only include the style-relevant parts — no sensitive content, names, or details.
+Focus on concrete patterns, not abstract descriptions:
+- How do they start emails? (e.g., "Hey [name]", "Hi!", no greeting, straight to the point)
+- How do they sign off? (e.g., "Best,", "Thanks!", "Cheers", no sign-off)
+- Sentence length and structure (short punchy sentences vs. longer detailed ones)
+- Formality level with specific evidence
+- Any distinctive habits (e.g., uses "lol", exclamation marks, dashes, ellipses, all lowercase)
 
 Emails:
 {email_samples}
 
 Respond as JSON:
 {{
-  "summary": "...",
-  "sample_snippets": ["...", "...", "..."]
+  "summary": "A 2-3 sentence profile written as instructions for an AI to mimic this person's voice. Be specific: instead of 'casual tone', say 'starts with Hey, uses short sentences, drops periods in quick replies'. Instead of 'professional', say 'always opens with Hi [Name], structures responses with numbered points, signs off with Best'.",
+  "sample_snippets": ["3-5 short real quotes (1-2 sentences each) that best show their voice — include their actual greetings, sign-offs, and characteristic phrasing"]
 }}
 """
 
@@ -67,28 +69,29 @@ FOCUS_TODOS_PROMPT = (
 )
 
 TRIAGE_TODOS_PROMPT = (
-    "You are GAIA, an AI assistant that can autonomously research, draft, analyze, and execute tasks. "
+    "You are GAIA, an AI assistant that can autonomously research, draft, analyze, and execute tasks.\n"
     "Read these emails and generate action items that YOU (GAIA) can actually execute.\n\n"
+    "User context:\n"
+    "- Profession: {profession}\n"
+    "- Current focus: {focus}\n\n"
     "Emails:\n"
     "{emails_context}\n\n"
-    "GAIA's actual capabilities: web research, drafting emails/documents, summarizing info, searching the inbox. "
-    "GAIA cannot log into external platforms, change account settings, or fix things inside third-party tools.\n\n"
-    "Before creating any todo, ask: 'Can GAIA produce a concrete output from this?' "
-    "If yes, create it. If GAIA would just be staring at the email with no way to act, skip it.\n\n"
-    "SKIP:\n"
-    "- Emails where the only action requires logging into an external service GAIA doesn't control "
-    "(e.g. 'check your Google account security', 'fix the Ahrefs audit')\n"
-    "- Pricing/billing notifications where there's no decision to research or draft\n"
-    "- Newsletters, marketing, and pure FYI emails with no required action\n\n"
-    "GOOD examples:\n"
-    "- Someone emailing asking for a response → 'Research [person] and draft a reply'\n"
-    "- A partnership inquiry → 'Research [company] and draft talking points for a response'\n"
-    "- A legal/contract email → 'Summarize the key terms and flag anything that needs attention'\n\n"
-    "BAD examples (skip these):\n"
-    "- Google security alert → SKIP (GAIA can't audit account permissions)\n"
-    "- Ahrefs site audit failure notification → SKIP (GAIA can't fix things inside Ahrefs)\n"
-    "- Mintlify pricing change email → SKIP (no concrete output GAIA can produce)\n\n"
-    "You must generate exactly 3 todos — no more, no fewer. If fewer than 3 emails clearly qualify, combine or expand scope to reach exactly 3 GAIA-actionable items.\n\n"
+    "GAIA's capabilities: web research, drafting emails/documents, summarizing info, searching the inbox, "
+    "creating comparison tables, writing reports, preparing meeting agendas.\n"
+    "GAIA cannot: log into external platforms, change account settings, make purchases, send emails without approval.\n\n"
+    "Each todo MUST:\n"
+    "- Reference a specific person, company, or topic from the emails above\n"
+    "- Produce a concrete deliverable (a draft, a research brief, a summary, a comparison)\n"
+    "- Be something that would take a human 20+ minutes to do manually\n"
+    "- Be relevant to this user's profession and focus\n"
+    "- Start with a verb, under 60 characters\n\n"
+    "Each todo MUST NOT:\n"
+    "- Be generic ('Review your inbox', 'Organize your emails', 'Check this update')\n"
+    "- Require external platform access GAIA doesn't have\n"
+    "- Be trivially simple ('Read this email', 'Check this link')\n"
+    "- Just summarize an email with no further action\n"
+    "- Duplicate another todo in the list\n\n"
+    "Generate exactly 3 todos. If fewer than 3 emails clearly qualify, combine scope or research broader context.\n\n"
     "{format_instructions}"
 )
 
