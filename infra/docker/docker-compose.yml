@@ -323,7 +323,10 @@ services:
     command:
       - "--path.rootfs=/host"
     volumes:
-      - /:/host:ro,rslave
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc:/host/etc:ro
+      - /:/host:ro
     restart: unless-stopped
     networks:
       - gaia_network
