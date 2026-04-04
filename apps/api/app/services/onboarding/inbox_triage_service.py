@@ -8,6 +8,7 @@ from shared.py.wide_events import log
 from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.core.lazy_loader import providers
 from app.models.onboarding_models import InboxTriage, InboxTriageOutput
+from app.services.mail.mail_service import search_messages
 
 _NOISE_SENDERS = (
     "noreply@",
@@ -88,12 +89,24 @@ async def triage_inbox(
             [HumanMessage(content=prompt)]
         )
 
-        # Count unread from ALL emails (not just filtered)
-        all_unread = [e for e in emails if e.get("is_unread", False)]
+        # Fetch true unread count from Gmail (not limited to scan window)
+        true_unread = 0
+        try:
+            unread_result = await search_messages(
+                user_id=user_id,
+                query="is:unread in:inbox",
+                max_results=500,
+            )
+            true_unread = len(unread_result.get("messages", []))
+        except Exception as unread_err:
+            log.warning(
+                f"[inbox_triage] Failed to fetch true unread count: {unread_err}"
+            )
+            true_unread = len([e for e in emails if e.get("is_unread", False)])
 
         triage = InboxTriage(
             total_scanned=len(emails),
-            total_unread=len(all_unread),
+            total_unread=true_unread,
             summary=result.summary,
             important_emails=result.important_emails,
             patterns=result.patterns,

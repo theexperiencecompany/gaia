@@ -3,7 +3,12 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Tooltip } from "@heroui/tooltip";
-import { CheckmarkCircle02Icon, Edit02Icon, Globe02Icon } from "@icons";
+import {
+  CheckmarkCircle02Icon,
+  Delete02Icon,
+  Edit02Icon,
+  Globe02Icon,
+} from "@icons";
 import { m } from "motion/react";
 import Image from "next/image";
 import { useState } from "react";
@@ -138,6 +143,10 @@ export function SocialProfilesRevealCard({
     );
   };
 
+  const removeRow = (index: number) => {
+    setRows((prev) => prev.filter((_, i) => i !== index));
+  };
+
   return (
     <m.div
       className="ml-10.75 overflow-hidden rounded-2xl bg-zinc-800/60 p-4"
@@ -187,17 +196,30 @@ export function SocialProfilesRevealCard({
               Save
             </Button>
           ) : (
-            <Tooltip content="Edit" size="sm">
-              <Button
-                isIconOnly
-                size="sm"
-                variant="light"
-                onPress={() => startEdit(index)}
-                aria-label={`Edit ${row.platform}`}
-              >
-                <Edit02Icon className="size-3.5 text-zinc-500" />
-              </Button>
-            </Tooltip>
+            <div className="flex items-center gap-0.5">
+              <Tooltip content="Edit" size="sm">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="light"
+                  onPress={() => startEdit(index)}
+                  aria-label={`Edit ${row.platform}`}
+                >
+                  <Edit02Icon className="size-3.5 text-zinc-500" />
+                </Button>
+              </Tooltip>
+              <Tooltip content="Remove" size="sm">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="light"
+                  onPress={() => removeRow(index)}
+                  aria-label={`Remove ${row.platform}`}
+                >
+                  <Delete02Icon className="size-3.5 text-zinc-500" />
+                </Button>
+              </Tooltip>
+            </div>
           );
 
           return (

@@ -89,7 +89,6 @@ const PHASE_INTRO: Record<VisiblePhase, string> = {
 export const PHASE_BUTTON_TEXT: Partial<Record<VisiblePhase, string>> = {
   writing_style: "Looks good",
   social_profiles: "Confirm profiles",
-  triage: "Got it",
 };
 
 export function OnboardingRevealSequence({

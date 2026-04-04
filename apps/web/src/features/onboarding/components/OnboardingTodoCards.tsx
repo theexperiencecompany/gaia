@@ -50,7 +50,7 @@ export function OnboardingTodoCards({
 
   return (
     <m.div
-      className="flex flex-col gap-2"
+      className="flex flex-col gap-2 ml-10.75"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
@@ -59,7 +59,13 @@ export function OnboardingTodoCards({
         {visibleTodos.map((todo, index) => {
           const completed = isCompleted(todo.id);
           const active = isActive(todo.id);
-          const hovered = hoveredId === todo.id && !active && !completed;
+          const isFirst = index === 0;
+          const nothingHovered = hoveredId === null;
+          const showRunNow =
+            !isExecuting &&
+            !active &&
+            !completed &&
+            (hoveredId === todo.id || (isFirst && nothingHovered));
 
           return (
             <m.div
@@ -154,11 +160,9 @@ export function OnboardingTodoCards({
 
                 <button
                   type="button"
-                  aria-hidden={!hovered || isExecuting}
+                  aria-hidden={!showRunNow}
                   className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 rounded-lg bg-zinc-700/60 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-opacity duration-150 hover:bg-zinc-600/60 ${
-                    hovered && !isExecuting
-                      ? "opacity-100"
-                      : "pointer-events-none opacity-0"
+                    showRunNow ? "opacity-100" : "pointer-events-none opacity-0"
                   }`}
                   onClick={() => handleExecute(todo.id)}
                 >

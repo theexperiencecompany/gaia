@@ -41,7 +41,12 @@ from app.agents.memory.profile_extractor import (
     extract_username_with_llm,
     validate_username,
 )
-from app.constants.email import BATCH_SIZE, EMAIL_QUERY, MAX_RESULTS
+from app.constants.email import (
+    BATCH_SIZE,
+    EMAIL_QUERY,
+    MAX_RESULTS,
+    ONBOARDING_EMAIL_SCAN_LIMIT,
+)
 from app.db.mongodb.collections import users_collection
 from app.helpers.email_helpers import (
     mark_email_processing_complete,
@@ -173,7 +178,7 @@ async def fetch_emails_for_onboarding(
     user_id: str,
     months: int = 1,
     batch_size: int = 25,
-    max_total: int = 200,
+    max_total: int = ONBOARDING_EMAIL_SCAN_LIMIT,
     on_batch: Callable[[int], Awaitable[None]] | None = None,
 ) -> list[dict]:
     """

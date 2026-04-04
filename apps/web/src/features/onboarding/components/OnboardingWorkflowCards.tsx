@@ -17,7 +17,7 @@ export function OnboardingWorkflowCards({
 }: OnboardingWorkflowCardsProps) {
   return (
     <m.div
-      className="flex flex-col gap-2"
+      className="flex flex-col gap-2 ml-10.75"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}

@@ -38,6 +38,7 @@ from app.agents.memory.email_processor import (
     fetch_emails_for_onboarding,
     process_gmail_to_memory,
 )
+from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.models.onboarding_models import (
     InboxTriage,
     SocialProfile,
@@ -52,7 +53,10 @@ from app.services.onboarding.post_onboarding_service import (
     save_personalization_data,
     suggest_workflows_via_rag,
 )
-from app.services.onboarding.social_profile_service import extract_social_profiles
+from app.services.onboarding.social_profile_service import (
+    _canonicalize_social_url,
+    extract_social_profiles_smart,
+)
 from app.services.onboarding.writing_style_service import learn_writing_style
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.todo_service import TodoService
@@ -178,7 +182,10 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 )
 
             fetched = await fetch_emails_for_onboarding(
-                user_id, months=1, on_batch=_on_batch
+                user_id,
+                months=1,
+                max_total=ONBOARDING_EMAIL_SCAN_LIMIT,
+                on_batch=_on_batch,
             )
             emails = fetched
             count = len(fetched)
@@ -240,16 +247,37 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 f"[intelligence] Phase 1 task {i} failed: {result}", exc_info=result
             )
 
-    # Use Track B (LLM-based) profile results, fall back to Track A (URL scanning)
+    # Use Track B (LLM-based) profile results, then fill gaps with smart Track A
     if has_gmail:
         track_b_profiles = memory_result.get("extracted_profiles", [])
         if track_b_profiles:
+            # Canonicalize Track B URLs before dedup
             social_profiles = [
-                SocialProfile(platform=p["platform"], url=p["url"])
+                SocialProfile(
+                    platform=p["platform"],
+                    url=_canonicalize_social_url(p["url"]),
+                )
                 for p in track_b_profiles
             ]
-        elif emails:
-            social_profiles = extract_social_profiles(emails)
+
+        # Dedup Track B by platform (keep first)
+        seen_platforms: set[str] = set()
+        deduped_b: list[SocialProfile] = []
+        for p in social_profiles:
+            if p.platform not in seen_platforms:
+                seen_platforms.add(p.platform)
+                deduped_b.append(p)
+        social_profiles = deduped_b
+
+        # Fill gaps with smart Track A extraction
+        if emails:
+            user_email: str | None = user_doc.get("email")
+            track_b_platforms = {p.platform for p in social_profiles}
+            track_a = await extract_social_profiles_smart(emails, name, user_email)
+            for p in track_a:
+                if p.platform not in track_b_platforms:
+                    social_profiles.append(p)
+                    track_b_platforms.add(p.platform)
 
     if social_profiles:
         await _emit_progress(

@@ -15,7 +15,7 @@ Your job:
 
 Respond as JSON:
 {{
-  "summary": "Your inbox is mostly...",
+  "summary": "Your inbox is mostly... (must be a complete sentence — if the inbox is quiet, write something like 'Your inbox is mostly promotional with few personal threads.' An empty string is never acceptable.)",
   "important_emails": [
     {{
       "sender": "...",
@@ -56,7 +56,7 @@ Your job:
 Respond as JSON:
 {{
   "summary": "2-3 sentence concrete style description.",
-  "example": "The full example email text, including greeting and sign-off if they use them."
+  "example": "The full example email text, including greeting and sign-off if they use them. The 'example' field must contain at least one complete sentence. An empty string is never acceptable — if the email sample is sparse, write a plausible short email in the style observed."
 }}
 """
 
@@ -290,4 +290,30 @@ After demonstrating value, send one final message:
 Keep it conversational, 3-4 lines max.
 
 **Tone.** Direct. Confident. No filler. No "great!" or "sure!" or "of course!". No emojis.
+"""
+
+SOCIAL_PROFILE_FILTER_PROMPT = """You are helping identify which social media profiles belong to a specific user.
+
+User information:
+- Name: {user_name}
+- Email: {user_email}
+
+Below are social media profile candidates extracted from the user's emails. Each candidate shows which platform, the handle found, and the email contexts where it appeared.
+
+For each candidate, determine if this profile BELONGS TO THE USER or belongs to someone else (e.g. a newsletter, a company, another person).
+
+A profile belongs to the user if:
+- It appears in the user's sent emails
+- It appears in notification emails addressed personally to the user (e.g. "Welcome back @handle", "You posted", "Your profile was viewed", "Hi {user_name}")
+- The email context strongly suggests it is the user's own account
+
+A profile does NOT belong to the user if:
+- It only appears in newsletter footers or promotional emails
+- The handle is a company/brand account mentioned in marketing content
+- The email is a mass newsletter not personally addressed to the user
+
+Candidates:
+{candidates}
+
+Return ONLY the profiles that belong to the user. If uncertain, exclude the profile.
 """

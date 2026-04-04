@@ -41,7 +41,7 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="flex items-center gap-2"
+        className="flex items-center gap-2 ml-10.75"
       >
         <CheckmarkCircle02Icon className="size-4 text-emerald-500" />
         <span className="text-sm text-zinc-400">
@@ -52,7 +52,7 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
   }
 
   return (
-    <div className="flex flex-col items-start gap-2">
+    <div className="flex flex-col items-start gap-2 ml-10.75">
       <div className="flex flex-wrap gap-2">
         {PLATFORMS.map((platform, index) => (
           <m.div

@@ -101,6 +101,15 @@ export default function Onboarding() {
     });
   }, [flow.step, chatMessages.length, flow.loadingStatuses.length]);
 
+  // Auto-advance triage phase after a delay (no button)
+  useEffect(() => {
+    if (flow.revealPhase !== "triage") return;
+    const timer = setTimeout(() => {
+      flow.advanceRevealPhase();
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [flow.revealPhase, flow.advanceRevealPhase]);
+
   const handleFreeChatSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();

@@ -36,7 +36,8 @@ class InboxTriageOutput(BaseModel):
     """Structured output for inbox triage LLM call."""
 
     summary: str = Field(
-        description="2-3 sentence overview of the inbox written conversationally to the user"
+        min_length=1,
+        description="2-3 sentence overview of the inbox written conversationally to the user",
     )
     important_emails: list[EmailSummary] = Field(
         description="5-10 most important emails that need attention"
@@ -54,11 +55,10 @@ class WritingStyleOutput(BaseModel):
         )
     )
     example: str = Field(
-        description=(
-            "One short example email (3-6 lines) written in the user's voice, "
-            "relevant to their profession. Must reflect the observed style — "
-            "do not invent traits not seen in the emails."
-        )
+        min_length=1,
+        description="One short example email (3-6 lines) written in the user's voice, "
+        "relevant to their profession. Must reflect the observed style — "
+        "do not invent traits not seen in the emails. Must not be empty.",
     )
 
 
@@ -70,4 +70,12 @@ class WritingStyleExampleOutput(BaseModel):
             "One short example email (3-6 lines) written to match the provided style summary, "
             "relevant to the user's profession."
         )
+    )
+
+
+class SocialProfileFilterOutput(BaseModel):
+    """Structured output for the social profile ownership LLM filter."""
+
+    owned_profiles: list[dict] = Field(
+        description="List of {platform, handle} dicts for profiles that belong to the user. Empty list if none."
     )

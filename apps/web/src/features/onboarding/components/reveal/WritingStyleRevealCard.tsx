@@ -134,43 +134,41 @@ export function WritingStyleRevealCard({
       </div>
 
       {/* Example email */}
-      {(currentExample || isRegenerating) && (
-        <div className="rounded-xl bg-zinc-900 p-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <AiMail02Icon className="size-3.5 shrink-0 text-zinc-500" />
-            <p className="text-xs font-medium text-zinc-500">
-              Example email in your voice
-            </p>
-          </div>
-          <AnimatePresence mode="wait">
-            {isRegenerating ? (
-              <m.div
-                key="skeleton"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="space-y-2"
-              >
-                <Skeleton className="h-3 w-full rounded-lg" />
-                <Skeleton className="h-3 w-5/6 rounded-lg" />
-                <Skeleton className="h-3 w-4/5 rounded-lg" />
-                <Skeleton className="h-3 w-3/4 rounded-lg" />
-              </m.div>
-            ) : (
-              <m.p
-                key="example"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.25 }}
-                className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap"
-              >
-                {currentExample}
-              </m.p>
-            )}
-          </AnimatePresence>
+      <div className="rounded-xl bg-zinc-900 p-3">
+        <div className="flex items-center gap-1.5 mb-2">
+          <AiMail02Icon className="size-3.5 shrink-0 text-zinc-500" />
+          <p className="text-xs font-medium text-zinc-500">
+            Example email in your voice
+          </p>
         </div>
-      )}
+        <AnimatePresence mode="wait">
+          {isRegenerating || !currentExample ? (
+            <m.div
+              key="skeleton"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="space-y-2"
+            >
+              <Skeleton className="h-3 w-full rounded-lg" />
+              <Skeleton className="h-3 w-5/6 rounded-lg" />
+              <Skeleton className="h-3 w-4/5 rounded-lg" />
+              <Skeleton className="h-3 w-3/4 rounded-lg" />
+            </m.div>
+          ) : (
+            <m.p
+              key="example"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap"
+            >
+              {currentExample}
+            </m.p>
+          )}
+        </AnimatePresence>
+      </div>
     </m.div>
   );
 }
