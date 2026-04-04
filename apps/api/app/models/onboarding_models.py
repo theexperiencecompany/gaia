@@ -3,8 +3,10 @@ from pydantic import BaseModel, Field
 
 class WritingStyleProfile(BaseModel):
     summary: str  # natural language description of their writing style
-    sample_snippets: list[str]  # 3-5 real excerpts from sent emails (style only)
-    user_edited_sample: str | None = None  # user-edited snippet saved during onboarding
+    example: str  # one AI-composed example email in their voice, relevant to their profession
+    user_edited_summary: str | None = (
+        None  # user-edited summary saved during onboarding
+    )
 
 
 class SocialProfile(BaseModel):
@@ -46,8 +48,26 @@ class WritingStyleOutput(BaseModel):
     """Structured output for writing style analysis LLM call."""
 
     summary: str = Field(
-        description="2-3 sentence writing style profile as AI instructions. Specific about greetings, sign-offs, sentence structure, habits."
+        description=(
+            "2-3 sentence writing style description capturing concrete observable patterns: "
+            "how they greet, sign off, sentence length, formality, and any distinctive habits."
+        )
     )
-    sample_snippets: list[str] = Field(
-        description="3-5 short real quotes (1-2 sentences) showing greetings, sign-offs, characteristic phrasing"
+    example: str = Field(
+        description=(
+            "One short example email (3-6 lines) written in the user's voice, "
+            "relevant to their profession. Must reflect the observed style — "
+            "do not invent traits not seen in the emails."
+        )
+    )
+
+
+class WritingStyleExampleOutput(BaseModel):
+    """Structured output for regenerating a single example from an edited summary."""
+
+    example: str = Field(
+        description=(
+            "One short example email (3-6 lines) written to match the provided style summary, "
+            "relevant to the user's profession."
+        )
     )

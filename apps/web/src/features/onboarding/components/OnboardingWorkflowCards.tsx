@@ -1,10 +1,15 @@
 "use client";
 
-import { ZapIcon } from "@icons";
 import { m } from "motion/react";
+import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 
 interface OnboardingWorkflowCardsProps {
-  workflows: Array<{ id?: string; title: string; description?: string }>;
+  workflows: Array<{
+    id?: string;
+    title: string;
+    description?: string;
+    categories?: string[];
+  }>;
 }
 
 export function OnboardingWorkflowCards({
@@ -17,11 +22,10 @@ export function OnboardingWorkflowCards({
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
-      <div className="flex flex-row gap-3 overflow-x-auto">
+      <div className="grid grid-cols-3 gap-3">
         {workflows.map((workflow, index) => (
           <m.div
             key={workflow.id ?? `workflow-${index}`}
-            className="flex w-[200px] shrink-0 flex-col gap-1.5 rounded-2xl border border-zinc-700/50 bg-zinc-800/60 p-3"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{
@@ -30,17 +34,21 @@ export function OnboardingWorkflowCards({
               ease: [0.19, 1, 0.22, 1],
             }}
           >
-            <div className="flex items-center gap-2">
-              <ZapIcon className="size-3.5 shrink-0 text-zinc-400" />
-              <p className="truncate text-sm font-bold text-zinc-200">
-                {workflow.title}
-              </p>
-            </div>
-            {workflow.description && (
-              <p className="line-clamp-2 text-xs text-zinc-400">
-                {workflow.description}
-              </p>
-            )}
+            <UnifiedWorkflowCard
+              title={workflow.title}
+              description={workflow.description}
+              steps={
+                workflow.categories?.map((c) => ({
+                  category: c,
+                  title: c,
+                  description: "",
+                })) ?? []
+              }
+              primaryAction="none"
+              showTrigger={false}
+              showExecutions={false}
+              showActivationStatus={false}
+            />
           </m.div>
         ))}
       </div>

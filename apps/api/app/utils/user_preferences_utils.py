@@ -3,7 +3,7 @@ User preferences utilities for formatting and processing user data.
 Provides functions to format user preferences for agent system prompts.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from shared.py.wide_events import log
 
@@ -96,11 +96,13 @@ def format_writing_style_for_prompt(
     Format the user's learned writing style into a prompt block for email composition.
 
     The writing style data comes from ``user.onboarding.writing_style`` in MongoDB
-    and contains ``summary`` (str) and ``sample_snippets`` (list[str]).
+    and contains ``summary`` (str), ``example`` (str), and optionally
+    ``user_edited_summary`` (str) which takes precedence over ``summary``.
 
     Args:
-        writing_style: Dictionary with ``summary`` and ``sample_snippets`` keys,
-                       or None if no writing style was learned during onboarding.
+        writing_style: Dictionary with ``summary``, ``example``, and optionally
+                       ``user_edited_summary`` keys, or None if no writing style
+                       was learned during onboarding.
 
     Returns:
         A formatted instruction block to inject into the email composer prompt,
@@ -109,21 +111,22 @@ def format_writing_style_for_prompt(
     if not writing_style:
         return ""
 
-    summary = writing_style.get("summary", "")
-    snippets: List[str] = writing_style.get("sample_snippets", [])
+    # Prefer the user-edited summary if present
+    summary = writing_style.get("user_edited_summary") or writing_style.get(
+        "summary", ""
+    )
+    example: str = writing_style.get("example", "")
 
     if not summary:
         return ""
 
     lines = [
         "Learned Writing Style (match this tone and voice when composing the email):",
-        f"  Style Profile: {summary}",
+        f"  Style: {summary}",
     ]
 
-    if snippets:
-        lines.append("  Reference Snippets (exemplify the user's natural voice):")
-        for snippet in snippets[:3]:
-            lines.append(f'    - "{snippet}"')
+    if example:
+        lines.append(f'  Example email in their voice:\n    "{example}"')
 
     return "\n".join(lines)
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@heroui/button";
+import { ArrowRight02Icon } from "@icons";
 import { m } from "motion/react";
 import { useCallback, useEffect, useRef } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
@@ -9,9 +11,13 @@ import {
   OnboardingProgress,
 } from "@/features/onboarding/components";
 import { OnboardingPlatformConnect } from "@/features/onboarding/components/OnboardingPlatformConnect";
-import { OnboardingRevealSequence } from "@/features/onboarding/components/OnboardingRevealSequence";
+import {
+  OnboardingRevealSequence,
+  PHASE_BUTTON_TEXT,
+} from "@/features/onboarding/components/OnboardingRevealSequence";
 import { OnboardingWorkflowCards } from "@/features/onboarding/components/OnboardingWorkflowCards";
 import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
+import { FIELD_NAMES } from "@/features/onboarding/constants";
 import {
   RETRY_LABEL,
   SUBMISSION_ERROR_MSG,
@@ -160,19 +166,14 @@ export default function Onboarding() {
             onEditMessage={handleEditResponse}
             stageMessages={flow.stageMessages}
             completedStages={flow.completedStages}
-            processingContinuation={
-              flow.step.type === "todos"
-                ? flow.data.triageSummary
-                  ? "Went through your inbox. Here's what I found:"
-                  : "Set up some tasks based on your profile:"
-                : undefined
-            }
             processingContinuationChildren={
               flow.step.type === "todos" ? (
                 <OnboardingRevealSequence
                   revealPhase={flow.revealPhase}
-                  onAdvance={flow.advanceRevealPhase}
                   writingStyle={flow.data.writingStyle}
+                  profession={
+                    onboardingState.userResponses[FIELD_NAMES.PROFESSION] ?? ""
+                  }
                   socialProfiles={flow.data.socialProfiles}
                   triageSummary={flow.data.triageSummary}
                   todos={flow.data.todos}
@@ -286,7 +287,35 @@ export default function Onboarding() {
 
       {/* ── Bottom input area ── */}
       <div className="relative z-10 mx-auto w-full max-w-lg pb-3">
-        {submissionError && onboardingState.isProcessingPhase ? (
+        {flow.step.type === "todos" &&
+        PHASE_BUTTON_TEXT[
+          flow.revealPhase as keyof typeof PHASE_BUTTON_TEXT
+        ] ? (
+          <m.div
+            className="flex justify-center"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              delay: 0.3,
+              duration: 0.35,
+              ease: [0.19, 1, 0.22, 1],
+            }}
+          >
+            <Button
+              color="primary"
+              radius="full"
+              size="md"
+              endContent={<ArrowRight02Icon className="size-4" />}
+              onPress={flow.advanceRevealPhase}
+            >
+              {
+                PHASE_BUTTON_TEXT[
+                  flow.revealPhase as keyof typeof PHASE_BUTTON_TEXT
+                ]
+              }
+            </Button>
+          </m.div>
+        ) : submissionError && onboardingState.isProcessingPhase ? (
           <m.div
             className="flex flex-col items-center gap-2 px-4"
             initial={{ opacity: 0, y: 10 }}

@@ -117,7 +117,7 @@ export function OnboardingTodoCards({
                       }}
                     />
                   ) : (
-                    <div className="size-4 rounded-full border border-zinc-600" />
+                    <div className="size-5 rounded-full border-2 border-dashed border-zinc-600 mt-1" />
                   )}
                 </div>
 

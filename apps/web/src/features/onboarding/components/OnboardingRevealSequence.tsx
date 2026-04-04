@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { AnimatePresence, m } from "motion/react";
 
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
@@ -41,8 +42,8 @@ const BOT_BUBBLE_DEFAULTS = {
 
 interface OnboardingRevealSequenceProps {
   revealPhase: RevealPhase;
-  onAdvance: () => void;
-  writingStyle: { style_summary: string; sample_snippets?: string[] } | null;
+  writingStyle: { style_summary: string; example?: string } | null;
+  profession: string;
   socialProfiles: Array<{ platform: string; url: string }>;
   triageSummary: {
     total_scanned: number;
@@ -85,7 +86,7 @@ const PHASE_INTRO: Record<VisiblePhase, string> = {
   todos: REVEAL_TODOS_INTRO,
 };
 
-const PHASE_BUTTON_TEXT: Partial<Record<VisiblePhase, string>> = {
+export const PHASE_BUTTON_TEXT: Partial<Record<VisiblePhase, string>> = {
   writing_style: "Looks good",
   social_profiles: "Confirm profiles",
   triage: "Got it",
@@ -93,8 +94,8 @@ const PHASE_BUTTON_TEXT: Partial<Record<VisiblePhase, string>> = {
 
 export function OnboardingRevealSequence({
   revealPhase,
-  onAdvance,
   writingStyle,
+  profession,
   socialProfiles,
   triageSummary,
   todos,
@@ -118,7 +119,8 @@ export function OnboardingRevealSequence({
         return writingStyle ? (
           <WritingStyleRevealCard
             style_summary={writingStyle.style_summary}
-            sample_snippets={writingStyle.sample_snippets}
+            example={writingStyle.example}
+            profession={profession}
           />
         ) : null;
 
@@ -147,12 +149,6 @@ export function OnboardingRevealSequence({
     <div className="mt-3 space-y-4">
       <AnimatePresence>
         {visiblePhases.map((phase, index) => {
-          const isCurrentPhase =
-            index === visiblePhases.length - 1 && revealPhase !== "complete";
-          const buttonText = PHASE_BUTTON_TEXT[phase];
-          const showAdvanceButton =
-            isCurrentPhase && buttonText && phase !== "todos";
-
           return (
             <m.div
               key={phase}
@@ -172,30 +168,21 @@ export function OnboardingRevealSequence({
 
               {renderCard(phase)}
 
-              {showAdvanceButton && (
-                <m.button
-                  type="button"
-                  onClick={onAdvance}
-                  className="mt-2 cursor-pointer rounded-lg bg-zinc-700 px-4 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.3, duration: 0.3 }}
-                >
-                  {buttonText}
-                </m.button>
-              )}
-
               {phase === "todos" && conversationId && !isExecutingTodo && (
-                <m.button
-                  type="button"
-                  onClick={onSkipTodos}
-                  className="cursor-pointer text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+                <m.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 1.5, duration: 0.4 }}
                 >
-                  Skip for now
-                </m.button>
+                  <Button
+                    variant="light"
+                    size="sm"
+                    onPress={onSkipTodos}
+                    className="text-zinc-500"
+                  >
+                    Skip for now
+                  </Button>
+                </m.div>
               )}
             </m.div>
           );

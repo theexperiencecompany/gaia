@@ -31,7 +31,11 @@ from app.services.onboarding.onboarding_service import (
     update_onboarding_preferences,
 )
 from app.services.onboarding.social_profile_service import save_confirmed_profiles
-from app.services.onboarding.writing_style_service import save_user_edited_sample
+from app.services.onboarding.writing_style_service import (
+    regenerate_example_for_style,
+    save_generated_example,
+    save_user_edited_summary,
+)
 from app.services.user_service import get_user_by_id
 
 router = APIRouter()
@@ -340,8 +344,10 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                 "first_message_conversation_id"
             ),
             "writing_style": {
-                "style_summary": raw_writing_style.get("summary", ""),
-                "sample_snippets": raw_writing_style.get("sample_snippets", []),
+                "style_summary": raw_writing_style.get(
+                    "user_edited_summary", raw_writing_style.get("summary", "")
+                ),
+                "example": raw_writing_style.get("example", ""),
             }
             if raw_writing_style
             else None,
@@ -510,7 +516,12 @@ async def _execute_todo_background(
 
 
 class WritingStyleEditRequest(BaseModel):
-    edited_sample: str
+    edited_summary: str
+
+
+class WritingStyleRegenerateRequest(BaseModel):
+    edited_summary: str
+    profession: str = ""
 
 
 @router.post("/writing-style", response_model=dict)
@@ -518,15 +529,44 @@ async def save_writing_style(
     request: WritingStyleEditRequest,
     user: dict = Depends(get_current_user),
 ) -> dict:
-    """Save a user-edited writing style sample from the onboarding reveal card."""
+    """Save a user-edited writing style summary from the onboarding reveal card."""
     user_id: str = user["user_id"]
     log.set(user={"id": user_id}, onboarding={"operation": "save_writing_style"})
     try:
-        await save_user_edited_sample(user_id, request.edited_sample.strip())
+        await save_user_edited_summary(user_id, request.edited_summary.strip())
         return {"success": True}
     except Exception as e:
         log.error(f"[onboarding] Failed to save writing style: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save writing style")
+
+
+@router.post("/writing-style/regenerate-example", response_model=dict)
+async def regenerate_writing_style_example(
+    request: WritingStyleRegenerateRequest,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """
+    Generate a new example email from an edited writing style summary.
+    Called after the user saves their edited summary on the reveal card.
+    """
+    user_id: str = user["user_id"]
+    log.set(user={"id": user_id}, onboarding={"operation": "regenerate_style_example"})
+    try:
+        example = await regenerate_example_for_style(
+            summary=request.edited_summary.strip(),
+            profession=request.profession,
+        )
+        if example:
+            await save_generated_example(user_id, example)
+        return {"example": example}
+    except Exception as e:
+        log.error(
+            f"[onboarding] Failed to regenerate writing style example: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to regenerate writing style example"
+        )
 
 
 # ── Social profiles confirm ───────────────────────────────────────────────────

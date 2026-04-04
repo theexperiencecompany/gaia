@@ -28,23 +28,58 @@ Respond as JSON:
 }}
 """
 
-WRITING_STYLE_PROMPT = """Analyze these email excerpts written by the same person.
-Create a concise writing style profile that captures how they actually communicate.
+WRITING_STYLE_PROMPT = """You are analyzing sent emails to build a writing style profile for a {profession}.
 
-Focus on concrete patterns, not abstract descriptions:
-- How do they start emails? (e.g., "Hey [name]", "Hi!", no greeting, straight to the point)
-- How do they sign off? (e.g., "Best,", "Thanks!", "Cheers", no sign-off)
-- Sentence length and structure (short punchy sentences vs. longer detailed ones)
-- Formality level with specific evidence
-- Any distinctive habits (e.g., uses "lol", exclamation marks, dashes, ellipses, all lowercase)
+IMPORTANT: Only describe patterns you can directly observe in the emails below. Do not invent traits.
 
-Emails:
+Sent emails to analyze:
 {email_samples}
+
+Your job:
+1. Write a 2-3 sentence style summary capturing concrete, observable patterns:
+   - How they open emails (exact phrasing if consistent — e.g. "Hey [name]", "Hi!", no greeting)
+   - How they sign off (e.g. "Best,", "Thanks!", "Cheers", nothing)
+   - Sentence length and structure
+   - Formality level with specific evidence from the emails
+   - Any recurring habits (exclamation marks, ellipses, lowercase, dashes, specific words)
+   Be specific: instead of "casual tone" say "opens with Hey, drops periods in short replies".
+
+2. Write one short example email (3-6 lines) that a {profession} might send — written entirely in
+   this person's observed voice. The scenario should be relevant to a {profession}:
+   - Student → emailing a professor about an assignment or extension
+   - Founder → cold outreach to an investor or potential partner
+   - Designer → following up with a client on feedback
+   - Engineer → async update to a teammate about a PR or bug
+   - Default → a professional follow-up relevant to their work
+   The example must reflect their actual style. Do not add traits not seen in the emails.
 
 Respond as JSON:
 {{
-  "summary": "A 2-3 sentence profile written as instructions for an AI to mimic this person's voice. Be specific: instead of 'casual tone', say 'starts with Hey, uses short sentences, drops periods in quick replies'. Instead of 'professional', say 'always opens with Hi [Name], structures responses with numbered points, signs off with Best'.",
-  "sample_snippets": ["3-5 short real quotes (1-2 sentences each) that best show their voice — include their actual greetings, sign-offs, and characteristic phrasing"]
+  "summary": "2-3 sentence concrete style description.",
+  "example": "The full example email text, including greeting and sign-off if they use them."
+}}
+"""
+
+WRITING_STYLE_EXAMPLE_PROMPT = """You are generating a writing style example email.
+
+User's writing style:
+{summary}
+
+Profession: {profession}
+
+Write one short example email (3-6 lines) that this person might send, relevant to their profession:
+- Student → emailing a professor about an assignment or extension
+- Founder → cold outreach to an investor or potential partner
+- Designer → following up with a client on feedback
+- Engineer → async update to a teammate about a PR or bug
+- Default → a professional follow-up relevant to their work
+
+The email must match the style description exactly. Include a greeting and sign-off only if the
+style says they use them.
+
+Respond as JSON:
+{{
+  "example": "The full example email text."
 }}
 """
 

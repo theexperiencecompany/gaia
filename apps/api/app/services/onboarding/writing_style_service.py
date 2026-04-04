@@ -6,21 +6,32 @@ from bson import ObjectId
 from langchain_core.messages import HumanMessage
 from shared.py.wide_events import log
 
-from app.agents.prompts.onboarding_prompts import WRITING_STYLE_PROMPT
+from app.agents.prompts.onboarding_prompts import (
+    WRITING_STYLE_EXAMPLE_PROMPT,
+    WRITING_STYLE_PROMPT,
+)
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import users_collection
-from app.models.onboarding_models import WritingStyleOutput, WritingStyleProfile
+from app.models.onboarding_models import (
+    WritingStyleExampleOutput,
+    WritingStyleOutput,
+    WritingStyleProfile,
+)
 from app.services.mail.mail_service import search_messages
 
 
 async def learn_writing_style(
     user_id: str,
+    profession: str = "",
 ) -> Optional[WritingStyleProfile]:
     """
-    Fetch last 100 sent emails and analyze writing style.
+    Fetch the user's 50 most recent sent emails and analyze writing style.
+    No truncation — full email bodies are passed to the LLM so greetings,
+    sign-offs, and sentence patterns are all visible.
 
     Args:
         user_id: The user's ID
+        profession: The user's profession (used to generate a relevant example)
 
     Returns:
         WritingStyleProfile or None if insufficient sent emails
@@ -29,7 +40,7 @@ async def learn_writing_style(
         result = await search_messages(
             user_id=user_id,
             query="in:sent",
-            max_results=100,
+            max_results=50,
         )
 
         sent_emails = result.get("messages", [])
@@ -40,7 +51,7 @@ async def learn_writing_style(
             )
             return None
 
-        # Extract body text, skip very short emails and auto-replies
+        # Collect full bodies — skip auto-replies and near-empty emails
         samples: list[str] = []
         for email in sent_emails:
             body = email.get("body", email.get("snippet", "")).strip()
@@ -52,8 +63,7 @@ async def learn_writing_style(
                 for kw in ["out of office", "auto-reply", "automatic"]
             ):
                 continue
-            # Truncate long emails to first 300 chars for style analysis
-            samples.append(body[:300])
+            samples.append(body)
             if len(samples) >= 30:
                 break
 
@@ -67,14 +77,17 @@ async def learn_writing_style(
             raise RuntimeError("LLM provider not available")
 
         structured_llm = llm.with_structured_output(WritingStyleOutput)
-        prompt = WRITING_STYLE_PROMPT.format(email_samples=email_samples_text)
+        prompt = WRITING_STYLE_PROMPT.format(
+            profession=profession or "professional",
+            email_samples=email_samples_text,
+        )
         result_data: WritingStyleOutput = await structured_llm.ainvoke(
             [HumanMessage(content=prompt)]
         )
 
         profile = WritingStyleProfile(
             summary=result_data.summary,
-            sample_snippets=result_data.sample_snippets[:5],
+            example=result_data.example,
         )
 
         log.info(
@@ -90,13 +103,60 @@ async def learn_writing_style(
         return None
 
 
-async def save_user_edited_sample(user_id: str, edited_sample: str) -> None:
+async def regenerate_example_for_style(
+    summary: str,
+    profession: str = "",
+) -> str:
     """
-    Persist a user-edited writing style sample to MongoDB.
-    This becomes the canonical reference used when composing emails on behalf of the user.
+    Generate a new example email from an edited writing style summary.
+    Called after the user edits their style description on the reveal card.
+
+    Args:
+        summary: The (possibly edited) writing style description
+        profession: The user's profession for scenario relevance
+
+    Returns:
+        A new example email string, or empty string on failure
+    """
+    try:
+        llm = await providers.aget("gemini_llm")
+        if llm is None:
+            raise RuntimeError("LLM provider not available")
+
+        structured_llm = llm.with_structured_output(WritingStyleExampleOutput)
+        prompt = WRITING_STYLE_EXAMPLE_PROMPT.format(
+            summary=summary,
+            profession=profession or "professional",
+        )
+        result_data: WritingStyleExampleOutput = await structured_llm.ainvoke(
+            [HumanMessage(content=prompt)]
+        )
+        return result_data.example
+
+    except Exception as e:
+        log.error(
+            f"[writing_style] Failed to regenerate example: {e}",
+            exc_info=True,
+        )
+        return ""
+
+
+async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
+    """
+    Persist a user-edited writing style summary to MongoDB.
+    This becomes the canonical style used when composing emails on behalf of the user.
     """
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.writing_style.user_edited_sample": edited_sample}},
+        {"$set": {"onboarding.writing_style.user_edited_summary": edited_summary}},
     )
-    log.info(f"[writing_style] Saved user-edited sample for {user_id}")
+    log.info(f"[writing_style] Saved user-edited summary for {user_id}")
+
+
+async def save_generated_example(user_id: str, example: str) -> None:
+    """Persist a regenerated example email to MongoDB."""
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"onboarding.writing_style.example": example}},
+    )
+    log.info(f"[writing_style] Saved regenerated example for {user_id}")

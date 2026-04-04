@@ -81,8 +81,8 @@ export const useOnboardingWebSocket = (
         28,
         {
           style_summary: data.writing_style.style_summary,
-          ...(data.writing_style.sample_snippets && {
-            sample_snippets: data.writing_style.sample_snippets,
+          ...(data.writing_style.example && {
+            example: data.writing_style.example,
           }),
         },
       );

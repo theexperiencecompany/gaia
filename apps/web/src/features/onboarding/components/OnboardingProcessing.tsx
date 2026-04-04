@@ -149,7 +149,7 @@ export const OnboardingProcessing = ({
 
   return (
     <m.div
-      className="mt-3 flex flex-col gap-3 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl"
+      className="mt-3 flex flex-col gap-3 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl w-96"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
@@ -257,7 +257,7 @@ export const OnboardingProcessing = ({
         )}
       </AnimatePresence>
 
-      <m.div className="mt-3 h-0.5 w-full overflow-hidden rounded-full bg-zinc-700">
+      <m.div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
         <m.div
           className="h-full rounded-full bg-primary"
           animate={{ width: `${processingProgress ?? 0}%` }}

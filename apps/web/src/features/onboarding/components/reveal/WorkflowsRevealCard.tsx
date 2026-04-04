@@ -14,7 +14,7 @@ export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
 
   return (
     <m.div
-      className="overflow-hidden rounded-2xl bg-zinc-800/60 p-4"
+      className="ml-10.75 overflow-hidden rounded-2xl bg-zinc-800/60 p-4"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 280, damping: 22 }}

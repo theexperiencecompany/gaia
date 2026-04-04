@@ -196,7 +196,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         async def _learn_style() -> None:
             nonlocal writing_style
             t0 = time.monotonic()
-            writing_style = await learn_writing_style(user_id)
+            writing_style = await learn_writing_style(user_id, profession=profession)
             log.info(
                 f"[intelligence:timing] learn_writing_style: {time.monotonic() - t0:.1f}s"
             )
@@ -209,9 +209,9 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                     "style_summary": writing_style.summary
                     if writing_style and writing_style.summary
                     else "",
-                    "sample_snippets": writing_style.sample_snippets[:3]
-                    if writing_style and writing_style.sample_snippets
-                    else [],
+                    "example": writing_style.example
+                    if writing_style and writing_style.example
+                    else "",
                 },
             )
 
@@ -429,14 +429,16 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         f"[intelligence:timing] generate_first_message: {time.monotonic() - t_msg:.1f}s"
     )
 
-    # Persist writing style and social profiles in parallel with seeding
+    # Persist writing style, social profiles, and triage in parallel with seeding.
+    # Writing style is written to sub-fields only (never the whole object) so that
+    # any user_edited_summary already saved via POST /writing-style is preserved.
+    # Social profiles are only written if the user has not already confirmed them
+    # via POST /social-profiles — prevents overwriting user edits made while the
+    # pipeline was still running.
     update_fields: dict = {}
     if writing_style:
-        update_fields["onboarding.writing_style"] = writing_style.model_dump()
-    if social_profiles:
-        update_fields["onboarding.social_profiles"] = [
-            p.model_dump() for p in social_profiles
-        ]
+        update_fields["onboarding.writing_style.summary"] = writing_style.summary
+        update_fields["onboarding.writing_style.example"] = writing_style.example
     if triage:
         update_fields["onboarding.triage_summary"] = {
             "total_scanned": triage.total_scanned,
@@ -467,6 +469,22 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         if update_fields:
             await users_collection.update_one(
                 {"_id": ObjectId(user_id)}, {"$set": update_fields}
+            )
+        # Only persist extracted social profiles if the user has not already
+        # confirmed their own via POST /social-profiles (which sets the same field).
+        if social_profiles:
+            await users_collection.update_one(
+                {
+                    "_id": ObjectId(user_id),
+                    "onboarding.social_profiles": {"$exists": False},
+                },
+                {
+                    "$set": {
+                        "onboarding.social_profiles": [
+                            p.model_dump() for p in social_profiles
+                        ]
+                    }
+                },
             )
 
     conversation_id, _ = await asyncio.gather(_seed(), _persist_profiles())
@@ -617,6 +635,17 @@ class _WorkflowSpec(BaseModel):
     description: str = Field(
         description="1-2 sentences: what triggers it, what it does, what output it produces"
     )
+    categories: list[str] = Field(
+        description=(
+            "1-3 tool/integration categories this workflow uses. "
+            "Pick only from: gmail, googlecalendar, slack, notion, github, linear, "
+            "googledocs, googletasks, todoist, zoom, googlemeet, hubspot, airtable, "
+            "trello, asana, clickup, twitter, linkedin, search, documents, todos, "
+            "reminders, notifications, development. "
+            "Only include categories that are genuinely relevant to the workflow."
+        ),
+        default_factory=list,
+    )
 
 
 class _WorkflowList(BaseModel):
@@ -695,6 +724,7 @@ async def _create_onboarding_workflows(
                             "id": str(workflow.id),
                             "title": safe_title,
                             "description": safe_desc,
+                            "categories": spec.categories[:3],
                         }
                     )
                 except Exception as e:

@@ -1,126 +1,176 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
-import { Edit02Icon } from "@icons";
+import { Button } from "@heroui/button";
+import { Textarea } from "@heroui/input";
+import { Skeleton } from "@heroui/skeleton";
+import { AiMail02Icon, Edit02Icon, QuillWrite01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import { useState } from "react";
 import { apiService } from "@/lib/api/service";
-import { WRITING_STYLE_LABEL } from "../../constants/messages";
 import type { WritingStyleResults } from "../../types/websocket";
 
-type WritingStyleRevealCardProps = WritingStyleResults;
+const MIN_LENGTH = 20;
+
+interface WritingStyleRevealCardProps extends WritingStyleResults {
+  profession?: string;
+}
 
 export function WritingStyleRevealCard({
   style_summary,
-  sample_snippets,
+  example,
+  profession = "",
 }: WritingStyleRevealCardProps) {
-  const snippet = sample_snippets?.[0] ?? null;
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedValue, setEditedValue] = useState(snippet ?? "");
+  const [isEditingSummary, setIsEditingSummary] = useState(false);
+  const [summaryValue, setSummaryValue] = useState(style_summary);
+  const [currentExample, setCurrentExample] = useState(example ?? "");
   const [isSaving, setIsSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [touched, setTouched] = useState(false);
+
+  const isTooShort = summaryValue.trim().length < MIN_LENGTH;
+  const showError = touched && isTooShort;
 
   const handleSave = async () => {
-    if (!editedValue.trim() || isSaving) return;
+    setTouched(true);
+    if (isTooShort || isSaving) return;
     setIsSaving(true);
+    setIsEditingSummary(false);
+    setTouched(false);
     try {
       await apiService.post("/onboarding/writing-style", {
-        edited_sample: editedValue.trim(),
+        edited_summary: summaryValue.trim(),
       });
-      setSaved(true);
-      setIsEditing(false);
+      setIsRegenerating(true);
+      const res = await apiService.post<{ example: string }>(
+        "/onboarding/writing-style/regenerate-example",
+        { edited_summary: summaryValue.trim(), profession },
+      );
+      if (res.example) {
+        setCurrentExample(res.example);
+      }
     } catch {
       // silent — non-blocking
     } finally {
       setIsSaving(false);
+      setIsRegenerating(false);
     }
+  };
+
+  const handleCancel = () => {
+    setIsEditingSummary(false);
+    setSummaryValue(style_summary);
+    setTouched(false);
   };
 
   return (
     <m.div
-      className="overflow-hidden rounded-2xl bg-zinc-800/60 p-4"
+      className="overflow-hidden rounded-2xl bg-zinc-800/60 p-4 space-y-3 ml-10.75"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 280, damping: 22 }}
     >
-      <p className="mb-2 text-xs text-zinc-400">{WRITING_STYLE_LABEL}</p>
-
-      <m.p
-        className="pl-3 text-sm text-zinc-400"
-        initial={{ opacity: 0, x: -6 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.06, duration: 0.25, ease: [0.19, 1, 0.22, 1] }}
-      >
-        {style_summary}
-      </m.p>
-
-      <AnimatePresence>
-        {snippet && !saved && (
-          <m.div
-            className="mt-3 pl-3"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ delay: 0.12, duration: 0.25 }}
+      {/* Editable summary */}
+      <div className="rounded-xl bg-zinc-900 p-3">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <div className="flex items-center gap-1.5">
+            <QuillWrite01Icon className="size-3.5 shrink-0 text-zinc-500" />
+            <p className="text-xs font-medium text-zinc-500">
+              Your email writing style
+            </p>
+          </div>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            aria-label="Edit writing style"
+            onPress={() => setIsEditingSummary(true)}
+            className="shrink-0 -mt-0.5 -mr-1 text-zinc-600 hover:text-zinc-400 min-w-6 w-6 h-6"
+            style={{ visibility: isEditingSummary ? "hidden" : "visible" }}
           >
-            {isEditing ? (
-              <div className="flex flex-col gap-2">
-                <textarea
-                  className="w-full resize-none rounded-xl bg-zinc-900 px-3 py-2 text-xs text-zinc-300 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-zinc-600"
-                  rows={3}
-                  value={editedValue}
-                  onChange={(e) => setEditedValue(e.target.value)}
-                />
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="flex items-center gap-1.5 rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-600 disabled:opacity-50"
-                  >
-                    {isSaving ? <Spinner size="sm" color="current" /> : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditing(false);
-                      setEditedValue(snippet);
-                    }}
-                    className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
+            <Edit02Icon className="size-3.5" />
+          </Button>
+        </div>
+
+        {isEditingSummary ? (
+          <>
+            <Textarea
+              value={summaryValue}
+              onValueChange={(v) => {
+                setSummaryValue(v);
+                setTouched(true);
+              }}
+              minRows={3}
+              variant="flat"
+              isInvalid={showError}
+              errorMessage={
+                showError ? "Style description is too short." : undefined
+              }
+              classNames={{
+                inputWrapper: "bg-zinc-800 shadow-none",
+                input: "text-sm text-zinc-200 leading-relaxed",
+              }}
+              // biome-ignore lint/a11y/noAutofocus: intentional focus on edit
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-2 mt-2">
+              <Button size="sm" variant="light" onPress={handleCancel}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                color="primary"
+                isLoading={isSaving}
+                onPress={handleSave}
+              >
+                Save
+              </Button>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-zinc-200 leading-relaxed">
+            {summaryValue}
+          </p>
+        )}
+      </div>
+
+      {/* Example email */}
+      {(currentExample || isRegenerating) && (
+        <div className="rounded-xl bg-zinc-900 p-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <AiMail02Icon className="size-3.5 shrink-0 text-zinc-500" />
+            <p className="text-xs font-medium text-zinc-500">
+              Example email in your voice
+            </p>
+          </div>
+          <AnimatePresence mode="wait">
+            {isRegenerating ? (
+              <m.div
+                key="skeleton"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="space-y-2"
+              >
+                <Skeleton className="h-3 w-full rounded-lg" />
+                <Skeleton className="h-3 w-5/6 rounded-lg" />
+                <Skeleton className="h-3 w-4/5 rounded-lg" />
+                <Skeleton className="h-3 w-3/4 rounded-lg" />
+              </m.div>
             ) : (
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-xs italic text-zinc-500 leading-relaxed">
-                  &ldquo;{snippet}&rdquo;
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="shrink-0 text-zinc-600 transition-colors hover:text-zinc-400"
-                  aria-label="Edit writing style example"
-                >
-                  <Edit02Icon className="size-3.5" />
-                </button>
-              </div>
+              <m.p
+                key="example"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap"
+              >
+                {currentExample}
+              </m.p>
             )}
-          </m.div>
-        )}
-
-        {saved && (
-          <m.p
-            key="saved"
-            className="mt-2 pl-3 text-xs text-emerald-400"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-          >
-            Style saved.
-          </m.p>
-        )}
-      </AnimatePresence>
+          </AnimatePresence>
+        </div>
+      )}
     </m.div>
   );
 }

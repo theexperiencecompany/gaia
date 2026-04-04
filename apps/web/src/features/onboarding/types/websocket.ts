@@ -28,7 +28,7 @@ export interface PersonalizationData {
     steps: Array<{ category: string }>;
   }>;
   // Stage data for reveal card reconstruction on page reload
-  writing_style?: { style_summary: string; sample_snippets?: string[] } | null;
+  writing_style?: { style_summary: string; example?: string } | null;
   social_profiles?: Array<{ platform: string; url: string }> | null;
   triage_summary?: {
     total_scanned: number;
@@ -70,7 +70,7 @@ export interface InboxScanResults {
 
 export interface WritingStyleResults {
   style_summary: string;
-  sample_snippets?: string[];
+  example?: string;
 }
 
 export interface SocialProfileResult {
@@ -104,7 +104,12 @@ export interface TodoResults {
 }
 
 export interface WorkflowResults {
-  workflows: Array<{ id?: string; title: string; description?: string }>;
+  workflows: Array<{
+    id?: string;
+    title: string;
+    description?: string;
+    categories?: string[];
+  }>;
 }
 
 export type ProgressResults =

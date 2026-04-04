@@ -1,0 +1,304 @@
+"use client";
+
+import { useState } from "react";
+import { OnboardingPlatformConnect } from "@/features/onboarding/components/OnboardingPlatformConnect";
+import { OnboardingProcessing } from "@/features/onboarding/components/OnboardingProcessing";
+import { OnboardingTodoCards } from "@/features/onboarding/components/OnboardingTodoCards";
+import { OnboardingWorkflowCards } from "@/features/onboarding/components/OnboardingWorkflowCards";
+import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
+import { SocialProfilesRevealCard } from "@/features/onboarding/components/reveal/SocialProfilesRevealCard";
+import { TriageRevealCard } from "@/features/onboarding/components/reveal/TriageRevealCard";
+import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/WritingStyleRevealCard";
+
+// ── Dummy data ────────────────────────────────────────────────────────────────
+
+const DUMMY_WRITING_STYLE = {
+  style_summary:
+    "Opens with 'Hey' or 'Hi [name]', rarely uses formal salutations. Keeps sentences short and punchy — rarely more than 2 clauses. Signs off with 'Cheers' or just their name. Uses lowercase occasionally in casual threads and drops trailing periods on short replies.",
+  example:
+    "Hey Sarah,\n\nJust saw your message — totally agree on pushing the deadline. Let me loop in the design team and get back to you by EOD.\n\nCheers,\nAryan",
+  profession: "Founder",
+};
+
+const DUMMY_SOCIAL_PROFILES = {
+  profiles: [
+    { platform: "twitter", url: "https://twitter.com/aryanranderiya" },
+    { platform: "linkedin", url: "https://linkedin.com/in/aryanranderiya" },
+    { platform: "github", url: "https://github.com/aryanranderiya" },
+  ],
+};
+
+const DUMMY_TRIAGE = {
+  total_scanned: 312,
+  total_unread: 47,
+  summary:
+    "Your inbox is dominated by investor updates, product feedback threads, and team async. Three threads from Y Combinator partners look time-sensitive. Most of the noise is SaaS newsletters and GitHub notifications.",
+  patterns: [
+    "Investor updates",
+    "Team async",
+    "GitHub notifications",
+    "Product feedback",
+    "SaaS newsletters",
+  ],
+};
+
+const DUMMY_TODOS = [
+  {
+    id: "1",
+    title: "Research top 5 VCs active in AI infra and summarize thesis fit",
+    source_email: {
+      sender: "Michael Seibel <ms@ycombinator.com>",
+      subject: "Re: GAIA — office hours",
+    },
+  },
+  {
+    id: "2",
+    title: "Draft cold outreach for warm investor introductions",
+    description: "Based on your current raise and existing network overlap",
+  },
+  {
+    id: "3",
+    title: "Break down Series A fundraising timeline into weekly milestones",
+    source_email: {
+      sender: "Stripe Atlas <atlas@stripe.com>",
+      subject: "Your incorporation docs are ready",
+    },
+  },
+];
+
+const DUMMY_WORKFLOWS = [
+  {
+    id: "1",
+    title: "Flag investor emails and draft follow-ups",
+    description:
+      "Detects emails from known investors or VC domains, drafts a personalized follow-up, and adds it to your review queue.",
+    categories: ["gmail", "googlecalendar"],
+  },
+  {
+    id: "2",
+    title: "Summarize new bug reports with steps to reproduce",
+    description:
+      "Monitors GitHub and Linear for new bug reports, cross-references with your codebase, and creates a summary with reproduction steps.",
+    categories: ["github", "linear"],
+  },
+  {
+    id: "3",
+    title: "Daily standup digest from Slack threads",
+    description:
+      "Every morning, summarizes unread Slack threads and open Linear issues into a concise standup brief.",
+    categories: ["slack", "linear", "notifications"],
+  },
+];
+
+const DUMMY_HOLO_CARD = {
+  house: "bluehaven" as const,
+  name: "Aryan",
+  personality_phrase: "Midnight Architect",
+  user_bio:
+    "Aryan ships code like it owes him money — fast, opinionated, and somehow always elegant. The type to redesign an entire onboarding flow at 2am because something felt 3px off. Unreasonable ambition, very reasonable commit messages.",
+  account_number: 1247,
+  member_since: "April 2025",
+  overlay_color: "rgba(59, 130, 246, 0.15)",
+  overlay_opacity: 40,
+  holo_card_id: "demo-card-id",
+};
+
+// ── Processing simulation ─────────────────────────────────────────────────────
+
+const GMAIL_STAGES = [
+  "scanning_inbox",
+  "finding_profiles",
+  "triaging",
+  "creating_todos",
+  "creating_workflows",
+];
+
+function ProcessingDemo() {
+  const [completedStages, setCompletedStages] = useState<Set<string>>(
+    new Set(),
+  );
+  const [progress, setProgress] = useState(0);
+  const [stageMessages] = useState<Record<string, string>>({
+    scanning_inbox: "312 emails scanned",
+    finding_profiles: "3 profiles found",
+    triaging: "47 unread prioritised",
+    creating_todos: "3 action items created",
+    creating_workflows: "2 automations set up",
+  });
+
+  const advance = () => {
+    const nextIdx = completedStages.size;
+    if (nextIdx >= GMAIL_STAGES.length) return;
+    const next = GMAIL_STAGES[nextIdx];
+    if (!next) return;
+    setCompletedStages((prev) => new Set([...prev, next]));
+    setProgress(Math.round(((nextIdx + 1) / GMAIL_STAGES.length) * 100));
+  };
+
+  const reset = () => {
+    setCompletedStages(new Set());
+    setProgress(0);
+  };
+
+  return (
+    <DemoSection label="OnboardingProcessing">
+      <div className="flex flex-col gap-4">
+        <OnboardingProcessing
+          hasGmail
+          isIntelligenceComplete={completedStages.size === GMAIL_STAGES.length}
+          intelligenceConversationId={
+            completedStages.size === GMAIL_STAGES.length ? "demo-convo" : null
+          }
+          onComplete={() => {}}
+          processingProgress={progress}
+          stageMessages={stageMessages}
+          completedStages={completedStages}
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={advance}
+            disabled={completedStages.size === GMAIL_STAGES.length}
+            className="cursor-pointer rounded-lg bg-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600 disabled:opacity-40"
+          >
+            Complete next stage →
+          </button>
+          <button
+            type="button"
+            onClick={reset}
+            className="cursor-pointer rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+    </DemoSection>
+  );
+}
+
+// ── Todo cards simulation ─────────────────────────────────────────────────────
+
+function TodoCardsDemo() {
+  const [executingId, setExecutingId] = useState<string | null>(null);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+
+  const handleExecute = (id: string) => {
+    setExecutingId(id);
+    setTimeout(() => {
+      setCompletedIds((prev) => new Set([...prev, id]));
+      setExecutingId(null);
+    }, 1800);
+  };
+
+  return (
+    <DemoSection label="OnboardingTodoCards">
+      <OnboardingTodoCards
+        todos={DUMMY_TODOS}
+        onExecuteTodo={handleExecute}
+        isExecuting={executingId !== null}
+        executingTodoId={executingId}
+        completedTodoIds={completedIds}
+      />
+    </DemoSection>
+  );
+}
+
+// ── Platform connect simulation ───────────────────────────────────────────────
+
+function PlatformConnectDemo() {
+  const [connected, setConnected] = useState<string | null>(null);
+  return (
+    <DemoSection label="OnboardingPlatformConnect">
+      <OnboardingPlatformConnect
+        onConnect={(p) => setConnected(p)}
+        onSkip={() => setConnected(null)}
+        connectedPlatform={connected}
+      />
+    </DemoSection>
+  );
+}
+
+// ── Layout helpers ────────────────────────────────────────────────────────────
+
+function DemoSection({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-600">
+        {label}
+      </p>
+      {children}
+      <div className="mt-2 border-t border-zinc-800" />
+    </section>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function OnboardingDemoPage() {
+  return (
+    <div className="h-full overflow-y-auto bg-primary-bg px-6 py-16">
+      <div className="mx-auto max-w-2xl space-y-10">
+        <div className="mb-10">
+          <p className="text-xs font-mono uppercase tracking-widest text-zinc-600">
+            Design sandbox
+          </p>
+          <h1 className="mt-1 text-xl font-medium text-zinc-200">
+            Onboarding Components
+          </h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            All components with simulated dummy data. Not wired to backend.
+          </p>
+        </div>
+
+        {/* Processing widget */}
+        <ProcessingDemo />
+
+        {/* Writing style */}
+        <DemoSection label="WritingStyleRevealCard">
+          <WritingStyleRevealCard
+            style_summary={DUMMY_WRITING_STYLE.style_summary}
+            example={DUMMY_WRITING_STYLE.example}
+            profession={DUMMY_WRITING_STYLE.profession}
+          />
+        </DemoSection>
+
+        {/* Social profiles */}
+        <DemoSection label="SocialProfilesRevealCard">
+          <SocialProfilesRevealCard profiles={DUMMY_SOCIAL_PROFILES.profiles} />
+        </DemoSection>
+
+        {/* Triage */}
+        <DemoSection label="TriageRevealCard">
+          <TriageRevealCard
+            total_scanned={DUMMY_TRIAGE.total_scanned}
+            total_unread={DUMMY_TRIAGE.total_unread}
+            summary={DUMMY_TRIAGE.summary}
+            patterns={DUMMY_TRIAGE.patterns}
+          />
+        </DemoSection>
+
+        {/* Todos */}
+        <TodoCardsDemo />
+
+        {/* Workflows */}
+        <DemoSection label="OnboardingWorkflowCards">
+          <OnboardingWorkflowCards workflows={DUMMY_WORKFLOWS} />
+        </DemoSection>
+
+        {/* Platform connect */}
+        <PlatformConnectDemo />
+
+        {/* Holo card */}
+        <DemoSection label="HoloCardReveal">
+          <HoloCardReveal personalizationData={DUMMY_HOLO_CARD} />
+        </DemoSection>
+      </div>
+    </div>
+  );
+}
