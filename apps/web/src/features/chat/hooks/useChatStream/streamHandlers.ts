@@ -1,0 +1,513 @@
+import type { EventSourceMessage } from "@microsoft/fetch-event-source";
+import {
+  mergeToolOutputIntoToolData,
+  parseChatStreamEvent,
+  type SubagentEndPayload,
+  type SubagentStartPayload,
+  upsertTodoProgressToolData,
+} from "@shared/chat";
+import type {
+  SubagentGroupData,
+  ToolCallEntry,
+  ToolDataEntry,
+} from "@/config/registries/toolRegistry";
+import { parseStreamData } from "@/features/chat/hooks/useStreamDataParser";
+import { toast } from "@/lib/toast";
+import { useChatStore } from "@/stores/chatStore";
+import { useLoadingStore } from "@/stores/loadingStore";
+import type { MessageType } from "@/types/features/convoTypes";
+import type { TodoProgressSnapshot } from "@/types/features/todoProgressTypes";
+import { updateSubagentInToolData } from "./subagentTree";
+import type { StreamContext } from "./types";
+
+export interface StreamHandlerDeps {
+  ctx: StreamContext;
+  updateBotMessage: (overrides: Partial<MessageType>) => void;
+  updateBotMessageInStore: (conversationId: string) => void;
+  schedulePersist: (conversationId: string) => void;
+  resolveConversationId: () => string | null;
+  handleNewConversation: (data: {
+    conversation_id: string;
+    conversation_description: string | null;
+    bot_message_id?: string;
+    user_message_id?: string;
+    stream_id?: string;
+  }) => Promise<void>;
+  handleExistingConversationMessages: (data: {
+    user_message_id: string;
+    bot_message_id: string;
+    stream_id?: string;
+  }) => Promise<void>;
+  handleConversationDescriptionUpdate: (
+    conversationId: string,
+    description: string,
+  ) => Promise<void>;
+}
+
+export const createStreamHandlers = (deps: StreamHandlerDeps) => {
+  const {
+    ctx,
+    updateBotMessage,
+    updateBotMessageInStore,
+    schedulePersist,
+    handleNewConversation,
+    handleExistingConversationMessages,
+    handleConversationDescriptionUpdate,
+  } = deps;
+
+  const { refs, streamInProgressRef, setIsLoading, setLoadingText, resetLoadingText } = ctx;
+
+  const handleToolData = (
+    toolData: ToolDataEntry & { subagent_id?: string },
+  ) => {
+    // Route tool_calls_data entries into the matching subagent group by event's own subagent_id.
+    if (toolData.subagent_id && toolData.tool_name === "tool_calls_data") {
+      const targetSubagentId = toolData.subagent_id;
+      const existingToolData = refs.current.botMessage?.tool_data ?? [];
+      const updatedToolData = updateSubagentInToolData(
+        existingToolData,
+        targetSubagentId,
+        (g) => ({
+          ...g,
+          tool_calls: [...g.tool_calls, toolData.data as ToolCallEntry],
+        }),
+      );
+      updateBotMessage({ tool_data: updatedToolData });
+
+      // Still show the loading indicator for the active tool call
+      if (typeof toolData.data === "object" && toolData.data !== null) {
+        const d = toolData.data as Record<string, unknown>;
+        if (typeof d.message === "string" && d.message.length > 0) {
+          setLoadingText(d.message, {
+            toolName: typeof d.tool_name === "string" ? d.tool_name : undefined,
+            toolCategory:
+              typeof d.tool_category === "string" ? d.tool_category : undefined,
+            integrationName:
+              typeof d.integration_name === "string"
+                ? d.integration_name
+                : undefined,
+            iconUrl: typeof d.icon_url === "string" ? d.icon_url : undefined,
+            showCategory: (d.show_category as boolean) ?? true,
+          });
+        }
+      }
+
+      const conversationId =
+        refs.current.newConversation.id ||
+        useChatStore.getState().activeConversationId;
+      if (refs.current.botMessage?.message_id && conversationId) {
+        schedulePersist(conversationId);
+      }
+      return;
+    }
+
+    // Root-level tool_data entry — not associated with a subagent
+    // Append tool_data entry to botMessage.tool_data
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    updateBotMessage({
+      tool_data: [...existingToolData, toolData],
+    });
+
+    // Extract loading text from tool_data.data.message for UI indicator
+    if (
+      toolData.tool_name === "tool_calls_data" &&
+      typeof toolData.data === "object" &&
+      toolData.data !== null
+    ) {
+      const data = toolData.data as Record<string, unknown>;
+      if (data.message && typeof data.message === "string") {
+        setLoadingText(data.message, {
+          toolName: data.tool_name as string | undefined,
+          toolCategory: data.tool_category as string | undefined,
+          integrationName: data.integration_name as string | undefined,
+          iconUrl: data.icon_url as string | undefined,
+          showCategory: (data.show_category as boolean) ?? true,
+        });
+      }
+    }
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      schedulePersist(conversationId);
+    }
+  };
+
+  const handleToolOutput = (toolOutput: {
+    tool_call_id: string;
+    output: string;
+    subagent_id?: string;
+  }) => {
+    // Route tool outputs into the matching subagent group by event's own subagent_id.
+    if (toolOutput.subagent_id) {
+      const targetSubagentId = toolOutput.subagent_id;
+      const existingToolData = refs.current.botMessage?.tool_data ?? [];
+      const updatedToolData = updateSubagentInToolData(
+        existingToolData,
+        targetSubagentId,
+        (g) => ({
+          ...g,
+          tool_calls: g.tool_calls.map((tc) =>
+            tc.tool_call_id === toolOutput.tool_call_id
+              ? { ...tc, output: toolOutput.output }
+              : tc,
+          ),
+        }),
+      );
+      updateBotMessage({ tool_data: updatedToolData });
+
+      const conversationId =
+        refs.current.newConversation.id ||
+        useChatStore.getState().activeConversationId;
+      if (refs.current.botMessage?.message_id && conversationId) {
+        schedulePersist(conversationId);
+      }
+      return;
+    }
+
+    // Root-level tool_output — not associated with a subagent
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const updatedToolData = mergeToolOutputIntoToolData(
+      existingToolData,
+      toolOutput,
+    );
+
+    updateBotMessage({ tool_data: updatedToolData });
+
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      schedulePersist(conversationId);
+    }
+  };
+
+  const handleSubagentStart = (payload: SubagentStartPayload) => {
+    const group: SubagentGroupData = {
+      subagent_id: payload.subagent_id,
+      subagent_name: payload.subagent_name,
+      agent_type: payload.agent_type,
+      tool_calls: [],
+      duration_ms: null,
+      token_count: null,
+      started_at: payload.started_at,
+      completed_at: null,
+      icon_url: payload.icon_url ?? null,
+      tool_category: payload.tool_category ?? null,
+      nested_subagents: [],
+    };
+
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+
+    // If this subagent was spawned from within another subagent, nest it inside the parent.
+    if (payload.parent_subagent_id) {
+      const parentId = payload.parent_subagent_id;
+      const updatedToolData = updateSubagentInToolData(
+        existingToolData,
+        parentId,
+        (g) => ({
+          ...g,
+          nested_subagents: [...g.nested_subagents, group],
+        }),
+      );
+      updateBotMessage({ tool_data: updatedToolData });
+    } else {
+      const newEntry = {
+        tool_name: "subagent_group" as const,
+        tool_category: "subagent",
+        data: group,
+        timestamp: payload.started_at,
+      };
+      updateBotMessage({ tool_data: [...existingToolData, newEntry] });
+    }
+
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      schedulePersist(conversationId);
+    }
+  };
+
+  const handleSubagentEnd = (payload: SubagentEndPayload) => {
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const updatedToolData = updateSubagentInToolData(
+      existingToolData,
+      payload.subagent_id,
+      (g) => ({
+        ...g,
+        duration_ms: payload.duration_ms ?? null,
+        token_count: payload.token_count,
+        completed_at: new Date().toISOString(),
+      }),
+    );
+
+    updateBotMessage({ tool_data: updatedToolData });
+
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      schedulePersist(conversationId);
+    }
+  };
+
+  const handleTodoProgress = (snapshot: TodoProgressSnapshot) => {
+    // Accumulate snapshots keyed by source on the todo_progress field
+    const existing = refs.current.botMessage?.todo_progress ?? {};
+    const source = snapshot.source || "executor";
+    const accumulated = {
+      ...existing,
+      [source]: snapshot,
+    };
+
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const updatedToolData = upsertTodoProgressToolData(
+      existingToolData,
+      snapshot,
+    ) as ToolDataEntry[];
+
+    updateBotMessage({
+      todo_progress: accumulated,
+      tool_data: updatedToolData,
+    });
+
+    // Sync to store for live rendering
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      schedulePersist(conversationId);
+    }
+  };
+
+  const handleImageGeneration = (data: Record<string, unknown>) => {
+    if (data.status === "generating_image") {
+      setLoadingText("Generating image...");
+      updateBotMessage({
+        image_data: { url: "", prompt: refs.current.userPrompt },
+        response: "",
+      });
+      return true;
+    }
+
+    if (data.image_data && typeof data.image_data === "object") {
+      updateBotMessage({
+        image_data: data.image_data as MessageType["image_data"],
+        loading: false,
+      });
+      return true;
+    }
+
+    return false;
+  };
+
+  const handleMainResponseComplete = () => {
+    setIsLoading(false);
+    resetLoadingText();
+    updateBotMessage({ loading: false });
+  };
+
+  const handleStreamingContent = async (data: Record<string, unknown>) => {
+    if (data.response) {
+      refs.current.accumulatedResponse += data.response;
+    }
+
+    // Skip tool_data, tool_output, and todo_progress - they're handled separately
+    // to avoid double-processing in parseStreamData
+    const {
+      tool_data: _toolData,
+      tool_output: _toolOutput,
+      todo_progress: _todoProgress,
+      ...restData
+    } = data;
+    const streamUpdates = parseStreamData(
+      restData as Partial<MessageType>,
+      refs.current.botMessage,
+    );
+
+    updateBotMessage({
+      ...streamUpdates,
+      response: refs.current.accumulatedResponse,
+    });
+
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+
+    // Update store directly during streaming (no DB writes to avoid race conditions)
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
+  const handleStreamEvent = async (
+    event: EventSourceMessage,
+  ): Promise<undefined | string> => {
+    if (!streamInProgressRef.current) {
+      return "Stream was aborted";
+    }
+
+    try {
+      if (!event.data) return; // Skip empty events (@microsoft/fetch-event-source dispatches these for SSE comments)
+      const parsedEvents = parseChatStreamEvent(event.data);
+      const streamingData: Record<string, unknown> = {};
+
+      for (const parsed of parsedEvents) {
+        if (parsed.type === "done" || parsed.type === "keepalive") {
+          continue;
+        }
+
+        if (parsed.type === "error") {
+          toast.error(parsed.error);
+          return parsed.error;
+        }
+
+        if (parsed.type === "main_response_complete") {
+          console.log("[handleStreamEvent] Received main_response_complete");
+          handleMainResponseComplete();
+          continue;
+        }
+
+        if (parsed.type === "tool_data") {
+          handleToolData(parsed.entry as ToolDataEntry);
+          continue;
+        }
+
+        if (parsed.type === "tool_output") {
+          handleToolOutput(parsed.output);
+          continue;
+        }
+
+        if (parsed.type === "subagent_start") {
+          handleSubagentStart(parsed.payload);
+          continue;
+        }
+
+        if (parsed.type === "subagent_end") {
+          handleSubagentEnd(parsed.payload);
+          continue;
+        }
+
+        if (parsed.type === "todo_progress") {
+          handleTodoProgress(parsed.snapshot as TodoProgressSnapshot);
+          continue;
+        }
+
+        if (parsed.type === "progress") {
+          // Re-show spinner if it was hidden by an earlier main_response_complete
+          // (executor sending progress after comms ack "I'm on it")
+          if (!useLoadingStore.getState().isLoading) {
+            setIsLoading(true);
+            updateBotMessage({ loading: true });
+          }
+          setLoadingText(parsed.message, {
+            toolName: parsed.tool_name,
+            toolCategory: parsed.tool_category,
+          });
+          continue;
+        }
+
+        if (parsed.type === "response") {
+          // Re-show spinner if it was hidden by an earlier main_response_complete
+          // (executor result arriving after comms ack "I'm on it")
+          if (!useLoadingStore.getState().isLoading) {
+            setIsLoading(true);
+            updateBotMessage({ loading: true });
+          }
+          streamingData.response =
+            typeof streamingData.response === "string"
+              ? `${streamingData.response}${parsed.chunk}`
+              : parsed.chunk;
+          continue;
+        }
+
+        if (parsed.type === "follow_up_actions") {
+          streamingData.follow_up_actions = parsed.actions;
+          continue;
+        }
+
+        if (parsed.type === "conversation_initialized") {
+          console.log(
+            "[useChatStream] conversation_initialized event:",
+            parsed,
+          );
+          const data = {
+            conversation_id: parsed.conversation_id,
+            conversation_description: parsed.conversation_description ?? null,
+            bot_message_id: parsed.bot_message_id,
+            user_message_id: parsed.user_message_id,
+            stream_id: parsed.stream_id,
+          };
+
+          if (data.conversation_id) {
+            await handleNewConversation({
+              conversation_id: data.conversation_id,
+              conversation_description: data.conversation_description,
+              bot_message_id: data.bot_message_id,
+              user_message_id: data.user_message_id,
+              stream_id: data.stream_id,
+            });
+            continue;
+          }
+
+          if (
+            data.user_message_id &&
+            data.bot_message_id &&
+            !refs.current.newConversation.id
+          ) {
+            await handleExistingConversationMessages({
+              user_message_id: data.user_message_id,
+              bot_message_id: data.bot_message_id,
+              stream_id: data.stream_id,
+            });
+          }
+          continue;
+        }
+
+        if (parsed.type === "conversation_description") {
+          if (refs.current.newConversation.id) {
+            refs.current.newConversation.description = parsed.description;
+            handleConversationDescriptionUpdate(
+              refs.current.newConversation.id,
+              parsed.description,
+            );
+          }
+          continue;
+        }
+
+        if (parsed.type === "unknown") {
+          Object.assign(streamingData, parsed.payload);
+        }
+      }
+
+      if (Object.keys(streamingData).length === 0) return;
+      if (handleImageGeneration(streamingData)) return;
+      await handleStreamingContent(streamingData);
+    } catch (error) {
+      console.error("[useChatStream] Error handling stream event:", {
+        error,
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined,
+        eventData: event.data,
+      });
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      return `Error processing stream data: ${errorMessage}`;
+    }
+  };
+
+  return {
+    handleToolData,
+    handleToolOutput,
+    handleSubagentStart,
+    handleSubagentEnd,
+    handleTodoProgress,
+    handleImageGeneration,
+    handleMainResponseComplete,
+    handleStreamingContent,
+    handleStreamEvent,
+  };
+};
