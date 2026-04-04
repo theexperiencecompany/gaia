@@ -1,4 +1,11 @@
-"""Tool for subagents to send progress updates to the executor agent."""
+"""message_executor tool — subagent sends a progress update to the executor.
+
+Pushes to the executor inbox queue (keyed by stream_id). The executor's
+check_subagent_inbox pre-model hook drains it before each LLM turn and
+injects updates as a SystemMessage so the executor can relay them to the user.
+
+Raises if the executor inbox is not registered (executor already done).
+"""
 
 from typing import Annotated
 
@@ -10,7 +17,7 @@ from shared.py.wide_events import log
 
 
 @tool
-async def notify_executor(
+async def message_executor(
     config: RunnableConfig,
     message: Annotated[
         str,
@@ -28,15 +35,18 @@ async def notify_executor(
     stream_id = configurable.get("stream_id")
 
     if not stream_id:
-        return "No active stream — update not sent."
+        return "No active stream — message not sent."
 
     queue = get_executor_inbox(stream_id)
     if not queue:
-        return "Executor inbox not available — update not sent."
+        raise RuntimeError(
+            f"Executor inbox for stream '{stream_id}' is not registered. "
+            "The executor may have already completed."
+        )
 
     await queue.put({"type": "subagent_update", "message": message})
-    log.info(f"notify_executor: update sent for stream {stream_id}")
+    log.info(f"message_executor: update sent for stream {stream_id}")
     return "Progress update sent to executor."
 
 
-tools = [notify_executor]
+tools = [message_executor]

@@ -17,8 +17,10 @@ from typing import Annotated, Optional
 from uuid import uuid4
 
 from app.agents.core.background.inbox import (
+    deregister_subagent_inbox,
     get_executor_inbox,
     increment_pending_subagents,
+    register_subagent_inbox,
 )
 from app.agents.core.background.subagent_runner import run_subagent_background
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
@@ -571,6 +573,11 @@ async def handoff(
 
         integration_metadata = await _build_integration_metadata(is_custom, int_id)
 
+        # Register subagent inbox so the executor can send messages to this
+        # subagent via message_subagent while it runs. Key matches what
+        # message_subagent constructs: f"{int_id}_{executor_thread_id}".
+        register_subagent_inbox(subagent_thread_id)
+
         # Background mode: spawn subagent as asyncio task and return immediately.
         # Caller must use wait_for_subagents() to collect results.
         #
@@ -593,6 +600,9 @@ async def handoff(
                     "[WARNING: background handoff fell back to blocking"
                     f" — {fallback_reason}] "
                 )
+                # Deregister inbox since we are falling back to blocking (runner
+                # will not deregister it in this case).
+                deregister_subagent_inbox(subagent_thread_id)
                 blocking_result = await _run_blocking_handoff(
                     ctx, integration_metadata, agent_name, int_id
                 )
@@ -610,6 +620,7 @@ async def handoff(
                     ctx=ctx,
                     stream_id=sid,
                     executor_inbox=executor_inbox,
+                    subagent_thread_id=subagent_thread_id,
                     integration_metadata=integration_metadata,
                     subagent_id=bg_sa_id,
                     display_name=bg_display,
@@ -627,10 +638,15 @@ async def handoff(
                 "Call wait_for_subagents() when ready to collect results."
             )
 
-        # Blocking (default): execute synchronously and return result
-        return await _run_blocking_handoff(
-            ctx, integration_metadata, agent_name, int_id
-        )
+        # Blocking (default): execute synchronously and return result.
+        # Deregister inbox after completion — the executor is blocked here so
+        # message_subagent can only be called before/after (not during) this call.
+        try:
+            return await _run_blocking_handoff(
+                ctx, integration_metadata, agent_name, int_id
+            )
+        finally:
+            deregister_subagent_inbox(subagent_thread_id)
 
     except Exception as e:
         log.error(f"Error in handoff to {subagent_id}: {e}", exc_info=True)

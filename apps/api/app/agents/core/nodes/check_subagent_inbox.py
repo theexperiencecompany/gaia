@@ -1,9 +1,9 @@
 """Pre-model hook that drains the executor inbox at each turn boundary.
 
 Runs before every executor LLM invocation. If subagents have pushed
-progress updates via notify_executor, they are injected into the
+progress updates via message_executor, they are injected into the
 executor's state so the LLM can process them and optionally call
-notify_comms to forward to the user.
+message_comms to forward to the user.
 
 Only drains subagent_update messages. subagent_result messages are
 left in the queue for wait_for_subagents() to collect — this prevents
@@ -48,11 +48,13 @@ async def check_subagent_inbox(
         try:
             item = queue.get_nowait()
             msg_type = item.get("type", "subagent_update")
-            agent = item.get("agent", "subagent")
             message = item.get("message", "")
             if msg_type == "subagent_result":
                 deferred.append(item)
+            elif msg_type == "comms_message":
+                updates.append(f"[MESSAGE FROM COMMS]:\n{message}")
             else:
+                agent = item.get("agent", "subagent")
                 updates.append(f"[SUBAGENT_UPDATE from {agent}]\n{message}")
         except asyncio.QueueEmpty:
             break

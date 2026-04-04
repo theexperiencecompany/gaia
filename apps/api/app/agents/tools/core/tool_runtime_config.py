@@ -49,9 +49,9 @@ def build_provider_parent_tool_runtime_config(
 ) -> ToolRuntimeConfig:
     """Build parent provider-agent tool runtime config."""
     if use_direct_tools:
-        initial = [*provider_tool_names, *todo_tool_names, "vfs_read", "vfs_cmd"]
+        initial = [*provider_tool_names, *todo_tool_names, "vfs_read", "vfs_cmd", "message_executor"]
     else:
-        initial = ["search_memory", "vfs_read", "vfs_cmd", *todo_tool_names]
+        initial = ["search_memory", "vfs_read", "vfs_cmd", "message_executor", *todo_tool_names]
         if auto_bind_tool_names and not disable_retrieve_tools:
             initial.extend(auto_bind_tool_names)
 

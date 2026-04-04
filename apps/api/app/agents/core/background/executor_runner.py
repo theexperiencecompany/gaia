@@ -325,8 +325,9 @@ async def run_executor_background(
         "name": configurable.get("user_name", ""),
     }
 
-    # Register executor inbox for subagent → executor communication
-    register_executor_inbox(stream_id)
+    # Register executor inbox for subagent → executor and comms → executor communication.
+    # Keyed by both stream_id (for subagents) and task_id (for comms agent targeting).
+    register_executor_inbox(stream_id, task_id=task_id)
 
     try:
         ctx, error = await prepare_executor_execution(
@@ -354,7 +355,7 @@ async def run_executor_background(
     finally:
         # Release lock and signal SSE stream that tool events are done
         await redis_cache.delete(lock_key)
-        deregister_executor_inbox(stream_id)
+        deregister_executor_inbox(stream_id, task_id=task_id)
 
         # Push result + sentinel to comms_inbox so _run_chat_stream can:
         # 1. Read the result for SSE notification delivery
@@ -486,7 +487,7 @@ async def _process_next_queued_task(conversation_id: str) -> None:
             },
         )
 
-    # Update stream_id in configurable so notify_comms/notify_executor
+    # Update stream_id in configurable so message_comms/message_executor
     # don't try to push to the now-closed original stream
     configurable = {**configurable, "stream_id": queued_stream_id}
 

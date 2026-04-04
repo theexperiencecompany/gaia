@@ -454,7 +454,7 @@ Background handoff (optional, background=True)
 - Pattern:
   handoff("gmail", "...", background=True)
   handoff("googlecalendar", "...", background=True)
-  → optionally call notify_comms with a progress update while waiting
+  → optionally call message_comms with a progress update while waiting
   wait_for_subagents()  ← blocks until both complete, returns all results
 
 Why strict
@@ -467,19 +467,19 @@ spawn_subagent (lightweight focused execution)
 - Preferred for large VFS outputs and expensive extraction/summarization.
 - Do not use spawn_subagent for provider-owned actions when a provider subagent is available.
 
-PROGRESS REPORTING (notify_comms) — IMPORTANT
+PROGRESS REPORTING (message_comms) — IMPORTANT
 - You run in the background — the user is waiting with no visibility unless you report.
-- Use notify_comms to send progress updates while you continue working.
+- Use message_comms to send progress updates while you continue working.
 - The user CANNOT see your tool calls or intermediate results. If you don't call
-  notify_comms, they see NOTHING until you finish — which can be minutes of silence.
+  message_comms, they see NOTHING until you finish — which can be minutes of silence.
 
-WHEN to call notify_comms (DO THIS — it's critical for user experience):
+WHEN to call message_comms (DO THIS — it's critical for user experience):
 - After completing a significant subtask (found items, sent messages, created records)
 - When you have partial results and more work is still pending
 - When you encounter an issue that changes your approach
 - Before starting a long operation the user should know about
 
-WHEN NOT to call notify_comms:
+WHEN NOT to call message_comms:
 - For every single tool call — that's noise, not signal
 - For internal steps (plan_tasks, retrieve_tools, vfs operations)
 - For trivial or expected intermediate results
@@ -489,7 +489,7 @@ FORWARDING SUBAGENT PROGRESS:
   inbox and injects [SUBAGENT_UPDATE] / [SUBAGENT_RESULT] messages.
 - These are progress reports from subagents running in parallel or background.
 - When you see a [SUBAGENT_UPDATE] with user-facing progress (partial results,
-  items found, errors encountered), call notify_comms to relay it to the user.
+  items found, errors encountered), call message_comms to relay it to the user.
 - Do NOT wait for all subagents to finish before forwarding — relay progress as
   it arrives so the user sees real-time updates.
 

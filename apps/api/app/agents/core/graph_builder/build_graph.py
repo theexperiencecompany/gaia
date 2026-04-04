@@ -24,8 +24,10 @@ from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
 )
 from app.agents.tools.executor_tool import call_executor, cancel_executor
-from app.agents.tools.notify_comms_tool import notify_comms as notify_comms_tool
-from app.agents.tools.notify_executor_tool import notify_executor as notify_executor_tool
+from app.agents.tools.message_comms_tool import message_comms as message_comms_tool
+from app.agents.tools.message_executor_tool import message_executor as message_executor_tool
+from app.agents.tools.message_executor_run_tool import message_executor_run as message_executor_run_tool
+from app.agents.tools.message_subagent_tool import message_subagent as message_subagent_tool
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
 from shared.py.wide_events import log
@@ -55,15 +57,17 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({t.name: t for t in todo_tools})
-    tool_dict.update({"notify_comms": notify_comms_tool})
-    tool_dict.update({"notify_executor": notify_executor_tool})
+    tool_dict.update({"message_comms": message_comms_tool})
+    tool_dict.update({"message_executor": message_executor_tool})
+    tool_dict.update({"message_subagent": message_subagent_tool})
     tool_dict.update({"wait_for_subagents": wait_for_subagents_tool})
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
-    # Build excluded tool names for spawn_subagent: handoff + notify_comms + wait_for_subagents
-    # notify_executor is NOT excluded — spawned subagents should use it
-    excluded_subagent_tools = {"handoff", "notify_comms", "wait_for_subagents"}
+    # Build excluded tool names for spawn_subagent.
+    # message_comms (executor→comms AI→user) and message_subagent are executor-only —
+    # spawned subagents must not see them.
+    excluded_subagent_tools = {"handoff", "message_comms", "message_subagent", "wait_for_subagents"}
 
     middleware = create_executor_middleware(
         subagent_excluded_tools=excluded_subagent_tools,
@@ -103,7 +107,8 @@ async def build_executor_graph(
             "vfs_read",
             "vfs_cmd",
             "deep_research",
-            "notify_comms",
+            "message_comms",
+            "message_subagent",
             "wait_for_subagents",
             "create_tracked_todo",
             "update_tracked_todo",
@@ -165,6 +170,7 @@ async def build_comms_graph(
     tool_registry = {
         "call_executor": call_executor,
         "cancel_executor": cancel_executor,
+        "message_executor_run": message_executor_run_tool,
         "add_memory": memory_tools.add_memory,
         "search_memory": memory_tools.search_memory,
     }
@@ -182,7 +188,7 @@ async def build_comms_graph(
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
-        initial_tool_ids=["call_executor", "cancel_executor", "add_memory", "search_memory"],
+        initial_tool_ids=["call_executor", "cancel_executor", "message_executor_run", "add_memory", "search_memory"],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
         end_graph_hooks=[

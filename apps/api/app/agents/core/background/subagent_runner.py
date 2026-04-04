@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 from shared.py.wide_events import log
 
-from app.agents.core.background.inbox import decrement_pending_subagents
+from app.agents.core.background.inbox import decrement_pending_subagents, deregister_subagent_inbox
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -31,6 +31,7 @@ async def run_subagent_background(
     ctx: SubagentExecutionContext,
     stream_id: str,
     executor_inbox: asyncio.Queue[Any],
+    subagent_thread_id: Optional[str] = None,
     integration_metadata: Optional[IntegrationMetadata] = None,
     subagent_id: Optional[str] = None,
     display_name: Optional[str] = None,
@@ -105,3 +106,5 @@ async def run_subagent_background(
         )
     finally:
         decrement_pending_subagents(stream_id)
+        if subagent_thread_id:
+            deregister_subagent_inbox(subagent_thread_id)

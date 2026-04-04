@@ -31,7 +31,7 @@ from app.helpers.agent_helpers import build_agent_config
 from app.models.models_models import ModelConfig
 from app.services.oauth.oauth_service import check_integration_status
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
-from app.utils.stream_utils import extract_tool_entries_from_update
+from app.utils.stream_utils import extract_tool_entries_from_update, normalize_custom_event
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
@@ -287,6 +287,13 @@ async def execute_subagent_stream(
 
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only emit tool_data from the LLM ("agent") node.
+                # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
+                # etc.) produce "updates" events containing historical AIMessages
+                # with tool_calls from previous checkpoint runs — emitting those
+                # would replay stale tool cards into the current stream.
+                if node_name != "agent":
+                    continue
                 # Use shared helper to extract and format tool entries
                 entries = await extract_tool_entries_from_update(
                     state_update=state_update,
@@ -331,7 +338,7 @@ async def execute_subagent_stream(
 
         if stream_mode == "custom":
             if stream_writer:
-                stream_writer(payload)
+                stream_writer(normalize_custom_event(payload))
 
     final_message = complete_message if complete_message else "Task completed"
     log.set(
@@ -559,6 +566,11 @@ async def call_subagent(
 
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
+                # Only emit tool_data from the LLM ("agent") node.
+                # Pre-model hooks produce "updates" events containing historical
+                # AIMessages from previous checkpoint runs — skip them.
+                if node_name != "agent":
+                    continue
                 # Use shared helper to extract and format tool entries
                 entries = await extract_tool_entries_from_update(
                     state_update=state_update,
@@ -591,7 +603,7 @@ async def call_subagent(
             continue
 
         if stream_mode == "custom":
-            yield f"data: {json.dumps(payload)}\n\n"
+            yield f"data: {json.dumps(normalize_custom_event(payload))}\n\n"
 
     # Final message for DB storage
     yield f"nostream: {json.dumps({'complete_message': complete_message})}"

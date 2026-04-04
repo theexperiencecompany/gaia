@@ -1,12 +1,12 @@
-"""Tool for executor to send progress updates to comms agent.
+"""message_comms tool — executor sends a progress update to the comms agent.
 
-The executor LLM decides when something is worth reporting to the user.
-This tool pushes the message to the comms inbox queue (looked up by
-stream_id from configurable). A concurrent comms notifier loop reads
-the queue and invokes the comms graph to generate a natural-language
-response that is streamed to the user via SSE.
+Pushes to the comms inbox queue (keyed by stream_id). The comms notifier loop
+drains the queue and passes it to the comms agent (AI layer), which generates
+a natural-language response and streams it to the user via SSE.
 
-This is the GAIA equivalent of Claude Code's SendMessage tool.
+executor → comms agent (AI) → user
+
+Raises if the comms inbox is not registered (stream already closed/done).
 """
 
 from typing import Annotated
@@ -19,7 +19,7 @@ from shared.py.wide_events import log
 
 
 @tool
-async def notify_comms(
+async def message_comms(
     config: RunnableConfig,
     message: Annotated[
         str,
@@ -30,11 +30,11 @@ async def notify_comms(
         "'Gmail search returned no results for that query, trying broader search.'",
     ],
 ) -> str:
-    """Send an INTERMEDIATE progress update to the user while continuing your work.
+    """Send an INTERMEDIATE progress update to the comms agent while continuing your work.
 
-    IMPORTANT: Do NOT use this for your final result. Your final response is
-    automatically delivered to the user when you finish. This tool is ONLY for
-    mid-execution progress updates when you have more work to do after the update.
+    The comms agent (AI) receives your update, generates a natural-language response,
+    and delivers it to the user. Your final result is sent automatically when you finish —
+    this tool is ONLY for mid-execution updates when you have more work to do.
 
     Use this when:
     - You complete a significant subtask AND have more work to do
@@ -52,17 +52,18 @@ async def notify_comms(
     stream_id = configurable.get("stream_id")
 
     if not stream_id:
-        log.warning("notify_comms called without stream_id in configurable")
-        return "No active stream — update not sent."
+        return "No active stream — message not sent."
 
     queue = get_comms_inbox(stream_id)
     if not queue:
-        log.warning(f"notify_comms: no comms inbox for stream {stream_id}")
-        return "Comms inbox not available — update not sent."
+        raise RuntimeError(
+            f"Comms inbox for stream '{stream_id}' is not registered. "
+            "The stream may have already closed."
+        )
 
     await queue.put({"type": "progress", "message": message})
-    log.info(f"notify_comms: progress sent for stream {stream_id}")
+    log.info(f"message_comms: progress sent for stream {stream_id}")
     return "Progress update sent to user."
 
 
-tools = [notify_comms]
+tools = [message_comms]

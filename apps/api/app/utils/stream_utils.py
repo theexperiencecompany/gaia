@@ -109,52 +109,71 @@ def _extract_response_text(chunk: str) -> str:
     return ""
 
 
+def normalize_custom_event(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize any tool payload dict into the unified tool_data format.
+
+    Hooks emit raw field payloads like {"email_compose_data": [...]} via
+    get_stream_writer(). This is the single conversion point used by both
+    the executor streaming path (subagent_runner) and the comms loop
+    (extract_tool_data below).
+
+    - Already-normalized payloads (has "tool_data" key) pass through unchanged.
+    - Recognized tool fields are wrapped as {"tool_data": {"tool_name": ..., "data": ..., "timestamp": ...}}.
+      Multiple matching fields produce a list under "tool_data".
+    - Non-tool payloads (progress, subagent_start, etc.) pass through unchanged.
+    """
+    if "tool_data" in payload:
+        return payload
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    entries: list[ToolDataEntry] = []
+    for field_name in tool_fields:
+        if payload.get(field_name) is not None:
+            entries.append(
+                {
+                    "tool_name": field_name,
+                    "data": payload[field_name],
+                    "timestamp": timestamp,
+                }
+            )
+
+    if not entries:
+        return payload  # Non-tool event — pass through
+
+    # Preserve non-tool keys (e.g. nextPageToken alongside email_fetch_data)
+    other_keys = {k: v for k, v in payload.items() if k not in tool_fields}
+    tool_data_value: Any = entries[0] if len(entries) == 1 else entries
+    return {**other_keys, "tool_data": tool_data_value}
+
+
 def extract_tool_data(json_str: str) -> dict[str, Any]:
     """
     Parse and extract structured tool output from an agent's JSON response chunk.
 
-    Converts individual tool fields (e.g., calendar_options, search_results, etc.)
-    into unified ToolDataEntry array format for consistent frontend handling.
-
-    Returns:
-        Dict containing:
-        - "tool_data": Array of ToolDataEntry objects (if any tool data found)
-        - "other_data": Dict with non-tool fields like follow_up_actions
+    Uses normalize_custom_event for tool detection so the field registry lives
+    in exactly one place. Returns a dict with:
+    - "tool_data": list of ToolDataEntry objects (if any tool data found)
+    - "other_data": dict with non-tool fields like follow_up_actions
+    - "tool_output": forwarded as-is if present
     """
     try:
         data = json.loads(json_str)
-        timestamp = datetime.now(timezone.utc).isoformat()
 
         other_data: dict[str, Any] = {}
         if data.get("follow_up_actions") is not None:
             other_data["follow_up_actions"] = data["follow_up_actions"]
 
+        normalized = normalize_custom_event(data)
         tool_data_entries: list[ToolDataEntry] = []
-
-        if "tool_data" in data:
-            td = data["tool_data"]
-            if isinstance(td, list):
-                tool_data_entries = td
-            else:
-                tool_data_entries = [td]
-        else:
-            for field_name in tool_fields:
-                if data.get(field_name) is not None:
-                    tool_data_entries.append(
-                        {
-                            "tool_name": field_name,
-                            "data": data[field_name],
-                            "timestamp": timestamp,
-                        }
-                    )
+        if "tool_data" in normalized:
+            td = normalized["tool_data"]
+            tool_data_entries = td if isinstance(td, list) else [td]
 
         result: dict[str, Any] = {}
-
         if tool_data_entries:
             result["tool_data"] = tool_data_entries
         if other_data:
             result["other_data"] = other_data
-
         if "tool_output" in data:
             result["tool_output"] = data["tool_output"]
 

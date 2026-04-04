@@ -64,12 +64,18 @@ def deregister_comms_inbox(stream_id: str) -> None:
 
 
 # ── Executor Inbox (subagents push, executor pre_model_hook reads) ──
+# Keyed by stream_id for subagent → executor messaging.
+# Also keyed by task_id so comms can target a running executor run.
+
+_executor_inboxes_by_task_id: dict[str, asyncio.Queue[Any]] = {}
 
 
-def register_executor_inbox(stream_id: str) -> asyncio.Queue[Any]:
-    """Create and register an executor inbox queue for this stream."""
+def register_executor_inbox(stream_id: str, task_id: Optional[str] = None) -> asyncio.Queue[Any]:
+    """Create and register an executor inbox queue for this stream (and optionally task_id)."""
     queue: asyncio.Queue[Any] = asyncio.Queue()
     _executor_inboxes[stream_id] = queue
+    if task_id:
+        _executor_inboxes_by_task_id[task_id] = queue
     return queue
 
 
@@ -78,9 +84,16 @@ def get_executor_inbox(stream_id: str) -> Optional[asyncio.Queue[Any]]:
     return _executor_inboxes.get(stream_id)
 
 
-def deregister_executor_inbox(stream_id: str) -> None:
+def get_executor_inbox_by_task_id(task_id: str) -> Optional[asyncio.Queue[Any]]:
+    """Return the executor inbox by task_id (for comms → executor messaging), or None."""
+    return _executor_inboxes_by_task_id.get(task_id)
+
+
+def deregister_executor_inbox(stream_id: str, task_id: Optional[str] = None) -> None:
     """Remove the executor inbox. Safe to call multiple times."""
     _executor_inboxes.pop(stream_id, None)
+    if task_id:
+        _executor_inboxes_by_task_id.pop(task_id, None)
 
 
 # ── Pending background subagent counter ─────────────────────────────
@@ -132,6 +145,30 @@ def was_executor_spawned(stream_id: str) -> bool:
 def deregister_executor_spawned(stream_id: str) -> None:
     """Remove the spawned flag. Safe to call multiple times."""
     _executor_spawned_streams.discard(stream_id)
+
+
+# ── Subagent Inbox (executor pushes, subagent pre_model_hook reads) ──
+# Keyed by subagent thread_id (e.g., "gmail_executor_<conv_id>").
+# Registered by handoff() before subagent starts; deregistered on completion.
+
+_subagent_inboxes: dict[str, asyncio.Queue[Any]] = {}
+
+
+def register_subagent_inbox(subagent_thread_id: str) -> asyncio.Queue[Any]:
+    """Create and register an inbox queue for a subagent."""
+    queue: asyncio.Queue[Any] = asyncio.Queue()
+    _subagent_inboxes[subagent_thread_id] = queue
+    return queue
+
+
+def get_subagent_inbox(subagent_thread_id: str) -> Optional[asyncio.Queue[Any]]:
+    """Return the subagent inbox, or None if not registered."""
+    return _subagent_inboxes.get(subagent_thread_id)
+
+
+def deregister_subagent_inbox(subagent_thread_id: str) -> None:
+    """Remove the subagent inbox. Safe to call multiple times."""
+    _subagent_inboxes.pop(subagent_thread_id, None)
 
 
 # ── Executor tool event collector ────────────────────────────────────
