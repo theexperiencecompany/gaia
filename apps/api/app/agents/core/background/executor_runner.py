@@ -23,6 +23,7 @@ from shared.py.wide_events import log
 from app.agents.core.background.inbox import (
     deregister_executor_inbox,
     deregister_tool_event_collector,
+    get_comms_inbox,
     get_tool_event_collector,
     mark_executor_spawned,
     register_executor_inbox,
@@ -37,6 +38,7 @@ from app.agents.core.subagents.subagent_runner import (
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_QUEUE_PREFIX
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
+from app.db.mongodb.collections import conversations_collection
 from app.db.redis import redis_cache
 from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
@@ -46,6 +48,135 @@ from app.utils.stream_utils import reconstruct_subagent_groups
 
 # Prevent GC of background tasks spawned from the queue
 _queued_executor_tasks: set[asyncio.Task] = set()
+
+
+async def _invoke_comms_graph(
+    result: str,
+    msg_type: str,
+    conversation_id: str,
+    user: dict,
+) -> str:
+    """Invoke comms graph with executor result; return natural notification text.
+    Returns empty string if the graph is unavailable or raises.
+    """
+    prefix_map = {
+        "final": "[EXECUTOR_RESULT]",
+        "error": "[EXECUTOR_ERROR]",
+        "progress": "[EXECUTOR_PROGRESS]",
+    }
+    prefix = prefix_map.get(msg_type, "[EXECUTOR_RESULT]")
+    try:
+        comms_graph = await GraphManager.get_graph("comms_agent")
+        if comms_graph:
+            config = build_agent_config(
+                conversation_id=conversation_id,
+                user=user,
+                user_time=datetime.now(timezone.utc),
+                agent_name="comms_agent",
+            )
+            initial_state = {
+                "messages": [
+                    HumanMessage(
+                        content=f"{prefix}\n{result}",
+                        name="background_executor",
+                    )
+                ],
+            }
+            notification_text, _ = await execute_graph_silent(
+                comms_graph, initial_state, config
+            )
+            return notification_text
+    except Exception as e:
+        log.error(f"_invoke_comms_graph: failed: {e}")
+    return ""
+
+
+async def _lookup_user_message_content(
+    conversation_id: str,
+    user_message_id: str,
+) -> str:
+    """Look up the first 150 chars of a user message for reply-to preview."""
+    try:
+        conv_doc = await conversations_collection.find_one(
+            {
+                "conversation_id": conversation_id,
+                "messages.message_id": user_message_id,
+            },
+            {"messages.$": 1},
+        )
+        if conv_doc and conv_doc.get("messages"):
+            return conv_doc["messages"][0].get("response", "")[:150]
+    except Exception as e:
+        log.warning(f"_lookup_user_message_content: failed: {e}")
+    return ""
+
+
+async def _send_ws_notification(
+    user_id: str,
+    ws_event: Dict[str, Any],
+) -> bool:
+    """Deliver ws_event to user via direct send, falling back to broadcast.
+    Returns True if delivery succeeded on any attempt.
+    """
+    for attempt in range(2):
+        try:
+            if user_id in websocket_manager.connections:
+                disconnected: set = set()
+                for ws in websocket_manager.connections[user_id]:
+                    try:
+                        await ws.send_json(ws_event)
+                        return True
+                    except Exception:
+                        disconnected.add(ws)
+                for ws in disconnected:
+                    websocket_manager.connections[user_id].discard(ws)
+            await websocket_manager.broadcast_to_user(user_id, ws_event)
+            return True
+        except Exception as ws_err:
+            log.warning(
+                f"_send_ws_notification: attempt {attempt + 1} failed "
+                f"for user {user_id}: {ws_err}"
+            )
+            if attempt == 0:
+                await asyncio.sleep(0.5)
+    return False
+
+
+def _collect_queued_tool_events(
+    stream_id: str,
+) -> Optional[List[Dict[str, Any]]]:
+    """Drain the tool event collector for a queued stream into a tool_data list.
+    Only called for queued tasks — live tasks have tool_data on the comms ack message.
+    """
+    collector = get_tool_event_collector(stream_id)
+    if not collector:
+        return None
+    accumulated: Dict[str, Any] = {"tool_data": []}
+    tool_outputs: Dict[str, str] = {}
+    for evt in collector:
+        if "tool_data" in evt:
+            accumulated["tool_data"].append(evt["tool_data"])
+        if "tool_output" in evt:
+            out = evt["tool_output"]
+            tid, val = out.get("tool_call_id"), out.get("output")
+            if tid and val:
+                tool_outputs[tid] = val
+        if "subagent_start" in evt:
+            accumulated.setdefault("subagent_starts", {})[
+                evt["subagent_start"]["subagent_id"]
+            ] = evt["subagent_start"]
+        if "subagent_end" in evt:
+            accumulated.setdefault("subagent_ends", {})[
+                evt["subagent_end"]["subagent_id"]
+            ] = evt["subagent_end"]
+    for entry in accumulated["tool_data"]:
+        data = entry.get("data", {})
+        if isinstance(data, dict):
+            tc_id = data.get("tool_call_id")
+            if tc_id and tc_id in tool_outputs:
+                data["output"] = tool_outputs[tc_id]
+    reconstruct_subagent_groups(accumulated)
+    return accumulated.get("tool_data") or None
 
 
 @traceable(name="bg_notification_delivery", run_type="chain")
@@ -79,38 +210,9 @@ async def _deliver_bg_notification(
         tool_data: Optional tool_data entries to include (for queued tasks where
                    no SSE stream carried them to the frontend live).
     """
-    prefix_map = {
-        "final": "[EXECUTOR_RESULT]",
-        "error": "[EXECUTOR_ERROR]",
-        "progress": "[EXECUTOR_PROGRESS]",
-    }
-    prefix = prefix_map.get(msg_type, "[EXECUTOR_RESULT]")
-
     # Invoke comms graph with executor result — generates a natural response
     # and updates the checkpoint in one shot.
-    notification_text = ""
-    try:
-        comms_graph = await GraphManager.get_graph("comms_agent")
-        if comms_graph:
-            config = build_agent_config(
-                conversation_id=conversation_id,
-                user=user,
-                user_time=datetime.now(timezone.utc),
-                agent_name="comms_agent",
-            )
-            initial_state = {
-                "messages": [
-                    HumanMessage(
-                        content=f"{prefix}\n{result}",
-                        name="background_executor",
-                    )
-                ],
-            }
-            notification_text, _ = await execute_graph_silent(
-                comms_graph, initial_state, config
-            )
-    except Exception as e:
-        log.error(f"_deliver_bg_notification: comms graph invocation failed: {e}")
+    notification_text = await _invoke_comms_graph(result, msg_type, conversation_id, user)
 
     # Fallback to raw executor result if graph fails
     if not notification_text:
@@ -130,24 +232,9 @@ async def _deliver_bg_notification(
         bot_message.tool_data = tool_data  # type: ignore[assignment]
 
     # Attach reply-to-message data so frontend can link notification to original message
+    user_msg_content = ""
     if user_message_id:
-        # Look up original user message content for the reply preview
-        user_msg_content = ""
-        try:
-            from app.db.mongodb.collections import conversations_collection
-
-            conv_doc = await conversations_collection.find_one(
-                {
-                    "conversation_id": conversation_id,
-                    "messages.message_id": user_message_id,
-                },
-                {"messages.$": 1},
-            )
-            if conv_doc and conv_doc.get("messages"):
-                user_msg_content = conv_doc["messages"][0].get("response", "")[:150]
-        except Exception as e:
-            log.warning(f"_deliver_bg_notification: failed to look up user message: {e}")
-
+        user_msg_content = await _lookup_user_message_content(conversation_id, user_message_id)
         bot_message.replyToMessage = ReplyToMessageData(
             id=user_message_id,
             content=user_msg_content,
@@ -191,35 +278,7 @@ async def _deliver_bg_notification(
         "message": message_payload,
     }
 
-    # Deliver via WebSocket with retry. Try direct send first (same
-    # process), then always fall back to broadcast_to_user (crosses
-    # process boundaries via RabbitMQ).
-    ws_delivered = False
-    for attempt in range(2):
-        try:
-            if user_id in websocket_manager.connections:
-                disconnected = set()
-                for ws in websocket_manager.connections[user_id]:
-                    try:
-                        await ws.send_json(ws_event)
-                        ws_delivered = True
-                    except Exception:
-                        disconnected.add(ws)
-                for ws in disconnected:
-                    websocket_manager.connections[user_id].discard(ws)
-
-            if not ws_delivered:
-                await websocket_manager.broadcast_to_user(user_id, ws_event)
-                ws_delivered = True
-
-            break
-        except Exception as ws_err:
-            log.warning(
-                f"_deliver_bg_notification: WebSocket attempt {attempt + 1} failed "
-                f"for user {user_id}: {ws_err}"
-            )
-            if attempt == 0:
-                await asyncio.sleep(0.5)
+    ws_delivered = await _send_ws_notification(user_id, ws_event)
 
     log.info(
         f"_deliver_bg_notification: delivered message {bot_message_id} "
@@ -300,13 +359,14 @@ async def run_executor_background(
         # Push result + sentinel to comms_inbox so _run_chat_stream can:
         # 1. Read the result for SSE notification delivery
         # 2. Close SSE on sentinel
-        from app.agents.core.background.inbox import get_comms_inbox
-
         inbox = get_comms_inbox(stream_id)
         if inbox:
-            if result_text:
-                await inbox.put({"type": result_type, "message": result_text})
-            await inbox.put(None)  # sentinel
+            try:
+                if result_text:
+                    await inbox.put({"type": result_type, "message": result_text})
+                await inbox.put(None)  # sentinel
+            except Exception as inbox_err:
+                log.error(f"Failed to push result/sentinel to comms inbox: {inbox_err}")
 
         # Skip notification if the executor was cancelled by the user.
         # The cancel_executor tool already released the lock and informed
@@ -327,35 +387,7 @@ async def run_executor_background(
             # tasks already have tool_data saved on the comms ack message by chat_service.
             # inbox is None only for queued tasks; live tasks always have an inbox.
             if inbox is None:
-                collector = get_tool_event_collector(stream_id)
-                if collector:
-                    accumulated: Dict[str, Any] = {"tool_data": []}
-                    tool_outputs: Dict[str, str] = {}
-                    for evt in collector:
-                        if "tool_data" in evt:
-                            accumulated["tool_data"].append(evt["tool_data"])
-                        if "tool_output" in evt:
-                            out = evt["tool_output"]
-                            tid, val = out.get("tool_call_id"), out.get("output")
-                            if tid and val:
-                                tool_outputs[tid] = val
-                        if "subagent_start" in evt:
-                            accumulated.setdefault("subagent_starts", {})[
-                                evt["subagent_start"]["subagent_id"]
-                            ] = evt["subagent_start"]
-                        if "subagent_end" in evt:
-                            accumulated.setdefault("subagent_ends", {})[
-                                evt["subagent_end"]["subagent_id"]
-                            ] = evt["subagent_end"]
-                    # Merge outputs into tool entries
-                    for entry in accumulated["tool_data"]:
-                        data = entry.get("data", {})
-                        if isinstance(data, dict):
-                            tc_id = data.get("tool_call_id")
-                            if tc_id and tc_id in tool_outputs:
-                                data["output"] = tool_outputs[tc_id]
-                    reconstruct_subagent_groups(accumulated)
-                    collected_tool_data = accumulated.get("tool_data") or None
+                collected_tool_data = _collect_queued_tool_events(stream_id)
 
             try:
                 await _deliver_bg_notification(
