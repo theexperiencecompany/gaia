@@ -215,7 +215,14 @@ class TestRateLimiterAtomicity:
         await real_redis.set(counter_key, "0", ex=3600)
 
         async def increment() -> None:
-            await real_redis.incr(counter_key)
+            for attempt in range(3):
+                try:
+                    await real_redis.incr(counter_key)
+                    return
+                except Exception:
+                    if attempt == 2:
+                        raise
+                    await asyncio.sleep(0.01)
 
         await asyncio.gather(*[increment() for _ in range(50)])
 

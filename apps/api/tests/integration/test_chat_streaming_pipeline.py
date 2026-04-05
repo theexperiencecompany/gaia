@@ -103,8 +103,14 @@ class TestChatStreamingPipeline:
         is_cancelled = await StreamManager.is_cancelled(sid)
         assert is_cancelled is True
 
-        # Verify progress reflects cancellation
-        progress = await StreamManager.get_progress(sid)
+        # Verify progress reflects cancellation — poll briefly to allow the
+        # Redis write in cancel_stream to propagate before asserting.
+        progress = None
+        for _ in range(10):
+            progress = await StreamManager.get_progress(sid)
+            if progress is not None:
+                break
+            await asyncio.sleep(0.05)
         assert progress is not None
         assert progress["is_cancelled"] is True
 
@@ -265,7 +271,13 @@ class TestStreamMetadata:
 
         await asyncio.wait_for(sub_task, timeout=10)
 
-        progress = await StreamManager.get_progress(sid)
+        # Poll briefly to allow the Redis write in set_error to propagate.
+        progress = None
+        for _ in range(10):
+            progress = await StreamManager.get_progress(sid)
+            if progress is not None:
+                break
+            await asyncio.sleep(0.05)
         assert progress is not None
         assert progress["error"] == "LLM rate limit exceeded"
 

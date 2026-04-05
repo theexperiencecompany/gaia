@@ -183,3 +183,8 @@ Homepage = "https://heygaia.io"
 Documentation = "https://docs.heygaia.io"
 Repository = "https://github.com/theexperiencecompany/gaia"
 Issues = "https://github.com/theexperiencecompany/gaia/issues"
+
+[tool.ruff.lint.per-file-ignores]
+# vulture_whitelist.py intentionally references names without importing them —
+# that is the vulture pattern for suppressing false-positive "unused" warnings.
+"vulture_whitelist.py" = ["F821"]
