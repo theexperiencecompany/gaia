@@ -199,12 +199,12 @@ export abstract class BaseBotAdapter {
   ): Promise<void> {
     const distinctId = `${this.platform}:${target.userId}`;
 
-    this.analytics.identify(distinctId, {
-      username: target.profile?.username,
-      display_name: target.profile?.displayName,
-    });
+    // No identify() — platform-handle PII (username, display_name) is
+    // intentionally not shipped to PostHog. Profiles are auto-created from
+    // the first capture using the distinctId.
 
     this.analytics.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+      interaction_type: "command",
       command: name,
       has_args: Object.keys(args).length > 0,
       has_raw_text: !!rawText,
@@ -240,19 +240,20 @@ export abstract class BaseBotAdapter {
       });
     } catch (error) {
       const durationMs = Date.now() - startMs;
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorType = error instanceof Error ? error.name : "Unknown";
       console.error(`Error executing command /${name}:`, error);
+      // Capture only the error class name. Raw messages can contain file
+      // paths, request IDs, or upstream-echoed tokens — never ship them.
       this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
         command: name,
         duration_ms: durationMs,
         success: false,
-        error_message: errorMessage,
+        error_type: errorType,
         channel_id: target.channelId,
       });
       this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
         context: `command:${name}`,
-        error_message: errorMessage,
+        error_type: errorType,
         channel_id: target.channelId,
       });
       const errMsg = formatBotError(error);

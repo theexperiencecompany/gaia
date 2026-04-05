@@ -6,7 +6,6 @@
 
 import { render } from "ink";
 import React from "react";
-import { analytics } from "../../lib/analytics.js";
 import { App } from "../../ui/app.js";
 import { createStore } from "../../ui/store.js";
 import { runInitFlow } from "./flow.js";
@@ -39,7 +38,6 @@ export async function runInit(
   } finally {
     process.off("SIGINT", handleExit);
     process.off("SIGTERM", handleExit);
-    await analytics.shutdown();
   }
 
   if (store.currentState.error) {

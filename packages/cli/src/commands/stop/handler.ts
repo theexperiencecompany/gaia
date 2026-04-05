@@ -1,6 +1,5 @@
 import { render } from "ink";
 import React from "react";
-import { analytics } from "../../lib/analytics.js";
 import type { StopServicesOptions } from "../../lib/service-starter.js";
 import { App } from "../../ui/app.js";
 import { createStore } from "../../ui/store.js";
@@ -29,7 +28,6 @@ export async function runStop(options?: StopServicesOptions): Promise<void> {
   } finally {
     process.off("SIGINT", handleExit);
     process.off("SIGTERM", handleExit);
-    await analytics.shutdown();
   }
 
   if (store.currentState.error) {

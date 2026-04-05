@@ -1,4 +1,3 @@
-import { analytics, CLI_EVENTS } from "../../lib/analytics.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import {
   checkDockerDetailed,
@@ -19,8 +18,6 @@ export async function runStartFlow(
   store: CLIStore,
   options?: StartServicesOptions,
 ): Promise<void> {
-  const startMs = Date.now();
-  analytics.capture(CLI_EVENTS.COMMAND_STARTED, { command: "start" });
   store.setStep("Starting");
   store.setStatus("Locating GAIA repository...");
 
@@ -31,10 +28,6 @@ export async function runStartFlow(
         "Could not find GAIA repository. Run from within a cloned gaia repo.",
       ),
     );
-    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
-      command: "start",
-      duration_ms: Date.now() - startMs,
-    });
     return;
   }
 
@@ -47,10 +40,6 @@ export async function runStartFlow(
         "No .env file found. Run 'gaia init' for fresh setup, or 'gaia setup' to configure an existing repo.",
       ),
     );
-    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
-      command: "start",
-      duration_ms: Date.now() - startMs,
-    });
     return;
   }
 
@@ -60,10 +49,6 @@ export async function runStartFlow(
         "Developer mode runs in foreground. Use 'gaia dev' or 'gaia dev full' instead of 'gaia start'.",
       ),
     );
-    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
-      command: "start",
-      duration_ms: Date.now() - startMs,
-    });
     return;
   }
 
@@ -120,22 +105,10 @@ export async function runStartFlow(
     store.setStep("Running");
     store.setStatus("GAIA is running!");
     store.updateData("started", true);
-    analytics.capture(CLI_EVENTS.SERVICES_STARTED, {
-      command: "start",
-      duration_ms: Date.now() - startMs,
-    });
-    analytics.capture(CLI_EVENTS.COMMAND_COMPLETED, {
-      command: "start",
-      duration_ms: Date.now() - startMs,
-    });
   } catch (e) {
     store.setError(
       new Error(`Failed to start services: ${(e as Error).message}`),
     );
-    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
-      command: "start",
-      duration_ms: Date.now() - startMs,
-    });
     return;
   }
 

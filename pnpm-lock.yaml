@@ -1003,7 +1003,7 @@ importers:
         specifier: ^16.4.5
         version: 16.6.1
       posthog-node:
-        specifier: ^5.28.11
+        specifier: 5.28.11
         version: 5.28.11(rxjs@7.8.2)
       string-similarity:
         specifier: ^4.0.4
@@ -1045,9 +1045,6 @@ importers:
       ink-text-input:
         specifier: ^6.0.0
         version: 6.0.0(ink@6.8.0(@types/react@19.2.14)(react-devtools-core@6.1.5)(react@19.1.0))(react@19.1.0)
-      posthog-node:
-        specifier: ^5.28.11
-        version: 5.28.11(rxjs@7.8.2)
       react:
         specifier: 19.1.0
         version: 19.1.0

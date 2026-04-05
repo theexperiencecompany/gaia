@@ -258,17 +258,30 @@ export async function handleStreamingChat(
   let responseLength = 0;
   let hadError = false;
 
+  analytics?.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+    interaction_type: "chat",
+    channel_id: request.channelId,
+    message_length: request.message.length,
+  });
+
   analytics?.capture(distinctId, BOT_EVENTS.CHAT_STARTED, {
     channel_id: request.channelId,
     message_length: request.message.length,
     streaming_enabled: options.streaming,
   });
 
+  const wrappedOnAuthError = async (authUrl: string) => {
+    // Auth failures are terminal — skip chat_completed in the finally block.
+    hadError = true;
+    await onAuthError(authUrl);
+  };
+
   const wrappedOnGenericError = async (formattedError: string) => {
     hadError = true;
+    // Do not ship the raw error string — it can contain paths, request IDs,
+    // or upstream-echoed tokens. `context` is enough to bucket failures.
     analytics?.capture(distinctId, BOT_EVENTS.ERROR, {
       context: "chat:streaming",
-      error_message: formattedError,
       channel_id: request.channelId,
       duration_ms: Date.now() - startMs,
     });
@@ -297,7 +310,7 @@ export async function handleStreamingChat(
       gaia,
       editMessage,
       sendNewMessage,
-      onAuthError,
+      wrappedOnAuthError,
       wrappedOnGenericError,
       options,
     );

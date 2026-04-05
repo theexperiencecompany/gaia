@@ -1,6 +1,5 @@
 import { render } from "ink";
 import React from "react";
-import { analytics } from "../../lib/analytics.js";
 import { App } from "../../ui/app.js";
 import { createStore } from "../../ui/store.js";
 import { runStatusFlow } from "./flow.js";
@@ -20,8 +19,6 @@ export async function runStatus(): Promise<void> {
     await runStatusFlow(store);
   } catch (error) {
     store.setError(error as Error);
-  } finally {
-    await analytics.shutdown();
   }
 
   if (store.currentState.error) {
