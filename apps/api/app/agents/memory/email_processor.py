@@ -38,7 +38,10 @@ from app.helpers.email_helpers import (
     store_emails_to_mem0,
     store_single_profile,
 )
-from app.agents.memory.profile_crawler import crawl_profile_url
+from app.agents.memory.profile_crawler import (
+    crawl_profile_url,
+    crawl_profile_urls_batch,
+)
 from app.agents.memory.profile_extractor import (
     PLATFORM_CONFIG,
     build_profile_url,
@@ -399,7 +402,6 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
             return {"profiles_stored": 0}
 
         # Step 2: Extract usernames and crawl profiles in parallel
-        crawl_semaphore = asyncio.Semaphore(20)  # Limit concurrent crawls
         platform_tasks = []
         discovered_profile_tasks = []  # Track discovery tasks
         crawled_urls: set[str] = (
@@ -412,7 +414,6 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
                     user_id,
                     platform,
                     emails,
-                    crawl_semaphore,
                     user_name,
                     crawled_urls,
                     async_mode=False,
@@ -466,7 +467,6 @@ async def _process_single_platform(
     user_id: str,
     platform: str,
     emails: List[Dict],
-    semaphore: asyncio.Semaphore,
     user_name: str | None = None,
     crawled_urls: set | None = None,
     async_mode: bool = False,
@@ -506,7 +506,7 @@ async def _process_single_platform(
             crawled_urls.add(profile_url)
 
         # 2. Crawl profile
-        crawl_result = await crawl_profile_url(profile_url, platform, semaphore)
+        crawl_result = await crawl_profile_url(profile_url, platform)
 
         if not crawl_result["content"] or crawl_result["error"]:
             log.warning(
@@ -527,7 +527,7 @@ async def _process_single_platform(
         # 4. Extract additional social links from profile content
         discovery_task = asyncio.create_task(
             _discover_and_store_linked_profiles(
-                user_id, crawl_result["content"], platform, semaphore, crawled_urls
+                user_id, crawl_result["content"], platform, crawled_urls
             )
         )
 
@@ -548,7 +548,6 @@ async def _discover_and_store_linked_profiles(
     user_id: str,
     profile_content: str,
     source_platform: str,
-    semaphore: asyncio.Semaphore,
     crawled_urls: set | None = None,
 ) -> int:
     """
@@ -558,7 +557,6 @@ async def _discover_and_store_linked_profiles(
         user_id: User ID
         profile_content: Crawled profile HTML/text content
         source_platform: Platform this content came from
-        semaphore: Semaphore for rate limiting crawls
 
     Returns:
         Number of discovered profiles successfully stored
@@ -624,17 +622,33 @@ async def _discover_and_store_linked_profiles(
         for key, profile_info in discovered_profiles.items():
             platform = profile_info["platform"]
             url = profile_info["url"]
-            task = crawl_profile_url(url, platform, semaphore)
-            crawl_tasks.append((platform, url, task))
+            crawl_tasks.append((url, platform))
 
-        # Wait for all crawls
-        results = await asyncio.gather(
-            *[task for _, _, task in crawl_tasks], return_exceptions=True
-        )
+        # Wait for all crawls (single crawler + arun_many)
+        crawled_results = await crawl_profile_urls_batch(crawl_tasks)
+
+        result_by_url = {
+            r.get("url"): r
+            for r in crawled_results
+            if isinstance(r, dict) and r.get("url")
+        }
+
+        results = [
+            result_by_url.get(
+                url,
+                {
+                    "url": url,
+                    "platform": platform,
+                    "content": None,
+                    "error": "missing crawl result",
+                },
+            )
+            for url, platform in crawl_tasks
+        ]
 
         # Store successful profiles
         profile_messages = []
-        for (platform, url, _), result in zip(crawl_tasks, results):
+        for (url, platform), result in zip(crawl_tasks, results):
             if (
                 isinstance(result, dict)
                 and result.get("content")

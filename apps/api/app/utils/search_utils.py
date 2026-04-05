@@ -1,13 +1,8 @@
-import asyncio
-import ipaddress
-import socket
 from typing import Optional
-from urllib.parse import urlparse
 
 import html2text
 import httpx
 from bs4 import BeautifulSoup
-from crawl4ai import AsyncWebCrawler
 from firecrawl import FirecrawlApp
 from langgraph.config import get_stream_writer
 from tavily import TavilyClient
@@ -219,26 +214,6 @@ async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
         raise FetchError(f"Firecrawl error: {str(e)}", url=url) from e
 
 
-@Cacheable(key_pattern="crawl4ai:{url}", ttl=ONE_HOUR_TTL, namespace="web")
-async def fetch_with_crawl4ai(url: str) -> str:
-    """
-    Fetch webpage content using crawl4ai (free, no API key required).
-    Falls back from Firecrawl when that service is unavailable or blocked.
-    """
-    try:
-        async with AsyncWebCrawler(verbose=False) as crawler:
-            result = await asyncio.wait_for(crawler.arun(url=url), timeout=30.0)
-
-        if result and result.markdown and result.markdown.strip():
-            log.info(f"crawl4ai successfully fetched: {url[:60]}")
-            return result.markdown
-        raise FetchError("crawl4ai returned empty content", url=url)
-    except FetchError:
-        raise
-    except Exception as e:
-        raise FetchError(f"crawl4ai error: {str(e)}", url=url) from e
-
-
 @Cacheable(key_pattern="httpx:{url}", ttl=ONE_HOUR_TTL, namespace="web")
 async def fetch_with_httpx(url: str) -> str:
     """
@@ -289,74 +264,6 @@ async def fetch_with_httpx(url: str) -> str:
         raise FetchError(f"HTTP {e.response.status_code}", url=url) from e
     except Exception as e:
         raise FetchError(f"httpx error: {str(e)}", url=url) from e
-
-
-async def fetch_page_resilient(url: str) -> str:
-    """
-    Resilient page fetcher with automatic 3-tier fallback chain:
-      1. Firecrawl  — best quality, handles JS, markdown-native
-      2. crawl4ai   — good JS support, free, no API key required
-      3. httpx+BS4  — always available, static pages only
-
-    Each tier is independently cached in Redis (1h TTL).
-    Raises FetchError only if all three tiers fail.
-    """
-    log.set(operation="fetch_page_resilient", target_url=url)
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise FetchError("Only absolute http(s) URLs are allowed", url=url)
-
-    try:
-        host_ip = ipaddress.ip_address(parsed.hostname)
-        if (
-            host_ip.is_private
-            or host_ip.is_loopback
-            or host_ip.is_link_local
-            or host_ip.is_multicast
-            or host_ip.is_reserved
-        ):
-            raise FetchError("Blocked non-public target URL", url=url)
-    except ValueError:
-        try:
-            for info in socket.getaddrinfo(parsed.hostname, None):
-                resolved_ip = ipaddress.ip_address(info[4][0])
-                if (
-                    resolved_ip.is_private
-                    or resolved_ip.is_loopback
-                    or resolved_ip.is_link_local
-                    or resolved_ip.is_multicast
-                    or resolved_ip.is_reserved
-                ):
-                    raise FetchError("Blocked non-public target URL", url=url)
-        except socket.gaierror as err:
-            raise FetchError(f"Unable to resolve host: {err}", url=url) from err
-
-    errors: list[str] = []
-
-    # Tier 1: Firecrawl
-    try:
-        return await fetch_with_firecrawl(url)
-    except Exception as e:
-        errors.append(f"firecrawl: {e}")
-        log.warning(f"Firecrawl failed for {url[:60]}, trying crawl4ai: {e}")
-
-    # Tier 2: crawl4ai
-    try:
-        return await fetch_with_crawl4ai(url)
-    except Exception as e:
-        errors.append(f"crawl4ai: {e}")
-        log.warning(f"crawl4ai failed for {url[:60]}, trying httpx: {e}")
-
-    # Tier 3: httpx + BeautifulSoup
-    try:
-        return await fetch_with_httpx(url)
-    except Exception as e:
-        errors.append(f"httpx: {e}")
-
-    raise FetchError(
-        f"All fetchers failed [{'; '.join(errors)}]",
-        url=url,
-    )
 
 
 @Cacheable(key_pattern="ddg:{query}:{count}", ttl=ONE_HOUR_TTL, namespace="search")

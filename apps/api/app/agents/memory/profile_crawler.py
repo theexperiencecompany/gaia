@@ -2,85 +2,96 @@
 
 Flow:
 1. Takes dictionary of platform -> profile URLs
-2. Spawns concurrent crawl tasks (up to max_concurrent limit)
-3. Uses AsyncWebCrawler to fetch each profile page
-4. Extracts markdown content, cleans and truncates to 50KB
-5. Returns list of results with content, platform, URL, and error status
-6. Handles timeouts (30s) and network errors gracefully
+2. Uses one crawl4ai crawler + arun_many for batched crawling
+3. Extracts markdown content and truncates to max content size
+4. Returns result dicts keyed by URL with content/error status
 """
 
-import asyncio
-import time
-import traceback
-from typing import Dict
+from typing import Dict, Sequence
 
 from shared.py.wide_events import log
-from crawl4ai import AsyncWebCrawler
+from app.constants.search import (
+    CRAWL4AI_PAGE_TIMEOUT_MS,
+    PROFILE_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
+    PROFILE_CRAWL4AI_SEMAPHORE_COUNT,
+    PROFILE_CRAWL_CONTENT_MAX_CHARS,
+    PROFILE_CRAWL4AI_SINGLE_TIMEOUT_SECONDS,
+)
+from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
 
 
-async def crawl_profile_url(
-    url: str, platform: str, semaphore: asyncio.Semaphore
-) -> Dict:
+async def crawl_profile_url(url: str, platform: str) -> Dict:
     """
     Crawl a single profile URL using crawl4ai.
 
     Args:
         url: Profile URL to crawl
         platform: Platform name (e.g., 'twitter', 'github')
-        semaphore: Concurrency control semaphore
 
     Returns:
         Dict with url, platform, content (markdown), and error if failed
     """
-    async with semaphore:
-        start_time = time.time()
-        try:
-            log.info(f"Crawling {platform} profile: {url}")
+    results = await crawl_profile_urls_batch(
+        [(url, platform)],
+        total_timeout_seconds=PROFILE_CRAWL4AI_SINGLE_TIMEOUT_SECONDS,
+        semaphore_count=1,
+    )
+    return (
+        results[0]
+        if results
+        else {
+            "url": url,
+            "platform": platform,
+            "content": None,
+            "error": "crawl_profile_urls_batch returned no results",
+        }
+    )
 
-            async with AsyncWebCrawler(verbose=False) as crawler:
-                # Add timeout to prevent hanging
-                result = await asyncio.wait_for(crawler.arun(url=url), timeout=30.0)
 
-                if not result:
-                    raise ValueError("Crawler returned None")
+async def crawl_profile_urls_batch(
+    url_platform_pairs: Sequence[tuple[str, str]],
+    *,
+    total_timeout_seconds: float = PROFILE_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
+    semaphore_count: int = PROFILE_CRAWL4AI_SEMAPHORE_COUNT,
+) -> list[Dict]:
+    """Crawl profile URLs with one crawler instance and return normalized results."""
+    if not url_platform_pairs:
+        return []
 
-                if not hasattr(result, "markdown"):
-                    raise ValueError(
-                        f"Result missing markdown attribute. Result type: {type(result)}"
-                    )
+    urls = [url for url, _ in url_platform_pairs]
+    contents, errors = await batch_fetch_with_crawl4ai(
+        urls,
+        page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
+        total_timeout_seconds=total_timeout_seconds,
+        semaphore_count=semaphore_count,
+        max_content_chars=PROFILE_CRAWL_CONTENT_MAX_CHARS,
+        context_name="profile crawl",
+    )
 
-                if not result.markdown:
-                    raise ValueError("No markdown content returned (empty string)")
-
-                elapsed = time.time() - start_time
-                content_size = len(result.markdown)
-                log.info(
-                    f"Successfully crawled {url} in {elapsed:.2f}s ({content_size:,} chars)"
-                )
-                return {
+    results: list[Dict] = []
+    for url, platform in url_platform_pairs:
+        content = contents.get(url)
+        error = errors.get(url)
+        if content:
+            log.info(
+                f"Successfully crawled {platform} profile: {url} ({len(content):,} chars)"
+            )
+            results.append(
+                {
                     "url": url,
                     "platform": platform,
-                    "content": result.markdown,
+                    "content": content,
                     "error": None,
                 }
-        except Exception as e:
-            elapsed = time.time() - start_time
-            error_type = type(e).__name__
-            error_msg = str(e) if str(e) else "No error message"
-
-            # Get more detailed error info
-            if not error_msg or error_msg == "No error message":
-                error_msg = f"{error_type}: {repr(e)}"
-
-            # Log full traceback for debugging
-            log.error(
-                f"Failed to crawl {url} after {elapsed:.2f}s: {error_type}: {error_msg}"
             )
-            log.debug(f"Full traceback for {url}:\n{traceback.format_exc()}")
+        else:
+            results.append(
+                {
+                    "url": url,
+                    "platform": platform,
+                    "content": None,
+                    "error": error or "profile crawl returned empty content",
+                }
+            )
 
-            return {
-                "url": url,
-                "platform": platform,
-                "content": None,
-                "error": f"{error_type}: {error_msg}",
-            }
+    return results
