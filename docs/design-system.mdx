@@ -1,0 +1,748 @@
+---
+title: "Design System"
+description: "Visual language, color tokens, typography, spacing, and component patterns for GAIA — rendered from DESIGN.md"
+icon: "palette"
+---
+
+{/*
+  This page is a visual rendering of DESIGN.md at the repository root.
+  All tokens, values, and rules here are sourced directly from that file.
+  When updating design tokens, update DESIGN.md — this page reflects it.
+  See: DESIGN.md (repo root) → "Parsed by docs/design-system.mdx"
+*/}
+
+<Note>
+  The source of truth is [`DESIGN.md`](https://github.com/heygaia/gaia/blob/develop/DESIGN.md) at the repository root. This page renders it visually — keep them in sync when updating tokens.
+</Note>
+
+## Design Philosophy
+
+GAIA's UI is **dark-first**, **flat**, and **single-accent**. Five principles govern every visual decision:
+
+<CardGroup cols={3}>
+  <Card title="Dark-First" icon="moon">
+    Primary experience is dark mode (`#111111`). Light mode is supported via CSS variables but is secondary.
+  </Card>
+  <Card title="Flat Depth" icon="layer-group">
+    Depth from layered backgrounds (`zinc-800` → `zinc-900`) only. Never borders, rings, or outlines.
+  </Card>
+  <Card title="Single Accent" icon="droplet">
+    One primary action color: `#00bbff` cyan. Everything else is zinc-scale neutrals.
+  </Card>
+  <Card title="Borderless Cards" icon="square">
+    Data cards use background-only separation. No `border-`, `ring-`, or `outline-` anywhere in the card tree.
+  </Card>
+  <Card title="Subtle Motion" icon="wand-magic-sparkles">
+    Animations are functional — entrance, exit, state change only. Never decorative. ≤ 300ms for interactions.
+  </Card>
+</CardGroup>
+
+---
+
+## Color System
+
+### Brand Tokens
+
+<div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', margin: '24px 0' }}>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+    <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: '#00bbff' }}></div>
+    <code style={{ fontSize: '11px' }}>--color-primary</code>
+    <span style={{ fontSize: '12px', color: '#888', fontFamily: 'monospace' }}>#00bbff</span>
+    <span style={{ fontSize: '11px', color: '#666' }}>CTAs · links · user bubble</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+    <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: '#111111', border: '1px solid rgba(255,255,255,0.12)' }}></div>
+    <code style={{ fontSize: '11px' }}>--color-primary-bg</code>
+    <span style={{ fontSize: '12px', color: '#888', fontFamily: 'monospace' }}>#111111</span>
+    <span style={{ fontSize: '11px', color: '#666' }}>Main app background</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+    <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.08)' }}></div>
+    <code style={{ fontSize: '11px' }}>--color-secondary-bg</code>
+    <span style={{ fontSize: '12px', color: '#888', fontFamily: 'monospace' }}>#1a1a1a</span>
+    <span style={{ fontSize: '11px', color: '#666' }}>Sidebar background</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+    <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: '#000000', border: '1px solid rgba(255,255,255,0.15)' }}></div>
+    <code style={{ fontSize: '11px' }}>--color-primary-foreground</code>
+    <span style={{ fontSize: '12px', color: '#888', fontFamily: 'monospace' }}>#000000</span>
+    <span style={{ fontSize: '11px', color: '#666' }}>Text on primary bg</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-start' }}>
+    <div style={{ width: '72px', height: '72px', borderRadius: '16px', background: '#00364b', border: '1px solid rgba(0,187,255,0.3)' }}></div>
+    <code style={{ fontSize: '11px' }}>Selection bg</code>
+    <span style={{ fontSize: '12px', color: '#888', fontFamily: 'monospace' }}>#00364b</span>
+    <span style={{ fontSize: '11px', color: '#666' }}>Text highlight background</span>
+  </div>
+</div>
+
+### Zinc Scale — Dark Card Surfaces
+
+Use zinc directly on dark surfaces — not CSS variables.
+
+<div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', margin: '24px 0' }}>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+    <div style={{ width: '64px', height: '64px', borderRadius: '12px', background: '#27272a' }}></div>
+    <code style={{ fontSize: '11px' }}>zinc-800</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>Outer card bg</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+    <div style={{ width: '64px', height: '64px', borderRadius: '12px', background: '#18181b' }}></div>
+    <code style={{ fontSize: '11px' }}>zinc-900</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>Inner item bg</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+    <div style={{ width: '64px', height: '64px', borderRadius: '12px', background: '#3f3f46' }}></div>
+    <code style={{ fontSize: '11px' }}>zinc-700</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>Hover / accent</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+    <div style={{ width: '64px', height: '64px', borderRadius: '12px', background: '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#111', fontSize: '11px' }}>Aa</span></div>
+    <code style={{ fontSize: '11px' }}>zinc-100</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>Primary text</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+    <div style={{ width: '64px', height: '64px', borderRadius: '12px', background: '#e4e4e7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#111', fontSize: '11px' }}>Aa</span></div>
+    <code style={{ fontSize: '11px' }}>zinc-200</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>Item titles</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+    <div style={{ width: '64px', height: '64px', borderRadius: '12px', background: '#a1a1aa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#111', fontSize: '11px' }}>Aa</span></div>
+    <code style={{ fontSize: '11px' }}>zinc-400</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>Body / secondary</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+    <div style={{ width: '64px', height: '64px', borderRadius: '12px', background: '#71717a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#fff', fontSize: '11px' }}>Aa</span></div>
+    <code style={{ fontSize: '11px' }}>zinc-500</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>Meta / timestamps</span>
+  </div>
+</div>
+
+### Status Colors
+
+Always use `/10` opacity background with matching foreground text. Never solid backgrounds for status.
+
+<div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '20px 0' }}>
+  <div style={{ padding: '6px 14px', borderRadius: '999px', background: 'rgba(52, 211, 153, 0.1)', color: '#34d399', fontSize: '13px', fontWeight: 500 }}>Success</div>
+  <div style={{ padding: '6px 14px', borderRadius: '999px', background: 'rgba(251, 191, 36, 0.1)', color: '#fbbf24', fontSize: '13px', fontWeight: 500 }}>Warning</div>
+  <div style={{ padding: '6px 14px', borderRadius: '999px', background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', fontSize: '13px', fontWeight: 500 }}>Error</div>
+  <div style={{ padding: '6px 14px', borderRadius: '999px', background: 'rgba(96, 165, 250, 0.1)', color: '#60a5fa', fontSize: '13px', fontWeight: 500 }}>Info</div>
+  <div style={{ padding: '6px 14px', borderRadius: '999px', background: 'rgba(63, 63, 70, 0.5)', color: '#a1a1aa', fontSize: '13px', fontWeight: 500 }}>Pending</div>
+  <div style={{ padding: '6px 14px', borderRadius: '999px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', fontSize: '13px', fontWeight: 500 }}>High Priority</div>
+  <div style={{ padding: '6px 14px', borderRadius: '999px', background: 'rgba(234, 179, 8, 0.1)', color: '#eab308', fontSize: '13px', fontWeight: 500 }}>Medium Priority</div>
+  <div style={{ padding: '6px 14px', borderRadius: '999px', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', fontSize: '13px', fontWeight: 500 }}>Low Priority</div>
+</div>
+
+| Status | Background | Text |
+|--------|-----------|------|
+| Success | `bg-emerald-400/10` | `text-emerald-400` |
+| Warning | `bg-amber-400/10` | `text-amber-400` |
+| Error | `bg-red-400/10` | `text-red-400` |
+| Info | `bg-blue-400/10` | `text-blue-400` |
+| Pending | `bg-zinc-700/50` | `text-zinc-400` |
+| Priority high | `bg-red-500/10` | `text-red-500` |
+| Priority medium | `bg-yellow-500/10` | `text-yellow-500` |
+| Priority low | `bg-blue-500/10` | `text-blue-500` |
+
+---
+
+## Typography
+
+### Font Families
+
+<CardGroup cols={3}>
+  <Card title="Inter" icon="font">
+    **Token:** `font-sans`
+
+    All UI — body text, labels, buttons, inputs, navigation. The default for everything in the app.
+
+    ```
+    font-family: 'Inter', sans-serif
+    ```
+  </Card>
+  <Card title="PP Editorial New" icon="pen-nib">
+    **Token:** `font-serif`
+
+    Editorial headings and landing hero text. Loaded locally (commercial font). Weights: 200 (Ultralight) and 400 (Regular).
+
+    ```
+    font-family: 'PP Editorial New', serif
+    font-weight: 200 | 400
+    ```
+  </Card>
+  <Card title="Anonymous Pro" icon="code">
+    **Token:** `font-mono`
+
+    Code blocks, `<code>` elements, technical content.
+
+    ```
+    font-family: 'Anonymous Pro', monospace
+    font-weight: 400 | 700
+    ```
+  </Card>
+</CardGroup>
+
+<Tip>
+  Never set `font-family` inline. Always use the Tailwind token class: `font-sans`, `font-serif`, or `font-mono`.
+</Tip>
+
+### Font Specimens
+
+<div style={{ margin: '24px 0', borderRadius: '16px', background: '#18181b', padding: '28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+  <div>
+    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', fontFamily: 'monospace' }}>Inter — font-sans (UI default)</div>
+    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '28px', fontWeight: 700, color: '#f4f4f5', lineHeight: 1.2 }}>The quick brown fox jumps</div>
+    <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '16px', fontWeight: 400, color: '#a1a1aa', marginTop: '8px', lineHeight: 1.6 }}>GAIA proactively manages your email, calendar, tasks, and workflows — so you don't have to.</div>
+    <div style={{ display: 'flex', gap: '16px', marginTop: '12px', flexWrap: 'wrap' }}>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 300, fontSize: '14px', color: '#71717a' }}>Light 300</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 400, fontSize: '14px', color: '#a1a1aa' }}>Regular 400</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500, fontSize: '14px', color: '#d4d4d8' }}>Medium 500</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 600, fontSize: '14px', color: '#e4e4e7' }}>Semibold 600</span>
+      <span style={{ fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: '14px', color: '#f4f4f5' }}>Bold 700</span>
+    </div>
+  </div>
+
+  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px' }}>
+    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', fontFamily: 'monospace' }}>PP Editorial New — font-serif (editorial / landing)</div>
+    <div style={{ fontFamily: "'PP Editorial New', serif", fontSize: '36px', fontWeight: 200, color: '#f4f4f5', lineHeight: 1.1 }}>The future of personal AI</div>
+    <div style={{ fontFamily: "'PP Editorial New', serif", fontSize: '36px', fontWeight: 200, color: '#f4f4f5', lineHeight: 1.1, fontStyle: 'italic', marginTop: '4px' }}>is already here.</div>
+    <div style={{ display: 'flex', gap: '24px', marginTop: '16px', flexWrap: 'wrap' }}>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 200, fontSize: '15px', color: '#71717a' }}>Ultralight 200</span>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 200, fontSize: '15px', color: '#a1a1aa', fontStyle: 'italic' }}>Ultralight Italic</span>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 400, fontSize: '15px', color: '#d4d4d8' }}>Regular 400</span>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 400, fontSize: '15px', color: '#e4e4e7', fontStyle: 'italic' }}>Regular Italic</span>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 800, fontSize: '15px', color: '#f4f4f5' }}>Ultrabold 800</span>
+    </div>
+  </div>
+
+  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px' }}>
+    <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px', fontFamily: 'monospace' }}>Anonymous Pro — font-mono (code)</div>
+    <div style={{ fontFamily: 'monospace', fontSize: '15px', fontWeight: 400, color: '#a78bfa', lineHeight: 1.7 }}>
+      <span style={{ color: '#60a5fa' }}>const</span> <span style={{ color: '#f4f4f5' }}>gaia</span> <span style={{ color: '#71717a' }}>=</span> <span style={{ color: '#34d399' }}>await</span> <span style={{ color: '#f4f4f5' }}>agent</span><span style={{ color: '#71717a' }}>.</span><span style={{ color: '#fbbf24' }}>run</span><span style={{ color: '#71717a' }}>(</span><span style={{ color: '#86efac' }}>"Summarize my inbox"</span><span style={{ color: '#71717a' }}>);</span>
+    </div>
+  </div>
+
+</div>
+
+### Heading Scale
+
+Styles apply globally to semantic HTML elements — just use the right tag.
+
+| Element | Classes | Size |
+|---------|---------|------|
+| `<h1>` | `text-3xl font-bold` | 30px |
+| `<h2>` | `text-2xl font-bold` | 24px |
+| `<h3>` | `text-xl font-bold` | 20px |
+| `<h4>` | `text-lg font-bold` | 18px |
+| `<h5>` | `text-base font-bold` | 16px |
+| `<h6>` | `text-sm font-bold` | 14px |
+
+### Text Patterns
+
+**Uppercase section labels** — settings panels, card headers, form group titles:
+
+```tsx
+<p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+  Section Title
+</p>
+```
+
+**Truncation** — always truncate in constrained containers:
+
+```tsx
+<span className="truncate">...</span>                  // single line
+<p className="line-clamp-2">...</p>                    // two lines max
+<p className="line-clamp-1 max-w-[200px]">...</p>     // width + line cap
+```
+
+---
+
+## Spacing
+
+<CardGroup cols={2}>
+  <Card title="Standard Values" icon="ruler-horizontal">
+    | Value | Use |
+    |-------|-----|
+    | `gap-1` / `gap-1.5` | Icon + label pairs |
+    | `gap-2` | Standard row items |
+    | `gap-3` | Section spacing in cards |
+    | `space-y-2` | Vertical list items in card |
+    | `p-3` | Inner card item padding |
+    | `p-4` | Outer card padding |
+    | `px-3` / `px-4` | Horizontal padding (inputs, buttons) |
+  </Card>
+  <Card title="Visual Spacing Scale" icon="arrows-left-right">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '4px', height: '16px', background: '#00bbff', borderRadius: '2px' }}></div>
+        <span style={{ fontSize: '12px', color: '#a1a1aa' }}>4px — gap-1</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '8px', height: '16px', background: '#00bbff', borderRadius: '2px' }}></div>
+        <span style={{ fontSize: '12px', color: '#a1a1aa' }}>8px — gap-2</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '12px', height: '16px', background: '#00bbff', borderRadius: '2px' }}></div>
+        <span style={{ fontSize: '12px', color: '#a1a1aa' }}>12px — gap-3 / p-3</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ width: '16px', height: '16px', background: '#00bbff', borderRadius: '2px' }}></div>
+        <span style={{ fontSize: '12px', color: '#a1a1aa' }}>16px — gap-4 / p-4</span>
+      </div>
+    </div>
+  </Card>
+</CardGroup>
+
+---
+
+## Border Radius
+
+<div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', margin: '24px 0', alignItems: 'flex-end' }}>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+    <div style={{ width: '72px', height: '72px', background: '#27272a', borderRadius: '6px' }}></div>
+    <code style={{ fontSize: '11px' }}>rounded-md</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>6px</span>
+    <span style={{ fontSize: '10px', color: '#555' }}>buttons, inputs</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+    <div style={{ width: '72px', height: '72px', background: '#27272a', borderRadius: '12px' }}></div>
+    <code style={{ fontSize: '11px' }}>rounded-xl</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>12px</span>
+    <span style={{ fontSize: '10px', color: '#555' }}>inner cards, menus</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+    <div style={{ width: '72px', height: '72px', background: '#27272a', borderRadius: '16px' }}></div>
+    <code style={{ fontSize: '11px' }}>rounded-2xl</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>16px</span>
+    <span style={{ fontSize: '10px', color: '#555', fontWeight: 600 }}>outer cards (standard)</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+    <div style={{ width: '72px', height: '72px', background: '#27272a', borderRadius: '24px' }}></div>
+    <code style={{ fontSize: '11px' }}>rounded-3xl</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>24px</span>
+    <span style={{ fontSize: '10px', color: '#555' }}>images</span>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+    <div style={{ width: '72px', height: '36px', background: '#27272a', borderRadius: '999px' }}></div>
+    <code style={{ fontSize: '11px' }}>rounded-full</code>
+    <span style={{ fontSize: '11px', color: '#666' }}>50%</span>
+    <span style={{ fontSize: '10px', color: '#555' }}>badges, pills, avatars</span>
+  </div>
+</div>
+
+| Context | Class | Size |
+|---------|-------|------|
+| Buttons, inputs | `rounded-md` | 6px |
+| Inner card items, context menus | `rounded-xl` | 12px |
+| **Outer card containers** | **`rounded-2xl`** | **16px** |
+| Images | `rounded-3xl` | 24px |
+| Badges, pills, avatars | `rounded-full` | 50% |
+
+<Warning>
+  Never use `rounded-lg` on card containers — it's the Shadcn base radius (8px) and visually too small. Always use `rounded-2xl` for outer cards.
+</Warning>
+
+---
+
+## Dark Card System
+
+The most important pattern. All data cards, tool sections, and info panels follow this contract exactly.
+
+### Live Example
+
+<div style={{ background: '#111111', padding: '24px', borderRadius: '16px', margin: '20px 0' }}>
+  <div style={{ borderRadius: '16px', background: '#27272a', padding: '16px', maxWidth: '400px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+      <span style={{ fontSize: '14px', fontWeight: 600, color: '#f4f4f5', fontFamily: 'Inter, sans-serif' }}>Card Title</span>
+      <span style={{ borderRadius: '999px', background: 'rgba(63,63,70,0.5)', padding: '2px 10px', fontSize: '12px', color: '#a1a1aa', fontFamily: 'Inter, sans-serif' }}>Badge</span>
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div style={{ borderRadius: '16px', background: '#18181b', padding: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '14px', fontWeight: 500, color: '#e4e4e7', fontFamily: 'Inter, sans-serif' }}>Item Title</span>
+          <span style={{ borderRadius: '999px', background: 'rgba(52,211,153,0.1)', color: '#34d399', padding: '2px 10px', fontSize: '12px', fontFamily: 'Inter, sans-serif' }}>Success</span>
+        </div>
+        <p style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '4px', fontFamily: 'Inter, sans-serif' }}>Body text goes here — secondary information, description</p>
+        <p style={{ fontSize: '12px', color: '#71717a', marginTop: '2px', fontFamily: 'Inter, sans-serif' }}>Meta · Timestamp · 2m ago</p>
+      </div>
+      <div style={{ borderRadius: '16px', background: '#18181b', padding: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '14px', fontWeight: 500, color: '#e4e4e7', fontFamily: 'Inter, sans-serif' }}>Another Item</span>
+          <span style={{ borderRadius: '999px', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', padding: '2px 10px', fontSize: '12px', fontFamily: 'Inter, sans-serif' }}>Warning</span>
+        </div>
+        <p style={{ fontSize: '12px', color: '#a1a1aa', marginTop: '4px', fontFamily: 'Inter, sans-serif' }}>Card layering: zinc-800 outer → zinc-900 inner</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+### Card Template
+
+```tsx
+const statusClasses = {
+  success: "bg-emerald-400/10 text-emerald-400",
+  error:   "bg-red-400/10 text-red-400",
+  warning: "bg-amber-400/10 text-amber-400",
+  info:    "bg-blue-400/10 text-blue-400",
+  pending: "bg-zinc-700/50 text-zinc-400",
+} as const;
+
+export function MyCard({ title, items, badge }) {
+  return (
+    <div className="rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold text-zinc-100">{title}</p>
+        {badge && (
+          <span className="rounded-full bg-zinc-700/50 px-2 py-0.5 text-xs text-zinc-400">
+            {badge}
+          </span>
+        )}
+      </div>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item.id} className="rounded-2xl bg-zinc-900 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium text-zinc-200">{item.label}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs ${statusClasses[item.status]}`}>
+                {item.value}
+              </span>
+            </div>
+            {item.meta && (
+              <p className="text-xs text-zinc-500 mt-1">{item.meta}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+### Layer Reference
+
+| Layer | Classes |
+|-------|---------|
+| Outer container | `rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]` |
+| Outer (accordion) | `rounded-2xl bg-zinc-800 p-3 py-0` |
+| Inner item | `rounded-2xl bg-zinc-900 p-3` |
+| Inner item compact | `rounded-xl bg-zinc-900 p-3` |
+| Glass variant | `rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
+| Section header | `text-sm font-semibold text-zinc-100 mb-3` |
+| Item title | `text-sm font-medium text-zinc-200` |
+| Body text | `text-xs text-zinc-400` |
+| Meta / timestamp | `text-xs text-zinc-500` |
+| Item spacing | `space-y-2` |
+| Hover (list item) | `p-4 transition-all hover:bg-white/5` |
+
+### Hard Rules
+
+- `rounded-2xl` on outer containers — always
+- Two-tone zinc: `zinc-800` outer → `zinc-900` inner
+- Status badges always use `/10` opacity backgrounds
+- **Never** `border-`, `ring-`, or `outline-` anywhere in a card tree
+
+---
+
+## Depth & Elevation
+
+Depth comes from background layering and blur — not box shadows.
+
+| Context | Value |
+|---------|-------|
+| Buttons, inputs | `shadow-xs` |
+| Dialogs, sheets | `shadow-lg` |
+| Solid dark cards | No shadow — flat design |
+| Glass dark cards | `bg-zinc-800/40 backdrop-blur-xl` |
+| Hover on dark surfaces | `hover:bg-white/5` |
+
+### Backdrop Blur Scale
+
+<div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', margin: '20px 0' }}>
+  <div style={{ borderRadius: '16px', background: 'rgba(39,39,42,0.6)', backdropFilter: 'blur(8px)', padding: '16px 20px', minWidth: '140px' }}>
+    <div style={{ fontSize: '12px', color: '#f4f4f5', fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>backdrop-blur-lg</div>
+    <div style={{ fontSize: '11px', color: '#71717a', marginTop: '4px' }}>Glass card overlays</div>
+  </div>
+  <div style={{ borderRadius: '16px', background: 'rgba(39,39,42,0.5)', backdropFilter: 'blur(16px)', padding: '16px 20px', minWidth: '140px' }}>
+    <div style={{ fontSize: '12px', color: '#f4f4f5', fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>backdrop-blur-xl</div>
+    <div style={{ fontSize: '11px', color: '#71717a', marginTop: '4px' }}>Panels over content</div>
+  </div>
+  <div style={{ borderRadius: '16px', background: 'rgba(39,39,42,0.4)', backdropFilter: 'blur(24px)', padding: '16px 20px', minWidth: '140px' }}>
+    <div style={{ fontSize: '12px', color: '#f4f4f5', fontWeight: 600, fontFamily: 'Inter, sans-serif' }}>backdrop-blur-2xl</div>
+    <div style={{ fontSize: '11px', color: '#71717a', marginTop: '4px' }}>Search overlays, modals</div>
+  </div>
+</div>
+
+---
+
+## Animations
+
+### Available Classes
+
+| Class | Duration | Easing | Use |
+|-------|----------|--------|-----|
+| `animate-spin` | Infinite | linear | Loading spinners |
+| `animate-pulse` | Infinite | linear | Skeleton placeholders |
+| `animate-accordion-down` | 0.2s | ease-out | Accordion open |
+| `animate-accordion-up` | 0.2s | ease-out | Accordion close |
+| `animate-scale-in` | 0.4s | bounce | Element entrance |
+| `animate-scale-in-blur` | 0.5s | bounce | Blurred entrance |
+| `animate-shimmer` | 2s | linear | Shimmer effect |
+| `animate-shake` | 0.7s | ease-in-out | Error feedback |
+
+### Transitions
+
+```tsx
+// Default — use everywhere
+<div className="transition-all duration-200">
+
+// Color only
+<div className="transition-colors duration-200">
+
+// Button press
+<button className="active:scale-95 transition-all! duration-300">
+```
+
+### Easing Functions
+
+| Name | Value | When |
+|------|-------|------|
+| Default | `ease` | Most transitions |
+| Entrance / exit | `ease-out` | Entrances and exits |
+| Bounce | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `scale-in`, `scale-in-blur` |
+
+### Framer Motion
+
+Import from `motion/react` — never `framer-motion`.
+
+```typescript
+import { AnimatePresence, m } from "motion/react";
+
+<AnimatePresence mode="wait">
+  {visible && (
+    <m.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+    >
+      {content}
+    </m.div>
+  )}
+</AnimatePresence>
+```
+
+`AnimatePresence` is required for exit animations. Keep durations ≤ 300ms for interactions, ≤ 500ms for page-level entrances.
+
+---
+
+## Icons
+
+All icons come from `@icons` (`@theexperiencecompany/gaia-icons/solid-rounded`). Never use raw SVGs or Unicode symbols.
+
+```typescript
+import { CheckmarkCircle02Icon, Alert01Icon, Copy01Icon, Brain02Icon } from "@icons";
+```
+
+### Sizing
+
+| Context | Value | Class |
+|---------|-------|-------|
+| Inline (badges, labels) | `height={17}` | 17px |
+| Action buttons | `size={16}` | 16px |
+| Prominent / decorative | `size={24}` | 24px |
+
+### Usage Patterns
+
+```tsx
+// In a ghost button
+<Button variant="ghost" size="icon">
+  <Copy01Icon className="h-4 w-4" />
+</Button>
+
+// In a status badge
+<Alert01Icon className="text-amber-400" height={17} />
+
+// With hover scale
+<Brain02Icon className="transition-all duration-200 group-hover:scale-110" size={24} />
+```
+
+<Warning>
+  Never use Unicode/text symbols as UI elements: no `→`, `↗`, `•`, `✓`, `×`, or similar. Always use icon components from `@icons`.
+</Warning>
+
+---
+
+## Component Library
+
+### Shadcn UI — `src/components/ui/`
+
+Style preset: `new-york` · Base: `zinc` · CSS variables: on
+
+<CardGroup cols={2}>
+  <Card title="Overlays" icon="layer-group">
+    | Component | Use |
+    |-----------|-----|
+    | `Dialog` | Confirmations, focused forms |
+    | `Sheet` | Side panels, settings drawers |
+    | `Popover` | Inline pickers, contextual options |
+    | `Tooltip` | Hover labels only — no interactive content |
+    | `DropdownMenu` | Action lists from a trigger |
+    | `ContextMenu` | Right-click action lists |
+  </Card>
+  <Card title="Content & Layout" icon="grid">
+    | Component | Notes |
+    |-----------|-------|
+    | `Button` | `default` `destructive` `outline` `secondary` `ghost` `link` |
+    | `Input` | `h-9 rounded-md shadow-xs` · `aria-invalid` for errors |
+    | `Textarea` | `min-h-16` · auto-height via `field-sizing-content` |
+    | `Accordion` | `animate-accordion-down/up` |
+    | `Skeleton` | `animate-pulse rounded-md` |
+    | `Sidebar` | Collapsible, `Cmd+B` toggle, cookie-persisted |
+  </Card>
+</CardGroup>
+
+### HeroUI — `@heroui/*`
+
+Used for richer UI inside cards and content areas.
+
+| Component | Standard usage |
+|-----------|----------------|
+| `Chip` | Status badges — `variant="flat"` (never solid) |
+| `Button` | Card actions — `variant="flat"` or `"solid"` |
+| `Accordion` / `AccordionItem` | Expandable card sections |
+| `Progress` | Progress bars and loaders |
+| `Tabs` / `Tab` | Tabbed card content |
+| `ScrollShadow` | Wraps overflowing lists |
+| `Spinner` | Loading states (prefer over icon spinners) |
+| `Skeleton` | Content placeholders |
+
+### Overlay Selection Guide
+
+| Use case | Component |
+|----------|-----------|
+| Destructive confirm, focused form | `Dialog` |
+| Side panel, settings, multi-step flow | `Sheet` |
+| Inline picker, date selector | `Popover` |
+| Single-line hover label | `Tooltip` |
+| Action list from button | `DropdownMenu` |
+| Right-click actions | `ContextMenu` |
+
+---
+
+## Toast / Notifications
+
+**Library:** Sileo — mounted globally in the app layout. Never add another `<Toaster>` or import from `sonner` / `react-hot-toast`.
+
+```typescript
+import { toast } from "sonner";
+
+toast.success("File saved");
+toast.error("Something went wrong");
+toast.warning("Storage almost full");
+toast.info("New message received");
+```
+
+Toast style: dark fill `#262626`, white title, `rgba(255,255,255,0.75)` description, top-right position. Action button colors are applied automatically by type.
+
+---
+
+## Interactive States
+
+| State | Classes |
+|-------|---------|
+| Hover (standard) | `hover:bg-accent` · `hover:opacity-80` |
+| Hover (dark surface) | `hover:bg-white/5` |
+| Focus visible | `focus-visible:ring-ring/50 focus-visible:ring-[3px]` |
+| Active / press | `active:scale-95` |
+| Disabled | `disabled:opacity-50 disabled:pointer-events-none` |
+| Error (input) | `aria-invalid:ring-destructive/20 aria-invalid:border-destructive` |
+| Hover reveal | `opacity-0 group-hover:opacity-100 transition-all` |
+
+---
+
+## Chart Colors
+
+When building charts with Recharts, use this ordered palette:
+
+<div style={{ display: 'flex', gap: '12px', margin: '20px 0' }}>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+    <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#a78bfa' }}></div>
+    <code style={{ fontSize: '11px' }}>#a78bfa</code>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+    <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#34d399' }}></div>
+    <code style={{ fontSize: '11px' }}>#34d399</code>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+    <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#60a5fa' }}></div>
+    <code style={{ fontSize: '11px' }}>#60a5fa</code>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+    <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#f472b6' }}></div>
+    <code style={{ fontSize: '11px' }}>#f472b6</code>
+  </div>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+    <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#fb923c' }}></div>
+    <code style={{ fontSize: '11px' }}>#fb923c</code>
+  </div>
+</div>
+
+```javascript
+const CHART_COLORS = ["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"];
+// Purple · Emerald · Blue · Pink · Orange
+```
+
+---
+
+## Styling Utilities
+
+### `cn()` — Always use for class merging
+
+```typescript
+import { cn } from "@/lib/utils";
+
+<div className={cn("base-class", condition && "conditional-class", className)} />
+```
+
+### `cva` — For components with multiple visual variants
+
+```typescript
+import { cva } from "class-variance-authority";
+
+const cardVariants = cva("rounded-2xl p-4", {
+  variants: {
+    depth: {
+      outer: "bg-zinc-800",
+      inner: "bg-zinc-900",
+    },
+  },
+});
+```
+
+---
+
+## Do's and Don'ts
+
+<CardGroup cols={2}>
+  <Card title="Do" icon="check">
+    - Use `rounded-2xl` on all outer card containers
+    - Layer `zinc-800` → `zinc-900` for card depth
+    - Use `/10` opacity for all status color backgrounds
+    - Import icons from `@icons`
+    - Use `cn()` for conditional class merging
+    - Use `transition-all duration-200` as the default transition
+    - Use `AnimatePresence` for exit animations with Framer Motion
+    - Import from `motion/react`, not `framer-motion`
+  </Card>
+  <Card title="Don't" icon="xmark">
+    - Never add `border-`, `ring-`, or `outline-` to card trees
+    - Never use `rounded-lg` on card containers
+    - Never use solid backgrounds for status badges
+    - Never use Unicode symbols (`→`, `•`, `✓`) in JSX — use icons
+    - Never add `<Toaster>` — it's already mounted globally
+    - Never use CSS variables on dark card surfaces — use zinc directly
+    - Never set `font-family` inline — use Tailwind token classes
+    - Never import from `framer-motion` — use `motion/react`
+  </Card>
+</CardGroup>

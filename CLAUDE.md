@@ -163,6 +163,7 @@ The full design system is documented in **[`DESIGN.md`](./DESIGN.md)** at the re
 
 **Claude rules** for design consistency are in `.claude/rules/design.md` (auto-loaded).
 **Chat bubble rules** are in `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`.
+**Visual style guide** (rendered as interactive docs) is in `docs/design-system.mdx` — sourced from `DESIGN.md`.
 
 ## Code Style
 

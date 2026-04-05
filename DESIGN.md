@@ -2,9 +2,12 @@
 
 The visual language for building any UI in this codebase. Covers tokens, patterns, and rules — not component internals or workflows.
 
+> **Parsed by docs:** This file is the source of truth for [`docs/design-system.mdx`](docs/design-system.mdx), which renders it visually in the GAIA documentation site at [docs.heygaia.io/design-system](https://docs.heygaia.io/design-system). When updating tokens here, keep that page in sync.
+
 **Related files:**
 - Token source: `apps/web/src/app/styles/globals.css`
 - Claude design rules: `.claude/rules/design.md` → points here
+- Visual docs: `docs/design-system.mdx` → renders this file as a style guide
 - Chat card contract + workflow: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`
 
 ---

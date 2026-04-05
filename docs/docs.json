@@ -79,6 +79,10 @@
             ]
           },
           {
+            "group": "Design System",
+            "pages": ["design-system"]
+          },
+          {
             "group": "Extra Developer Config",
             "pages": [
               "configuration/environment-variables",
