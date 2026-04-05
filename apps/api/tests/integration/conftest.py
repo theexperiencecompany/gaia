@@ -27,17 +27,21 @@ _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 def _worker_redis_url(base_url: str) -> str:
     """Return a Redis URL with a per-xdist-worker DB number.
 
-    Each xdist worker (gw0, gw1, ...) gets its own Redis DB (0-15) so
-    that one test's ``flushdb()`` teardown cannot wipe another worker's
-    in-flight keys. Without this, parallel tests using the ``real_redis``
-    fixture race each other and fail non-deterministically.
+    Offsets from the base DB configured in the URL so ``redis://.../8``
+    becomes ``/8`` on gw0 and ``/9`` on gw1.  This preserves any DB
+    isolation already configured by the caller while still giving each
+    xdist worker its own logical database so ``flushdb()`` teardown
+    cannot wipe another worker's in-flight keys.
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
     try:
-        db = int(worker.removeprefix("gw")) % 16
+        worker_num = int(worker.removeprefix("gw"))
     except ValueError:
-        db = 0
-    if re.search(r"/\d+$", base_url):
+        worker_num = 0
+    match = re.search(r"/(\d+)$", base_url)
+    base_db = int(match.group(1)) if match else 0
+    db = (base_db + worker_num) % 16
+    if match:
         return re.sub(r"/\d+$", f"/{db}", base_url)
     return base_url.rstrip("/") + f"/{db}"
 
@@ -152,7 +156,7 @@ async def real_redis(monkeypatch):
         await client.aclose()
         if _USE_REAL_SERVICES:
             raise  # In CI with real services, Redis must be running
-        pytest.skip("Redis not available at " + url)
+        pytest.skip("Redis not available")
 
     monkeypatch.setattr(redis_cache, "redis", client)
 

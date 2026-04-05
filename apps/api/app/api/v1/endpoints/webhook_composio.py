@@ -24,17 +24,28 @@ router = APIRouter()
 # Prevent GC of fire-and-forget tasks
 _webhook_tasks: set[asyncio.Task[Any]] = set()
 
+# Background tasks are cancelled after this many seconds to prevent indefinite hangs.
+_WEBHOOK_TASK_TIMEOUT: float = 120.0
+
 
 async def _process_webhook_event(
     handler: Any, event_data: ComposioWebhookEvent
 ) -> None:
     """Background task: find matching workflows and queue them."""
     try:
-        await handler.process_event(
-            event_type=event_data.type,
-            trigger_id=event_data.trigger_id,
-            user_id=event_data.user_id,
-            data=event_data.data,
+        await asyncio.wait_for(
+            handler.process_event(
+                event_type=event_data.type,
+                trigger_id=event_data.trigger_id,
+                user_id=event_data.user_id,
+                data=event_data.data,
+            ),
+            timeout=_WEBHOOK_TASK_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        log.error(
+            f"Webhook background processing timed out after {_WEBHOOK_TASK_TIMEOUT}s "
+            f"for {event_data.type}"
         )
     except Exception as e:
         log.error(f"Webhook background processing failed for {event_data.type}: {e}")
