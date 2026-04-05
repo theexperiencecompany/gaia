@@ -121,12 +121,11 @@ class DodoPaymentService:
                     "email": user.get("email"),
                     "name": user.get("first_name") or user.get("name", "User"),
                 },
-                "billing_address": {
-                    "country": "IN",
-                },
                 "feature_flags": {
                     # This renders the promo/discount code input on the hosted page
                     "allow_discount_code": True,
+                    # Allow customers to change their billing address country
+                    "allow_customer_editing_country": True,
                 },
                 "return_url": f"{settings.FRONTEND_URL}/payment/success",
                 "metadata": {"user_id": user_id, "product_id": product_id},
