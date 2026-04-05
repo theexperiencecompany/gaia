@@ -151,6 +151,7 @@ class GaiaCi:
                 [
                     "uv",
                     "run",
+                    "--frozen",
                     "pytest",
                     "-n",
                     "auto",
@@ -173,6 +174,7 @@ class GaiaCi:
                 [
                     "uv",
                     "run",
+                    "--frozen",
                     "pytest",
                     "-n",
                     "auto",
