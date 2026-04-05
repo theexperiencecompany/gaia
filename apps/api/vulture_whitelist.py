@@ -1,3 +1,5 @@
+# ruff: noqa: F821
+# mypy: ignore-errors
 # Vulture whitelist — known false positives.
 #
 # Generated with: vulture app/ --make-whitelist
