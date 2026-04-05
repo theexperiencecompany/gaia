@@ -1,0 +1,343 @@
+apiVersion: 1
+
+# Grafana-managed alert rules. The contact point `slack-alerts` and the root
+# notification policy are provisioned alongside this file.
+#
+# All rules use the Prometheus datasource (uid: prometheus) with a reduce step
+# that compares the instant query result against the threshold. Conditions are
+# expressed with a math expression on the reduced value.
+
+groups:
+  - orgId: 1
+    name: gaia-critical
+    folder: GAIA
+    interval: 1m
+    rules:
+      # 1. API 5xx rate >1% for 5m
+      - uid: gaia-api-5xx
+        title: API 5xx error rate high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: |
+                100 * (
+                  sum(rate(http_requests_total{job="gaia-api", status=~"5..", handler!~"/metrics|/health.*|/favicon.ico"}[5m]))
+                  /
+                  clamp_min(sum(rate(http_requests_total{job="gaia-api", handler!~"/metrics|/health.*|/favicon.ico"}[5m])), 0.0001)
+                )
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: API 5xx error rate is {{ $values.B }}% over the last 5 minutes
+        labels:
+          severity: critical
+          service: api
+
+      # 2. API p95 latency >1s for 10m
+      - uid: gaia-api-p95-latency
+        title: API p95 latency high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="gaia-api", handler!~"/metrics|/health.*|/favicon.ico"}[5m])))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: API p95 latency is {{ $values.B }}s
+        labels:
+          severity: warning
+          service: api
+
+      # 3. RabbitMQ ready messages backlog >1000 for 5m
+      - uid: gaia-rabbitmq-backlog
+        title: RabbitMQ queue backlog
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(rabbitmq_queue_messages_ready)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [1000] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "{{ $values.B }} messages ready in RabbitMQ queues"
+        labels:
+          severity: warning
+          service: rabbitmq
+
+      # 4. ARQ failed tasks >5 in 15m
+      - uid: gaia-arq-failures
+        title: ARQ worker failed tasks
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(arq_task_total{status="error"}[15m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [5] }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        annotations:
+          summary: "{{ $values.B }} ARQ tasks failed in the last 15 minutes"
+        labels:
+          severity: warning
+          service: arq_worker
+
+      # 5. Postgres connections >80% of max
+      - uid: gaia-postgres-connections
+        title: Postgres connection pool saturation
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(pg_stat_activity_count{datname="langgraph"}) / on() pg_settings_max_connections
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.8] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: Postgres is using {{ $values.B | humanizePercentage }} of max connections
+        labels:
+          severity: warning
+          service: postgres
+
+      # 6. ChromaDB probe failing for 2m
+      - uid: gaia-chromadb-down
+        title: ChromaDB probe failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: probe_success{job="chromadb"}
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: ChromaDB HTTP probe is failing
+        labels:
+          severity: critical
+          service: chromadb
+
+      # 7. Host disk root >85%
+      - uid: gaia-host-disk
+        title: Host disk usage high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"}) * 100
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [85] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: Host root disk is {{ $values.B }}% full
+        labels:
+          severity: warning
+          service: host
+
+      # 8. Host memory >90% for 10m
+      - uid: gaia-host-memory
+        title: Host memory usage high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [90] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: Host memory is {{ $values.B }}% used
+        labels:
+          severity: warning
+          service: host
+
+      # 9. External API uptime (blackbox probe) failing for 2m
+      - uid: gaia-api-external-down
+        title: External API uptime probe failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: probe_success{job="blackbox_api", instance="https://api.heygaia.io/health"}
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: api.heygaia.io /health probe is failing
+        labels:
+          severity: critical
+          service: api

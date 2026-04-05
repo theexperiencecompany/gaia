@@ -21,6 +21,7 @@ from app.core.provider_registration import (  # noqa: E402
     setup_warnings,
     unified_startup,
 )
+from app.workers.metrics import start_metrics_server  # noqa: E402
 from shared.py.wide_events import log  # noqa: E402
 
 # Set up common warning filters
@@ -32,8 +33,16 @@ async def startup(ctx: dict):
 
     log.info("ARQ worker starting up...")
     # Store startup time for monitoring/debugging
-    # Store startup time for monitoring/debugging
     ctx["startup_time"] = asyncio.get_event_loop().time()
+
+    # Expose Prometheus metrics for task duration histograms. Prometheus scrapes
+    # this endpoint via the `arq_worker` job.
+    metrics_port = int(os.getenv("ARQ_METRICS_PORT", "9100"))
+    try:
+        start_metrics_server(metrics_port)
+        log.info("arq_worker_metrics_server_started", port=metrics_port)
+    except OSError as exc:
+        log.warning("arq_worker_metrics_server_failed", port=metrics_port, error=str(exc))
 
     # Use unified startup function - handles provider registration, eager init, and auto-init
     await unified_startup("arq_worker")

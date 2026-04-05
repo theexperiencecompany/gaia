@@ -171,6 +171,9 @@ services:
       - PYTHONPATH=/app/apps/api
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
+      - ARQ_METRICS_PORT=9100
+    expose:
+      - "9100"
     command: ["uv", "run", "python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
@@ -255,26 +258,6 @@ services:
     networks:
       - gaia_network
 
-  # WhatsApp Bot
-  whatsapp-bot:
-    container_name: whatsapp-bot
-    profiles: ["bots", "all"]
-    build:
-      context: ../..
-      dockerfile: apps/bots/Dockerfile
-      args:
-        BOT_NAME: whatsapp
-    env_file:
-      - ../../apps/bots/.env
-    ports:
-      - "${WHATSAPP_WEBHOOK_PORT:-3001}:3001"
-    restart: on-failure
-    depends_on:
-      gaia-backend:
-        condition: service_healthy
-    networks:
-      - gaia_network
-
   # Voice Agent Worker
   voice-agent-worker:
     container_name: voice-agent-worker
@@ -312,6 +295,7 @@ services:
     image: gcr.io/cadvisor/cadvisor:v0.52.1
     container_name: cadvisor
     privileged: true
+    cgroupns: host
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -385,6 +369,7 @@ services:
         condition: service_healthy
     networks:
       - gaia_network
+
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: prometheus
@@ -420,11 +405,7 @@ services:
     networks:
       - gaia_network
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1",
-        ]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -447,7 +428,7 @@ services:
       - ../../apps/api/logs:/var/log/gaia-api:ro
       - ../../apps/api/logs/worker:/var/log/gaia-worker:ro
       - ../../apps/voice-agent/logs:/var/log/gaia-voice-agent:ro
-    command: -config.file=/etc/promtail/config.yaml -config.expand-env=true
+    command: -config.file=/etc/promtail/config.yaml
     restart: unless-stopped
     depends_on:
       loki:
@@ -472,6 +453,10 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
+      # Use the provisioned GAIA Overview dashboard as the home page
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/overview.json
+      # Slack webhook consumed by contact-points.yaml (leave empty to disable alerts)
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
     restart: unless-stopped
     depends_on:
       loki:
