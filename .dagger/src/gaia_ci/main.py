@@ -239,9 +239,13 @@ class GaiaCi:
 
     @function
     def redis_service(self) -> dagger.Service:
-        """Start a Redis 7 service container."""
+        """Start a Redis 7 service container with 32 databases for xdist worker isolation."""
         return (
-            dag.container().from_("redis:7-alpine").with_exposed_port(6379).as_service()
+            dag.container()
+            .from_("redis:7-alpine")
+            .with_exposed_port(6379)
+            .with_exec(["redis-server", "--databases", "32"])
+            .as_service()
         )
 
     @function
