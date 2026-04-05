@@ -244,8 +244,9 @@ class TestCreateAgent:
 class TestCallModel:
     """Test the call_model inner function behavior indirectly."""
 
-    def test_sync_call_model_raises_with_middleware(self) -> None:
-        """When middleware is configured, sync call_model should raise RuntimeError."""
+    @pytest.mark.asyncio
+    async def test_call_model_raises_with_middleware(self) -> None:
+        """When middleware is configured, call_model should raise RuntimeError."""
         from app.override.langgraph_bigtool.create_agent import create_agent
 
         llm = _make_llm()
@@ -266,10 +267,11 @@ class TestCallModel:
         store = MagicMock()
 
         with pytest.raises(RuntimeError, match="sync execution was requested"):
-            agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
+            await agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
 
-    def test_sync_call_model_without_middleware(self) -> None:
-        """Sync call_model should work without middleware."""
+    @pytest.mark.asyncio
+    async def test_call_model_without_middleware(self) -> None:
+        """call_model should work without middleware."""
         from app.override.langgraph_bigtool.create_agent import create_agent
 
         llm = _make_llm()
@@ -286,10 +288,11 @@ class TestCallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
+        result = await agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
         assert "messages" in result
 
-    def test_sync_call_model_empty_response_gets_default(self) -> None:
+    @pytest.mark.asyncio
+    async def test_call_model_empty_response_gets_default(self) -> None:
         """Empty model response should get default content."""
         from app.override.langgraph_bigtool.create_agent import create_agent
 
@@ -297,7 +300,7 @@ class TestCallModel:
         llm = MagicMock()
         configured = MagicMock()
         bound = MagicMock()
-        bound.invoke.return_value = empty_response
+        bound.ainvoke = AsyncMock(return_value=empty_response)
         configured.bind_tools.return_value = bound
         llm.with_config.return_value = configured
 
@@ -309,10 +312,11 @@ class TestCallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
+        result = await agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
         assert result["messages"][0].content == "Empty response from model."
 
-    def test_sync_call_model_comms_agent_appends_breaker(self) -> None:
+    @pytest.mark.asyncio
+    async def test_call_model_comms_agent_appends_breaker(self) -> None:
         """comms_agent should append NEW_MESSAGE_BREAKER."""
         from app.constants.general import NEW_MESSAGE_BREAKER
         from app.override.langgraph_bigtool.create_agent import create_agent
@@ -332,7 +336,7 @@ class TestCallModel:
         config = _make_config()
         store = MagicMock()
 
-        result = agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
+        result = await agent_node.runnable.func(state, config, store=store)  # type: ignore[union-attr]
         assert result["messages"][0].content.endswith(NEW_MESSAGE_BREAKER)
 
 
