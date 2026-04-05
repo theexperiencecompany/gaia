@@ -5,7 +5,11 @@ Clean, simple, and maintainable.
 
 from typing import Any, Dict, List, Optional
 
+from bson import ObjectId
+from dodopayments import DodoPayments
+from fastapi import HTTPException
 from shared.py.wide_events import log
+
 from app.config.settings import settings
 from app.db.mongodb.collections import (
     plans_collection,
@@ -21,9 +25,6 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 from app.utils.email_utils import send_pro_subscription_email
-from bson import ObjectId
-from dodopayments import DodoPayments
-from fastapi import HTTPException
 
 
 class DodoPaymentService:
