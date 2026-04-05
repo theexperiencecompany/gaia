@@ -6,7 +6,7 @@ icon: "palette"
 
 {/*
   Visual rendering of DESIGN.md at the repository root.
-  All tokens and rules here are sourced from that file.
+  All tokens and rules here are sourced directly from that file.
   Update DESIGN.md first — this page reflects it.
 */}
 
@@ -18,107 +18,105 @@ icon: "palette"
 
 GAIA's UI is **dark-first**, **flat**, and **single-accent**. Every decision flows from five constraints:
 
-- **Dark-first.** The primary experience is dark mode (`#111111` background). Light mode is supported via CSS variables but is secondary.
+- **Dark-first.** Primary experience is dark mode (`#111111` background). Light mode is supported via CSS variables but is secondary.
 - **Flat depth.** Depth comes from layered backgrounds (`zinc-800` → `zinc-900`) only. Never borders, rings, or outlines.
 - **Single accent.** One primary action color: `#00bbff`. Everything else is zinc-scale neutrals.
 - **Borderless cards.** Data cards use background-only separation — no `border-`, `ring-`, or `outline-` in the card tree.
-- **Subtle motion.** Animations serve entrance, exit, and state changes. Never decorative. Keep durations ≤ 300ms.
+- **Subtle motion.** Animations serve entrance, exit, and state changes only. Never decorative. Keep durations ≤ 300ms.
 
 ---
 
 ## Colors
 
-<Tabs>
-  <Tab title="Brand">
-    <Color variant="table">
-      <Color.Row title="Primary">
-        <Color.Item name="--color-primary" value="#00bbff" />
-        <Color.Item name="--color-primary-foreground" value="#000000" />
-        <Color.Item name="--color-primary-bg" value="#111111" />
-        <Color.Item name="--color-secondary-bg" value="#1a1a1a" />
-      </Color.Row>
-      <Color.Row title="Selection">
-        <Color.Item name="selection-bg" value="#00364b" />
-        <Color.Item name="selection-text" value="#00bbff" />
-      </Color.Row>
-    </Color>
+### Brand Tokens
 
-    **Layout rule:** Use `--color-primary` for all CTAs, links, user chat bubbles, and selection highlights. Use `--color-primary-bg` / `--color-secondary-bg` for the main app canvas and sidebar. Never use these on dark card surfaces — use zinc directly there.
-  </Tab>
+<Color variant="table">
+  <Color.Row title="Primary">
+    <Color.Item name="--color-primary" value="#00bbff" />
+    <Color.Item name="--color-primary-foreground" value="#000000" />
+    <Color.Item name="--color-primary-bg" value="#111111" />
+    <Color.Item name="--color-secondary-bg" value="#1a1a1a" />
+  </Color.Row>
+  <Color.Row title="Selection">
+    <Color.Item name="selection background" value="#00364b" />
+    <Color.Item name="selection text" value="#00bbff" />
+  </Color.Row>
+</Color>
 
-  <Tab title="Zinc Scale">
-    <Color variant="table">
-      <Color.Row title="Surfaces">
-        <Color.Item name="zinc-800 — outer card" value="#27272a" />
-        <Color.Item name="zinc-900 — inner item" value="#18181b" />
-        <Color.Item name="zinc-700 — hover / divider" value="#3f3f46" />
-      </Color.Row>
-      <Color.Row title="Text">
-        <Color.Item name="zinc-100 — section headers" value="#f4f4f5" />
-        <Color.Item name="zinc-200 — item titles" value="#e4e4e7" />
-        <Color.Item name="zinc-400 — body / secondary" value="#a1a1aa" />
-        <Color.Item name="zinc-500 — meta / timestamps" value="#71717a" />
-      </Color.Row>
-    </Color>
+**Layout rule:** Use `--color-primary` for CTAs, user chat bubbles, selection highlights, and links. Use `--color-primary-bg` / `--color-secondary-bg` for the main app canvas and sidebar. Never use these on dark card surfaces — use zinc directly there.
 
-    Use zinc directly on dark card surfaces — not CSS variables. `bg-background / text-foreground` are for layout surfaces only and switch automatically between light and dark.
-  </Tab>
+### Semantic Variables (Shadcn / Radix)
 
-  <Tab title="Status">
-    <Color variant="table">
-      <Color.Row title="Always use /10 opacity background + matching text">
-        <Color.Item name="success — emerald-400" value="#34d399" />
-        <Color.Item name="warning — amber-400" value="#fbbf24" />
-        <Color.Item name="error — red-400" value="#f87171" />
-        <Color.Item name="info — blue-400" value="#60a5fa" />
-        <Color.Item name="pending — zinc-400" value="#a1a1aa" />
-      </Color.Row>
-      <Color.Row title="Priority">
-        <Color.Item name="high — red-500" value="#ef4444" />
-        <Color.Item name="medium — yellow-500" value="#eab308" />
-        <Color.Item name="low — blue-500" value="#3b82f6" />
-      </Color.Row>
-    </Color>
+Use on layout surfaces and standard components. Switch automatically between light and dark.
 
-    ```tsx
-    // Always pair background + text at matching opacity
-    bg-emerald-400/10 text-emerald-400  // success
-    bg-amber-400/10  text-amber-400     // warning
-    bg-red-400/10    text-red-400       // error
-    bg-blue-400/10   text-blue-400      // info
-    bg-zinc-700/50   text-zinc-400      // pending
-    ```
+| Variable | Light | Dark |
+|----------|-------|------|
+| `--background` | `hsl(0 0% 100%)` | `hsl(224 71% 4%)` |
+| `--foreground` | `hsl(222.2 47.4% 11.2%)` | `hsl(213 31% 91%)` |
+| `--muted` | `hsl(210 40% 96.1%)` | `hsl(223 47% 11%)` |
+| `--muted-foreground` | `hsl(215.4 16.3% 46.9%)` | `hsl(215.4 16.3% 56.9%)` |
+| `--accent` | `hsl(210 40% 96.1%)` | `hsl(216 34% 17%)` |
+| `--border` | `hsl(214.3 31.8% 91.4%)` | `hsl(216 34% 17%)` |
+| `--ring` | `hsl(215 20.2% 65.1%)` | `hsl(216 34% 17%)` |
+| `--destructive` | `hsl(0 100% 50%)` | `hsl(0 63% 31%)` |
 
-    <Warning>Never use solid color backgrounds for status badges. Always `/10` opacity background paired with the matching text color.</Warning>
-  </Tab>
+### Zinc Scale — Dark Card Surfaces
 
-  <Tab title="Charts">
-    <Color variant="compact">
-      <Color.Item name="Purple" value="#a78bfa" />
-      <Color.Item name="Emerald" value="#34d399" />
-      <Color.Item name="Blue" value="#60a5fa" />
-      <Color.Item name="Pink" value="#f472b6" />
-      <Color.Item name="Orange" value="#fb923c" />
-    </Color>
+Use zinc directly on dark card surfaces — not the CSS variables above.
 
-    Use in this order for Recharts series. Do not deviate — consistency across charts matters.
+<Color variant="table">
+  <Color.Row title="Surfaces">
+    <Color.Item name="bg-zinc-800 — outer card" value="#27272a" />
+    <Color.Item name="bg-zinc-900 — inner item" value="#18181b" />
+    <Color.Item name="bg-zinc-700 — hover / accent" value="#3f3f46" />
+  </Color.Row>
+  <Color.Row title="Text">
+    <Color.Item name="text-zinc-100 — section headers" value="#f4f4f5" />
+    <Color.Item name="text-zinc-200 — item titles" value="#e4e4e7" />
+    <Color.Item name="text-zinc-400 — body / secondary" value="#a1a1aa" />
+    <Color.Item name="text-zinc-500 — meta / timestamps" value="#71717a" />
+  </Color.Row>
+</Color>
 
-    ```javascript
-    const CHART_COLORS = ["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"];
-    ```
-  </Tab>
-</Tabs>
+### Status Colors
+
+Always use `/10` opacity background paired with matching foreground text. Never solid.
+
+<Color variant="table">
+  <Color.Row title="Status">
+    <Color.Item name="emerald-400 — success" value="#34d399" />
+    <Color.Item name="amber-400 — warning" value="#fbbf24" />
+    <Color.Item name="red-400 — error" value="#f87171" />
+    <Color.Item name="blue-400 — info" value="#60a5fa" />
+    <Color.Item name="zinc-400 — pending" value="#a1a1aa" />
+  </Color.Row>
+  <Color.Row title="Priority">
+    <Color.Item name="red-500 — high" value="#ef4444" />
+    <Color.Item name="yellow-500 — medium" value="#eab308" />
+    <Color.Item name="blue-500 — low" value="#3b82f6" />
+  </Color.Row>
+</Color>
+
+```tsx
+bg-emerald-400/10 text-emerald-400  // success
+bg-amber-400/10  text-amber-400     // warning
+bg-red-400/10    text-red-400       // error
+bg-blue-400/10   text-blue-400      // info
+bg-zinc-700/50   text-zinc-400      // pending
+```
+
+<Warning>Never use solid color backgrounds for status badges — always `/10` opacity background paired with matching text color.</Warning>
 
 ---
 
 ## Typography
 
-Three font families — never set `font-family` inline. Use the Tailwind token class.
+Three font families. Never set `font-family` inline — use the Tailwind token class.
 
 | Token | Family | Weights | Use |
 |-------|--------|---------|-----|
-| `font-sans` | Inter | All | All UI — body, labels, buttons, inputs, navigation |
-| `font-serif` | PP Editorial New | 200, 400, 800 | Editorial headings, landing hero text |
+| `font-sans` | Inter | All | All UI — body, labels, buttons, inputs |
+| `font-serif` | PP Editorial New | 200, 400 | Editorial headings, landing hero text |
 | `font-mono` | Anonymous Pro | 400, 700 | Code blocks, `<code>`, technical content |
 
 ### Specimens
@@ -144,9 +142,8 @@ Three font families — never set `font-family` inline. Use the Tailwind token c
     <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
       <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 200, fontSize: '14px', color: '#52525b' }}>Ultralight 200</span>
       <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 200, fontSize: '14px', color: '#71717a', fontStyle: 'italic' }}>Ultralight Italic</span>
-      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 400, fontSize: '14px', color: '#a1a1aa' }}>Regular 400</span>
-      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 400, fontSize: '14px', color: '#d4d4d8', fontStyle: 'italic' }}>Regular Italic</span>
-      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 800, fontSize: '14px', color: '#f4f4f5' }}>Ultrabold 800</span>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 400, fontSize: '14px', color: '#d4d4d8' }}>Regular 400</span>
+      <span style={{ fontFamily: "'PP Editorial New', serif", fontWeight: 400, fontSize: '14px', color: '#e4e4e7', fontStyle: 'italic' }}>Regular Italic</span>
     </div>
   </div>
 
@@ -194,6 +191,8 @@ Defined globally via `@layer base` — use semantic HTML tags, styles apply auto
 <p className="line-clamp-1 max-w-[200px]">...</p>
 ```
 
+Inline code gets `border-radius: 10px` and `padding: 4px` globally. Use `font-mono` or `.monospace` class.
+
 ---
 
 ## Spacing
@@ -203,7 +202,7 @@ Defined globally via `@layer base` — use semantic HTML tags, styles apply auto
 | `gap-1` / `gap-1.5` | Icon + label pairs |
 | `gap-2` | Standard row items |
 | `gap-3` | Section spacing inside cards |
-| `space-y-2` | Vertical list items in a card |
+| `space-y-2` | Vertical list of items inside a card |
 | `p-3` | Inner card item padding |
 | `p-4` | Outer card padding |
 | `px-3` / `px-4` | Horizontal padding on inputs, buttons |
@@ -214,25 +213,48 @@ Defined globally via `@layer base` — use semantic HTML tags, styles apply auto
 
 | Context | Class | Size |
 |---------|-------|------|
-| **Outer card containers** | `rounded-2xl` | 16px |
-| Inner card items, context menus | `rounded-xl` | 12px |
+| Dark cards — outer | `rounded-2xl` | 16px |
+| Dark cards — inner items | `rounded-2xl` or `rounded-xl` | 12px |
 | Images | `rounded-3xl` | 24px |
 | Buttons, inputs | `rounded-md` | 6px |
-| Badges, pills, avatars | `rounded-full` | — |
+| Badges, pills | `rounded-full` | — |
+| Context menus | `rounded-xl` | 12px |
 
 <Warning>
-  Never use `rounded-lg` on card containers — it's the Shadcn base radius (8px) and visually too small. Cards always use `rounded-2xl`.
+  Never use `rounded-lg` on card containers — that's the Shadcn base radius, visually too small. Cards always use `rounded-2xl`.
 </Warning>
+
+---
+
+## Depth & Elevation
+
+Depth primarily from background layering and blur, not shadow.
+
+| Context | Value |
+|---------|-------|
+| Buttons, inputs | `shadow-xs` |
+| Dialogs, sheets | `shadow-lg` |
+| Dark cards (solid) | No shadow — flat design |
+| Dark cards (glass) | `bg-zinc-800/40 backdrop-blur-xl` |
+| Hover on dark surfaces | `hover:bg-white/5` |
+
+| Level | Class | Use |
+|-------|-------|-----|
+| Moderate | `backdrop-blur-lg` | Glass cards |
+| Standard | `backdrop-blur-xl` | Panels overlaying content, floating cards |
+| Maximum | `backdrop-blur-2xl` | Search overlays, full-screen modals |
 
 ---
 
 ## Dark Card System
 
-Every data card, tool section, and info panel follows this contract exactly.
+All data cards, tool sections, and info panels use this contract. Two-tone zinc depth, no borders.
 
-### Structure
+### Template
 
 ```tsx
+"use client";
+
 const statusClasses = {
   success: "bg-emerald-400/10 text-emerald-400",
   error:   "bg-red-400/10 text-red-400",
@@ -241,7 +263,7 @@ const statusClasses = {
   pending: "bg-zinc-700/50 text-zinc-400",
 } as const;
 
-export function MyCard({ title, items, badge }) {
+export default function MyCard({ title, items, badge }) {
   return (
     <div className="rounded-2xl bg-zinc-800 p-4 w-fit min-w-[400px]">
       <div className="flex items-center justify-between mb-3">
@@ -315,106 +337,46 @@ export function MyCard({ title, items, badge }) {
 | Glass variant | `rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl` |
 | Section header | `text-sm font-semibold text-zinc-100 mb-3` |
 | Item title | `text-sm font-medium text-zinc-200` |
+| Item title (prominent) | `text-sm font-medium text-zinc-100` |
 | Body text | `text-xs text-zinc-400` |
 | Meta / timestamp | `text-xs text-zinc-500` |
 | Item spacing | `space-y-2` |
-| Hover list item | `p-4 transition-all hover:bg-white/5` |
+| Status badge | `rounded-full px-2 py-0.5 text-xs` + status color |
+| Section divider | `<Divider className="bg-zinc-700/50" />` (HeroUI) |
+| Hoverable list item | `p-4 transition-all hover:bg-white/5` |
 
-**Hard rules:** Never `border-`, `ring-`, or `outline-` inside a card tree. Depth from `zinc-800 → zinc-900` layering only.
-
----
-
-## Depth & Elevation
-
-Depth comes from background layering and blur — not box shadows.
-
-| Context | Technique |
-|---------|-----------|
-| Buttons, inputs | `shadow-xs` |
-| Dialogs, sheets | `shadow-lg` |
-| Solid dark cards | No shadow — flat |
-| Glass dark cards | `bg-zinc-800/40 backdrop-blur-xl` |
-| Hover on dark surfaces | `hover:bg-white/5` |
-| Search overlays, full-screen modals | `backdrop-blur-2xl` |
-
----
-
-## Motion
-
-### Transition defaults
-
-```tsx
-// Default — use for everything
-<div className="transition-all duration-200">
-
-// Targeted
-<div className="transition-colors duration-200">
-
-// Button press
-<button className="active:scale-95 transition-all! duration-300">
-```
-
-### Available animation classes
-
-| Class | Duration | Use |
-|-------|----------|-----|
-| `animate-spin` | Infinite | Loading spinners |
-| `animate-pulse` | Infinite | Skeleton placeholders |
-| `animate-scale-in` | 0.4s bounce | Element entrance |
-| `animate-scale-in-blur` | 0.5s bounce | Blurred entrance |
-| `animate-shimmer` | 2s linear | Shimmer effect |
-| `animate-shake` | 0.7s | Error feedback |
-| `animate-accordion-down/up` | 0.2s ease-out | Accordion open/close |
-
-### Framer Motion
-
-Import from `motion/react` — never `framer-motion`.
-
-```typescript
-import { AnimatePresence, m } from "motion/react";
-
-<AnimatePresence mode="wait">
-  {visible && (
-    <m.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-    >
-      {content}
-    </m.div>
-  )}
-</AnimatePresence>
-```
-
-`AnimatePresence` is required for exit animations. Durations: ≤ 300ms for micro-interactions, ≤ 500ms for page-level entrances.
+**Constraints:** Never `border-`, `ring-`, `outline-` anywhere in the card tree. `rounded-2xl` on outer containers always. `zinc-800` outer → `zinc-900` inner is the entire separation mechanism. Status colors always use `/10` opacity backgrounds.
 
 ---
 
 ## Icons
 
-All icons from `@icons` (`@theexperiencecompany/gaia-icons/solid-rounded`). Never raw SVGs or Unicode symbols.
+All icons come from `@icons` (`@theexperiencecompany/gaia-icons`). Never raw SVGs.
 
 ```typescript
 import { CheckmarkCircle02Icon, Alert01Icon, Copy01Icon } from "@icons";
+```
 
+Icons accept `className`, `height`, `width`, and `size` props.
+
+| Context | Value |
+|---------|-------|
+| Inline (badges, text) | `height={17}` |
+| Action buttons | `size={16}` |
+| Prominent / decorative | `size={24}` |
+
+```tsx
 // In a button
 <Button variant="ghost" size="icon">
   <Copy01Icon className="h-4 w-4" />
 </Button>
 
-// In a status badge
-<Alert01Icon className="text-amber-400" height={17} />
+// In a chip / badge
+<Alert01Icon className="text-warning-500" height={17} />
 
-// With hover scale (parent needs className="group")
-<Brain02Icon className="transition-all duration-200 group-hover:scale-110" size={24} />
+// With hover animation
+<SomeIcon className="transition-all duration-200 group-hover:scale-110" />
 ```
-
-| Context | Value |
-|---------|-------|
-| Inline / badges | `height={17}` |
-| Action buttons | `size={16}` |
-| Prominent / decorative | `size={24}` |
 
 <Warning>
   Never use Unicode/text symbols in JSX: no `→`, `↗`, `•`, `✓`, `×`, or similar. Always use icon components from `@icons`.
@@ -422,66 +384,65 @@ import { CheckmarkCircle02Icon, Alert01Icon, Copy01Icon } from "@icons";
 
 ---
 
-## Component Guide
+## Animations
 
-<Tabs>
-  <Tab title="Shadcn UI">
-    Style preset: `new-york` · Base color: `zinc` · CSS variables: on
+### Available classes
 
-    | Component | Notes |
-    |-----------|-------|
-    | `Button` | `default` `destructive` `outline` `secondary` `ghost` `link` · sizes: `default` `sm` `lg` `icon` |
-    | `Input` | `h-9 rounded-md shadow-xs` · focus ring · `aria-invalid` for errors |
-    | `Textarea` | `min-h-16` · auto-height via `field-sizing-content` |
-    | `Dialog` | Zoom + fade · use for confirmations, focused forms |
-    | `Sheet` | Slide panel · use for settings drawers, side panels |
-    | `Popover` | Anchored overlay · use for inline pickers, contextual options |
-    | `Tooltip` | Hover label only — no interactive content inside |
-    | `DropdownMenu` | Action list from a trigger button |
-    | `ContextMenu` | Right-click action list |
-    | `Accordion` | `animate-accordion-down/up` |
-    | `Skeleton` | `animate-pulse rounded-md` |
-    | `Sidebar` | Collapsible · `Cmd+B` toggle · cookie-persisted |
-  </Tab>
+| Class | Duration | Use |
+|-------|----------|-----|
+| `animate-spin` | Infinite | Loading spinner |
+| `animate-pulse` | Infinite | Skeleton placeholder |
+| `animate-accordion-down` | 0.2s ease-out | Accordion open |
+| `animate-accordion-up` | 0.2s ease-out | Accordion close |
+| `animate-scale-in` | 0.4s bounce | Element entrance |
+| `animate-scale-in-blur` | 0.5s bounce | Blurred entrance |
+| `animate-shimmer` | 2s linear | Shimmer effect |
+| `animate-shake` | 0.7s | Error shake |
 
-  <Tab title="HeroUI">
-    Used for richer UI inside cards and content areas. Use as-is — do not override internal styling via `classNames` unless the user explicitly requests a visual customisation.
+### Transitions
 
-    | Component | Standard usage |
-    |-----------|----------------|
-    | `Chip` | Status badges · `variant="flat"` always (never solid) |
-    | `Button` | Card actions · `variant="flat"` or `"solid"` |
-    | `Accordion` / `AccordionItem` | Expandable card sections |
-    | `Progress` | Progress bars and loaders |
-    | `Tabs` / `Tab` | Tabbed card content |
-    | `ScrollShadow` | Wraps overflowing lists |
-    | `Spinner` | Loading states — prefer over icon spinners |
-    | `Skeleton` | Content placeholders |
-  </Tab>
+Default: `transition-all duration-200`. Use this everywhere unless a specific property needs targeting.
 
-  <Tab title="Which to use">
-    | Need | Component |
-    |------|-----------|
-    | Destructive confirmation, focused form | `Dialog` (Shadcn) |
-    | Side panel, settings, multi-step flow | `Sheet` (Shadcn) |
-    | Inline picker, date selector | `Popover` (Shadcn) |
-    | Single-line hover label | `Tooltip` (Shadcn) |
-    | Action list from button | `DropdownMenu` (Shadcn) |
-    | Right-click actions | `ContextMenu` (Shadcn) |
-    | Status badge | `Chip variant="flat"` (HeroUI) |
-    | Progress bar | `Progress` (HeroUI) |
-    | Tabbed card content | `Tabs / Tab` (HeroUI) |
-  </Tab>
-</Tabs>
+| Scenario | Classes |
+|----------|---------|
+| All properties | `transition-all duration-200` |
+| Color only | `transition-colors duration-200` |
+| Button press | `active:scale-95 transition-all! duration-300` |
+
+### Easing
+
+| Name | Value | Use |
+|------|-------|-----|
+| Default | `ease` | Most transitions |
+| Exit / entrance | `ease-out` | Entrances, exits |
+| Bounce | `cubic-bezier(0.34, 1.56, 0.64, 1)` | `scale-in`, `scale-in-blur` |
+
+### Framer Motion
+
+Import from `motion/react` — not `framer-motion`. `AnimatePresence` is required for exit animations. Keep durations ≤ 300ms for micro-interactions, ≤ 500ms for entrances.
+
+```typescript
+import { AnimatePresence, m } from "motion/react";
+
+<AnimatePresence mode="wait">
+  {visible && (
+    <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      {content}
+    </m.div>
+  )}
+</AnimatePresence>
+```
 
 ---
 
-## Notifications
+## Toast / Notifications
 
-**Sileo** — mounted globally in the app layout. Call the toast function directly. Never add `<Toaster>` or import from `sonner` / `react-hot-toast`.
+**Sileo** — already mounted globally. Call the toast function directly. Never add `<Toaster>` or import from `sonner` / `react-hot-toast`.
+
+Toast style: dark fill (`#262626`), white title, white/75 description, top-right position. Action button colors apply automatically by type: error → red, warning → amber, success → green, info → blue.
 
 ```typescript
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 toast.success("File saved");
 toast.error("Something went wrong");
@@ -489,23 +450,185 @@ toast.warning("Storage almost full");
 toast.info("New message received");
 ```
 
-Toast style: dark fill `#262626`, white title, `rgba(255,255,255,0.75)` description. Action button colors apply automatically by type.
+---
+
+## Component Library
+
+<Tabs>
+  <Tab title="Shadcn UI">
+    Style preset: `new-york` · Base color: `zinc` · CSS variables: on · Located at `src/components/ui/`
+
+    | Component | Key details |
+    |-----------|-------------|
+    | `Button` | `default` `destructive` `outline` `secondary` `ghost` `link` · sizes: `default` `sm` `lg` `icon` |
+    | `Input` | `h-9 rounded-md shadow-xs` · focus ring · `aria-invalid` for errors |
+    | `Textarea` | Same as Input · `min-h-16` · auto-height via `field-sizing-content` |
+    | `Dialog` | Zoom + fade · use for confirmations, forms requiring focus |
+    | `Sheet` | Fade-in slide panel · use for side panels, settings drawers |
+    | `Popover` | Anchored overlay · use for inline pickers, contextual options |
+    | `Tooltip` | Hover label only — no interactive content |
+    | `DropdownMenu` / `ContextMenu` | Action lists |
+    | `Accordion` | Animated expand/collapse |
+    | `Avatar` | `rounded-full`, image + fallback |
+    | `Skeleton` | `animate-pulse rounded-md` |
+    | `ScrollArea` | Radix scrollable with edge shadows |
+    | `Sidebar` | Collapsible · `Cmd/Ctrl+B` toggle · cookie-persisted |
+  </Tab>
+
+  <Tab title="HeroUI">
+    Used for richer UI inside cards. Located at `@heroui/*`.
+
+    | Component | Standard usage |
+    |-----------|----------------|
+    | `Chip` | Status badges · `variant="flat"` always |
+    | `Button` | Card actions · `variant="flat"` or `variant="solid"` |
+    | `Accordion` / `AccordionItem` | Expandable card sections |
+    | `Progress` | Progress bars |
+    | `Tabs` / `Tab` | Tabbed card content |
+    | `Avatar` | Contact / user avatars |
+    | `ScrollShadow` | Wraps overflowing lists |
+
+    Chart palette (Recharts): `["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`
+  </Tab>
+
+  <Tab title="Overlay hierarchy">
+    Pick the right overlay for the context:
+
+    | Use case | Component |
+    |----------|-----------|
+    | Destructive confirmation, focused form | `Dialog` |
+    | Side panel, settings, multi-step flow | `Sheet` |
+    | Inline picker, date selector, contextual detail | `Popover` |
+    | Single-line label on hover | `Tooltip` |
+    | Action list from a trigger | `DropdownMenu` |
+    | Right-click actions | `ContextMenu` |
+  </Tab>
+</Tabs>
 
 ---
 
-## Utilities
+## Styling Tools
 
 ```typescript
 // cn() — always use for conditional class merging, never string concatenation
 import { cn } from "@/lib/utils";
-<div className={cn("base-class", condition && "extra", className)} />
+<div className={cn("base-class", condition && "conditional-class", className)} />
 
 // cva — for components with multiple visual variants
 import { cva } from "class-variance-authority";
 const cardVariants = cva("rounded-2xl p-4", {
-  variants: { depth: { outer: "bg-zinc-800", inner: "bg-zinc-900" } },
+  variants: {
+    depth: {
+      outer: "bg-zinc-800",
+      inner: "bg-zinc-900",
+    },
+  },
 });
 ```
+
+---
+
+## Forms & Validation
+
+### Field pattern
+
+```tsx
+<FormField
+  control={form.control}
+  name="fieldName"
+  render={({ field }) => (
+    <FormItem>
+      <FormLabel>Label</FormLabel>
+      <FormControl>
+        <Input placeholder="..." {...field} />
+      </FormControl>
+      <FormMessage />  {/* auto-shows error */}
+    </FormItem>
+  )}
+/>
+```
+
+### Input states
+
+Error state is driven by `aria-invalid={!!error}` — styling applies automatically via the Input component.
+
+| State | Visual |
+|-------|--------|
+| Default | `border-input bg-transparent` |
+| Focus | `ring-ring/50 ring-[3px] border-ring` |
+| Error | `ring-destructive/20 border-destructive` (via `aria-invalid`) |
+| Disabled | `opacity-50 cursor-not-allowed` |
+| Loading | `cursor-wait` (set `disabled` on the input) |
+
+---
+
+## Loading & Empty States
+
+### Loading
+
+| Pattern | When |
+|---------|------|
+| `<Skeleton className="h-4 w-32 rounded-md" />` | Known content shape, replacing text/images |
+| `animate-pulse` on the container | Unknown shape, shimmer a region |
+| `animate-spin` on an icon | Inline action in progress |
+| Full `<LoadingIndicator />` | Whole chat response pending |
+
+Skeleton inherits: `bg-accent animate-pulse rounded-md`. Match the skeleton shape to the content it replaces.
+
+### Empty states
+
+No shared component — build inline:
+
+```tsx
+<div className="flex flex-col items-center gap-2 py-8 text-center">
+  <SomeIcon className="text-zinc-600" size={24} />
+  <p className="text-sm text-zinc-400">No items yet</p>
+  <p className="text-xs text-zinc-500">Optional sub-text</p>
+</div>
+```
+
+---
+
+## Interactive States
+
+| State | Classes |
+|-------|---------|
+| Hover (standard) | `hover:bg-accent` · `hover:bg-primary/90` · `hover:opacity-80` |
+| Hover (dark surface) | `hover:bg-white/5` |
+| Focus visible | `focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:border-ring` |
+| Active / press | `active:scale-95` |
+| Disabled | `disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed` |
+| Error | `aria-invalid:ring-destructive/20 aria-invalid:border-destructive` |
+| Hover reveal | `opacity-0 transition-all group-hover:opacity-100` (parent needs `group`) |
+
+---
+
+## Dark / Light Mode
+
+Class-based: `.dark` on `<html>`. Tailwind `dark:` modifier works everywhere.
+
+- **Layout surfaces** → `bg-background text-foreground` (auto-switches via CSS vars)
+- **Dark cards** → `bg-zinc-800 / bg-zinc-900` (always dark — no `dark:` needed)
+- **Explicit overrides** → only when CSS variables don't cover it
+- Brand cyan (`#00bbff`) is the same in both modes
+
+---
+
+## Responsiveness
+
+| Breakpoint | Value | Impact |
+|------------|-------|--------|
+| Mobile | `max-width: 600px` | Full-width layouts, larger tap targets |
+| Tablet | `max-width: 990px` | Navbar becomes full-width strip |
+| `md:` | 768px | Text size shifts (`text-base` → `text-sm`) |
+
+Core layout does not use `lg:`, `xl:`, or `2xl:` breakpoints.
+
+---
+
+## Scrollbars
+
+Global scrollbar is already styled (8px, pill-shaped, zinc-700 thumb). Use `.no-scrollbar` to suppress chrome on scroll areas where it would be distracting.
 
 ---
 
@@ -523,6 +646,7 @@ const cardVariants = cva("rounded-2xl p-4", {
     - `transition-all duration-200` as the default transition
     - `AnimatePresence` for exit animations
     - Import from `motion/react`
+    - `import { toast } from "@/lib/toast"`
   </Column>
 
   <Column>
@@ -533,6 +657,7 @@ const cardVariants = cva("rounded-2xl p-4", {
     - Solid backgrounds for status badges
     - Unicode symbols in JSX (`→`, `•`, `✓`) — use icons
     - Add `<Toaster>` — already mounted globally
+    - Import from `sonner` or `react-hot-toast`
     - CSS variables on dark card surfaces — use zinc directly
     - Set `font-family` inline — use Tailwind token classes
     - Import from `framer-motion` — use `motion/react`
