@@ -13,12 +13,30 @@ Redis connection.
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timezone
 
 import pytest
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from redis.asyncio import Redis
+
+
+def _worker_redis_url(base_url: str) -> str:
+    """Return a Redis URL with a per-xdist-worker DB number.
+
+    Each xdist worker (gw0, gw1, ...) gets its own Redis DB (0-15) so
+    that one test's ``flushdb()`` teardown cannot wipe another worker's
+    in-flight keys.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    try:
+        db = int(worker.removeprefix("gw")) % 16
+    except ValueError:
+        db = 0
+    if re.search(r"/\d+$", base_url):
+        return re.sub(r"/\d+$", f"/{db}", base_url)
+    return base_url.rstrip("/") + f"/{db}"
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +48,7 @@ from redis.asyncio import Redis
 def mongodb_url() -> str:
     return os.environ.get(
         "MONGODB_URL",
-        "mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin",
+        "mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin",  # pragma: allowlist secret
     )
 
 
@@ -43,7 +61,7 @@ def redis_url() -> str:
 def postgres_url() -> str:
     return os.environ.get(
         "DATABASE_URL",
-        "postgresql://gaia:gaia@localhost:5432/gaia_test",
+        "postgresql://gaia:gaia@localhost:5432/gaia_test",  # pragma: allowlist secret
     )
 
 
@@ -98,10 +116,13 @@ async def real_redis(redis_url: str, monkeypatch):
 
     After this fixture, StreamManager methods (publish_chunk, subscribe_stream,
     start_stream, etc.) use real Redis — no mock.
+
+    Each xdist worker uses its own Redis DB so parallel tests cannot wipe
+    each other's keys during ``flushdb()`` teardown.
     """
     from app.db.redis import redis_cache
 
-    client = Redis.from_url(redis_url, decode_responses=True)
+    client = Redis.from_url(_worker_redis_url(redis_url), decode_responses=True)
     await client.ping()
 
     monkeypatch.setattr(redis_cache, "redis", client)
@@ -109,7 +130,7 @@ async def real_redis(redis_url: str, monkeypatch):
     yield client
 
     await client.flushdb()
-    await client.aclose()
+    await client.aclose()  # type: ignore[attr-defined]
 
 
 @pytest.fixture

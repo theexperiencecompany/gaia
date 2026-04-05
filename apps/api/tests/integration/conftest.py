@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -21,6 +22,24 @@ from tests.factories import make_config, make_user
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+
+def _worker_redis_url(base_url: str) -> str:
+    """Return a Redis URL with a per-xdist-worker DB number.
+
+    Each xdist worker (gw0, gw1, ...) gets its own Redis DB (0-15) so
+    that one test's ``flushdb()`` teardown cannot wipe another worker's
+    in-flight keys. Without this, parallel tests using the ``real_redis``
+    fixture race each other and fail non-deterministically.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    try:
+        db = int(worker.removeprefix("gw")) % 16
+    except ValueError:
+        db = 0
+    if re.search(r"/\d+$", base_url):
+        return re.sub(r"/\d+$", f"/{db}", base_url)
+    return base_url.rstrip("/") + f"/{db}"
 
 
 class SimpleState(BaseModel):
@@ -121,15 +140,19 @@ async def real_redis(monkeypatch):
     When USE_REAL_SERVICES=1 (Dagger CI), Redis is guaranteed to be running
     and connection failures are fatal. Otherwise, the test is skipped if
     Redis is not reachable so local runs without Docker still work.
+
+    Each xdist worker uses its own Redis DB so parallel tests cannot wipe
+    each other's keys during ``flushdb()`` teardown.
     """
-    client = Redis.from_url(_REDIS_URL, decode_responses=True)
+    url = _worker_redis_url(_REDIS_URL)
+    client = Redis.from_url(url, decode_responses=True)
     try:
         await client.ping()
     except (ConnectionError, OSError, Exception):
         await client.aclose()
         if _USE_REAL_SERVICES:
             raise  # In CI with real services, Redis must be running
-        pytest.skip("Redis not available at " + _REDIS_URL)
+        pytest.skip("Redis not available at " + url)
 
     monkeypatch.setattr(redis_cache, "redis", client)
 
