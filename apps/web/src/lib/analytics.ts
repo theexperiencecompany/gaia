@@ -12,6 +12,7 @@ const ANALYTICS_STORAGE_KEY = "gaia_analytics_state:v1";
 // Event name constants for consistent tracking
 export const ANALYTICS_EVENTS = {
   // Auth events
+  USER_SESSION_RESUMED: "user:session_resumed",
   USER_LOGGED_IN: "user:logged_in",
   USER_LOGGED_OUT: "user:logged_out",
 
@@ -35,6 +36,12 @@ export const ANALYTICS_EVENTS = {
   CHAT_MESSAGE_SENT: "chat:message_sent",
   CHAT_CONVERSATION_CREATED: "chat:conversation_created",
   CHAT_FIRST_MESSAGE_SENT: "chat:first_message_sent",
+  CHAT_VOICE_MODE_TOGGLED: "chat:voice_mode_toggled",
+  CHAT_FILE_UPLOADED: "chat:file_uploaded",
+  CHAT_CONVERSATION_DELETED: "chat:conversation_deleted",
+
+  // Chat – interaction detail events
+  CHAT_MESSAGE_FEEDBACK: "chat:message_feedback",
   CHAT_SUGGESTION_SHUFFLED: "chat:suggestion_shuffled",
   CHAT_SLASH_COMMAND_SELECTED: "chat:slash_command_selected",
   CHAT_SLASH_COMMAND_CATEGORY_CHANGED: "chat:slash_command_category_changed",
@@ -42,7 +49,9 @@ export const ANALYTICS_EVENTS = {
   CHAT_TOOLS_BUTTON_CLICKED: "chat:tools_button_clicked",
   CHAT_GRID_INTEGRATION_CONNECT_CLICKED:
     "chat:grid_integration_connect_clicked",
-  CHAT_MESSAGE_FEEDBACK: "chat:message_feedback",
+  CHAT_CONVERSATION_RENAMED: "chat:conversation_renamed",
+  CHAT_CONVERSATION_STARRED: "chat:conversation_starred",
+  CHAT_MESSAGE_RETRIED: "chat:message_retried",
 
   // Integration events
   INTEGRATION_CONNECTED: "integration:connected",
@@ -67,13 +76,54 @@ export const ANALYTICS_EVENTS = {
   TODOS_CREATED: "todos:created",
   TODOS_UPDATED: "todos:updated",
   TODOS_TOGGLED: "todos:toggled",
+  TODOS_VIEW_CHANGED: "todos:view_changed",
 
   // Goal events
   GOALS_CREATED: "goals:created",
+  GOALS_DELETED: "goals:deleted",
 
   // Calendar events
   CALENDAR_EVENT_CREATED: "calendar:event_created",
   CALENDAR_EVENT_DELETED: "calendar:event_deleted",
+
+  // Email events
+  EMAIL_OPENED: "email:opened",
+  EMAIL_REPLIED: "email:replied",
+  EMAIL_COMPOSE_OPENED: "email:compose_opened",
+  EMAIL_AI_DRAFT_GENERATED: "email:ai_draft_generated",
+
+  // Settings events
+  SETTINGS_PREFERENCES_CHANGED: "settings:preferences_changed",
+  SETTINGS_NOTIFICATIONS_TOGGLED: "settings:notifications_toggled",
+
+  // UI/UX events
+  UI_SIDEBAR_COLLAPSED: "ui:sidebar_collapsed",
+  UI_SIDEBAR_EXPANDED: "ui:sidebar_expanded",
+
+  // Search and filtering
+  SEARCH_PERFORMED: "search:performed",
+  SEARCH_GLOBAL_OPENED: "search:global_opened",
+  SEARCH_RESULT_CLICKED: "search:result_clicked",
+
+  // Pins/Bookmarks events
+  PIN_CREATED: "pin:created",
+  PIN_DELETED: "pin:deleted",
+  PIN_VIEWED: "pin:viewed",
+
+  // Memory events
+  MEMORY_CLEARED: "memory:cleared",
+  MEMORY_ITEM_DELETED: "memory:item_deleted",
+
+  // Profile events
+  PROFILE_LINK_COPIED: "profile:link_copied",
+
+  // Notifications events
+  NOTIFICATION_VIEWED: "notification:viewed",
+  NOTIFICATION_CLICKED: "notification:clicked",
+  NOTIFICATION_DISMISSED: "notification:dismissed",
+
+  // Content/Learning events
+  BLOG_ARTICLE_VIEWED: "blog:article_viewed",
 
   // Navigation events
   NAVIGATION_SIDEBAR_CLICKED: "navigation:sidebar_clicked",
@@ -107,6 +157,7 @@ interface UserProperties {
   created_at?: string;
   profession?: string;
   onboarding_completed?: boolean;
+  first_message_sent?: boolean;
 }
 
 interface EventProperties {
@@ -154,8 +205,8 @@ export function trackEvent(
 /**
  * Set user properties without tracking an event.
  */
-function setUserProperties(properties: UserProperties): void {
-  posthog.people.set(properties);
+export function setUserProperties(properties: UserProperties): void {
+  posthog.setPersonProperties(properties);
 }
 
 // --- Analytics State Management (persisted in localStorage) ---
@@ -169,7 +220,7 @@ interface AnalyticsState {
 let analyticsStateCache: AnalyticsState | null = null;
 
 function getAnalyticsState(): AnalyticsState {
-  if (typeof window === "undefined") {
+  if (typeof globalThis.window === "undefined") {
     return { hassentFirstMessage: false, discoveredFeatures: [] };
   }
   if (analyticsStateCache !== null) return analyticsStateCache;
@@ -185,7 +236,7 @@ function getAnalyticsState(): AnalyticsState {
 }
 
 function updateAnalyticsState(updates: Partial<AnalyticsState>): void {
-  if (typeof window === "undefined") return;
+  if (typeof globalThis.window === "undefined") return;
   try {
     const current = getAnalyticsState();
     const next = { ...current, ...updates };
@@ -207,7 +258,7 @@ export function trackFirstMessageIfNeeded(): boolean {
   trackEvent(ANALYTICS_EVENTS.CHAT_FIRST_MESSAGE_SENT, {
     milestone: "first_message",
   });
-  setUserProperties({ first_message_sent: true } as UserProperties);
+  setUserProperties({ first_message_sent: true });
   updateAnalyticsState({ hassentFirstMessage: true });
   return true;
 }
@@ -346,3 +397,6 @@ export function trackError(
     ...properties,
   });
 }
+
+// Re-export posthog for direct usage (e.g. sendBeacon transport on logout)
+export { posthog };

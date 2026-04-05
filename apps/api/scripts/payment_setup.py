@@ -7,7 +7,7 @@ This script sets up subscription plans in the database using Dodo product IDs.
 IMPORTANT: Run this script from the correct directory!
 
 1. If running locally:
-    cd /path/to/your/gaia/backend
+    cd /path/to/your/gaia/apps/api
     python scripts/payment_setup.py --monthly-product-id <id> --yearly-product-id <id>
 
 2. If running inside Docker container:
@@ -71,9 +71,10 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 
+from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
+
 from app.config.settings import settings  # noqa: E402
 from app.models.payment_models import PlanDB  # noqa: E402
-from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 
 
 async def cleanup_old_indexes(collection):

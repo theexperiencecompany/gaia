@@ -12,6 +12,7 @@ import {
 import { EditorContent } from "@tiptap/react";
 import { TagInput } from "emblor";
 import Image from "next/image";
+import { useEffect } from "react";
 import { Drawer } from "vaul";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { Button as ShadcnButton } from "../../../components/ui/button";
@@ -34,6 +36,12 @@ interface MailComposeProps {
 
 export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
   const user = useUser();
+
+  useEffect(() => {
+    if (open) {
+      trackEvent(ANALYTICS_EVENTS.EMAIL_COMPOSE_OPENED);
+    }
+  }, [open]);
   const { formState, uiState, actions, editor, options } =
     useEmailComposition();
 

@@ -137,10 +137,8 @@ def create_agent(
         )
         store_arg = get_store_arg(retrieve_tools)
 
-    async def call_model(
-        state: State, config: RunnableConfig, *, store: BaseStore
-    ) -> State:
-        state = await execute_hooks(pre_model_hooks, state, config, store)
+    def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
+        state = sync_execute_hooks(pre_model_hooks, state, config, store)
 
         if middleware_executor:
             raise RuntimeError(
@@ -160,7 +158,7 @@ def create_agent(
         tools_to_bind.extend(middleware_tools)
         tools_to_bind = dedupe_tool_bindings(tools_to_bind)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        response = await llm_with_tools.ainvoke(state["messages"])
+        response = llm_with_tools.invoke(state["messages"])
 
         if not response.tool_calls and not response.content:
             response.content = "Empty response from model."

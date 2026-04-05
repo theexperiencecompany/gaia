@@ -1,0 +1,15 @@
+apiVersion: 1
+
+# Slack contact point. Set SLACK_ALERT_WEBHOOK_URL in the Grafana container's
+# environment (via docker-compose .env) before enabling alerts in production.
+contactPoints:
+  - orgId: 1
+    name: slack-alerts
+    receivers:
+      - uid: slack-alerts
+        type: slack
+        settings:
+          url: $SLACK_ALERT_WEBHOOK_URL
+          title: "{{ template \"slack.default.title\" . }}"
+          text: "{{ template \"slack.default.text\" . }}"
+        disableResolveMessage: false

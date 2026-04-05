@@ -11,6 +11,7 @@ import { marked } from "marked";
 import { useCallback, useState } from "react";
 import { mailApi } from "@/features/mail/api/mailApi";
 import type { EmailSuggestion } from "@/features/mail/components/EmailChip";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 export interface EmailCompositionFormState {
@@ -190,6 +191,12 @@ export function useEmailComposition(): UseEmailCompositionReturn {
             );
             if (editor) editor.commands.setContent(formattedBody);
             setSubject(parsedContent.subject);
+            trackEvent(ANALYTICS_EVENTS.EMAIL_AI_DRAFT_GENERATED, {
+              writing_style: overrideStyle || writingStyle,
+              content_length: contentLength,
+              has_subject: !!subject,
+              has_prompt: !!prompt,
+            });
           } else {
             console.log(`Invalid response format: ${JSON.stringify(response)}`);
             setError("Invalid response format from server");

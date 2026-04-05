@@ -79,6 +79,14 @@ export default function ChatBubble_Actions({
       // Pin/unpin the message
       await chatApi.togglePinMessage(convoIdParam, message_id, !pinned);
 
+      trackEvent(
+        pinned ? ANALYTICS_EVENTS.PIN_DELETED : ANALYTICS_EVENTS.PIN_CREATED,
+        {
+          message_id,
+          conversation_id: convoIdParam,
+        },
+      );
+
       toast.success(pinned ? "Message unpinned!" : "Message pinned!");
 
       // Fetch messages again to reflect the pin state
@@ -94,24 +102,20 @@ export default function ChatBubble_Actions({
   const handleThumbsUp = () => {
     trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_FEEDBACK, {
       message_id,
-      message_role: messageRole,
-      message_content: text,
-      conversation_id: convoIdParam,
       is_positive: true,
+      message_role: messageRole,
+      conversation_id: convoIdParam,
     });
-
     toast.success("Thanks for your feedback!");
   };
 
   const handleThumbsDown = () => {
     trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_FEEDBACK, {
       message_id,
-      message_role: messageRole,
-      message_content: text,
-      conversation_id: convoIdParam,
       is_positive: false,
+      message_role: messageRole,
+      conversation_id: convoIdParam,
     });
-
     toast.info("Thanks for your feedback!");
   };
 

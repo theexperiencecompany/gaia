@@ -13,6 +13,7 @@ import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useSendMessage } from "@/hooks/useSendMessage";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { syncSingleConversation } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
@@ -173,7 +174,13 @@ const ChatPage = React.memo(function MainChat() {
     onDroppedFilesProcessed: () => setDroppedFiles([]),
     hasMessages,
     conversationId: convoIdParam,
-    voiceModeActive: () => setVoiceModeActive(true),
+    voiceModeActive: () => {
+      trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
+        voice_mode_enabled: true,
+        conversation_id: convoIdParam,
+      });
+      setVoiceModeActive(true);
+    },
   };
 
   return (
@@ -181,7 +188,15 @@ const ChatPage = React.memo(function MainChat() {
       <FileDropModal isDragging={isDragging} />
 
       {voiceModeActive ? (
-        <VoiceApp onEndCall={() => setVoiceModeActive(false)} />
+        <VoiceApp
+          onEndCall={() => {
+            trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
+              voice_mode_enabled: false,
+              conversation_id: convoIdParam,
+            });
+            setVoiceModeActive(false);
+          }}
+        />
       ) : hasMessages ? (
         <>
           <ChatWithMessages

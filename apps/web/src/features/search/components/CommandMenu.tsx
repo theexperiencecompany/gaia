@@ -16,6 +16,7 @@ import { getLinkByLabel } from "@/config/appConfig";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { usePlatform } from "@/hooks/ui/usePlatform";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import { type ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
 import {
@@ -49,6 +50,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   // Reset and focus
   useEffect(() => {
     if (open) {
+      trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
       setTimeout(() => inputRef.current?.focus(), 50);
     } else {
       setSearch("");
@@ -67,6 +69,13 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     try {
       const response = await searchApi.search(query);
       setSearchResults(response);
+      trackEvent(ANALYTICS_EVENTS.SEARCH_PERFORMED, {
+        query_length: query.length,
+        result_count:
+          response.conversations.length +
+          response.messages.length +
+          response.notes.length,
+      });
     } catch (error) {
       console.error("Error fetching search results:", error);
       setSearchResults({ conversations: [], messages: [], notes: [] });
@@ -238,6 +247,14 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                               key={`conversation-${conversation.conversation_id}`}
                               value={conversation.description || "Conversation"}
                               onSelect={() => {
+                                trackEvent(
+                                  ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED,
+                                  {
+                                    result_type: "conversation",
+                                    conversation_id:
+                                      conversation.conversation_id,
+                                  },
+                                );
                                 router.push(
                                   `/c/${conversation.conversation_id}`,
                                 );
@@ -272,6 +289,14 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                             key={`message-${message.message.message_id}`}
                             value={message.snippet}
                             onSelect={() => {
+                              trackEvent(
+                                ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED,
+                                {
+                                  result_type: "message",
+                                  conversation_id: message.conversation_id,
+                                  message_id: message.message.message_id,
+                                },
+                              );
                               router.push(`/c/${message.conversation_id}`);
                               onOpenChange(false);
                             }}

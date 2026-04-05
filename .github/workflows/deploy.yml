@@ -183,6 +183,32 @@ jobs:
               echo '✅ All expected services are running and healthy'
             "
 
+      # Push a deploy marker to Loki so Grafana dashboards can render it as an annotation.
+      - name: Push deploy annotation to Loki
+        if: success()
+        env:
+          LOKI_PUSH_URL: ${{ secrets.LOKI_PUSH_URL }}
+        run: |
+          if [ -z "$LOKI_PUSH_URL" ]; then
+            echo "LOKI_PUSH_URL not set, skipping deploy annotation"
+            exit 0
+          fi
+          TS_NS="$(date +%s%N)"
+          LINE=$(printf '{"event":"deploy","service":"api","sha":"%s","actor":"%s","ref":"%s"}' \
+            "${{ github.sha }}" "${{ github.actor }}" "${{ github.ref_name }}")
+          curl -sS -X POST "$LOKI_PUSH_URL" \
+            -H "Content-Type: application/json" \
+            --data-binary @- <<EOF
+          {
+            "streams": [
+              {
+                "stream": { "event": "deploy", "service": "ci", "source": "github_actions" },
+                "values": [[ "$TS_NS", "$LINE" ]]
+              }
+            ]
+          }
+          EOF
+
       # Always emit deploy status to Discord for ops visibility.
       - name: Notify to Discord
         if: always()

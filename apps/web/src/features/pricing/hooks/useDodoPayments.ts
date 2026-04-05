@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { trackSubscription } from "@/lib/analytics";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { pricingApi } from "../api/pricingApi";
@@ -17,7 +17,7 @@ export const useDodoPayments = () => {
 
       try {
         // Track checkout started
-        trackSubscription("started", {
+        trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_CHECKOUT_STARTED, {
           planId: productId,
         });
 
@@ -39,7 +39,7 @@ export const useDodoPayments = () => {
         toast.error(errorMessage);
 
         // Track checkout failure
-        trackSubscription("failed", {
+        trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_FAILED, {
           planId: productId,
           reason: errorMessage,
         });

@@ -52,7 +52,6 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
     trackEvent(ANALYTICS_EVENTS.CHAT_SUGGESTION_SHUFFLED, {
       current_suggestion_ids: currentSuggestions.map((w) => w.id),
     });
-
     const currentIds = new Set(currentSuggestions.map((w) => w.id));
 
     // Filter out currently displayed workflows

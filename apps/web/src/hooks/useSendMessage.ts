@@ -3,7 +3,11 @@ import { v4 as uuidv4 } from "uuid";
 
 import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
-import { trackFirstMessageIfNeeded } from "@/lib/analytics";
+import {
+  ANALYTICS_EVENTS,
+  setUserProperties,
+  trackEvent,
+} from "@/lib/analytics";
 import { db, type IMessage } from "@/lib/db/chatDb";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -71,8 +75,19 @@ export const useSendMessage = () => {
         return;
       }
 
-      // Track first message milestone (only fires once per user)
-      trackFirstMessageIfNeeded();
+      // Track first message milestone (only fires once per user, persisted in localStorage)
+      try {
+        const stored = localStorage.getItem("gaia_first_message_sent");
+        if (!stored) {
+          trackEvent(ANALYTICS_EVENTS.CHAT_FIRST_MESSAGE_SENT, {
+            milestone: "first_message",
+          });
+          setUserProperties({ first_message_sent: true });
+          localStorage.setItem("gaia_first_message_sent", "true");
+        }
+      } catch {
+        // Silently fail if localStorage is unavailable
+      }
 
       const isoTimestamp = fetchDate();
       const createdAt = new Date(isoTimestamp);

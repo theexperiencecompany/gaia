@@ -13,6 +13,7 @@ import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { Button } from "@/components/ui/button";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   type ActionType,
   type ModalConfig,
@@ -53,6 +54,12 @@ export const EnhancedNotificationCard = ({
     const action = notification.content.actions?.find((a) => a.id === actionId);
     if (!action) return;
 
+    trackEvent(ANALYTICS_EVENTS.NOTIFICATION_CLICKED, {
+      notification_id: notification.id,
+      action_id: actionId,
+      action_type: action.type,
+    });
+
     setExecutingActionId(notification.id);
     try {
       await executeAction(notification.id, action);
@@ -62,6 +69,9 @@ export const EnhancedNotificationCard = ({
   };
 
   const handleMarkAsRead = async () => {
+    trackEvent(ANALYTICS_EVENTS.NOTIFICATION_DISMISSED, {
+      notification_id: notification.id,
+    });
     if (onMarkAsRead) {
       await onMarkAsRead(notification.id);
     }

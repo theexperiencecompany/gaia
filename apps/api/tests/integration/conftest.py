@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -18,32 +17,11 @@ from typing_extensions import Annotated
 
 from app.db.redis import redis_cache
 from tests.factories import make_config, make_user
+from tests.helpers import worker_redis_url
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-
-
-def _worker_redis_url(base_url: str) -> str:
-    """Return a Redis URL with a per-xdist-worker DB number.
-
-    Offsets from the base DB configured in the URL so ``redis://.../8``
-    becomes ``/8`` on gw0 and ``/9`` on gw1.  This preserves any DB
-    isolation already configured by the caller while still giving each
-    xdist worker its own logical database so ``flushdb()`` teardown
-    cannot wipe another worker's in-flight keys.
-    """
-    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
-    try:
-        worker_num = int(worker.removeprefix("gw"))
-    except ValueError:
-        worker_num = 0
-    match = re.search(r"/(\d+)$", base_url)
-    base_db = int(match.group(1)) if match else 0
-    db = (base_db + worker_num) % 16
-    if match:
-        return re.sub(r"/\d+$", f"/{db}", base_url)
-    return base_url.rstrip("/") + f"/{db}"
 
 
 class SimpleState(BaseModel):
@@ -148,7 +126,7 @@ async def real_redis(monkeypatch):
     Each xdist worker uses its own Redis DB so parallel tests cannot wipe
     each other's keys during ``flushdb()`` teardown.
     """
-    url = _worker_redis_url(_REDIS_URL)
+    url = worker_redis_url(_REDIS_URL)
     client = Redis.from_url(url, decode_responses=True)
     try:
         await client.ping()

@@ -291,7 +291,7 @@ class TestCreateTodoFlow:
         task_id = todos_after_plan[0]["id"]
 
         # Patch the sentinel so the pre-programmed Turn-2 tool call uses the real ID.
-        turn2_ai: AIMessage = fake_llm.responses[2]  # type: ignore[index]
+        turn2_ai: AIMessage = fake_llm.responses[2]
         turn2_ai.tool_calls[0]["args"]["updates"][0]["task_id"] = task_id
 
         # Turn 2: same graph, same thread — update_tasks reads todos from checkpoint.

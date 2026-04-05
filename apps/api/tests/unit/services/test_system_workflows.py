@@ -282,13 +282,6 @@ class TestResetSystemWorkflowToDefault:
 
         # Mock trigger config object
         trigger_config = MagicMock()
-        trigger_config.type = MagicMock()
-        trigger_config.type.value = "integration"
-        trigger_config.type.__eq__ = lambda self, other: (
-            str(self.value) == str(other.value)
-            if hasattr(other, "value")
-            else str(self.value) == str(other)
-        )
         trigger_config.trigger_name = "gmail_new_email"
         trigger_config.model_dump.return_value = {
             "type": "integration",
@@ -296,7 +289,6 @@ class TestResetSystemWorkflowToDefault:
         }
         mock_ensure.return_value = trigger_config
 
-        # Need to handle TriggerType comparison
         from app.models.workflow_models import TriggerType
 
         trigger_config.type = TriggerType.INTEGRATION

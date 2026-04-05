@@ -348,6 +348,12 @@ const Composer: React.FC<MainSearchbarProps> = ({
       setUploadedFiles(files);
       return;
     }
+
+    trackEvent(ANALYTICS_EVENTS.CHAT_FILE_UPLOADED, {
+      file_count: files.length,
+      file_types: files.map((f) => f.type),
+      conversation_id: conversationId,
+    });
     // These are the final uploaded files, replace temp files with final versions
     setUploadedFiles(
       files.map((file) => {

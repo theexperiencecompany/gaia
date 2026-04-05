@@ -60,6 +60,7 @@
     "esbuild": "latest",
     "tsx": "latest",
     "typescript": "^5.9.2",
+    "vite": "^7.1.12",
     "vitest": "^4.0.15"
   }
 }

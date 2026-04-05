@@ -12,6 +12,21 @@
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
         "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 96, 96, 1)",
+        "name": "Deploys",
+        "target": {
+          "expr": "{event=\"deploy\"}",
+          "refId": "Anno"
+        },
+        "titleFormat": "Deploy ({{service}})",
+        "textFormat": "{{sha}} by {{actor}}"
       }
     ]
   },
@@ -20,7 +35,22 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "gaia"
+      ],
+      "targetBlank": false,
+      "title": "GAIA Dashboards",
+      "tooltip": "",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
   "panels": [
     {
       "collapsed": false,
@@ -37,7 +67,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -84,7 +114,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "count(container_last_seen{name!=\"\"})",
           "instant": true,
@@ -98,7 +128,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -153,7 +183,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "sum(rate(container_cpu_usage_seconds_total{name!=\"\"}[2m])) / count(machine_cpu_cores) * 100",
           "instant": true,
@@ -167,7 +197,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -214,7 +244,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "sum(container_memory_usage_bytes{name!=\"\"})",
           "instant": true,
@@ -228,7 +258,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -275,7 +305,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "sum(rate(container_network_receive_bytes_total{name!=\"\"}[2m]))",
           "instant": true,
@@ -301,7 +331,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -350,7 +380,13 @@
               }
             ]
           },
-          "unit": "percent"
+          "unit": "percent",
+          "links": [
+            {
+              "title": "View logs for ${__field.labels.name}",
+              "url": "/d/gaia-api-logs/gaia-api-logs?var-service=${__field.labels.name}&${__url_time_range}"
+            }
+          ]
         },
         "overrides": []
       },
@@ -380,7 +416,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"$container\"}[2m])) by (name) * 100",
           "legendFormat": "{{name}}",
@@ -388,7 +424,16 @@
         }
       ],
       "title": "CPU Usage % per Container",
-      "type": "timeseries"
+      "type": "timeseries",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^gaia[-_](.+)$",
+            "renamePattern": "$1"
+          }
+        }
+      ]
     },
     {
       "collapsed": false,
@@ -405,7 +450,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -454,7 +499,13 @@
               }
             ]
           },
-          "unit": "bytes"
+          "unit": "bytes",
+          "links": [
+            {
+              "title": "View logs for ${__field.labels.name}",
+              "url": "/d/gaia-api-logs/gaia-api-logs?var-service=${__field.labels.name}&${__url_time_range}"
+            }
+          ]
         },
         "overrides": []
       },
@@ -484,7 +535,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "container_memory_usage_bytes{name=~\"$container\"}",
           "legendFormat": "{{name}}",
@@ -492,12 +543,21 @@
         }
       ],
       "title": "Memory Usage per Container",
-      "type": "timeseries"
+      "type": "timeseries",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^gaia[-_](.+)$",
+            "renamePattern": "$1"
+          }
+        }
+      ]
     },
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -546,7 +606,13 @@
               }
             ]
           },
-          "unit": "percentunit"
+          "unit": "percentunit",
+          "links": [
+            {
+              "title": "View logs for ${__field.labels.name}",
+              "url": "/d/gaia-api-logs/gaia-api-logs?var-service=${__field.labels.name}&${__url_time_range}"
+            }
+          ]
         },
         "overrides": []
       },
@@ -576,7 +642,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "container_memory_usage_bytes{name=~\"$container\"} / container_spec_memory_limit_bytes{name=~\"$container\"} > 0",
           "legendFormat": "{{name}}",
@@ -584,7 +650,16 @@
         }
       ],
       "title": "Memory Usage % of Limit",
-      "type": "timeseries"
+      "type": "timeseries",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^gaia[-_](.+)$",
+            "renamePattern": "$1"
+          }
+        }
+      ]
     },
     {
       "collapsed": false,
@@ -601,7 +676,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -650,7 +725,13 @@
               }
             ]
           },
-          "unit": "Bps"
+          "unit": "Bps",
+          "links": [
+            {
+              "title": "View logs for ${__field.labels.name}",
+              "url": "/d/gaia-api-logs/gaia-api-logs?var-service=${__field.labels.name}&${__url_time_range}"
+            }
+          ]
         },
         "overrides": []
       },
@@ -680,7 +761,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "sum(rate(container_network_receive_bytes_total{name=~\"$container\"}[2m])) by (name)",
           "legendFormat": "{{name}}",
@@ -688,12 +769,21 @@
         }
       ],
       "title": "Network Receive",
-      "type": "timeseries"
+      "type": "timeseries",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^gaia[-_](.+)$",
+            "renamePattern": "$1"
+          }
+        }
+      ]
     },
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -742,7 +832,13 @@
               }
             ]
           },
-          "unit": "Bps"
+          "unit": "Bps",
+          "links": [
+            {
+              "title": "View logs for ${__field.labels.name}",
+              "url": "/d/gaia-api-logs/gaia-api-logs?var-service=${__field.labels.name}&${__url_time_range}"
+            }
+          ]
         },
         "overrides": []
       },
@@ -772,7 +868,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "sum(rate(container_network_transmit_bytes_total{name=~\"$container\"}[2m])) by (name)",
           "legendFormat": "{{name}}",
@@ -780,7 +876,16 @@
         }
       ],
       "title": "Network Transmit",
-      "type": "timeseries"
+      "type": "timeseries",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^gaia[-_](.+)$",
+            "renamePattern": "$1"
+          }
+        }
+      ]
     },
     {
       "collapsed": false,
@@ -797,7 +902,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -846,7 +951,13 @@
               }
             ]
           },
-          "unit": "Bps"
+          "unit": "Bps",
+          "links": [
+            {
+              "title": "View logs for ${__field.labels.name}",
+              "url": "/d/gaia-api-logs/gaia-api-logs?var-service=${__field.labels.name}&${__url_time_range}"
+            }
+          ]
         },
         "overrides": []
       },
@@ -876,7 +987,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "sum(rate(container_fs_reads_bytes_total{name=~\"$container\"}[2m])) by (name)",
           "legendFormat": "{{name}}",
@@ -884,12 +995,21 @@
         }
       ],
       "title": "Disk Reads",
-      "type": "timeseries"
+      "type": "timeseries",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^gaia[-_](.+)$",
+            "renamePattern": "$1"
+          }
+        }
+      ]
     },
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -938,7 +1058,13 @@
               }
             ]
           },
-          "unit": "Bps"
+          "unit": "Bps",
+          "links": [
+            {
+              "title": "View logs for ${__field.labels.name}",
+              "url": "/d/gaia-api-logs/gaia-api-logs?var-service=${__field.labels.name}&${__url_time_range}"
+            }
+          ]
         },
         "overrides": []
       },
@@ -968,7 +1094,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "prometheus"
           },
           "expr": "sum(rate(container_fs_writes_bytes_total{name=~\"$container\"}[2m])) by (name)",
           "legendFormat": "{{name}}",
@@ -976,37 +1102,32 @@
         }
       ],
       "title": "Disk Writes",
-      "type": "timeseries"
+      "type": "timeseries",
+      "transformations": [
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^gaia[-_](.+)$",
+            "renamePattern": "$1"
+          }
+        }
+      ]
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
   "tags": [
     "gaia",
-    "containers",
-    "prometheus",
-    "cadvisor"
+    "infra",
+    "docker"
   ],
   "templating": {
     "list": [
       {
         "current": {},
-        "hide": 0,
-        "includeAll": false,
-        "label": "Datasource",
-        "multi": false,
-        "name": "datasource",
-        "options": [],
-        "query": "prometheus",
-        "refresh": 1,
-        "regex": "",
-        "type": "datasource"
-      },
-      {
-        "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "prometheus"
         },
         "definition": "label_values(container_last_seen{name!=\"\"}, name)",
         "hide": 0,
@@ -1020,7 +1141,7 @@
           "query": "label_values(container_last_seen{name!=\"\"}, name)",
           "refId": "StandardVariableQuery"
         },
-        "refresh": 2,
+        "refresh": 1,
         "regex": "",
         "sort": 1,
         "type": "query"
@@ -1028,7 +1149,7 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {},

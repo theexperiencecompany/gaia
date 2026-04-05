@@ -12,20 +12,50 @@
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
         "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 96, 96, 1)",
+        "name": "Deploys",
+        "target": {
+          "expr": "{event=\"deploy\"}",
+          "refId": "Anno"
+        },
+        "titleFormat": "Deploy ({{service}})",
+        "textFormat": "{{sha}} by {{actor}}"
       }
     ]
   },
-  "description": "ARQ background worker \u2014 job activity, errors, and slow tasks via Loki",
+  "description": "ARQ background worker \u2014 task duration histograms, error rates, log volume",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "asDropdown": true,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "gaia"
+      ],
+      "targetBlank": false,
+      "title": "GAIA Dashboards",
+      "tooltip": "",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
   "panels": [
     {
       "datasource": {
-        "type": "loki",
-        "uid": "${datasource}"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -38,12 +68,12 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "blue",
+                "color": "green",
                 "value": null
               }
             ]
           },
-          "unit": "short"
+          "unit": "reqps"
         },
         "overrides": []
       },
@@ -56,7 +86,7 @@
       "id": 1,
       "options": {
         "colorMode": "value",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
@@ -71,22 +101,22 @@
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "${datasource}"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "sum(count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\" [$__range]))",
+          "expr": "sum(rate(arq_task_total[5m]))",
           "instant": true,
-          "legendFormat": "",
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": ""
         }
       ],
-      "title": "Total Tasks Completed",
+      "title": "Task Rate",
       "type": "stat"
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "${datasource}"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -112,7 +142,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "percent"
         },
         "overrides": []
       },
@@ -125,7 +155,7 @@
       "id": 2,
       "options": {
         "colorMode": "background",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
@@ -140,22 +170,22 @@
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "${datasource}"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "sum(count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\", level=\"ERROR\"} [$__range]))",
+          "expr": "100 * (sum(rate(arq_task_total{status=\"error\"}[5m])) / clamp_min(sum(rate(arq_task_total[5m])), 0.0001))",
           "instant": true,
-          "legendFormat": "",
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": ""
         }
       ],
-      "title": "Failed Tasks",
+      "title": "Error Rate %",
       "type": "stat"
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "${datasource}"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -173,15 +203,15 @@
               },
               {
                 "color": "yellow",
-                "value": 1
+                "value": 5
               },
               {
-                "color": "orange",
-                "value": 10
+                "color": "red",
+                "value": 30
               }
             ]
           },
-          "unit": "short"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -193,8 +223,8 @@
       },
       "id": 3,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
+        "colorMode": "value",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
@@ -209,22 +239,22 @@
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "${datasource}"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "sum(count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\", level=\"WARNING\"} [$__range]))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(arq_task_duration_seconds_bucket[5m])))",
           "instant": true,
-          "legendFormat": "",
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": ""
         }
       ],
-      "title": "Warning Events",
+      "title": "p95 Task Duration",
       "type": "stat"
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "${datasource}"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -242,15 +272,15 @@
               },
               {
                 "color": "yellow",
-                "value": 1
+                "value": 10
               },
               {
                 "color": "red",
-                "value": 5
+                "value": 60
               }
             ]
           },
-          "unit": "short"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -262,8 +292,8 @@
       },
       "id": 4,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
+        "colorMode": "value",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
@@ -278,22 +308,22 @@
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "${datasource}"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "sum(count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\" | duration_ms > 1000 [$__range]))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(arq_task_duration_seconds_bucket[5m])))",
           "instant": true,
-          "legendFormat": "",
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": ""
         }
       ],
-      "title": "Slow Tasks (>1s)",
+      "title": "p99 Task Duration",
       "type": "stat"
     },
     {
       "datasource": {
         "type": "loki",
-        "uid": "${datasource}"
+        "uid": "loki"
       },
       "fieldConfig": {
         "defaults": {
@@ -342,7 +372,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "cps"
         },
         "overrides": [
           {
@@ -417,7 +447,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "sum by (level) (count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} [$__interval]))",
           "interval": "5m",
@@ -430,8 +460,8 @@
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "${datasource}"
+        "type": "prometheus",
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -480,7 +510,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "reqps"
         },
         "overrides": []
       },
@@ -508,28 +538,137 @@
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "${datasource}"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "sum by (task) (count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\" [$__interval]))",
-          "interval": "5m",
-          "legendFormat": "{{task}}",
+          "expr": "sum by (task_name) (rate(arq_task_total[5m]))",
+          "legendFormat": "{{task_name}}",
           "refId": "A"
         }
       ],
-      "title": "Task Executions by Type",
+      "title": "Task Rate by Name",
       "type": "timeseries"
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "${datasource}"
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
         "y": 12
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.50, sum by (le, task_name) (rate(arq_task_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50 {{task_name}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, task_name) (rate(arq_task_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{task_name}}",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le, task_name) (rate(arq_task_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99 {{task_name}}",
+          "refId": "C"
+        }
+      ],
+      "title": "Task Duration Percentiles by Name",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
       },
       "id": 7,
       "options": {
@@ -546,7 +685,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "{service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\", level=~\"ERROR|WARNING\"} | json",
           "legendFormat": "",
@@ -559,13 +698,13 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${datasource}"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 28
       },
       "id": 8,
       "options": {
@@ -582,7 +721,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${datasource}"
+            "uid": "loki"
           },
           "expr": "{service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\"",
           "legendFormat": "",
@@ -597,28 +736,13 @@
   "schemaVersion": 39,
   "tags": [
     "gaia",
-    "worker",
-    "loki"
+    "worker"
   ],
   "templating": {
-    "list": [
-      {
-        "current": {},
-        "hide": 0,
-        "includeAll": false,
-        "label": "Datasource",
-        "multi": false,
-        "name": "datasource",
-        "options": [],
-        "query": "loki",
-        "refresh": 1,
-        "regex": "",
-        "type": "datasource"
-      }
-    ]
+    "list": []
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-3h",
     "to": "now"
   },
   "timepicker": {},

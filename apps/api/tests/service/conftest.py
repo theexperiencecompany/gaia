@@ -13,7 +13,6 @@ Redis connection.
 from __future__ import annotations
 
 import os
-import re
 from datetime import datetime, timezone
 
 import pytest
@@ -21,27 +20,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from redis.asyncio import Redis
 
-
-def _worker_redis_url(base_url: str) -> str:
-    """Return a Redis URL with a per-xdist-worker DB number.
-
-    Offsets from the base DB configured in the URL so ``redis://.../8``
-    becomes ``/8`` on gw0 and ``/9`` on gw1.  This preserves any DB
-    isolation already configured by the caller while still giving each
-    xdist worker its own logical database so ``flushdb()`` teardown
-    cannot wipe another worker's in-flight keys.
-    """
-    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
-    try:
-        worker_num = int(worker.removeprefix("gw"))
-    except ValueError:
-        worker_num = 0
-    match = re.search(r"/(\d+)$", base_url)
-    base_db = int(match.group(1)) if match else 0
-    db = (base_db + worker_num) % 16
-    if match:
-        return re.sub(r"/\d+$", f"/{db}", base_url)
-    return base_url.rstrip("/") + f"/{db}"
+from tests.helpers import worker_redis_url
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +63,7 @@ async def mongo_db(mongodb_url: str):
     contamination. Use this when you need to work with collections other
     than 'conversations' (e.g., 'todos', 'reminders').
     """
-    client = AsyncIOMotorClient(mongodb_url)
+    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
     db = client["gaia_test"]
     yield db
     client.close()
@@ -100,7 +79,7 @@ async def conversations_collection(mongodb_url: str, monkeypatch):
     loop and cannot be reused by function-scoped async fixtures whose
     asyncio_default_fixture_loop_scope is "function").
     """
-    client = AsyncIOMotorClient(mongodb_url)
+    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
     coll = client["gaia_test"]["conversations"]
     await coll.delete_many({})
 
@@ -127,7 +106,7 @@ async def real_redis(redis_url: str, monkeypatch):
     """
     from app.db.redis import redis_cache
 
-    client = Redis.from_url(_worker_redis_url(redis_url), decode_responses=True)
+    client = Redis.from_url(worker_redis_url(redis_url), decode_responses=True)
     await client.ping()
 
     monkeypatch.setattr(redis_cache, "redis", client)

@@ -158,6 +158,7 @@ class TestWorkOSMobileCallback:
         mock_workos.user_management.authenticate_with_code.return_value = (
             _mock_auth_response()
         )
+        mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/mobile/callback?code=abc&state=xyz",
             follow_redirects=False,
@@ -251,6 +252,7 @@ class TestWorkOSDesktopCallback:
         mock_workos.user_management.authenticate_with_code.return_value = (
             _mock_auth_response()
         )
+        mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/desktop/callback?code=abc",
             follow_redirects=False,
@@ -308,6 +310,7 @@ class TestWorkOSCallback:
         mock_workos.user_management.authenticate_with_code.return_value = (
             _mock_auth_response()
         )
+        mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz",
             follow_redirects=False,
@@ -342,6 +345,7 @@ class TestWorkOSCallback:
         mock_workos.user_management.authenticate_with_code.return_value = (
             _mock_auth_response()
         )
+        mock_store.return_value = (MagicMock(), False)
         response = await client.get(
             f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz",
             follow_redirects=False,

@@ -5,8 +5,10 @@ import pytz
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from shared.py.wide_events import log
 from app.config.settings import settings
+from app.constants.auth import WOS_SESSION_COOKIE
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import UserUpdateResponse
+from app.services.analytics_service import track_logout
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
 from bson import ObjectId
@@ -312,11 +314,12 @@ async def update_holo_card_colors(
 @router.post("/logout")
 async def logout(
     request: Request,
+    user: dict = Depends(get_current_user),
 ):
     """
     Logout user and return logout URL for frontend redirection.
     """
-    wos_session = request.cookies.get("wos_session")
+    wos_session = request.cookies.get(WOS_SESSION_COOKIE)
 
     if not wos_session:
         raise HTTPException(status_code=401, detail="No active session")
@@ -332,6 +335,17 @@ async def logout(
         if not session:
             raise HTTPException(status_code=401, detail="Invalid session")
 
+        user_email: Optional[str] = user.get("email")
+        user_id: Optional[str] = user.get("user_id")
+
+        if user_email:
+            try:
+                track_logout(user_id=user_id or user_email, email=user_email)
+            except Exception as analytics_error:
+                log.warning(
+                    f"Failed to track logout analytics for {user_email}: {analytics_error}"
+                )
+
         logout_url = session.get_logout_url()
 
         # Create response with logout URL
@@ -339,7 +353,7 @@ async def logout(
 
         # Clear the session cookie
         response.delete_cookie(
-            "wos_session",
+            WOS_SESSION_COOKIE,
             httponly=True,
             path="/",
             secure=settings.ENV == "production",

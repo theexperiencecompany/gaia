@@ -10,26 +10,39 @@ from app.config.oauth_config import (
     get_integration_scopes,
 )
 from app.config.token_repository import token_repository
+from app.constants.auth import LOGIN_METHOD_WORKOS
+from app.constants.integrations import (
+    GMAIL_INTEGRATION_ID,
+    GOOGLE_CALENDAR_INTEGRATION_ID,
+    INTEGRATION_STATUS_CONNECTED,
+    MANAGED_BY_COMPOSIO,
+    MANAGED_BY_MCP,
+    MANAGED_BY_SELF,
+)
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import user_integrations_collection, users_collection
 from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
-from app.services.analytics_service import track_signup
+from app.services.analytics_service import track_login, track_signup
 from app.services.composio.composio_service import get_composio_service
-from app.services.provider_metadata_service import (
-    fetch_and_store_provider_metadata,
-)
-from app.utils.email_utils import add_contact_to_resend, send_welcome_email
-from app.utils.redis_utils import RedisPoolManager
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
+from app.services.provider_metadata_service import (
+    fetch_and_store_provider_metadata,
+)
 from app.services.system_workflows.provisioner import provision_system_workflows
+from app.utils.email_utils import add_contact_to_resend, send_welcome_email
+from app.utils.redis_utils import RedisPoolManager
 
 
-async def store_user_info(name: str, email: str, picture_url: Optional[str]):
+async def store_user_info(
+    name: str,
+    email: str,
+    picture_url: Optional[str],
+) -> tuple[ObjectId, bool]:
     """
     Stores user info from Google callback.
 
@@ -42,7 +55,7 @@ async def store_user_info(name: str, email: str, picture_url: Optional[str]):
         picture_url (str): The URL of the profile picture from Google.
 
     Returns:
-        The user's MongoDB _id.
+        tuple[ObjectId, bool]: (user_id, is_new_user)
 
     Raises:
         HTTPException: If any step in the process fails.
@@ -68,7 +81,17 @@ async def store_user_info(name: str, email: str, picture_url: Optional[str]):
             update_data["picture"] = ""
 
         await users_collection.update_one({"email": email}, {"$set": update_data})
-        return existing_user["_id"]
+        try:
+            track_login(
+                user_id=email,
+                email=email,
+                name=name,
+                login_method=LOGIN_METHOD_WORKOS,
+            )
+        except Exception as e:
+            log.error(f"Failed to track login in PostHog for {email}: {str(e)}")
+
+        return existing_user["_id"], False
     else:
         user_data = {
             "name": name,
@@ -86,7 +109,7 @@ async def store_user_info(name: str, email: str, picture_url: Optional[str]):
                 user_id=email,  # PostHog distinct_id - use email for cross-platform consistency
                 email=email,
                 name=name,
-                signup_method="workos",
+                signup_method=LOGIN_METHOD_WORKOS,
             )
             log.info(f"Signup tracked in PostHog for new user: {email}")
         except Exception as e:
@@ -108,7 +131,7 @@ async def store_user_info(name: str, email: str, picture_url: Optional[str]):
             log.error(f"Failed to add contact to Resend audience for {email}: {str(e)}")
             # Don't raise exception - user creation should still succeed
 
-        return result.inserted_id
+        return result.inserted_id, True
 
 
 @Cacheable(ttl=86400, key_pattern=f"{OAUTH_STATUS_KEY}:{{user_id}}")
@@ -134,7 +157,8 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
         100
     )
     mongo_status = {
-        doc["integration_id"]: doc.get("status") == "connected" for doc in user_ints
+        doc["integration_id"]: doc.get("status") == INTEGRATION_STATUS_CONNECTED
+        for doc in user_ints
     }
 
     # Track which platform integrations need external verification
@@ -152,14 +176,14 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
             continue
 
         # Not in MongoDB - check external services (legacy support)
-        if integration.managed_by == "mcp":
+        if integration.managed_by == MANAGED_BY_MCP:
             # All MCPs (auth or not) use MongoDB user_integrations as source of truth
             # If not in mongo_status, they're not connected
             result[integration.id] = False
-        elif integration.managed_by == "composio":
+        elif integration.managed_by == MANAGED_BY_COMPOSIO:
             composio_providers.append(integration.provider)
             composio_id_to_provider[integration.id] = integration.provider
-        elif integration.managed_by == "self":
+        elif integration.managed_by == MANAGED_BY_SELF:
             # Check self-managed integrations (Google) via PostgreSQL tokens
             try:
                 token = await token_repository.get_token(
@@ -276,7 +300,7 @@ async def handle_oauth_connection(
         )
 
     # Process Gmail emails to memory if this is a Gmail connection
-    if integration_config.id == "gmail":
+    if integration_config.id == GMAIL_INTEGRATION_ID:
         log.info(f"Starting Gmail email processing for user {user_id}")
 
         # Check if user has completed onboarding and update bio_status to processing
@@ -341,7 +365,7 @@ async def handle_oauth_connection(
     # Update user_integrations status in MongoDB
     try:
         await update_user_integration_status(
-            user_id, integration_config.id, "connected"
+            user_id, integration_config.id, INTEGRATION_STATUS_CONNECTED
         )
         log.info(f"Updated user_integrations status for {integration_config.id}")
     except Exception as e:
@@ -358,7 +382,7 @@ async def handle_oauth_connection(
         )
 
     # Auto-provision system workflows for supported integrations
-    if integration_config.id in ("gmail", "googlecalendar"):
+    if integration_config.id in (GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID):
         background_tasks.add_task(
             provision_system_workflows,
             user_id=user_id,
