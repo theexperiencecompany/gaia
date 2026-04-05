@@ -376,6 +376,7 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
       expect.any(Function), // auth error callback
       expect.any(Function), // generic error callback
       expect.objectContaining({ platform: "discord" }),
+      undefined,
     );
   });
 
@@ -603,6 +604,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
+      undefined,
     );
   });
 
@@ -629,6 +631,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
+      undefined,
     );
   });
 
@@ -674,6 +677,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
+      undefined,
     );
   });
 });
@@ -785,6 +789,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
+      undefined,
     );
   });
 
@@ -889,6 +894,7 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
+      undefined,
     );
   });
 
@@ -926,6 +932,7 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
+      undefined,
     );
   });
 });

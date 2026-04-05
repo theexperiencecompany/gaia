@@ -326,6 +326,7 @@ export class SlackAdapter extends BaseBotAdapter {
         });
       },
       STREAMING_DEFAULTS.slack,
+      this.analytics,
     );
   }
 

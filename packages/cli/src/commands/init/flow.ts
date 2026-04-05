@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { analytics, CLI_EVENTS } from "../../lib/analytics.js";
 import { writeConfig } from "../../lib/config.js";
 import { runEnvSetup, selectSetupMode } from "../../lib/env-setup.js";
 import { portOverridesToDockerEnv } from "../../lib/env-writer.js";
@@ -28,6 +29,9 @@ export async function runInitFlow(
   store: CLIStore,
   branch?: string,
 ): Promise<void> {
+  const startMs = Date.now();
+  analytics.capture(CLI_EVENTS.COMMAND_STARTED, { command: "init" });
+
   // 0. Welcome
   store.setStep("Welcome");
   store.setStatus("Waiting for user input...");
@@ -39,20 +43,38 @@ export async function runInitFlow(
   store.setStep("Prerequisites");
   store.setStatus("Checking system requirements...");
 
-  if (!(await runBasePrerequisiteChecks(store))) return;
+  if (!(await runBasePrerequisiteChecks(store))) {
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "init",
+      duration_ms: Date.now() - startMs,
+    });
+    return;
+  }
 
   // Check Ports
   // Note: 8083 (Mongo Express) is only used in dev mode, but we check it here
   // since mode selection happens later in the flow.
   const portOverrides = await runPortChecks(store);
-  if (portOverrides === null) return;
+  if (portOverrides === null) {
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "init",
+      duration_ms: Date.now() - startMs,
+    });
+    return;
+  }
 
   // 2. Setup Mode
   const setupMode = await selectSetupMode(store);
 
   if (setupMode === "developer") {
     const developerPrereqs = await runDeveloperPrerequisiteChecks(store);
-    if (!developerPrereqs) return;
+    if (!developerPrereqs) {
+      analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+        command: "init",
+        duration_ms: Date.now() - startMs,
+      });
+      return;
+    }
   }
 
   let repoPath = "";
@@ -65,6 +87,10 @@ export async function runInitFlow(
           "DEV_MODE: Could not find workspace root. Run from within the gaia repo.",
         ),
       );
+      analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+        command: "init",
+        duration_ms: Date.now() - startMs,
+      });
       return;
     }
     store.setStep("Repository Setup");
@@ -124,6 +150,10 @@ export async function runInitFlow(
                   `Failed to remove directory: ${(e as Error).message}\nTry removing it manually: rm -rf "${repoPath}"`,
                 ),
               );
+              analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+                command: "init",
+                duration_ms: Date.now() - startMs,
+              });
               return;
             }
             break;
@@ -132,6 +162,10 @@ export async function runInitFlow(
           } else {
             // exit
             store.setError(new Error("Setup cancelled by user."));
+            analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+              command: "init",
+              duration_ms: Date.now() - startMs,
+            });
             return;
           }
         }
@@ -178,6 +212,10 @@ export async function runInitFlow(
         store.setStatus("Repository ready!");
       } catch (e) {
         store.setError(e as Error);
+        analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+          command: "init",
+          duration_ms: Date.now() - startMs,
+        });
         return;
       }
     } else {
@@ -191,6 +229,10 @@ export async function runInitFlow(
   await runEnvSetup(store, repoPath, setupMode, portOverrides);
 
   if (store.currentState.error) {
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "init",
+      duration_ms: Date.now() - startMs,
+    });
     return; // Abort if env setup failed
   }
 
@@ -254,6 +296,10 @@ export async function runInitFlow(
         store.setError(
           new Error(`Failed to start services: ${(e as Error).message}`),
         );
+        analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+          command: "init",
+          duration_ms: Date.now() - startMs,
+        });
         return;
       }
     }
@@ -275,6 +321,10 @@ export async function runInitFlow(
     store.setStep("Finished");
     store.setStatus("Setup complete! GAIA is running.");
     await store.waitForInput("exit");
+    analytics.capture(CLI_EVENTS.COMMAND_COMPLETED, {
+      command: "init",
+      duration_ms: Date.now() - startMs,
+    });
     return;
   }
 
@@ -310,6 +360,10 @@ export async function runInitFlow(
     store.setError(
       new Error(`Failed to install tools: ${(e as Error).message}`),
     );
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "init",
+      duration_ms: Date.now() - startMs,
+    });
     return;
   }
 
@@ -353,6 +407,10 @@ export async function runInitFlow(
     store.setError(
       new Error(`Failed to setup project: ${(e as Error).message}`),
     );
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "init",
+      duration_ms: Date.now() - startMs,
+    });
     return;
   }
 
@@ -371,4 +429,8 @@ export async function runInitFlow(
   store.setStep("Finished");
   store.setStatus("Setup complete! Run 'gaia dev' to start development mode.");
   await store.waitForInput("exit");
+  analytics.capture(CLI_EVENTS.COMMAND_COMPLETED, {
+    command: "init",
+    duration_ms: Date.now() - startMs,
+  });
 }

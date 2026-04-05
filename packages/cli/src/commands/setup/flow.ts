@@ -1,3 +1,4 @@
+import { analytics, CLI_EVENTS } from "../../lib/analytics.js";
 import { updateConfig } from "../../lib/config.js";
 import { runEnvSetup, selectSetupMode } from "../../lib/env-setup.js";
 import {
@@ -12,6 +13,9 @@ import { findRepoRoot } from "../../lib/service-starter.js";
 import type { CLIStore } from "../../ui/store.js";
 
 export async function runSetupFlow(store: CLIStore): Promise<void> {
+  const startMs = Date.now();
+  analytics.capture(CLI_EVENTS.COMMAND_STARTED, { command: "setup" });
+
   // 1. Detect repo root
   store.setStep("Detect Repo");
   store.setStatus("Looking for GAIA repository...");
@@ -23,6 +27,10 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
         "Could not find GAIA repository. Run this command from within a cloned gaia repo, or use 'gaia init' to set up from scratch.",
       ),
     );
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "setup",
+      duration_ms: Date.now() - startMs,
+    });
     return;
   }
 
@@ -34,24 +42,46 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
   store.setStep("Prerequisites");
   store.setStatus("Checking system requirements...");
 
-  if (!(await runBasePrerequisiteChecks(store))) return;
+  if (!(await runBasePrerequisiteChecks(store))) {
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "setup",
+      duration_ms: Date.now() - startMs,
+    });
+    return;
+  }
 
   // Port check
   const portOverrides = await runPortChecks(store);
-  if (portOverrides === null) return;
+  if (portOverrides === null) {
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "setup",
+      duration_ms: Date.now() - startMs,
+    });
+    return;
+  }
 
   // 3. Setup Mode
   const setupMode = await selectSetupMode(store);
 
   if (setupMode === "developer") {
     const developerPrereqs = await runDeveloperPrerequisiteChecks(store);
-    if (!developerPrereqs) return;
+    if (!developerPrereqs) {
+      analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+        command: "setup",
+        duration_ms: Date.now() - startMs,
+      });
+      return;
+    }
   }
 
   // 4. Environment Setup
   await runEnvSetup(store, repoPath, setupMode, portOverrides);
 
   if (store.currentState.error) {
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "setup",
+      duration_ms: Date.now() - startMs,
+    });
     return;
   }
 
@@ -69,6 +99,15 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
       "Setup complete! Run 'gaia start' to build and start all services in Docker.",
     );
     await store.waitForInput("exit");
+    analytics.capture(CLI_EVENTS.SETUP_COMPLETED, {
+      command: "setup",
+      setup_mode: "selfhost",
+      duration_ms: Date.now() - startMs,
+    });
+    analytics.capture(CLI_EVENTS.COMMAND_COMPLETED, {
+      command: "setup",
+      duration_ms: Date.now() - startMs,
+    });
     return;
   }
 
@@ -80,7 +119,13 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
     portOverrides,
     logHandler,
   );
-  if (!ok) return;
+  if (!ok) {
+    analytics.capture(CLI_EVENTS.COMMAND_FAILED, {
+      command: "setup",
+      duration_ms: Date.now() - startMs,
+    });
+    return;
+  }
 
   await delay(1000);
 
@@ -95,4 +140,13 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
   store.setStep("Finished");
   store.setStatus("Setup complete! Run 'gaia dev' to start development mode.");
   await store.waitForInput("exit");
+  analytics.capture(CLI_EVENTS.SETUP_COMPLETED, {
+    command: "setup",
+    setup_mode: "developer",
+    duration_ms: Date.now() - startMs,
+  });
+  analytics.capture(CLI_EVENTS.COMMAND_COMPLETED, {
+    command: "setup",
+    duration_ms: Date.now() - startMs,
+  });
 }

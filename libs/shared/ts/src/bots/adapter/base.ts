@@ -32,6 +32,8 @@
  *
  * @module
  */
+
+import { Analytics, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type {
@@ -79,6 +81,9 @@ export abstract class BaseBotAdapter {
   /** Map of registered unified commands, keyed by command name. */
   protected commands: Map<string, BotCommand> = new Map();
 
+  /** Server-side PostHog analytics. No-op when POSTHOG_API_KEY is absent. */
+  protected analytics: Analytics = new Analytics(undefined);
+
   // ---------------------------------------------------------------------------
   // Lifecycle — template method pattern
   // ---------------------------------------------------------------------------
@@ -103,6 +108,7 @@ export abstract class BaseBotAdapter {
       this.config.gaiaApiKey,
       this.config.gaiaFrontendUrl,
     );
+    this.analytics = new Analytics(this.config.posthogApiKey);
 
     for (const cmd of commands) {
       this.commands.set(cmd.name, cmd);
@@ -122,6 +128,7 @@ export abstract class BaseBotAdapter {
   async shutdown(): Promise<void> {
     console.log(`Shutting down ${this.platform} bot...`);
     await this.stop();
+    await this.analytics.shutdown();
   }
 
   // ---------------------------------------------------------------------------
@@ -190,6 +197,26 @@ export abstract class BaseBotAdapter {
     args: Record<string, string | number | boolean | undefined> = {},
     rawText?: string,
   ): Promise<void> {
+    const distinctId = `${this.platform}:${target.userId}`;
+
+    this.analytics.identify(distinctId, {
+      username: target.profile?.username,
+      display_name: target.profile?.displayName,
+    });
+
+    this.analytics.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+      command: name,
+      has_args: Object.keys(args).length > 0,
+      has_raw_text: !!rawText,
+      channel_id: target.channelId,
+    });
+
+    if (name === "auth") {
+      this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {
+        channel_id: target.channelId,
+      });
+    }
+
     const command = this.commands.get(name);
     if (!command) {
       await target.sendEphemeral(`Unknown command: /${name}`);
@@ -202,16 +229,32 @@ export abstract class BaseBotAdapter {
       target.profile,
     );
 
+    const startMs = Date.now();
     try {
-      await command.execute({
-        gaia: this.gaia,
-        target,
-        ctx,
-        args,
-        rawText,
+      await command.execute({ gaia: this.gaia, target, ctx, args, rawText });
+      this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+        command: name,
+        duration_ms: Date.now() - startMs,
+        success: true,
+        channel_id: target.channelId,
       });
     } catch (error) {
+      const durationMs = Date.now() - startMs;
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       console.error(`Error executing command /${name}:`, error);
+      this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+        command: name,
+        duration_ms: durationMs,
+        success: false,
+        error_message: errorMessage,
+        channel_id: target.channelId,
+      });
+      this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
+        context: `command:${name}`,
+        error_message: errorMessage,
+        channel_id: target.channelId,
+      });
       const errMsg = formatBotError(error);
       try {
         await target.sendEphemeral(errMsg);

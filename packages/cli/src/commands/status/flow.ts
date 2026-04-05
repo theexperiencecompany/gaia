@@ -1,3 +1,4 @@
+import { analytics, CLI_EVENTS } from "../../lib/analytics.js";
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import { checkAllServices, getDockerStatus } from "../../lib/healthcheck.js";
 import { findRepoRoot } from "../../lib/service-starter.js";
@@ -30,6 +31,8 @@ export async function runStatusChecks(store: CLIStore): Promise<void> {
 }
 
 export async function runStatusFlow(store: CLIStore): Promise<void> {
+  const startMs = Date.now();
+  analytics.capture(CLI_EVENTS.COMMAND_STARTED, { command: "status" });
   while (true) {
     await runStatusChecks(store);
 
@@ -41,4 +44,8 @@ export async function runStatusFlow(store: CLIStore): Promise<void> {
       break;
     }
   }
+  analytics.capture(CLI_EVENTS.COMMAND_COMPLETED, {
+    command: "status",
+    duration_ms: Date.now() - startMs,
+  });
 }

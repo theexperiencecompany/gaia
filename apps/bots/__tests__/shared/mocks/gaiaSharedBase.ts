@@ -50,6 +50,7 @@ export function makeGaiaSharedMock(
     gaia = {};
     config = {};
     commands = new Map();
+    analytics = undefined;
 
     protected async dispatchCommand(
       name: string,

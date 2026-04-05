@@ -48,6 +48,7 @@
     "ink-big-text": "^2.0.0",
     "ink-gradient": "^3.0.0",
     "ink-text-input": "^6.0.0",
+    "posthog-node": "^5.28.11",
     "react": "^19",
     "react-dom": "^19",
     "simple-git": "^3.30.0"

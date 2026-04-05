@@ -378,6 +378,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           }
         },
         STREAMING_DEFAULTS.telegram,
+        this.analytics,
       );
     } finally {
       clearTyping();

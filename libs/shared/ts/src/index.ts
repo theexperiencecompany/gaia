@@ -4,6 +4,7 @@
  * Shared utilities for GAIA TypeScript/JavaScript applications.
  */
 
+export * from "./analytics";
 export * from "./api";
 export * from "./bots";
 export * from "./chat";

@@ -358,6 +358,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           await this.sendWhatsAppText(waId, errMsg);
         },
         STREAMING_DEFAULTS.whatsapp,
+        this.analytics,
       );
     } catch (err) {
       console.error("WhatsApp streaming error:", err);

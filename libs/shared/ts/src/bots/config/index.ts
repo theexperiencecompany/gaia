@@ -58,10 +58,16 @@ export async function loadConfig(): Promise<BotConfig> {
     );
   }
 
+  const posthogApiKey = process.env.POSTHOG_API_KEY;
+  if (!posthogApiKey) {
+    warn("POSTHOG_API_KEY not set — bot analytics will be disabled");
+  }
+
   log("Configuration loaded successfully");
   return {
     gaiaApiUrl: gaiaApiUrl!,
     gaiaApiKey: gaiaApiKey!,
     gaiaFrontendUrl: gaiaFrontendUrl!,
+    posthogApiKey,
   };
 }

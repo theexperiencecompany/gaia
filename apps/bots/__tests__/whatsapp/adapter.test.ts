@@ -403,6 +403,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
+      undefined,
     );
   });
 
@@ -468,6 +469,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
+      undefined,
     );
   });
 
@@ -487,6 +489,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
+      undefined,
     );
   });
 });
@@ -556,6 +559,7 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
+      undefined,
     );
   });
 

@@ -1,5 +1,6 @@
 import { render } from "ink";
 import React from "react";
+import { analytics } from "../../lib/analytics.js";
 import { App } from "../../ui/app.js";
 import { createStore } from "../../ui/store.js";
 import { runSetupFlow } from "./flow.js";
@@ -25,6 +26,7 @@ export async function runSetup(): Promise<void> {
   } finally {
     process.off("SIGINT", handleExit);
     process.off("SIGTERM", handleExit);
+    await analytics.shutdown();
   }
 
   if (store.currentState.error) {
