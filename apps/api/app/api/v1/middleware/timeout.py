@@ -12,6 +12,7 @@ from typing import Any
 
 import anyio
 from fastapi.responses import JSONResponse
+from shared.py.wide_events import log
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 TIMEOUT_EXCLUDE_PREFIXES: tuple[str, ...] = (
@@ -62,13 +63,19 @@ class RequestTimeoutMiddleware:
         with anyio.move_on_after(self.timeout) as cancel_scope:
             await self.app(scope, receive, send_wrapper)
 
-        if cancel_scope.cancelled_caught and not response_started:
-            response = JSONResponse(
-                status_code=504,
-                content={
-                    "error": "request_timeout",
-                    "detail": f"Request exceeded {self.timeout}s timeout",
-                },
-                headers={"Retry-After": "60"},
-            )
-            await response(scope, receive, send)
+        if cancel_scope.cancelled_caught:
+            if not response_started:
+                response = JSONResponse(
+                    status_code=504,
+                    content={
+                        "error": "request_timeout",
+                        "detail": f"Request exceeded {self.timeout}s timeout",
+                    },
+                    headers={"Retry-After": "60"},
+                )
+                await response(scope, receive, send)
+            else:
+                log.warning(
+                    f"Request to {path} timed out after {self.timeout}s "
+                    "but response already started — connection may be broken"
+                )

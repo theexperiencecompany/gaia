@@ -53,6 +53,7 @@ LOG_CONFIG = {
             "<green>{time:MM-DD HH:mm:ss}</green> | "
             "<level>{level: <4}</level> | "
             "<blue>{extra[logger_name]: <7}</blue> | "
+            "<dim>{extra[worker]: <5}</dim> | "
             "<level>{message}</level> "
             "<dim><cyan>({file.name}:{line})</cyan></dim>"
         ),
@@ -60,6 +61,7 @@ LOG_CONFIG = {
             "{time:YYYY-MM-DD HH:mm:ss} | "
             "{level: <4} | "
             "{extra[logger_name]: <7} | "
+            "{extra[worker]: <5} | "
             "{message} | "
             "{file.name}:{function}:{line}"
         ),
@@ -91,6 +93,7 @@ def _build_json_entry(record: dict) -> str:
         "message": record["message"],
         "module": record["module"],
         "line": record["line"],
+        "worker": record["extra"].get("worker", "main"),
     }
 
     for key, value in record["extra"].items():
@@ -150,6 +153,22 @@ def _json_file_sink_factory(log_dir: Path) -> "Callable[..., None]":
     return _sink
 
 
+def _worker_name_patcher(record: dict) -> None:
+    """Derive a short worker label from the OS process name.
+
+    uvicorn --workers spawns processes named SpawnProcess-1, SpawnProcess-2, etc.
+    This collapses them to w1, w2 so log lines are easy to diff between workers.
+    Single-process / dev mode shows 'main'.
+    """
+    name: str = record["process"].name
+    if name.startswith("SpawnProcess-"):
+        record["extra"]["worker"] = "w" + name.split("-")[-1]
+    elif name == "MainProcess":
+        record["extra"]["worker"] = "main"
+    else:
+        record["extra"]["worker"] = name[:5]
+
+
 def configure_loguru():
     """
     Configure console logging with standard library interception.
@@ -170,10 +189,12 @@ def configure_loguru():
 
     logger.remove()
 
-    # Set a global default for logger_name so format strings like
-    # {extra[logger_name]} never raise KeyError on records that didn't
-    # go through InterceptHandler or logger.bind(logger_name=...).
-    logger.configure(extra={"logger_name": "APP"})
+    # Set global defaults for extra fields used in format strings so they
+    # never raise KeyError on records that bypass InterceptHandler or bind().
+    logger.configure(
+        extra={"logger_name": "APP", "worker": "main"},
+        patcher=_worker_name_patcher,
+    )
 
     if LOG_CONFIG["format_mode"] == "json":
         # Production: one JSON object per line → stdout → Promtail → Loki.

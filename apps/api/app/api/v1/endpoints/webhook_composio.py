@@ -10,7 +10,7 @@ Each handler implements its own `process_event()` method which handles:
 """
 
 import asyncio
-from typing import Any, Set
+from typing import Any
 
 from shared.py.wide_events import log
 from app.db.redis import redis_cache
@@ -22,7 +22,7 @@ from fastapi import APIRouter, Request
 router = APIRouter()
 
 # Prevent GC of fire-and-forget tasks
-_webhook_tasks: Set[asyncio.Task[Any]] = set()
+_webhook_tasks: set[asyncio.Task[Any]] = set()
 
 
 async def _process_webhook_event(
@@ -36,8 +36,8 @@ async def _process_webhook_event(
             user_id=event_data.user_id,
             data=event_data.data,
         )
-    except Exception:
-        log.error(f"Webhook background processing failed for {event_data.type}")
+    except Exception as e:
+        log.error(f"Webhook background processing failed for {event_data.type}: {e}")
 
 
 @router.post("/webhook/composio")
