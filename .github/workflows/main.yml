@@ -316,8 +316,12 @@ jobs:
           echo "All required jobs passed or were skipped."
 
   # --- Trigger Docker build (master only) ---------------------------------
+  # always() is required to suppress the implicit success() check, which walks
+  # the transitive needs graph and returns false when any ancestor lane
+  # (e.g. static-typescript / build / test-typescript on a Python-only change)
+  # was skipped — even though quality-gate itself succeeded.
   trigger-build:
     needs: [quality-gate]
-    if: github.ref == 'refs/heads/master'
+    if: ${{ always() && needs.quality-gate.result == 'success' && github.ref == 'refs/heads/master' }}
     uses: ./.github/workflows/build.yml
     secrets: inherit # pragma: allowlist secret
