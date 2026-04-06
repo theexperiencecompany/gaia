@@ -26,6 +26,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: generate-changelog-pages
+        name: Generate changelog sub-pages from release-notes.mdx
+        entry: bash -c 'node docs/scripts/generate-changelog-pages.js && git add docs/release-notes/'
+        language: system
+        files: ^docs/release-notes\.mdx$
+        pass_filenames: false
+
       - id: biome-check
         name: Biome check (lint + format + imports)
         entry: npx biome check --write --no-errors-on-unmatched --files-ignore-unknown=true
