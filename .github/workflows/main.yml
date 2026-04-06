@@ -254,6 +254,7 @@ jobs:
       - name: Open fix PR if generated files are out of date
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REF: ${{ github.head_ref || github.ref_name }}
         run: |
           if git diff --quiet docs/release-notes/; then
             echo "Changelog sub-pages are up to date."
@@ -263,7 +264,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          TARGET="${{ github.head_ref || github.ref_name }}"
+          TARGET="$TARGET_REF"
           FIX_BRANCH="fix/changelog-sync-${TARGET//\//-}"
 
           git checkout -B "$FIX_BRANCH"
