@@ -97,7 +97,38 @@
       },
       {
         "tab": "Release Notes",
-        "pages": ["release-notes"]
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["release-notes"]
+          },
+          {
+            "group": "By App",
+            "pages": [
+              "release-notes/api",
+              "release-notes/web",
+              "release-notes/desktop",
+              "release-notes/mobile",
+              "release-notes/bots",
+              "release-notes/cli"
+            ]
+          },
+          {
+            "group": "By Category",
+            "pages": [
+              "release-notes/features",
+              "release-notes/bug-fixes",
+              "release-notes/improvements"
+            ]
+          },
+          {
+            "group": "Archive",
+            "pages": [
+              "release-notes/2026",
+              "release-notes/2025"
+            ]
+          }
+        ]
       },
       {
         "tab": "Guides",
