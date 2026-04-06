@@ -1,8 +1,7 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
-import { UserCircle02Icon } from "@icons";
-import { PlayIcon } from "@theexperiencecompany/gaia-icons/solid-standard";
+import { PlayIcon, UserCircle02Icon } from "@icons";
 import Image from "next/image";
 import { useTransition } from "react";
 import { wallpapers } from "@/config/wallpapers";

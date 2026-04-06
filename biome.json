@@ -12,9 +12,10 @@
   },
   "files": {
     "ignoreUnknown": true,
+    "maxSize": 2097152,
     "includes": [
       "**/*.{js,jsx,ts,tsx,json,md,mdx,yml,yaml,html,css,scss,sass}",
-
+      "!!apps/web/public",
       "!!**/node_modules",
       "!!**/.next",
       "!!**/dist",
@@ -29,11 +30,9 @@
       "!!**/.nx",
       "!!**/.turbo",
       "!!**/coverage",
-
       "!!apps/api",
       "!!apps/voice-agent",
       "!!infra",
-
       "!!docs",
       "!!.claude",
       "!!.agents",
@@ -45,7 +44,6 @@
       "!!.mise",
       "!!.opencode",
       "!!.worktrees",
-
       "!**/pnpm-lock.yaml",
       "!**/*.lock",
       "!**/.env*",
@@ -54,7 +52,8 @@
       "!**/*.log",
       "!**/.DS_Store",
       "!**/*.generated.ts",
-      "!**/*.generated.json"
+      "!**/*.generated.json",
+      "!apps/web/src/**/i18n/*.json"
     ]
   },
   "formatter": {
@@ -122,5 +121,29 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "plugins": [
+    "./rules/no-direct-gaia-icons-import.grit",
+    "./rules/no-chevron-from-icons.grit",
+    "./rules/no-hugeicons-import.grit"
+  ],
+  "overrides": [
+    {
+      "includes": ["apps/web/**", "apps/desktop/**"],
+      "linter": {
+        "domains": {
+          "next": "recommended"
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/web/src/features/**/index.ts",
+        "apps/web/src/features/**/index.tsx",
+        "apps/web/src/app/**/index.ts",
+        "apps/web/src/app/**/index.tsx"
+      ],
+      "plugins": ["./rules/no-barrel-reexport.grit"]
+    }
+  ]
 }

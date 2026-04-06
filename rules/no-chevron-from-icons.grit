@@ -1,0 +1,27 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// ChevronDown in @icons (solid-rounded variant) does not match the app's chevron design.
+// The custom SVG version lives in @/components/shared/icons and must be used instead.
+//
+// GritQL limitation: metavariables don't match inside `export { }` specifier lists.
+// For imports, positional $_ patterns handle up to 4 co-imported names alongside
+// ChevronDown. Add more positions if needed.
+or {
+  `import { ChevronDown } from "@icons"`,
+  `import { ChevronDown, $_ } from "@icons"`,
+  `import { $_, ChevronDown } from "@icons"`,
+  `import { ChevronDown, $_, $_ } from "@icons"`,
+  `import { $_, ChevronDown, $_ } from "@icons"`,
+  `import { $_, $_, ChevronDown } from "@icons"`,
+  `import { ChevronDown, $_, $_, $_ } from "@icons"`,
+  `import { $_, ChevronDown, $_, $_ } from "@icons"`,
+  `import { $_, $_, ChevronDown, $_ } from "@icons"`,
+  `import { $_, $_, $_, ChevronDown } from "@icons"`
+} as $node where {
+  register_diagnostic(
+    span = $node,
+    message = "Import `ChevronDown` from `@/components/shared/icons`, not `@icons`. The solid-rounded variant does not match the app's chevron design.",
+    severity = "error"
+  )
+}
