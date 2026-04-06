@@ -238,6 +238,28 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: node scripts/ci/validate-release-manifest.mjs
 
+  # --- Changelog sync check (always) --------------------------------------
+  changelog-sync:
+    needs: [detect]
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+      - name: Regenerate changelog sub-pages
+        run: node docs/scripts/generate-changelog-pages.js
+      - name: Fail if generated files are out of date
+        run: |
+          if ! git diff --exit-code docs/release-notes/; then
+            echo ""
+            echo "::error::Changelog sub-pages are out of date."
+            echo "::error::Edit docs/release-notes.mdx and commit — the pre-commit hook regenerates them automatically."
+            echo "::error::Or run: node docs/scripts/generate-changelog-pages.js && git add docs/release-notes/"
+            exit 1
+          fi
+
   # --- Trivy scan (non-blocking) ------------------------------------------
   trivy-scan:
     needs: [detect]
@@ -284,6 +306,7 @@ jobs:
       - test-typescript
       - dead-code
       - release-validation
+      - changelog-sync
       # trivy-scan deliberately excluded (non-blocking)
       # coverage deliberately excluded (master-only, non-blocking)
     runs-on: blacksmith-2vcpu-ubuntu-2404
@@ -299,6 +322,7 @@ jobs:
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
           echo "  dead-code:          ${{ needs.dead-code.result }}"
           echo "  release-validation: ${{ needs.release-validation.result }}"
+          echo "  changelog-sync:     ${{ needs.changelog-sync.result }}"
 
           for r in \
             "${{ needs.static-python.result }}" \
@@ -307,7 +331,8 @@ jobs:
             "${{ needs.test-python.result }}" \
             "${{ needs.test-typescript.result }}" \
             "${{ needs.dead-code.result }}" \
-            "${{ needs.release-validation.result }}"; do
+            "${{ needs.release-validation.result }}" \
+            "${{ needs.changelog-sync.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job result: $r"
               exit 1

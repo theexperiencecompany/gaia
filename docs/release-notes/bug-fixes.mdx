@@ -1,0 +1,123 @@
+---
+title: "Bug Fixes"
+description: "All bug fixes shipped across GAIA releases."
+icon: "bug"
+---
+
+<Update label="Apr 5, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [API v0.17.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.17.0)
+- **Billing Address Country**: You can now edit the billing address country on the payments page.
+- **Backend Stability**: Resolved an issue that could cause brief service interruptions under heavy load.
+- **Web Crawl Reliability**: Improved timeout handling and batching when agents crawl web pages, reducing failures on large sites.
+- **MCP Connection Recovery**: MCP connections now automatically refresh expired tokens and display clear status messages when re-authentication is needed.
+- **Research Tool Caching**: Fixed caching and validation in the research tool so repeated queries return consistent results.
+
+## [Web v0.18.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.18.0)
+- **Billing Address Country**: Country field on the billing address form is now editable.
+- **Todo Sidebar**: Fixed an issue where the sidebar would not close after deleting the last todo in a filtered view.
+- **Toast Overflow**: Long toast notification titles no longer overflow their container.
+
+## [Desktop v0.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.3.0)
+- **Server URL Handling**: Fixed an edge case where the app could fail to connect when running outside the packaged environment.
+
+</Update>
+
+<Update label="Feb 27, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [API v0.16.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.16.0)
+- **Google OAuth Production Settings**: Added missing client ID and secret to ProductionSettings for Google OAuth flows
+- **Dockerfile Ownership and Permissions**: Corrected file ownership for the libs directory so setuptools can create package metadata
+- **Explore Workflow Payload Hardening**: Fixed payload handling for the description/prompt split in explore workflows
+- **Deployment Script Updates**: Improved service verification and environment setup in deployment configurations
+## [Web v0.17.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.17.0)
+- **LazyMotionProvider for Animations**: Wrapped Navbar and main content in a lazy-loaded Framer Motion provider, reducing initial bundle size
+- **SEO Consolidation**: Unified crawl and index signals across all pages, removing SEO drift and conflicting directives
+- **Icon Consistency in Calendar**: Replaced ad-hoc icon components with the standard Chevron component in Calendar and DateTimePicker
+- **Base URL Refactor**: Migrated all base URL references to use siteConfig for consistency across environments
+## [Desktop v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.2.0)
+- **Server Shutdown Reliability**: Fixed graceful shutdown behavior and refined login UI styling
+- **Safer Protocol Registration on Linux**: Replaced execSync with spawnSync to prevent shell injection during protocol handler setup
+## [CLI v0.2.1](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.2.1)
+- **Dependency Updates**: Updated package dependencies and aligned with new Cloudflare configuration
+
+</Update>
+
+<Update label="Feb 23, 2026" description="API, Web, Bots, CLI">
+
+## [API v0.15.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.15.0)
+- **User ID Fallback**: Added user ID fallback from metadata in handoff and retrieval nodes, preventing orphaned conversations
+- **Subagent Web Search**: Resolved KeyError in subagent web search tool and OpenRouter credit handling
+- **MCP OAuth Validation**: Raises a clear error when OAuth tokens are missing in the MCP client instead of failing silently
+
+## [Web v0.16.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.16.0)
+- **Bot Deployment Audit**: Fixed deployment, security, and functional issues uncovered during the comprehensive bot audit
+- **CLI Polish**: Minor UX improvements to CLI-related pages and documentation flows
+## [Bots v1.1.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.1.0)
+- **Public Context Restriction**: Bots now restrict context to public information only, stripping mentions and enforcing rate limit feedback
+- **Security and Deployment Audit**: Comprehensive fixes for deployment scripts, authentication flows, and functional regressions across all three bots
+- **Discord Timeout Fix**: Resolved timeout issues in Discord bot responses by deferring long-running interactions
+- **Streaming Thinking Removal**: Removed visible "thinking..." indicator from Discord streaming responses
+- **Docker Image Tags**: Fixed missing image tags and corrected Docker build commands for all three bot images
+## [CLI v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.2.0)
+- **Graceful Shutdown**: Added SIGINT and SIGTERM handlers across all commands to prevent orphaned processes
+- **Input Timeout**: Optional timeout on interactive prompts to prevent infinite hangs in CI or unattended runs
+- **Port Validation**: Port numbers are now validated to the 1-65535 range before use
+- **Windows PATH Detection**: Multi-package-manager PATH detection and Windows support for cross-platform compatibility
+- **Log Buffer Memory**: Extracted log buffer sizes to shared constants, reducing memory pressure in long-running sessions
+- **React Key Stability**: Improved LogWindow component key stability to reduce unnecessary re-renders during streaming
+
+</Update>
+
+<Update label="Feb 16, 2026" description="API, Web, Mobile, Desktop">
+
+## [API v0.14.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.14.0)
+- **Webhook idempotency** for DodoPayments, preventing duplicate processing of already-handled events
+- **Timezone-aware scheduled tasks** that reschedule past-due jobs instead of triggering Redis PSETEX errors
+- **MCP namespace normalization** resolving schema breakage and connection failures with PostHog and Twitter integrations
+- **Integration sidebar** fixes for display names and MCP-related rendering issues
+## [Web v0.15.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.15.0)
+- **Sidebar layout** adjusted for improved responsiveness across screen sizes
+- **User reference** resolution fix preventing broken profile lookups
+## [Desktop v0.1.1](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.1.1)
+- **Release workflow** updated to correctly handle desktop-v tags and extract version numbers during CI builds
+
+</Update>
+
+<Update label="Feb 1, 2026" description="API, Web">
+
+## [API v0.13.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.13.0)
+- **Subagent Stream Cancellation**: Users can now cancel long-running subagent and executor streams mid-flight instead of waiting for completion
+- **Integration Auth Data Sync**: Mismatches between stored integration documents and MCP config for auth requirements are detected and auto-corrected
+- **Build Workflow Project Detection**: Fixed affected-project checks in CI and added missing project type to the API configuration
+## [Web v0.14.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.14.0)
+- **Chat Message Ordering**: Assistant messages are timestamped 1 ms after the user message, guaranteeing correct chronological order in history
+- **Integration Connection Rollback**: Failed OAuth connections now roll back stored credentials and invalidate the cache instead of leaving stale state
+- **Model Picker Error Handling**: Selecting an unavailable model returns a structured upgrade-required error and reverts the picker to the previous selection
+
+</Update>
+
+<Update label="Jan 29, 2026" description="API, Web, Mobile">
+
+## [API v0.12.1](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.12.1)
+- Fixed streaming issues causing dropped or duplicated messages
+- Resolved "no tool results" error when agent tools returned empty responses
+- Fixed mobile redirect URI to use settings configuration instead of hardcoded values
+- Temporarily disabled auto-loading of tools in production to prevent startup failures
+## [Web v0.13.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.13.0)
+- Fixed duplicate voice messages caused by race condition on call end
+- Resolved audio bar visualizer sensitivity bug producing erratic waveform rendering
+- Fixed streaming issues causing incomplete or stalled message delivery
+## [Mobile v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.2.0)
+- Fixed page stacking when selecting chats by using navigation replacement instead of push
+- Improved push notification token management and error handling
+- Resolved audio bar visualizer sensitivity bug
+
+</Update>
+
+<Update label="Dec 21, 2025" description="API, Web, Mobile, Desktop">
+
+## [API v0.12.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.12.0)
+- **Workflow generation from todos**: Fixed workflow step generation that broke when creating workflows from todo items
+
+</Update>

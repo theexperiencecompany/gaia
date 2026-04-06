@@ -1,0 +1,62 @@
+---
+title: "CLI Releases"
+description: "Release history for the GAIA command-line interface."
+icon: "terminal"
+---
+
+<Update label="Apr 5, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [CLI v0.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.3.0)
+
+### Improvements
+- **Dependency Updates**: Updated internal dependencies for improved stability.
+
+</Update>
+
+<Update label="Feb 27, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [CLI v0.2.1](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.2.1)
+
+### Bug Fixes
+- **Dependency Updates**: Updated package dependencies and aligned with new Cloudflare configuration
+
+</Update>
+
+<Update label="Feb 23, 2026" description="API, Web, Bots, CLI">
+
+## [CLI v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.2.0)
+
+### Features
+- **Init Command**: Guided initialization flow that clones the repo, installs dependencies, configures environment variables, and starts services
+- **Status Command**: Real-time dashboard showing running services, ports, and health status
+- **Stop Command**: Graceful shutdown of all GAIA services with cleanup
+- **Branch Selection**: `--branch` flag on `init` to clone a specific Git branch for development or testing
+- **Docker Support**: Full Docker Compose integration with prerequisite checks, detailed error messages, and service management
+- **Port Conflict Detection**: Automatic port availability checks during init with clear conflict resolution guidance
+- **Logging Dashboard**: Live log streaming UI during service startup with per-service filtering
+- **Post-Start Health Verification**: Automatic health checks after startup to confirm all services are responding
+- **npm Distribution**: Migrated packaging from Bun to npm for broader compatibility and simpler installation
+
+### Bug Fixes
+- **Graceful Shutdown**: Added SIGINT and SIGTERM handlers across all commands to prevent orphaned processes
+- **Input Timeout**: Optional timeout on interactive prompts to prevent infinite hangs in CI or unattended runs
+- **Port Validation**: Port numbers are now validated to the 1-65535 range before use
+- **Windows PATH Detection**: Multi-package-manager PATH detection and Windows support for cross-platform compatibility
+- **Log Buffer Memory**: Extracted log buffer sizes to shared constants, reducing memory pressure in long-running sessions
+- **React Key Stability**: Improved LogWindow component key stability to reduce unnecessary re-renders during streaming
+
+</Update>
+
+<Update label="Feb 20, 2026" description="Bots, CLI">
+
+## [CLI v0.1.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.1.15...cli-v0.2.0)
+
+### Features
+- **Core Commands**: `init`, `setup`, `start`, `stop`, `status`, and `logs` commands covering the full self-hosting lifecycle
+- **Interactive Terminal UI**: Built with Ink (React-in-terminal) for a rich, step-by-step setup experience with live progress display
+- **Docker Compose Integration**: Full service orchestration via Docker Compose with prerequisite validation and detailed error messages
+- **Self-Host and Developer Modes**: `start` supports both a full self-hosted stack and a developer mode that runs only infrastructure services locally
+- **`--branch` Flag**: Clone a specific Git branch during `init` for development or testing against unreleased code
+- **npm Distribution**: Published to npm as `@heygaia/cli`, installable via `npx` or a `curl` install script
+
+</Update>

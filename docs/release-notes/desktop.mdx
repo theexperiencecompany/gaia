@@ -1,0 +1,51 @@
+---
+title: "Desktop Releases"
+description: "Release history for the GAIA desktop app."
+icon: "desktop"
+---
+
+<Update label="Apr 5, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [Desktop v0.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.3.0)
+
+### Features
+- **Artifacts Support**: The [desktop app](/guides/desktop-app) now supports the new artifacts panel for viewing agent-generated content.
+
+### Bug Fixes
+- **Server URL Handling**: Fixed an edge case where the app could fail to connect when running outside the packaged environment.
+
+</Update>
+
+<Update label="Feb 27, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [Desktop v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.2.0)
+
+### Features
+- **Deep Linking**: Protocol handler registration enables opening GAIA links directly in the desktop app
+- **Branded Splash Screen**: New splash screen with refined appearance during app startup
+- **Auto-Updater**: Built-in automatic update support keeps the desktop app current without manual downloads
+- **Modular Window Management**: Refactored window lifecycle into a modular architecture for better maintainability
+
+### Bug Fixes
+- **Server Shutdown Reliability**: Fixed graceful shutdown behavior and refined login UI styling
+- **Safer Protocol Registration on Linux**: Replaced execSync with spawnSync to prevent shell injection during protocol handler setup
+
+</Update>
+
+<Update label="Feb 16, 2026" description="API, Web, Mobile, Desktop">
+
+## [Desktop v0.1.1](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.1.1)
+
+### Bug Fixes
+- **Release workflow** updated to correctly handle desktop-v tags and extract version numbers during CI builds
+
+</Update>
+
+<Update label="Dec 21, 2025" description="API, Web, Mobile, Desktop">
+
+## [Desktop v0.1.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.1.0)
+
+### Features
+- **Initial release**: Electron desktop app bundling the Next.js standalone build for native desktop usage, bringing the full GAIA web experience to macOS, Windows, and Linux
+
+</Update>

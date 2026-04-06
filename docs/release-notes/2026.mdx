@@ -1,0 +1,446 @@
+---
+title: "2026 Releases"
+description: "All GAIA releases from 2026."
+icon: "calendar"
+---
+
+<Update label="Apr 5, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+# WhatsApp Bot, MCP Apps Builder & Deep Research
+
+## [API v0.17.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.17.0)
+
+### Features
+- **WhatsApp Bot Integration**: Connect GAIA to WhatsApp so you can chat with your agent directly from your phone's messaging app. See [bots overview](/bots/overview) for setup details.
+- **MCP Apps Builder**: Build and run custom [MCP-powered apps](/guides/adding-mcp-integrations) inside GAIA conversations, letting agents render interactive UI components on the fly.
+- **Deep Research Tool**: Agents can now perform multi-step web research with source citations. Free-tier users get search fallbacks so everyone benefits.
+- **Artifacts**: Agents can generate and display rich content like documents, tables, and code in a dedicated panel alongside the conversation.
+- **Calendar Attendees and Google Meet**: Create calendar events with attendees and auto-generate Google Meet links, all from a single prompt.
+- **Custom Integration Context**: Integrations can now pull in relevant context automatically, giving agents better awareness when using your connected tools.
+- **Streaming Calendar Data**: Calendar information now streams to the frontend in real time, so you see results as they arrive instead of waiting for a full response.
+
+### Improvements
+- **Native Marketplace Integrations**: The [marketplace](/guides/marketplace) now highlights native integrations with dedicated cards, making them easier to discover and connect.
+
+### Bug Fixes
+- **Billing Address Country**: You can now edit the billing address country on the payments page.
+- **Backend Stability**: Resolved an issue that could cause brief service interruptions under heavy load.
+- **Web Crawl Reliability**: Improved timeout handling and batching when agents crawl web pages, reducing failures on large sites.
+- **MCP Connection Recovery**: MCP connections now automatically refresh expired tokens and display clear status messages when re-authentication is needed.
+- **Research Tool Caching**: Fixed caching and validation in the research tool so repeated queries return consistent results.
+
+### Performance
+- **Todos Performance**: Faster loading and smoother interactions across the [tasks and todos](/guides/tasks-todos) experience.
+
+---
+
+
+## [Web v0.18.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.18.0)
+
+### Features
+- **MCP Apps Builder**: Build and preview MCP-powered mini-apps directly in the chat interface.
+- **Artifacts Panel**: View agent-generated documents, code, and tables in a dedicated side panel.
+- **Workflow Toast Actions**: Workflow completion toasts now include an "Open" button so you can jump straight to the result.
+- **Status Banner**: A new banner alerts you to service status changes and scheduled maintenance.
+
+### Improvements
+- **Pricing Page Redesign**: Updated pricing page with clearer plan comparisons and streamlined checkout.
+- **Integration Sorting**: Integrations are now sorted more intuitively when searching in the marketplace.
+- **UI Animations and Responsiveness**: Smoother transitions and improved layout across screen sizes.
+
+### Bug Fixes
+- **Billing Address Country**: Country field on the billing address form is now editable.
+- **Todo Sidebar**: Fixed an issue where the sidebar would not close after deleting the last todo in a filtered view.
+- **Toast Overflow**: Long toast notification titles no longer overflow their container.
+
+### Performance
+- **Todos UX**: Significant speed improvements to the [tasks and todos](/guides/tasks-todos) view, including faster filtering and smoother animations.
+- **Frontend Load Times**: Reduced initial bundle size for faster page loads across the app.
+
+---
+
+
+## [Desktop v0.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.3.0)
+
+### Features
+- **Artifacts Support**: The [desktop app](/guides/desktop-app) now supports the new artifacts panel for viewing agent-generated content.
+
+### Bug Fixes
+- **Server URL Handling**: Fixed an edge case where the app could fail to connect when running outside the packaged environment.
+
+---
+
+
+## [Mobile v0.5.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.5.0)
+
+### Features
+- **WhatsApp Integration**: Chat with GAIA on WhatsApp, bringing your agent to your favorite messaging app.
+
+### Performance
+- **Todos Performance**: Faster task loading and smoother scrolling in the mobile todos view.
+
+---
+
+
+## [Bots v1.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.3.0)
+
+### Features
+- **WhatsApp Bot**: GAIA is now available on WhatsApp in addition to [Discord](/bots/discord), [Slack](/bots/slack), and [Telegram](/bots/telegram).
+
+---
+
+
+## [CLI v0.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.3.0)
+
+### Improvements
+- **Dependency Updates**: Updated internal dependencies for improved stability.
+
+</Update>
+
+<Update label="Feb 27, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+# System Workflows, Agent Skills & Desktop Auto-Updates
+
+## [API v0.16.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.16.0)
+
+### Features
+- **System Workflows for Gmail and Google Calendar**: Auto-created workflows when connecting Gmail or Google Calendar, delivering ready-to-use automations out of the box
+- **LangChain Middleware, VFS, and Skills**: New middleware layer for LangChain integrations, a virtual file system abstraction, and first-class skills support for agents
+- **Workflow Prompt and Description Split**: Display descriptions and execution prompts are now separate fields, giving users clearer context while preserving precise agent instructions
+- **Docker Image Optimization**: Slimmed down API images by pruning unused dependencies and improving layer caching
+
+### Bug Fixes
+- **Google OAuth Production Settings**: Added missing client ID and secret to ProductionSettings for Google OAuth flows
+- **Dockerfile Ownership and Permissions**: Corrected file ownership for the libs directory so setuptools can create package metadata
+- **Explore Workflow Payload Hardening**: Fixed payload handling for the description/prompt split in explore workflows
+- **Deployment Script Updates**: Improved service verification and environment setup in deployment configurations
+
+---
+
+
+## [Web v0.17.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.17.0)
+
+### Features
+- **Vercel Web Analytics**: Production usage tracking integrated into the Next.js frontend
+- **Cloudflare Deployment Support**: Added Wrangler configuration, SSR chunk analysis scripts, and deploy/preview commands for Cloudflare Pages
+- **Server API Base URL Centralization**: Consistent API base URL handling across all server components via a shared utility and new provider architecture
+- **OAuth Success Toast**: Reintroduced global OAuth success notifications for a smoother post-auth experience
+
+### Bug Fixes
+- **LazyMotionProvider for Animations**: Wrapped Navbar and main content in a lazy-loaded Framer Motion provider, reducing initial bundle size
+- **SEO Consolidation**: Unified crawl and index signals across all pages, removing SEO drift and conflicting directives
+- **Icon Consistency in Calendar**: Replaced ad-hoc icon components with the standard Chevron component in Calendar and DateTimePicker
+- **Base URL Refactor**: Migrated all base URL references to use siteConfig for consistency across environments
+
+---
+
+
+## [Desktop v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.2.0)
+
+### Features
+- **Deep Linking**: Protocol handler registration enables opening GAIA links directly in the desktop app
+- **Branded Splash Screen**: New splash screen with refined appearance during app startup
+- **Auto-Updater**: Built-in automatic update support keeps the desktop app current without manual downloads
+- **Modular Window Management**: Refactored window lifecycle into a modular architecture for better maintainability
+
+### Bug Fixes
+- **Server Shutdown Reliability**: Fixed graceful shutdown behavior and refined login UI styling
+- **Safer Protocol Registration on Linux**: Replaced execSync with spawnSync to prevent shell injection during protocol handler setup
+
+---
+
+
+## [Mobile v0.4.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.4.0)
+
+### Features
+- **LangChain Middleware and Skills Support**: Mobile app now benefits from the shared LangChain middleware layer, VFS abstraction, and agent skills system
+- **Dependency Updates**: Updated package dependencies for improved stability and compatibility
+
+---
+
+
+## [Bots v1.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.2.0)
+
+### Improvements
+- **Docker Image Optimization**: Slimmed down bot container images with pruned dependencies and improved layer caching
+- **Dockerfile Permissions Fix**: Corrected file ownership and permissions for better runtime access
+
+---
+
+
+## [CLI v0.2.1](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.2.1)
+
+### Bug Fixes
+- **Dependency Updates**: Updated package dependencies and aligned with new Cloudflare configuration
+
+</Update>
+
+<Update label="Feb 23, 2026" description="API, Web, Bots, CLI">
+
+# Discord, Slack, Telegram Bots & CLI Setup
+
+## [API v0.15.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.15.0)
+
+### Features
+- **Bot Platform Endpoints**: Comprehensive API endpoints for bot platform integration, supporting Discord, Slack, and Telegram authentication and messaging
+- **Streaming Keepalives and Retries**: Server-sent keepalive events and client-side retry logic for transient streaming errors, with adjusted timeout thresholds
+- **Multi-Channel Notifications**: Push notifications to Telegram and Discord channels, letting GAIA proactively reach users on their preferred platform
+- **Secure Platform Linking**: Token-based platform linking flow with WorkOS SSO return URL handling, enabling users to connect bot accounts to their GAIA identity
+- **Bot API Key Authentication**: Dedicated middleware for bot API key auth, isolating bot traffic from user session auth
+- **Integration Status in Responses**: API responses now include integration connection status, surfaced in bot settings UI
+
+### Bug Fixes
+- **User ID Fallback**: Added user ID fallback from metadata in handoff and retrieval nodes, preventing orphaned conversations
+- **Subagent Web Search**: Resolved KeyError in subagent web search tool and OpenRouter credit handling
+- **MCP OAuth Validation**: Raises a clear error when OAuth tokens are missing in the MCP client instead of failing silently
+
+### Performance
+- **Agent Flow Latency**: Optimized agent execution flow to reduce tool-calling latency across all agent nodes
+
+---
+
+
+## [Web v0.16.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.16.0)
+
+### Features
+- **Bots Landing Page**: Dedicated landing page introducing GAIA bots with platform highlights, setup instructions, and invite links for Discord, Slack, and Telegram
+- **Discord Bot Landing Page**: Standalone page for the Discord bot with feature overview and one-click server invite
+- **Platform Linking UI**: New settings panel where users can link and manage their Discord, Slack, and Telegram accounts
+- **Docs Structure and Styling**: Overhauled documentation site with improved navigation hierarchy, component styling, and content organization
+- **CLI Installation Page**: Dedicated page walking users through CLI installation and first-run setup
+- **Multi-Channel Notification Settings**: UI for configuring which platforms receive proactive notifications from GAIA
+
+### Bug Fixes
+- **Bot Deployment Audit**: Fixed deployment, security, and functional issues uncovered during the comprehensive bot audit
+- **CLI Polish**: Minor UX improvements to CLI-related pages and documentation flows
+
+---
+
+
+## [Bots v1.1.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.1.0)
+
+### Features
+- **Discord Bot**: Full-featured Discord bot with slash commands, DM support, context menu commands, rotating presence status, and a welcome message for new DM conversations
+- **Slack Bot**: Slack integration with threaded conversations, streaming responses, and workspace-level authentication
+- **Telegram Bot**: Telegram bot with serialized message updates, Markdown parsing, and streaming message break handling
+- **Streaming Responses**: Real-time streamed replies across all three platforms with dynamic message editing and new-message-break logic for long responses
+- **Platform Linking**: Secure account linking from any bot to a GAIA account using one-time link tokens and SSO
+- **Help and Settings Commands**: `/help` and `/settings` slash commands displaying available actions and current configuration per platform
+- **Stop and Unlink Commands**: `/stop` to end the current conversation and `/unlink` to disconnect a bot account from GAIA
+- **New Command**: `/new` command to start a fresh conversation without carrying prior context
+- **Centralized Bot Configuration**: Unified configuration with Infisical secret injection across all three bots
+- **Nx and CI Integration**: All bots integrated into the Nx workspace, CI pipeline, and release system with per-bot Docker builds
+- **E2E Test Package**: Dedicated end-to-end test package for cross-bot integration testing
+
+### Bug Fixes
+- **Public Context Restriction**: Bots now restrict context to public information only, stripping mentions and enforcing rate limit feedback
+- **Security and Deployment Audit**: Comprehensive fixes for deployment scripts, authentication flows, and functional regressions across all three bots
+- **Discord Timeout Fix**: Resolved timeout issues in Discord bot responses by deferring long-running interactions
+- **Streaming Thinking Removal**: Removed visible "thinking..." indicator from Discord streaming responses
+- **Docker Image Tags**: Fixed missing image tags and corrected Docker build commands for all three bot images
+
+---
+
+
+## [CLI v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.2.0)
+
+### Features
+- **Init Command**: Guided initialization flow that clones the repo, installs dependencies, configures environment variables, and starts services
+- **Status Command**: Real-time dashboard showing running services, ports, and health status
+- **Stop Command**: Graceful shutdown of all GAIA services with cleanup
+- **Branch Selection**: `--branch` flag on `init` to clone a specific Git branch for development or testing
+- **Docker Support**: Full Docker Compose integration with prerequisite checks, detailed error messages, and service management
+- **Port Conflict Detection**: Automatic port availability checks during init with clear conflict resolution guidance
+- **Logging Dashboard**: Live log streaming UI during service startup with per-service filtering
+- **Post-Start Health Verification**: Automatic health checks after startup to confirm all services are responding
+- **npm Distribution**: Migrated packaging from Bun to npm for broader compatibility and simpler installation
+
+### Bug Fixes
+- **Graceful Shutdown**: Added SIGINT and SIGTERM handlers across all commands to prevent orphaned processes
+- **Input Timeout**: Optional timeout on interactive prompts to prevent infinite hangs in CI or unattended runs
+- **Port Validation**: Port numbers are now validated to the 1-65535 range before use
+- **Windows PATH Detection**: Multi-package-manager PATH detection and Windows support for cross-platform compatibility
+- **Log Buffer Memory**: Extracted log buffer sizes to shared constants, reducing memory pressure in long-running sessions
+- **React Key Stability**: Improved LogWindow component key stability to reduce unnecessary re-renders during streaming
+
+</Update>
+
+<Update label="Feb 20, 2026" description="Bots, CLI">
+
+# Initial Bots & CLI Release
+
+## [Bots v1.0.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.0.0...bots-v1.1.0)
+
+### Foundation
+- **Shared Adapter Pattern**: `BaseBotAdapter` in `@gaia/shared` establishing the unified command dispatch system, GAIA API client, and platform-agnostic `RichMessageTarget` interface used by all three bots
+- **Bot API Key Authentication**: Dedicated middleware for authenticating bot-to-API requests independently from user session auth
+- **Nx Monorepo Integration**: All three bot packages integrated into the Nx workspace with build, lint, type-check, and release targets
+- **Docker Support**: Dockerfiles for each bot for containerized deployment alongside the rest of the GAIA stack
+- **E2E Test Package**: Dedicated `bots-e2e` test package with Vitest infrastructure for cross-bot integration testing
+
+---
+
+
+## [CLI v0.1.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.1.15...cli-v0.2.0)
+
+### Features
+- **Core Commands**: `init`, `setup`, `start`, `stop`, `status`, and `logs` commands covering the full self-hosting lifecycle
+- **Interactive Terminal UI**: Built with Ink (React-in-terminal) for a rich, step-by-step setup experience with live progress display
+- **Docker Compose Integration**: Full service orchestration via Docker Compose with prerequisite validation and detailed error messages
+- **Self-Host and Developer Modes**: `start` supports both a full self-hosted stack and a developer mode that runs only infrastructure services locally
+- **`--branch` Flag**: Clone a specific Git branch during `init` for development or testing against unreleased code
+- **npm Distribution**: Published to npm as `@heygaia/cli`, installable via `npx` or a `curl` install script
+
+</Update>
+
+<Update label="Feb 16, 2026" description="API, Web, Mobile, Desktop">
+
+# Workflow History, Analytics & Automated Creation
+
+## [API v0.14.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.14.0)
+
+### Features
+- **PostHog analytics** unified across frontend and backend for end-to-end event tracking
+- **Automatic workflow creation** lets GAIA generate workflows from natural language descriptions
+- **Execution history** tracking and storage for all workflow runs
+- **MCP orchestration overhaul** with improved tool indexing, namespace normalization, and integration cleanup
+- **Pricing update** reflecting the new $30/month tier with adjusted usage limits
+
+### Bug Fixes
+- **Webhook idempotency** for DodoPayments, preventing duplicate processing of already-handled events
+- **Timezone-aware scheduled tasks** that reschedule past-due jobs instead of triggering Redis PSETEX errors
+- **MCP namespace normalization** resolving schema breakage and connection failures with PostHog and Twitter integrations
+- **Integration sidebar** fixes for display names and MCP-related rendering issues
+
+---
+
+
+## [Web v0.15.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.15.0)
+
+### Features
+- **Interactive demo sections** on the landing page showcasing chat and workflow capabilities with live animations
+- **Deep linking** via query parameters, enabling direct navigation to specific views from external links
+- **FAQ structured data** and SEO enhancements for improved search discoverability
+- **Execution history UI** displaying workflow run status, timing, and output details
+- **Blog and manifesto updates** for the "Tool Calling Works" post with minor landing page improvements
+
+### Bug Fixes
+- **Sidebar layout** adjusted for improved responsiveness across screen sizes
+- **User reference** resolution fix preventing broken profile lookups
+
+---
+
+
+## [Mobile v0.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.3.0)
+
+### Features
+- **Automatic workflow creation** mirroring the web experience for on-the-go automation
+- **MCP tooling and execution history** support aligned with backend orchestration improvements
+
+---
+
+
+## [Desktop v0.1.1](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.1.1)
+
+### Bug Fixes
+- **Release workflow** updated to correctly handle desktop-v tags and extract version numbers during CI builds
+
+</Update>
+
+<Update label="Feb 1, 2026" description="API, Web">
+
+# Background Tasks & Streaming Tool Outputs
+
+## [API v0.13.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.13.0)
+
+### Features
+- **Background Task Management**: Overhauled background task lifecycle with improved scheduling, status tracking, and message persistence handling
+- **MCP Bearer Token Authentication**: Integrations that require bearer tokens can now be connected directly, bypassing the OAuth flow entirely
+- **Integration Suggestion Search**: Smarter word-based matching when suggesting integrations, filtering stopwords and searching across name, description, and category
+- **Optional Bot Configuration**: Bot platform keys [Discord, Slack, Telegram] are now optional in production settings, so the API starts cleanly without all bot tokens present
+
+### Bug Fixes
+- **Subagent Stream Cancellation**: Users can now cancel long-running subagent and executor streams mid-flight instead of waiting for completion
+- **Integration Auth Data Sync**: Mismatches between stored integration documents and MCP config for auth requirements are detected and auto-corrected
+- **Build Workflow Project Detection**: Fixed affected-project checks in CI and added missing project type to the API configuration
+
+---
+
+
+## [Web v0.14.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.14.0)
+
+### Features
+- **Animated Loading Indicator**: New chat loading component with Framer Motion transitions and a polished shine animation for better perceived responsiveness
+- **Tool Output Persistence**: Tool call outputs now stream to the frontend in real time and persist across page reloads
+
+### Bug Fixes
+- **Chat Message Ordering**: Assistant messages are timestamped 1 ms after the user message, guaranteeing correct chronological order in history
+- **Integration Connection Rollback**: Failed OAuth connections now roll back stored credentials and invalidate the cache instead of leaving stale state
+- **Model Picker Error Handling**: Selecting an unavailable model returns a structured upgrade-required error and reverts the picker to the previous selection
+
+</Update>
+
+<Update label="Jan 29, 2026" description="API, Web, Mobile">
+
+# Push Notifications, Voice Mode & MCP Marketplace
+
+## [API v0.12.1](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.12.1)
+
+### Features
+- **Voice Agent** added as a new monorepo app with shared Python and TypeScript libraries for real-time voice processing
+- **Discord, Slack, and Telegram bots** introduced with initial implementations and supporting API endpoints
+- **MCP Marketplace** with public integrations page for discovering and connecting third-party tools
+- **Push notifications** backend with device token registration, deregistration, validation, and per-device limit enforcement
+- **WebSocket notifications** with secure authentication via subprotocols for real-time event delivery
+- **Bearer token authentication** for mobile clients with configurable WorkOS redirect URIs
+- **Memory prompt optimization** for improved agent recall and context management
+- **System prompt management node** replacing message deletion, preserving memory messages across agent graph hooks
+
+### Bug Fixes
+- Fixed streaming issues causing dropped or duplicated messages
+- Resolved "no tool results" error when agent tools returned empty responses
+- Fixed mobile redirect URI to use settings configuration instead of hardcoded values
+- Temporarily disabled auto-loading of tools in production to prevent startup failures
+
+---
+
+
+## [Web v0.13.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.13.0)
+
+### Features
+- **Real-time notifications** via WebSocket with notification provider, permission prompts, and in-app notification center
+- **MCP Marketplace page** for browsing and enabling public integrations directly from the dashboard
+- **Retry message** action allowing users to regenerate a failed or unsatisfactory assistant response
+- **Voice mode improvements** including chat description auto-generated in the sidebar when a conversation starts in voice mode
+- **WaveSpinnerSquare** animation component for richer loading states during voice interactions
+- **Memory prompt optimization** for more accurate and relevant agent recall in conversations
+
+### Bug Fixes
+- Fixed duplicate voice messages caused by race condition on call end
+- Resolved audio bar visualizer sensitivity bug producing erratic waveform rendering
+- Fixed streaming issues causing incomplete or stalled message delivery
+
+---
+
+
+## [Mobile v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.2.0)
+
+### Features
+- **Chat streaming** with SSE client integration for real-time message delivery on mobile
+- **Push notifications** with Firebase Cloud Messaging, custom notification sound, and device token lifecycle management
+- **Real-time WebSocket notifications** with secure subprotocol-based authentication
+- **Tool data cards** and interactive follow-up actions rendered inline within chat messages
+- **Bearer token authentication** replacing cookie-based auth for native mobile sessions
+- **Zustand state management** integrated across the app for consistent global state
+- **Settings sheet** with redesigned chat UI components and styling utilities
+- **Connect drawer** for quick access to integrations from the chat input
+- **Chat history** with dynamic loading, multi-part message support, and progress indicators
+- **Playful AI thinking messages** with animated loading states in chat bubbles
+- **App logo and splash screen** updated to new branding
+
+### Bug Fixes
+- Fixed page stacking when selecting chats by using navigation replacement instead of push
+- Improved push notification token management and error handling
+- Resolved audio bar visualizer sensitivity bug
+
+</Update>

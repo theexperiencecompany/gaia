@@ -6,6 +6,10 @@
 #   mise build     # Build documentation
 #   mise tasks     # List all available commands
 
+[tasks.generate]
+description = "Generate changelog sub-pages from release-notes.mdx (run after editing it)"
+run = "node scripts/generate-changelog-pages.js"
+
 [tasks.dev]
 description = "Start Mintlify dev server"
 run = "mintlify dev"
