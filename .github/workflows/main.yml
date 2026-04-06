@@ -256,7 +256,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_REF: ${{ github.head_ref || github.ref_name }}
         run: |
-          if git diff --quiet docs/release-notes/; then
+          if [ -z "$(git status --porcelain --untracked-files=all docs/release-notes/)" ]; then
             echo "Changelog sub-pages are up to date."
             exit 0
           fi
