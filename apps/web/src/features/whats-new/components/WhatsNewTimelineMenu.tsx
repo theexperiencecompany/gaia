@@ -51,38 +51,40 @@ export function WhatsNewTimelineMenu({ onClose }: WhatsNewTimelineMenuProps) {
           const isLast = idx === visible.length - 1;
 
           return (
-            <li
-              key={release.id}
-              className="group relative flex cursor-pointer gap-x-2.5 rounded-xl px-1.5 transition-colors hover:bg-zinc-800/60"
-              onClick={() => handleItemClick(idx)}
-            >
-              {/* Dot column */}
-              <div className="relative top-2 mr-3 flex flex-col items-center">
-                <div
-                  className={[
-                    "z-10 mt-1 size-3 shrink-0 rounded-full border transition-transform group-hover:scale-125",
-                    idx === 0
-                      ? "border-primary bg-primary"
-                      : "border-zinc-600 bg-zinc-600",
-                  ].join(" ")}
-                />
-                {!isLast && <div className="w-px flex-1 bg-zinc-700" />}
-              </div>
+            <li key={release.id} className="relative">
+              <button
+                type="button"
+                className="group flex w-full cursor-pointer gap-x-2.5 rounded-xl px-1.5 transition-colors hover:bg-zinc-800/60"
+                onClick={() => handleItemClick(idx)}
+              >
+                {/* Dot column */}
+                <div className="relative top-2 mr-3 flex flex-col items-center">
+                  <div
+                    className={[
+                      "z-10 mt-1 size-3 shrink-0 rounded-full border transition-transform group-hover:scale-125",
+                      idx === 0
+                        ? "border-primary bg-primary"
+                        : "border-zinc-600 bg-zinc-600",
+                    ].join(" ")}
+                  />
+                  {!isLast && <div className="w-px flex-1 bg-zinc-700" />}
+                </div>
 
-              {/* Content */}
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-2 text-left">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-xs font-medium leading-snug text-zinc-300 transition-colors group-hover:text-white">
-                    {release.title}
+                {/* Content */}
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-2 text-left">
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium leading-snug text-zinc-300 transition-colors group-hover:text-white">
+                      {release.title}
+                    </span>
+                    {isUnseen && (
+                      <span className="inline-block size-1.5 shrink-0 rounded-full bg-primary" />
+                    )}
                   </span>
-                  {isUnseen && (
-                    <span className="inline-block size-1.5 shrink-0 rounded-full bg-primary" />
-                  )}
-                </span>
-                <span className="text-[10px] tabular-nums text-zinc-500 transition-colors group-hover:text-zinc-400">
-                  {formatReleaseDate(release.date)}
-                </span>
-              </div>
+                  <span className="text-[10px] tabular-nums text-zinc-500 transition-colors group-hover:text-zinc-400">
+                    {formatReleaseDate(release.date)}
+                  </span>
+                </div>
+              </button>
             </li>
           );
         })}

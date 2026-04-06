@@ -87,6 +87,25 @@ function parseRssItem(itemXml: string): Release | null {
     .digest("hex")
     .slice(0, 12);
 
+  // Extract affected apps from h2 headers (e.g. "<h2><a>API v0.16.0</a></h2>")
+  const KNOWN_APPS = [
+    "API",
+    "Web",
+    "Desktop",
+    "Mobile",
+    "CLI",
+    "Voice Agent",
+    "Discord",
+    "Slack",
+    "Telegram",
+  ];
+  const h2Texts = [...body.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/g)].map((m) =>
+    stripTags(m[1]),
+  );
+  const appsTouched = KNOWN_APPS.filter((app) =>
+    h2Texts.some((text) => text.toLowerCase().startsWith(app.toLowerCase())),
+  );
+
   return {
     id,
     title,
@@ -94,7 +113,7 @@ function parseRssItem(itemXml: string): Release | null {
     summary,
     html: body,
     imageUrl,
-    appsTouched: [],
+    appsTouched,
     docsUrl: link || "https://docs.heygaia.io/release-notes",
   };
 }
