@@ -266,16 +266,21 @@ jobs:
           TARGET="${{ github.head_ref || github.ref_name }}"
           FIX_BRANCH="fix/changelog-sync-${TARGET//\//-}"
 
-          git checkout -b "$FIX_BRANCH"
+          git checkout -B "$FIX_BRANCH"
           git add docs/release-notes/
           git commit -m "chore(docs): regenerate changelog sub-pages"
-          git push origin "$FIX_BRANCH"
+          git push --force origin "$FIX_BRANCH"
 
-          gh pr create \
-            --base "$TARGET" \
-            --head "$FIX_BRANCH" \
-            --title "chore(docs): regenerate changelog sub-pages" \
-            --body "$(printf 'Changelog sub-pages were out of date on \`%s\`.\n\nThis PR was created automatically by the \`changelog-sync\` CI job. Merge it to fix the failing check.' "$TARGET")"
+          EXISTING_PR=$(gh pr list --head "$FIX_BRANCH" --base "$TARGET" --json url --jq '.[0].url')
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --base "$TARGET" \
+              --head "$FIX_BRANCH" \
+              --title "chore(docs): regenerate changelog sub-pages" \
+              --body "$(printf 'Changelog sub-pages were out of date on \`%s\`.\n\nThis PR was created automatically by the \`changelog-sync\` CI job. Merge it to fix the failing check.' "$TARGET")"
+          else
+            echo "Fix PR already open: $EXISTING_PR"
+          fi
 
           echo "::error::Changelog sub-pages were out of date. A fix PR has been opened automatically — merge it to unblock CI."
           exit 1
