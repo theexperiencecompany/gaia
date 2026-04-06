@@ -118,7 +118,8 @@
             "pages": [
               "release-notes/features",
               "release-notes/bug-fixes",
-              "release-notes/improvements"
+              "release-notes/improvements",
+              "release-notes/performance"
             ]
           },
           {

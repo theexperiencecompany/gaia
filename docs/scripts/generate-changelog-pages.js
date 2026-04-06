@@ -168,6 +168,7 @@ const CATEGORY_META = {
   "features": { title: "Features", description: "All new features shipped across GAIA releases.", icon: "sparkles" },
   "bug-fixes": { title: "Bug Fixes", description: "All bug fixes shipped across GAIA releases.", icon: "bug" },
   "improvements": { title: "Improvements", description: "All improvements and enhancements shipped across GAIA releases.", icon: "arrow-up-right" },
+  "performance": { title: "Performance", description: "All performance improvements shipped across GAIA releases.", icon: "gauge" },
 };
 
 function frontmatter(meta) {
