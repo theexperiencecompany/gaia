@@ -292,28 +292,28 @@ Keep it conversational, 3-4 lines max.
 **Tone.** Direct. Confident. No filler. No "great!" or "sure!" or "of course!". No emojis.
 """
 
-SOCIAL_PROFILE_FILTER_PROMPT = """You are helping identify which social media profiles belong to a specific user.
+SOCIAL_PROFILE_FILTER_PROMPT = """You are identifying which social media profiles belong to a specific user based on their email inbox.
 
-User information:
-- Name: {user_name}
-- Email: {user_email}
+User: {user_name} ({user_email})
 
-Below are social media profile candidates extracted from the user's emails. Each candidate shows which platform, the handle found, and the email contexts where it appeared.
+Below are social profile candidates extracted from the user's emails. Each shows the platform, handle, how many emails it appeared in, whether it appeared in SENT emails, and sample email contexts.
 
-For each candidate, determine if this profile BELONGS TO THE USER or belongs to someone else (e.g. a newsletter, a company, another person).
+INCLUDE a profile if ANY of these are true:
+- It appeared in the user's SENT emails (the user linked to it themselves)
+- The handle matches or resembles the user's name or email username
+- Emails are account notifications addressed to the user ("your account", "you have a new follower", "your post", "welcome back", "verify your email", "your weekly digest")
+- The email sender is the platform itself (e.g. from "notifications@github.com") and the email references the handle as the user's account
+- The handle appears in an email signature alongside the user's name
 
-A profile belongs to the user if:
-- It appears in the user's sent emails
-- It appears in notification emails addressed personally to the user (e.g. "Welcome back @handle", "You posted", "Your profile was viewed", "Hi {user_name}")
-- The email context strongly suggests it is the user's own account
+EXCLUDE a profile only if it clearly belongs to someone else:
+- It only appears in newsletters or marketing emails from third-party companies
+- The handle is obviously a company/brand name unrelated to the user
+- The context shows it belongs to a different person (e.g. a colleague's signature)
 
-A profile does NOT belong to the user if:
-- It only appears in newsletter footers or promotional emails
-- The handle is a company/brand account mentioned in marketing content
-- The email is a mass newsletter not personally addressed to the user
+When in doubt, INCLUDE the profile. It is better to show a profile the user can remove than to miss their real profile.
 
 Candidates:
 {candidates}
 
-Return ONLY the profiles that belong to the user. If uncertain, exclude the profile.
+Return the profiles that belong to the user.
 """

@@ -7,17 +7,14 @@ interface OnboardingProgressProps {
   currentStep: number;
   totalSteps: number;
   onRestart?: () => void;
-  processingProgress?: number;
 }
 
 export const OnboardingProgress = ({
   currentStep,
   totalSteps,
   onRestart,
-  processingProgress,
 }: OnboardingProgressProps) => {
   const baseId = useId();
-  const lastStepIndex = totalSteps - 1;
   return (
     <nav
       aria-label="Onboarding progress"
@@ -26,14 +23,7 @@ export const OnboardingProgress = ({
       {Array.from({ length: totalSteps }).map((_, index) => {
         const isCompleted = index < currentStep;
         const isCurrent = index === currentStep;
-        const isLastStep = index === lastStepIndex;
-        const useProcessingProgress =
-          isLastStep && isCurrent && processingProgress !== undefined;
-        const scaleXValue = useProcessingProgress
-          ? processingProgress / 100
-          : isCompleted || isCurrent
-            ? 1
-            : 0;
+        const scaleXValue = isCompleted || isCurrent ? 1 : 0;
 
         return (
           <m.div

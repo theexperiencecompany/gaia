@@ -63,7 +63,6 @@ async def complete_user_onboarding(
             user["user_id"],
             onboarding_data,
             background_tasks,
-            user_timezone=tz_info[0],
         )
 
         try:
@@ -313,13 +312,18 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             todo_cursor = (
                 todos_collection.find(
                     {"user_id": user_id, "labels": "onboarding"},
-                    {"_id": 1, "title": 1},
+                    {"_id": 1, "title": 1, "description": 1, "source_email": 1},
                 )
                 .sort("created_at", -1)
                 .limit(5)
             )
             onboarding_todos = [
-                {"id": str(t["_id"]), "title": t.get("title", "")}
+                {
+                    "id": str(t["_id"]),
+                    "title": t.get("title", ""),
+                    "description": t.get("description"),
+                    "source_email": t.get("source_email"),
+                }
                 async for t in todo_cursor
             ]
         except Exception as e:

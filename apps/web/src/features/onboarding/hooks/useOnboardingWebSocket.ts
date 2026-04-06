@@ -1,182 +1,168 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { PersonalizationData } from "@/features/onboarding/types/websocket";
+import { useCallback, useEffect, useRef } from "react";
+import type {
+  OnboardingStage,
+  PersonalizationData,
+  StagePayloads,
+} from "@/features/onboarding/types/websocket";
 import { apiService } from "@/lib/api/service";
-import { toast } from "@/lib/toast";
 
-interface UseOnboardingWebSocketReturn {
-  personalizationData: PersonalizationData | null;
-  isLoading: boolean;
-  isComplete: boolean;
-  intelligenceConversationId: string | null;
-  isIntelligenceComplete: boolean;
-}
-
-const MAX_RECONNECT_ATTEMPTS = 5;
+const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_BASE_DELAY_MS = 1000;
-const POLL_INTERVAL_MS = 5000;
+// If WebSocket hasn't delivered any events within this window, start
+// a fallback REST poll so the user isn't stuck on the spinner.
+const WS_FALLBACK_DELAY_MS = 5000;
+const FALLBACK_POLL_INTERVAL_MS = 3000;
 
+/**
+ * Drives real-time onboarding updates over WebSocket.
+ *
+ * On mount a single REST check handles page-reload recovery (pipeline
+ * already complete or mid-flight with persisted data).  After that,
+ * WebSocket is the only delivery channel — no polling.
+ *
+ * An `aborted` flag guards the async mount check so React StrictMode's
+ * unmount/remount cycle cannot create orphaned connections.
+ */
 export const useOnboardingWebSocket = (
   enabled: boolean = true,
   callbacks?: {
-    onProgress?: (
-      stage: string,
-      message: string,
-      progress: number,
-      results?: Record<string, unknown>,
+    onStage?: <K extends OnboardingStage>(
+      stage: K,
+      payload: StagePayloads[K],
     ) => void;
     onPersonalizationComplete?: (data: PersonalizationData) => void;
     onIntelligenceComplete?: (conversationId: string) => void;
     onTodoExecution?: (todoId: string, status: string, result?: string) => void;
   },
-): UseOnboardingWebSocketReturn => {
-  const [personalizationData, setPersonalizationData] =
-    useState<PersonalizationData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [intelligenceConversationId, setIntelligenceConversationId] = useState<
-    string | null
-  >(null);
+): void => {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const doneRef = useRef(false);
   const callbacksRef = useRef(callbacks);
+  const holoFetchedRef = useRef(false);
+  // Tracks which stages have been replayed to avoid duplicate events
+  // from the fallback poll loop.
+  const replayedRef = useRef<Set<string>>(new Set());
 
-  // Keep callbacksRef in sync so message handlers always use the latest callbacks
-  // without requiring the effect to re-run
+  // Keep callbacksRef in sync so message handlers always use the latest
+  // callbacks without requiring the main effect to re-run.
   useEffect(() => {
     callbacksRef.current = callbacks;
   });
 
-  // Keep ref in sync so callbacks can check without stale closures
-  useEffect(() => {
-    doneRef.current = !!intelligenceConversationId;
-  }, [intelligenceConversationId]);
+  const markDone = useCallback((conversationId: string) => {
+    doneRef.current = true;
+    callbacksRef.current?.onIntelligenceComplete?.(conversationId);
+  }, []);
 
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
+  // Fetch personalization data from REST — called when holo_ready fires
+  // (payload itself is empty; the data lives in MongoDB).
+  const fetchPersonalizationData = useCallback(async () => {
+    if (holoFetchedRef.current) return;
+    holoFetchedRef.current = true;
+    try {
+      const data = await apiService.get<PersonalizationData>(
+        "/onboarding/personalization",
+        { silent: true },
+      );
+      if (data?.has_personalization) {
+        callbacksRef.current?.onPersonalizationComplete?.(data);
+      }
+    } catch {
+      holoFetchedRef.current = false;
     }
   }, []);
 
-  const cleanup = useCallback(() => {
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-    stopPolling();
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-  }, [stopPolling]);
-
-  // Replay stage data from API response as synthetic progress events
+  // Replay persisted stage data as synthetic stage events.  Idempotent —
+  // safe to call from both the mount check and the fallback poll loop.
   const replayStageData = useCallback((data: PersonalizationData) => {
-    if (data.writing_style?.style_summary) {
-      callbacksRef.current?.onProgress?.(
-        "learning_style",
-        "Writing style learned",
-        28,
-        {
-          style_summary: data.writing_style.style_summary,
-          ...(data.writing_style.example && {
-            example: data.writing_style.example,
-          }),
-        },
-      );
-    }
-    if (data.social_profiles && data.social_profiles.length > 0) {
-      callbacksRef.current?.onProgress?.(
-        "finding_profiles",
-        `Found ${data.social_profiles.length} profiles`,
-        45,
-        { profiles: data.social_profiles },
-      );
-    }
-    if (data.triage_summary) {
-      callbacksRef.current?.onProgress?.(
-        "scanning_inbox",
-        "Emails scanned",
-        25,
-        { email_count: data.triage_summary.total_scanned },
-      );
-      callbacksRef.current?.onProgress?.("triaging", "Inbox triaged", 65, {
-        total_scanned: data.triage_summary.total_scanned,
-        total_unread: data.triage_summary.total_unread,
-        important_emails: data.triage_summary.important_emails,
+    const onStage = callbacksRef.current?.onStage;
+    if (!onStage) return;
+    const seen = replayedRef.current;
+
+    if (data.writing_style?.style_summary && !seen.has("writing_style")) {
+      seen.add("writing_style");
+      onStage("writing_style_ready", {
+        style_summary: data.writing_style.style_summary,
+        example: data.writing_style.example ?? null,
       });
     }
-    if (data.onboarding_todos && data.onboarding_todos.length > 0) {
-      callbacksRef.current?.onProgress?.(
-        "creating_todos",
-        `${data.onboarding_todos.length} action items`,
-        72,
-        { todos: data.onboarding_todos },
-      );
+
+    if (
+      data.onboarding_todos &&
+      data.onboarding_todos.length > 0 &&
+      !seen.has("todos")
+    ) {
+      seen.add("todos");
+      onStage("todos_ready", {
+        todos: data.onboarding_todos,
+      });
     }
-    if (data.suggested_workflows && data.suggested_workflows.length > 0) {
-      callbacksRef.current?.onProgress?.(
-        "creating_workflows",
-        `${data.suggested_workflows.length} automations`,
-        85,
-        { workflows: data.suggested_workflows },
-      );
+
+    if (
+      data.suggested_workflows &&
+      data.suggested_workflows.length > 0 &&
+      !seen.has("workflows")
+    ) {
+      seen.add("workflows");
+      onStage("workflows_ready", {
+        workflows: data.suggested_workflows,
+      });
     }
   }, []);
 
-  // Poll API as fallback for intelligence completion
-  const startPolling = useCallback(() => {
-    if (pollTimerRef.current) return;
-
-    pollTimerRef.current = setInterval(async () => {
-      if (doneRef.current) {
-        stopPolling();
-        return;
-      }
-
-      try {
-        const data = await apiService.get<PersonalizationData>(
-          "/onboarding/personalization",
-          { silent: true },
-        );
-
-        if (data.has_personalization) {
-          setPersonalizationData(data);
-          setIsLoading(false);
-          callbacksRef.current?.onPersonalizationComplete?.(data);
-        }
-
-        if (data.first_message_conversation_id) {
-          replayStageData(data);
-          setIntelligenceConversationId(data.first_message_conversation_id);
-          stopPolling();
-          callbacksRef.current?.onIntelligenceComplete?.(
-            data.first_message_conversation_id,
-          );
-        }
-      } catch {
-        // Ignore — keep polling
-      }
-    }, POLL_INTERVAL_MS);
-  }, [stopPolling, replayStageData]);
-
-  // Main effect: connect WebSocket + check API on mount
   useEffect(() => {
     if (!enabled) return;
 
+    // Prevents stale async callbacks from proceeding after cleanup
+    // (React StrictMode unmount/remount cycle).
+    let aborted = false;
+    let wsReceivedEvent = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    // Lightweight fallback poll — only activates when WS fails silently.
+    const startFallbackPoll = () => {
+      if (pollTimer || doneRef.current || aborted) return;
+      pollTimer = setInterval(async () => {
+        if (doneRef.current || aborted) {
+          if (pollTimer) clearInterval(pollTimer);
+          pollTimer = null;
+          return;
+        }
+        try {
+          const data = await apiService.get<PersonalizationData>(
+            "/onboarding/personalization",
+            { silent: true },
+          );
+          if (aborted) return;
+          replayStageData(data);
+          if (data.has_personalization) {
+            callbacksRef.current?.onPersonalizationComplete?.(data);
+          }
+          if (data.first_message_conversation_id) {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
+            markDone(data.first_message_conversation_id);
+          }
+        } catch {
+          // Keep polling
+        }
+      }, FALLBACK_POLL_INTERVAL_MS);
+    };
+
     const getWsUrl = () => {
-      const apiBaseUrl =
+      const base =
         process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1/";
       return (
-        apiBaseUrl.replace("http://", "ws://").replace("https://", "wss://") +
+        base.replace("http://", "ws://").replace("https://", "wss://") +
         "ws/connect"
       );
     };
 
     const connectWs = () => {
-      if (doneRef.current) return;
+      if (doneRef.current || aborted) return;
 
       try {
         const ws = new WebSocket(getWsUrl());
@@ -184,39 +170,55 @@ export const useOnboardingWebSocket = (
 
         ws.onopen = () => {
           reconnectAttemptsRef.current = 0;
+          // Start fallback timer — if WS doesn't deliver events, poll.
+          if (!wsReceivedEvent && !fallbackTimer) {
+            fallbackTimer = setTimeout(() => {
+              if (!wsReceivedEvent && !doneRef.current && !aborted) {
+                startFallbackPoll();
+              }
+            }, WS_FALLBACK_DELAY_MS);
+          }
         };
 
         ws.onmessage = (event) => {
+          wsReceivedEvent = true;
+          // WS is working — cancel fallback
+          if (fallbackTimer) {
+            clearTimeout(fallbackTimer);
+            fallbackTimer = null;
+          }
+          if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+          }
           try {
             const message = JSON.parse(event.data) as {
               type: string;
-              data: PersonalizationData & {
-                conversation_id?: string;
-                stage?: string;
-                message?: string;
-                progress?: number;
-                results?: Record<string, unknown>;
-              };
+              data: unknown;
             };
 
-            if (message.type === "personalization_progress") {
-              callbacksRef.current?.onProgress?.(
-                message.data.stage ?? "",
-                message.data.message ?? "",
-                message.data.progress ?? 0,
-                message.data.results as Record<string, unknown> | undefined,
+            if (message.type === "onboarding_stage") {
+              const stageData = message.data as {
+                stage: OnboardingStage;
+                payload: StagePayloads[OnboardingStage];
+              };
+
+              callbacksRef.current?.onStage?.(
+                stageData.stage,
+                stageData.payload,
               );
-            } else if (message.type === "onboarding_personalization_complete") {
-              setPersonalizationData(message.data);
-              setIsLoading(false);
-              toast.success("Your personalized card is ready!");
-              callbacksRef.current?.onPersonalizationComplete?.(message.data);
-            } else if (message.type === "onboarding_intelligence_complete") {
-              const conversationId = message.data.conversation_id;
-              if (conversationId) {
-                setIntelligenceConversationId(conversationId);
-                stopPolling();
-                callbacksRef.current?.onIntelligenceComplete?.(conversationId);
+
+              if (stageData.stage === "holo_ready") {
+                void fetchPersonalizationData();
+              }
+
+              if (stageData.stage === "complete") {
+                const p = stageData.payload as {
+                  conversation_id: string | null;
+                };
+                if (p.conversation_id) {
+                  markDone(p.conversation_id);
+                }
               }
             } else if (
               message.type === "onboarding_todo_executing" ||
@@ -230,34 +232,38 @@ export const useOnboardingWebSocket = (
               callbacksRef.current?.onTodoExecution?.(todo_id, status, result);
             }
           } catch (error) {
-            console.error("Error parsing WebSocket message:", error);
+            console.error("[onboarding:ws] parse error:", error);
           }
         };
 
         ws.onclose = () => {
           wsRef.current = null;
-          if (doneRef.current) return;
+          if (doneRef.current || aborted) return;
 
           if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
             const delay =
-              RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttemptsRef.current;
+              RECONNECT_BASE_DELAY_MS *
+              2 ** Math.min(reconnectAttemptsRef.current, 5);
             reconnectAttemptsRef.current += 1;
             reconnectTimerRef.current = setTimeout(connectWs, delay);
           } else {
-            // Max reconnects exhausted — fall back to polling
-            startPolling();
+            // WS exhausted — fall back to polling
+            startFallbackPoll();
           }
         };
 
         ws.onerror = () => {
-          // onclose fires after onerror, reconnect handled there
+          // onclose fires after onerror — reconnect handled there
         };
       } catch {
-        startPolling();
+        // WebSocket constructor failed (bad URL, etc.)
       }
     };
 
-    // Check API immediately on mount (handles page reload / already-complete case)
+    // ── Mount check ─────────────────────────────────────────────────
+    // REST call handles page-reload recovery.  Replays any stage data
+    // that's already persisted (even mid-pipeline), then connects WS
+    // for remaining events if not yet complete.
     const checkOnMount = async () => {
       try {
         const data = await apiService.get<PersonalizationData>(
@@ -265,42 +271,50 @@ export const useOnboardingWebSocket = (
           { silent: true },
         );
 
+        if (aborted) return;
+
         if (data.has_personalization) {
-          setPersonalizationData(data);
-          setIsLoading(false);
-          // Fire personalization callback so holo card data is available
           callbacksRef.current?.onPersonalizationComplete?.(data);
         }
 
+        // Replay whatever data exists — even partial (mid-pipeline).
+        // This lets the reveal sequence start from persisted data on reload.
+        replayStageData(data);
+
         if (data.first_message_conversation_id) {
-          // Replay stage data as synthetic progress events so reveal cards reconstruct
-          replayStageData(data);
-          setIntelligenceConversationId(data.first_message_conversation_id);
-          // Fire intelligence callback so reveal cards complete and "Let's go" appears
-          callbacksRef.current?.onIntelligenceComplete?.(
-            data.first_message_conversation_id,
-          );
-          return; // Already complete — no WebSocket needed
+          markDone(data.first_message_conversation_id);
+          return;
         }
       } catch {
-        // Ignore, proceed with WebSocket
+        // Proceed with WebSocket
       }
 
-      if (!doneRef.current) {
+      if (!doneRef.current && !aborted) {
         connectWs();
       }
     };
 
     checkOnMount();
 
-    return cleanup;
-  }, [enabled, startPolling, stopPolling, cleanup, replayStageData]);
-
-  return {
-    personalizationData,
-    isLoading,
-    isComplete: !!personalizationData,
-    intelligenceConversationId,
-    isIntelligenceComplete: !!intelligenceConversationId,
-  };
+    return () => {
+      aborted = true;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      holoFetchedRef.current = false;
+    };
+  }, [enabled, fetchPersonalizationData, replayStageData, markDone]);
 };

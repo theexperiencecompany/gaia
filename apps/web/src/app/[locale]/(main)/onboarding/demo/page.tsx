@@ -6,9 +6,8 @@ import { OnboardingProcessing } from "@/features/onboarding/components/Onboardin
 import { OnboardingTodoCards } from "@/features/onboarding/components/OnboardingTodoCards";
 import { OnboardingWorkflowCards } from "@/features/onboarding/components/OnboardingWorkflowCards";
 import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
-import { SocialProfilesRevealCard } from "@/features/onboarding/components/reveal/SocialProfilesRevealCard";
-import { TriageRevealCard } from "@/features/onboarding/components/reveal/TriageRevealCard";
 import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/WritingStyleRevealCard";
+import type { OnboardingStage } from "@/features/onboarding/types/websocket";
 
 // ── Dummy data ────────────────────────────────────────────────────────────────
 
@@ -18,28 +17,6 @@ const DUMMY_WRITING_STYLE = {
   example:
     "Hey Sarah,\n\nJust saw your message — totally agree on pushing the deadline. Let me loop in the design team and get back to you by EOD.\n\nCheers,\nAryan",
   profession: "Founder",
-};
-
-const DUMMY_SOCIAL_PROFILES = {
-  profiles: [
-    { platform: "twitter", url: "https://twitter.com/aryanranderiya" },
-    { platform: "linkedin", url: "https://linkedin.com/in/aryanranderiya" },
-    { platform: "github", url: "https://github.com/aryanranderiya" },
-  ],
-};
-
-const DUMMY_TRIAGE = {
-  total_scanned: 312,
-  total_unread: 47,
-  summary:
-    "Your inbox is dominated by investor updates, product feedback threads, and team async. Three threads from Y Combinator partners look time-sensitive. Most of the noise is SaaS newsletters and GitHub notifications.",
-  patterns: [
-    "Investor updates",
-    "Team async",
-    "GitHub notifications",
-    "Product feedback",
-    "SaaS newsletters",
-  ],
 };
 
 const DUMMY_TODOS = [
@@ -105,26 +82,19 @@ const DUMMY_HOLO_CARD = {
 
 // ── Processing simulation ─────────────────────────────────────────────────────
 
-const GMAIL_STAGES = [
-  "scanning_inbox",
-  "finding_profiles",
-  "triaging",
-  "creating_todos",
-  "creating_workflows",
+const GMAIL_STAGES: OnboardingStage[] = [
+  "inbox_scanning",
+  "writing_style_ready",
+  "triage_ready",
+  "todos_ready",
+  "workflows_ready",
 ];
 
 function ProcessingDemo() {
-  const [completedStages, setCompletedStages] = useState<Set<string>>(
+  const [completedStages, setCompletedStages] = useState<Set<OnboardingStage>>(
     new Set(),
   );
-  const [progress, setProgress] = useState(0);
-  const [stageMessages] = useState<Record<string, string>>({
-    scanning_inbox: "312 emails scanned",
-    finding_profiles: "3 profiles found",
-    triaging: "47 unread prioritised",
-    creating_todos: "3 action items created",
-    creating_workflows: "2 automations set up",
-  });
+  const [inboxScanCount, setInboxScanCount] = useState(0);
 
   const advance = () => {
     const nextIdx = completedStages.size;
@@ -132,12 +102,14 @@ function ProcessingDemo() {
     const next = GMAIL_STAGES[nextIdx];
     if (!next) return;
     setCompletedStages((prev) => new Set([...prev, next]));
-    setProgress(Math.round(((nextIdx + 1) / GMAIL_STAGES.length) * 100));
+    if (next === "inbox_scanning") {
+      setInboxScanCount(312);
+    }
   };
 
   const reset = () => {
     setCompletedStages(new Set());
-    setProgress(0);
+    setInboxScanCount(0);
   };
 
   return (
@@ -150,8 +122,7 @@ function ProcessingDemo() {
             completedStages.size === GMAIL_STAGES.length ? "demo-convo" : null
           }
           onComplete={() => {}}
-          processingProgress={progress}
-          stageMessages={stageMessages}
+          inboxScanCount={inboxScanCount}
           completedStages={completedStages}
         />
         <div className="flex gap-2">
@@ -265,21 +236,6 @@ export default function OnboardingDemoPage() {
             style_summary={DUMMY_WRITING_STYLE.style_summary}
             example={DUMMY_WRITING_STYLE.example}
             profession={DUMMY_WRITING_STYLE.profession}
-          />
-        </DemoSection>
-
-        {/* Social profiles */}
-        <DemoSection label="SocialProfilesRevealCard">
-          <SocialProfilesRevealCard profiles={DUMMY_SOCIAL_PROFILES.profiles} />
-        </DemoSection>
-
-        {/* Triage */}
-        <DemoSection label="TriageRevealCard">
-          <TriageRevealCard
-            total_scanned={DUMMY_TRIAGE.total_scanned}
-            total_unread={DUMMY_TRIAGE.total_unread}
-            summary={DUMMY_TRIAGE.summary}
-            patterns={DUMMY_TRIAGE.patterns}
           />
         </DemoSection>
 

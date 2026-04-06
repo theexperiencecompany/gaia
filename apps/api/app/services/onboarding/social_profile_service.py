@@ -146,72 +146,17 @@ def _extract_handle_from_url(url: str, platform: str) -> str | None:
         return None
 
 
-def extract_social_profiles(emails: list[dict]) -> list[SocialProfile]:
-    """
-    Scan email sender info and snippets for social profile URLs.
-
-    Looks through email snippets (which often contain signature content)
-    and sender fields for known social platform URLs.
-
-    Args:
-        emails: List of email dicts with sender, subject, snippet fields.
-
-    Returns:
-        Deduplicated list of SocialProfile objects found.
-    """
-    seen_urls: set[str] = set()
-    seen_platforms: set[str] = set()
-    profiles: list[SocialProfile] = []
-
-    for email in emails:
-        # Scan both snippet and sender fields
-        texts = [
-            email.get("snippet", ""),
-            email.get("sender", ""),
-            email.get("subject", ""),
-        ]
-        combined = " ".join(texts)
-        if not combined.strip():
-            continue
-
-        urls = _extract_urls_from_text(combined)
-        for url in urls:
-            if _is_tracking_url(url):
-                continue
-            platform = _classify_url(url)
-            if platform is None:
-                continue
-            if _is_generic_url(url):
-                continue
-            # Canonicalize before dedup
-            canonical = _canonicalize_social_url(url)
-            if canonical in seen_urls:
-                continue
-            # One profile per platform
-            if platform in seen_platforms:
-                continue
-            seen_urls.add(canonical)
-            seen_platforms.add(platform)
-            profiles.append(SocialProfile(platform=platform, url=canonical))
-
-    log.info(
-        f"[social_profiles] Extracted {len(profiles)} profiles "
-        f"from {len(emails)} emails"
-    )
-    return profiles
-
-
-async def extract_social_profiles_smart(
+async def extract_social_profiles_from_emails(
     emails: list[dict],
     user_name: str | None,
     user_email: str | None,
 ) -> list[SocialProfile]:
     """
-    Smart social profile extraction: broad URL harvest followed by LLM ownership filter.
+    Extract social profiles from emails: broad URL harvest + LLM ownership filter.
 
-    This replaces the old Track A logic. It harvests all social URLs from all emails
-    (including full bodies), then uses an LLM to determine which profiles actually
-    belong to the user vs. appearing in newsletter footers or marketing emails.
+    Harvests all social URLs from email bodies, snippets, senders, and subjects,
+    then uses an LLM to determine which profiles actually belong to the user
+    (vs. appearing in newsletter footers, marketing emails, or colleagues' signatures).
 
     Args:
         emails: List of email dicts with body/snippet, sender, subject, labelIds fields.
@@ -307,6 +252,14 @@ async def extract_social_profiles_smart(
         f"across {len(by_platform)} platforms from {len(emails)} emails"
     )
 
+    # Log candidates so we can debug LLM filtering decisions
+    for entry in capped:
+        sent_label = "SENT" if entry["is_sent"] else "recv"
+        log.info(
+            f"[social_profiles_smart] candidate: {entry['platform']}/{entry['handle']} "
+            f"freq={entry['frequency']} {sent_label}"
+        )
+
     # ── 2c: LLM ownership filter ──────────────────────────────────────────────
     # Build candidates string for the prompt
     candidates_lines: list[str] = []
@@ -341,7 +294,7 @@ async def extract_social_profiles_smart(
             log.warning(
                 "[social_profiles_smart] LLM not available, using sent-email fallback"
             )
-            return _dedup_by_platform(sent_fallback)
+            return dedup_profiles_by_platform(sent_fallback)
 
         structured_llm = llm.with_structured_output(SocialProfileFilterOutput)
         prompt = SOCIAL_PROFILE_FILTER_PROMPT.format(
@@ -370,17 +323,25 @@ async def extract_social_profiles_smart(
             f"[social_profiles_smart] LLM filtered to {len(owned)} owned profiles "
             f"from {len(capped)} candidates"
         )
-        return _dedup_by_platform(owned)
+        if owned:
+            for p in owned:
+                log.info(f"[social_profiles_smart] accepted: {p.platform} → {p.url}")
+        else:
+            log.info(
+                f"[social_profiles_smart] LLM returned 0 owned. "
+                f"Raw output: {result.owned_profiles!r}"
+            )
+        return dedup_profiles_by_platform(owned)
 
     except Exception as e:
         log.error(
             f"[social_profiles_smart] LLM filter failed, using sent-email fallback: {e}",
             exc_info=True,
         )
-        return _dedup_by_platform(sent_fallback)
+        return dedup_profiles_by_platform(sent_fallback)
 
 
-def _dedup_by_platform(profiles: list[SocialProfile]) -> list[SocialProfile]:
+def dedup_profiles_by_platform(profiles: list[SocialProfile]) -> list[SocialProfile]:
     """Deduplicate profiles keeping the first occurrence of each platform."""
     seen: set[str] = set()
     result: list[SocialProfile] = []

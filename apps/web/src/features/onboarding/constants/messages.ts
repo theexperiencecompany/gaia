@@ -11,11 +11,6 @@ export const PROCESSING_MSG_FOCUS = "Got it. Setting things up around that.";
 export const FOCUS_QUESTION =
   "Got it. What's the one thing you most need to get done this week?";
 
-export const BACKGROUND_PROCESSING_MSG =
-  "Still setting things up in the background. Feel free to ask me anything and I'll bring your results as they come in.";
-
-export const SOFT_ESCAPE_LABEL = "Chat while I work \u2192";
-
 export const SUBMISSION_ERROR_MSG = "Something went wrong setting things up.";
 
 export const RETRY_LABEL = "Try again";
@@ -37,12 +32,6 @@ export const WRITING_STYLE_LABEL = "Your writing style";
 
 export const REVEAL_WRITING_STYLE_INTRO =
   "Here's what I learned about how you write:";
-
-export const REVEAL_SOCIAL_PROFILES_INTRO =
-  "Here are the profiles I found. Feel free to edit them if they're wrong, it helps me understand you better.";
-
-export const REVEAL_TRIAGE_INTRO =
-  "Here's what I found going through your inbox:";
 
 export const REVEAL_TODOS_INTRO =
   "Based on what I found, here are some things I can help with:";

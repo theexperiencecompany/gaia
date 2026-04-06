@@ -5,6 +5,7 @@ import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot"
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 
 import type { Message } from "../types";
+import type { OnboardingStage } from "../types/websocket";
 import { OnboardingProcessing } from "./OnboardingProcessing";
 
 const noop = () => {};
@@ -76,10 +77,9 @@ interface OnboardingMessagesProps {
   intelligenceConversationId?: string | null;
   onProcessingComplete?: (conversationId: string) => void;
   isProcessingSkipped?: boolean;
-  processingProgress?: number;
   onEditMessage?: (fieldName: string) => void;
-  stageMessages?: Record<string, string>;
-  completedStages?: Set<string>;
+  inboxScanCount?: number;
+  completedStages?: Set<OnboardingStage>;
   /** Text to append to the processing message via <NEW_MESSAGE_BREAK> */
   processingContinuation?: string;
   /** Children to render below the processing bubble (e.g. todo cards) */
@@ -95,9 +95,8 @@ export const OnboardingMessages = ({
   intelligenceConversationId = null,
   onProcessingComplete,
   isProcessingSkipped = false,
-  processingProgress,
   onEditMessage,
-  stageMessages,
+  inboxScanCount,
   completedStages,
   processingContinuation,
   processingContinuationChildren,
@@ -142,8 +141,7 @@ export const OnboardingMessages = ({
                       isIntelligenceComplete={isIntelligenceComplete}
                       intelligenceConversationId={intelligenceConversationId}
                       onComplete={onProcessingComplete ?? (() => {})}
-                      processingProgress={processingProgress}
-                      stageMessages={stageMessages}
+                      inboxScanCount={inboxScanCount}
                       completedStages={completedStages}
                     />
                   </m.div>

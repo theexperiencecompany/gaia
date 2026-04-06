@@ -45,28 +45,7 @@ export interface PersonalizationData {
   first_message_conversation_id?: string;
 }
 
-export interface PersonalizationCompleteMessage {
-  type: "onboarding_personalization_complete";
-  data: PersonalizationData;
-}
-
-export interface BioStatusUpdateMessage {
-  type: "bio_status_update";
-  data: {
-    bio_status: BioStatus;
-  };
-}
-
-export interface OnboardingPhaseUpdateMessage {
-  type: "onboarding_phase_update";
-  data: {
-    phase: OnboardingPhase;
-  };
-}
-
-export interface InboxScanResults {
-  email_count: number;
-}
+// ── Per-reveal-card payload types (consumed by reveal components) ──────────
 
 export interface WritingStyleResults {
   style_summary: string;
@@ -85,7 +64,6 @@ export interface SocialProfilesResults {
 export interface TriageResults {
   total_scanned: number;
   total_unread: number;
-  email_count?: number;
   summary?: string;
   patterns?: string[];
   important_emails: Array<{
@@ -112,74 +90,59 @@ export interface WorkflowResults {
   }>;
 }
 
-export type ProgressResults =
-  | InboxScanResults
-  | WritingStyleResults
-  | SocialProfilesResults
-  | TriageResults
-  | TodoResults
-  | WorkflowResults;
+// ── DAG stage events (new event model) ─────────────────────────────────────
 
-export interface PersonalizationProgressMessage {
-  type: "personalization_progress";
+export type OnboardingStage =
+  | "inbox_scanning"
+  | "writing_style_ready"
+  | "social_profiles_ready"
+  | "triage_analyzing"
+  | "triage_analyzed"
+  | "triage_ready"
+  | "todos_creating"
+  | "todos_ready"
+  | "workflows_ready"
+  | "holo_ready"
+  | "complete";
+
+export interface StagePayloads {
+  inbox_scanning: { current: number };
+  writing_style_ready: {
+    style_summary: string | null;
+    example?: string | null;
+  };
+  social_profiles_ready: SocialProfilesResults;
+  triage_analyzing: { total_emails: number; status: string };
+  triage_analyzed: { important_count: number; status: string };
+  triage_ready: TriageResults;
+  todos_creating: { status: string };
+  todos_ready: TodoResults;
+  workflows_ready: WorkflowResults;
+  holo_ready: Record<string, never>;
+  complete: { conversation_id: string | null };
+}
+
+export type OnboardingStageEvent = {
+  type: "onboarding_stage";
   data: {
-    stage: string;
-    message: string;
-    progress: number; // 0-100
-    results?: ProgressResults;
-    details?: {
-      current?: number;
-      total?: number;
-      platforms?: string[];
+    [K in OnboardingStage]: {
+      stage: K;
+      payload: StagePayloads[K];
     };
-  };
-}
+  }[OnboardingStage];
+};
 
-export interface IntelligenceCompleteMessage {
-  type: "onboarding_intelligence_complete";
+export type StageBuffer = {
+  [K in OnboardingStage]?: StagePayloads[K];
+};
+
+// ── Phase update event (used by root layout for global phase tracking) ────
+
+export interface OnboardingPhaseUpdateMessage {
+  type: "onboarding_phase_update";
   data: {
-    conversation_id: string;
+    phase: OnboardingPhase;
   };
-}
-
-export type OnboardingWebSocketMessage =
-  | PersonalizationCompleteMessage
-  | BioStatusUpdateMessage
-  | OnboardingPhaseUpdateMessage
-  | PersonalizationProgressMessage
-  | IntelligenceCompleteMessage;
-
-/**
- * Type guard for PersonalizationCompleteMessage
- */
-export function isPersonalizationCompleteMessage(
-  message: unknown,
-): message is PersonalizationCompleteMessage {
-  return (
-    typeof message === "object" &&
-    message !== null &&
-    "type" in message &&
-    (message as { type?: string }).type ===
-      "onboarding_personalization_complete" &&
-    "data" in message
-  );
-}
-
-/**
- * Type guard for BioStatusUpdateMessage
- */
-export function isBioStatusUpdateMessage(
-  message: unknown,
-): message is BioStatusUpdateMessage {
-  return (
-    typeof message === "object" &&
-    message !== null &&
-    "type" in message &&
-    (message as { type?: string }).type === "bio_status_update" &&
-    "data" in message &&
-    typeof (message as { data?: { bio_status?: string } }).data?.bio_status ===
-      "string"
-  );
 }
 
 /**
@@ -199,16 +162,17 @@ export function isOnboardingPhaseUpdateMessage(
 }
 
 /**
- * Type guard for PersonalizationProgressMessage
+ * Type guard for OnboardingStageEvent
  */
-export function isPersonalizationProgressMessage(
+export function isOnboardingStageEvent(
   message: unknown,
-): message is PersonalizationProgressMessage {
+): message is OnboardingStageEvent {
   return (
     typeof message === "object" &&
     message !== null &&
     "type" in message &&
-    (message as { type?: string }).type === "personalization_progress" &&
-    "data" in message
+    (message as { type?: string }).type === "onboarding_stage" &&
+    "data" in message &&
+    typeof (message as { data?: { stage?: string } }).data?.stage === "string"
   );
 }

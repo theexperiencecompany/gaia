@@ -1,20 +1,17 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Spinner } from "@heroui/spinner";
 import { AnimatePresence, m } from "motion/react";
 
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 
 import {
-  REVEAL_SOCIAL_PROFILES_INTRO,
   REVEAL_TODOS_INTRO,
-  REVEAL_TRIAGE_INTRO,
   REVEAL_WRITING_STYLE_INTRO,
 } from "../constants/messages";
 import type { RevealPhase } from "../hooks/useOnboardingFlow";
 import { OnboardingTodoCards } from "./OnboardingTodoCards";
-import { SocialProfilesRevealCard } from "./reveal/SocialProfilesRevealCard";
-import { TriageRevealCard } from "./reveal/TriageRevealCard";
 import { WritingStyleRevealCard } from "./reveal/WritingStyleRevealCard";
 
 const noop = () => {};
@@ -42,20 +39,10 @@ const BOT_BUBBLE_DEFAULTS = {
 
 interface OnboardingRevealSequenceProps {
   revealPhase: RevealPhase;
+  isWaitingForNextPhase: boolean;
+  waitingStatus: string | null;
   writingStyle: { style_summary: string; example?: string } | null;
   profession: string;
-  socialProfiles: Array<{ platform: string; url: string }>;
-  triageSummary: {
-    total_scanned: number;
-    total_unread: number;
-    summary?: string;
-    patterns?: string[];
-    important_emails: Array<{
-      sender: string;
-      subject: string;
-      why_important: string;
-    }>;
-  } | null;
   todos: Array<{
     id: string;
     title: string;
@@ -66,126 +53,133 @@ interface OnboardingRevealSequenceProps {
   isExecutingTodo: boolean;
   executingTodoId: string | null;
   completedTodoIds: Set<string>;
-  conversationId: string | null;
   onSkipTodos: () => void;
 }
 
-type VisiblePhase = "writing_style" | "social_profiles" | "triage" | "todos";
-
-const PHASE_ORDER: VisiblePhase[] = [
-  "writing_style",
-  "social_profiles",
-  "triage",
-  "todos",
-];
-
-const PHASE_INTRO: Record<VisiblePhase, string> = {
-  writing_style: REVEAL_WRITING_STYLE_INTRO,
-  social_profiles: REVEAL_SOCIAL_PROFILES_INTRO,
-  triage: REVEAL_TRIAGE_INTRO,
-  todos: REVEAL_TODOS_INTRO,
-};
-
-export const PHASE_BUTTON_TEXT: Partial<Record<VisiblePhase, string>> = {
+export const PHASE_BUTTON_TEXT: Partial<Record<RevealPhase, string>> = {
   writing_style: "Looks good",
-  social_profiles: "Confirm profiles",
 };
 
 export function OnboardingRevealSequence({
   revealPhase,
+  isWaitingForNextPhase,
+  waitingStatus,
   writingStyle,
   profession,
-  socialProfiles,
-  triageSummary,
   todos,
   onExecuteTodo,
   isExecutingTodo,
   executingTodoId,
   completedTodoIds,
-  conversationId,
   onSkipTodos,
 }: OnboardingRevealSequenceProps) {
-  const currentIndex =
-    revealPhase === "complete"
-      ? PHASE_ORDER.length
-      : PHASE_ORDER.indexOf(revealPhase as VisiblePhase);
+  // Show writing style card for writing_style, writing_style_done, todos, complete
+  const showWritingStyle =
+    writingStyle &&
+    (revealPhase === "writing_style" ||
+      revealPhase === "writing_style_done" ||
+      revealPhase === "todos" ||
+      revealPhase === "complete");
 
-  const visiblePhases = PHASE_ORDER.slice(0, currentIndex + 1);
-
-  const renderCard = (phase: VisiblePhase) => {
-    switch (phase) {
-      case "writing_style":
-        return writingStyle ? (
-          <WritingStyleRevealCard
-            style_summary={writingStyle.style_summary}
-            example={writingStyle.example}
-            profession={profession}
-          />
-        ) : null;
-
-      case "social_profiles":
-        return socialProfiles.length > 0 ? (
-          <SocialProfilesRevealCard profiles={socialProfiles} />
-        ) : null;
-
-      case "triage":
-        return triageSummary ? <TriageRevealCard {...triageSummary} /> : null;
-
-      case "todos":
-        return todos.length > 0 ? (
-          <OnboardingTodoCards
-            todos={todos}
-            onExecuteTodo={onExecuteTodo}
-            isExecuting={isExecutingTodo}
-            executingTodoId={executingTodoId}
-            completedTodoIds={completedTodoIds}
-          />
-        ) : null;
-    }
-  };
+  // Show todos card for todos and complete phases
+  const showTodos =
+    todos.length > 0 && (revealPhase === "todos" || revealPhase === "complete");
 
   return (
     <div className="mt-3 space-y-4">
       <AnimatePresence>
-        {visiblePhases.map((phase, index) => {
-          return (
-            <m.div
-              key={phase}
-              className="space-y-3"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                duration: 0.4,
-                ease: [0.19, 1, 0.22, 1],
-                delay: index * 0.05,
-              }}
+        {/* ── Writing style card ── */}
+        {showWritingStyle && (
+          <m.div
+            key="writing_style"
+            className="space-y-3"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.4,
+              ease: [0.19, 1, 0.22, 1],
+            }}
+          >
+            <ChatBubbleBot
+              {...BOT_BUBBLE_DEFAULTS}
+              text={REVEAL_WRITING_STYLE_INTRO}
+            />
+            <WritingStyleRevealCard
+              style_summary={writingStyle.style_summary}
+              example={writingStyle.example}
+              profession={profession}
+            />
+          </m.div>
+        )}
+
+        {/* ── Waiting for todos indicator ── */}
+        {revealPhase === "writing_style_done" && isWaitingForNextPhase && (
+          <m.div
+            key="waiting"
+            className="space-y-3"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.4,
+              ease: [0.19, 1, 0.22, 1],
+              delay: 0.1,
+            }}
+          >
+            <ChatBubbleBot
+              {...BOT_BUBBLE_DEFAULTS}
+              text="Looking for things I can help with..."
             >
-              <ChatBubbleBot
-                {...BOT_BUBBLE_DEFAULTS}
-                text={PHASE_INTRO[phase]}
-              />
+              <div className="mt-2 ml-10.75 flex items-center gap-2">
+                <Spinner size="sm" color="default" />
+                <span className="text-sm text-zinc-500">
+                  {waitingStatus || "Almost ready"}
+                </span>
+              </div>
+            </ChatBubbleBot>
+          </m.div>
+        )}
 
-              {renderCard(phase)}
+        {/* ── Todos card ── */}
+        {showTodos && (
+          <m.div
+            key="todos"
+            className="space-y-3"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.4,
+              ease: [0.19, 1, 0.22, 1],
+              delay: 0.05,
+            }}
+          >
+            <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={REVEAL_TODOS_INTRO} />
 
-              {phase === "todos" && conversationId && !isExecutingTodo && (
-                <m.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 1.5, duration: 0.4 }}
+            <OnboardingTodoCards
+              todos={todos}
+              onExecuteTodo={onExecuteTodo}
+              isExecuting={isExecutingTodo}
+              executingTodoId={executingTodoId}
+              completedTodoIds={completedTodoIds}
+            />
+
+            {!isExecutingTodo && (
+              <m.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.5, duration: 0.4 }}
+              >
+                <Button
+                  variant="light"
+                  size="sm"
+                  onPress={onSkipTodos}
+                  className="text-zinc-500"
                 >
-                  <Button
-                    variant="light"
-                    size="sm"
-                    onPress={onSkipTodos}
-                    className="text-zinc-500"
-                  >
-                    Skip for now
-                  </Button>
-                </m.div>
-              )}
-            </m.div>
-          );
-        })}
+                  Skip for now
+                </Button>
+              </m.div>
+            )}
+          </m.div>
+        )}
       </AnimatePresence>
     </div>
   );

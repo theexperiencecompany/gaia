@@ -23,6 +23,7 @@ interface UseOnboardingChatReturn {
 
 export function useOnboardingChat(
   conversationId: string | null,
+  pendingTodoMessage?: string | null,
 ): UseOnboardingChatReturn {
   const [chatMessages, setChatMessages] = useState<OnboardingChatMessage[]>([]);
   const [chatInputValue, setChatInputValue] = useState("");
@@ -30,6 +31,7 @@ export function useOnboardingChat(
   const fetchChatStream = useChatStream();
   const activeConversationSetRef = useRef(false);
   const pendingBotIdRef = useRef<string | null>(null);
+  const todoSentRef = useRef(false);
 
   // Subscribe to store updates to reflect streaming bot messages
   useEffect(() => {
@@ -82,7 +84,7 @@ export function useOnboardingChat(
       try {
         const messages = await chatApi.fetchMessages(conversationId);
         const firstBotMessage = messages.find(
-          (m) => m.type === "bot" && m.response,
+          (m) => (m.type === "bot" || m.type === "ai") && m.response,
         );
         if (firstBotMessage?.response) {
           setChatMessages((prev) => {
@@ -166,6 +168,16 @@ export function useOnboardingChat(
     },
     [conversationId, isChatSending, fetchChatStream],
   );
+
+  // Auto-send pending todo message when entering chat from todo execution
+  useEffect(() => {
+    if (!pendingTodoMessage || !conversationId || todoSentRef.current) return;
+    todoSentRef.current = true;
+    const timer = setTimeout(() => {
+      void sendChatMessage(pendingTodoMessage);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [pendingTodoMessage, conversationId, sendChatMessage]);
 
   return {
     chatMessages,

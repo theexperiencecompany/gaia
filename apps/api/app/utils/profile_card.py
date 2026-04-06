@@ -20,6 +20,29 @@ from app.models.user_models import BioStatus
 HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
 
+def _extract_text_from_llm_response(content: Any) -> str:
+    """Extract plain text from an LLM response content field.
+
+    LangChain models can return ``content`` as a plain string OR as a list of
+    content-block dicts (e.g. ``[{"type": "text", "text": "..."}]``).  This
+    helper normalizes both shapes into a single string.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict):
+                text = block.get("text") or block.get("content") or ""
+                if text:
+                    parts.append(str(text))
+            elif isinstance(block, str):
+                parts.append(block)
+        if parts:
+            return " ".join(parts)
+    return str(content)
+
+
 def assign_random_house() -> str:
     """
     Randomly select a house for the user.
@@ -177,11 +200,7 @@ async def generate_personality_phrase(
         llm = init_llm(preferred_provider="gemini").bind(temperature=1.2, top_k=80)
         response = await llm.ainvoke(prompt)
 
-        content = (
-            response.content
-            if isinstance(response.content, str)
-            else str(response.content)
-        )
+        content = _extract_text_from_llm_response(response.content)
         phrase = content.strip().strip('"').strip("'")
         log.info(f"Generated personality phrase for user {user_id}: {phrase}")
         return phrase
@@ -243,11 +262,7 @@ async def generate_user_bio(
         llm = init_llm(preferred_provider="gemini")
         response = await llm.ainvoke(prompt)
 
-        content = (
-            response.content
-            if isinstance(response.content, str)
-            else str(response.content)
-        )
+        content = _extract_text_from_llm_response(response.content)
         bio = content.strip()
         log.info(f"Generated bio for user {user_id}")
         return bio, BioStatus.COMPLETED

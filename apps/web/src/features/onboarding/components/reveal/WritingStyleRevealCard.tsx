@@ -5,7 +5,7 @@ import { Textarea } from "@heroui/input";
 import { Skeleton } from "@heroui/skeleton";
 import { AiMail02Icon, Edit02Icon, QuillWrite01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiService } from "@/lib/api/service";
 import type { WritingStyleResults } from "../../types/websocket";
 
@@ -26,6 +26,28 @@ export function WritingStyleRevealCard({
   const [isSaving, setIsSaving] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [touched, setTouched] = useState(false);
+
+  // Auto-regenerate example on mount if missing (e.g. old DB records lacking example field)
+  useEffect(() => {
+    if (!currentExample && !isRegenerating && summaryValue) {
+      setIsRegenerating(true);
+      apiService
+        .post<{ example: string }>(
+          "/onboarding/writing-style/regenerate-example",
+          { edited_summary: summaryValue, profession },
+        )
+        .then((res) => {
+          if (res.example) setCurrentExample(res.example);
+        })
+        .catch(() => {
+          // silent — non-blocking
+        })
+        .finally(() => {
+          setIsRegenerating(false);
+        });
+    }
+    // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs on mount only
+  }, []);
 
   const isTooShort = summaryValue.trim().length < MIN_LENGTH;
   const showError = touched && isTooShort;

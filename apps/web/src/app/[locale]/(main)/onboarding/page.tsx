@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { ArrowRight02Icon } from "@icons";
 import { m } from "motion/react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import {
   OnboardingInput,
@@ -50,6 +50,7 @@ const BOT_BUBBLE_DEFAULTS = {
 
 export default function Onboarding() {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [workflowsConfirmed, setWorkflowsConfirmed] = useState(false);
 
   const {
     onboardingState,
@@ -81,10 +82,13 @@ export default function Onboarding() {
     isChatSending,
     setChatInputValue,
     sendChatMessage,
-  } = useOnboardingChat(flow.data.conversationId);
+  } = useOnboardingChat(
+    flow.data.conversationId,
+    flow.data.executedTodoId ? flow.data.todoExecutionResult : null,
+  );
 
   useOnboardingWebSocket(onboardingState.isProcessingPhase, {
-    onProgress: flow.handleProgressEvent,
+    onStage: flow.handleStageEvent,
     onPersonalizationComplete: flow.handlePersonalizationComplete,
     onIntelligenceComplete: (conversationId) => {
       flow.handleIntelligenceComplete(conversationId);
@@ -100,15 +104,6 @@ export default function Onboarding() {
       behavior: "smooth",
     });
   }, [flow.step, chatMessages.length, flow.loadingStatuses.length]);
-
-  // Auto-advance triage phase after a delay (no button)
-  useEffect(() => {
-    if (flow.revealPhase !== "triage") return;
-    const timer = setTimeout(() => {
-      flow.advanceRevealPhase();
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [flow.revealPhase, flow.advanceRevealPhase]);
 
   const handleFreeChatSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -149,9 +144,6 @@ export default function Onboarding() {
         currentStep={progressStep}
         totalSteps={6}
         onRestart={handleRestartAll}
-        processingProgress={
-          flow.step.type === "loading" ? flow.progress : undefined
-        }
       />
 
       <div
@@ -169,29 +161,25 @@ export default function Onboarding() {
             intelligenceConversationId={flow.data.conversationId}
             onProcessingComplete={handleConversationReady}
             isProcessingSkipped={flow.step.type !== "loading"}
-            processingProgress={
-              flow.step.type === "loading" ? flow.progress : undefined
-            }
             onEditMessage={handleEditResponse}
-            stageMessages={flow.stageMessages}
+            inboxScanCount={flow.inboxScanCount}
             completedStages={flow.completedStages}
             processingContinuationChildren={
               flow.step.type === "todos" ? (
                 <OnboardingRevealSequence
                   revealPhase={flow.revealPhase}
+                  isWaitingForNextPhase={flow.isWaitingForNextPhase}
+                  waitingStatus={flow.data.waitingStatus}
                   writingStyle={flow.data.writingStyle}
                   profession={
                     onboardingState.userResponses[FIELD_NAMES.PROFESSION] ?? ""
                   }
-                  socialProfiles={flow.data.socialProfiles}
-                  triageSummary={flow.data.triageSummary}
                   todos={flow.data.todos}
                   onExecuteTodo={flow.executeTodo}
                   isExecutingTodo={flow.isExecutingTodo}
                   executingTodoId={flow.executingTodoId}
                   completedTodoIds={flow.completedTodoIds}
-                  conversationId={flow.data.conversationId}
-                  onSkipTodos={flow.advanceToWorkflows}
+                  onSkipTodos={flow.advanceRevealPhase}
                 />
               ) : undefined
             }
@@ -213,21 +201,38 @@ export default function Onboarding() {
                   <div className="mt-3">
                     <OnboardingWorkflowCards workflows={flow.data.workflows} />
                   </div>
+                  {!workflowsConfirmed && (
+                    <p className="mt-2 ml-10.75 text-xs text-zinc-500">
+                      These run automatically. Customize them anytime in
+                      Workflows.
+                    </p>
+                  )}
                 </ChatBubbleBot>
               )}
 
-              <ChatBubbleBot
-                {...BOT_BUBBLE_DEFAULTS}
-                text="Get notifications and talk to me on the go:"
-              >
-                <div className="mt-3">
-                  <OnboardingPlatformConnect
-                    onConnect={flow.connectPlatform}
-                    onSkip={flow.skipPlatformConnect}
-                    connectedPlatform={flow.data.connectedPlatform}
-                  />
-                </div>
-              </ChatBubbleBot>
+              {(workflowsConfirmed || flow.data.workflows.length === 0) && (
+                <m.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.4,
+                    ease: [0.19, 1, 0.22, 1],
+                  }}
+                >
+                  <ChatBubbleBot
+                    {...BOT_BUBBLE_DEFAULTS}
+                    text="Get notifications and talk to me on the go:"
+                  >
+                    <div className="mt-3">
+                      <OnboardingPlatformConnect
+                        onConnect={flow.connectPlatform}
+                        onSkip={flow.skipPlatformConnect}
+                        connectedPlatform={flow.data.connectedPlatform}
+                      />
+                    </div>
+                  </ChatBubbleBot>
+                </m.div>
+              )}
             </m.div>
           )}
 
@@ -296,10 +301,33 @@ export default function Onboarding() {
 
       {/* ── Bottom input area ── */}
       <div className="relative z-10 mx-auto w-full max-w-lg pb-3">
-        {flow.step.type === "todos" &&
-        PHASE_BUTTON_TEXT[
-          flow.revealPhase as keyof typeof PHASE_BUTTON_TEXT
-        ] ? (
+        {flow.step.type === "workflows_and_connect" &&
+        !workflowsConfirmed &&
+        flow.data.workflows.length > 0 ? (
+          <m.div
+            className="flex justify-center"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              delay: 0.3,
+              duration: 0.35,
+              ease: [0.19, 1, 0.22, 1],
+            }}
+          >
+            <Button
+              color="primary"
+              radius="full"
+              size="md"
+              endContent={<ArrowRight02Icon className="size-4" />}
+              onPress={() => setWorkflowsConfirmed(true)}
+            >
+              Understood
+            </Button>
+          </m.div>
+        ) : flow.step.type === "todos" &&
+          PHASE_BUTTON_TEXT[
+            flow.revealPhase as keyof typeof PHASE_BUTTON_TEXT
+          ] ? (
           <m.div
             className="flex justify-center"
             initial={{ opacity: 0, y: 8 }}

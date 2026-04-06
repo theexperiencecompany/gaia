@@ -21,58 +21,62 @@ import {
   STEP_SCANNING_INBOX,
   STEP_TRIAGING,
 } from "../constants/messages";
+import type { OnboardingStage } from "../types/websocket";
 
 const SLOW_NOTICE_MS = 30_000;
 
 interface ProcessingStep {
   icon: FC<IconProps>;
-  stage: string;
+  stage: OnboardingStage;
   activeText: string;
 }
 
 const GMAIL_STEPS: ProcessingStep[] = [
   {
     icon: Mail01Icon,
-    stage: "scanning_inbox",
+    stage: "inbox_scanning",
     activeText: STEP_SCANNING_INBOX,
   },
   {
     icon: Brain01Icon,
-    stage: "finding_profiles",
+    stage: "writing_style_ready",
     activeText: STEP_LEARNING_STYLE,
   },
   {
     icon: FilterIcon,
-    stage: "triaging",
+    stage: "triage_ready",
     activeText: STEP_TRIAGING,
   },
   {
     icon: CheckListIcon,
-    stage: "creating_todos",
+    stage: "todos_ready",
     activeText: STEP_CREATING_TODOS,
   },
   {
     icon: ZapIcon,
-    stage: "creating_workflows",
+    stage: "workflows_ready",
     activeText: STEP_CREATING_WORKFLOWS,
   },
 ];
 
+// Ordered to match the actual backend emission order in the no-Gmail path:
+// focus-based todos fire first (fast LLM call), then workflows, then the
+// holo card (phrase + bio + RAG + persist, slowest).
 const NO_GMAIL_STEPS: ProcessingStep[] = [
   {
-    icon: Brain01Icon,
-    stage: "starting",
-    activeText: STEP_BUILDING_PROFILE,
-  },
-  {
     icon: CheckListIcon,
-    stage: "creating_todos",
+    stage: "todos_ready",
     activeText: STEP_CREATING_TODOS,
   },
   {
     icon: ZapIcon,
-    stage: "creating_workflows",
+    stage: "workflows_ready",
     activeText: STEP_CREATING_WORKFLOWS,
+  },
+  {
+    icon: Brain01Icon,
+    stage: "holo_ready",
+    activeText: STEP_BUILDING_PROFILE,
   },
 ];
 
@@ -81,11 +85,10 @@ interface OnboardingProcessingProps {
   isIntelligenceComplete: boolean;
   intelligenceConversationId: string | null;
   onComplete: (conversationId: string) => void;
-  processingProgress?: number;
-  /** Map of stage name → latest backend message for that stage */
-  stageMessages?: Record<string, string>;
-  /** Stages that have received a completion event (with results) from the backend */
-  completedStages?: Set<string>;
+  /** Running count of emails fetched, driven by inbox_scanning stage */
+  inboxScanCount?: number;
+  /** Stages that have received a completion event from the backend */
+  completedStages?: Set<OnboardingStage>;
 }
 
 export const OnboardingProcessing = ({
@@ -93,8 +96,7 @@ export const OnboardingProcessing = ({
   isIntelligenceComplete,
   intelligenceConversationId,
   onComplete,
-  processingProgress,
-  stageMessages,
+  inboxScanCount,
   completedStages,
 }: OnboardingProcessingProps) => {
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
@@ -124,27 +126,26 @@ export const OnboardingProcessing = ({
     return () => clearTimeout(timer);
   }, []);
 
-  // Determine active step based on which stages have received completion events.
-  // A stage is "done" only when the backend sends results — not on interim batch
-  // events. This keeps a stage active (pulsing) while its counter is updating.
+  // Per-step completion: each step is marked done only when ITS own stage
+  // has fired, not based on position relative to later completions. The
+  // active step is the first step that is not yet done. `inbox_scanning`
+  // is a repeating stage that never marks itself complete, so it is
+  // special-cased: it is considered done as soon as any downstream stage
+  // that depends on the inbox fetch (writing_style_ready, triage_ready, or
+  // beyond) has fired.
+  const isStepDone = (i: number): boolean => {
+    const step = steps[i];
+    if (step.stage === "inbox_scanning") {
+      return steps.slice(i + 1).some((s) => completedStages?.has(s.stage));
+    }
+    return completedStages?.has(step.stage) ?? false;
+  };
+
   const activeStepIndex = (() => {
-    let lastCompletedIndex = -1;
     for (let i = 0; i < steps.length; i++) {
-      if (completedStages?.has(steps[i].stage)) {
-        lastCompletedIndex = i;
-      }
+      if (!isStepDone(i)) return i;
     }
-    // If no stages are complete yet but some have messages, show the first
-    // messaged stage as active (not done) so scanning_inbox pulses while counting.
-    if (lastCompletedIndex === -1 && stageMessages) {
-      for (let i = 0; i < steps.length; i++) {
-        if (stageMessages[steps[i].stage]) {
-          return i;
-        }
-      }
-      return 0;
-    }
-    return Math.min(lastCompletedIndex + 1, steps.length - 1);
+    return steps.length - 1;
   })();
 
   return (
@@ -163,11 +164,15 @@ export const OnboardingProcessing = ({
       <div className="flex flex-col gap-2.5" aria-live="polite">
         {steps.map((step, i) => {
           const Icon = step.icon;
-          const isDone = i < activeStepIndex;
-          const isActive = i === activeStepIndex;
-          const liveMessage = stageMessages?.[step.stage];
-          const displayText =
-            (isDone || isActive) && liveMessage ? liveMessage : step.activeText;
+          const isDone = isStepDone(i);
+          const isActive = i === activeStepIndex && !isDone;
+          // Show live inbox counter only on the first (inbox_scanning) step.
+          const liveMessage =
+            step.stage === "inbox_scanning" &&
+            inboxScanCount !== undefined &&
+            inboxScanCount > 0
+              ? `${inboxScanCount} emails fetched`
+              : undefined;
 
           return (
             <m.div
@@ -181,7 +186,7 @@ export const OnboardingProcessing = ({
                 ease: [0.19, 1, 0.22, 1],
               }}
             >
-              <div className="relative size-4 shrink-0">
+              <div className="relative size-4 shrink-0 self-start mt-0.5">
                 <AnimatePresence mode="wait">
                   {isDone ? (
                     <m.div
@@ -213,17 +218,35 @@ export const OnboardingProcessing = ({
                   )}
                 </AnimatePresence>
               </div>
-              <span
-                className={
-                  isDone
-                    ? "flex-1 text-sm text-zinc-300"
-                    : isActive
-                      ? "flex-1 text-sm font-medium text-zinc-200"
-                      : "flex-1 text-sm text-zinc-500"
-                }
-              >
-                {displayText}
-              </span>
+              <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                <span
+                  className={
+                    isDone
+                      ? "text-sm text-zinc-300"
+                      : isActive
+                        ? "text-sm font-medium text-zinc-200"
+                        : "text-sm text-zinc-500"
+                  }
+                >
+                  {step.activeText}
+                </span>
+                <AnimatePresence>
+                  {isActive &&
+                    liveMessage &&
+                    liveMessage !== step.activeText && (
+                      <m.p
+                        key="sub-message"
+                        className="text-xs text-zinc-500 tabular-nums"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        {liveMessage}
+                      </m.p>
+                    )}
+                </AnimatePresence>
+              </div>
               <AnimatePresence>
                 {isActive && !isIntelligenceComplete && (
                   <m.div
@@ -256,14 +279,6 @@ export const OnboardingProcessing = ({
           </m.p>
         )}
       </AnimatePresence>
-
-      <m.div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
-        <m.div
-          className="h-full rounded-full bg-primary"
-          animate={{ width: `${processingProgress ?? 0}%` }}
-          transition={{ duration: 0.8, ease: [0.19, 1, 0.22, 1] }}
-        />
-      </m.div>
     </m.div>
   );
 };

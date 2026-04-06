@@ -84,8 +84,13 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
         animate={{ opacity: 1 }}
         transition={{ duration: 0.25, delay: PLATFORMS.length * 0.08 }}
       >
-        <Button variant="light" size="sm" onPress={onSkip}>
-          Skip
+        <Button
+          variant="light"
+          size="sm"
+          onPress={onSkip}
+          className="text-zinc-500"
+        >
+          Skip for now
         </Button>
       </m.div>
     </div>
