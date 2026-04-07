@@ -66,11 +66,6 @@ export interface UseOnboardingFlowReturn {
   advanceToWorkflows: () => void;
   advanceToChat: () => void;
   executeTodo: (todoId: string) => void;
-  handleTodoExecutionEvent: (
-    todoId: string,
-    status: string,
-    result?: string,
-  ) => void;
   connectPlatform: (platform: string) => void;
   skipPlatformConnect: () => void;
   handleStageEvent: <K extends OnboardingStage>(
@@ -322,17 +317,6 @@ export function useOnboardingFlow(
     [isExecutingTodo],
   );
 
-  const handleTodoExecutionEvent = useCallback(
-    (todoId: string, status: string, result?: string) => {
-      if (status === "completed" || status === "failed") {
-        setCompletedTodoIds((prev) => new Set([...prev, todoId]));
-        setIsExecutingTodo(false);
-        setExecutingTodoId(null);
-      }
-    },
-    [],
-  );
-
   const connectPlatform = useCallback(
     async (platform: string) => {
       try {
@@ -411,7 +395,6 @@ export function useOnboardingFlow(
     advanceToWorkflows,
     advanceToChat,
     executeTodo,
-    handleTodoExecutionEvent,
     connectPlatform,
     skipPlatformConnect,
     handleStageEvent,

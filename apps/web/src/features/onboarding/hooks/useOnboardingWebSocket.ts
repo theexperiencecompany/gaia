@@ -32,7 +32,6 @@ export const useOnboardingWebSocket = (
     ) => void;
     onPersonalizationComplete?: (data: PersonalizationData) => void;
     onIntelligenceComplete?: (conversationId: string) => void;
-    onTodoExecution?: (todoId: string, status: string, result?: string) => void;
   },
 ): void => {
   const wsRef = useRef<WebSocket | null>(null);
@@ -220,16 +219,6 @@ export const useOnboardingWebSocket = (
                   markDone(p.conversation_id);
                 }
               }
-            } else if (
-              message.type === "onboarding_todo_executing" ||
-              message.type === "onboarding_todo_executed"
-            ) {
-              const { todo_id, status, result } = message.data as {
-                todo_id: string;
-                status: string;
-                result?: string;
-              };
-              callbacksRef.current?.onTodoExecution?.(todo_id, status, result);
             }
           } catch (error) {
             console.error("[onboarding:ws] parse error:", error);

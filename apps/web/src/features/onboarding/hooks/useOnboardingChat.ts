@@ -1,22 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { chatApi } from "@/features/chat/api/chatApi";
+import { useShallow } from "zustand/react/shallow";
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
+import type { IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
-interface OnboardingChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  isStreaming?: boolean;
-}
-
 interface UseOnboardingChatReturn {
-  chatMessages: OnboardingChatMessage[];
+  streamMessages: IMessage[];
   chatInputValue: string;
   isChatSending: boolean;
+  isTodoExecutionDone: boolean;
+  isPendingTodoSend: boolean;
   setChatInputValue: (value: string) => void;
   sendChatMessage: (content: string) => Promise<void>;
 }
@@ -25,108 +21,53 @@ export function useOnboardingChat(
   conversationId: string | null,
   pendingTodoMessage?: string | null,
 ): UseOnboardingChatReturn {
-  const [chatMessages, setChatMessages] = useState<OnboardingChatMessage[]>([]);
   const [chatInputValue, setChatInputValue] = useState("");
   const [isChatSending, setIsChatSending] = useState(false);
+  const [isTodoExecutionDone, setIsTodoExecutionDone] = useState(false);
+  const [isPendingTodoSend, setIsPendingTodoSend] = useState(false);
+
   const fetchChatStream = useChatStream();
   const activeConversationSetRef = useRef(false);
-  const pendingBotIdRef = useRef<string | null>(null);
   const todoSentRef = useRef(false);
+  const todoExecutionInProgressRef = useRef(false);
 
-  // Subscribe to store updates to reflect streaming bot messages
+  // Subscribe to full IMessage[] from the store for this conversation
+  const streamMessages = useChatStore(
+    useShallow((state) =>
+      conversationId
+        ? (state.messagesByConversation[conversationId] ?? [])
+        : [],
+    ),
+  );
+
+  // Set active conversation so useChatStream posts to the right place
   useEffect(() => {
-    if (!conversationId) return;
-
-    const unsubscribe = useChatStore.subscribe((state) => {
-      const botMessageId = pendingBotIdRef.current;
-      if (!botMessageId) return;
-
-      const messages = state.messagesByConversation[conversationId] ?? [];
-      // Find the most recent assistant message (backend assigns real ID, different from optimistic)
-      const latestBot = [...messages]
-        .reverse()
-        .find((m) => m.role === "assistant");
-
-      if (latestBot?.content) {
-        setChatMessages((prev) =>
-          prev.map((m) =>
-            m.id === botMessageId
-              ? {
-                  ...m,
-                  content: latestBot.content,
-                  isStreaming: latestBot.status === "sending",
-                }
-              : m,
-          ),
-        );
-
-        // Clear ref when streaming finishes
-        if (latestBot.status === "sent") {
-          pendingBotIdRef.current = null;
-        }
-      }
-    });
-
-    return unsubscribe;
-  }, [conversationId]);
-
-  // Auto-fetch the seeded first message from the conversation
-  const firstMessageFetchedRef = useRef(false);
-  useEffect(() => {
-    if (!conversationId || firstMessageFetchedRef.current) return;
-    firstMessageFetchedRef.current = true;
-
-    // Set active conversation so useChatStream posts to the right place
+    if (!conversationId || activeConversationSetRef.current) return;
     useChatStore.getState().setActiveConversationId(conversationId);
     activeConversationSetRef.current = true;
-
-    const fetchFirstMessage = async () => {
-      try {
-        const messages = await chatApi.fetchMessages(conversationId);
-        const firstBotMessage = messages.find(
-          (m) => (m.type === "bot" || m.type === "ai") && m.response,
-        );
-        if (firstBotMessage?.response) {
-          setChatMessages((prev) => {
-            if (prev.length > 0) return prev;
-            return [
-              {
-                id: firstBotMessage.message_id || `seeded-${Date.now()}`,
-                role: "assistant" as const,
-                content: firstBotMessage.response,
-              },
-            ];
-          });
-        }
-      } catch {
-        // Non-blocking
-      }
-    };
-
-    void fetchFirstMessage();
   }, [conversationId]);
+
+  // Detect todo execution completion: isChatSending went true → false while todo was in progress
+  useEffect(() => {
+    if (!todoExecutionInProgressRef.current) return;
+    if (!isChatSending) {
+      todoExecutionInProgressRef.current = false;
+      setIsTodoExecutionDone(true);
+    }
+  }, [isChatSending]);
 
   const sendChatMessage = useCallback(
     async (content: string) => {
       const trimmed = content.trim();
       if (!trimmed || !conversationId || isChatSending) return;
 
-      // Set active conversation ID so useChatStream posts to the right conversation
       if (!activeConversationSetRef.current) {
         useChatStore.getState().setActiveConversationId(conversationId);
         activeConversationSetRef.current = true;
       }
 
       const userMessageId = `onboarding-user-${Date.now()}`;
-      const botMessageId = `onboarding-bot-${Date.now()}`;
 
-      pendingBotIdRef.current = botMessageId;
-
-      setChatMessages((prev) => [
-        ...prev,
-        { id: userMessageId, role: "user", content: trimmed },
-        { id: botMessageId, role: "assistant", content: "", isStreaming: true },
-      ]);
       setChatInputValue("");
       setIsChatSending(true);
 
@@ -150,18 +91,7 @@ export function useOnboardingChat(
           null,
         );
       } catch {
-        setChatMessages((prev) =>
-          prev.map((m) =>
-            m.id === botMessageId
-              ? {
-                  ...m,
-                  content: "Sorry, something went wrong. Please try again.",
-                  isStreaming: false,
-                }
-              : m,
-          ),
-        );
-        pendingBotIdRef.current = null;
+        // useChatStream handles error toasts internally
       } finally {
         setIsChatSending(false);
       }
@@ -173,16 +103,21 @@ export function useOnboardingChat(
   useEffect(() => {
     if (!pendingTodoMessage || !conversationId || todoSentRef.current) return;
     todoSentRef.current = true;
+    todoExecutionInProgressRef.current = true;
+    setIsPendingTodoSend(true);
     const timer = setTimeout(() => {
+      setIsPendingTodoSend(false);
       void sendChatMessage(pendingTodoMessage);
     }, 800);
     return () => clearTimeout(timer);
   }, [pendingTodoMessage, conversationId, sendChatMessage]);
 
   return {
-    chatMessages,
+    streamMessages,
     chatInputValue,
     isChatSending,
+    isTodoExecutionDone,
+    isPendingTodoSend,
     setChatInputValue,
     sendChatMessage,
   };

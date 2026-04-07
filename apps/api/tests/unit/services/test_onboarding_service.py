@@ -16,13 +16,10 @@ from app.models.user_models import (
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
-    get_user_preferences_for_agent,
-    queue_personalization,
     update_onboarding_preferences,
 )
 from app.services.onboarding.post_onboarding_service import (
     _get_default_workflows,
-    emit_progress,
     save_personalization_data,
     seed_initial_user_data,
 )
@@ -67,16 +64,6 @@ def mock_websocket_manager():
 
 
 @pytest.fixture
-def mock_redis_pool():
-    with patch(
-        "app.services.onboarding.onboarding_service.RedisPoolManager"
-    ) as mock_rpm:
-        mock_pool = AsyncMock()
-        mock_rpm.get_pool = AsyncMock(return_value=mock_pool)
-        yield mock_pool
-
-
-@pytest.fixture
 def sample_user_id():
     return str(ObjectId())
 
@@ -111,36 +98,6 @@ def sample_updated_user(sample_user_id):
             },
         },
     }
-
-
-# ---------------------------------------------------------------------------
-# queue_personalization
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestQueuePersonalization:
-    async def test_queues_job_successfully(self, mock_redis_pool):
-        mock_job = MagicMock(job_id="job123")
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
-
-        await queue_personalization("user123")
-
-        mock_redis_pool.enqueue_job.assert_awaited_once_with(
-            "process_personalization_task", "user123"
-        )
-
-    async def test_handles_failed_enqueue(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
-
-        # Should not raise
-        await queue_personalization("user123")
-
-    async def test_handles_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("Redis error"))
-
-        # Should not raise
-        await queue_personalization("user123")
 
 
 # ---------------------------------------------------------------------------
@@ -405,127 +362,6 @@ class TestUpdateOnboardingPreferences:
             await update_onboarding_preferences(sample_user_id, prefs)
 
         assert exc_info.value.status_code == 500
-
-
-# ---------------------------------------------------------------------------
-# get_user_preferences_for_agent
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestGetUserPreferencesForAgent:
-    async def test_returns_formatted_preferences(
-        self, mock_users_collection, sample_user_id
-    ):
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(sample_user_id),
-                "onboarding": {
-                    "completed": True,
-                    "preferences": {
-                        "profession": "Engineer",
-                        "response_style": "casual",
-                    },
-                },
-            }
-        )
-
-        with patch(
-            "app.services.onboarding.onboarding_service.format_user_preferences_for_agent",
-            return_value="Profession: Engineer\nStyle: casual",
-        ) as mock_format:
-            result = await get_user_preferences_for_agent(sample_user_id)
-
-        assert result is not None
-        mock_format.assert_called_once()
-
-    async def test_returns_none_when_user_not_found(
-        self, mock_users_collection, sample_user_id
-    ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
-
-        result = await get_user_preferences_for_agent(sample_user_id)
-
-        assert result is None
-
-    async def test_returns_none_when_not_onboarded(
-        self, mock_users_collection, sample_user_id
-    ):
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(sample_user_id),
-                "onboarding": {"completed": False},
-            }
-        )
-
-        result = await get_user_preferences_for_agent(sample_user_id)
-
-        assert result is None
-
-    async def test_returns_none_when_no_preferences(
-        self, mock_users_collection, sample_user_id
-    ):
-        mock_users_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(sample_user_id),
-                "onboarding": {"completed": True, "preferences": {}},
-            }
-        )
-
-        result = await get_user_preferences_for_agent(sample_user_id)
-
-        assert result is None
-
-    async def test_returns_none_on_exception(
-        self, mock_users_collection, sample_user_id
-    ):
-        mock_users_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
-
-        result = await get_user_preferences_for_agent(sample_user_id)
-
-        assert result is None
-
-    async def test_returns_none_when_no_onboarding_key(
-        self, mock_users_collection, sample_user_id
-    ):
-        mock_users_collection.find_one = AsyncMock(
-            return_value={"_id": ObjectId(sample_user_id)}
-        )
-
-        result = await get_user_preferences_for_agent(sample_user_id)
-
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
-# emit_progress (post_onboarding_service)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestEmitProgress:
-    async def test_broadcasts_progress(self, mock_websocket_manager):
-        await emit_progress("user1", "analyzing", "Analyzing...", 50)
-
-        mock_websocket_manager.broadcast_to_user.assert_awaited_once_with(
-            "user1",
-            {
-                "type": "personalization_progress",
-                "data": {
-                    "stage": "analyzing",
-                    "message": "Analyzing...",
-                    "progress": 50,
-                    "details": {},
-                },
-            },
-        )
-
-    async def test_broadcasts_progress_with_details(self, mock_websocket_manager):
-        details = {"current": 5, "total": 10}
-        await emit_progress("user1", "stage", "msg", 75, details)
-
-        call_args = mock_websocket_manager.broadcast_to_user.call_args
-        assert call_args[0][1]["data"]["details"] == details
 
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ _WORKFLOWS_COLLECTION = "app.api.v1.endpoints.onboarding.workflows_collection"
 _UPDATE_PREFERENCES = "app.api.v1.endpoints.onboarding.update_onboarding_preferences"
 _COMPOSIO_SERVICE = "app.api.v1.endpoints.onboarding.get_composio_service"
 _WEBSOCKET_MANAGER = "app.api.v1.endpoints.onboarding.websocket_manager"
-_QUEUE_PERSONALIZATION = "app.api.v1.endpoints.onboarding.queue_personalization"
+_REDIS_POOL_MANAGER = "app.utils.redis_utils.RedisPoolManager"
 
 
 def _make_onboarding_request(**overrides) -> dict:
@@ -91,7 +91,11 @@ class TestCompleteOnboarding:
                 new_callable=AsyncMock,
                 return_value={"email_memory_processed": False},
             ),
-            patch(_QUEUE_PERSONALIZATION, new_callable=AsyncMock),
+            patch(
+                _REDIS_POOL_MANAGER + ".get_pool",
+                new_callable=AsyncMock,
+                return_value=AsyncMock(),
+            ),
         ):
             response = await client.post(BASE_URL, json=_make_onboarding_request())
 

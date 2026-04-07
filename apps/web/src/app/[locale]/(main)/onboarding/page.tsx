@@ -5,6 +5,7 @@ import { ArrowRight02Icon } from "@icons";
 import { m } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
+import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import {
   OnboardingInput,
   OnboardingMessages,
@@ -76,13 +77,7 @@ export default function Onboarding() {
     handleRestart();
   }, [flow, handleRestart]);
 
-  const {
-    chatMessages,
-    chatInputValue,
-    isChatSending,
-    setChatInputValue,
-    sendChatMessage,
-  } = useOnboardingChat(
+  const chatMessages = useOnboardingChat(
     flow.data.conversationId,
     flow.data.executedTodoId ? flow.data.todoExecutionResult : null,
   );
@@ -94,7 +89,6 @@ export default function Onboarding() {
       flow.handleIntelligenceComplete(conversationId);
       void handleConversationReady(conversationId);
     },
-    onTodoExecution: flow.handleTodoExecutionEvent,
   });
 
   // Auto-scroll on step changes and new content
@@ -103,16 +97,20 @@ export default function Onboarding() {
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [flow.step, chatMessages.length, flow.loadingStatuses.length]);
+  }, [
+    flow.step,
+    chatMessages.streamMessages.length,
+    flow.loadingStatuses.length,
+  ]);
 
   const handleFreeChatSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      const trimmed = chatInputValue.trim();
+      const trimmed = chatMessages.chatInputValue.trim();
       if (!trimmed) return;
-      void sendChatMessage(trimmed);
+      void chatMessages.sendChatMessage(trimmed);
     },
-    [chatInputValue, sendChatMessage],
+    [chatMessages],
   );
 
   // Determine current progress step for the progress bar
@@ -253,45 +251,82 @@ export default function Onboarding() {
                 </div>
               )}
 
-              {/* Chat messages */}
-              {chatMessages.map((msg) => (
+              {/* Streaming chat messages */}
+              {chatMessages.streamMessages.map((msg) => (
                 <m.div
                   key={msg.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, ease: [0.19, 1, 0.22, 1] }}
-                  className={
-                    msg.role === "user"
-                      ? "flex justify-end"
-                      : "flex justify-start"
-                  }
                 >
-                  <div
-                    className={
-                      msg.role === "user"
-                        ? "max-w-[85%] rounded-2xl bg-blue-600/20 px-4 py-3 text-sm text-zinc-100 leading-relaxed"
-                        : "max-w-[85%] rounded-2xl bg-zinc-800/60 px-4 py-3 text-sm text-zinc-200 leading-relaxed"
-                    }
-                  >
-                    {msg.content || (
-                      <span className="flex items-center gap-1.5 text-zinc-500">
-                        <span
-                          className="inline-block size-1.5 rounded-full bg-zinc-500 animate-bounce"
-                          style={{ animationDelay: "0ms" }}
-                        />
-                        <span
-                          className="inline-block size-1.5 rounded-full bg-zinc-500 animate-bounce"
-                          style={{ animationDelay: "150ms" }}
-                        />
-                        <span
-                          className="inline-block size-1.5 rounded-full bg-zinc-500 animate-bounce"
-                          style={{ animationDelay: "300ms" }}
-                        />
-                      </span>
-                    )}
-                  </div>
+                  {msg.role === "user" ? (
+                    <ChatBubbleUser
+                      {...BOT_BUBBLE_DEFAULTS}
+                      text={msg.content}
+                      message_id={msg.id}
+                      date={msg.createdAt.toISOString()}
+                      fileData={msg.fileData}
+                    />
+                  ) : (
+                    <ChatBubbleBot
+                      {...BOT_BUBBLE_DEFAULTS}
+                      text={msg.content}
+                      message_id={msg.id}
+                      loading={msg.status === "sending"}
+                      tool_data={msg.tool_data ?? undefined}
+                      todo_progress={msg.todo_progress ?? undefined}
+                      memory_data={msg.memory_data ?? undefined}
+                      image_data={msg.image_data ?? undefined}
+                      date={msg.createdAt.toISOString()}
+                    />
+                  )}
                 </m.div>
               ))}
+
+              {/* Loading indicator during pre-send delay and initial streaming */}
+              {(chatMessages.isPendingTodoSend ||
+                (chatMessages.isChatSending &&
+                  !chatMessages.streamMessages.some(
+                    (m) => m.role === "assistant" && m.content,
+                  ))) && (
+                <m.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center gap-2 pl-1"
+                >
+                  <div className="min-w-10 shrink-0" />
+                  <div className="flex gap-1.5">
+                    {[0, 150, 300].map((delay) => (
+                      <span
+                        key={delay}
+                        className="inline-block size-1.5 animate-bounce rounded-full bg-zinc-500"
+                        style={{ animationDelay: `${delay}ms` }}
+                      />
+                    ))}
+                  </div>
+                </m.div>
+              )}
+
+              {/* Post-todo-execution CTA */}
+              {chatMessages.isTodoExecutionDone && (
+                <m.div
+                  className="flex justify-center pt-4"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
+                >
+                  <Button
+                    color="primary"
+                    radius="full"
+                    size="md"
+                    endContent={<ArrowRight02Icon className="size-4" />}
+                    as="a"
+                    href="/c"
+                  >
+                    Continue to GAIA
+                  </Button>
+                </m.div>
+              )}
             </m.div>
           )}
 
@@ -377,10 +412,10 @@ export default function Onboarding() {
             onProfessionInputChange={handleProfessionInputChange}
             inputRef={inputRef}
             isFreeChatMode
-            freeChatValue={chatInputValue}
-            onFreeChatChange={setChatInputValue}
+            freeChatValue={chatMessages.chatInputValue}
+            onFreeChatChange={chatMessages.setChatInputValue}
             onFreeChatSubmit={handleFreeChatSubmit}
-            isSending={isChatSending}
+            isSending={chatMessages.isChatSending}
           />
         ) : showQAInput && flow.step.type === "question" ? (
           <OnboardingInput

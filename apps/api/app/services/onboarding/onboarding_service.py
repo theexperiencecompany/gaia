@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from shared.py.wide_events import log
 from app.db.mongodb.collections import users_collection
@@ -10,7 +10,6 @@ from app.models.user_models import (
     OnboardingRequest,
 )
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
-from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
 from pymongo import ReturnDocument
@@ -20,7 +19,6 @@ async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
-    user_timezone: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Complete user onboarding by storing preferences and updating user profile.
@@ -213,33 +211,3 @@ async def update_onboarding_preferences(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to update preferences")
-
-
-async def get_user_preferences_for_agent(user_id: str) -> Optional[str]:
-    """
-    Get formatted user preferences for agent system prompt.
-
-    Args:
-        user_id: The user's MongoDB ID
-
-    Returns:
-        Formatted string of user preferences or None if not available
-    """
-    try:
-        user_object_id = ObjectId(user_id)
-        user = await users_collection.find_one({"_id": user_object_id})
-
-        if not user or not user.get("onboarding", {}).get("completed", False):
-            return None
-
-        prefs = user.get("onboarding", {}).get("preferences", {})
-
-        if not prefs:
-            return None
-
-        # Use the modular utility function to format preferences
-        return format_user_preferences_for_agent(prefs)
-
-    except Exception as e:
-        log.error(f"Error getting user preferences for agent: {str(e)}", exc_info=True)
-        return None
