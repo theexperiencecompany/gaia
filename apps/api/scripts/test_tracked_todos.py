@@ -21,7 +21,6 @@ import asyncio
 import json
 import sys
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
