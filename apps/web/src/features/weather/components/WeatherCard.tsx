@@ -88,23 +88,11 @@ const getWeatherIcon = (main: string, className: string = "", fill = "") => {
 export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
   const [useFahrenheit, setUseFahrenheit] = useState(false);
 
-  const temp = weatherData.main.temp;
-  const feelsLike = weatherData.main.feels_like;
-  const weatherId = weatherData.weather[0].id;
-  const sunriseTime = formatTime(weatherData.sys.sunrise, weatherData.timezone);
-  const sunsetTime = formatTime(weatherData.sys.sunset, weatherData.timezone);
-
-  // Convert temperature based on selected unit
-  const displayTemp = useFahrenheit
-    ? Math.round(celsiusToFahrenheit(temp))
-    : Math.round(temp);
-
-  const displayFeelsLike = useFahrenheit
-    ? Math.round(celsiusToFahrenheit(feelsLike))
-    : Math.round(feelsLike);
-
   // Determine the weather theme based on weather conditions
   const weatherTheme = useMemo(() => {
+    if (!weatherData?.weather?.[0]) return null;
+    const weatherId = weatherData.weather[0].id;
+    
     // weather condition codes: https://openweathermap.org/weather-conditions
     if (weatherId >= 200 && weatherId < 300) {
       return {
@@ -328,6 +316,10 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
       };
     }
   }, [weatherId]);
+
+  if (!weatherTheme) {
+    return <div>Loading weather...</div>;
+  }
 
   return (
     <div

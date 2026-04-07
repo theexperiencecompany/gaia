@@ -175,6 +175,12 @@ export const useSendMessage = () => {
 
         // For existing conversations: persist to IndexedDB immediately with optimistic ID
         // Backend will send real ID which will replace this optimistic message
+        console.log(
+          "[DEBUG:useSendMessage] existing conversation path — conversationId:",
+          conversationId,
+          "optimisticId:",
+          optimisticId,
+        );
         const optimisticMessage: IMessage = {
           id: optimisticId,
           conversationId,

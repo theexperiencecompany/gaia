@@ -109,6 +109,19 @@ export const useChatStore = create<ChatState>((set) => ({
       const index = existingMessages.findIndex(
         (existing) => existing.id === message.id,
       );
+      console.log(
+        "[DEBUG:chatStore.addOrUpdateMessage]",
+        "convId:",
+        conversationId,
+        "msgId:",
+        message.id,
+        "role:",
+        message.role,
+        "action:",
+        index === -1 ? "ADD" : "UPDATE",
+        "existingCount:",
+        existingMessages.length,
+      );
 
       let updatedMessages =
         index === -1

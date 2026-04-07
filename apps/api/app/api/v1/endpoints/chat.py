@@ -56,16 +56,20 @@ def _build_chat_context(
 
 
 async def _stream_from_redis(
-    stream_id: str, request: Request
+    stream_id: str, request: Request, start_event: asyncio.Event = None
 ) -> AsyncGenerator[str, None]:
     """Subscribe to Redis channel and forward chunks to HTTP response."""
     if not redis_cache.redis:
         log.error(f"Redis unavailable for stream {stream_id}")
+        if start_event and not start_event.is_set():
+            start_event.set()
         yield "data: [STREAM_ERROR]\n\n"
         return
 
     try:
-        async for chunk in stream_manager.subscribe_stream(stream_id):
+        async for chunk in stream_manager.subscribe_stream(
+            stream_id, start_event=start_event
+        ):
             if await request.is_disconnected():
                 log.info(
                     f"Client disconnected, stream {stream_id} continues in background"
@@ -77,6 +81,9 @@ async def _stream_from_redis(
         log.info(f"Stream {stream_id}: client connection cancelled")
     except Exception as e:
         log.error(f"Error streaming to client: {e}")
+    finally:
+        if start_event and not start_event.is_set():
+            start_event.set()
 
 
 @router.post("/chat-stream")
@@ -117,6 +124,7 @@ async def chat_stream_endpoint(
     )
 
     # Start background streaming task (continues even if client disconnects)
+    start_event = asyncio.Event()
     task = asyncio.create_task(
         run_chat_stream_background(
             stream_id=stream_id,
@@ -125,13 +133,14 @@ async def chat_stream_endpoint(
             user_time=tz_info[1],
             conversation_id=conversation_id,
             source="web",
+            start_event=start_event,
         )
     )
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
     return StreamingResponse(
-        _stream_from_redis(stream_id, request),
+        _stream_from_redis(stream_id, request, start_event=start_event),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

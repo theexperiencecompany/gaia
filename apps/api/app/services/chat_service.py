@@ -41,6 +41,7 @@ async def run_chat_stream_background(
     user_time: datetime,
     conversation_id: str,
     source: Optional[str] = None,
+    start_event: Optional[asyncio.Event] = None,
 ) -> None:
     """
     Run chat streaming in background, publishing chunks to Redis.
@@ -67,6 +68,7 @@ async def run_chat_stream_background(
             user_time=user_time,
             conversation_id=conversation_id,
             source=source,
+            start_event=start_event,
         )
 
 
@@ -306,6 +308,7 @@ async def _run_chat_stream(
     user_time: datetime,
     conversation_id: str,
     source: Optional[str] = None,
+    start_event: Optional[asyncio.Event] = None,
 ) -> None:
     complete_message = ""
     tool_data: Dict[str, Any] = {"tool_data": []}
@@ -346,6 +349,17 @@ async def _run_chat_stream(
             )
         else:
             init_data = f"data: {json.dumps({'user_message_id': user_message_id, 'bot_message_id': bot_message_id, 'stream_id': stream_id})}\n\n"
+
+        if start_event:
+            try:
+                # Wait for HTTP StreamingResponse to subscribe to Redis Pub/Sub
+                await asyncio.wait_for(start_event.wait(), timeout=5.0)
+                log.debug(
+                    f"Stream {stream_id} HTTP subscriber is ready, publishing init chunk"
+                )
+            except asyncio.TimeoutError:
+                log.warning(f"Timeout waiting for start_event on stream {stream_id}")
+
         await stream_manager.publish_chunk(stream_id, init_data)
 
         # Stream response from agent

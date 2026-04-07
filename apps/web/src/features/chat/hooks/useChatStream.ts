@@ -4,7 +4,7 @@ import {
   parseChatStreamEvent,
   upsertTodoProgressToolData,
 } from "@shared/chat";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
@@ -52,6 +52,22 @@ export const useChatStream = () => {
       description: null as string | null,
     },
   });
+
+  // Keep refs.current.convoMessages in sync with the latest value from the store.
+  // Without this, refs.current.convoMessages is permanently stale after mount —
+  // it captures the initial value (often []) and never updates, so the API receives
+  // wrong conversation history on every message after the first.
+  useEffect(() => {
+    const prev = refs.current.convoMessages;
+    refs.current.convoMessages = convoMessages;
+    console.log(
+      "[DEBUG:useChatStream] convoMessages ref updated",
+      "prev:",
+      prev.length,
+      "→ now:",
+      convoMessages.length,
+    );
+  }, [convoMessages]);
 
   // Reset all stream-related state
   const resetStreamState = () => {
@@ -429,7 +445,25 @@ export const useChatStream = () => {
   }) => {
     const { user_message_id, bot_message_id, stream_id } = data;
     const conversationId = useChatStore.getState().activeConversationId;
-    if (!conversationId) return;
+    console.log(
+      "[DEBUG:handleExistingConversationMessages] CALLED",
+      "conversationId:",
+      conversationId,
+      "user_message_id:",
+      user_message_id,
+      "bot_message_id:",
+      bot_message_id,
+      "optimisticUserId:",
+      refs.current.optimisticUserId,
+      "hasBotMessage:",
+      !!refs.current.botMessage,
+    );
+    if (!conversationId) {
+      console.error(
+        "[DEBUG:handleExistingConversationMessages] ❌ NO conversationId — EARLY RETURN. activeConversationId in store is null!",
+      );
+      return;
+    }
 
     // Set stream_id for backend cancellation support
     if (stream_id) {
@@ -441,6 +475,12 @@ export const useChatStream = () => {
 
     if (refs.current.optimisticUserId) {
       try {
+        console.log(
+          "[DEBUG:handleExistingConversationMessages] replacing optimistic user message",
+          refs.current.optimisticUserId,
+          "→",
+          user_message_id,
+        );
         await db.replaceOptimisticMessage(
           refs.current.optimisticUserId,
           user_message_id,
@@ -452,11 +492,33 @@ export const useChatStream = () => {
       } catch (error) {
         console.error("Failed to replace optimistic message:", error);
       }
+    } else {
+      console.warn(
+        "[DEBUG:handleExistingConversationMessages] ⚠️ no optimisticUserId — skipping user message replacement",
+      );
     }
 
     if (bot_message_id && refs.current.botMessage) {
+      console.log(
+        "[DEBUG:handleExistingConversationMessages] ✅ setting bot_message_id on ref:",
+        bot_message_id,
+      );
       refs.current.botMessage.message_id = bot_message_id;
       await persistBotMessage(conversationId, bot_message_id);
+      console.log(
+        "[DEBUG:handleExistingConversationMessages] ✅ persistBotMessage done, refs.botMessage.message_id:",
+        refs.current.botMessage?.message_id,
+      );
+    } else {
+      console.error(
+        "[DEBUG:handleExistingConversationMessages] ❌ SKIPPING bot message init!",
+        "bot_message_id:",
+        bot_message_id,
+        "hasBotMessage:",
+        !!refs.current.botMessage,
+        "botMessage.message_id:",
+        refs.current.botMessage?.message_id,
+      );
     }
   };
 
@@ -490,6 +552,14 @@ export const useChatStream = () => {
     // Update store directly during streaming (no DB writes to avoid race conditions)
     if (refs.current.botMessage?.message_id && conversationId) {
       updateBotMessageInStore(conversationId);
+    } else {
+      console.warn(
+        "[DEBUG:handleStreamingContent] ⚠️ SKIPPING updateBotMessageInStore",
+        "botMessage.message_id:",
+        refs.current.botMessage?.message_id || "(empty)",
+        "conversationId:",
+        conversationId,
+      );
     }
   };
 
@@ -565,6 +635,19 @@ export const useChatStream = () => {
     };
 
     // Update store directly without DB write during streaming
+    console.log(
+      "[DEBUG:updateBotMessageInStore] ✅ calling addOrUpdateMessage",
+      "messageId:",
+      updatedMessage.id,
+      "conversationId:",
+      conversationId,
+      "content length:",
+      updatedMessage.content.length,
+      "status:",
+      updatedMessage.status,
+      "tool_data entries:",
+      updatedMessage.tool_data?.length ?? 0,
+    );
     useChatStore.getState().addOrUpdateMessage(updatedMessage);
   };
 
@@ -645,7 +728,14 @@ export const useChatStream = () => {
             stream_id: parsed.stream_id,
           };
 
-          if (data.conversation_id) {
+          if (
+            data.conversation_id &&
+            !useChatStore.getState().activeConversationId
+          ) {
+            console.log(
+              "[DEBUG:conversation_initialized] → taking handleNewConversation branch. activeConvId:",
+              useChatStore.getState().activeConversationId,
+            );
             await handleNewConversation({
               conversation_id: data.conversation_id,
               conversation_description: data.conversation_description,
@@ -655,6 +745,18 @@ export const useChatStream = () => {
             });
             continue;
           }
+
+          console.log(
+            "[DEBUG:conversation_initialized] → existing conversation branch",
+            "user_message_id:",
+            data.user_message_id,
+            "bot_message_id:",
+            data.bot_message_id,
+            "refs.newConversation.id:",
+            refs.current.newConversation.id,
+            "activeConvId:",
+            useChatStore.getState().activeConversationId,
+          );
 
           if (
             data.user_message_id &&
@@ -666,6 +768,16 @@ export const useChatStream = () => {
               bot_message_id: data.bot_message_id,
               stream_id: data.stream_id,
             });
+          } else {
+            console.error(
+              "[DEBUG:conversation_initialized] ❌ handleExistingConversationMessages NOT called!",
+              "user_message_id?",
+              !!data.user_message_id,
+              "bot_message_id?",
+              !!data.bot_message_id,
+              "refs.newConversation.id:",
+              refs.current.newConversation.id,
+            );
           }
           continue;
         }
@@ -864,6 +976,22 @@ export const useChatStream = () => {
       useChatStore.getState().activeConversationId ||
       refs.current.newConversation.id;
     streamState.startStream(conversationId);
+
+    console.log(
+      "[DEBUG:streamFunction] ▶ stream started",
+      "conversationId:",
+      conversationId,
+      "refs.convoMessages (STALE REF):",
+      refs.current.convoMessages.length,
+      "msgs",
+      "currentMessages (passed in):",
+      currentMessages.length,
+      "msgs",
+      "optimisticUserId:",
+      optimisticUserId,
+      "streamCloseHandledRef:",
+      streamCloseHandledRef.current,
+    );
 
     // Track chat started event
     trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {
