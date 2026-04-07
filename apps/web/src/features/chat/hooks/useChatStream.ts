@@ -456,10 +456,6 @@ export const useChatStream = () => {
       } catch (error) {
         console.error("Failed to replace optimistic message:", error);
       }
-    } else {
-      console.warn(
-        "[DEBUG:handleExistingConversationMessages] ⚠️ no optimisticUserId — skipping user message replacement",
-      );
     }
 
     if (bot_message_id && refs.current.botMessage) {
@@ -657,10 +653,6 @@ export const useChatStream = () => {
             data.conversation_id &&
             !useChatStore.getState().activeConversationId
           ) {
-            console.log(
-              "[DEBUG:conversation_initialized] → taking handleNewConversation branch. activeConvId:",
-              useChatStore.getState().activeConversationId,
-            );
             await handleNewConversation({
               conversation_id: data.conversation_id,
               conversation_description: data.conversation_description,
@@ -881,22 +873,6 @@ export const useChatStream = () => {
       useChatStore.getState().activeConversationId ||
       refs.current.newConversation.id;
     streamState.startStream(conversationId);
-
-    console.log(
-      "[DEBUG:streamFunction] ▶ stream started",
-      "conversationId:",
-      conversationId,
-      "refs.convoMessages (STALE REF):",
-      refs.current.convoMessages.length,
-      "msgs",
-      "currentMessages (passed in):",
-      currentMessages.length,
-      "msgs",
-      "optimisticUserId:",
-      optimisticUserId,
-      "streamCloseHandledRef:",
-      streamCloseHandledRef.current,
-    );
 
     // Track chat started event
     trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {
