@@ -4,7 +4,6 @@ import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternative
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
-import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
@@ -129,14 +128,25 @@ async function getExploreWorkflowPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   try {
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
+
     const limit = isDevelopment() ? 50 : 1000;
-    const exploreResp = await workflowApi.getExploreWorkflows(limit, 0);
-    return exploreResp.workflows.map((wc) => ({
-      url: `${baseUrl}/use-cases/${wc.id}`,
-      lastModified: new Date(wc.created_at),
-      changeFrequency: "weekly" as const,
-      priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
-    }));
+    const response = await fetch(
+      `${apiBaseUrl}/workflows/explore?limit=${limit}&offset=0`,
+      { next: { revalidate: 3600 } },
+    );
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    return (data.workflows || []).map(
+      (wc: { id: string; created_at: string; categories?: string[] }) => ({
+        url: `${baseUrl}/use-cases/${wc.id}`,
+        lastModified: new Date(wc.created_at),
+        changeFrequency: "weekly" as const,
+        priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
+      }),
+    );
   } catch (error) {
     console.error("Error fetching explore workflows for sitemap:", error);
     return [];
@@ -150,24 +160,40 @@ async function getCommunityWorkflowPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   try {
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
+
     if (isDevelopment()) {
-      const communityResponse = await workflowApi.getCommunityWorkflows(50, 0);
-      return communityResponse.workflows.map((workflow) => ({
-        url: `${baseUrl}/use-cases/${workflow.id}`,
-        lastModified: new Date(workflow.created_at),
-        changeFrequency: "weekly" as const,
-        priority: 0.6,
-      }));
+      const response = await fetch(
+        `${apiBaseUrl}/workflows/community?limit=50&offset=0`,
+        { next: { revalidate: 3600 } },
+      );
+      if (!response.ok) return [];
+      const data = await response.json();
+      return (data.workflows || []).map(
+        (workflow: { id: string; created_at: string }) => ({
+          url: `${baseUrl}/use-cases/${workflow.id}`,
+          lastModified: new Date(workflow.created_at),
+          changeFrequency: "weekly" as const,
+          priority: 0.6,
+        }),
+      );
     }
 
-    const allWorkflows = await fetchAllPaginated(async (limit, offset) => {
-      const resp = await workflowApi.getCommunityWorkflows(limit, offset);
-      return {
-        items: resp.workflows,
-        total: resp.total || 0,
-        hasMore: resp.workflows.length === limit,
-      };
-    }, 100);
+    const allWorkflows: Array<{ id: string; created_at: string }> =
+      await fetchAllPaginated(async (limit, offset) => {
+        const response = await fetch(
+          `${apiBaseUrl}/workflows/community?limit=${limit}&offset=${offset}`,
+          { next: { revalidate: 3600 } },
+        );
+        if (!response.ok) return { items: [], total: 0, hasMore: false };
+        const data = await response.json();
+        return {
+          items: data.workflows || [],
+          total: data.total || 0,
+          hasMore: data.workflows?.length === limit,
+        };
+      }, 100);
 
     console.log(
       `[Sitemap] Generated ${allWorkflows.length} community workflow pages`,
@@ -397,6 +423,8 @@ export async function getSitemapEntries(
       return withLocaleUrls(getAlternativePages(baseUrl), baseUrl);
     case SITEMAP_IDS.INTEGRATION_COMBOS:
       return withLocaleUrls(getIntegrationComboPages(baseUrl), baseUrl);
+    case SITEMAP_IDS.NATIVE_INTEGRATIONS:
+      return [];
     default:
       return [];
   }
