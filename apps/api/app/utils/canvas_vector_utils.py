@@ -32,7 +32,7 @@ async def store_canvas_embedding(
             "todo_id": str(todo_id),
             "title": title,
             "updated_at": datetime.now(timezone.utc).isoformat(),
-            "completed": False,
+            "completed": "false",  # ChromaDB requires booleans as lowercase strings
         }
         if labels:
             metadata["labels"] = ", ".join(labels)
@@ -66,7 +66,8 @@ async def update_canvas_embedding(
         )
         metadatas = existing.get("metadatas") if existing else None
         if metadatas and metadatas[0]:
-            was_completed = bool(metadatas[0].get("completed", False))
+            # Compare as string — bool("false") == True, so can't use bool()
+            was_completed = metadatas[0].get("completed", "false") == "true"
     except Exception as e:
         log.debug(
             "canvas.preserve_completed_metadata_failed", todo_id=todo_id, error=str(e)
@@ -120,7 +121,7 @@ async def mark_canvas_completed(todo_id: str) -> bool:
         metadata: dict[str, str | int | float | bool | None] = dict(
             existing["metadatas"][0]
         )
-        metadata["completed"] = True
+        metadata["completed"] = "true"  # ChromaDB requires booleans as lowercase strings
         metadata["completed_at"] = datetime.now(timezone.utc).isoformat()
 
         await collection.update(ids=[doc_id], metadatas=[metadata])
@@ -151,7 +152,7 @@ async def search_canvas_context(
             where_filter = {
                 "$and": [
                     {"user_id": str(user_id)},
-                    {"completed": False},
+                    {"completed": "false"},  # ChromaDB requires booleans as lowercase strings
                 ]
             }
 

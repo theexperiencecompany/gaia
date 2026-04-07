@@ -16,6 +16,7 @@ from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_id
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
+from app.services.tracked_todo_service import tracked_todo_service
 from langchain_core.messages import SystemMessage
 
 
@@ -186,9 +187,10 @@ async def create_agent_context_message(
         except Exception as e:
             log.warning(f"Error parsing user_time: {e}")
 
-    # Search for memories and skills concurrently
+    # Search for memories, skills, and tracked todos concurrently
     memories_section = ""
     skills_section = ""
+    tracked_todos_section = ""
 
     async def _fetch_memories() -> str:
         if not (user_id and query):
@@ -224,10 +226,22 @@ async def create_agent_context_message(
             log.warning(f"Error injecting installable skills: {e}")
         return ""
 
-    memories_section, skills_section = await asyncio.gather(
-        _fetch_memories(), _fetch_skills()
+    async def _fetch_tracked_todos() -> str:
+        if not user_id:
+            return ""
+        try:
+            summary = await tracked_todo_service.get_active_tracked_summary(user_id)
+            if summary:
+                log.info("Injected active tracked todos into executor context")
+                return f"\n\n{summary}"
+        except Exception as e:
+            log.warning(f"Error retrieving tracked todos for executor: {e}")
+        return ""
+
+    memories_section, skills_section, tracked_todos_section = await asyncio.gather(
+        _fetch_memories(), _fetch_skills(), _fetch_tracked_todos()
     )
 
-    content = "\n".join(context_parts) + memories_section + skills_section
+    content = "\n".join(context_parts) + memories_section + skills_section + tracked_todos_section
 
     return SystemMessage(content=content, memory_message=True)
