@@ -9,6 +9,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
+from app.agents.tools.canvas_quality_evaluator import evaluate_canvas_quality
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority
 from app.services.tracked_todo_service import tracked_todo_service
@@ -174,13 +175,28 @@ async def create_tracked_todo(
                 f"The todo exists but will NOT execute automatically."
             )
 
-    return (
+    base_result = (
         f"Tracked todo created: {result.id}\n"
         f"Title: {result.title}\n"
         f"VFS: {result.vfs_path}\n"
         f"Canvas: {result.vfs_path}/canvas.md\n"
         f"Log: {result.vfs_path}/log.md"
     )
+
+    # Post-write canvas quality evaluation (Claude Code PostToolUse hook pattern):
+    # Runs an LLM-as-judge to verify the initial canvas captured all actionable
+    # identifiers. Appends a correction prompt to the return value if anything is
+    # missing — the agent sees it and self-corrects in the same turn.
+    if initial_canvas:
+        quality_note = await evaluate_canvas_quality(
+            canvas_path=f"{result.vfs_path}/canvas.md",
+            user_id=user_id,
+            todo_id=result.id,
+        )
+        if quality_note:
+            return base_result + quality_note
+
+    return base_result
 
 
 @tool
@@ -318,7 +334,21 @@ async def update_tracked_todo_canvas(
         + (f", section={section}" if section else "")
         + ")",
     )
-    return f"Canvas updated (mode={mode}" + (f", section={section}" if section else "") + ")."
+
+    base_result = f"Canvas updated (mode={mode}" + (f", section={section}" if section else "") + ")."
+
+    # Post-write canvas quality evaluation (Claude Code PostToolUse hook pattern):
+    # Runs an LLM-as-judge to verify the canvas has all actionable identifiers.
+    # Injects a correction prompt into the return value if anything critical is missing.
+    quality_note = await evaluate_canvas_quality(
+        canvas_path=canvas_path,
+        user_id=user_id,
+        todo_id=todo_id,
+    )
+    if quality_note:
+        return base_result + quality_note
+
+    return base_result
 
 
 @tool

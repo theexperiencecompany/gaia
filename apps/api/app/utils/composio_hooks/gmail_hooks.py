@@ -6,11 +6,8 @@ response processing for raw Gmail API data, and schema modifiers
 for customizing tool descriptions and defaults.
 """
 
+import re
 from typing import Any
-
-from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
-from langchain_core.tools import ToolException
-from langgraph.config import get_stream_writer
 
 from app.agents.templates.mail_templates import (
     detailed_message_template,
@@ -19,6 +16,9 @@ from app.agents.templates.mail_templates import (
     process_list_drafts_response,
     process_list_messages_response,
 )
+from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
+from langchain_core.tools import ToolException
+from langgraph.config import get_stream_writer
 from shared.py.wide_events import log
 
 from .registry import (
@@ -137,6 +137,31 @@ def gmail_fetch_emails_before_hook(
         raise ToolException(
             f"Result set too large for full email mode. "
             f"Call in chunks with max_results <= {GMAIL_FULL_FETCH_HARD_LIMIT}."
+        )
+
+    return params
+
+
+@register_before_hook(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
+def gmail_fetch_message_id_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
+    """
+    Validate that message_id is a real Gmail message ID before hitting the API.
+
+    Gmail message IDs are 16-character lowercase hex strings (e.g. '19d645a2b146c776').
+    MongoDB ObjectIds are 24-character hex strings. If the agent accidentally passes
+    a MongoDB ObjectId (e.g. a tracked todo's _id), the Gmail API silently returns
+    all-empty fields instead of an error — this hook catches that case early.
+    """
+    arguments = params.get("arguments", {})
+    message_id = arguments.get("message_id", "")
+
+    if message_id and not re.fullmatch(r"[0-9a-f]{16}", str(message_id)):
+        raise ToolException(
+            f"Invalid Gmail message ID '{message_id}'. "
+            "Gmail message IDs are 16-character lowercase hex strings (e.g. '19d645a2b146c776'). "
+            "Check the canvas for the correct thread_id recorded after the email was sent."
         )
 
     return params
@@ -296,8 +321,24 @@ def gmail_message_detail_after_hook(
 
         # Transform raw message data to detailed but clean format
         processed_response = detailed_message_template(response["data"])
+
+        # Detect the silent all-empty failure: Gmail API returns a structurally
+        # valid response with all empty strings when given an invalid message ID
+        # (e.g. a MongoDB ObjectId). Surface this as an explicit error so the
+        # agent knows the fetch failed rather than thinking the email has no content.
+        id_field = processed_response.get("id", "")
+        subject_field = processed_response.get("subject", "")
+        from_field = processed_response.get("from", "")
+        if not id_field and not subject_field and not from_field:
+            raise ToolException(
+                "Gmail returned an empty message — the message_id is likely invalid or "
+                "the message no longer exists. Verify the ID is correct and that the email still exists in Gmail. "
+            )
+
         return processed_response
 
+    except ToolException:
+        raise
     except Exception as e:
         log.error(f"Error in gmail_message_detail_after_hook: {e}")
         return response["data"]

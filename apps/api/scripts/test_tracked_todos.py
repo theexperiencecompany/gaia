@@ -276,28 +276,36 @@ async def send_chat_message(
     client: httpx.AsyncClient,
     token: str,
     message: str,
-    conversation_id: str,
+    conversation_id: str | None,
     history: list[dict],
-) -> ChatResult:
-    """Send a message and collect the full SSE stream."""
+) -> tuple[ChatResult, str | None]:
+    """Send a message and collect the full SSE stream.
+
+    Returns (ChatResult, actual_conversation_id) — the server-assigned conversation_id
+    is extracted from the init chunk and returned so multi-turn tests can reuse it.
+    """
     events: list[dict] = []
     tool_calls: list[dict] = []
     text_chunks: list[str] = []
     error: str | None = None
+    actual_conversation_id: str | None = conversation_id
 
     # The `messages` array must include the current user message as the last item.
     # The history contains previous turns; we append the current message here.
     full_messages = [*history, {"role": "user", "content": message}]
 
+    body: dict = {
+        "message": message,
+        "messages": full_messages,
+    }
+    if conversation_id is not None:
+        body["conversation_id"] = conversation_id
+
     try:
         async with client.stream(
             "POST",
             f"{API_BASE}/api/v1/chat-stream",
-            json={
-                "message": message,
-                "messages": full_messages,
-                "conversation_id": conversation_id,
-            },
+            json=body,
             headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
@@ -306,14 +314,14 @@ async def send_chat_message(
             timeout=STREAM_TIMEOUT,
         ) as response:
             if response.status_code != 200:
-                body = await response.aread()
+                raw_body = await response.aread()
                 return ChatResult(
                     message=message,
                     response_text="",
                     tool_calls=[],
                     raw_events=[],
-                    error=f"HTTP {response.status_code}: {body.decode()[:500]}",
-                )
+                    error=f"HTTP {response.status_code}: {raw_body.decode()[:500]}",
+                ), actual_conversation_id
 
             async for line in response.aiter_lines():
                 if not line.startswith("data: "):
@@ -327,6 +335,10 @@ async def send_chat_message(
                     continue
 
                 events.append(event)
+
+                # Capture server-assigned conversation_id from init chunk
+                if "conversation_id" in event and actual_conversation_id is None:
+                    actual_conversation_id = event["conversation_id"]
 
                 # Response text (GAIA uses {"response": "..."} chunks)
                 if "response" in event:
@@ -357,7 +369,7 @@ async def send_chat_message(
         tool_calls=tool_calls,
         raw_events=events,
         error=error,
-    )
+    ), actual_conversation_id
 
 
 async def get_tracked_todos(client: httpx.AsyncClient, token: str) -> list[dict]:
@@ -458,13 +470,15 @@ async def run_scenario(
         todos_before = await get_tracked_todos(client, token)
         before_ids = {t["id"] for t in todos_before}
 
-        conversation_id = str(uuid.uuid4())
+        # First chat: pass None so the server creates the conversation.
+        # Subsequent chats: use the server-assigned conversation_id.
+        conversation_id: str | None = None
         history: list[dict] = []
         chat_results: list[ChatResult] = []
 
         for i, message in enumerate(scenario.chats):
             print(f"  Chat {i+1}: {message[:80]}{'...' if len(message) > 80 else ''}")
-            result = await send_chat_message(
+            result, conversation_id = await send_chat_message(
                 client, token, message, conversation_id, history
             )
             chat_results.append(result)
