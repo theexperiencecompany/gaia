@@ -4,6 +4,11 @@
       "command": "dagger",
       "args": ["-s", "mcp"],
       "env": {}
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--autoConnect"],
+      "env": {}
     }
   }
 }

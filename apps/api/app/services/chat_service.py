@@ -354,15 +354,12 @@ async def _run_chat_stream(
             try:
                 # Wait for HTTP StreamingResponse to subscribe to Redis Pub/Sub
                 await asyncio.wait_for(start_event.wait(), timeout=5.0)
-                log.debug(
-                    f"Stream {stream_id} HTTP subscriber is ready, publishing init chunk"
-                )
             except asyncio.TimeoutError:
-                log.warning(f"Timeout waiting for start_event on stream {stream_id}")
+                log.warning(
+                    f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway"
+                )
 
         await stream_manager.publish_chunk(stream_id, init_data)
-
-        # Stream response from agent
         async for chunk in await call_agent(
             request=body,
             user=user,

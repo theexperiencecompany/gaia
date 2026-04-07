@@ -92,7 +92,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
   const weatherTheme = useMemo(() => {
     if (!weatherData?.weather?.[0]) return null;
     const weatherId = weatherData.weather[0].id;
-    
+
     // weather condition codes: https://openweathermap.org/weather-conditions
     if (weatherId >= 200 && weatherId < 300) {
       return {

@@ -99,14 +99,6 @@ export const useSendMessage = () => {
         overrides !== undefined && "conversationId" in overrides
           ? overrides.conversationId
           : useChatStore.getState().activeConversationId;
-      console.log(
-        "[useSendMessage] called, content:",
-        content,
-        "conversationId:",
-        conversationId,
-        "selectedWorkflow:",
-        selectedWorkflow?.id,
-      );
 
       try {
         const userMessage: MessageType = {
@@ -122,17 +114,9 @@ export const useSendMessage = () => {
           selectedCalendarEvent: selectedCalendarEvent ?? undefined,
           replyToMessage: replyToMessage ?? undefined,
         };
-        console.log(
-          "[useSendMessage] userMessage built, entering branch. conversationId falsy?",
-          !conversationId,
-        );
-
         // For new conversations: use Zustand optimistic message (no conversationId yet)
         // For existing conversations: persist directly to IndexedDB with optimistic ID
         if (!conversationId) {
-          console.log(
-            "[useSendMessage] new conversation path — setting optimistic message",
-          );
           // New conversation - use Zustand optimistic message
           useChatStore.getState().setOptimisticMessage({
             id: optimisticId,
@@ -156,9 +140,6 @@ export const useSendMessage = () => {
             .getState()
             .setLoadingWithContext(true, trimmedContent);
 
-          console.log(
-            "[useSendMessage] calling fetchChatStream for new conversation",
-          );
           await fetchChatStream(
             trimmedContent,
             [userMessage],
@@ -175,12 +156,6 @@ export const useSendMessage = () => {
 
         // For existing conversations: persist to IndexedDB immediately with optimistic ID
         // Backend will send real ID which will replace this optimistic message
-        console.log(
-          "[DEBUG:useSendMessage] existing conversation path — conversationId:",
-          conversationId,
-          "optimisticId:",
-          optimisticId,
-        );
         const optimisticMessage: IMessage = {
           id: optimisticId,
           conversationId,
