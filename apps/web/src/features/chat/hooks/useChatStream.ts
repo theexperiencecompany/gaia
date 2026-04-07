@@ -670,12 +670,14 @@ export const useChatStream = () => {
           ) {
             // Now properly pass the args
             await handleExistingConversationMessages({
-              user_message_id: parsed.user_message_id,
-              bot_message_id: parsed.bot_message_id,
-              stream_id: parsed.stream_id,
+              user_message_id: parsed.user_message_id as string,
+              bot_message_id: parsed.bot_message_id as string,
+              stream_id: parsed.stream_id as string,
             });
           }
-        } else if (parsed.type === "token_usage") {
+        }
+
+        if (parsed.type === "token_usage") {
           continue;
         }
 

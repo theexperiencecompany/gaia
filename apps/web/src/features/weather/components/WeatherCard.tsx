@@ -315,11 +315,25 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
         colorCode: "#E5E7EB", // gray-200
       };
     }
-  }, [weatherId]);
+  }, [weatherData]);
 
   if (!weatherTheme) {
     return <div>Loading weather...</div>;
   }
+
+  const weatherId = weatherData?.weather?.[0]?.id;
+  const displayTemp = useFahrenheit
+    ? Math.round(celsiusToFahrenheit(weatherData.main.temp))
+    : Math.round(weatherData.main.temp);
+  const displayFeelsLike = useFahrenheit
+    ? Math.round(celsiusToFahrenheit(weatherData.main.feels_like))
+    : Math.round(weatherData.main.feels_like);
+  const sunriseTime = weatherData.sys?.sunrise
+    ? formatTime(weatherData.sys.sunrise, weatherData.timezone)
+    : "N/A";
+  const sunsetTime = weatherData.sys?.sunset
+    ? formatTime(weatherData.sys.sunset, weatherData.timezone)
+    : "N/A";
 
   return (
     <div

@@ -238,6 +238,7 @@ export type ChatStreamEvent =
   | { type: "tool_output"; output: StreamToolOutput }
   | { type: "todo_progress"; snapshot: TodoProgressSnapshot }
   | { type: "follow_up_actions"; actions: string[] }
+  | { type: "token_usage" }
   | { type: "unknown"; payload: JsonObject };
 
 const isObject = (value: unknown): value is JsonObject =>

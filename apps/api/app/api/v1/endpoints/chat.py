@@ -56,7 +56,7 @@ def _build_chat_context(
 
 
 async def _stream_from_redis(
-    stream_id: str, request: Request, start_event: asyncio.Event = None
+    stream_id: str, request: Request, start_event: asyncio.Event | None = None
 ) -> AsyncGenerator[str, None]:
     """Subscribe to Redis channel and forward chunks to HTTP response."""
     if not redis_cache.redis:
