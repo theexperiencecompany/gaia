@@ -1,8 +1,7 @@
 name: Setup Node.js + pnpm
 description: >
   Install pnpm 10.17.1, Node.js 22.15.1, and project dependencies.
-  Caches both the pnpm store (via setup-node) and the node_modules tree.
-  When node_modules cache hits, pnpm install is skipped entirely.
+  Caches the pnpm store via setup-node so pnpm install resolves from local store.
 
 inputs:
   nx-cloud-access-token:
@@ -24,20 +23,7 @@ runs:
         node-version: "22.15.1"
         cache: "pnpm"
 
-    - name: Cache node_modules
-      id: node-modules-cache
-      uses: actions/cache@v4
-      with:
-        path: |
-          node_modules
-          apps/*/node_modules
-          apps/bots/*/node_modules
-          libs/*/node_modules
-          packages/*/node_modules
-        key: node-modules-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
     - name: Install dependencies
-      if: steps.node-modules-cache.outputs.cache-hit != 'true'
       shell: bash
       run: pnpm install --frozen-lockfile --prefer-offline
 
