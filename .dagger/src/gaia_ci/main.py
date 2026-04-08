@@ -114,7 +114,9 @@ class GaiaCi:
             .with_file("/app/pnpm-workspace.yaml", source.file("pnpm-workspace.yaml"))
             .with_file("/app/uv.lock", source.file("uv.lock"))
             .with_file("/app/pyproject.toml", source.file("pyproject.toml"))
-            # Per-app package.json files needed for pnpm workspace resolution
+            # Per-app package.json files needed for pnpm workspace resolution,
+            # plus Python workspace member configs and shared lib source
+            # (uv sync builds gaia-shared from libs/ as an editable install).
             .with_directory(
                 "/app",
                 source,
@@ -122,7 +124,8 @@ class GaiaCi:
                     "**/package.json",
                     "apps/api/pyproject.toml",
                     "apps/voice-agent/pyproject.toml",
-                    "libs/shared/py/pyproject.toml",
+                    "libs/pyproject.toml",
+                    "libs/shared/**/*.py",
                 ],
             )
             .with_exec(["pnpm", "install", "--frozen-lockfile"])
