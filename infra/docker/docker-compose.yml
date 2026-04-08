@@ -456,6 +456,7 @@ services:
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/overview.json
       # Slack webhook consumed by contact-points.yaml (leave empty to disable alerts)
       SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+      SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
     restart: unless-stopped
     depends_on:
       loki:

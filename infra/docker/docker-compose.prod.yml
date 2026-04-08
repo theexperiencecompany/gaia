@@ -431,6 +431,7 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
       # Slack webhook for alert notifications (leave empty to disable)
       SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+      SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
     restart: unless-stopped
     depends_on:
       loki:

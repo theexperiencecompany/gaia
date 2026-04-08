@@ -321,13 +321,12 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
     return <div>Loading weather...</div>;
   }
 
-  const weatherId = weatherData?.weather?.[0]?.id;
   const displayTemp = useFahrenheit
-    ? Math.round(celsiusToFahrenheit(weatherData.main.temp))
-    : Math.round(weatherData.main.temp);
+    ? Math.round(celsiusToFahrenheit(weatherData.main?.temp ?? 0))
+    : Math.round(weatherData.main?.temp ?? 0);
   const displayFeelsLike = useFahrenheit
-    ? Math.round(celsiusToFahrenheit(weatherData.main.feels_like))
-    : Math.round(weatherData.main.feels_like);
+    ? Math.round(celsiusToFahrenheit(weatherData.main?.feels_like ?? 0))
+    : Math.round(weatherData.main?.feels_like ?? 0);
   const sunriseTime = weatherData.sys?.sunrise
     ? formatTime(weatherData.sys.sunrise, weatherData.timezone)
     : "N/A";
