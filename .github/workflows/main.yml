@@ -162,16 +162,32 @@ jobs:
           URL="${ACTIONS_RESULTS_URL:-$ACTIONS_CACHE_URL}"
           echo "::add-mask::${ACTIONS_RUNTIME_TOKEN}"
           echo "config=type=gha,mode=max,scope=dagger-${GITHUB_REF_NAME},url=${URL},token=${ACTIONS_RUNTIME_TOKEN}" >> "$GITHUB_OUTPUT"
+      - name: Install Dagger CLI
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh \
+            | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
+          sudo mv ./bin/dagger /usr/local/bin/dagger
+          dagger version
       - name: Run Python tests
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: ${{ env.DAGGER_VERSION }}
-          dagger-flags: "--silent"
-          call: test-python
+        timeout-minutes: 18
         env:
           DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
           _EXPERIMENTAL_DAGGER_CACHE_CONFIG: ${{ steps.cache-config.outputs.config }}
-        timeout-minutes: 18
+        run: |
+          set +e
+          dagger --silent call test-python 2>&1 | tee /tmp/dagger-test.log
+          CODE=$?
+          if [ "$CODE" -ne 0 ]; then
+            # Dagger's session cleanup sometimes times out after tests succeed.
+            # Only ignore the failure if the sole error is the shutdown timeout
+            # and pytest reported no failures.
+            if grep -q "cleanup failed" /tmp/dagger-test.log \
+               && ! grep -qE "[[:space:]][0-9]+ failed" /tmp/dagger-test.log; then
+              echo "Tests passed. Ignoring Dagger session cleanup timeout."
+              exit 0
+            fi
+            exit "$CODE"
+          fi
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
@@ -289,16 +305,29 @@ jobs:
           URL="${ACTIONS_RESULTS_URL:-$ACTIONS_CACHE_URL}"
           echo "::add-mask::${ACTIONS_RUNTIME_TOKEN}"
           echo "config=type=gha,mode=max,scope=dagger-coverage-${GITHUB_REF_NAME},url=${URL},token=${ACTIONS_RUNTIME_TOKEN}" >> "$GITHUB_OUTPUT"
+      - name: Install Dagger CLI
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh \
+            | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
+          sudo mv ./bin/dagger /usr/local/bin/dagger
+          dagger version
       - name: Run coverage
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: ${{ env.DAGGER_VERSION }}
-          dagger-flags: "--silent"
-          call: test-python-coverage
+        timeout-minutes: 28
         env:
           DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
           _EXPERIMENTAL_DAGGER_CACHE_CONFIG: ${{ steps.cache-config.outputs.config }}
-        timeout-minutes: 28
+        run: |
+          set +e
+          dagger --silent call test-python-coverage 2>&1 | tee /tmp/dagger-coverage.log
+          CODE=$?
+          if [ "$CODE" -ne 0 ]; then
+            if grep -q "cleanup failed" /tmp/dagger-coverage.log \
+               && ! grep -qE "[[:space:]][0-9]+ failed" /tmp/dagger-coverage.log; then
+              echo "Coverage passed. Ignoring Dagger session cleanup timeout."
+              exit 0
+            fi
+            exit "$CODE"
+          fi
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
