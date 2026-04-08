@@ -534,7 +534,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                   />
                 ),
                 label: "Humidity",
-                value: `${weatherData.main.humidity}%`,
+                value: `${weatherData.main?.humidity ?? 0}%`,
                 tooltipText: "Amount of water vapor in the air",
               },
               ...(weatherData.visibility
@@ -560,7 +560,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                   />
                 ),
                 label: "Pressure",
-                value: `${weatherData.main.pressure} hPa`,
+                value: `${weatherData.main?.pressure ?? 0} hPa`,
                 tooltipText: "Atmospheric pressure in hectopascals",
               },
               {
