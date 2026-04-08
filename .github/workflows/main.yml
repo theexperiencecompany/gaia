@@ -64,7 +64,10 @@ jobs:
           node-version: "22.15.1"
           cache: "pnpm"
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Validate release manifest
+        run: node scripts/ci/validate-release-manifest.mjs
 
       - name: Detect affected projects
         id: affected
@@ -95,6 +98,8 @@ jobs:
     if: needs.detect.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -104,7 +109,7 @@ jobs:
         with:
           node-version: "22.15.1"
           cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prefer-offline
       - run: pip install --break-system-packages uv
       - name: Sync Python deps
         run: uv sync --frozen --package gaia --group backend --group dev
@@ -120,6 +125,8 @@ jobs:
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -129,7 +136,7 @@ jobs:
         with:
           node-version: "22.15.1"
           cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prefer-offline
       - name: Biome lint
         run: npx nx run-many -t lint -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
       - name: TypeScript type-check
@@ -141,6 +148,8 @@ jobs:
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -150,7 +159,7 @@ jobs:
         with:
           node-version: "22.15.1"
           cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prefer-offline
       - name: Build
         run: npx nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
@@ -173,6 +182,8 @@ jobs:
           version: ${{ env.DAGGER_VERSION }}
           dagger-flags: "--silent"
           call: test-python
+        env:
+          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         timeout-minutes: 18
 
   # --- Test: TypeScript (runner-native) -----------------------------------
@@ -181,6 +192,8 @@ jobs:
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -190,7 +203,7 @@ jobs:
         with:
           node-version: "22.15.1"
           cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prefer-offline
       - name: Run TypeScript tests
         run: npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
@@ -211,30 +224,13 @@ jobs:
         with:
           node-version: "22.15.1"
           cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prefer-offline
       - run: pip install --break-system-packages vulture
       - name: Dead code check
         shell: bash
         run: |
           export PATH="/home/runner/.local/bin:$PATH"
           bash scripts/dead-code-check.sh
-
-  # --- Release validation (runner-native, always) -------------------------
-  release-validation:
-    needs: [detect]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - run: node scripts/ci/validate-release-manifest.mjs
 
   # --- Changelog sync check (always) --------------------------------------
   changelog-sync:
@@ -294,7 +290,7 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@master
+      - uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: "fs"
           severity: "CRITICAL,HIGH"
@@ -319,6 +315,8 @@ jobs:
           version: ${{ env.DAGGER_VERSION }}
           dagger-flags: "--silent"
           call: test-python-coverage
+        env:
+          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         timeout-minutes: 28
 
   # --- Quality gate (branch protection target) ----------------------------
@@ -331,8 +329,8 @@ jobs:
       - test-python
       - test-typescript
       - dead-code
-      - release-validation
-      - changelog-sync
+      # release-validation merged into detect job
+      # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # trivy-scan deliberately excluded (non-blocking)
       # coverage deliberately excluded (master-only, non-blocking)
     runs-on: ubuntu-latest
@@ -347,8 +345,6 @@ jobs:
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
           echo "  dead-code:          ${{ needs.dead-code.result }}"
-          echo "  release-validation: ${{ needs.release-validation.result }}"
-          echo "  changelog-sync:     ${{ needs.changelog-sync.result }}"
 
           for r in \
             "${{ needs.static-python.result }}" \
@@ -356,9 +352,7 @@ jobs:
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-typescript.result }}" \
-            "${{ needs.dead-code.result }}" \
-            "${{ needs.release-validation.result }}" \
-            "${{ needs.changelog-sync.result }}"; do
+            "${{ needs.dead-code.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job result: $r"
               exit 1
