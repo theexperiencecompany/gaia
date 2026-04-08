@@ -182,7 +182,7 @@ jobs:
             # Only ignore the failure if the sole error is the shutdown timeout
             # and pytest reported no failures.
             if grep -q "cleanup failed" /tmp/dagger-test.log \
-               && ! grep -qE "[[:space:]][0-9]+ failed" /tmp/dagger-test.log; then
+               && ! grep -qE "([[:space:]][0-9]+ (failed|errors?)|INTERNALERROR|Interrupted:|Required test coverage of .* not reached)" /tmp/dagger-test.log; then
               echo "Tests passed. Ignoring Dagger session cleanup timeout."
               exit 0
             fi
@@ -322,7 +322,7 @@ jobs:
           CODE=$?
           if [ "$CODE" -ne 0 ]; then
             if grep -q "cleanup failed" /tmp/dagger-coverage.log \
-               && ! grep -qE "[[:space:]][0-9]+ failed" /tmp/dagger-coverage.log; then
+               && ! grep -qE "([[:space:]][0-9]+ (failed|errors?)|INTERNALERROR|Interrupted:|Required test coverage of .* not reached)" /tmp/dagger-coverage.log; then
               echo "Coverage passed. Ignoring Dagger session cleanup timeout."
               exit 0
             fi
@@ -333,13 +333,13 @@ jobs:
   quality-gate:
     if: always()
     needs:
+      - detect
       - static-python
       - static-typescript
       - build
       - test-python
       - test-typescript
       - dead-code
-      # release-validation merged into detect job
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # trivy-scan deliberately excluded (non-blocking)
       # coverage deliberately excluded (master-only, non-blocking)
@@ -349,6 +349,7 @@ jobs:
       - name: Evaluate results
         run: |
           echo "Job results:"
+          echo "  detect:             ${{ needs.detect.result }}"
           echo "  static-python:      ${{ needs.static-python.result }}"
           echo "  static-typescript:  ${{ needs.static-typescript.result }}"
           echo "  build:              ${{ needs.build.result }}"
@@ -357,6 +358,7 @@ jobs:
           echo "  dead-code:          ${{ needs.dead-code.result }}"
 
           for r in \
+            "${{ needs.detect.result }}" \
             "${{ needs.static-python.result }}" \
             "${{ needs.static-typescript.result }}" \
             "${{ needs.build.result }}" \
