@@ -99,7 +99,8 @@
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
         "^production"
-      ]
+      ],
+      "outputs": ["{projectRoot}/.mypy_cache"]
     },
     "worker": {
       "executor": "nx:run-commands",

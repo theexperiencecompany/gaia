@@ -55,16 +55,7 @@ jobs:
         with:
           main-branch-name: develop
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile --prefer-offline
+      - uses: ./.github/actions/setup-node-pnpm
 
       - name: Validate release manifest
         run: node scripts/ci/validate-release-manifest.mjs
@@ -98,26 +89,26 @@ jobs:
     if: needs.detect.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-node-pnpm
         with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile --prefer-offline
+          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
       - run: pip install --break-system-packages uv
       - name: Sync Python deps
         run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Restore mypy cache
+        uses: actions/cache@v4
+        with:
+          path: apps/api/.mypy_cache
+          key: mypy-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}-${{ hashFiles('apps/api/app/**/*.py') }}
+          restore-keys: |
+            mypy-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}-
+            mypy-${{ runner.os }}-
       - name: Ruff lint
         run: npx nx run-many -t lint -p ${{ needs.detect.outputs.python_projects }} --parallel=3
       - name: mypy
-        working-directory: apps/api
-        run: uv run mypy app --ignore-missing-imports
+        run: npx nx run-many -t type-check -p ${{ needs.detect.outputs.python_projects }} --parallel=3
 
   # --- Static checks: TypeScript (runner-native) --------------------------
   static-typescript:
@@ -125,18 +116,11 @@ jobs:
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-node-pnpm
         with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile --prefer-offline
+          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
       - name: Biome lint
         run: npx nx run-many -t lint -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
       - name: TypeScript type-check
@@ -148,18 +132,11 @@ jobs:
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-node-pnpm
         with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile --prefer-offline
+          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
       - name: Build
         run: npx nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
@@ -192,18 +169,11 @@ jobs:
     if: needs.detect.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-node-pnpm
         with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile --prefer-offline
+          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
       - name: Run TypeScript tests
         run: npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
@@ -217,14 +187,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile --prefer-offline
+      - uses: ./.github/actions/setup-node-pnpm
       - run: pip install --break-system-packages vulture
       - name: Dead code check
         shell: bash

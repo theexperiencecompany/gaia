@@ -61,19 +61,10 @@ jobs:
         with:
           main-branch-name: master
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
         with:
-          version: 10.17.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prefer-offline
+          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       - name: Sync Python dependencies (Nx cached)
         run: npx nx sync api
@@ -204,19 +195,8 @@ jobs:
         with:
           main-branch-name: master
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
 
       # Convert Nx affected output into a simple boolean consumed by downstream jobs.
       - name: Check if web is affected
