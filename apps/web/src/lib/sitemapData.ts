@@ -132,10 +132,17 @@ async function getExploreWorkflowPages(
     if (!apiBaseUrl) return [];
 
     const limit = isDevelopment() ? 50 : 1000;
-    const response = await fetch(
-      `${apiBaseUrl}/workflows/explore?limit=${limit}&offset=0`,
-      { next: { revalidate: 3600 } },
-    );
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+    try {
+      response = await fetch(
+        `${apiBaseUrl}/workflows/explore?limit=${limit}&offset=0`,
+        { next: { revalidate: 3600 }, signal: controller.signal },
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!response.ok) return [];
 
     const data = await response.json();
@@ -164,10 +171,17 @@ async function getCommunityWorkflowPages(
     if (!apiBaseUrl) return [];
 
     if (isDevelopment()) {
-      const response = await fetch(
-        `${apiBaseUrl}/workflows/community?limit=50&offset=0`,
-        { next: { revalidate: 3600 } },
-      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      let response: Response;
+      try {
+        response = await fetch(
+          `${apiBaseUrl}/workflows/community?limit=50&offset=0`,
+          { next: { revalidate: 3600 }, signal: controller.signal },
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
       if (!response.ok) return [];
       const data = await response.json();
       return (data.workflows || []).map(
@@ -182,10 +196,17 @@ async function getCommunityWorkflowPages(
 
     const allWorkflows: Array<{ id: string; created_at: string }> =
       await fetchAllPaginated(async (limit, offset) => {
-        const response = await fetch(
-          `${apiBaseUrl}/workflows/community?limit=${limit}&offset=${offset}`,
-          { next: { revalidate: 3600 } },
-        );
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        let response: Response;
+        try {
+          response = await fetch(
+            `${apiBaseUrl}/workflows/community?limit=${limit}&offset=${offset}`,
+            { next: { revalidate: 3600 }, signal: controller.signal },
+          );
+        } finally {
+          clearTimeout(timeout);
+        }
         if (!response.ok) return { items: [], total: 0, hasMore: false };
         const data = await response.json();
         return {
@@ -222,10 +243,17 @@ async function getIntegrationPages(
     if (!apiBaseUrl) return [];
 
     if (isDevelopment()) {
-      const response = await fetch(
-        `${apiBaseUrl}/integrations/community?limit=50`,
-        { next: { revalidate: 3600 } },
-      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      let response: Response;
+      try {
+        response = await fetch(
+          `${apiBaseUrl}/integrations/community?limit=50`,
+          { next: { revalidate: 3600 }, signal: controller.signal },
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
       if (response.ok) {
         const data = await response.json();
         return (data.integrations || []).map(
@@ -251,10 +279,17 @@ async function getIntegrationPages(
       publishedAt?: string;
       createdAt?: string;
     }> = await fetchAllPaginated(async (limit, offset) => {
-      const response = await fetch(
-        `${apiBaseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
-        { next: { revalidate: 3600 } },
-      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      let response: Response;
+      try {
+        response = await fetch(
+          `${apiBaseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
+          { next: { revalidate: 3600 }, signal: controller.signal },
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
       if (!response.ok) return { items: [], total: 0, hasMore: false };
 
       const data = await response.json();
