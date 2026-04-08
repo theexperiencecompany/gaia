@@ -153,15 +153,6 @@ jobs:
         with:
           fetch-depth: 0
       - uses: docker/setup-buildx-action@v3
-      # Expose GHA cache URL + token so Dagger can use GitHub Actions cache
-      # backend for layer persistence between CI runs.
-      - uses: crazy-max/ghaction-github-runtime@v3
-      - name: Build cache config
-        id: cache-config
-        run: |
-          URL="${ACTIONS_RESULTS_URL:-$ACTIONS_CACHE_URL}"
-          echo "::add-mask::${ACTIONS_RUNTIME_TOKEN}"
-          echo "config=type=gha,mode=max,scope=dagger-${GITHUB_REF_NAME},url=${URL},token=${ACTIONS_RUNTIME_TOKEN}" >> "$GITHUB_OUTPUT"
       - name: Install Dagger CLI
         run: |
           curl -fsSL https://dl.dagger.io/dagger/install.sh \
@@ -172,7 +163,6 @@ jobs:
         timeout-minutes: 18
         env:
           DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-          _EXPERIMENTAL_DAGGER_CACHE_CONFIG: ${{ steps.cache-config.outputs.config }}
         run: |
           set +e
           dagger --silent call test-python 2>&1 | tee /tmp/dagger-test.log
@@ -298,13 +288,6 @@ jobs:
         with:
           fetch-depth: 0
       - uses: docker/setup-buildx-action@v3
-      - uses: crazy-max/ghaction-github-runtime@v3
-      - name: Build cache config
-        id: cache-config
-        run: |
-          URL="${ACTIONS_RESULTS_URL:-$ACTIONS_CACHE_URL}"
-          echo "::add-mask::${ACTIONS_RUNTIME_TOKEN}"
-          echo "config=type=gha,mode=max,scope=dagger-coverage-${GITHUB_REF_NAME},url=${URL},token=${ACTIONS_RUNTIME_TOKEN}" >> "$GITHUB_OUTPUT"
       - name: Install Dagger CLI
         run: |
           curl -fsSL https://dl.dagger.io/dagger/install.sh \
@@ -315,7 +298,6 @@ jobs:
         timeout-minutes: 28
         env:
           DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-          _EXPERIMENTAL_DAGGER_CACHE_CONFIG: ${{ steps.cache-config.outputs.config }}
         run: |
           set +e
           dagger --silent call test-python-coverage 2>&1 | tee /tmp/dagger-coverage.log
