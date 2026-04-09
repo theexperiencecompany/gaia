@@ -282,9 +282,9 @@ services:
     env_file:
       - ../../apps/bots/.env
     environment:
-      - BOT_SERVER_PORT=3001
+      - BOT_SERVER_PORT=3203
     ports:
-      - "${WHATSAPP_BOT_PORT:-3001}:3001"
+      - "${WHATSAPP_BOT_PORT:-3203}:3203"
     restart: on-failure
     depends_on:
       gaia-backend:

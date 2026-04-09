@@ -64,6 +64,7 @@ function loadWhatsAppConfig(): WhatsAppConfig {
 
 export class WhatsAppAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "whatsapp";
+  protected readonly defaultServerPort = 3203;
 
   private waClient: WhatsAppClient | null = null;
   private waConfig: WhatsAppConfig | null = null;
@@ -110,18 +111,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   /**
    * Mounts the Kapso webhook handler on the shared base server.
    *
-   * The base server (created by {@link BaseBotAdapter.boot} from
-   * `BOT_SERVER_PORT`) already provides `GET /health`. This method adds:
+   * The base server already provides `GET /health`. This method adds:
    *
    * - POST /webhook → verifies Kapso HMAC signature, dispatches message
    */
   protected async registerEvents(): Promise<void> {
-    if (!this.botServer) {
-      throw new Error(
-        "BOT_SERVER_PORT must be set — WhatsApp needs an HTTP server for Kapso webhooks",
-      );
-    }
-
     this.botServer.app.post("/webhook", async (c) => {
       const rawBody = await c.req.text();
       const signature = c.req.header("x-webhook-signature") ?? null;
@@ -199,7 +193,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /** Nothing additional to stop — base server is stopped by BaseBotAdapter.shutdown(). */
-  protected async stop(): Promise<void> {}
+  protected stop(): Promise<void> {
+    return Promise.resolve();
+  }
 
   // ---------------------------------------------------------------------------
   // Message handling

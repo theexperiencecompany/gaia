@@ -78,6 +78,7 @@ interface SlackWebClient {
  */
 export class SlackAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "slack";
+  protected readonly defaultServerPort = 3201;
   private app!: App;
   private token!: string;
   private signingSecret!: string;

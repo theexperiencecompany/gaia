@@ -6,7 +6,7 @@
  * via {@link BotServer.app} before calling {@link BotServer.start}.
  *
  * One server per bot process. Started automatically by
- * {@link BaseBotAdapter.boot} when `BOT_SERVER_PORT` is set.
+ * {@link BaseBotAdapter.boot} on each adapter's default port.
  *
  * @module
  */
@@ -41,15 +41,19 @@ export class BotServer {
 
   /** Starts listening on the configured port. Call after adding custom routes. */
   async start(): Promise<void> {
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
+      const onError = (err: Error) => {
+        this.logger.error("server_error", undefined, err);
+        reject(err);
+      };
+
       this.server = serve({ fetch: this.app.fetch, port: this.port }, () => {
+        this.server?.off("error", onError);
         this.logger.info("server_started", { port: this.port });
         resolve();
       }) as Server;
 
-      this.server.on("error", (err) => {
-        this.logger.error("server_error", undefined, err);
-      });
+      this.server.once("error", onError);
     });
   }
 

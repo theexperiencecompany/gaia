@@ -64,6 +64,7 @@ export function stripTelegramMention(
 
 export class TelegramAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "telegram";
+  protected readonly defaultServerPort = 3202;
   private bot!: Bot;
   private token!: string;
   private botUsername: string | undefined;

@@ -30,7 +30,7 @@ Docker Compose configuration for all GAIA environments.
 | Discord bot server | 3200 | 3200 | `DISCORD_BOT_PORT` |
 | Slack bot server | 3201 | 3201 | `SLACK_BOT_PORT` |
 | Telegram bot server | 3202 | 3202 | `TELEGRAM_BOT_PORT` |
-| WhatsApp bot server | 3001 | 3001 | `WHATSAPP_BOT_PORT` |
+| WhatsApp bot server | 3203 | 3203 | `WHATSAPP_BOT_PORT` |
 
 ## Key Commands
 

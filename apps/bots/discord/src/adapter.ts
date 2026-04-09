@@ -166,6 +166,7 @@ const STATUS_ROTATION_INTERVAL_MS = 3 * 60 * 1000;
  */
 export class DiscordAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "discord";
+  protected readonly defaultServerPort = 3200;
   private client!: Client;
   private token!: string;
   private dmWelcomeSent = new Set<string>();
