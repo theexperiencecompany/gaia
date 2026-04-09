@@ -15,7 +15,6 @@
  * @module
  */
 
-import type { Server } from "node:http";
 import {
   BaseBotAdapter,
   type BotCommand,
@@ -32,9 +31,7 @@ import {
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
 } from "@gaia/shared";
-import { serve } from "@hono/node-server";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
-import { Hono } from "hono";
 import {
   extractTextBody,
   extractWaId,
@@ -49,20 +46,18 @@ interface WhatsAppConfig {
   kapsoApiKey: string;
   kapsoPhoneNumberId: string;
   kapsoWebhookSecret: string;
-  webhookPort: number;
 }
 
 function loadWhatsAppConfig(): WhatsAppConfig {
   const kapsoApiKey = process.env.KAPSO_API_KEY;
   const kapsoPhoneNumberId = process.env.KAPSO_PHONE_NUMBER_ID;
   const kapsoWebhookSecret = process.env.KAPSO_WEBHOOK_SECRET;
-  const webhookPort = Number(process.env.WHATSAPP_WEBHOOK_PORT ?? "3001");
 
   if (!kapsoApiKey) throw new Error("KAPSO_API_KEY is required");
   if (!kapsoPhoneNumberId) throw new Error("KAPSO_PHONE_NUMBER_ID is required");
   if (!kapsoWebhookSecret) throw new Error("KAPSO_WEBHOOK_SECRET is required");
 
-  return { kapsoApiKey, kapsoPhoneNumberId, kapsoWebhookSecret, webhookPort };
+  return { kapsoApiKey, kapsoPhoneNumberId, kapsoWebhookSecret };
 }
 
 // ─── WhatsApp Adapter ─────────────────────────────────────────────────────────
@@ -72,7 +67,6 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
   private waClient: WhatsAppClient | null = null;
   private waConfig: WhatsAppConfig | null = null;
-  private httpServer: Server | null = null;
 
   /** Tracks users who have already received a welcome message this process. */
   private readonly welcomeSent = new Set<string>();
@@ -104,7 +98,6 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       kapsoApiKey: this.waConfig.kapsoApiKey,
     });
     this.adapterLogger.info("client_initialized", {
-      webhook_port: this.waConfig.webhookPort,
       phone_number_id: this.waConfig.kapsoPhoneNumberId,
     });
   }
@@ -115,17 +108,21 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Starts a Hono HTTP server to receive Kapso webhook events.
+   * Mounts the Kapso webhook handler on the shared base server.
    *
-   * Health checks are handled by the shared health server in BaseBotAdapter
-   * (started automatically when HEALTH_PORT is set).
+   * The base server (created by {@link BaseBotAdapter.boot} from
+   * `BOT_SERVER_PORT`) already provides `GET /health`. This method adds:
    *
    * - POST /webhook → verifies Kapso HMAC signature, dispatches message
    */
   protected async registerEvents(): Promise<void> {
-    const app = new Hono();
+    if (!this.botServer) {
+      throw new Error(
+        "BOT_SERVER_PORT must be set — WhatsApp needs an HTTP server for Kapso webhooks",
+      );
+    }
 
-    app.post("/webhook", async (c) => {
+    this.botServer.app.post("/webhook", async (c) => {
       const rawBody = await c.req.text();
       const signature = c.req.header("x-webhook-signature") ?? null;
 
@@ -194,40 +191,15 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
       return c.json({ status: "ok" });
     });
-
-    await new Promise<void>((resolve) => {
-      this.httpServer = serve(
-        { fetch: app.fetch, port: this.whatsAppConfig.webhookPort },
-        () => {
-          this.adapterLogger.info("webhook_server_started", {
-            port: this.whatsAppConfig.webhookPort,
-          });
-          resolve();
-        },
-      ) as Server;
-      this.httpServer.on("error", (err) => {
-        this.adapterLogger.error("webhook_server_error", undefined, err);
-      });
-    });
   }
 
-  /** Nothing additional to start — HTTP server is already up after registerEvents. */
+  /** Nothing additional to start — base server is started by BaseBotAdapter.boot(). */
   protected async start(): Promise<void> {
     this.adapterLogger.info("bot_started");
   }
 
-  /** Closes the HTTP server gracefully. */
-  protected async stop(): Promise<void> {
-    if (this.httpServer) {
-      await new Promise<void>((resolve, reject) => {
-        this.httpServer!.close((err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      this.httpServer = null;
-    }
-  }
+  /** Nothing additional to stop — base server is stopped by BaseBotAdapter.shutdown(). */
+  protected async stop(): Promise<void> {}
 
   // ---------------------------------------------------------------------------
   // Message handling

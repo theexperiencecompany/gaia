@@ -45,9 +45,11 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.11",
     "@infisical/sdk": "^4.0.0",
     "axios": "^1.13.5",
     "dotenv": "^16.4.5",
+    "hono": "^4.12.4",
     "posthog-node": "5.28.11",
     "string-similarity": "^4.0.4",
     "zod": "^3.25.0"

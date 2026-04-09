@@ -10,9 +10,7 @@
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
-    "@hono/node-server": "^1.19.11",
-    "@kapso/whatsapp-cloud-api": "^0.2.0",
-    "hono": "^4.12.4"
+    "@kapso/whatsapp-cloud-api": "^0.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

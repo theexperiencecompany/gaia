@@ -173,15 +173,9 @@ importers:
       '@gaia/shared':
         specifier: workspace:*
         version: link:../../../libs/shared/ts
-      '@hono/node-server':
-        specifier: ^1.19.11
-        version: 1.19.12(hono@4.12.10)
       '@kapso/whatsapp-cloud-api':
         specifier: ^0.2.0
         version: 0.2.1
-      hono:
-        specifier: ^4.12.4
-        version: 4.12.10
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -996,6 +990,9 @@ importers:
 
   libs/shared/ts:
     dependencies:
+      '@hono/node-server':
+        specifier: ^1.19.11
+        version: 1.19.12(hono@4.12.10)
       '@infisical/sdk':
         specifier: ^4.0.0
         version: 4.0.6(@aws-sdk/client-sso-oidc@3.600.0)
@@ -1005,6 +1002,9 @@ importers:
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
+      hono:
+        specifier: ^4.12.4
+        version: 4.12.10
       posthog-node:
         specifier: 5.28.11
         version: 5.28.11(rxjs@7.8.2)
