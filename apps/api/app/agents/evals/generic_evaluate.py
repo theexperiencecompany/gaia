@@ -116,12 +116,10 @@ def _resolve_heuristic_metrics(
 ) -> list[base_metric.BaseMetric]:
     """Instantiate Opik heuristic metrics by name."""
     from opik.evaluation.metrics import (
-        Contains,
         Equals,
         IsJson,
         LevenshteinRatio,
         Readability,
-        RegexMatch,
         Sentiment,
         Tone,
     )
@@ -131,11 +129,11 @@ def _resolve_heuristic_metrics(
         "Sentiment": Sentiment,
         "Tone": Tone,
         "LevenshteinRatio": LevenshteinRatio,
-        "Contains": Contains,
-        "RegexMatch": RegexMatch,
         "Equals": Equals,
         "IsJson": IsJson,
     }
+    # NOTE: Contains and RegexMatch require per-item config (reference string / regex pattern)
+    # and cannot be statically instantiated. Use FormatCompliance custom metric instead.
     metrics = []
     for name in names:
         cls = registry.get(name)
@@ -223,12 +221,23 @@ def compute_pass_rate(
     """Percentage of items where the primary metric scored above threshold."""
     if not test_results:
         return []
+    # Metrics with non-[0,1] ranges (e.g., Sentiment uses [-1,1]) skew averages.
+    # Exclude them from pass rate calculation.
+    NON_STANDARD_RANGE_METRICS = {"sentiment"}
+
     passing = 0
     total = 0
     for r in test_results:
         if r.score_results:
+            valid_scores = [
+                s.value
+                for s in r.score_results
+                if s.name.lower() not in NON_STANDARD_RANGE_METRICS
+            ]
+            if not valid_scores:
+                continue
             total += 1
-            avg_score = sum(s.value for s in r.score_results) / len(r.score_results)
+            avg_score = sum(valid_scores) / len(valid_scores)
             if avg_score >= 0.7:
                 passing += 1
     if total == 0:
@@ -531,7 +540,7 @@ class GenericEvaluator:
                         "input": query,
                         "output": output,
                         "expected_output": expected,
-                        "context": context,
+                        "context": [context] if context else [],
                         "trajectory": trajectory,
                         "reference": expected,
                     }
@@ -542,7 +551,7 @@ class GenericEvaluator:
                 "input": query,
                 "output": output,
                 "expected_output": expected,
-                "context": context,
+                "context": [context] if context else [],
                 "reference": expected,
             }
 

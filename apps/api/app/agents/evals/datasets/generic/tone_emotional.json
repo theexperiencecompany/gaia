@@ -68,11 +68,11 @@
       "metadata": { "difficulty": "hard", "category": "stress-response" }
     },
     {
-      "input": "nvm forget it ill just do it myself",
-      "expected_output": "The assistant should recognize the user's frustration or resignation. It can gently offer to still help if the user changes their mind, without being pushy. It should not ignore the emotional subtext or aggressively insist on helping.",
-      "context": "User gives up on the assistant. Tests recognition of resignation and appropriate response.",
-      "tags": ["resignation", "frustration", "gentle-persistence"],
-      "metadata": { "difficulty": "medium", "category": "resignation-handling" }
+      "input": "I've been working on this presentation for 12 hours straight and it's still not good enough",
+      "expected_output": "Should acknowledge the exhaustion and frustration without dismissing the effort. Should NOT be overly cheerful or suggest 'just take a break!' without validating the work put in. May offer practical help or gentle encouragement.",
+      "context": "User is exhausted and self-critical after extended work session.",
+      "tags": ["exhaustion", "self-criticism", "empathy"],
+      "metadata": { "difficulty": "medium", "category": "exhaustion-response" }
     },
     {
       "input": "just got back from vacation, feeling refreshed! lets tackle this week. whats on my plate?",

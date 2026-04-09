@@ -85,13 +85,14 @@
     },
     {
       "messages": [
-        {"role": "user", "content": "I said tuesday earlier right? or was it wednesday. when did I say the meeting was?"},
-        {"role": "user", "content": "no wait I think I said schedule it for monday first then changed to tuesday"}
+        {"role": "user", "content": "schedule a meeting with the design team for tuesday at 2pm"},
+        {"role": "user", "content": "I said tuesday earlier right? or was it monday? I can't remember what I originally said"},
+        {"role": "user", "content": "no wait I think I said monday first then changed to tuesday"}
       ],
-      "expected_output": "Should accurately recall what the user said in prior turns. If the user originally said Tuesday, confirm that. Should not fabricate or guess at prior conversation content. If genuinely uncertain, should say so rather than confabulate.",
-      "context": "User is confused about their own prior instructions and asks the assistant to arbitrate. Tests whether assistant accurately recalls or fabricates.",
+      "expected_output": "Should accurately recall that the user originally said Tuesday in the first message. Should correct the user's false memory that they said Monday first. Should not fabricate or guess at prior conversation content.",
+      "context": "User is confused about their own prior instructions and asks the assistant to arbitrate. The original instruction was Tuesday. Tests whether assistant accurately recalls or fabricates.",
       "tags": ["self-reference", "conversation-recall"],
-      "metadata": { "difficulty": "hard", "category": "contradictions", "turns": 2 }
+      "metadata": { "difficulty": "hard", "category": "contradictions", "turns": 3 }
     },
     {
       "messages": [

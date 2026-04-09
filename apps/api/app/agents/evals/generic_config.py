@@ -87,7 +87,7 @@ GENERIC_EVAL_CONFIGS: list[GenericEvalConfig] = [
         dataset_name="Generic: Instruction Following",
         builtin_metrics=[],
         custom_metrics=["FormatCompliance"],
-        heuristic_metrics=["Contains", "RegexMatch", "Readability"],
+        heuristic_metrics=["Readability"],
         geval_criteria=(
             "Evaluate whether the assistant strictly adheres to ALL format, content, "
             "and structural constraints specified by the user. Check word count limits, "

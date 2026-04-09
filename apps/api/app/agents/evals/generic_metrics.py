@@ -30,14 +30,14 @@ class _LLMJudgeBase(base_metric.BaseMetric):
 
     prompt_template: str = ""
 
-    def __init__(self, name: str, model: str = "gpt-4o-mini"):
-        self.name = name  # type: ignore[misc]
-        self._model = model
+    def __init__(self, name: str, preferred_provider: str = "openai"):
+        super().__init__(name=name)
+        self._preferred_provider = preferred_provider
         self._llm: Any = None
 
     def _get_llm(self) -> Any:
         if self._llm is None:
-            self._llm = init_llm(preferred_provider=self._model)
+            self._llm = init_llm(preferred_provider=self._preferred_provider)
         return self._llm
 
     def _call_judge(self, prompt: str) -> score_result.ScoreResult:
@@ -71,8 +71,8 @@ class _LLMJudgeBase(base_metric.BaseMetric):
 class BoundaryRespect(_LLMJudgeBase):
     """Evaluates whether the assistant properly refuses or escalates dangerous requests."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
-        super().__init__(name="boundary_respect", model=model)
+    def __init__(self) -> None:
+        super().__init__(name="boundary_respect")
 
     def score(
         self, input: str, output: str, expected_output: str = "", **kwargs: Any
@@ -94,8 +94,8 @@ class BoundaryRespect(_LLMJudgeBase):
 class PlanCoherence(_LLMJudgeBase):
     """Evaluates whether a multi-step plan is logical, ordered, and complete."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
-        super().__init__(name="plan_coherence", model=model)
+    def __init__(self) -> None:
+        super().__init__(name="plan_coherence")
 
     def score(
         self, input: str, output: str, expected_output: str = "", **kwargs: Any
@@ -115,8 +115,8 @@ class PlanCoherence(_LLMJudgeBase):
 class RoutingCorrectness(_LLMJudgeBase):
     """Evaluates whether the assistant selected the correct tool or capability."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
-        super().__init__(name="routing_correctness", model=model)
+    def __init__(self) -> None:
+        super().__init__(name="routing_correctness")
 
     def score(
         self, input: str, output: str, expected_output: str = "", **kwargs: Any
@@ -136,8 +136,8 @@ class RoutingCorrectness(_LLMJudgeBase):
 class ContextRetention(_LLMJudgeBase):
     """Evaluates whether the assistant correctly uses prior context and preferences."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
-        super().__init__(name="context_retention", model=model)
+    def __init__(self) -> None:
+        super().__init__(name="context_retention")
 
     def score(
         self, input: str, output: str, context: str = "", **kwargs: Any
@@ -156,8 +156,8 @@ class ContextRetention(_LLMJudgeBase):
 class GracefulDegradation(_LLMJudgeBase):
     """Evaluates whether errors produce helpful user-facing messages."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
-        super().__init__(name="graceful_degradation", model=model)
+    def __init__(self) -> None:
+        super().__init__(name="graceful_degradation")
 
     def score(
         self, input: str, output: str, expected_output: str = "", **kwargs: Any
@@ -177,8 +177,8 @@ class GracefulDegradation(_LLMJudgeBase):
 class ToneMatch(_LLMJudgeBase):
     """Evaluates whether the assistant's tone matches the user's emotional context."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
-        super().__init__(name="tone_match", model=model)
+    def __init__(self) -> None:
+        super().__init__(name="tone_match")
 
     def score(
         self, input: str, output: str, expected_output: str = "", **kwargs: Any
@@ -198,8 +198,8 @@ class ToneMatch(_LLMJudgeBase):
 class ProactivityScore(_LLMJudgeBase):
     """Evaluates whether the assistant proactively surfaces relevant information."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
-        super().__init__(name="proactivity_score", model=model)
+    def __init__(self) -> None:
+        super().__init__(name="proactivity_score")
 
     def score(
         self, input: str, output: str, expected_output: str = "", **kwargs: Any
@@ -219,8 +219,8 @@ class ProactivityScore(_LLMJudgeBase):
 class InjectionResistance(_LLMJudgeBase):
     """Evaluates whether the assistant resists prompt injection and manipulation."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
-        super().__init__(name="injection_resistance", model=model)
+    def __init__(self) -> None:
+        super().__init__(name="injection_resistance")
 
     def score(
         self, input: str, output: str, expected_output: str = "", **kwargs: Any
@@ -240,8 +240,8 @@ class InjectionResistance(_LLMJudgeBase):
 class ResponseCompleteness(_LLMJudgeBase):
     """Evaluates whether the response fully addresses all parts of the user's query."""
 
-    def __init__(self, model: str = "gpt-4o-mini"):
-        super().__init__(name="response_completeness", model=model)
+    def __init__(self) -> None:
+        super().__init__(name="response_completeness")
 
     def score(
         self, input: str, output: str, expected_output: str = "", **kwargs: Any
@@ -267,7 +267,7 @@ class FormatCompliance(base_metric.BaseMetric):
     """Checks if output follows requested format constraints (bullet points, word count, etc.)."""
 
     def __init__(self) -> None:
-        self.name = "format_compliance"  # type: ignore[misc]
+        super().__init__(name="format_compliance")
 
     def score(
         self, input: str, output: str, expected_output: str = "", **kwargs: Any
@@ -347,7 +347,7 @@ class ResponseLengthScore(base_metric.BaseMetric):
     """Penalizes responses that are unreasonably long or short for the query complexity."""
 
     def __init__(self) -> None:
-        self.name = "response_length_score"  # type: ignore[misc]
+        super().__init__(name="response_length_score")
 
     def score(self, input: str, output: str, **kwargs: Any) -> score_result.ScoreResult:
         input_words = len(input.split())
@@ -426,7 +426,7 @@ class ConfirmationBeforeAction(base_metric.BaseMetric):
     ]
 
     def __init__(self) -> None:
-        self.name = "confirmation_before_action"  # type: ignore[misc]
+        super().__init__(name="confirmation_before_action")
 
     def score(self, input: str, output: str, **kwargs: Any) -> score_result.ScoreResult:
         input_lower = input.lower()
@@ -494,7 +494,7 @@ class LatencyMetric(base_metric.BaseMetric):
     """Measures execution time from task span data."""
 
     def __init__(self) -> None:
-        self.name = "latency"  # type: ignore[misc]
+        super().__init__(name="latency")
 
     def score(self, **kwargs: Any) -> score_result.ScoreResult:
         task_span = kwargs.get("task_span")
@@ -530,7 +530,7 @@ class TokenEfficiency(base_metric.BaseMetric):
     """Measures output token count relative to input complexity."""
 
     def __init__(self) -> None:
-        self.name = "token_efficiency"  # type: ignore[misc]
+        super().__init__(name="token_efficiency")
 
     def score(
         self, input: str = "", output: str = "", **kwargs: Any

@@ -40,11 +40,11 @@
       "metadata": { "difficulty": "hard", "category": "single-clarification" }
     },
     {
-      "input": "thanks",
-      "expected_output": "Should respond with a brief acknowledgment. One short sentence at most. Absolutely no 'You're welcome! Is there anything else I can help you with today? I'm always here if you need anything!'",
-      "context": "User just completed a task with the assistant's help.",
-      "tags": ["social", "minimal-response"],
-      "metadata": { "difficulty": "easy", "category": "matching-tone" }
+      "input": "what time is it in tokyo",
+      "expected_output": "Should give a direct, single-sentence answer with the time. No preamble, no explanation of timezone math.",
+      "context": "Simple timezone query.",
+      "tags": ["direct-answer", "simple-query"],
+      "metadata": { "difficulty": "easy", "category": "brevity" }
     },
     {
       "input": "whats the diff between a 401k and a roth ira",
@@ -55,9 +55,9 @@
     },
     {
       "input": "cancel it",
-      "expected_output": "Should confirm cancellation in one short sentence referencing what was cancelled. No need to ask 'Are you sure?' or explain the cancellation policy unless there are consequences.",
+      "expected_output": "Should confirm briefly ('Cancel the dinner reservation at Sushi Zen tonight?') and proceed. A brief one-sentence confirmation is acceptable for destructive actions, but the response should still be concise overall. The confirmation should be one sentence, not a paragraph of warnings.",
       "context": "User just created a dinner reservation and immediately wants to cancel it.",
-      "tags": ["terse-input", "brief-response"],
+      "tags": ["terse-input", "brief-response", "destructive-action"],
       "metadata": { "difficulty": "easy", "category": "simple-confirmation" }
     },
     {
