@@ -42,23 +42,17 @@ vi.mock("@slack/bolt", () => ({
 // Mock @gaia/shared
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@gaia/shared")>();
-
-  return {
-    ...actual,
-    formatBotError: vi.fn((err: unknown) =>
-      err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
-    ),
-    handleStreamingChat: vi.fn().mockResolvedValue(undefined),
-    STREAMING_DEFAULTS: {
+vi.mock("@gaia/shared", async () => {
+  const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
+  return makeGaiaSharedMock("slack", {
+    streamingDefaults: {
       slack: { editIntervalMs: 1500, streaming: true, platform: "slack" },
     },
-    richMessageToMarkdown: vi.fn().mockReturnValue("## Rich Title\nBody text"),
-    parseTextArgs: vi.fn((text: string) => ({
-      subcommand: text.split(" ")[0] || undefined,
-    })),
-  };
+    converters: {
+      convertToSlackMrkdwn: vi.fn((text: string) => text),
+    },
+    defaultRichMarkdown: "## Rich Title\nBody text",
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -351,7 +345,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
     ).handleSlackStreaming(client, "C789", "U456", "Plan my day");
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(), // gaia client
+      expect.any(Object), // gaia client
       expect.objectContaining({
         message: "Plan my day",
         platform: "slack",
@@ -363,7 +357,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "slack" }),
-      expect.anything(),
+      undefined,
     );
   });
 
@@ -584,7 +578,7 @@ describe("SlackAdapter - app_mention event handling", () => {
     });
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
+      expect.any(Object),
       expect.objectContaining({
         message: "What should I do today?",
         platform: "slack",
@@ -596,7 +590,7 @@ describe("SlackAdapter - app_mention event handling", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "slack" }),
-      expect.anything(),
+      undefined,
     );
   });
 
@@ -680,7 +674,7 @@ describe("SlackAdapter - DM message event handling", () => {
     });
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
+      expect.any(Object),
       expect.objectContaining({
         message: "Hello GAIA",
         platform: "slack",
@@ -692,7 +686,7 @@ describe("SlackAdapter - DM message event handling", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "slack" }),
-      expect.anything(),
+      undefined,
     );
   });
 

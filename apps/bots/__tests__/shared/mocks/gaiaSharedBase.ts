@@ -86,8 +86,16 @@ export function makeGaiaSharedMock(
     }
   };
 
+  const createBotLogger = vi.fn(() => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  }));
+
   return {
     BaseBotAdapter,
+    createBotLogger,
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
