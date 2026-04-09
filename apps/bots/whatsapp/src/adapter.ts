@@ -22,6 +22,7 @@ import {
   convertToWhatsAppMarkdown,
   createBotLogger,
   handleStreamingChat,
+  hashLogIdentifier,
   type PlatformName,
   parseTextArgs,
   type RichMessage,
@@ -29,6 +30,7 @@ import {
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
+  sanitizeErrorForLog,
 } from "@gaia/shared";
 import { serve } from "@hono/node-server";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
@@ -161,9 +163,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
       for (const event of events) {
         const waId = extractWaId(event);
+        const waIdHash = hashLogIdentifier(waId);
         const text = extractTextBody(event);
         this.adapterLogger.info("webhook_message_received", {
-          wa_id: waId,
+          wa_hash: waIdHash,
           message_type: event.message.type,
           has_text: Boolean(text),
         });
@@ -171,20 +174,20 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           // Fire-and-forget — do not await so webhook returns 200 quickly
           this.handleIncomingMessage(waId, text, event.message.id).catch(
             (err) =>
-              this.adapterLogger.error(
-                "incoming_message_processing_failed",
-                { wa_id: waId, message_id: event.message.id },
-                err,
-              ),
+              this.adapterLogger.error("incoming_message_processing_failed", {
+                wa_hash: waIdHash,
+                message_id: event.message.id,
+                ...sanitizeErrorForLog(err),
+              }),
           );
         } else if (event.message.type !== "text") {
           // Non-text message (image, audio, video, document, etc.)
           this.handleUnsupportedMedia(waId, event.message.type).catch((err) =>
-            this.adapterLogger.error(
-              "unsupported_media_handling_failed",
-              { wa_id: waId, message_type: event.message.type },
-              err,
-            ),
+            this.adapterLogger.error("unsupported_media_handling_failed", {
+              wa_hash: waIdHash,
+              message_type: event.message.type,
+              ...sanitizeErrorForLog(err),
+            }),
           );
         }
       }
@@ -245,8 +248,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     text: string,
     messageId: string,
   ): Promise<void> {
+    const waIdHash = hashLogIdentifier(waId);
     this.adapterLogger.info("incoming_message_started", {
-      wa_id: waId,
+      wa_hash: waIdHash,
       message_id: messageId,
       text_length: text.length,
       is_command: text.startsWith("/"),
@@ -263,11 +267,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           typingIndicator: { type: "text" },
         })
         .catch((err: unknown) =>
-          this.adapterLogger.error(
-            "typing_indicator_failed",
-            { wa_id: waId, message_id: messageId },
-            err,
-          ),
+          this.adapterLogger.error("typing_indicator_failed", {
+            wa_hash: waIdHash,
+            message_id: messageId,
+            ...sanitizeErrorForLog(err),
+          }),
         );
 
     showTyping();
@@ -394,18 +398,20 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         this.analytics,
       );
     } catch (err) {
-      this.adapterLogger.error("streaming_failed", { wa_id: waId }, err);
+      this.adapterLogger.error("streaming_failed", {
+        wa_hash: hashLogIdentifier(waId),
+        ...sanitizeErrorForLog(err),
+      });
       try {
         await this.sendWhatsAppText(
           waId,
           "An error occurred. Please try again.",
         );
       } catch (sendErr) {
-        this.adapterLogger.error(
-          "streaming_error_message_send_failed",
-          { wa_id: waId },
-          sendErr,
-        );
+        this.adapterLogger.error("streaming_error_message_send_failed", {
+          wa_hash: hashLogIdentifier(waId),
+          ...sanitizeErrorForLog(sendErr),
+        });
       }
     }
   }

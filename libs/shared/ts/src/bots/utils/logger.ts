@@ -1,3 +1,4 @@
+import { createHash, createHmac } from "node:crypto";
 import type { PlatformName } from "../types";
 
 type BotLogLevel = "debug" | "info" | "warn" | "error";
@@ -17,6 +18,48 @@ export interface BotLogger {
   info: (event: string, fields?: BotLogFields) => void;
   warn: (event: string, fields?: BotLogFields) => void;
   error: (event: string, fields?: BotLogFields, error?: unknown) => void;
+}
+
+const RESERVED_LOG_KEYS = new Set([
+  "time",
+  "level",
+  "env",
+  "service",
+  "platform",
+  "component",
+  "event",
+  "error",
+]);
+
+export function hashLogIdentifier(
+  value: string | number | undefined | null,
+): string | undefined {
+  if (value === undefined || value === null) return undefined;
+
+  const normalized = String(value);
+  const secret =
+    process.env.BOT_LOG_HASH_SECRET ?? process.env.GAIA_BOT_API_KEY;
+
+  const digest = secret
+    ? createHmac("sha256", secret).update(normalized).digest("hex")
+    : createHash("sha256").update(normalized).digest("hex");
+
+  return `h_${digest.slice(0, 16)}`;
+}
+
+export function sanitizeErrorForLog(error: unknown): BotLogFields {
+  if (error instanceof Error) {
+    return {
+      error_name: error.name,
+      error_message: error.message,
+    };
+  }
+
+  return {
+    error_name: "Unknown",
+    error_message:
+      typeof error === "string" ? error : "Unknown non-Error thrown",
+  };
 }
 
 function toJsonValue(value: unknown, depth = 0): JsonValue {
@@ -99,12 +142,13 @@ function buildRecord(
   if (fields) {
     for (const [key, value] of Object.entries(fields)) {
       if (value === undefined) continue;
-      record[key] = toJsonValue(value);
+      const safeKey = RESERVED_LOG_KEYS.has(key) ? `field_${key}` : key;
+      record[safeKey] = toJsonValue(value);
     }
   }
 
   if (error !== undefined) {
-    record.error = toJsonValue(error);
+    record.error = toJsonValue(sanitizeErrorForLog(error));
   }
 
   return record;

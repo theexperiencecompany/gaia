@@ -44,7 +44,12 @@ import type {
   RichMessageTarget,
 } from "../types";
 import { formatBotError } from "../utils/formatters";
-import { type BotLogger, createBotLogger } from "../utils/logger";
+import {
+  type BotLogger,
+  createBotLogger,
+  hashLogIdentifier,
+  sanitizeErrorForLog,
+} from "../utils/logger";
 
 /**
  * Abstract base class that all platform bot adapters extend.
@@ -125,9 +130,7 @@ export abstract class BaseBotAdapter {
     await this.registerEvents();
     await this.start();
 
-    this.logger.info("boot_completed", {
-      gaia_api_url: this.config.gaiaApiUrl,
-    });
+    this.logger.info("boot_completed", { gaia_api_configured: true });
   }
 
   /**
@@ -245,8 +248,8 @@ export abstract class BaseBotAdapter {
     try {
       this.logger.info("command_dispatch_started", {
         command: name,
-        user_id: target.userId,
-        channel_id: target.channelId,
+        user_hash: hashLogIdentifier(target.userId),
+        channel_hash: hashLogIdentifier(target.channelId),
       });
       await command.execute({ gaia: this.gaia, target, ctx, args, rawText });
       this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
@@ -257,24 +260,21 @@ export abstract class BaseBotAdapter {
       });
       this.logger.info("command_dispatch_completed", {
         command: name,
-        user_id: target.userId,
-        channel_id: target.channelId,
+        user_hash: hashLogIdentifier(target.userId),
+        channel_hash: hashLogIdentifier(target.channelId),
         duration_ms: Date.now() - startMs,
       });
     } catch (error) {
       const durationMs = Date.now() - startMs;
       const errorType = error instanceof Error ? error.name : "Unknown";
-      this.logger.error(
-        "command_dispatch_failed",
-        {
-          command: name,
-          user_id: target.userId,
-          channel_id: target.channelId,
-          duration_ms: durationMs,
-          error_type: errorType,
-        },
-        error,
-      );
+      this.logger.error("command_dispatch_failed", {
+        command: name,
+        user_hash: hashLogIdentifier(target.userId),
+        channel_hash: hashLogIdentifier(target.channelId),
+        duration_ms: durationMs,
+        error_type: errorType,
+        ...sanitizeErrorForLog(error),
+      });
       // Capture only the error class name. Raw messages can contain file
       // paths, request IDs, or upstream-echoed tokens — never ship them.
       this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {

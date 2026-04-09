@@ -27,6 +27,7 @@ import {
   convertToTelegramMarkdown,
   createBotLogger,
   handleStreamingChat,
+  hashLogIdentifier,
   type PlatformName,
   parseTextArgs,
   type RichMessage,
@@ -168,8 +169,8 @@ export class TelegramAdapter extends BaseBotAdapter {
 
       const isPrivate = ctx.chat.type === "private";
       this.adapterLogger.info("message_received", {
-        user_id: userId,
-        chat_id: ctx.chat.id,
+        user_hash: hashLogIdentifier(userId),
+        chat_hash: hashLogIdentifier(ctx.chat.id),
         chat_type: ctx.chat.type,
         is_private: isPrivate,
       });
@@ -227,8 +228,8 @@ export class TelegramAdapter extends BaseBotAdapter {
 
       this.adapterLogger.info("slash_command_received", {
         command: "gaia",
-        user_id: userId,
-        chat_id: ctx.chat?.id,
+        user_hash: hashLogIdentifier(userId),
+        chat_hash: hashLogIdentifier(ctx.chat?.id),
       });
 
       await this.handleTelegramStreaming(ctx, userId, message);
@@ -250,8 +251,8 @@ export class TelegramAdapter extends BaseBotAdapter {
     if (!chatId) return;
 
     this.adapterLogger.info("streaming_started", {
-      user_id: userId,
-      chat_id: chatId,
+      user_hash: hashLogIdentifier(userId),
+      chat_hash: hashLogIdentifier(chatId),
       message_length: message.length,
     });
 

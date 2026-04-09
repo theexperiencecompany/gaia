@@ -93,9 +93,25 @@ export function makeGaiaSharedMock(
     error: vi.fn(),
   }));
 
+  const hashLogIdentifier = vi.fn(
+    (value: string | number | undefined | null) => {
+      if (value === undefined || value === null) return undefined;
+      return `h_${String(value)}`;
+    },
+  );
+
+  const sanitizeErrorForLog = vi.fn((error: unknown) => {
+    if (error instanceof Error) {
+      return { error_name: error.name, error_message: error.message };
+    }
+    return { error_name: "Unknown", error_message: String(error) };
+  });
+
   return {
     BaseBotAdapter,
     createBotLogger,
+    hashLogIdentifier,
+    sanitizeErrorForLog,
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
