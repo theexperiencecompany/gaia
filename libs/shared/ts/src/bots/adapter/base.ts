@@ -33,6 +33,7 @@
  * @module
  */
 
+import type { Server } from "node:http";
 import { Analytics, BOT_EVENTS } from "../../analytics";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
@@ -50,6 +51,7 @@ import {
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "../utils/logger";
+import { startHealthServer } from "./health-server";
 
 /**
  * Abstract base class that all platform bot adapters extend.
@@ -93,6 +95,9 @@ export abstract class BaseBotAdapter {
   /** Shared structured logger for adapter lifecycle and command execution. */
   protected logger: BotLogger = createBotLogger("shared", "base-adapter");
 
+  /** Health check HTTP server, started when HEALTH_PORT is set. */
+  private healthServer: Server | null = null;
+
   // ---------------------------------------------------------------------------
   // Lifecycle — template method pattern
   // ---------------------------------------------------------------------------
@@ -130,6 +135,16 @@ export abstract class BaseBotAdapter {
     await this.registerEvents();
     await this.start();
 
+    // Start health check server if HEALTH_PORT is configured.
+    // Each bot container exposes this port for BetterStack / Docker healthcheck monitoring.
+    const healthPort = Number(process.env.HEALTH_PORT);
+    if (healthPort) {
+      this.healthServer = await startHealthServer({
+        port: healthPort,
+        platform: this.platform,
+      });
+    }
+
     this.logger.info("boot_completed", { gaia_api_configured: true });
   }
 
@@ -142,6 +157,12 @@ export abstract class BaseBotAdapter {
   async shutdown(): Promise<void> {
     this.logger.info("shutdown_started");
     await this.stop();
+    if (this.healthServer) {
+      await new Promise<void>((resolve, reject) => {
+        this.healthServer!.close((err) => (err ? reject(err) : resolve()));
+      });
+      this.healthServer = null;
+    }
     await this.analytics.shutdown();
     this.logger.info("shutdown_completed");
   }

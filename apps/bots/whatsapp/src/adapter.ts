@@ -117,13 +117,13 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   /**
    * Starts a Hono HTTP server to receive Kapso webhook events.
    *
-   * - GET  /health  → liveness probe
+   * Health checks are handled by the shared health server in BaseBotAdapter
+   * (started automatically when HEALTH_PORT is set).
+   *
    * - POST /webhook → verifies Kapso HMAC signature, dispatches message
    */
   protected async registerEvents(): Promise<void> {
     const app = new Hono();
-
-    app.get("/health", (c) => c.json({ status: "ok" }));
 
     app.post("/webhook", async (c) => {
       const rawBody = await c.req.text();

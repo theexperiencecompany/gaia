@@ -192,6 +192,10 @@ services:
     image: ghcr.io/theexperiencecompany/gaia-bot-discord:latest
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - HEALTH_PORT=3100
+    ports:
+      - "${DISCORD_HEALTH_PORT:-3100}:3100"
     restart: always
     depends_on:
       gaia-backend:
@@ -206,6 +210,10 @@ services:
     image: ghcr.io/theexperiencecompany/gaia-bot-slack:latest
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - HEALTH_PORT=3101
+    ports:
+      - "${SLACK_HEALTH_PORT:-3101}:3101"
     restart: always
     depends_on:
       gaia-backend:
@@ -220,6 +228,10 @@ services:
     image: ghcr.io/theexperiencecompany/gaia-bot-telegram:latest
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - HEALTH_PORT=3102
+    ports:
+      - "${TELEGRAM_HEALTH_PORT:-3102}:3102"
     restart: always
     depends_on:
       gaia-backend:
@@ -234,6 +246,11 @@ services:
     image: ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - HEALTH_PORT=3103
+    ports:
+      - "${WHATSAPP_WEBHOOK_PORT:-3001}:3001"
+      - "${WHATSAPP_HEALTH_PORT:-3103}:3103"
     restart: always
     depends_on:
       gaia-backend:

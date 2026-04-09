@@ -214,6 +214,10 @@ services:
         BOT_NAME: discord
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - HEALTH_PORT=3100
+    ports:
+      - "${DISCORD_HEALTH_PORT:-3100}:3100"
     restart: on-failure
     depends_on:
       gaia-backend:
@@ -232,6 +236,10 @@ services:
         BOT_NAME: slack
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - HEALTH_PORT=3101
+    ports:
+      - "${SLACK_HEALTH_PORT:-3101}:3101"
     restart: on-failure
     depends_on:
       gaia-backend:
@@ -251,6 +259,33 @@ services:
     # Generate ../../apps/bots/.env from apps/bots/.env.example before enabling bots.
     env_file:
       - ../../apps/bots/.env
+    environment:
+      - HEALTH_PORT=3102
+    ports:
+      - "${TELEGRAM_HEALTH_PORT:-3102}:3102"
+    restart: on-failure
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  # WhatsApp Bot
+  whatsapp-bot:
+    container_name: whatsapp-bot
+    profiles: ["bots", "all"]
+    build:
+      context: ../..
+      dockerfile: apps/bots/Dockerfile
+      args:
+        BOT_NAME: whatsapp
+    env_file:
+      - ../../apps/bots/.env
+    environment:
+      - HEALTH_PORT=3103
+    ports:
+      - "${WHATSAPP_WEBHOOK_PORT:-3001}:3001"
+      - "${WHATSAPP_HEALTH_PORT:-3103}:3103"
     restart: on-failure
     depends_on:
       gaia-backend:

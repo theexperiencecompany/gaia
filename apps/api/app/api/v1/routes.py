@@ -38,7 +38,6 @@ from app.api.v1.endpoints import (
     vfs,
     voice_token,
     webhook_composio,
-    webhook_whatsapp,
     websocket,
     workflows,
 )
@@ -47,7 +46,6 @@ from fastapi import APIRouter
 
 router = APIRouter()
 
-router.include_router(webhook_whatsapp.router, tags=["WhatsApp Webhook"])
 router.include_router(voice_token.router, tags=["Voice"])
 router.include_router(chat.router, tags=["Chat"])
 router.include_router(conversations.router, tags=["Conversations"])

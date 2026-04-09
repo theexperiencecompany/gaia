@@ -8,4 +8,6 @@
  * @module
  */
 export { BaseBotAdapter } from "./base";
+export type { HealthServerOptions } from "./health-server";
+export { startHealthServer } from "./health-server";
 export { richMessageToMarkdown } from "./rich-renderer";
