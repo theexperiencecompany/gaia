@@ -1,0 +1,148 @@
+{
+  "name": "Time and Scheduling Reasoning",
+  "description": "Tests the assistant's ability to parse relative dates, handle timezones, detect scheduling conflicts, estimate durations, reason about recurring events, respect working hours, and interpret informal temporal language.",
+  "version": "1.0.0",
+  "eval_type": "time_scheduling",
+  "items": [
+    {
+      "input": "schedule a call with jamie next tuesday at 2",
+      "expected_output": "The assistant should resolve 'next Tuesday' to the correct calendar date relative to today, default to 2pm (not 2am), and create the event. It should confirm the resolved date for the user to verify.",
+      "context": "Relative day reference with ambiguous am/pm. Tests relative date parsing and reasonable defaults.",
+      "tags": ["relative-date", "am-pm-ambiguity", "scheduling"],
+      "metadata": { "difficulty": "easy", "category": "relative-date" }
+    },
+    {
+      "input": "i need this done by end of month. how many working days do i have left?",
+      "expected_output": "The assistant should calculate the number of remaining business days (excluding weekends) between today and the last day of the current month. It should state its assumptions about holidays.",
+      "context": "Requires knowing the current date and computing business days. Tests date arithmetic.",
+      "tags": ["business-days", "deadline", "date-arithmetic"],
+      "metadata": { "difficulty": "medium", "category": "date-arithmetic" }
+    },
+    {
+      "input": "set up a meeting at 3pm EST with my coworker in london. make sure it works for both of us",
+      "expected_output": "The assistant should convert 3pm EST to the equivalent London time (GMT/BST depending on season) and confirm both times. It should flag if the London time falls outside reasonable working hours.",
+      "context": "Cross-timezone scheduling. Tests timezone conversion and working-hours awareness.",
+      "tags": ["timezone", "cross-timezone", "working-hours"],
+      "metadata": { "difficulty": "medium", "category": "timezone" }
+    },
+    {
+      "input": "i already have a dentist at 2 and a call at 3:30. can you fit a 45 min meeting in between?",
+      "expected_output": "The assistant should analyze the gap between the dentist appointment ending and the 3:30 call. It needs to ask or assume the dentist appointment duration, then determine if 45 minutes fits. If the gap is insufficient, it should say so.",
+      "context": "Conflict detection with duration estimation. Tests schedule gap analysis.",
+      "tags": ["conflict-detection", "duration", "gap-analysis"],
+      "metadata": { "difficulty": "hard", "category": "conflict-detection" }
+    },
+    {
+      "input": "block time for a dentist appointment sometime this week, probably an hour should be enough",
+      "expected_output": "The assistant should suggest available time slots this week that can accommodate a 1-hour block. It should prefer times that make practical sense for a dentist visit (business hours, not late evening).",
+      "context": "Duration estimation with practical time selection. Tests schedule-aware suggestion.",
+      "tags": ["duration-estimation", "practical-timing", "suggestion"],
+      "metadata": { "difficulty": "medium", "category": "duration-estimation" }
+    },
+    {
+      "input": "set up a recurring standup every weekday at 9am but skip holidays",
+      "expected_output": "The assistant should create a recurring weekday event at 9am and acknowledge the holiday exclusion. It should clarify which holiday calendar to use (country/region) or state its assumption.",
+      "context": "Recurring event with exception logic. Tests recurrence and holiday awareness.",
+      "tags": ["recurring", "weekday", "holiday-exclusion"],
+      "metadata": { "difficulty": "hard", "category": "recurring-events" }
+    },
+    {
+      "input": "this proposal is due friday and its thursday evening. how screwed am i",
+      "expected_output": "The assistant should acknowledge the tight deadline, estimate available working time (evening + Friday morning/day), and offer practical suggestions for prioritization. It should be honest about the time constraints without being dismissive.",
+      "context": "Urgent deadline awareness. Tests temporal urgency recognition and practical advice.",
+      "tags": ["deadline", "urgency", "time-awareness"],
+      "metadata": { "difficulty": "medium", "category": "deadline-awareness" }
+    },
+    {
+      "input": "dont schedule anything for me before 10am or after 6pm",
+      "expected_output": "The assistant should store this working-hours preference (10am-6pm) and apply it to all future scheduling within the session. It should confirm the preference and ask about timezone if not already known.",
+      "context": "User sets explicit working hours. Tests preference storage and application.",
+      "tags": ["working-hours", "preference", "constraint"],
+      "metadata": { "difficulty": "easy", "category": "working-hours" }
+    },
+    {
+      "input": "put something on my calendar for tomorrow morning",
+      "expected_output": "The assistant should ask what to schedule (title/purpose). For 'morning' it should either suggest a specific time within a reasonable morning range (8am-12pm) or ask for preference. It should resolve 'tomorrow' to the correct date.",
+      "context": "Vague time reference 'morning'. Tests interpretation of informal time-of-day language.",
+      "tags": ["vague-time", "morning", "clarification"],
+      "metadata": { "difficulty": "easy", "category": "informal-time" }
+    },
+    {
+      "input": "find a 30 min slot that works for someone in new york, someone in london, and someone in tokyo. ideally during work hours for everyone",
+      "expected_output": "The assistant should calculate the overlap of business hours across EST/EDT, GMT/BST, and JST. The overlap is very narrow (typically early morning EST / late afternoon GMT / late evening JST) and may not fully satisfy 'work hours for everyone'. The assistant should acknowledge this difficulty honestly.",
+      "context": "Three-way timezone coordination with minimal overlap. Tests multi-timezone reasoning and honest constraint reporting.",
+      "tags": ["multi-timezone", "overlap-calculation", "constraint-honesty"],
+      "metadata": { "difficulty": "hard", "category": "timezone" }
+    },
+    {
+      "input": "push my next meeting back 30 minutes",
+      "expected_output": "The assistant should identify the user's next upcoming meeting and reschedule it 30 minutes later. It should confirm which meeting is being moved and the new time. It should check for conflicts with the new time.",
+      "context": "Relative time adjustment to an existing event. Tests event modification and conflict awareness.",
+      "tags": ["reschedule", "relative-adjustment", "conflict-check"],
+      "metadata": { "difficulty": "medium", "category": "event-modification" }
+    },
+    {
+      "input": "i need this done asap, like yesterday",
+      "expected_output": "The assistant should interpret 'ASAP' and 'like yesterday' as maximum urgency, not as a literal past date. It should prioritize the task immediately and ask what specifically needs to be done if not clear.",
+      "context": "Urgency language with figurative temporal reference. Tests figurative vs literal interpretation.",
+      "tags": ["urgency", "figurative-language", "asap"],
+      "metadata": { "difficulty": "easy", "category": "urgency-language" }
+    },
+    {
+      "input": "schedule a weekly team sync but make it biweekly starting in march and then back to weekly in june",
+      "expected_output": "The assistant should handle the changing recurrence pattern: weekly until March, biweekly March through May, weekly again from June. It should confirm the transitions and handle edge cases around the month boundaries.",
+      "context": "Complex changing recurrence pattern. Tests multi-phase scheduling logic.",
+      "tags": ["recurring", "changing-pattern", "multi-phase"],
+      "metadata": { "difficulty": "hard", "category": "recurring-events" }
+    },
+    {
+      "input": "whats the time difference between here and dubai if im in chicago",
+      "expected_output": "The assistant should calculate the time difference between Chicago (CST/CDT) and Dubai (GST, UTC+4). The difference varies by daylight saving time. The assistant should state the current difference and note DST implications.",
+      "context": "Timezone difference calculation. Tests timezone knowledge and DST awareness.",
+      "tags": ["timezone", "difference-calculation", "dst"],
+      "metadata": { "difficulty": "medium", "category": "timezone" }
+    },
+    {
+      "input": "schedule a 2 hour deep work block every day this week but not when i have existing meetings",
+      "expected_output": "The assistant should check the user's calendar for each day this week, find 2-hour gaps without existing meetings, and propose specific time slots. It should respect working hours and prefer consistent timing if possible.",
+      "context": "Calendar-aware block scheduling. Tests schedule analysis and gap finding across multiple days.",
+      "tags": ["deep-work", "gap-finding", "multi-day", "calendar-aware"],
+      "metadata": { "difficulty": "hard", "category": "schedule-analysis" }
+    },
+    {
+      "input": "in 3 days and 4 hours from now, remind me to check on the deployment",
+      "expected_output": "The assistant should compute the exact date and time by adding 3 days and 4 hours to the current timestamp. It should confirm the resolved date and time with the user.",
+      "context": "Compound relative time calculation. Tests precise time arithmetic.",
+      "tags": ["relative-time", "compound", "reminder"],
+      "metadata": { "difficulty": "medium", "category": "date-arithmetic" }
+    },
+    {
+      "input": "can we do the meeting the day after the last friday of this month",
+      "expected_output": "The assistant should find the last Friday of the current month, then identify the following day (Saturday). It should flag that this is a weekend and ask if the user wants to meet on Saturday or move to Monday.",
+      "context": "Complex relative date that lands on a weekend. Tests multi-step date resolution and weekend awareness.",
+      "tags": ["complex-date", "weekend-detection", "multi-step"],
+      "metadata": { "difficulty": "hard", "category": "date-arithmetic" }
+    },
+    {
+      "input": "i have back to back meetings from 9 to 4 tomorrow. squeeze in a lunch break somewhere",
+      "expected_output": "The assistant should look for the best gap in the 9am-4pm meeting schedule to insert a lunch break. If truly back-to-back with no gaps, it should suggest shortening a meeting or moving lunch to before 9 or after 4. It should suggest a reasonable lunch duration (30-60 min).",
+      "context": "Finding time in a packed schedule. Tests creative schedule optimization.",
+      "tags": ["packed-schedule", "lunch-break", "optimization"],
+      "metadata": { "difficulty": "hard", "category": "schedule-analysis" }
+    },
+    {
+      "input": "every other wednesday starting from the first wednesday of next month",
+      "expected_output": "The assistant should identify the first Wednesday of next month and set up a biweekly recurrence from that date. It should confirm the start date and the pattern.",
+      "context": "Specific recurrence start with alternating pattern. Tests precise recurrence setup.",
+      "tags": ["biweekly", "specific-start", "recurring"],
+      "metadata": { "difficulty": "medium", "category": "recurring-events" }
+    },
+    {
+      "input": "how long until my 3pm? i feel like ive been waiting forever",
+      "expected_output": "The assistant should calculate the time remaining until 3pm today based on the current time. If 3pm has already passed, it should note that. The casual tone ('waiting forever') should be acknowledged lightly.",
+      "context": "Real-time countdown request with emotional context. Tests current-time awareness and tone matching.",
+      "tags": ["countdown", "current-time", "casual-tone"],
+      "metadata": { "difficulty": "easy", "category": "time-awareness" }
+    }
+  ]
+}
