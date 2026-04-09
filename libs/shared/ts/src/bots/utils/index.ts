@@ -18,6 +18,7 @@
 
 export * from "./commands";
 export * from "./formatters";
+export * from "./logger";
 export * from "./streaming";
 
 /**

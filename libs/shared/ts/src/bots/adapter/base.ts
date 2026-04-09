@@ -44,6 +44,7 @@ import type {
   RichMessageTarget,
 } from "../types";
 import { formatBotError } from "../utils/formatters";
+import { type BotLogger, createBotLogger } from "../utils/logger";
 
 /**
  * Abstract base class that all platform bot adapters extend.
@@ -84,6 +85,9 @@ export abstract class BaseBotAdapter {
   /** Server-side PostHog analytics. No-op when POSTHOG_API_KEY is absent. */
   protected analytics: Analytics = new Analytics(undefined);
 
+  /** Shared structured logger for adapter lifecycle and command execution. */
+  protected logger: BotLogger = createBotLogger("shared", "base-adapter");
+
   // ---------------------------------------------------------------------------
   // Lifecycle — template method pattern
   // ---------------------------------------------------------------------------
@@ -102,6 +106,9 @@ export abstract class BaseBotAdapter {
    * @param commands - Array of unified {@link BotCommand} definitions to register.
    */
   async boot(commands: BotCommand[]): Promise<void> {
+    this.logger = createBotLogger(this.platform, "base-adapter");
+    this.logger.info("boot_started", { command_count: commands.length });
+
     this.config = await loadConfig();
     this.gaia = new GaiaClient(
       this.config.gaiaApiUrl,
@@ -117,6 +124,10 @@ export abstract class BaseBotAdapter {
     await this.registerCommands(commands);
     await this.registerEvents();
     await this.start();
+
+    this.logger.info("boot_completed", {
+      gaia_api_url: this.config.gaiaApiUrl,
+    });
   }
 
   /**
@@ -126,9 +137,10 @@ export abstract class BaseBotAdapter {
    * Delegates to the platform-specific {@link stop} implementation.
    */
   async shutdown(): Promise<void> {
-    console.log(`Shutting down ${this.platform} bot...`);
+    this.logger.info("shutdown_started");
     await this.stop();
     await this.analytics.shutdown();
+    this.logger.info("shutdown_completed");
   }
 
   // ---------------------------------------------------------------------------
@@ -231,6 +243,11 @@ export abstract class BaseBotAdapter {
 
     const startMs = Date.now();
     try {
+      this.logger.info("command_dispatch_started", {
+        command: name,
+        user_id: target.userId,
+        channel_id: target.channelId,
+      });
       await command.execute({ gaia: this.gaia, target, ctx, args, rawText });
       this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
         command: name,
@@ -238,10 +255,26 @@ export abstract class BaseBotAdapter {
         success: true,
         channel_id: target.channelId,
       });
+      this.logger.info("command_dispatch_completed", {
+        command: name,
+        user_id: target.userId,
+        channel_id: target.channelId,
+        duration_ms: Date.now() - startMs,
+      });
     } catch (error) {
       const durationMs = Date.now() - startMs;
       const errorType = error instanceof Error ? error.name : "Unknown";
-      console.error(`Error executing command /${name}:`, error);
+      this.logger.error(
+        "command_dispatch_failed",
+        {
+          command: name,
+          user_id: target.userId,
+          channel_id: target.channelId,
+          duration_ms: durationMs,
+          error_type: errorType,
+        },
+        error,
+      );
       // Capture only the error class name. Raw messages can contain file
       // paths, request IDs, or upstream-echoed tokens — never ship them.
       this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {

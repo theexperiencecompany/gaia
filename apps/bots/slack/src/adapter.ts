@@ -24,6 +24,7 @@ import {
   BaseBotAdapter,
   type BotCommand,
   convertToSlackMrkdwn,
+  createBotLogger,
   handleStreamingChat,
   type PlatformName,
   parseTextArgs,
@@ -81,6 +82,7 @@ export class SlackAdapter extends BaseBotAdapter {
   private token!: string;
   private signingSecret!: string;
   private appToken!: string;
+  private adapterLogger = createBotLogger("slack", "adapter");
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -129,6 +131,11 @@ export class SlackAdapter extends BaseBotAdapter {
       this.app.command(
         `/${commandName}`,
         async ({ command, ack, respond, client }) => {
+          this.adapterLogger.info("slash_command_received", {
+            command: commandName,
+            user_id: command.user_id,
+            channel_id: command.channel_id,
+          });
           await ack();
 
           const userId = command.user_id;
@@ -178,6 +185,11 @@ export class SlackAdapter extends BaseBotAdapter {
       const userId = event.user;
       const channelId = event.channel;
 
+      this.adapterLogger.info("app_mention_received", {
+        user_id: userId,
+        channel_id: channelId,
+      });
+
       if (!userId) return;
 
       if (!content) {
@@ -199,6 +211,11 @@ export class SlackAdapter extends BaseBotAdapter {
       if (msg.channel_type !== "im") return;
       if (!msg.text || !msg.user || !msg.channel) return;
 
+      this.adapterLogger.info("dm_message_received", {
+        user_id: msg.user,
+        channel_id: msg.channel,
+      });
+
       await this.handleSlackStreaming(client, msg.channel, msg.user, msg.text);
     });
   }
@@ -206,7 +223,7 @@ export class SlackAdapter extends BaseBotAdapter {
   /** Starts the Slack Bolt app. */
   protected async start(): Promise<void> {
     await this.app.start();
-    console.log("Slack bot is running");
+    this.adapterLogger.info("socket_mode_started");
   }
 
   /** Stops the Slack Bolt app. */
@@ -226,6 +243,11 @@ export class SlackAdapter extends BaseBotAdapter {
    */
   private registerGaiaCommand(): void {
     this.app.command("/gaia", async ({ command, ack, client }) => {
+      this.adapterLogger.info("slash_command_received", {
+        command: "gaia",
+        user_id: command.user_id,
+        channel_id: command.channel_id,
+      });
       await ack();
 
       const userId = command.user_id;
@@ -257,6 +279,12 @@ export class SlackAdapter extends BaseBotAdapter {
     userId: string,
     message: string,
   ): Promise<void> {
+    this.adapterLogger.info("streaming_started", {
+      user_id: userId,
+      channel_id: channelId,
+      message_length: message.length,
+    });
+
     const result = await client.chat.postMessage({
       channel: channelId,
       text: "Thinking...",
@@ -264,7 +292,10 @@ export class SlackAdapter extends BaseBotAdapter {
 
     const ts = (result as { ts?: string }).ts;
     if (!ts) {
-      console.warn("Slack postMessage returned no ts — sending fallback error");
+      this.adapterLogger.warn("post_message_missing_ts", {
+        user_id: userId,
+        channel_id: channelId,
+      });
       try {
         await client.chat.postEphemeral({
           channel: channelId,
@@ -272,7 +303,14 @@ export class SlackAdapter extends BaseBotAdapter {
           text: "Something went wrong processing your message. Please try again.",
         });
       } catch (fallbackErr) {
-        console.error("Slack fallback error message also failed:", fallbackErr);
+        this.adapterLogger.error(
+          "post_ephemeral_fallback_failed",
+          {
+            user_id: userId,
+            channel_id: channelId,
+          },
+          fallbackErr,
+        );
       }
       return;
     }

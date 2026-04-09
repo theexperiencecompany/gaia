@@ -20,6 +20,7 @@
 import {
   BaseBotAdapter,
   type BotCommand,
+  createBotLogger,
   formatBotError,
   handleStreamingChat,
   type PlatformName,
@@ -170,6 +171,7 @@ export class DiscordAdapter extends BaseBotAdapter {
   private dmWelcomeSent = new Set<string>();
   private statusRotationTimer: ReturnType<typeof setInterval> | null = null;
   private statusIndex = Math.floor(Math.random() * ROTATING_STATUSES.length);
+  private adapterLogger = createBotLogger("discord", "adapter");
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -213,7 +215,10 @@ export class DiscordAdapter extends BaseBotAdapter {
    */
   protected async registerEvents(): Promise<void> {
     this.client.once(Events.ClientReady, (c) => {
-      console.log(`Discord bot ready as ${c.user.tag}`);
+      this.adapterLogger.info("client_ready", {
+        bot_tag: c.user.tag,
+        bot_id: c.user.id,
+      });
       this.startStatusRotation(c.user);
     });
 
@@ -232,7 +237,11 @@ export class DiscordAdapter extends BaseBotAdapter {
         try {
           await message.fetch();
         } catch (error) {
-          console.error("Failed to fetch partial message:", error);
+          this.adapterLogger.error(
+            "partial_message_fetch_failed",
+            { message_id: message.id },
+            error,
+          );
           return;
         }
       }
@@ -309,6 +318,11 @@ export class DiscordAdapter extends BaseBotAdapter {
     interaction: ChatInputCommandInteraction,
   ): Promise<void> {
     const name = interaction.commandName;
+    this.adapterLogger.info("slash_command_received", {
+      command: name,
+      user_id: interaction.user.id,
+      channel_id: interaction.channelId,
+    });
 
     if (name === "gaia") {
       await this.handleGaiaInteraction(interaction);
@@ -386,6 +400,11 @@ export class DiscordAdapter extends BaseBotAdapter {
     interaction: MessageContextMenuCommandInteraction,
   ): Promise<void> {
     const name = interaction.commandName;
+    this.adapterLogger.info("context_menu_received", {
+      command: name,
+      user_id: interaction.user.id,
+      channel_id: interaction.channelId,
+    });
     const content = interaction.targetMessage.content;
     const userId = interaction.user.id;
     const channelId = interaction.channelId;
@@ -571,6 +590,14 @@ export class DiscordAdapter extends BaseBotAdapter {
 
       clearTyping();
     } catch (error) {
+      this.adapterLogger.error(
+        "dm_message_processing_failed",
+        {
+          user_id: userId,
+          channel_id: message.channelId,
+        },
+        error,
+      );
       await send(formatBotError(error));
     }
   }
@@ -742,6 +769,14 @@ export class DiscordAdapter extends BaseBotAdapter {
 
       clearTyping();
     } catch (error) {
+      this.adapterLogger.error(
+        "mention_message_processing_failed",
+        {
+          user_id: message.author.id,
+          channel_id: message.channelId,
+        },
+        error,
+      );
       await send(formatBotError(error));
     }
   }
