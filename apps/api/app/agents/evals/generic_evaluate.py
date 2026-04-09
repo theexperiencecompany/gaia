@@ -84,10 +84,15 @@ ASSISTANT_SYSTEM_PROMPT = (
 # ---------------------------------------------------------------------------
 
 
+# Opik built-in LLM judges use LiteLLM under the hood.
+# LiteLLM Gemini format: "gemini/model-name"
+EVAL_JUDGE_MODEL = "gemini/gemini-3.1-flash"
+
+
 def _resolve_builtin_metrics(
     names: list[str],
 ) -> list[base_metric.BaseMetric]:
-    """Instantiate Opik built-in metrics by name."""
+    """Instantiate Opik built-in metrics by name, using Gemini as the judge model."""
     from opik.evaluation.metrics import (
         AnswerRelevance,
         Hallucination,
@@ -95,7 +100,7 @@ def _resolve_builtin_metrics(
         Usefulness,
     )
 
-    registry: dict[str, type[base_metric.BaseMetric]] = {
+    registry: dict[str, Any] = {
         "AnswerRelevance": AnswerRelevance,
         "Hallucination": Hallucination,
         "Moderation": Moderation,
@@ -105,7 +110,7 @@ def _resolve_builtin_metrics(
     for name in names:
         cls = registry.get(name)
         if cls:
-            metrics.append(cls())
+            metrics.append(cls(model=EVAL_JUDGE_MODEL))
         else:
             log.warning(f"Unknown built-in metric: {name}, skipping")
     return metrics
@@ -165,6 +170,7 @@ def _build_geval_metric(criteria: str) -> base_metric.BaseMetric:
     return GEval(
         task_introduction="You are evaluating a personal AI assistant's response.",
         evaluation_criteria=criteria,
+        model=EVAL_JUDGE_MODEL,
     )
 
 
@@ -175,11 +181,11 @@ def _build_jury_metrics(
     from opik.evaluation.metrics import Hallucination, LLMJuriesJudge, Moderation
 
     judges: list[base_metric.BaseMetric] = [
-        Moderation(model="gpt-4o-mini"),
+        Moderation(model=EVAL_JUDGE_MODEL),
     ]
 
     if "Hallucination" in config.builtin_metrics:
-        judges.append(Hallucination(model="gpt-4o-mini"))
+        judges.append(Hallucination(model=EVAL_JUDGE_MODEL))
 
     return [LLMJuriesJudge(judges)]
 
@@ -396,9 +402,9 @@ class GenericEvaluator:
         )
         log.info(f"System prompt versioned: {self.prompt.commit}")
 
-        # Initialize LLM for Mode B
+        # Initialize LLM for Mode B (uses Gemini by default)
         if self.mode == "prompt":
-            self.llm = init_llm()
+            self.llm = init_llm(preferred_provider="gemini")
 
         # Initialize providers for Mode A
         if self.mode == "full":
@@ -585,6 +591,8 @@ class GenericEvaluator:
             experiment_config={
                 "eval_type": self.config.id,
                 "mode": self.mode,
+                "model": "gemini-3.1-flash",
+                "judge_model": EVAL_JUDGE_MODEL,
                 "prompt_version": self.prompt.commit if self.prompt else "N/A",
                 "date": datetime.now().isoformat(),
             },

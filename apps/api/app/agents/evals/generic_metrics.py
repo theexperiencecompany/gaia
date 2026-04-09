@@ -30,7 +30,7 @@ class _LLMJudgeBase(base_metric.BaseMetric):
 
     prompt_template: str = ""
 
-    def __init__(self, name: str, preferred_provider: str = "openai"):
+    def __init__(self, name: str, preferred_provider: str = "gemini"):
         super().__init__(name=name)
         self._preferred_provider = preferred_provider
         self._llm: Any = None
