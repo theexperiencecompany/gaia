@@ -82,7 +82,7 @@ export class SlackAdapter extends BaseBotAdapter {
   private token!: string;
   private signingSecret!: string;
   private appToken!: string;
-  private adapterLogger = createBotLogger("slack", "adapter");
+  private readonly adapterLogger = createBotLogger("slack", "adapter");
 
   // ---------------------------------------------------------------------------
   // Lifecycle

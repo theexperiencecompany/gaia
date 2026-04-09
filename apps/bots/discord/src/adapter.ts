@@ -171,7 +171,7 @@ export class DiscordAdapter extends BaseBotAdapter {
   private dmWelcomeSent = new Set<string>();
   private statusRotationTimer: ReturnType<typeof setInterval> | null = null;
   private statusIndex = Math.floor(Math.random() * ROTATING_STATUSES.length);
-  private adapterLogger = createBotLogger("discord", "adapter");
+  private readonly adapterLogger = createBotLogger("discord", "adapter");
 
   // ---------------------------------------------------------------------------
   // Lifecycle

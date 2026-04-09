@@ -76,7 +76,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
   /** Tracks users who have already received a welcome message this process. */
   private readonly welcomeSent = new Set<string>();
-  private adapterLogger = createBotLogger("whatsapp", "adapter");
+  private readonly adapterLogger = createBotLogger("whatsapp", "adapter");
 
   private get whatsAppClient(): WhatsAppClient {
     if (!this.waClient) {

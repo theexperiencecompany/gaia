@@ -67,7 +67,7 @@ export class TelegramAdapter extends BaseBotAdapter {
   private bot!: Bot;
   private token!: string;
   private botUsername: string | undefined;
-  private adapterLogger = createBotLogger("telegram", "adapter");
+  private readonly adapterLogger = createBotLogger("telegram", "adapter");
 
   // ---------------------------------------------------------------------------
   // Lifecycle
