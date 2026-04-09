@@ -84,11 +84,14 @@ Every bot follows the same lifecycle:
 boot(allCommands)
   → initialize()       create platform client
   → registerCommands() wire BotCommand list to platform slash/command handlers
-  → registerEvents()   register mention/DM event listeners
+  → registerEvents()   register mention/DM event listeners (mount webhook routes here)
   → start()            connect to gateway / start polling
+  → BotServer.start()  start shared HTTP server (after all routes are mounted)
 ```
 
-The `BaseBotAdapter` (in `libs/shared/ts/src/bots/adapter/base.ts`) owns `dispatchCommand`, `buildContext`, error handling, and the `GaiaClient` instance. Each bot only implements the five abstract methods above.
+The `BaseBotAdapter` (in `libs/shared/ts/src/bots/adapter/base.ts`) owns `dispatchCommand`, `buildContext`, error handling, the `GaiaClient` instance, and the shared `BotServer`. Each bot only implements the five abstract methods above.
+
+**BotServer** (`libs/shared/ts/src/bots/adapter/base-server.ts`) is a Hono HTTP server created automatically in `boot()`. It provides `GET /health` by default. Subclasses can mount additional routes on `this.botServer.app` inside `registerEvents()` before the server starts. Each bot has a hardcoded `defaultServerPort` (discord: 3200, slack: 3201, telegram: 3202, whatsapp: 3203), overridable with `BOT_SERVER_PORT`.
 
 Shutdown: entry points register `SIGINT`/`SIGTERM` handlers that call `adapter.shutdown()` → `stop()`. No `uncaughtException` or `unhandledRejection` handlers are registered — errors during boot propagate to `main().catch()` and exit with code 1.
 
@@ -178,9 +181,9 @@ All converters use `applyOutsideCodeBlocks()` to preserve fenced code blocks.
 
 ### WhatsApp (`whatsapp/`)
 
-- **Connection**: HTTP webhook server (Hono + `@hono/node-server`) — Kapso calls `POST /webhook`
+- **Connection**: HTTP webhook server (`BotServer` — Hono + `@hono/node-server`) on port 3203 — Kapso calls `POST /webhook`
 - **Kapso** is a Meta WhatsApp Cloud API proxy service at `https://api.kapso.ai/meta/whatsapp`. It simplifies webhook handling and message sending.
-- Webhook signature verified via HMAC-SHA256 on raw body against `KAPSO_WEBHOOK_SECRET`. Verification happens in both the API proxy and the bot (defense in depth).
+- Webhook signature verified via HMAC-SHA256 on raw body against `KAPSO_WEBHOOK_SECRET`.
 - No slash-command registry step needed — commands matched by text prefix (`/command`)
 - Non-command messages (plain text) are treated as chat messages (like Telegram DMs)
 - Non-text messages (images, audio, video, documents) receive a helpful reply explaining text-only support
@@ -191,8 +194,9 @@ All converters use `applyOutsideCodeBlocks()` to preserve fenced code blocks.
 - Welcome message sent once per user per process lifetime (tracked in `welcomeSent` Set), matching Discord's DM welcome pattern
 - Streaming is **disabled** (`streaming: false`) — full response sent once complete
 - `platform_user_id` = wa_id (phone number without leading `+`, e.g. `"15551234567"`)
-- **Webhook architecture**: Public webhook at `api.heygaia.io/api/v1/webhook/whatsapp` verifies signature, then forwards to internal bot container on Docker network (`http://whatsapp-bot:3001/webhook`). This keeps port 3001 off public internet.
-- Required env vars: `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID`, `KAPSO_WEBHOOK_SECRET`, `WHATSAPP_WEBHOOK_PORT`
+- **Webhook architecture**: Kapso POSTs to a public HTTPS endpoint which is proxied to `http://whatsapp-bot:3203/webhook` on the internal Docker network. The bot verifies the Kapso HMAC signature.
+- **Port**: `3203` (default, override with `BOT_SERVER_PORT` env var). Port is exposed on the host for external monitoring; the `/health` endpoint returns `{ status: "ok", platform: "whatsapp" }`.
+- Required env vars: `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID`, `KAPSO_WEBHOOK_SECRET`
 
 ## Testing
 
@@ -349,9 +353,9 @@ class {Platform}Adapter extends BaseBotAdapter {
 - Chat messages → `handleStreamingChat(this.gaia, request, ...callbacks)`
 - Non-text messages → graceful rejection message
 
-**`start()`**: Connect to the platform (WebSocket, long polling, or HTTP server).
+**`start()`**: Connect to the platform (WebSocket, long polling). The `BotServer` is started automatically by `boot()` after `start()` returns — do not start it manually.
 
-**`stop()`**: Clean up connections, close servers, clear intervals.
+**`stop()`**: Clean up connections, clear intervals. The `BotServer` is stopped automatically by `shutdown()` — do not stop it manually.
 
 #### Creating a RichMessageTarget
 
@@ -489,11 +493,15 @@ The shared `apps/bots/Dockerfile` is parameterized by `BOT_NAME` build arg — n
     - gaia_network
 ```
 
-If the bot runs an HTTP server (like WhatsApp), expose the port:
+All bots expose their `BotServer` port on the host for health monitoring and status pages:
 ```yaml
+  environment:
+    - BOT_SERVER_PORT=32XX
   ports:
-    - "${PORT_VAR:-default}:port"
+    - "${PLATFORM_BOT_PORT:-32XX}:32XX"
 ```
+
+For webhook-based bots (WhatsApp), also add an nginx location block to route external traffic to the bot container — see step 11.
 
 **`infra/docker/docker-compose.prod.yml`** — add the same service using the pre-built image:
 ```yaml
@@ -508,37 +516,19 @@ If the bot runs an HTTP server (like WhatsApp), expose the port:
 
 **`apps/bots/.env.example`** — add all required env vars with descriptions.
 
-### 11. Backend integration (if webhook-based)
+### 11. Server proxy integration (if webhook-based)
 
-If the platform uses webhooks (like WhatsApp), you need a **two-hop architecture**: external service → API proxy → internal bot container. This keeps the bot's webhook port off the public internet and consolidates TLS termination at the API layer.
+If the platform uses webhooks (like WhatsApp), configure a reverse proxy on the server to route the public HTTPS webhook URL to the bot container on the internal Docker network. TLS is terminated at the proxy; the bot receives plain HTTP.
 
 ```
-[External Service] → POST api.heygaia.io/api/v1/webhook/{platform}
-                           ↓ (verify signature)
-                     [API Proxy] → POST http://{platform}-bot:3001/webhook
-                                         ↓ (verify signature again, defense in depth)
-                                   [Bot Container] → process message
+[External Service] → POST https://api.heygaia.io/api/v1/webhook/{platform}
+                           ↓ (reverse proxy, internal Docker network)
+                     [{platform}-bot:32XX/webhook]
+                           ↓ (verify HMAC signature)
+                     [Bot Container] → process message
 ```
 
-1. **API webhook proxy** (`apps/api/app/api/v1/endpoints/webhook_{platform}.py`):
-   - Route: `POST /api/v1/webhook/{platform}`
-   - Verifies platform-specific webhook signature (HMAC, etc.)
-   - Reads internal bot URL from settings (e.g. `{PLATFORM}_BOT_URL`)
-   - Forwards raw body + relevant headers via `httpx` to internal bot
-   - Returns 200 immediately to the external service
-   - Handles 502 (bot unavailable) and 504 (bot timeout) errors
-   - Register the router in `apps/api/app/api/v1/routes.py`
-
-2. **Signature verification** (`apps/api/app/utils/webhook_utils.py`):
-   - Add a `verify_{platform}_webhook_signature(request)` function
-   - Use timing-safe comparison (`hmac.compare_digest`)
-   - Raise 401 if invalid, 503 if secret not configured
-
-3. **API settings** (`apps/api/app/config/settings.py`):
-   - Add to both `DevelopmentSettings` and `ProductionSettings`:
-     - `{PLATFORM}_BOT_URL: str` — internal Docker network URL (e.g. `"http://{platform}-bot:3001"`)
-     - API keys, phone numbers, webhook secrets as needed
-   - Document each setting with examples in comments
+The bot handles signature verification itself in `registerEvents()`. No API-layer proxy is needed.
 
 ### 12. Notification channel
 
@@ -634,7 +624,7 @@ nx test bots-e2e
 | Welcome message | DM embed + buttons | None | None | Text markdown |
 | Media support | Text only | Text only | Text only | Text only (graceful rejection) |
 | Auth flow | Link token + web | Link token + web | Link token + web | Link token + web |
-| Webhook proxy | No | No | No | Yes (API → bot) |
+| Webhook routing | No | No | No | nginx → bot:3203 |
 
 ### Docker build
 
