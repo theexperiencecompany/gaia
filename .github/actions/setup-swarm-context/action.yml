@@ -1,0 +1,37 @@
+name: Set up Docker Swarm context
+description: >
+  Bootstraps gcloud SSH keys via OS Login and creates a Docker context
+  pointing at the production GCP VM. Requires gcloud CLI to already be
+  authenticated (GCP WIF) before this action runs.
+
+inputs:
+  gcp_zone:
+    description: GCP zone of the production VM
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Bootstrap SSH keys and create Docker context
+      shell: bash
+      env:
+        GCP_ZONE: ${{ inputs.gcp_zone }}
+      run: |
+        # A throwaway ssh call causes gcloud to generate + register an
+        # ephemeral keypair via OS Login (~/.ssh/google_compute_engine).
+        gcloud compute ssh ubuntu@gaia-backend \
+          --zone="$GCP_ZONE" \
+          --command="docker info > /dev/null"
+
+        VM_IP=$(gcloud compute instances describe gaia-backend \
+          --zone="$GCP_ZONE" \
+          --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
+
+        # Tell SSH to use gcloud's key for this IP.
+        mkdir -p ~/.ssh
+        printf 'Host %s\n  IdentityFile ~/.ssh/google_compute_engine\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n' \
+          "$VM_IP" >> ~/.ssh/config
+
+        docker context create prod \
+          --docker "host=ssh://ubuntu@$VM_IP" \
+          --description "Production GCP VM (gaia-backend)"

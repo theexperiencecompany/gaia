@@ -125,3 +125,6 @@ docs/plans/
 i18n.cache
 .worktrees/
 superpowers/
+
+# Operator runbooks and local prod config
+ops/

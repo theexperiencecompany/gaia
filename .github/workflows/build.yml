@@ -329,7 +329,9 @@ jobs:
   trigger-deploy:
     needs: [deployment-plan]
     if: needs.deployment-plan.outputs.backend_deploy == 'true'
-    uses: ./.github/workflows/deploy.yml
+    uses: ./.github/workflows/deploy-swarm-prod.yml
+    with:
+      action: deploy
     secrets: inherit
 
   # Trigger web production deploy only when deploy plan allows it.
