@@ -57,6 +57,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 120s
     depends_on:
       - chromadb
       - postgres
@@ -636,8 +637,6 @@ services:
     image: grafana/promtail:3.3.2
     container_name: promtail
     user: root
-    logging:
-      driver: "none"
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
@@ -648,7 +647,7 @@ services:
     networks:
       - gaia-prod-shared
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:9080/ready || exit 1"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9080' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -680,7 +679,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
-      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-https://hooks.slack.com/services/PLACEHOLDER}
       SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
     env_file:
       - .env

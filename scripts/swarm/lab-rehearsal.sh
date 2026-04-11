@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Local Swarm rehearsal — mirrors the exact production setup from ops/prod-setup.md.
 #
+# Uses OrbStack to create an amd64 Ubuntu VM (matching production architecture).
+# OrbStack runs x86_64 via Rosetta on Apple Silicon — all GHCR images work natively.
+#
 # What this does (same order as prod):
-#   1. Create Multipass VM  (= GCP VM)
+#   1. Create OrbStack amd64 VM  (= GCP VM)
 #   2. Install Docker
-#   3. Generate SSH key + add to VM  (= adding your key to the server)
-#   4. Add SSH config entry  (= ~/.ssh/config Host gaia-prod)
-#   5. Create Docker context  (= docker context create gaia-prod)
-#   6. docker swarm init
-#   7. docker network create --driver overlay --attachable gaia-prod-shared
-#   8. Create Swarm secrets  (= docker secret create ... -)
-#   9. docker stack deploy -c infra/docker/docker-compose.prod.yml gaia-prod
-#  10. Check services
-#  11. Rollback drill
+#   3. Create Docker context  (= docker context create gaia-prod)
+#   4. docker swarm init + overlay network
+#   5. Create Swarm secrets  (= docker secret create ... -)
+#   6. Sync observability configs to VM
+#   7. docker stack deploy -c infra/docker/docker-compose.prod.yml gaia-prod
+#   8. Check services + rollback drill
 #
 # Usage:
 #   bash scripts/swarm/lab-rehearsal.sh [options]
@@ -28,13 +28,9 @@
 #   METRICS_TOKEN=...
 #
 # Options:
-#   --vm-name <name>       Multipass VM name          (default: gaia-swarm-lab)
-#   --cpus <n>             VM CPUs                    (default: 4)
-#   --memory <size>        VM memory                  (default: 8G)
-#   --disk <size>          VM disk                    (default: 40G)
-#   --ubuntu-image <ver>   Ubuntu release             (default: 22.04)
-#   --ssh-key <path>       SSH private key to use     (default: ~/.ssh/gaia-lab)
-#   --context-name <name>  Docker context name        (default: gaia-lab)
+#   --vm-name <name>       OrbStack VM name           (default: gaia-swarm-lab)
+#   --ubuntu-version <ver> Ubuntu release              (default: 22.04)
+#   --context-name <name>  Docker context name         (default: gaia-lab)
 #   --skip-launch          Reuse existing VM
 #   --skip-secrets         Skip secret creation
 #   --skip-deploy          Skip stack deploy (just set up infra)
@@ -46,14 +42,10 @@ set -euo pipefail
 # Defaults
 # ---------------------------------------------------------------------------
 VM_NAME="gaia-swarm-lab"
-VM_CPUS="4"
-VM_MEMORY="8G"
-VM_DISK="40G"
-UBUNTU_IMAGE="22.04"
-SSH_KEY="$HOME/.ssh/gaia-lab"
+UBUNTU_VERSION="22.04"
 CONTEXT_NAME="gaia-lab"
 SKIP_LAUNCH="false"
-SKIP_SECRETS="false"
+SKIP_SECRETS="false"  # pragma: allowlist secret
 SKIP_DEPLOY="false"
 
 # ---------------------------------------------------------------------------
@@ -61,20 +53,19 @@ SKIP_DEPLOY="false"
 # ---------------------------------------------------------------------------
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --vm-name)      VM_NAME="$2";      shift 2 ;;
-    --cpus)         VM_CPUS="$2";      shift 2 ;;
-    --memory)       VM_MEMORY="$2";    shift 2 ;;
-    --disk)         VM_DISK="$2";      shift 2 ;;
-    --ubuntu-image) UBUNTU_IMAGE="$2"; shift 2 ;;
-    --ssh-key)      SSH_KEY="$2";      shift 2 ;;
-    --context-name) CONTEXT_NAME="$2"; shift 2 ;;
-    --skip-launch)  SKIP_LAUNCH="true"; shift ;;
-    --skip-secrets) SKIP_SECRETS="true"; shift ;;
-    --skip-deploy)  SKIP_DEPLOY="true"; shift ;;
+    --vm-name)         VM_NAME="$2";         shift 2 ;;
+    --ubuntu-version)  UBUNTU_VERSION="$2";  shift 2 ;;
+    --context-name)    CONTEXT_NAME="$2";    shift 2 ;;
+    --skip-launch)     SKIP_LAUNCH="true";   shift ;;
+    --skip-secrets)    SKIP_SECRETS="true"; shift ;;  # pragma: allowlist secret
+    --skip-deploy)     SKIP_DEPLOY="true";   shift ;;
     -h|--help) grep '^#' "$0" | grep -v '^#!/' | sed 's/^# \?//'; exit 0 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
+
+# OrbStack SSH host — used for ssh, rsync, and docker context
+SSH_HOST="$VM_NAME@orb"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -91,135 +82,114 @@ phase() {
 }
 
 # ---------------------------------------------------------------------------
-# PHASE 1 — Provision VM
+# Pre-flight: check OrbStack is available
 # ---------------------------------------------------------------------------
-phase "1/8  Provision Multipass VM"
+if ! command -v orbctl &>/dev/null; then
+  echo "ERROR: OrbStack not found. Install from https://orbstack.dev" >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Pre-flight: check VM disk space (Swarm Raft WAL needs at least 2 GB free)
+# ---------------------------------------------------------------------------
+check_vm_disk() {
+  local avail_kb
+  avail_kb=$(orb -m "$VM_NAME" df -k / 2>/dev/null | awk 'NR==2 {print $4}')
+  local avail_gb=$(( avail_kb / 1024 / 1024 ))
+  if [ "$avail_gb" -lt 2 ]; then
+    echo "ERROR: VM has only ${avail_gb}GB free on /. Swarm needs ≥2 GB." >&2
+    echo "Free space with: orb -m $VM_NAME docker system prune -af --volumes" >&2
+    exit 1
+  fi
+  log "VM disk: ${avail_gb}GB free on /"
+}
+
+# ---------------------------------------------------------------------------
+# PHASE 1 — Provision amd64 VM via OrbStack
+# ---------------------------------------------------------------------------
+phase "1/7  Provision OrbStack amd64 VM"
 
 if [ "$SKIP_LAUNCH" = "true" ]; then
-  log "Skipping VM launch (--skip-launch)"
-  multipass start "$VM_NAME" 2>/dev/null || true
+  log "Skipping VM creation (--skip-launch)"
+  # Ensure it's running
+  orbctl start "$VM_NAME" 2>/dev/null || true
 else
-  if multipass info "$VM_NAME" >/dev/null 2>&1; then
+  # Check if VM already exists
+  if orbctl info "$VM_NAME" &>/dev/null; then
     log "VM '$VM_NAME' already exists — starting"
-    multipass start "$VM_NAME" 2>/dev/null || true
+    orbctl start "$VM_NAME" 2>/dev/null || true
   else
-    log "Launching $VM_NAME ($VM_CPUS vCPU · $VM_MEMORY · $VM_DISK · Ubuntu $UBUNTU_IMAGE)"
-    multipass launch "$UBUNTU_IMAGE" \
-      --name "$VM_NAME" \
-      --cpus "$VM_CPUS" \
-      --memory "$VM_MEMORY" \
-      --disk "$VM_DISK"
+    log "Creating $VM_NAME (amd64 · Ubuntu $UBUNTU_VERSION via Rosetta)"
+    orbctl create -a amd64 "ubuntu:$UBUNTU_VERSION" "$VM_NAME"
   fi
 fi
 
-VM_IP=$(multipass info "$VM_NAME" --format json \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['$VM_NAME']['ipv4'][0])")
-log "VM IP: $VM_IP"
-ok "VM ready"
+# Verify architecture
+VM_ARCH=$(orb -m "$VM_NAME" uname -m 2>/dev/null)
+VM_IP=$(orbctl info "$VM_NAME" 2>/dev/null | grep 'IPv4:' | awk '{print $2}')
+log "VM IP: $VM_IP  Arch: $VM_ARCH"
+
+if [ "$VM_ARCH" != "x86_64" ]; then
+  echo "ERROR: VM architecture is $VM_ARCH, expected x86_64. Recreate with: orbctl delete $VM_NAME && orbctl create -a amd64 ubuntu:$UBUNTU_VERSION $VM_NAME" >&2
+  exit 1
+fi
+ok "VM ready (amd64/x86_64)"
+
+check_vm_disk
 
 # ---------------------------------------------------------------------------
 # PHASE 2 — Install Docker in VM
 # ---------------------------------------------------------------------------
-phase "2/8  Install Docker"
+phase "2/7  Install Docker"
 
-multipass exec "$VM_NAME" -- bash -s << 'INSTALL'
+orb -m "$VM_NAME" -u root bash -s << 'INSTALL'
 set -euo pipefail
 if docker version >/dev/null 2>&1; then
   echo "Docker already installed: $(docker version --format '{{.Server.Version}}')"
   exit 0
 fi
-echo "Installing Docker..."
-sudo apt-get update -qq
-sudo apt-get install -y -qq docker.io
-sudo usermod -aG docker ubuntu
-sudo systemctl enable --now docker
-echo "Docker installed: $(sudo docker version --format '{{.Server.Version}}')"
+echo "Installing Docker + rsync..."
+apt-get update -qq
+apt-get install -y -qq docker.io rsync
+# Add the default user to the docker group
+DEFAULT_USER=$(getent passwd 1000 | cut -d: -f1)
+usermod -aG docker "$DEFAULT_USER"
+systemctl enable --now docker
+echo "Docker installed: $(docker version --format '{{.Server.Version}}')"
 INSTALL
+
+# Verify docker works as the normal user (may need newgrp)
+orb -m "$VM_NAME" docker version --format '{{.Server.Version}}' >/dev/null 2>&1 || {
+  log "Refreshing group membership..."
+  orb -m "$VM_NAME" -u root bash -c "su - \$(getent passwd 1000 | cut -d: -f1) -c 'docker version'" >/dev/null
+}
 ok "Docker ready"
 
 # ---------------------------------------------------------------------------
-# PHASE 3 — SSH key setup  (mirrors: adding your pubkey to the server)
+# PHASE 3 — Docker context  (mirrors: docker context create gaia-prod)
 # ---------------------------------------------------------------------------
-phase "3/8  SSH key setup"
+phase "3/7  Docker context"
 
-if [ ! -f "$SSH_KEY" ]; then
-  log "Generating SSH key at $SSH_KEY"
-  ssh-keygen -t ed25519 -f "$SSH_KEY" -C "gaia-lab-ops" -N ""
-fi
-ok "SSH key: $SSH_KEY"
-
-PUBKEY=$(cat "${SSH_KEY}.pub")
-multipass exec "$VM_NAME" -- bash -c "
-  mkdir -p ~/.ssh
-  chmod 700 ~/.ssh
-  grep -qxF '$PUBKEY' ~/.ssh/authorized_keys 2>/dev/null \
-    || echo '$PUBKEY' >> ~/.ssh/authorized_keys
-  chmod 600 ~/.ssh/authorized_keys
-"
-ok "Public key added to VM ubuntu user"
-
-# ---------------------------------------------------------------------------
-# PHASE 4 — SSH config  (mirrors: ~/.ssh/config Host gaia-prod)
-# ---------------------------------------------------------------------------
-phase "4/8  SSH config"
-
-# Remove stale entry and add fresh one
-TMPFILE=$(mktemp)
-if [ -f ~/.ssh/config ]; then
-  # Strip existing gaia-lab block if present
-  awk "/^Host $CONTEXT_NAME$/{found=1} found && /^Host / && !/^Host $CONTEXT_NAME$/{found=0} !found" \
-    ~/.ssh/config > "$TMPFILE"
-else
-  touch "$TMPFILE"
-fi
-
-cat >> "$TMPFILE" << EOF
-
-Host $CONTEXT_NAME
-  HostName $VM_IP
-  User ubuntu
-  IdentityFile $SSH_KEY
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-EOF
-
-cp "$TMPFILE" ~/.ssh/config
-rm "$TMPFILE"
-
-# Wait for SSH to accept connections
-log "Waiting for SSH..."
-for i in $(seq 1 20); do
-  ssh -o ConnectTimeout=2 "$CONTEXT_NAME" "echo ok" >/dev/null 2>&1 && break
-  sleep 2
-done
-ssh "$CONTEXT_NAME" "echo ok" >/dev/null
-ok "SSH config entry: Host $CONTEXT_NAME → $VM_IP"
-
-# ---------------------------------------------------------------------------
-# PHASE 5 — Docker context  (mirrors: docker context create gaia-prod)
-# ---------------------------------------------------------------------------
-phase "5/8  Docker context"
-
+# OrbStack VMs are reachable via SSH at VMNAME@orb — no key setup needed
 if docker context inspect "$CONTEXT_NAME" >/dev/null 2>&1; then
   log "Context '$CONTEXT_NAME' exists — removing and recreating"
   docker context rm "$CONTEXT_NAME" --force
 fi
 
 docker context create "$CONTEXT_NAME" \
-  --docker "host=ssh://$CONTEXT_NAME" \
-  --description "Multipass lab VM (mirrors gaia-prod)"
+  --docker "host=ssh://$SSH_HOST" \
+  --description "OrbStack amd64 lab VM (mirrors gaia-prod)"
 
 log "Testing context..."
-docker --context "$CONTEXT_NAME" info --format "Docker {{.ServerVersion}} · Swarm: {{.Swarm.LocalNodeState}}"
+docker --context "$CONTEXT_NAME" info --format "Docker {{.ServerVersion}} · Swarm: {{.Swarm.LocalNodeState}} · Arch: {{.Architecture}}"
 ok "Context '$CONTEXT_NAME' ready"
 
 # ---------------------------------------------------------------------------
-# PHASE 6 — Swarm init + overlay network
+# PHASE 4 — Swarm init + overlay network
 # ---------------------------------------------------------------------------
-phase "6/8  Swarm + network"
+phase "4/7  Swarm + network"
 
-SWARM_STATE=$(docker --context "$CONTEXT_NAME" info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo "inactive")
-if [ "$SWARM_STATE" = "active" ]; then
+if docker --context "$CONTEXT_NAME" node ls >/dev/null 2>&1; then
   log "Swarm already active"
 else
   log "Initialising swarm..."
@@ -238,11 +208,11 @@ fi
 ok "Swarm active · network gaia-prod-shared ready"
 
 # ---------------------------------------------------------------------------
-# PHASE 7 — Swarm secrets  (mirrors: docker secret create ... -)
+# PHASE 5 — Swarm secrets  (mirrors: docker secret create ... -)
 # ---------------------------------------------------------------------------
-phase "7/8  Swarm secrets"
+phase "5/7  Swarm secrets"
 
-if [ "$SKIP_SECRETS" = "true" ]; then
+if [ "$SKIP_SECRETS" = "true" ]; then  # pragma: allowlist secret
   log "Skipping secret creation (--skip-secrets)"
 else
   # Read from env vars — fall back to placeholder values if not set.
@@ -275,66 +245,68 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# PHASE 8 — Sync observability configs to VM
+# PHASE 6 — Sync configs + create placeholder .env files
 # ---------------------------------------------------------------------------
 # docker stack deploy with bind mounts means paths must exist on the Swarm
-# manager (the VM), not on the local Mac. We rsync the observability config
-# files to a canonical path on the VM before deploying.
+# manager (the VM), not on the local Mac. We sync the observability config
+# files and create placeholder .env files on the VM before deploying.
 #
 # In production the operator does the same with:
 #   rsync -a infra/docker/observability/ gaia-prod:/opt/gaia/infra/docker/observability/
 # ---------------------------------------------------------------------------
-phase "8a/9  Sync observability configs"
+phase "6/7  Sync configs to VM"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 VM_DOCKER_DIR="/opt/gaia/infra/docker"
 
-ssh "$CONTEXT_NAME" "sudo mkdir -p '$VM_DOCKER_DIR/observability' && sudo chown -R ubuntu '$VM_DOCKER_DIR'"
+ssh "$SSH_HOST" "sudo mkdir -p '$VM_DOCKER_DIR/observability' /opt/gaia/apps/api /opt/gaia/apps/bots && \
+  sudo chown -R \$(whoami) /opt/gaia"
+
 rsync -a --exclude='*.example' --exclude='.gitignore' \
   "$REPO_ROOT/infra/docker/observability/" \
-  "$CONTEXT_NAME:$VM_DOCKER_DIR/observability/"
-ok "Observability configs synced to $VM_DOCKER_DIR/observability/"
+  "$SSH_HOST:$VM_DOCKER_DIR/observability/"
+ok "Observability configs synced"
+
+# env_file paths in the compose file are relative to the compose file's dir.
+# On the VM, ../../apps/api/.env resolves to /opt/gaia/apps/api/.env etc.
+# Create empty placeholders so docker stack deploy doesn't error.
+# (In production these are real .env files; Swarm secrets handle the actual values.)
+ssh "$SSH_HOST" "touch /opt/gaia/apps/api/.env /opt/gaia/apps/bots/.env /opt/gaia/infra/docker/.env"
+ok "Placeholder .env files created"
+
+rsync -a "$REPO_ROOT/infra/docker/docker-compose.prod.yml" \
+  "$SSH_HOST:$VM_DOCKER_DIR/docker-compose.prod.yml"
+ok "Compose file synced"
 
 # ---------------------------------------------------------------------------
-# PHASE 9 — Deploy stack  (mirrors: the exact CI deploy command)
+# PHASE 7 — Deploy stack  (mirrors: the exact CI deploy command)
 # ---------------------------------------------------------------------------
-phase "9/9  Deploy stack"
+phase "7/7  Deploy stack"
 
 if [ "$SKIP_DEPLOY" = "true" ]; then
   log "Skipping deploy (--skip-deploy)"
 else
-  # docker stack deploy resolves relative bind-mount paths using the compose
-  # file's directory as root, then records them as absolute paths in the
-  # service spec — so the Swarm manager VM must have those files at the same
-  # absolute path.  We keep the compose file at its normal location and deploy
-  # from REPO_ROOT so that ./observability/* resolves to
-  # $REPO_ROOT/infra/docker/observability/* — but on the VM that path doesn't
-  # exist.  To avoid forking the compose file we tell Docker the compose dir
-  # is the VM path we just synced:
-  #
-  #   docker stack deploy -c <(sed ...) ...
-  #
-  # simplest: just cd to the synced dir on the VM and deploy locally there.
-  # But we want to keep the remote-context pattern.  The cleanest workaround
-  # is to run the deploy via SSH on the VM with a local context — which is
-  # what prod ops actually does when you're already SSHed in.
-  #
-  # Lab note: this step validates the compose file syntax and Swarm config;
-  # app services (gaia-backend, bots) will fail Infisical auth with placeholder
-  # creds — that is expected.  Infra services (postgres, redis, chromadb,
-  # rabbitmq) should converge cleanly.
+  # Deploy from the VM so bind-mount paths resolve correctly.
+  # Lab note: app services (gaia-backend, bots) will fail Infisical auth
+  # with placeholder creds — that is expected. Infra services (postgres,
+  # redis, chromadb, rabbitmq) should converge cleanly.
 
   log "Deploying stack from VM (local context) so bind-mount paths resolve correctly..."
-  rsync -a "$REPO_ROOT/infra/docker/docker-compose.prod.yml" \
-    "$CONTEXT_NAME:$VM_DOCKER_DIR/docker-compose.prod.yml"
+  # Retry once — fresh swarm Raft consensus can briefly reject API calls.
+  deploy_stack() {
+    ssh "$SSH_HOST" "cd '$VM_DOCKER_DIR' && docker stack deploy \
+      --with-registry-auth \
+      -c docker-compose.prod.yml \
+      gaia-prod"
+  }
+  if ! deploy_stack; then
+    log "  First deploy attempt failed (transient Raft state) — retrying in 5s..."
+    sleep 5
+    deploy_stack
+  fi
 
-  ssh "$CONTEXT_NAME" "cd '$VM_DOCKER_DIR' && docker stack deploy \
-    --with-registry-auth \
-    -c docker-compose.prod.yml \
-    gaia-prod"
-
-  log "Waiting 45s for services to come up..."
-  sleep 45
+  log "Waiting 90s for images to pull and services to start..."
+  sleep 90
 
   echo ""
   log "Service status:"
@@ -351,7 +323,7 @@ else
 
   echo ""
   log "Infra service health (expected: Running):"
-  for svc in postgres redis rabbitmq chromadb; do
+  for svc in postgres redis rabbitmq chromadb loki prometheus grafana promtail; do
     state=$(docker --context "$CONTEXT_NAME" service ps "gaia-prod_${svc}" \
       --filter desired-state=running \
       --format '{{.CurrentState}}' 2>/dev/null | head -1 || echo "unknown")
@@ -400,11 +372,13 @@ cat << EOF
   Rollback drill:
     docker --context $CONTEXT_NAME service rollback gaia-prod_gaia-backend
 
+  SSH into the VM:
+    ssh $SSH_HOST
+
   Tear down:
     docker --context $CONTEXT_NAME stack rm gaia-prod
     docker context rm $CONTEXT_NAME --force
-    multipass delete $VM_NAME && multipass purge
-    # Remove Host $CONTEXT_NAME entry from ~/.ssh/config if desired
+    orbctl delete $VM_NAME
 
   Note: app services (gaia-backend, bots) will be in a restart loop with placeholder
   Infisical creds — that is expected.  Pass real env vars to test full auth:

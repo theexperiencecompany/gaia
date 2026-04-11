@@ -9,8 +9,13 @@ contactPoints:
       - uid: slack-alerts
         type: slack
         settings:
-          url: $SLACK_ALERT_WEBHOOK_URL
-          recipient: "${SLACK_ALERT_CHANNEL:-#alerts}"
+          # Uses Incoming Webhook mode. Set SLACK_ALERT_WEBHOOK_URL in the
+          # Grafana container's environment (via .env) for real alerts.
+          # The placeholder URL keeps Grafana in webhook mode so it boots
+          # without a token — alerts simply won't deliver until a real URL
+          # is configured.
+          url: ${SLACK_ALERT_WEBHOOK_URL}
+          recipient: "${SLACK_ALERT_CHANNEL}"
           title: "{{ template \"slack.default.title\" . }}"
           text: "{{ template \"slack.default.text\" . }}"
         disableResolveMessage: false
