@@ -148,6 +148,15 @@ CodeDiff(filename: string, oldCode: string, newCode: string, title?: string, dif
     newCode = all lines WITHOUT a - prefix (keep lines with + prefix but remove the +; keep unchanged lines as-is)
     Then pass them to CodeDiff. The component computes and renders the diff itself.
 
+--- Documents ---
+
+TextDocument(title: string, body: string, fields?: {label: string, value: string}[])
+  title: document type label shown at top (e.g. "Email Draft", "Report", "Letter")
+  body: initial rich text content (plain text or HTML paragraphs)
+  fields: optional metadata rows shown above the body (e.g. Subject, To, From, Date)
+  Use for: email drafts for review/editing, document brainstorming, report previews, letters, and memos — content the user will review and copy themselves
+  Do NOT use when: actually sending an email (use the send_email tool directly), or when the user asked to send without reviewing
+
 --- Layout ---
 
 Row(items: component[])
