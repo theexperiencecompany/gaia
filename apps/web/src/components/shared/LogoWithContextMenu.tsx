@@ -5,13 +5,11 @@ import {
   Copy01Icon,
   DownloadCircle01Icon,
   FolderLibraryIcon,
-  Layers01Icon,
   PackageOpenIcon,
 } from "@icons";
-import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -20,29 +18,67 @@ import {
 } from "@/components/ui/context-menu";
 import { toast } from "@/lib/toast";
 
+const menuItemsConfig = [
+  {
+    id: "copy-logo-svg",
+    type: "button" as const,
+    label: "Copy Logo as SVG",
+    icon: <Copy01Icon className="size-5 shrink-0" />,
+    action: "copy-svg",
+  },
+  {
+    id: "download-icon",
+    type: "button" as const,
+    label: "Download Logo as PNG",
+    icon: <DownloadCircle01Icon className="size-5 shrink-0" />,
+    action: "download-icon",
+  },
+  {
+    id: "download-wordmark",
+    type: "button" as const,
+    label: "Download Wordmark as PNG",
+    icon: <DownloadCircle01Icon className="size-5 shrink-0" />,
+    action: "download-wordmark",
+  },
+  {
+    id: "release-notes",
+    type: "link" as const,
+    label: "Release Notes",
+    href: "https://docs.heygaia.io/release-notes",
+    icon: <PackageOpenIcon className="size-5 shrink-0" />,
+    target: "_blank",
+  },
+  {
+    id: "brand-assets",
+    type: "link" as const,
+    label: "Brand Assets",
+    href: "/brand",
+    icon: <FolderLibraryIcon className="size-5 shrink-0" />,
+  },
+  {
+    id: "experience-company",
+    type: "link" as const,
+    label: "by The Experience Company",
+    href: "https://experience.heygaia.io",
+    icon: (
+      <Image
+        src="/images/logos/experience_logo.svg"
+        alt="The Experience Company"
+        width={16}
+        height={16}
+        className="size-5 shrink-0 object-contain"
+      />
+    ),
+    target: "_blank",
+  },
+];
+
 interface LogoWithContextMenuProps {
   className?: string;
   imageClassName?: string;
   width?: number;
   height?: number;
 }
-
-type MenuItem =
-  | {
-      id: string;
-      type: "link";
-      label: string;
-      href: string;
-      icon: React.ReactNode;
-      target?: string;
-    }
-  | {
-      id: string;
-      type: "button";
-      label: string;
-      icon: React.ReactNode;
-      onClick: () => void;
-    };
 
 export function LogoWithContextMenu({
   className = "px-2",
@@ -52,178 +88,93 @@ export function LogoWithContextMenu({
 }: LogoWithContextMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  const downloadImageAsPng = async (
-    imagePath: string,
-    fileName: string,
-  ): Promise<void> => {
-    try {
-      const response = await fetch(imagePath);
-      const blob = await response.blob();
+  const downloadImageAsPng = useCallback(
+    async (imagePath: string, fileName: string): Promise<void> => {
+      try {
+        const response = await fetch(imagePath);
+        const blob = await response.blob();
+        const img = document.createElement("img");
+        const objectUrl = URL.createObjectURL(blob);
 
-      // Create an image element to get dimensions
-      const img = document.createElement("img");
-      const objectUrl = URL.createObjectURL(blob);
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = objectUrl;
+        });
 
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = objectUrl;
-      });
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
 
-      // Create canvas and draw image
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Failed to get canvas context");
 
-      if (!ctx) {
-        throw new Error("Failed to get canvas context");
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(
+          (pngBlob) => {
+            if (!pngBlob) {
+              toast.error("Failed to convert image");
+              return;
+            }
+            const url = URL.createObjectURL(pngBlob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            URL.revokeObjectURL(objectUrl);
+            toast.success(`Downloaded ${fileName}`);
+          },
+          "image/png",
+          1.0,
+        );
+      } catch (error) {
+        toast.error("Failed to download image");
+        console.error("Failed to download image:", error);
       }
+    },
+    [],
+  );
 
-      ctx.drawImage(img, 0, 0);
-
-      // Convert to PNG blob
-      canvas.toBlob(
-        (pngBlob) => {
-          if (!pngBlob) {
-            toast.error("Failed to convert image");
-            return;
-          }
-
-          // Download the PNG
-          const url = URL.createObjectURL(pngBlob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = fileName;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          URL.revokeObjectURL(objectUrl);
-
-          toast.success(`Downloaded ${fileName}`);
-        },
-        "image/png",
-        1.0,
-      );
-    } catch (error) {
-      toast.error("Failed to download image");
-      console.error("Failed to download image:", error);
-    }
-  };
-
-  const handleDownloadIcon = () => {
+  const handleDownloadIcon = useCallback(() => {
     downloadImageAsPng("/images/logos/logo.webp", "gaia-icon.png");
-  };
+  }, [downloadImageAsPng]);
 
-  const handleDownloadWordmark = () => {
+  const handleDownloadWordmark = useCallback(() => {
     downloadImageAsPng(
       "/images/logos/text_w_logo_white.webp",
       "gaia-wordmark.png",
     );
-  };
+  }, [downloadImageAsPng]);
 
-  const copyLogoAsSvg = async (): Promise<void> => {
+  const copyLogoAsSvg = useCallback(async (): Promise<void> => {
     try {
       const response = await fetch("/images/logos/logo.svg");
       const svgText = await response.text();
-
       await navigator.clipboard.writeText(svgText);
       toast.success("Logo SVG copied to clipboard");
     } catch (error) {
       toast.error("Failed to copy SVG");
       console.error("Failed to copy SVG:", error);
     }
-  };
+  }, []);
 
-  const menuItems: MenuItem[] = [
-    {
-      id: "copy-logo-svg",
-      type: "button",
-      label: "Copy Logo as SVG",
-      icon: <Copy01Icon className="size-5 shrink-0" />,
-      onClick: copyLogoAsSvg,
+  const handleAction = useCallback(
+    (action: string) => {
+      if (action === "copy-svg") copyLogoAsSvg();
+      if (action === "download-icon") handleDownloadIcon();
+      if (action === "download-wordmark") handleDownloadWordmark();
     },
-    {
-      id: "download-icon",
-      type: "button",
-      label: "Download Logo as PNG",
-      icon: <DownloadCircle01Icon className="size-5 shrink-0" />,
-      onClick: handleDownloadIcon,
-    },
-    {
-      id: "download-wordmark",
-      type: "button",
-      label: "Download Wordmark as PNG",
-      icon: <DownloadCircle01Icon className="size-5 shrink-0" />,
-      onClick: handleDownloadWordmark,
-    },
-    {
-      id: "release-notes",
-      type: "link",
-      label: "Release Notes",
-      href: "https://docs.heygaia.io/release-notes",
-      icon: <PackageOpenIcon className="size-5 shrink-0" />,
-      target: "_blank",
-    },
-    {
-      id: "brand-assets",
-      type: "link",
-      label: "Brand Assets",
-      href: "/brand",
-      icon: <FolderLibraryIcon className="size-5 shrink-0" />,
-    },
-    {
-      id: "experience-company",
-      type: "link",
-      label: "by The Experience Company",
-      href: "https://experience.heygaia.io",
-      icon: (
-        <Image
-          src="/images/logos/experience_logo.svg"
-          alt="The Experience Company"
-          width={16}
-          height={16}
-          className="size-5 shrink-0 object-contain"
-        />
-      ),
-      target: "_blank",
-    },
-  ];
-
-  const containerVariants = {
-    hidden: {},
-    visible: {
-      transition: {
-        staggerChildren: 0.05,
-        delayChildren: 0.05,
-      },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, x: -10 },
-    visible: {
-      opacity: 1,
-      x: 0,
-      transition: {
-        type: "tween" as const,
-        duration: 0.1,
-        ease: "easeOut" as const,
-      },
-    },
-  };
+    [copyLogoAsSvg, handleDownloadIcon, handleDownloadWordmark],
+  );
 
   return (
     <ContextMenu onOpenChange={setIsOpen} modal={false}>
       <ContextMenuTrigger asChild>
         <Button as={Link} href={"/"} variant="light" className={className}>
-          <m.div
-            whileHover={{
-              scale: 1.02,
-              transition: { duration: 0.2 },
-            }}
-          >
+          <div className="transition-transform duration-200 hover:scale-[1.02]">
             <Image
               src="/images/logos/text_w_logo_white.webp"
               alt="GAIA Logo"
@@ -232,24 +183,28 @@ export function LogoWithContextMenu({
               priority
               className={imageClassName}
             />
-          </m.div>
+          </div>
         </Button>
       </ContextMenuTrigger>
-      <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">
-        <m.div
-          initial="hidden"
-          animate={isOpen ? "visible" : "hidden"}
-          variants={containerVariants}
-        >
-          {menuItems.map((item) => (
+      {isOpen && (
+        <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">
+          {menuItemsConfig.map((item, index) => (
             <ContextMenuItem
               key={item.id}
               asChild
-              className="hover:bg-zinc-700! hover:text-white text-zinc-400 "
+              className="hover:bg-zinc-700! hover:text-white text-zinc-400"
+              style={{
+                animationDelay: `${index * 50}ms`,
+                animationFillMode: "both",
+              }}
             >
-              <m.div
-                variants={itemVariants}
-                onClick={item.type === "button" ? item.onClick : undefined}
+              <div
+                className="animate-in fade-in slide-in-from-left-2 duration-100"
+                onClick={
+                  item.type === "button"
+                    ? () => handleAction(item.action!)
+                    : undefined
+                }
               >
                 {item.type === "link" ? (
                   <Link
@@ -266,11 +221,11 @@ export function LogoWithContextMenu({
                     <span>{item.label}</span>
                   </div>
                 )}
-              </m.div>
+              </div>
             </ContextMenuItem>
           ))}
-        </m.div>
-      </ContextMenuContent>
+        </ContextMenuContent>
+      )}
     </ContextMenu>
   );
 }
