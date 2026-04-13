@@ -156,19 +156,24 @@ function extractCategorySections(content) {
 // --- Generate pages ---
 
 const APP_META = {
-  api: { title: "API Releases", description: "Release history for the GAIA API backend.", icon: "server" },
-  web: { title: "Web Releases", description: "Release history for the GAIA web application.", icon: "browser" },
-  desktop: { title: "Desktop Releases", description: "Release history for the GAIA desktop app.", icon: "desktop" },
-  mobile: { title: "Mobile Releases", description: "Release history for the GAIA mobile app.", icon: "mobile" },
+  api: { title: "API Releases", description: "Version history and changelog for the GAIA API backend, including new features, bug fixes, and performance improvements for each release.", icon: "server" },
+  web: { title: "Web Releases", description: "Version history and changelog for the GAIA web application, including new features, bug fixes, and performance improvements for each release.", icon: "browser" },
+  desktop: { title: "Desktop Releases", description: "Version history and changelog for the GAIA desktop app on macOS, Windows, and Linux, including features, bug fixes, and updates.", icon: "desktop" },
+  mobile: { title: "Mobile Releases", description: "Version history and changelog for the GAIA mobile app, including new features, bug fixes, and performance improvements for each release.", icon: "mobile" },
   bots: { title: "Bots Releases", description: "Release history for GAIA's Discord, Slack, Telegram, and WhatsApp bots.", icon: "robot" },
   cli: { title: "CLI Releases", description: "Release history for the GAIA command-line interface.", icon: "terminal" },
 };
 
 const CATEGORY_META = {
-  "features": { title: "Features", description: "All new features shipped across GAIA releases.", icon: "sparkles" },
-  "bug-fixes": { title: "Bug Fixes", description: "All bug fixes shipped across GAIA releases.", icon: "bug" },
+  "features": { title: "Features", description: "A consolidated list of new features shipped across all GAIA releases, organized by version and platform.", icon: "sparkles" },
+  "bug-fixes": { title: "Bug Fixes", description: "A consolidated list of bug fixes shipped across all GAIA releases, organized by version and platform.", icon: "bug" },
   "improvements": { title: "Improvements", description: "All improvements and enhancements shipped across GAIA releases.", icon: "arrow-up-right" },
   "performance": { title: "Performance", description: "All performance improvements shipped across GAIA releases.", icon: "gauge" },
+};
+
+const YEAR_DESCRIPTIONS = {
+  "2025": "Complete changelog for GAIA in 2025, including the mobile app launch, desktop beta, and major API, web, and infrastructure updates.",
+  "2026": "Complete changelog for GAIA in 2026, covering WhatsApp bot support, MCP Apps Builder, deep research, artifacts, and more across all platforms.",
 };
 
 function frontmatter(meta) {
@@ -321,7 +326,7 @@ function generateYearPages(blocks) {
   for (const [year, entries] of Object.entries(yearBlocks)) {
     const meta = {
       title: `${year} Releases`,
-      description: `All GAIA releases from ${year}.`,
+      description: YEAR_DESCRIPTIONS[year] || `All GAIA releases from ${year}.`,
       icon: "calendar",
     };
 
