@@ -586,7 +586,7 @@ BAD — never do any of these:
 
     ## Installation
 
-    Run `npm install`...
+    Run `pnpm install`...
 
     ## Usage
 

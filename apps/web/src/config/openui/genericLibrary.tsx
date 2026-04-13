@@ -23,7 +23,7 @@ import {
   treeViewDef,
   videoBlockDef,
 } from "./components/content";
-import { TextDocumentView, textDocumentDef } from "./components/document";
+import { textDocumentDef } from "./components/document";
 import {
   accordionDef,
   actionCardDef,

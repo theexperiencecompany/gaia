@@ -63,8 +63,20 @@ function htmlToMarkdown(html: string): string {
         return "\n";
       case "ul":
         return `${inner}\n`;
-      case "ol":
-        return `${inner}\n`;
+      case "ol": {
+        let index = 0;
+        return (
+          Array.from(el.children)
+            .map((child) => {
+              if (child.tagName.toLowerCase() === "li") {
+                index += 1;
+                return `${index}. ${Array.from(child.childNodes).map(nodeToMd).join("")}\n`;
+              }
+              return nodeToMd(child);
+            })
+            .join("") + "\n"
+        );
+      }
       case "li":
         return `- ${inner}\n`;
       case "body":
@@ -137,8 +149,10 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       .join("\n");
     const bodyMd = htmlToMarkdown(editor?.getHTML() ?? "");
     const full = [fieldLines, bodyMd].filter(Boolean).join("\n\n");
-    navigator.clipboard.writeText(full);
-    flashCopied();
+    void navigator.clipboard
+      .writeText(full)
+      .then(flashCopied)
+      .catch(() => {});
   }, [fields, editor]);
 
   const copyAsText = React.useCallback(() => {
@@ -147,8 +161,10 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       .join("\n");
     const bodyText = editor?.getText() ?? "";
     const full = [fieldLines, bodyText].filter(Boolean).join("\n\n");
-    navigator.clipboard.writeText(full);
-    flashCopied();
+    void navigator.clipboard
+      .writeText(full)
+      .then(flashCopied)
+      .catch(() => {});
   }, [fields, editor]);
 
   return (

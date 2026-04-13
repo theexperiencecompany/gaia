@@ -132,7 +132,7 @@ async def generate_and_update_description(
 async def do_prompt_no_stream(
     prompt: str,
     system_prompt: str | None = None,
-) -> dict:
+) -> dict[str, str]:
     """
     Execute a single LLM prompt without streaming.
 
@@ -161,6 +161,8 @@ async def do_prompt_no_stream(
             block.get("text", "") if isinstance(block, dict) else str(block)
             for block in content
         ).strip()
+    elif not isinstance(content, str):
+        content = "" if content is None else str(content)
 
     return {"response": content}
 
