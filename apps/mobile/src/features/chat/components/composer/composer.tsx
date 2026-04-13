@@ -17,17 +17,12 @@ import {
   PlusSignIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { AI_MODELS } from "@/features/chat/data/models";
 import { ConnectDrawerTrigger } from "@/features/integrations/components/connect-drawer";
 import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";
 import type { AttachmentFile } from "./attachment-preview";
 import { AttachmentPreview } from "./attachment-preview";
 import { AttachmentSheet, type AttachmentSheetRef } from "./attachment-sheet";
-import {
-  ModelPickerSheet,
-  type ModelPickerSheetRef,
-} from "./model-picker-sheet";
 import { SelectedIndicator } from "./selected-indicator";
 import {
   SlashCommandSheet,
@@ -42,7 +37,6 @@ const DEFAULT_COMMANDS = [
   "new",
   "clear",
   "help",
-  "model",
   "integrations",
   "notifications",
   "settings",
@@ -88,8 +82,6 @@ interface ComposerProps {
   onRemoveReply?: () => void;
   selectedCalendarEvent?: SelectedCalendarEventData | null;
   onRemoveCalendarEvent?: () => void;
-  currentModelId?: string;
-  onModelChange?: (modelId: string) => void;
 }
 
 function truncateContent(content: string, maxLength = 60): string {
@@ -115,21 +107,14 @@ export function Composer({
   onRemoveReply,
   selectedCalendarEvent,
   onRemoveCalendarEvent,
-  currentModelId,
-  onModelChange,
 }: ComposerProps) {
   const [internalMessage, setInternalMessage] = useState("");
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const inputRef = useRef<TextInput>(null);
   const slashCommandRef = useRef<SlashCommandSheetRef>(null);
   const workflowPickerRef = useRef<WorkflowPickerSheetRef>(null);
-  const modelPickerRef = useRef<ModelPickerSheetRef>(null);
   const attachmentSheetRef = useRef<AttachmentSheetRef>(null);
 
-  const currentModelName = currentModelId
-    ? (AI_MODELS.find((m) => m.id === currentModelId)?.name ??
-      currentModelId.slice(0, 8))
-    : (AI_MODELS.find((m) => m.isDefault)?.name ?? "GPT-4o");
   const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
 
   const message = value ?? internalMessage;
@@ -172,12 +157,6 @@ export function Composer({
         setMessage("");
         dismissKeyboard();
         workflowPickerRef.current?.open();
-        return;
-      }
-      if (command === "model") {
-        setMessage("");
-        dismissKeyboard();
-        modelPickerRef.current?.open();
         return;
       }
       const handled = onCommand?.(command) ?? false;
@@ -513,26 +492,6 @@ export function Composer({
             </Button>
 
             <ConnectDrawerTrigger onOpen={dismissKeyboard} />
-
-            <PressableFeedback
-              onPress={() => modelPickerRef.current?.open()}
-              style={{
-                paddingHorizontal: spacing.sm,
-                paddingVertical: 4,
-                borderRadius: 8,
-                backgroundColor: "rgba(63,63,70,0.5)",
-                maxWidth: 80,
-              }}
-            >
-              <Text
-                style={{ fontSize: fontSize.xs, color: "#a1a1aa" }}
-                numberOfLines={1}
-              >
-                {currentModelName.length > 8
-                  ? `${currentModelName.slice(0, 8)}…`
-                  : currentModelName}
-              </Text>
-            </PressableFeedback>
           </View>
 
           {/* Right side: send / stop button */}
@@ -581,13 +540,6 @@ export function Composer({
       <WorkflowPickerSheet
         ref={workflowPickerRef}
         onSelectWorkflow={handleWorkflowSelected}
-      />
-
-      {/* Model picker bottom sheet */}
-      <ModelPickerSheet
-        ref={modelPickerRef}
-        currentModelId={currentModelId}
-        onSelectModel={onModelChange ?? (() => {})}
       />
 
       {/* Attachment picker bottom sheet */}

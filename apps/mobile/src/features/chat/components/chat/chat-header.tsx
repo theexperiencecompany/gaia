@@ -5,8 +5,6 @@ import {
   BubbleChatAddIcon,
   Cancel01Icon,
   Menu01Icon,
-  MoreVerticalIcon,
-  Search01Icon,
   Tick01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -22,14 +20,9 @@ const TITLE_MAX_LENGTH = 200;
 interface ChatHeaderProps {
   onMenuPress: () => void;
   onNewChatPress: () => void;
-  onSearchPress?: () => void;
 }
 
-export function ChatHeader({
-  onMenuPress,
-  onNewChatPress,
-  onSearchPress,
-}: ChatHeaderProps) {
+export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
   const { spacing, iconSize, moderateScale, fontSize } = useResponsive();
   const queryClient = useQueryClient();
 
@@ -192,27 +185,11 @@ export function ChatHeader({
             </View>
           </Pressable>
         ) : (
-          <>
-            {onSearchPress && (
-              <Pressable onPress={onSearchPress}>
-                <View style={{ padding: moderateScale(4, 0.5) }}>
-                  <Search01Icon size={iconSize.md - 2} color="#bbbbbb" />
-                </View>
-              </Pressable>
-            )}
-            {activeConversation && (
-              <Pressable onPress={startEditing}>
-                <View style={{ padding: moderateScale(4, 0.5) }}>
-                  <MoreVerticalIcon size={iconSize.md - 2} color="#bbbbbb" />
-                </View>
-              </Pressable>
-            )}
-            <Pressable onPress={onNewChatPress}>
-              <View style={{ padding: moderateScale(4, 0.5) }}>
-                <BubbleChatAddIcon size={iconSize.md - 2} color="#bbbbbb" />
-              </View>
-            </Pressable>
-          </>
+          <Pressable onPress={onNewChatPress}>
+            <View style={{ padding: moderateScale(4, 0.5) }}>
+              <BubbleChatAddIcon size={iconSize.md - 2} color="#bbbbbb" />
+            </View>
+          </Pressable>
         )}
       </View>
     </View>

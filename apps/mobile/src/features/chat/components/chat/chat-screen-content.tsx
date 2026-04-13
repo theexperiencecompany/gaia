@@ -397,7 +397,7 @@ export function ChatScreenContent({
 
       if (command === "help") {
         setInputValue(
-          "Available commands: /new, /clear, /help, /model, /workflows, /integrations, /notifications, /settings",
+          "Available commands: /new, /clear, /help, /workflows, /integrations, /notifications, /settings",
         );
         return true;
       }
@@ -422,7 +422,6 @@ export function ChatScreenContent({
         return true;
       }
 
-      // /model is handled by the composer's model picker directly
       return false;
     },
     [clearActiveMessages, router, setActiveChatId],

@@ -39,10 +39,6 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
     router.replace("/");
   }, [closeSidebar, clearActiveMessages, router, setActiveChatId]);
 
-  const handleSearchPress = useCallback(() => {
-    router.push("/(app)/search");
-  }, [router]);
-
   const renderDrawerContent = useCallback(
     () => (
       <SidebarContent
@@ -85,7 +81,6 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
             <ChatHeader
               onMenuPress={toggleSidebar}
               onNewChatPress={handleNewChat}
-              onSearchPress={handleSearchPress}
             />
 
             {/* This must be flex:1 so KeyboardAvoidingView can resize */}
