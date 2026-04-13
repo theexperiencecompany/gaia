@@ -207,42 +207,48 @@ export function LogoWithContextMenu({
       </ContextMenuTrigger>
       {isOpen && (
         <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">
-          {menuItemsConfig.map((item, index) => (
-            <ContextMenuItem
-              key={item.id}
-              asChild
-              className="hover:bg-zinc-700! hover:text-white text-zinc-400"
-              style={{
-                animationDelay: `${index * 50}ms`,
-                animationFillMode: "both",
-              }}
-            >
-              <div
-                className="animate-in fade-in slide-in-from-left-2 duration-100"
-                onClick={
-                  item.type === "button"
-                    ? () => handleAction(item.action!)
-                    : undefined
-                }
-              >
-                {item.type === "link" ? (
+          {menuItemsConfig.map((item, index) => {
+            const className =
+              "hover:bg-zinc-700! hover:text-white text-zinc-400 animate-in fade-in slide-in-from-left-2 duration-100";
+            const style = {
+              animationDelay: `${index * 50}ms`,
+              animationFillMode: "both",
+            } as const;
+
+            if (item.type === "link") {
+              return (
+                <ContextMenuItem
+                  key={item.id}
+                  asChild
+                  className={className}
+                  style={style}
+                >
                   <Link
                     href={item.href}
-                    className="flex items-center gap-3 w-full cursor-pointer"
+                    className="flex w-full items-center gap-3 cursor-pointer"
                     target={item.target}
                   >
                     {item.icon}
                     <span>{item.label}</span>
                   </Link>
-                ) : (
-                  <div className="flex items-center gap-3 w-full cursor-pointer">
-                    {item.icon}
-                    <span>{item.label}</span>
-                  </div>
-                )}
-              </div>
-            </ContextMenuItem>
-          ))}
+                </ContextMenuItem>
+              );
+            }
+
+            return (
+              <ContextMenuItem
+                key={item.id}
+                className={className}
+                style={style}
+                onSelect={() => handleAction(item.action)}
+              >
+                <div className="flex w-full items-center gap-3 cursor-pointer">
+                  {item.icon}
+                  <span>{item.label}</span>
+                </div>
+              </ContextMenuItem>
+            );
+          })}
         </ContextMenuContent>
       )}
     </ContextMenu>

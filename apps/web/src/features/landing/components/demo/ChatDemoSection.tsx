@@ -72,9 +72,11 @@ const TypingText = memo(
       if (!isTyping) setTypedText(text);
     }, [isTyping, text]);
 
+    const displayText = isTyping ? typedText : text;
+
     return (
       <>
-        {typedText}
+        {displayText}
         {isTyping && (
           <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-white/60 align-middle" />
         )}
