@@ -48,8 +48,8 @@
     },
     {
       "input": "if its before 5pm schedule the call for today, otherwise put it on tomorrow morning at 9",
-      "expected_output": "Should evaluate the current time and apply the conditional correctly. If before 5pm, schedule for today. If 5pm or later, schedule for tomorrow at 9am. Should confirm which branch was taken and why.",
-      "context": "Conditional instruction based on current time. Tests conditional logic execution.",
+      "expected_output": "Should use the pinned time from context (2:30pm) to evaluate the conditional. Since 2:30pm is before 5pm, should schedule the call for today. Should confirm it chose the 'today' branch and reference the current time.",
+      "context": "Conditional instruction based on current time. Tests conditional logic execution. current_time: 14:30, timezone: America/New_York",
       "tags": ["conditional", "time-based", "calendar"],
       "metadata": { "difficulty": "medium", "category": "conditional" }
     },

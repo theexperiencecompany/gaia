@@ -140,11 +140,16 @@ class ContextRetention(_LLMJudgeBase):
         super().__init__(name="context_retention")
 
     def score(
-        self, input: str, output: str, context: str = "", **kwargs: Any
+        self, input: str, output: str, context: Any = "", **kwargs: Any
     ) -> score_result.ScoreResult:
+        context_text = (
+            "\n".join(str(item) for item in context)
+            if isinstance(context, list)
+            else str(context)
+        )
         prompt = (
             f"User message: {input}\n\n"
-            f"Prior context/preferences: {context}\n\n"
+            f"Prior context/preferences: {context_text}\n\n"
             f"Assistant response: {output}\n\n"
             "Score 0.0-1.0 on context utilization. Does the response correctly reference "
             "or build upon prior conversation context? Does it respect stored preferences? "

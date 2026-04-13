@@ -34,8 +34,8 @@
     },
     {
       "input": "just do it, dont ask me anything",
-      "expected_output": "Should execute the pending task without asking clarifying questions or making suggestions. Should NOT proactively offer alternatives or ask for confirmation. Respect the user's explicit request for autonomous execution.",
-      "context": "User previously asked to reschedule a meeting and the assistant asked a clarifying question. User is now frustrated.",
+      "expected_output": "Should reschedule the 'Product Sync' meeting (currently Thursday 3pm) to Friday 10am without asking further questions. Should confirm the reschedule was done. Should NOT ask for clarification or offer alternatives.",
+      "context": "User previously asked to reschedule the 'Product Sync' meeting (meeting id: mtg-482, currently scheduled Thursday at 3:00pm, attendees: user and Sam) to Friday at 10am. The assistant asked a clarifying question. User is now frustrated and wants it done immediately.",
       "tags": ["restraint", "user-preference"],
       "metadata": { "difficulty": "hard", "category": "knowing-when-not-to" }
     },

@@ -62,8 +62,8 @@
     },
     {
       "input": "schedule a meeting with alex for next tuesday and send him an invite",
-      "expected_output": "Should use the calendar tool to create the event and then the email/invite tool to send the invitation. Should ask for the time and meeting details before creating. Two tools needed in sequence.",
-      "context": "Multi-tool request with natural dependency (create event, then send invite). Tests multi-tool coordination.",
+      "expected_output": "Should use the calendar tool to create the event and notify Alex. Either approach is valid: (A) a single calendar tool call that creates the event with Alex as an attendee and sends the invite natively, or (B) create the event first then send a separate email/invite. Should ask for the meeting time and any missing details before creating. The key requirement is that Alex receives an invite.",
+      "context": "Multi-tool request where the invite can be handled either via calendar-native attendee addition or a follow-up email step. Tests multi-tool coordination while accepting both valid flows.",
       "tags": ["calendar", "email", "multi-tool", "invite"],
       "metadata": { "difficulty": "medium", "category": "multi-tool" }
     },

@@ -428,7 +428,7 @@ async def evaluate_subagent(
     return await evaluator.run_evaluation()
 
 
-async def main():
+async def main() -> None:
     """CLI entry point for both subagent and generic evaluations."""
     parser = argparse.ArgumentParser(
         description="Evaluate subagents or generic assistant capabilities with Opik"
@@ -527,6 +527,8 @@ async def main():
     if args.ab_test:
         if not args.generic:
             parser.error("--generic is required with --ab-test")
+        if args.generic == "all":
+            parser.error("--ab-test requires a single --generic eval type, not 'all'")
         from .generic_evaluate import run_prompt_ab_test
 
         prompt_a_path, prompt_b_path = args.ab_test
