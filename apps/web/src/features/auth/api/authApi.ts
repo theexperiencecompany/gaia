@@ -88,8 +88,7 @@ export const authApi = {
     profession: string;
   }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
     return apiService.post("/onboarding", onboardingData, {
-      successMessage: "Welcome! Your preferences have been saved.",
-      errorMessage: "Failed to complete onboarding",
+      silent: true,
     });
   },
 

@@ -74,6 +74,7 @@ def test_instructions_contains_all_component_names():
         "AlertBanner",
         "Steps",
         "CodeDiff",
+        "TextDocument",
     ]
     for name in components:
         assert name in OPENUI_INSTRUCTIONS, (
