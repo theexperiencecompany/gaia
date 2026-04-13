@@ -80,6 +80,7 @@ const ListItem = React.memo(
                   fill={true}
                   src={backgroundImage}
                   alt={title}
+                  sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                   className="absolute inset-0 z-0 object-cover transition-all group-hover:brightness-60"
                 />
                 <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/90 via-black/50 to-black/20" />

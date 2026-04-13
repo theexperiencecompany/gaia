@@ -90,11 +90,19 @@ export function LogoWithContextMenu({
 
   const downloadImageAsPng = useCallback(
     async (imagePath: string, fileName: string): Promise<void> => {
+      let objectUrl: string | null = null;
+      let pngObjectUrl: string | null = null;
       try {
         const response = await fetch(imagePath);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch image (${response.status} ${response.statusText})`,
+          );
+        }
+
         const blob = await response.blob();
         const img = document.createElement("img");
-        const objectUrl = URL.createObjectURL(blob);
+        objectUrl = URL.createObjectURL(blob);
 
         await new Promise((resolve, reject) => {
           img.onload = resolve;
@@ -110,29 +118,34 @@ export function LogoWithContextMenu({
         if (!ctx) throw new Error("Failed to get canvas context");
 
         ctx.drawImage(img, 0, 0);
-        canvas.toBlob(
-          (pngBlob) => {
-            if (!pngBlob) {
-              toast.error("Failed to convert image");
-              return;
-            }
-            const url = URL.createObjectURL(pngBlob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            URL.revokeObjectURL(objectUrl);
-            toast.success(`Downloaded ${fileName}`);
-          },
-          "image/png",
-          1.0,
-        );
+        const pngBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (blobResult) => {
+              if (!blobResult) {
+                reject(new Error("Failed to convert image"));
+                return;
+              }
+              resolve(blobResult);
+            },
+            "image/png",
+            1.0,
+          );
+        });
+
+        pngObjectUrl = URL.createObjectURL(pngBlob);
+        const a = document.createElement("a");
+        a.href = pngObjectUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        toast.success(`Downloaded ${fileName}`);
       } catch (error) {
         toast.error("Failed to download image");
         console.error("Failed to download image:", error);
+      } finally {
+        if (pngObjectUrl) URL.revokeObjectURL(pngObjectUrl);
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
       }
     },
     [],
@@ -152,6 +165,11 @@ export function LogoWithContextMenu({
   const copyLogoAsSvg = useCallback(async (): Promise<void> => {
     try {
       const response = await fetch("/images/logos/logo.svg");
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch SVG (${response.status} ${response.statusText})`,
+        );
+      }
       const svgText = await response.text();
       await navigator.clipboard.writeText(svgText);
       toast.success("Logo SVG copied to clipboard");

@@ -58,7 +58,7 @@ const TypingText = memo(
     { text, isTyping },
     ref,
   ) {
-    const [typedText, setTypedText] = useState(text);
+    const [typedText, setTypedText] = useState(() => (isTyping ? "" : text));
 
     useImperativeHandle(
       ref,
@@ -481,7 +481,7 @@ export default function ChatDemoSection() {
                           <div className="imessage-bubble imessage-from-me">
                             {uc.userMessage}
                           </div>
-                          <div className="flex flex-col items-end justify-end gap-1 pb-3 opacity-0 transition-all group-hover:opacity-100">
+                          <div className="invisible pointer-events-none flex flex-col items-end justify-end gap-1 pb-3 opacity-0 transition-all group-hover:visible group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:opacity-100">
                             <span className="flex flex-col text-xs text-zinc-400 select-text">
                               just now
                             </span>
