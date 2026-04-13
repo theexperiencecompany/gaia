@@ -102,12 +102,13 @@ export function LogoWithContextMenu({
 
         const blob = await response.blob();
         const img = document.createElement("img");
-        objectUrl = URL.createObjectURL(blob);
+        const newObjectUrl = URL.createObjectURL(blob);
+        objectUrl = newObjectUrl;
 
         await new Promise((resolve, reject) => {
           img.onload = resolve;
           img.onerror = reject;
-          img.src = objectUrl;
+          img.src = newObjectUrl;
         });
 
         const canvas = document.createElement("canvas");

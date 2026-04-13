@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import React, { useMemo } from "react";
 
 import {
@@ -11,6 +10,7 @@ import {
   product,
   resources,
 } from "@/config/appConfig";
+import { Link } from "@/i18n/navigation";
 import { wallpapers } from "@/config/wallpapers";
 import { cn } from "@/lib/utils";
 
@@ -18,15 +18,27 @@ interface NavbarMenuProps {
   activeMenu: string;
 }
 
-interface ListItemProps extends React.ComponentPropsWithoutRef<"a"> {
+type InternalHref = React.ComponentProps<typeof Link>["href"];
+
+interface ListItemBaseProps extends Omit<React.ComponentPropsWithoutRef<"a">, "href"> {
   title: string;
   children?: React.ReactNode;
-  href: string;
-  external?: boolean;
   icon?: React.ReactNode;
   backgroundImage?: string;
   rowSpan?: number;
 }
+
+interface InternalListItemProps extends ListItemBaseProps {
+  href: InternalHref;
+  external?: false;
+}
+
+interface ExternalListItemProps extends ListItemBaseProps {
+  href: string;
+  external: true;
+}
+
+type ListItemProps = InternalListItemProps | ExternalListItemProps;
 
 const menuMap: Record<string, typeof product> = {
   product,
@@ -58,66 +70,81 @@ const ListItem = React.memo(
       },
       ref,
     ) => {
-      const Component = external ? "a" : Link;
-      const linkProps = external
-        ? { href, target: "_blank", rel: "noopener noreferrer" }
-        : { href };
+      const sharedClassName = cn(
+        "group relative flex h-full min-h-18 w-full flex-col justify-center overflow-hidden rounded-2xl bg-zinc-800/0 p-3.5 leading-none no-underline transition-all duration-150 select-none hover:bg-zinc-800 hover:text-zinc-100 focus:bg-zinc-800 focus:text-zinc-100",
+        className,
+      );
+      const content = (
+        <>
+          {backgroundImage && (
+            <>
+              <Image
+                fill={true}
+                src={backgroundImage}
+                alt={title}
+                sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                className="absolute inset-0 z-0 object-cover transition-all group-hover:brightness-60"
+              />
+              <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+            </>
+          )}
+          <div
+            className={cn(
+              "flex items-start gap-3",
+              backgroundImage && "relative z-[2] mt-auto",
+            )}
+          >
+            {icon && (
+              <span
+                className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl ${
+                  backgroundImage
+                    ? "bg-white/5 backdrop-blur group-hover:bg-white/10"
+                    : "bg-zinc-800/80 group-hover:bg-zinc-700/80"
+                } p-2 text-primary transition group-hover:text-zinc-300`}
+              >
+                {icon}
+              </span>
+            )}
+            <div className="flex h-full flex-col justify-start gap-1 leading-none font-normal text-zinc-100">
+              {title}
+              {children && (
+                <p
+                  className={cn(
+                    "line-clamp-2 text-sm leading-tight font-light text-zinc-400",
+                    backgroundImage && "relative z-[2]",
+                  )}
+                >
+                  {children}
+                </p>
+              )}
+            </div>
+          </div>
+        </>
+      );
 
       return (
         <li className={cn("list-none", rowSpan === 2 && "row-span-2")}>
-          <Component
-            ref={ref as React.Ref<HTMLAnchorElement>}
-            className={cn(
-              "group relative flex h-full min-h-18 w-full flex-col justify-center overflow-hidden rounded-2xl bg-zinc-800/0 p-3.5 leading-none no-underline transition-all duration-150 select-none hover:bg-zinc-800 hover:text-zinc-100 focus:bg-zinc-800 focus:text-zinc-100",
-              className,
-            )}
-            {...linkProps}
-            {...props}
-          >
-            {backgroundImage && (
-              <>
-                <Image
-                  fill={true}
-                  src={backgroundImage}
-                  alt={title}
-                  sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  className="absolute inset-0 z-0 object-cover transition-all group-hover:brightness-60"
-                />
-                <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
-              </>
-            )}
-            <div
-              className={cn(
-                "flex items-start gap-3",
-                backgroundImage && "relative z-[2] mt-auto",
-              )}
+          {external ? (
+            <a
+              ref={ref}
+              className={sharedClassName}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              {...props}
             >
-              {icon && (
-                <span
-                  className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl ${
-                    backgroundImage
-                      ? "bg-white/5 backdrop-blur group-hover:bg-white/10"
-                      : "bg-zinc-800/80 group-hover:bg-zinc-700/80"
-                  } p-2 text-primary transition group-hover:text-zinc-300`}
-                >
-                  {icon}
-                </span>
-              )}
-              <div className="flex h-full flex-col justify-start gap-1 leading-none font-normal text-zinc-100">
-                {title}
-                {children && (
-                  <p
-                    className={cn(
-                      "line-clamp-2 text-sm leading-tight font-light text-zinc-400",
-                      backgroundImage && "relative z-[2]",
-                    )}
-                  >
-                    {children}
-                  </p>
-                )}
-              </div>
-            </div>
-          </Component>
+              {content}
+            </a>
+          ) : (
+            <Link
+              ref={ref as React.Ref<HTMLAnchorElement>}
+              className={sharedClassName}
+              href={href}
+              {...props}
+            >
+              {content}
+            </Link>
+          )}
         </li>
       );
     },

@@ -204,10 +204,15 @@ export default function ChatDemoSection() {
     const observer = new IntersectionObserver(
       ([entry]) => {
         const visible = entry.isIntersecting;
-        setIsInView(visible);
-        if (visible) {
-          runAnimation(activeCaseRef.current);
+        if (activePage === "chats") {
+          setIsInView(visible);
+          if (visible) {
+            runAnimation(activeCaseRef.current);
+          } else {
+            clearAll();
+          }
         } else {
+          setIsInView(false);
           clearAll();
         }
       },
@@ -220,7 +225,7 @@ export default function ChatDemoSection() {
       observer.disconnect();
       clearAll();
     };
-  }, []);
+  }, [activePage]);
 
   useEffect(() => {
     setSidebarOpen(window.innerWidth >= 768);
