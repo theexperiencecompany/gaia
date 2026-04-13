@@ -1,5 +1,12 @@
 "use client";
 
+import { Button } from "@heroui/button";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
+} from "@heroui/dropdown";
 import { ArrowDown01Icon, Copy01Icon, Tick01Icon } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import Underline from "@tiptap/extension-underline";
@@ -14,10 +21,10 @@ import { z } from "zod";
 
 export const textDocumentSchema = z.object({
   title: z.string(),
+  body: z.string(),
   fields: z
     .array(z.object({ label: z.string(), value: z.string() }))
     .optional(),
-  body: z.string(),
 });
 
 // ---------------------------------------------------------------------------
@@ -107,8 +114,6 @@ function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
 export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
   const { title, fields, body } = props;
   const [copied, setCopied] = React.useState(false);
-  const [dropdownOpen, setDropdownOpen] = React.useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
     extensions: [StarterKit, Underline],
@@ -116,24 +121,10 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     editorProps: {
       attributes: {
         class:
-          "outline-none text-sm text-zinc-200 leading-relaxed space-y-1 min-h-[60px]",
+          "outline-none text-sm text-zinc-200 leading-relaxed space-y-1 min-h-[120px]",
       },
     },
   });
-
-  // Close dropdown on outside click
-  React.useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
 
   const flashCopied = () => {
     setCopied(true);
@@ -147,7 +138,6 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     const bodyMd = htmlToMarkdown(editor?.getHTML() ?? "");
     const full = [fieldLines, bodyMd].filter(Boolean).join("\n\n");
     navigator.clipboard.writeText(full);
-    setDropdownOpen(false);
     flashCopied();
   }, [fields, editor]);
 
@@ -158,82 +148,66 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
     const bodyText = editor?.getText() ?? "";
     const full = [fieldLines, bodyText].filter(Boolean).join("\n\n");
     navigator.clipboard.writeText(full);
-    setDropdownOpen(false);
     flashCopied();
   }, [fields, editor]);
 
   return (
-    <div className="openui-document rounded-2xl bg-zinc-800 p-4 w-full max-w-lg">
+    <div className="openui-document rounded-2xl bg-zinc-800 p-4 w-full max-w-2xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-semibold text-zinc-100">{title}</span>
 
         {/* Copy button group */}
-        <div className="relative flex items-center" ref={dropdownRef}>
+        <div
+          className={[
+            "flex items-center rounded-lg overflow-hidden transition-all duration-150",
+            copied ? "bg-emerald-500/20" : "bg-zinc-700/50",
+          ].join(" ")}
+        >
+          {/* Main copy button — copies as markdown */}
+          <Button
+            isIconOnly
+            variant="light"
+            size="sm"
+            onPress={copyAsMarkdown}
+            aria-label={copied ? "Copied" : "Copy as Markdown"}
+            className={copied ? "text-emerald-400" : "text-zinc-400"}
+          >
+            {copied ? <Tick01Icon size={14} /> : <Copy01Icon size={14} />}
+          </Button>
+
+          {/* Divider */}
           <div
             className={[
-              "flex items-center rounded-lg overflow-hidden transition-all duration-150",
-              copied ? "bg-emerald-500/20" : "bg-zinc-700/50",
+              "h-4 w-px",
+              copied ? "bg-emerald-500/30" : "bg-zinc-600",
             ].join(" ")}
-          >
-            {/* Main copy button — copies as markdown */}
-            <button
-              type="button"
-              onClick={copyAsMarkdown}
-              className={[
-                "flex h-7 w-7 cursor-pointer items-center justify-center transition-all duration-150",
-                copied
-                  ? "text-emerald-400"
-                  : "text-zinc-400 hover:text-zinc-100",
-              ].join(" ")}
-              aria-label={copied ? "Copied" : "Copy as Markdown"}
-            >
-              {copied ? <Tick01Icon size={14} /> : <Copy01Icon size={14} />}
-            </button>
+          />
 
-            {/* Divider */}
-            <div
-              className={[
-                "h-4 w-px",
-                copied ? "bg-emerald-500/30" : "bg-zinc-600",
-              ].join(" ")}
-            />
-
-            {/* Chevron dropdown trigger */}
-            <button
-              type="button"
-              onClick={() => setDropdownOpen((o) => !o)}
-              className={[
-                "flex h-7 w-6 cursor-pointer items-center justify-center transition-all duration-150",
-                copied
-                  ? "text-emerald-400"
-                  : "text-zinc-400 hover:text-zinc-100",
-              ].join(" ")}
+          {/* Chevron dropdown trigger */}
+          <Dropdown placement="bottom-end">
+            <DropdownTrigger>
+              <Button
+                isIconOnly
+                variant="light"
+                size="sm"
+                aria-label="Copy options"
+                className={copied ? "text-emerald-400" : "text-zinc-400"}
+              >
+                <ArrowDown01Icon size={12} />
+              </Button>
+            </DropdownTrigger>
+            <DropdownMenu
               aria-label="Copy options"
+              onAction={(key) => {
+                if (key === "markdown") copyAsMarkdown();
+                if (key === "text") copyAsText();
+              }}
             >
-              <ArrowDown01Icon size={12} />
-            </button>
-          </div>
-
-          {/* Dropdown */}
-          {dropdownOpen && (
-            <div className="absolute right-0 top-full z-10 mt-1 min-w-40 overflow-hidden rounded-xl bg-zinc-700 py-1 shadow-xl">
-              <button
-                type="button"
-                onClick={copyAsMarkdown}
-                className="w-full cursor-pointer px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-600"
-              >
-                Copy as Markdown
-              </button>
-              <button
-                type="button"
-                onClick={copyAsText}
-                className="w-full cursor-pointer px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-600"
-              >
-                Copy as Plain Text
-              </button>
-            </div>
-          )}
+              <DropdownItem key="markdown">Copy as Markdown</DropdownItem>
+              <DropdownItem key="text">Copy as Plain Text</DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
         </div>
       </div>
 

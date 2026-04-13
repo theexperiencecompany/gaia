@@ -153,8 +153,16 @@ async def do_prompt_no_stream(
 
     # Extract the AI's response content
     ai_message = response["messages"][0]
+    content = ai_message.content
 
-    return {"response": ai_message.content}
+    # content can be a list of blocks (e.g. structured tool-use responses) — extract text
+    if isinstance(content, list):
+        content = " ".join(
+            block.get("text", "") if isinstance(block, dict) else str(block)
+            for block in content
+        ).strip()
+
+    return {"response": content}
 
 
 def get_user_id_from_config(config: RunnableConfig) -> str:

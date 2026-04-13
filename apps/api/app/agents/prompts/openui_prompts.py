@@ -601,12 +601,12 @@ CORRECT — always do this instead:
 
   ✓ CORRECT — email draft with metadata:
     :::openui
-    root = TextDocument("Email Draft", "<p>Hi Sarah,</p><p>Following up on our conversation...</p>", [{{"label": "To", "value": "sarah@example.com"}}, {{"label": "Subject", "value": "Follow-up"}}])
+    root = TextDocument("Email Draft", "<p>Hi Sarah,</p><p>Following up on our conversation...</p>", [{{{{"label": "To", "value": "sarah@example.com"}}}}, {{{{"label": "Subject", "value": "Follow-up"}}}}])
     :::
 
   ✓ CORRECT — report with author/date metadata:
     :::openui
-    root = TextDocument("Weekly Report", "<h2>Summary</h2><p>This week...</p><h2>Next Steps</h2><p>...</p>", [{{"label": "Author", "value": "Alex"}}, {{"label": "Date", "value": "Apr 12, 2025"}}])
+    root = TextDocument("Weekly Report", "<h2>Summary</h2><p>This week...</p><h2>Next Steps</h2><p>...</p>", [{{{{"label": "Author", "value": "Alex"}}}}, {{{{"label": "Date", "value": "Apr 12, 2025"}}}}])
     :::
 
 Use rich HTML in the body for structure: <h2> for section headings, <h3> for subsections, <p> for paragraphs, <ul>/<ol> for lists, <strong>/<em> for emphasis. Plain text is only acceptable for very simple short content.

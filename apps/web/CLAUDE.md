@@ -84,7 +84,7 @@ Types are split into three directories:
 - Use `tailwind-merge` (`twMerge`) to merge conditional class names; use `clsx` for conditionals.
 - `class-variance-authority` (CVA) for variant-based component APIs.
 - HeroUI and Radix UI are both present — prefer HeroUI for standard UI primitives before reaching for Radix directly.
-- **Always use HeroUI components over raw HTML elements.** Use `<Button>` instead of `<button>`, `<Link>` (HeroUI or Next.js) instead of `<a>`, `<Divider>` instead of `<hr>`, `<Tooltip>` instead of custom hover states, `<Spinner>` / `<Skeleton>` instead of custom loaders. Only reach for raw HTML when there is no HeroUI equivalent.
+- **Always use HeroUI components over raw HTML elements.** Use `<Button>` instead of `<button>`, `<Link>` (HeroUI or Next.js) instead of `<a>`, `<Divider>` instead of `<hr>`, `<Tooltip>` instead of custom hover states, `<Spinner>` / `<Skeleton>` instead of custom loaders, `<Dropdown>` / `<DropdownMenu>` / `<DropdownItem>` instead of hand-rolled dropdown state + click-outside handlers. Only reach for raw HTML when there is no HeroUI equivalent. HeroUI docs: https://v2.heroui.com/docs/guide/introduction
 - **Never use icon components as spinners** (e.g. `Loading02Icon` with `animate-spin`). Always use `<Spinner>` from `@heroui/spinner` for loading states, or `<Skeleton>` from `@heroui/skeleton` for content placeholders. Icon-based spinners look wrong and are not consistent with the design system.
 
 ## i18n
