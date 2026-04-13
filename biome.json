@@ -125,7 +125,9 @@
   "plugins": [
     "./rules/no-direct-gaia-icons-import.grit",
     "./rules/no-chevron-from-icons.grit",
-    "./rules/no-hugeicons-import.grit"
+    "./rules/no-hugeicons-import.grit",
+    "./rules/no-motion-react-heavy-imports.grit",
+    "./rules/no-motion-full-import.grit"
   ],
   "overrides": [
     {

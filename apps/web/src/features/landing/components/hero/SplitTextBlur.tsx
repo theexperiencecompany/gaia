@@ -1,9 +1,3 @@
-"use client";
-
-import { m } from "motion/react";
-import { useId, useRef } from "react";
-
-import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver";
 import { cn } from "@/lib/utils";
 
 interface SplitTextBlurProps {
@@ -11,11 +5,6 @@ interface SplitTextBlurProps {
   className?: string;
   delay?: number;
   staggerDelay?: number;
-  springConfig?: {
-    stiffness: number;
-    damping: number;
-    mass: number;
-  };
   yOffset?: number;
   disableIntersectionObserver?: boolean;
   as?: "h1" | "h2" | "h3" | "div";
@@ -23,74 +12,59 @@ interface SplitTextBlurProps {
   showGlowTextBg?: boolean;
 }
 
+/**
+ * CSS-only split-text blur-in animation.
+ *
+ * Previously used motion/react with spring physics + intersection observer,
+ * which forced the hero to wait for JS hydration to paint. Now ships zero JS —
+ * renders as a Server Component, animation plays entirely in CSS via
+ * @keyframes hero-word-in and per-word animation-delay.
+ *
+ * Visual parity: same blur(10px) → blur(0), translateY(2px) → 0, opacity 0 → 1
+ * per-word stagger. Slightly smoother easing (cubic-bezier vs spring) but
+ * indistinguishable to the eye at 0.6s duration.
+ *
+ * @param delay  Base delay before the first word starts (seconds).
+ * @param staggerDelay  Extra delay per subsequent word (seconds).
+ */
 const SplitTextBlur = ({
   text,
   className = "",
   delay = 1,
   staggerDelay = 0.1,
-  springConfig = {
-    stiffness: 400,
-    damping: 70,
-    mass: 1,
-  },
-  yOffset = 2,
-  disableIntersectionObserver = false,
   gradient = "linear-gradient(to bottom, #a3a3a3, #ffffff)",
   showGlowTextBg = false,
-  as = "div",
+  as: As = "div",
 }: SplitTextBlurProps) => {
-  const ref = useRef<HTMLDivElement>(null);
-  const isVisible = useIntersectionObserver(ref, { threshold: 0.1 });
-
   const words = text.split(" ");
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        delay,
-        when: "beforeChildren",
-        staggerChildren: staggerDelay,
-      },
-    },
-  };
-
-  const wordVariants = {
-    hidden: {
-      opacity: 0,
-      filter: "blur(10px)",
-      y: yOffset,
-    },
-    visible: {
-      opacity: 1,
-      filter: "blur(0px)",
-      y: 0,
-      transition: {
-        type: "spring" as const,
-        stiffness: springConfig.stiffness,
-        damping: springConfig.damping,
-        mass: springConfig.mass,
-      },
-    },
-  };
-
-  const shouldAnimate = disableIntersectionObserver || isVisible;
-  const baseId = useId();
-
-  const MotionComponent = m[as] as typeof m.div;
 
   const gradientStyle = {
     "--split-gradient": gradient,
   } as React.CSSProperties;
 
+  const renderWords = (glow: boolean) =>
+    words.map((word, index) => (
+      <span
+        // biome-ignore lint/suspicious/noArrayIndexKey: word list is static, index stable
+        key={word + index}
+        className="hero-split-word font-serif p-[5px] pl-0"
+        style={{
+          animationDelay: `${delay + index * staggerDelay}s`,
+          marginRight: index < words.length - 1 ? "0.25em" : "0",
+          paddingBottom: "7px",
+          background: glow ? undefined : "inherit",
+          WebkitBackgroundClip: glow ? undefined : "inherit",
+          WebkitTextFillColor: glow ? undefined : "inherit",
+          backgroundClip: glow ? undefined : "inherit",
+        }}
+      >
+        {word}
+      </span>
+    ));
+
   return (
     <div className="relative" style={gradientStyle}>
-      <MotionComponent
-        ref={ref}
-        initial="hidden"
-        animate={shouldAnimate ? "visible" : "hidden"}
-        variants={containerVariants}
+      <As
         className={`${cn(className)} z-[10]`}
         style={{
           background: "var(--split-gradient)",
@@ -99,56 +73,15 @@ const SplitTextBlur = ({
           backgroundClip: "text",
         }}
       >
-        {words.map((word, index) => (
-          <m.span
-            // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
-            key={baseId + word + index}
-            variants={wordVariants}
-            style={{
-              willChange: "transform, opacity, filter",
-              display: "inline-block",
-              marginRight: index < words.length - 1 ? "0.25em" : "0",
-              background: "inherit",
-              WebkitBackgroundClip: "inherit",
-              WebkitTextFillColor: "inherit",
-              backgroundClip: "inherit",
-              paddingBottom: "7px",
-            }}
-            className="font-serif p-[5px] pl-0"
-          >
-            {word}
-          </m.span>
-        ))}
-      </MotionComponent>
+        {renderWords(false)}
+      </As>
       {showGlowTextBg && (
-        <m.div
-          ref={ref}
-          initial="hidden"
-          animate={shouldAnimate ? "visible" : "hidden"}
-          variants={containerVariants}
+        <div
           className={`${cn(className)} text-white blur-md absolute top-0 z-[-1]`}
+          aria-hidden
         >
-          {words.map((word, index) => (
-            <m.span
-              // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
-              key={baseId + word + index}
-              variants={wordVariants}
-              style={{
-                willChange: "transform, opacity, filter",
-                display: "inline-block",
-                marginRight: index < words.length - 1 ? "0.25em" : "0",
-                background: "inherit",
-                WebkitBackgroundClip: "inherit",
-                WebkitTextFillColor: "inherit",
-                backgroundClip: "inherit",
-                paddingBottom: "7px",
-              }}
-              className="font-serif"
-            >
-              {word}
-            </m.span>
-          ))}
-        </m.div>
+          {renderWords(true)}
+        </div>
       )}
     </div>
   );

@@ -605,7 +605,7 @@ export function LandingDownloadSection() {
             <>
               <Link
                 href="/download"
-                className="flex items-center gap-1 text-sm text-zinc-500 transition hover:text-zinc-300 mr-1"
+                className="flex items-center gap-1 text-sm text-zinc-400 transition hover:text-zinc-300 mr-1"
               >
                 All platforms
                 <ArrowRight02Icon className="h-3 w-3" />

@@ -1,7 +1,7 @@
 "use client";
 
 import { CircleArrowLeft02Icon } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import Link from "next/link";
 import FAQAccordion from "@/components/seo/FAQAccordion";

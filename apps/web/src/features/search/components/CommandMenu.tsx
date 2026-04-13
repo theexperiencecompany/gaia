@@ -3,7 +3,8 @@
 import { Kbd } from "@heroui/kbd";
 import { MessageMultiple02Icon, SearchIcon } from "@icons";
 import { Command } from "cmdk";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
 import React, {
   useCallback,

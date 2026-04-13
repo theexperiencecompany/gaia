@@ -3,13 +3,15 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import posthog from "posthog-js";
 
-if (process.env.NODE_ENV === "production")
+if (process.env.NODE_ENV === "production") {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
-    // Add optional integrations for additional features
-    integrations: [Sentry.replayIntegration()],
+    // Replay integration is lazy-loaded below after the page settles — it's ~100KB
+    // gzipped and shouldn't block LCP/TTI.
+    integrations: [],
 
     // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
     tracesSampleRate: 1,
@@ -28,14 +30,42 @@ if (process.env.NODE_ENV === "production")
     debug: false,
   });
 
+  // Defer replay integration until the browser is idle so it doesn't compete
+  // with hydration / critical rendering.
+  const loadReplay = () => {
+    Sentry.lazyLoadIntegration("replayIntegration")
+      .then((replayIntegration) => {
+        const client = Sentry.getClient();
+        if (client) client.addIntegration(replayIntegration());
+      })
+      .catch(() => {
+        // Swallow — replay is best-effort, we don't want to surface network errors.
+      });
+  };
+  if (typeof window !== "undefined") {
+    if ("requestIdleCallback" in window) {
+      (
+        window as Window & {
+          requestIdleCallback: (
+            cb: () => void,
+            opts?: { timeout: number },
+          ) => number;
+        }
+      ).requestIdleCallback(loadReplay, { timeout: 4000 });
+    } else {
+      setTimeout(loadReplay, 3000);
+    }
+  }
+}
+
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
 
-import posthog from "posthog-js";
-
-posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
-  api_host: "/ingest",
-  ui_host: "https://us.posthog.com",
-  defaults: "2025-05-24",
-  capture_exceptions: true, // This enables capturing exceptions using Error Tracking, set to false if you don't want this
-  debug: process.env.NODE_ENV === "development", // Set to true for verbose PostHog logging
-});
+if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
+    api_host: "/ingest",
+    ui_host: "https://us.posthog.com",
+    defaults: "2025-05-24",
+    capture_exceptions: true,
+    debug: process.env.NODE_ENV === "development",
+  });
+}

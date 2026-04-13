@@ -2,7 +2,8 @@
 
 import { Button } from "@heroui/button";
 import { Cancel01Icon, LinkBackwardIcon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef } from "react";
 import { useComposerUI } from "@/stores/composerStore";

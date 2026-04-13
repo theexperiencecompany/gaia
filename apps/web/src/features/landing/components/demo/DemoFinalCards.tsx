@@ -5,10 +5,18 @@ import {
   Flag02Icon,
   ZapIcon,
 } from "@icons";
+import dynamic from "next/dynamic";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import EmailComposeCard from "@/features/mail/components/EmailComposeCard";
 import { FOUNDER_EMAIL } from "./demoConstants";
 import type { FinalCardType } from "./types";
+
+// EmailComposeCard pulls in zod (~260KB), DOMPurify, and the full mail API —
+// none of which are needed until the demo actually renders the email card.
+// Split it into an async chunk so the eager landing bundle stays lean.
+const EmailComposeCard = dynamic(
+  () => import("@/features/mail/components/EmailComposeCard"),
+  { ssr: false },
+);
 
 // ─── Workflow card (developer use case) ───────────────────────────────────────
 function WorkflowCard() {

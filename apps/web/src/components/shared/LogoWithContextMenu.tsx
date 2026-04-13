@@ -8,7 +8,7 @@ import {
   Layers01Icon,
   PackageOpenIcon,
 } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";

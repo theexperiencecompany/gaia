@@ -10,7 +10,7 @@ import {
   Folder02Icon,
   Tag01Icon,
 } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
 import { type TodoDemoPhase, tdTx } from "./todoDemoConstants";
 

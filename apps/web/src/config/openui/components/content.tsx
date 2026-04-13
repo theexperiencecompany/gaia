@@ -3,7 +3,7 @@ import { Button, Chip } from "@heroui/react";
 import { ArrowDown01Icon, ArrowRight01Icon } from "@icons";
 import { CalendarDate } from "@internationalized/date";
 import { defineComponent } from "@openuidev/react-lang";
-import { motion } from "motion/react";
+import * as m from "motion/react-m";
 import React from "react";
 import { z } from "zod";
 import { ChevronLeft, ChevronRight } from "@/components/shared/icons";
@@ -128,7 +128,7 @@ function GalleryImage({
   img: { src: string; alt?: string; caption?: string };
 }) {
   return (
-    <motion.div
+    <m.div
       whileHover={{ scale: 1.02 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
       className="relative overflow-hidden rounded-xl cursor-pointer"
@@ -147,7 +147,7 @@ function GalleryImage({
           </p>
         </div>
       )}
-    </motion.div>
+    </m.div>
   );
 }
 

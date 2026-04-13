@@ -31,7 +31,7 @@ import {
   WorkflowCircle06Icon,
   ZapIcon,
 } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import {
   getIconPath,

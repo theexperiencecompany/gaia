@@ -1,13 +1,20 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { type ReactNode, Suspense } from "react";
 
 import { Toaster } from "@/components/ui/Toaster";
-import LoginModal from "@/features/auth/components/LoginModal";
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
 import { HeroUIProvider } from "@/layouts/HeroUIProvider";
 import QueryProvider from "@/layouts/QueryProvider";
+
+// LoginModal is only rendered when the modal is opened — lazy-load it to keep
+// the initial landing bundle lean without altering visuals.
+const LoginModal = dynamic(
+  () => import("@/features/auth/components/LoginModal"),
+  { ssr: false },
+);
 
 /**
  * Lightweight provider tree for landing/marketing pages.

@@ -8,7 +8,10 @@ import type { Integration } from "@/features/integrations/types";
 
 import type { Workflow } from "../api/workflowApi";
 import { getScheduleDescription } from "../utils/cronUtils";
-import { getTriggerHandler, type TriggerDisplayInfo } from "./registry";
+import {
+  getTriggerDisplayInfoBySlug,
+  type TriggerDisplayInfo,
+} from "./registryDisplay";
 import type { TriggerConfig, TriggerSchema } from "./types";
 
 /**
@@ -58,21 +61,13 @@ export function getTriggerDisplayInfo(
     trigger_config.trigger_slug ||
     trigger_config.type) as string;
 
-  const handler = getTriggerHandler(triggerSlug);
-
-  let displayInfo: TriggerDisplayInfo;
-  if (handler) {
-    const schema = schemas?.find((s) => handler.triggerSlugs.includes(s.slug));
-    displayInfo = handler.getDisplayInfo(
-      trigger_config as TriggerConfig,
-      schema,
-    );
-  } else {
-    displayInfo = {
-      label: "unknown trigger",
-      integrationId: null,
-    };
-  }
+  const displayInfo: TriggerDisplayInfo = getTriggerDisplayInfoBySlug(
+    triggerSlug,
+    trigger_config as TriggerConfig,
+  ) ?? {
+    label: "unknown trigger",
+    integrationId: null,
+  };
 
   if (
     trigger_config.type === "schedule" &&

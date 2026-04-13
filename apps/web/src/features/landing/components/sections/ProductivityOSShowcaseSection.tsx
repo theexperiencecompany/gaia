@@ -6,7 +6,8 @@ import {
   DashboardSquare02Icon,
   ZapIcon,
 } from "@icons";
-import { AnimatePresence, m, useInView } from "motion/react";
+import { AnimatePresence, useInView } from "motion/react";
+import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import DemoCalendarView from "../demo/calendar-demo/DemoCalendarView";
@@ -138,7 +139,7 @@ function ProductivityOSSidebar({
       <div className="mb-2 font-serif text-3xl text-primary">
         Productivity OS
       </div>
-      <p className="mb-8 text-sm font-light leading-relaxed text-zinc-500">
+      <p className="mb-8 text-sm font-light leading-relaxed text-zinc-400">
         Every tool your work runs on — tasks, time, and automation — built into
         one connected system.
       </p>
@@ -166,7 +167,7 @@ function ProductivityOSSidebar({
                 }
               />
               <span
-                className={`text-xl font-medium tracking-tight transition-colors ${isActive ? "text-white" : "text-zinc-500 group-hover:text-zinc-300"}`}
+                className={`text-xl font-medium tracking-tight transition-colors ${isActive ? "text-white" : "text-zinc-400 group-hover:text-zinc-300"}`}
               >
                 {feature.title}
               </span>
@@ -193,7 +194,7 @@ function ProductivityOSSidebar({
                   transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
                   className="overflow-hidden"
                 >
-                  <p className="mt-3 text-sm font-light leading-relaxed text-zinc-500">
+                  <p className="mt-3 text-sm font-light leading-relaxed text-zinc-400">
                     {feature.description}
                   </p>
                 </m.div>

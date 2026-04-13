@@ -11,7 +11,9 @@ import {
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "@icons";
-import { AnimatePresence, m, useInView } from "motion/react";
+import { AnimatePresence, useInView } from "motion/react";
+import * as m from "motion/react-m";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -29,12 +31,16 @@ import DemoSidebar from "./DemoSidebar";
 import DemoToolCalls from "./DemoToolCalls";
 import DemoDashboardView from "./dashboard-demo/DemoDashboardView";
 import { BASE_TIMINGS, ease, slideUp, tx, USE_CASES } from "./demoConstants";
-import DemoGoalsView from "./goals-demo/DemoGoalsView";
 import DemoIntegrationsView from "./integrations-demo/DemoIntegrationsView";
 import MiniWaveSpinner from "./MiniWaveSpinner";
 import DemoTodosView from "./todos-demo/DemoTodosView";
 import type { DemoPage, Phase } from "./types";
 import DemoWorkflowsView from "./workflows-demo/DemoWorkflowsView";
+
+// Lazy-load DemoGoalsView so @xyflow/react CSS is deferred with its JS chunk
+const DemoGoalsView = dynamic(() => import("./goals-demo/DemoGoalsView"), {
+  ssr: false,
+});
 
 export default function ChatDemoSection() {
   const [activePage, setActivePage] = useState<DemoPage>("chats");

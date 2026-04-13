@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { UndoIcon } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import type React from "react";
 import { useCallback, useMemo, useState } from "react";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
