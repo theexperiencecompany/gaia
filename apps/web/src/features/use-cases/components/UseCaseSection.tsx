@@ -136,8 +136,7 @@ export default function UseCaseSection({
   const handleCategoryClick = (category: string) => {
     const wasSelected = selectedCategory === category;
     const scrollContainer = getScrollContainer();
-
-    if (!scrollContainer) return;
+    const useWindowScroll = scrollContainer === null;
 
     if (wasSelected) {
       // Unselecting: for featured, go back to default, for others scroll to top and reset to featured
@@ -148,7 +147,11 @@ export default function UseCaseSection({
       } else {
         // For other categories, unselect and go back to featured as default
         setSelectedCategory("featured");
-        scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+        if (useWindowScroll) {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } else if (scrollContainer) {
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+        }
       }
     } else {
       // Selecting: only scroll if we need to bring the section into view
@@ -159,8 +162,16 @@ export default function UseCaseSection({
         if (!dummySectionRef.current) return;
 
         const sectionRect = dummySectionRef.current.getBoundingClientRect();
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const currentScrollTop = scrollContainer.scrollTop;
+        const containerRect = useWindowScroll
+          ? { top: 0, bottom: window.innerHeight }
+          : scrollContainer
+            ? scrollContainer.getBoundingClientRect()
+            : null;
+        if (!containerRect) return;
+
+        const currentScrollTop = useWindowScroll
+          ? window.scrollY
+          : (scrollContainer?.scrollTop ?? 0);
 
         // Only scroll if the section is not fully visible or if we need to scroll down
         const isSectionFullyVisible =
@@ -174,15 +185,18 @@ export default function UseCaseSection({
 
         // For other categories, only scroll if section is not fully visible
         if (!isSectionFullyVisible) {
-          const targetScrollTop =
+          const top = Math.max(
+            0,
             currentScrollTop +
-            (sectionRect.bottom - containerRect.bottom) +
-            100;
+              (sectionRect.bottom - containerRect.bottom) +
+              100,
+          );
 
-          scrollContainer.scrollTo({
-            top: Math.max(0, targetScrollTop),
-            behavior: "smooth",
-          });
+          if (useWindowScroll) {
+            window.scrollTo({ top, behavior: "smooth" });
+          } else if (scrollContainer) {
+            scrollContainer.scrollTo({ top, behavior: "smooth" });
+          }
         }
       }, 50);
     }

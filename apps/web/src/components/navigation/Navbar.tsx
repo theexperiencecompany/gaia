@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@heroui/skeleton";
 import { Login02Icon, MessageMultiple02Icon } from "@icons";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -27,6 +28,7 @@ const NavbarMenu = dynamic(
 );
 const AnimatedNumber = dynamic(() => import("animated-number-react"), {
   ssr: false,
+  loading: () => <Skeleton className="h-5 w-10 rounded-md" />,
 });
 
 const NAVBAR_ITEMS = [

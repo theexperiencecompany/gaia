@@ -19,7 +19,7 @@ export default function HeroSection({
   onTextClick?: () => void;
 }) {
   return (
-    <div className="relative w-full flex-col gap-8 pb-20 sm:pb-30">
+    <div className="relative flex w-full flex-col gap-8 pb-20 sm:pb-30">
       <div className="relative z-2 flex h-full flex-col items-center justify-start gap-4 bg-transparent">
         <div className="mx-auto flex w-full justify-center gap-2">
           <Link

@@ -13,8 +13,9 @@ language js(typescript, jsx)
 //
 // GritQL limitation: metavariables don't match inside named import
 // specifier lists, so every position (and common co-import counts) for
-// `motion` must be enumerated explicitly. Up to 4 co-imports is covered;
-// add more positions if a real import grows larger.
+// `motion` must be enumerated explicitly. Both aliased and non-aliased
+// patterns are covered up to 4 co-imports; add more positions if a real
+// import grows larger.
 or {
   `import { motion } from "motion/react"`,
   `import { motion, $_ } from "motion/react"`,
@@ -31,7 +32,11 @@ or {
   `import { $_, motion as $_ } from "motion/react"`,
   `import { motion as $_, $_, $_ } from "motion/react"`,
   `import { $_, motion as $_, $_ } from "motion/react"`,
-  `import { $_, $_, motion as $_ } from "motion/react"`
+  `import { $_, $_, motion as $_ } from "motion/react"`,
+  `import { motion as $_, $_, $_, $_ } from "motion/react"`,
+  `import { $_, motion as $_, $_, $_ } from "motion/react"`,
+  `import { $_, $_, motion as $_, $_ } from "motion/react"`,
+  `import { $_, $_, $_, motion as $_ } from "motion/react"`
 } as $node where {
   register_diagnostic(
     span = $node,

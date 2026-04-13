@@ -57,9 +57,14 @@ export function getTriggerDisplayInfo(
 } {
   const { trigger_config } = workflow;
 
-  const triggerSlug = (trigger_config.trigger_name ||
+  const rawTriggerSlug = (trigger_config.trigger_name ||
     trigger_config.trigger_slug ||
     trigger_config.type) as string;
+
+  // Normalize composio_slug format to the registry slug so lookups resolve
+  // correctly even when the backend returns composio-style slugs.
+  const triggerSlug =
+    findTriggerSchema(schemas, rawTriggerSlug)?.slug || rawTriggerSlug;
 
   const displayInfo: TriggerDisplayInfo = getTriggerDisplayInfoBySlug(
     triggerSlug,

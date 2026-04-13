@@ -17,7 +17,7 @@ language js(typescript, jsx)
 //
 // GritQL limitation: metavariables don't match inside named import
 // specifier lists, so every position (and common co-import counts) for
-// `m` must be enumerated explicitly. Up to 4 co-imports is covered; add
+// `m` must be enumerated explicitly. Up to 5 co-imports is covered; add
 // more positions if a real import grows larger.
 or {
   `import { m } from "motion/react"`,
@@ -30,12 +30,21 @@ or {
   `import { $_, m, $_, $_ } from "motion/react"`,
   `import { $_, $_, m, $_ } from "motion/react"`,
   `import { $_, $_, $_, m } from "motion/react"`,
+  `import { m, $_, $_, $_, $_ } from "motion/react"`,
+  `import { $_, m, $_, $_, $_ } from "motion/react"`,
+  `import { $_, $_, m, $_, $_ } from "motion/react"`,
+  `import { $_, $_, $_, m, $_ } from "motion/react"`,
+  `import { $_, $_, $_, $_, m } from "motion/react"`,
   `import { m as $_ } from "motion/react"`,
   `import { m as $_, $_ } from "motion/react"`,
   `import { $_, m as $_ } from "motion/react"`,
   `import { m as $_, $_, $_ } from "motion/react"`,
   `import { $_, m as $_, $_ } from "motion/react"`,
-  `import { $_, $_, m as $_ } from "motion/react"`
+  `import { $_, $_, m as $_ } from "motion/react"`,
+  `import { m as $_, $_, $_, $_ } from "motion/react"`,
+  `import { $_, m as $_, $_, $_ } from "motion/react"`,
+  `import { $_, $_, m as $_, $_ } from "motion/react"`,
+  `import { $_, $_, $_, m as $_ } from "motion/react"`
 } as $node where {
   register_diagnostic(
     span = $node,

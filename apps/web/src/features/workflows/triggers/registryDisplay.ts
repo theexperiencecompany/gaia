@@ -36,7 +36,8 @@ const displayEntries: TriggerDisplayEntry[] = [
   {
     triggerSlugs: ["calendar_event_created", "calendar_event_starting_soon"],
     getDisplayInfo: (config) => {
-      const triggerName = (config as { trigger_name?: string }).trigger_name;
+      const triggerName =
+        (config as { trigger_name?: string }).trigger_name || config.type;
       return {
         label:
           triggerName === "calendar_event_starting_soon"
@@ -82,7 +83,8 @@ const displayEntries: TriggerDisplayEntry[] = [
       "google_docs_document_updated",
     ],
     getDisplayInfo: (config) => {
-      const triggerName = (config as { trigger_name?: string }).trigger_name;
+      const triggerName =
+        (config as { trigger_name?: string }).trigger_name || config.type;
       let label = "on new document";
       if (triggerName === "google_docs_document_deleted")
         label = "on document deleted";

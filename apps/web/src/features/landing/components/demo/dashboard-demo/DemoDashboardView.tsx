@@ -43,7 +43,7 @@ function DemoBaseCard({
       <div className="flex flex-shrink-0 items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           {icon}
-          <p className="font-medium text-zinc-300">{title}</p>
+          <h3 className="font-medium text-zinc-300">{title}</h3>
         </div>
       </div>
       <div className="h-full flex-1 px-4 pb-4">
@@ -193,9 +193,9 @@ function DemoTodosCard() {
               className={`mt-1 h-4 w-4 shrink-0 rounded-full border-2 border-dashed ${priorityColors[todo.priority] || "border-zinc-600"}`}
             />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-white line-clamp-1">
+              <h4 className="text-sm font-medium text-white line-clamp-1">
                 {todo.title}
-              </p>
+              </h4>
               {todo.description && (
                 <p className="mt-0.5 text-xs text-zinc-500 line-clamp-1">
                   {todo.description}
@@ -276,9 +276,9 @@ function DemoWorkflowsCard() {
                 </div>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-white line-clamp-1">
+                <h4 className="font-medium text-white line-clamp-1">
                   {workflow.title}
-                </p>
+                </h4>
                 <p className="mt-0.5 text-xs text-zinc-400 line-clamp-1">
                   {workflow.description}
                 </p>
@@ -310,7 +310,9 @@ function DemoGoalsCard() {
               className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-zinc-700/30"
             >
               <div className="min-w-0 flex-1">
-                <p className="text-base font-medium text-white">{goal.title}</p>
+                <h4 className="text-base font-medium text-white">
+                  {goal.title}
+                </h4>
                 {goal.description && (
                   <p className="mt-1 text-xs text-zinc-400 line-clamp-2">
                     {goal.description}
@@ -390,9 +392,9 @@ function DemoConversationsCard() {
             <div className="min-w-0 flex-1 flex justify-between">
               <div>
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-base font-medium text-white line-clamp-1">
+                  <h4 className="text-base font-medium text-white line-clamp-1">
                     {conversation.title}
-                  </p>
+                  </h4>
                   {conversation.starred && (
                     <StarIcon
                       className="flex-shrink-0 text-yellow-500"

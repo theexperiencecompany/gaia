@@ -42,16 +42,9 @@ if (process.env.NODE_ENV === "production") {
         // Swallow — replay is best-effort, we don't want to surface network errors.
       });
   };
-  if (typeof window !== "undefined") {
-    if ("requestIdleCallback" in window) {
-      (
-        window as Window & {
-          requestIdleCallback: (
-            cb: () => void,
-            opts?: { timeout: number },
-          ) => number;
-        }
-      ).requestIdleCallback(loadReplay, { timeout: 4000 });
+  if (typeof globalThis.window !== "undefined") {
+    if ("requestIdleCallback" in globalThis) {
+      globalThis.requestIdleCallback(loadReplay, { timeout: 4000 });
     } else {
       setTimeout(loadReplay, 3000);
     }

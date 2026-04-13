@@ -10,7 +10,7 @@ import {
 } from "@icons";
 import * as m from "motion/react-m";
 import Image from "next/image";
-import Link from "next/link";
+import NextLink from "next/link";
 import { useState } from "react";
 import {
   ContextMenu,
@@ -18,6 +18,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { Link } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
 
 interface LogoWithContextMenuProps {
@@ -252,14 +253,14 @@ export function LogoWithContextMenu({
                 onClick={item.type === "button" ? item.onClick : undefined}
               >
                 {item.type === "link" ? (
-                  <Link
+                  <NextLink
                     href={item.href}
                     className="flex items-center gap-3 w-full cursor-pointer"
                     target={item.target}
                   >
                     {item.icon}
                     <span>{item.label}</span>
-                  </Link>
+                  </NextLink>
                 ) : (
                   <div className="flex items-center gap-3 w-full cursor-pointer">
                     {item.icon}

@@ -50,7 +50,7 @@ const SplitTextBlur = ({
         className="hero-split-word font-serif p-[5px] pl-0"
         style={{
           animationDelay: `${delay + index * staggerDelay}s`,
-          marginRight: index < words.length - 1 ? "0.25em" : "0",
+          paddingRight: index < words.length - 1 ? "0.25em" : undefined,
           paddingBottom: "7px",
           background: glow ? undefined : "inherit",
           WebkitBackgroundClip: glow ? undefined : "inherit",
@@ -59,6 +59,7 @@ const SplitTextBlur = ({
         }}
       >
         {word}
+        {index < words.length - 1 ? " " : ""}
       </span>
     ));
 
