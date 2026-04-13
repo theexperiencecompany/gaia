@@ -532,10 +532,12 @@ async def main() -> None:
         from .generic_evaluate import run_prompt_ab_test
 
         prompt_a_path, prompt_b_path = args.ab_test
-        with open(prompt_a_path) as f:
-            prompt_a = f.read()
-        with open(prompt_b_path) as f:
-            prompt_b = f.read()
+        prompt_a = await asyncio.to_thread(
+            Path(prompt_a_path).read_text, encoding="utf-8"
+        )
+        prompt_b = await asyncio.to_thread(
+            Path(prompt_b_path).read_text, encoding="utf-8"
+        )
 
         comparison = await run_prompt_ab_test(args.generic, prompt_a, prompt_b)
         print(f"\nA/B Test Results: {args.generic}")

@@ -9,6 +9,7 @@ import json
 import re
 from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from opik.evaluation.metrics import base_metric, score_result
 
 from app.agents.llm.client import init_llm
@@ -45,18 +46,30 @@ class _LLMJudgeBase(base_metric.BaseMetric):
 
     async def _async_call_judge(self, prompt: str) -> score_result.ScoreResult:
         llm = self._get_llm()
-        from langchain_core.messages import HumanMessage, SystemMessage
 
-        response = await llm.ainvoke(
-            [SystemMessage(content=_JUDGE_SYSTEM), HumanMessage(content=prompt)]
-        )
+        try:
+            response = await llm.ainvoke(
+                [SystemMessage(content=_JUDGE_SYSTEM), HumanMessage(content=prompt)]
+            )
+        except Exception as exc:
+            return score_result.ScoreResult(
+                value=0.0,
+                name=self.name,
+                reason=f"Judge invocation failed: {type(exc).__name__}",
+            )
+
         content = str(response.content)
         try:
             start = content.find("{")
             end = content.rfind("}") + 1
             parsed = json.loads(content[start:end])
+            score_raw = parsed.get("score", 0.0)
+            try:
+                value = float(score_raw)
+            except (TypeError, ValueError):
+                value = 0.0
             return score_result.ScoreResult(
-                value=float(parsed.get("score", 0.0)),
+                value=value,
                 name=self.name,
                 reason=parsed.get("reason", ""),
             )

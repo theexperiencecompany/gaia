@@ -46,12 +46,30 @@ from app.patches.opik_patch import apply_opik_patch
 apply_opik_patch()
 
 import opik  # noqa: E402
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage  # noqa: E402
 from opik.evaluation import evaluate  # noqa: E402
 from opik.evaluation import evaluate_experiment  # noqa: E402
+from opik.evaluation.metrics import (  # noqa: E402
+    AnswerRelevance,
+    Equals,
+    GEval,
+    Hallucination,
+    IsJson,
+    LLMJuriesJudge,
+    LevenshteinRatio,
+    Moderation,
+    Readability,
+    Sentiment,
+    Tone,
+    Usefulness,
+)
 from opik.evaluation.metrics import base_metric, score_result  # noqa: E402
 
 from app.agents.llm.client import init_llm  # noqa: E402
 from app.config.settings import settings  # noqa: E402
+from app.core.lazy_loader import providers  # noqa: E402
+from app.helpers.agent_helpers import build_agent_config  # noqa: E402
+from app.services.model_service import get_model_by_id  # noqa: E402
 from shared.py.wide_events import log  # noqa: E402
 
 from .evaluate import run_async  # noqa: E402
@@ -62,6 +80,7 @@ from .generic_config import (  # noqa: E402
     list_generic_eval_types,
 )
 from .generic_metrics import CUSTOM_METRIC_REGISTRY  # noqa: E402
+from .initialization import init_eval_providers  # noqa: E402
 
 nest_asyncio.apply()
 
@@ -93,12 +112,6 @@ def _resolve_builtin_metrics(
     names: list[str],
 ) -> list[base_metric.BaseMetric]:
     """Instantiate Opik built-in metrics by name, using Gemini as the judge model."""
-    from opik.evaluation.metrics import (
-        AnswerRelevance,
-        Hallucination,
-        Moderation,
-        Usefulness,
-    )
 
     registry: dict[str, Any] = {
         "AnswerRelevance": AnswerRelevance,
@@ -120,14 +133,6 @@ def _resolve_heuristic_metrics(
     names: list[str],
 ) -> list[base_metric.BaseMetric]:
     """Instantiate Opik heuristic metrics by name."""
-    from opik.evaluation.metrics import (
-        Equals,
-        IsJson,
-        LevenshteinRatio,
-        Readability,
-        Sentiment,
-        Tone,
-    )
 
     registry: dict[str, type[base_metric.BaseMetric]] = {
         "Readability": Readability,
@@ -165,7 +170,6 @@ def _resolve_custom_metrics(
 
 def _build_geval_metric(criteria: str) -> base_metric.BaseMetric:
     """Build a GEval metric with the given criteria string."""
-    from opik.evaluation.metrics import GEval
 
     return GEval(
         task_introduction="You are evaluating a personal AI assistant's response.",
@@ -178,7 +182,6 @@ def _build_jury_metrics(
     config: GenericEvalConfig,
 ) -> list[base_metric.BaseMetric]:
     """Build LLMJuriesJudge ensemble for high-stakes eval types."""
-    from opik.evaluation.metrics import Hallucination, LLMJuriesJudge, Moderation
 
     judges: list[base_metric.BaseMetric] = [
         Moderation(model=EVAL_JUDGE_MODEL),
@@ -223,10 +226,14 @@ def resolve_all_metrics(
 
 def compute_pass_rate(
     test_results: list[Any],
+    config: GenericEvalConfig | None = None,
 ) -> list[score_result.ScoreResult]:
     """Percentage of items where the primary metric scored above threshold."""
     if not test_results:
         return []
+
+    threshold = config.pass_threshold if config is not None else 0.7
+
     # Metrics with non-[0,1] ranges (e.g., Sentiment uses [-1,1]) skew averages.
     # Exclude them from pass rate calculation.
     NON_STANDARD_RANGE_METRICS = {"sentiment"}
@@ -244,7 +251,7 @@ def compute_pass_rate(
                 continue
             total += 1
             avg_score = sum(valid_scores) / len(valid_scores)
-            if avg_score >= 0.7:
+            if avg_score >= threshold:
                 passing += 1
     if total == 0:
         return []
@@ -252,7 +259,7 @@ def compute_pass_rate(
         score_result.ScoreResult(
             name="pass_rate",
             value=passing / total,
-            reason=f"{passing}/{total} items passed (threshold: 0.7)",
+            reason=f"{passing}/{total} items passed (threshold: {threshold})",
         )
     ]
 
@@ -408,8 +415,6 @@ class GenericEvaluator:
 
         # Initialize providers for Mode A
         if self.mode == "full":
-            from .initialization import init_eval_providers
-
             await init_eval_providers()
 
         # Resolve all metrics for this eval type
@@ -453,7 +458,6 @@ class GenericEvaluator:
 
     async def _call_llm_prompt_mode(self, query: str) -> str:
         """Mode B: Call LLM directly with system prompt."""
-        from langchain_core.messages import HumanMessage, SystemMessage
 
         messages = [
             SystemMessage(content=self.system_prompt),
@@ -464,7 +468,6 @@ class GenericEvaluator:
 
     async def _call_llm_multi_turn(self, turns: list[dict[str, str]]) -> str:
         """Mode B: Handle multi-turn conversation, return final response."""
-        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
         conversation: list[Any] = [SystemMessage(content=self.system_prompt)]
 
@@ -478,10 +481,6 @@ class GenericEvaluator:
 
     async def _call_full_graph(self, query: str) -> tuple[str, str]:
         """Mode A: Call the real comms_agent graph."""
-        from app.core.lazy_loader import providers
-        from app.helpers.agent_helpers import build_agent_config
-        from app.services.model_service import get_model_by_id
-        from langchain_core.messages import AIMessage, HumanMessage
 
         graph = await providers.aget("comms_agent")
         if not graph:
@@ -570,7 +569,7 @@ class GenericEvaluator:
         # Ensure dataset exists in Opik
         try:
             dataset = self.opik_client.get_dataset(name=self.config.dataset_name)
-        except Exception:
+        except opik.exceptions.DatasetNotFound:
             log.info("Dataset not in Opik, creating from local file...")
             await self.create_dataset()
             dataset = self.opik_client.get_dataset(name=self.config.dataset_name)
@@ -597,7 +596,7 @@ class GenericEvaluator:
                 "date": datetime.now().isoformat(),
             },
             experiment_scoring_functions=[
-                compute_pass_rate,
+                lambda results: compute_pass_rate(results, self.config),
                 compute_difficulty_breakdown,
             ],
             prompt=self.prompt,
