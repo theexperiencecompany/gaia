@@ -732,16 +732,19 @@
     outline: none;
   }
 
+  .tiptap:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
   /* OpenUI document card — cap height and scroll for long content */
   .openui-document .tiptap {
     max-height: 20rem;
     overflow-y: auto;
   }
 
-  /* Mail reply editor needs fixed height — scoped so it doesn't affect other Tiptap instances */
+  /* Mail reply editor — overflow only; height is capped by the parent max-h-[250px] wrapper */
   .mail-editor .tiptap {
-    height: 90vh;
-    max-height: 90vh;
     overflow: auto;
   }
 

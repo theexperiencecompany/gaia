@@ -103,11 +103,12 @@ interface ToolbarButtonProps {
 
 function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <Button
+      variant="light"
+      size="sm"
+      onPress={() => onClick()}
       className={[
-        "flex h-7 min-w-7 cursor-pointer items-center justify-center rounded px-1.5",
+        "h-7 min-w-7 rounded px-1.5",
         "text-xs font-semibold transition-all duration-100",
         active
           ? "bg-zinc-600 text-zinc-100"
@@ -115,7 +116,7 @@ function ToolbarButton({ active, onClick, children }: ToolbarButtonProps) {
       ].join(" ")}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
