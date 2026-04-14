@@ -150,6 +150,7 @@ export function ChatScreenContent({
     isTyping,
     isLoading,
     progress,
+    progressToolName,
     flatListRef,
     sendMessage,
     cancelStream,
@@ -481,6 +482,8 @@ export function ChatScreenContent({
           onLongPress={handleLongPressMessage}
           isLoading={showLoading}
           loadingMessage={showLoading ? displayMessage : undefined}
+          progressToolName={showLoading ? progressToolName : null}
+          progressMessage={showLoading ? progress : null}
         />
       );
     },
@@ -491,6 +494,8 @@ export function ChatScreenContent({
       handleReply,
       isTyping,
       messages,
+      progress,
+      progressToolName,
     ],
   );
 
@@ -532,6 +537,8 @@ export function ChatScreenContent({
                 messages[messages.length - 1]?.text,
                 isTyping,
                 displayMessage,
+                progress,
+                progressToolName,
               ]}
               contentContainerStyle={{
                 paddingTop: spacing.md,
