@@ -5,7 +5,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
 import { useCallback, useMemo, useRef } from "react";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { AppIcon, Brain02Icon } from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
@@ -48,16 +48,14 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
   if (!actions.length) return null;
 
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={{ marginTop: spacing.sm }}
-      contentContainerStyle={{
+    <View
+      style={{
         flexDirection: "row",
+        flexWrap: "wrap",
         gap: spacing.sm,
+        marginTop: spacing.sm,
         paddingHorizontal: spacing.md,
       }}
-      keyboardShouldPersistTaps="handled"
     >
       {actions.map((action) => (
         <PressableFeedback
@@ -69,18 +67,20 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
           style={{
             borderRadius: moderateScale(20, 0.5),
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.15)",
-            backgroundColor: "rgba(255,255,255,0.05)",
+            borderStyle: "dashed",
+            borderColor: "rgba(255,255,255,0.25)",
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.xs + 2,
           }}
         >
-          <Text style={{ fontSize: fontSize.xs, color: "#ffffff" }}>
+          <Text
+            style={{ fontSize: fontSize.xs, color: "rgba(255,255,255,0.7)" }}
+          >
             {action}
           </Text>
         </PressableFeedback>
       ))}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -251,7 +251,7 @@ export function ChatMessage({
           style={{
             flexDirection: "column",
             gap: spacing.xs,
-            maxWidth: "82%",
+            maxWidth: "85%",
           }}
         >
           {message.replyToMessage && (

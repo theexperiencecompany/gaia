@@ -234,7 +234,7 @@ function InlineContent({ segments }: { segments: InlineSegment[] }) {
   }, []);
 
   return (
-    <RNText style={{ color: COLORS.text, fontSize: 15, lineHeight: 22 }}>
+    <RNText style={{ color: COLORS.text, fontSize: 16, lineHeight: 23 }}>
       {segments.map((seg, idx) => {
         const key = segmentKey(seg, idx);
         switch (seg.type) {

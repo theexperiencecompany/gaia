@@ -5,10 +5,12 @@ import type {
   TodoProgressData,
   WeatherData,
 } from "@gaia/shared";
-import { Card } from "heroui-native";
-import React from "react";
-import { View } from "react-native";
+import { Card, PressableFeedback } from "heroui-native";
+import React, { useCallback, useRef, useState } from "react";
+import { Animated, LayoutAnimation, View } from "react-native";
+import { AppIcon, ArrowDown02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { useResponsive } from "@/lib/responsive";
 
 import { EmailComposeCard } from "../components/chat/email-compose-card";
 import type { EmailComposeData, ToolDataEntry } from "./registry";
@@ -52,6 +54,81 @@ import {
   TodoProgressCard,
   WeatherCard,
 } from "./tool-cards";
+
+function getToolDisplayName(toolName: string): string {
+  return toolName
+    .replace(/_data$/, "")
+    .replace(/_options$/, "")
+    .replace(/_results$/, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
+function CollapsibleToolWrapper({
+  toolName,
+  children,
+}: {
+  toolName: string;
+  children: React.ReactNode;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const chevronAnim = useRef(new Animated.Value(0)).current;
+  const { spacing, fontSize, moderateScale } = useResponsive();
+
+  const toggle = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setCollapsed((prev) => {
+      const next = !prev;
+      Animated.timing(chevronAnim, {
+        toValue: next ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      return next;
+    });
+  }, [chevronAnim]);
+
+  const chevronRotate = chevronAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "-90deg"],
+  });
+
+  const displayName = getToolDisplayName(toolName);
+
+  return (
+    <View style={{ marginBottom: spacing.xs }}>
+      <PressableFeedback
+        onPress={toggle}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.xs + 2,
+          gap: spacing.xs,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: fontSize.xs,
+            color: "#52525b",
+            fontWeight: "500",
+            flex: 1,
+          }}
+        >
+          {displayName}
+        </Text>
+        <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+          <AppIcon
+            icon={ArrowDown02Icon}
+            size={moderateScale(12, 0.5)}
+            color="#52525b"
+          />
+        </Animated.View>
+      </PressableFeedback>
+      {!collapsed && children}
+    </View>
+  );
+}
 
 function UnsupportedToolCard({
   toolName,
@@ -286,16 +363,20 @@ export function ToolDataRenderer({ toolData }: ToolDataRendererProps) {
         const renderer = TOOL_RENDERERS[toolName];
         const baseKey = `tool-${toolName}-${entry.timestamp || index}`;
 
-        if (renderer) {
-          return renderer(entry.data, baseKey);
-        }
-
-        return (
+        const rendered = renderer ? (
+          renderer(entry.data, baseKey)
+        ) : (
           <UnsupportedToolCard
             key={baseKey}
             toolName={toolName}
             index={index}
           />
+        );
+
+        return (
+          <CollapsibleToolWrapper key={baseKey} toolName={toolName}>
+            {rendered}
+          </CollapsibleToolWrapper>
         );
       })}
     </View>

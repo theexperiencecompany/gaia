@@ -3,13 +3,7 @@ import { PressableFeedback } from "heroui-native";
 import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, View } from "react-native";
-import {
-  AppIcon,
-  Copy01Icon,
-  ThumbsDownIcon,
-  ThumbsUpIcon,
-  Tick02Icon,
-} from "@/components/icons";
+import { AppIcon, Copy01Icon, Tick02Icon } from "@/components/icons";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -109,7 +103,6 @@ function MessageBubble({
           borderBottomRightRadius,
           paddingHorizontal: spacing.md,
           paddingVertical: spacing.sm + 2,
-          maxWidth: "80%",
         }}
       >
         <Text style={{ color: "#ffffff", fontSize: fontSize.base }}>
@@ -151,24 +144,9 @@ function MessageBubble({
             alignItems: "center",
             paddingHorizontal: spacing.md,
             paddingTop: spacing.xs,
-            gap: moderateScale(20, 0.5),
           }}
         >
           <CopyButton text={message ?? ""} />
-          <PressableFeedback style={{ padding: spacing.xs }}>
-            <AppIcon
-              icon={ThumbsUpIcon}
-              size={14}
-              color="rgba(255,255,255,0.35)"
-            />
-          </PressableFeedback>
-          <PressableFeedback style={{ padding: spacing.xs }}>
-            <AppIcon
-              icon={ThumbsDownIcon}
-              size={14}
-              color="rgba(255,255,255,0.35)"
-            />
-          </PressableFeedback>
         </View>
       )}
     </View>
