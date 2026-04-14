@@ -17,8 +17,8 @@ import {
   ViewIcon,
 } from "@icons";
 import * as m from "motion/react-m";
-import { memo, useCallback, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import {
   ChevronsDownUp,
   ChevronsUpDown,

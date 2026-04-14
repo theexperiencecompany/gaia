@@ -49,7 +49,9 @@ const TodoShowcaseSection = dynamic(
 );
 const ProductivityOSShowcaseSection = dynamic(
   () =>
-    import("@/features/landing/components/sections/ProductivityOSShowcaseSection"),
+    import(
+      "@/features/landing/components/sections/ProductivityOSShowcaseSection"
+    ),
   { loading: SectionLoader },
 );
 const OpenSource = dynamic(
