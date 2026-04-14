@@ -7,8 +7,6 @@ import { Animated, View } from "react-native";
 import {
   AppIcon,
   Copy01Icon,
-  Message01Icon,
-  Pin02Icon,
   ThumbsDownIcon,
   ThumbsUpIcon,
   Tick02Icon,
@@ -240,7 +238,11 @@ function MessageBubble({
           {...rest}
           style={
             variant === "sent"
-              ? { backgroundColor: "rgba(255,255,255,0.1)" }
+              ? {
+                  backgroundColor: "rgba(0,187,255,0.12)",
+                  borderWidth: 1,
+                  borderColor: "rgba(0,187,255,0.12)",
+                }
               : undefined
           }
           className={cn(
@@ -296,16 +298,6 @@ function MessageBubble({
                   color="#8e8e93"
                 />
               </PressableFeedback>
-              <PressableFeedback style={{ padding: spacing.xs }}>
-                <AppIcon icon={Pin02Icon} size={iconSize.sm} color="#8e8e93" />
-              </PressableFeedback>
-              <PressableFeedback style={{ padding: spacing.xs }}>
-                <AppIcon
-                  icon={Message01Icon}
-                  size={iconSize.sm}
-                  color="#8e8e93"
-                />
-              </PressableFeedback>
             </View>
           )}
       </View>
@@ -313,60 +305,5 @@ function MessageBubble({
   );
 }
 
-interface ChatMessageProps {
-  timestamp?: string;
-  messages: string[];
-  variant?: "sent" | "received";
-  className?: string;
-  showTimestamp?: boolean;
-}
-
-function ChatMessage({
-  timestamp,
-  messages,
-  variant = "received",
-  className,
-  showTimestamp = true,
-}: ChatMessageProps) {
-  const getGroupedType = (index: number, total: number) => {
-    if (total === 1) return "none";
-    if (index === 0) return "first";
-    if (index === total - 1) return "last";
-    return "middle";
-  };
-
-  return (
-    <View
-      className={cn(
-        "flex w-full flex-col",
-        variant === "sent" ? "items-end" : "items-start",
-        className,
-      )}
-    >
-      <View className="flex flex-col">
-        {messages.map((message, index) => (
-          <MessageBubble
-            key={`${message.slice(0, 20)}-${index}`}
-            message={message}
-            variant={variant}
-            grouped={getGroupedType(index, messages.length)}
-          />
-        ))}
-      </View>
-
-      {showTimestamp && timestamp && (
-        <Text
-          className={cn(
-            "mt-1 px-2 text-xs text-muted",
-            variant === "sent" && "text-right",
-          )}
-        >
-          {timestamp}
-        </Text>
-      )}
-    </View>
-  );
-}
-
-export { MessageBubble, ChatMessage, messageBubbleVariants };
-export type { MessageBubbleProps, MessageBubbleVariantProps, ChatMessageProps };
+export { MessageBubble, messageBubbleVariants };
+export type { MessageBubbleProps, MessageBubbleVariantProps };
