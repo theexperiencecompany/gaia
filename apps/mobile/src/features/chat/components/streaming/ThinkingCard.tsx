@@ -47,7 +47,11 @@ function AnimatedDot({ delay }: { delay: number }) {
   );
 }
 
-export function ThinkingCard() {
+interface ThinkingCardProps {
+  message?: string;
+}
+
+export function ThinkingCard({ message }: ThinkingCardProps) {
   const { spacing, fontSize } = useResponsive();
 
   return (
@@ -67,8 +71,9 @@ export function ThinkingCard() {
           fontSize: fontSize.sm,
           color: "#8e8e93",
         }}
+        numberOfLines={1}
       >
-        Thinking
+        {message || "Thinking"}
       </Text>
       <View
         style={{

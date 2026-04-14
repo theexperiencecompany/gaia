@@ -406,7 +406,11 @@ export function ChatMessage({
             progressMessage={progressMessage}
           />
         ) : showThinkingCard ? (
-          <ThinkingCard />
+          <ThinkingCard
+            message={
+              loadingMessage !== "Thinking..." ? loadingMessage : undefined
+            }
+          />
         ) : showLoadingState ? (
           <LoadingIndicator
             progress={
