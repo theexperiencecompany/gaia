@@ -189,6 +189,14 @@ export function ChatScreenContent({
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isAtBottomRef = useRef(true);
 
+  // Clear input state when switching conversations
+  useEffect(() => {
+    setInputValue("");
+    setReplyingTo(null);
+    setSelectedTool(null);
+    setSelectedWorkflow(null);
+  }, [activeChatId]);
+
   useEffect(() => {
     if (isTyping && !progress) {
       setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
