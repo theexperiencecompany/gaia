@@ -1,7 +1,8 @@
 "use client";
 
 import { PinIcon } from "@icons";
-import { m, useInView } from "motion/react";
+import { useInView } from "motion/react";
+import * as m from "motion/react-m";
 import { useRef } from "react";
 
 interface PinCard {

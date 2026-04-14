@@ -1,10 +1,10 @@
 "use client";
 
+import { Skeleton } from "@heroui/skeleton";
 import { Login02Icon, MessageMultiple02Icon } from "@icons";
-import AnimatedNumber from "animated-number-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import MobileMenu from "@/components/navigation/MobileMenu";
 import { ChevronDown, Github, StarFilledIcon } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,20 @@ import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
 import { RaisedButton } from "../ui/raised-button";
-import { NavbarMenu } from "./NavbarMenu";
+
+// Lazy-load below-the-fold / interaction-triggered components to shrink the
+// initial bundle without altering visuals.
+const MobileMenu = dynamic(() => import("@/components/navigation/MobileMenu"), {
+  ssr: false,
+});
+const NavbarMenu = dynamic(
+  () => import("./NavbarMenu").then((m) => ({ default: m.NavbarMenu })),
+  { ssr: false },
+);
+const AnimatedNumber = dynamic(() => import("animated-number-react"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-5 w-10 rounded-md" />,
+});
 
 const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Product", menu: "product" },

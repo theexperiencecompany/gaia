@@ -1,4 +1,5 @@
-import { m, useInView } from "motion/react";
+import { useInView } from "motion/react";
+import * as m from "motion/react-m";
 import { useEffect, useRef, useState } from "react";
 import DemoToolCalls from "../DemoToolCalls";
 import MiniWaveSpinner from "../MiniWaveSpinner";

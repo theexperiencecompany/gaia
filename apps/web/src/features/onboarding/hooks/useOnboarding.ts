@@ -428,6 +428,8 @@ export const useOnboarding = () => {
       }
 
       if (response?.success) {
+        toast.success("Welcome! Your preferences have been saved.");
+
         // Track onboarding completion
         trackEvent(ANALYTICS_EVENTS.ONBOARDING_COMPLETED, {
           profession: onboardingState.userResponses.profession,
@@ -481,6 +483,7 @@ export const useOnboarding = () => {
           data?: {
             code?: string;
             message?: string;
+            detail?: string | Array<{ msg: string; loc?: string[] }>;
           };
         };
         message?: string;
@@ -529,7 +532,14 @@ export const useOnboarding = () => {
             "Onboarding state conflict. Please refresh and try again.",
         );
       } else if (errorObj?.response?.status === 422) {
-        toast.error("Please check your input and try again.");
+        const detail = errorObj.response?.data?.detail;
+        let validationMessage = "Please check your input and try again.";
+        if (Array.isArray(detail) && detail.length > 0) {
+          validationMessage = detail.map((e) => e.msg).join(". ");
+        } else if (typeof detail === "string" && detail.length > 0) {
+          validationMessage = detail;
+        }
+        toast.error(validationMessage);
       } else if (
         errorObj?.message?.includes("network") ||
         errorObj?.code === "NETWORK_ERROR"

@@ -1,4 +1,4 @@
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";

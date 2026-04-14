@@ -217,6 +217,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/sanitize-html": "^2.16.1",
+    "critters": "^0.0.25",
     "depcheck": "^1.4.7",
     "schema-dts": "^1.1.5",
     "typescript": "^5.9.3",

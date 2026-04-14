@@ -248,6 +248,53 @@
   }
 }
 
+/* Hero animations — CSS-only replacements for motion/react so the LCP element
+   paints without waiting on JS hydration.
+   Only transform + opacity are animated so Chrome promotes the animation to the
+   compositor (off main thread). filter:blur() was previously used for a blur-in
+   feel but disqualified the animation from hardware acceleration. A subtle
+   scale(0.985→1) approximates the same "soften-in" effect while staying
+   compositor-only. */
+@keyframes hero-word-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 2px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes hero-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hero-split-word {
+  display: inline-block;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: hero-word-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.hero-fade-in {
+  opacity: 0;
+  animation: hero-fade-in 0.4s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-split-word,
+  .hero-fade-in {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
@@ -729,9 +776,22 @@
   }
 
   .tiptap {
-    height: 90vh;
-    max-height: 90vh;
     outline: none;
+  }
+
+  .tiptap:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* OpenUI document card — cap height and scroll for long content */
+  .openui-document .tiptap {
+    max-height: 20rem;
+    overflow-y: auto;
+  }
+
+  /* Mail reply editor — overflow only; height is capped by the parent max-h-[250px] wrapper */
+  .mail-editor .tiptap {
     overflow: auto;
   }
 

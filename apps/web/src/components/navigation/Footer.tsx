@@ -1,6 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
@@ -10,7 +12,11 @@ import { siteConfig } from "@/lib/seo";
 
 export default function Footer() {
   const user = useUser();
-  const isAuthenticated = user?.email;
+  // Gate auth-dependent rendering to client-only to prevent SSR/client hydration mismatch.
+  // SSR and first client render both treat the user as unauthenticated.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const isAuthenticated = mounted ? user?.email : undefined;
 
   const navigationSchema: WithContext<SiteNavigationElement> = {
     "@context": "https://schema.org",
@@ -66,7 +72,13 @@ export default function Footer() {
     "The power behind your ideas.",
     "Work smarter, not louder.",
   ];
-  const randomTagline = taglines[Math.floor(Math.random() * taglines.length)];
+  // Deterministic initial value — randomised after mount to prevent SSR/client mismatch.
+  // Math.random() during render produces different values server vs client → hydration error.
+  const [randomTagline, setRandomTagline] = useState(taglines[0]);
+  useEffect(() => {
+    setRandomTagline(taglines[Math.floor(Math.random() * taglines.length)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>

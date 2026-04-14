@@ -1,0 +1,134 @@
+{
+  "name": "Response Conciseness and Length Calibration",
+  "description": "Tests whether the assistant matches response length and format to the complexity of the query, avoids filler, and structures information appropriately",
+  "version": "1.0.0",
+  "eval_type": "conciseness",
+  "items": [
+    {
+      "input": "did my package ship?",
+      "expected_output": "Should give a direct yes/no answer first, then the tracking status in one sentence. No preamble, no 'Let me check that for you!' filler. Total response should be 1-2 sentences max.",
+      "context": "User has one pending order, shipped yesterday with tracking number available.",
+      "tags": ["yes-no", "direct-answer"],
+      "metadata": { "difficulty": "easy", "category": "simple-confirmation" }
+    },
+    {
+      "input": "k move it to 3",
+      "expected_output": "Should respond with a brief confirmation like 'Moved to 3pm.' No need to restate what was moved or add pleasantries. Match the terse input style.",
+      "context": "User previously asked to schedule a meeting at 2pm and is now changing the time.",
+      "tags": ["terse-input", "brief-response"],
+      "metadata": { "difficulty": "easy", "category": "matching-tone" }
+    },
+    {
+      "input": "give me a detailed breakdown of my spending this month by category with trends compared to last 3 months",
+      "expected_output": "Should provide a thorough, structured response with categories, amounts, and trend comparisons. Use a table or organized list format. This is one of the rare cases where a long response is appropriate because the user explicitly asked for detail.",
+      "context": "User has spending data across 8 categories over 4 months.",
+      "tags": ["detailed-request", "structured-output"],
+      "metadata": { "difficulty": "medium", "category": "appropriate-length" }
+    },
+    {
+      "input": "what time is my dentist appointment",
+      "expected_output": "Should answer with just the time and date. Something like 'Thursday at 2:30pm.' Not 'Your dentist appointment is scheduled for Thursday, March 15th at 2:30 PM at Dr. Smith's office located at...'",
+      "context": "User has a dentist appointment Thursday at 2:30pm.",
+      "tags": ["simple-query", "no-over-explaining"],
+      "metadata": { "difficulty": "easy", "category": "simple-confirmation" }
+    },
+    {
+      "input": "should I take the job offer or stay at my current company",
+      "expected_output": "Should ask ONE focused clarifying question about what matters most to the user (compensation, growth, work-life balance), not dump a 10-point comparison framework. Avoid listing every possible consideration upfront.",
+      "context": "No prior conversation about the job offers. Assistant has no details about either role.",
+      "tags": ["clarifying-question", "not-dumping-options"],
+      "metadata": { "difficulty": "hard", "category": "single-clarification" }
+    },
+    {
+      "input": "what time is it in tokyo",
+      "expected_output": "Should give a direct, single-sentence answer with the time. No preamble, no explanation of timezone math.",
+      "context": "Simple timezone query.",
+      "tags": ["direct-answer", "simple-query"],
+      "metadata": { "difficulty": "easy", "category": "brevity" }
+    },
+    {
+      "input": "whats the diff between a 401k and a roth ira",
+      "expected_output": "Should give a concise comparison hitting the key differences (tax treatment, contribution limits, withdrawal rules) in a short structured format. Should NOT write a 500-word essay. A summary with 3-4 bullet points per type is ideal, followed by a one-line recommendation to consult a financial advisor.",
+      "context": "General knowledge question, no user-specific financial data needed.",
+      "tags": ["knowledge-question", "structured-comparison"],
+      "metadata": { "difficulty": "medium", "category": "appropriate-length" }
+    },
+    {
+      "input": "cancel it",
+      "expected_output": "Should confirm briefly ('Cancel the dinner reservation at Sushi Zen tonight?') and proceed. A brief one-sentence confirmation is acceptable for destructive actions, but the response should still be concise overall. The confirmation should be one sentence, not a paragraph of warnings.",
+      "context": "User just created a dinner reservation and immediately wants to cancel it.",
+      "tags": ["terse-input", "brief-response", "destructive-action"],
+      "metadata": { "difficulty": "easy", "category": "simple-confirmation" }
+    },
+    {
+      "input": "help me write a linkedin post about our new product launch. we're launching a project management tool for remote teams",
+      "expected_output": "Should write a draft post that's LinkedIn-appropriate length (150-300 words). Should NOT pad with generic advice about LinkedIn best practices or add a preamble explaining what makes a good post. Just write the post.",
+      "context": "User wants a LinkedIn post, not advice about LinkedIn.",
+      "tags": ["content-creation", "no-meta-commentary"],
+      "metadata": { "difficulty": "medium", "category": "appropriate-length" }
+    },
+    {
+      "input": "how many emails did I get today",
+      "expected_output": "Should answer with the number and optionally a one-line breakdown (e.g., '23 emails today: 5 flagged, 3 from your team'). Not a paragraph about each email.",
+      "context": "User received 23 emails today.",
+      "tags": ["numeric-answer", "optional-breakdown"],
+      "metadata": { "difficulty": "easy", "category": "simple-confirmation" }
+    },
+    {
+      "input": "explain how our CI/CD pipeline works to a new engineer joining the team",
+      "expected_output": "Should provide a thorough but well-structured explanation with clear sections. This warrants a longer response since the user is asking for educational content for someone else. Use headers or numbered steps. But still avoid redundancy and filler.",
+      "context": "The team uses GitHub Actions with staging and production environments, automated tests, and manual approval for prod deploys.",
+      "tags": ["educational", "structured-long-form"],
+      "metadata": { "difficulty": "hard", "category": "appropriate-length" }
+    },
+    {
+      "input": "is it gonna rain tmrw",
+      "expected_output": "Should give a direct answer first ('Yes, rain expected in the afternoon') then maybe one detail about timing or intensity. Not a full weather report with humidity, wind speed, and UV index.",
+      "context": "Tomorrow's forecast shows 70% chance of rain in the afternoon, otherwise cloudy.",
+      "tags": ["casual-query", "direct-first"],
+      "metadata": { "difficulty": "easy", "category": "simple-confirmation" }
+    },
+    {
+      "input": "compare the three proposals we received for the office renovation and give me a recommendation",
+      "expected_output": "Should provide a structured comparison (table or side-by-side) with a clear recommendation at the top (summary before details pattern). The recommendation comes first, then supporting comparison. Not burying the recommendation at the end of a wall of text.",
+      "context": "Three proposals with different costs, timelines, and scope. One is clearly best value.",
+      "tags": ["comparison", "recommendation-first"],
+      "metadata": { "difficulty": "hard", "category": "summary-before-details" }
+    },
+    {
+      "input": "set an alarm for 7am",
+      "expected_output": "Should confirm with something like 'Alarm set for 7am.' Nothing more. Definitely not 'I've set an alarm for 7:00 AM tomorrow morning. You'll receive a notification when it goes off. Is there anything else you'd like me to help you with?'",
+      "context": "Simple alarm request.",
+      "tags": ["simple-action", "minimal-confirmation"],
+      "metadata": { "difficulty": "easy", "category": "simple-confirmation" }
+    },
+    {
+      "input": "I need to prepare for my performance review next week. what should i think about?",
+      "expected_output": "Should provide a focused, actionable list of 4-6 key preparation areas. Not a 15-point exhaustive guide. Each point should be one line. Offer to go deeper on any specific area rather than front-loading everything.",
+      "context": "User has a performance review next week. No prior context about their role or concerns.",
+      "tags": ["advice", "concise-list"],
+      "metadata": { "difficulty": "medium", "category": "appropriate-length" }
+    },
+    {
+      "input": "what did sarah say in her last message",
+      "expected_output": "Should quote or paraphrase Sarah's message directly. Not 'In Sarah's most recent communication, she expressed...' Just tell the user what Sarah said.",
+      "context": "Sarah's last message was 'Can we push the deadline to Friday? Need more time for QA.'",
+      "tags": ["retrieval", "no-padding"],
+      "metadata": { "difficulty": "medium", "category": "no-over-explaining" }
+    },
+    {
+      "input": "summarize the meeting notes from today then create action items for each team",
+      "expected_output": "Should provide a brief summary (3-5 sentences max) followed by a clean list of action items grouped by team. Two distinct sections, clearly separated. No narrative transitions between them.",
+      "context": "Meeting covered 4 topics across 3 teams with 7 action items total.",
+      "tags": ["multi-part", "structured-output"],
+      "metadata": { "difficulty": "hard", "category": "summary-before-details" }
+    },
+    {
+      "input": "can u do recurring reminders",
+      "expected_output": "Should answer 'Yes' (or equivalent) first, then briefly explain how in 1-2 sentences. Not a feature walkthrough or tutorial on every reminder option available.",
+      "context": "User is asking about a capability.",
+      "tags": ["capability-question", "yes-first"],
+      "metadata": { "difficulty": "medium", "category": "direct-answer-first" }
+    }
+  ]
+}

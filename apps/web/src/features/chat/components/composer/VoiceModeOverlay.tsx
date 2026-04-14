@@ -6,7 +6,7 @@ import {
   StartAudio,
 } from "@livekit/components-react";
 import { Room } from "livekit-client";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { useEffect, useMemo, useState } from "react";
 import useConnectionDetails from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
 import { SessionView } from "@/features/chat/components/voice-agent/session-view";

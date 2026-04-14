@@ -1,7 +1,5 @@
 import "./styles/globals.css";
 
-import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { NextIntlClientProvider } from "next-intl";
@@ -138,7 +136,6 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} className={`${getAllFontVariables()} dark`}>
-      <SpeedInsights />
       <head>
         <link
           rel="preconnect"
@@ -152,46 +149,10 @@ export default async function RootLayout({
         />
         <link rel="dns-prefetch" href="https://uptime.betterstackcdn.com" />
         <link
-          rel="preconnect"
-          href="https://us.i.posthog.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          rel="preconnect"
-          href="https://api.heygaia.io"
-          crossOrigin="anonymous"
-        />
-        <link
           rel="preload"
           as="image"
           href="/_next/image?url=%2Fimages%2Flogos%2Ftext_w_logo_white.webp&w=256&q=75"
           fetchPriority="high"
-          type="image/webp"
-        />
-        {/* Preload hero wallpaper for fast LCP — browser starts fetch at HTML parse time */}
-        <link
-          rel="preload"
-          as="image"
-          href="/images/wallpapers/swiss_morning.webp"
-          fetchPriority="high"
-          type="image/webp"
-        />
-        <link
-          rel="preload"
-          as="image"
-          href="/images/wallpapers/swiss.webp"
-          type="image/webp"
-        />
-        <link
-          rel="preload"
-          as="image"
-          href="/images/wallpapers/swiss_evening.webp"
-          type="image/webp"
-        />
-        <link
-          rel="preload"
-          as="image"
-          href="/images/wallpapers/swiss_night.webp"
           type="image/webp"
         />
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}
@@ -225,7 +186,6 @@ export default async function RootLayout({
           {JSON.stringify(generateWebSiteSchema())}
         </Script>
 
-        <VercelAnalytics />
         <AnalyticsLayout />
       </body>
     </html>

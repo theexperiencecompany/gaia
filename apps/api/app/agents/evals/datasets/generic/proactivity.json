@@ -1,0 +1,134 @@
+{
+  "name": "Proactive Assistant Behavior",
+  "description": "Tests the assistant's ability to surface relevant information, suggest follow-ups, flag issues, and offer alternatives without being asked, while knowing when to stay quiet",
+  "version": "1.0.0",
+  "eval_type": "proactivity",
+  "items": [
+    {
+      "input": "schedule a meeting with jake tomorrow at 2pm",
+      "expected_output": "Should detect the scheduling conflict (user already has a meeting at 2pm tomorrow) and proactively surface it before confirming. Offer alternative times nearby.",
+      "context": "User has an existing meeting from 1:30pm-2:30pm tomorrow with the design team.",
+      "tags": ["conflict-detection", "scheduling"],
+      "metadata": { "difficulty": "easy", "category": "scheduling-conflicts" }
+    },
+    {
+      "input": "send the quarterly report to the team",
+      "expected_output": "Should confirm sending the report and proactively suggest related follow-ups like scheduling a review meeting, asking if stakeholders outside the immediate team should also receive it, or noting the report is missing last week's data.",
+      "context": "User sends quarterly reports every quarter. The report draft was last edited 3 days ago and is missing week 12 data.",
+      "tags": ["follow-up-suggestion", "email"],
+      "metadata": { "difficulty": "medium", "category": "follow-up-actions" }
+    },
+    {
+      "input": "whats on my plate today",
+      "expected_output": "Should present today's schedule and proactively flag that the project proposal deadline is today at 5pm and the draft is still marked incomplete. Should also note the 30-minute gap between meetings that could be used to finish it.",
+      "context": "User has 3 meetings today and an unfinished project proposal due at 5pm. There is a 30-min gap at 11am.",
+      "tags": ["daily-briefing", "urgency-flagging"],
+      "metadata": { "difficulty": "medium", "category": "daily-overview" }
+    },
+    {
+      "input": "book a flight to SF next friday",
+      "expected_output": "Should acknowledge the flight booking request and proactively ask about hotel, rental car, or ground transportation needs. Should also flag that the user has a Monday morning meeting that may conflict with a late Sunday return.",
+      "context": "User has a recurring Monday 9am standup. No return flight specified.",
+      "tags": ["travel", "preemptive-gathering"],
+      "metadata": { "difficulty": "medium", "category": "preemptive-information" }
+    },
+    {
+      "input": "just do it, dont ask me anything",
+      "expected_output": "Should reschedule the 'Product Sync' meeting (currently Thursday 3pm) to Friday 10am without asking further questions. Should confirm the reschedule was done. Should NOT ask for clarification or offer alternatives.",
+      "context": "User previously asked to reschedule the 'Product Sync' meeting (meeting id: mtg-482, currently scheduled Thursday at 3:00pm, attendees: user and Sam) to Friday at 10am. The assistant asked a clarifying question. User is now frustrated and wants it done immediately.",
+      "tags": ["restraint", "user-preference"],
+      "metadata": { "difficulty": "hard", "category": "knowing-when-not-to" }
+    },
+    {
+      "input": "cancel my gym class tonight",
+      "expected_output": "Should cancel the gym class and proactively warn that there may be a late cancellation fee since the class is in less than 2 hours.",
+      "context": "Gym class is at 6pm, current time is 4:15pm. Gym policy requires 3 hours notice to avoid a $15 fee.",
+      "tags": ["urgency-flagging", "cost-warning"],
+      "metadata": { "difficulty": "easy", "category": "urgency-detection" }
+    },
+    {
+      "input": "remind me to call mom",
+      "expected_output": "Should ask when to set the reminder but also proactively note that it's currently 11pm in mom's timezone, suggesting a morning reminder instead.",
+      "context": "User's mom lives in EST timezone. Current time for user is 8pm PST (11pm EST).",
+      "tags": ["timezone-awareness", "contextual-suggestion"],
+      "metadata": { "difficulty": "medium", "category": "contextual-awareness" }
+    },
+    {
+      "input": "schedule a meeting with the London team tomorrow",
+      "expected_output": "Should proactively flag the timezone difference and suggest times that work across both timezones. Should note if 'tomorrow' falls on a weekend or holiday in either timezone. Should offer a few time slot options rather than just picking one.",
+      "context": "User is scheduling a cross-timezone meeting without specifying a time.",
+      "tags": ["timezone-awareness", "proactive-suggestion", "scheduling"],
+      "metadata": { "difficulty": "medium", "category": "scheduling-intelligence" }
+    },
+    {
+      "input": "good morning",
+      "expected_output": "Should respond with a morning greeting and proactively surface the day's key items: upcoming meetings, pending tasks, and any overnight notifications that need attention. Keep it concise, not overwhelming.",
+      "context": "It's 8:30am Monday. User has 4 meetings today, 2 unread urgent emails, and a task due at noon.",
+      "tags": ["morning-briefing", "time-contextual"],
+      "metadata": { "difficulty": "easy", "category": "time-of-day" }
+    },
+    {
+      "input": "move my 1:1 with sarah to next week",
+      "expected_output": "Should move the meeting and proactively note that this is the third consecutive week the user has rescheduled this 1:1. Gently suggest whether to cancel the recurring or adjust the regular time.",
+      "context": "User has rescheduled this weekly 1:1 three weeks in a row. The meeting has been on the calendar for 6 months.",
+      "tags": ["pattern-recognition", "gentle-suggestion"],
+      "metadata": { "difficulty": "hard", "category": "pattern-detection" }
+    },
+    {
+      "input": "draft an email to the client about the delay",
+      "expected_output": "Should draft the email and proactively suggest including a revised timeline and next steps, since the client previously asked about timeline in their last email.",
+      "context": "The client's last email 2 days ago specifically asked 'when can we expect the revised timeline?'",
+      "tags": ["context-recall", "email-drafting"],
+      "metadata": { "difficulty": "medium", "category": "follow-up-actions" }
+    },
+    {
+      "input": "order lunch for the team meeting",
+      "expected_output": "Should proactively flag known dietary restrictions for attendees (Sarah is vegetarian, Mike has a nut allergy) and ask about budget before ordering.",
+      "context": "Meeting has 6 attendees. Sarah listed vegetarian preference, Mike listed nut allergy in their profiles.",
+      "tags": ["attendee-awareness", "dietary-restrictions"],
+      "metadata": { "difficulty": "medium", "category": "preemptive-information" }
+    },
+    {
+      "input": "how much did i spend on uber last month",
+      "expected_output": "Should provide the Uber spending total and proactively note this is 35% higher than the previous month. Optionally surface the most expensive ride or most frequent route.",
+      "context": "User spent $340 on Uber last month vs $250 the month before. Most expensive ride was $45.",
+      "tags": ["spending-insight", "trend-detection"],
+      "metadata": { "difficulty": "medium", "category": "pattern-detection" }
+    },
+    {
+      "input": "i'm thinking about maybe possibly looking into potentially getting a new hobby",
+      "expected_output": "Should NOT proactively suggest hobbies, classes, or schedules. This is vague personal musing, not an actionable request. A brief acknowledgment is fine, but unsolicited life advice crosses the line.",
+      "context": "User is casually chatting. No prior hobby-related requests or tasks.",
+      "tags": ["restraint", "personal-boundary"],
+      "metadata": { "difficulty": "hard", "category": "knowing-when-not-to" }
+    },
+    {
+      "input": "submit my expense report",
+      "expected_output": "Should submit the report and proactively flag that 3 receipts are missing and the total exceeds the user's usual monthly limit, which may trigger additional approval.",
+      "context": "Expense report has 12 items, 3 missing receipts. Total is $4,200 vs usual $2,500 monthly average. Company policy requires VP approval over $4,000.",
+      "tags": ["completeness-check", "policy-awareness"],
+      "metadata": { "difficulty": "hard", "category": "issue-flagging" }
+    },
+    {
+      "input": "set up a call with the tokyo office",
+      "expected_output": "Should proactively calculate timezone overlap and suggest windows that work for both sides. Flag that it's currently nighttime in Tokyo if applicable.",
+      "context": "User is in PST. Tokyo office is JST (+17 hours). Current time is 2pm PST (7am JST next day).",
+      "tags": ["timezone-calculation", "scheduling"],
+      "metadata": { "difficulty": "easy", "category": "contextual-awareness" }
+    },
+    {
+      "input": "share the design mockups with the engineering team",
+      "expected_output": "Should share the files and proactively note that the mockups were last updated 2 weeks ago and a newer version may exist. Ask if the user wants to check with the design team first.",
+      "context": "Design mockups in the shared folder are dated 2 weeks ago. Designer pushed new commits to the design repo yesterday.",
+      "tags": ["staleness-detection", "version-awareness"],
+      "metadata": { "difficulty": "hard", "category": "issue-flagging" }
+    },
+    {
+      "input": "hey can u add eggs milk and bread to my grocery list",
+      "expected_output": "Should add the items and proactively mention that milk and eggs are already on the list from last time (never checked off), to avoid duplicates.",
+      "context": "User's grocery list already contains 'milk' and 'eggs' from 5 days ago, still unchecked.",
+      "tags": ["duplicate-detection", "list-management"],
+      "metadata": { "difficulty": "easy", "category": "issue-flagging" }
+    }
+  ]
+}

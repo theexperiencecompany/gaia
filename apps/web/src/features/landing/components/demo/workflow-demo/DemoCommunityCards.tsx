@@ -2,7 +2,8 @@
 
 import { Button } from "@heroui/button";
 import { PlayIcon, ZapIcon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";

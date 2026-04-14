@@ -494,7 +494,7 @@ export default function ViewEmail({
                     </Button>
                   </div>
 
-                  <div className="rounded-lg border border-zinc-700 bg-zinc-800">
+                  <div className="mail-editor rounded-lg border border-zinc-700 bg-zinc-800">
                     {/* <MenuBar editor={editor} /> */}
                     <div className="max-h-[250px] min-h-[150px] overflow-y-auto px-4 py-2">
                       <EditorContent editor={editor} />

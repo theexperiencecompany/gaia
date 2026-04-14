@@ -170,6 +170,46 @@ src/features/{feature}/
 - Error boundaries live in `src/components/shared/ErrorBoundary.tsx` — do not create new ones
 - They catch rendering errors and report to PostHog automatically
 
+## HeroUI Components
+
+Always use HeroUI components instead of raw HTML or custom implementations. HeroUI handles accessibility, keyboard navigation, focus management, and theming automatically.
+
+**Docs**: https://v2.heroui.com/docs/guide/introduction
+
+| Need | HeroUI component | Never use |
+|---|---|---|
+| Button / icon button | `<Button>`, `<Button isIconOnly>` from `@heroui/button` | `<button>` |
+| Link | `<Link>` from `@heroui/link` | `<a>` |
+| Dropdown menu | `<Dropdown>` + `<DropdownTrigger>` + `<DropdownMenu>` + `<DropdownItem>` from `@heroui/dropdown` | Manual state + click-outside handler |
+| Tooltip | `<Tooltip>` from `@heroui/tooltip` | Custom hover state |
+| Modal / dialog | `<Modal>` + `<ModalContent>` from `@heroui/modal` | Custom overlay + z-index |
+| Divider | `<Divider>` from `@heroui/divider` | `<hr>` |
+| Loading spinner | `<Spinner>` from `@heroui/spinner` | Icon with `animate-spin` |
+| Skeleton placeholder | `<Skeleton>` from `@heroui/skeleton` | Custom shimmer div |
+| Select / combobox | `<Select>` + `<SelectItem>` from `@heroui/select` | `<select>` |
+| Input | `<Input>` from `@heroui/input` | `<input>` |
+| Checkbox | `<Checkbox>` from `@heroui/checkbox` | `<input type="checkbox">` |
+| Tabs | `<Tabs>` + `<Tab>` from `@heroui/tabs` | Manual active-tab state |
+| Accordion | `<Accordion>` + `<AccordionItem>` from `@heroui/accordion` | Manual expand state |
+
+**`DropdownTrigger` rule**: always pass a HeroUI `<Button>` (or component using `useButton`) as the child — never a raw `<button>` or `<div>`. HeroUI propagates `onPress`, `ref`, and ARIA attributes to its own Button; raw elements miss keyboard/accessibility wiring.
+
+```tsx
+// correct
+<DropdownTrigger>
+  <Button isIconOnly variant="light" size="sm" aria-label="Options">
+    <MoreVerticalIcon size={16} />
+  </Button>
+</DropdownTrigger>
+
+// wrong — raw button misses HeroUI's press/focus handling
+<DropdownTrigger>
+  <button type="button">...</button>
+</DropdownTrigger>
+```
+
+Use HeroUI variant/color props before reaching for `className` overrides. Custom `classNames` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) — never to override HeroUI's internal color or shape tokens.
+
 ## Styling
 
 - **TailwindCSS exclusively** — no inline `style={{}}`, no CSS modules

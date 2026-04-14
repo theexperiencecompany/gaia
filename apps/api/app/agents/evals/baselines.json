@@ -1,0 +1,18 @@
+{
+  "_comment": "Baseline scores for regression detection. Updated via --update-baseline flag.",
+  "conversation_quality": {},
+  "task_planning": {},
+  "safety_boundaries": {},
+  "instruction_following": {},
+  "tool_routing": {},
+  "memory_context": {},
+  "error_handling": {},
+  "hallucination_factuality": {},
+  "time_scheduling": {},
+  "tone_emotional": {},
+  "proactivity": {},
+  "conciseness": {},
+  "adversarial": {},
+  "multi_turn": {},
+  "confidence_calibration": {}
+}

@@ -2,7 +2,8 @@
 
 import { Button } from "@heroui/button";
 import { ArrowRight02Icon, RedoIcon } from "@icons";
-import { AnimatePresence, m, useInView } from "motion/react";
+import { AnimatePresence, useInView } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";

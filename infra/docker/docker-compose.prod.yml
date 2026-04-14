@@ -18,7 +18,7 @@ services:
         "80",
         "--no-access-log",
         "--workers",
-        "2",
+        "1",
         "--timeout-keep-alive",
         "65",
         "--timeout-graceful-shutdown",

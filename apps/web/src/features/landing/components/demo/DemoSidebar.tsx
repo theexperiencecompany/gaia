@@ -16,7 +16,7 @@ import {
   Tag01Icon,
   ViewIcon,
 } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { useState } from "react";
 import {
   ChevronsDownUp,
@@ -490,7 +490,7 @@ export default function DemoSidebar({
                   <span className="text-sm font-medium text-zinc-200">
                     Aryan Randeriya
                   </span>
-                  <span className="text-xs text-zinc-500">GAIA Pro</span>
+                  <span className="text-xs text-zinc-400">GAIA Pro</span>
                 </div>
               </div>
               {settingsOpen ? (

@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { ReloadIcon } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { useId } from "react";
 
 interface OnboardingProgressProps {

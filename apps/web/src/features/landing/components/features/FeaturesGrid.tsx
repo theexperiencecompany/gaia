@@ -5,7 +5,7 @@ import { Input } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
 import { ArrowRight02Icon, Search01Icon } from "@icons";
 import type { Easing, Variants } from "motion/react";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";

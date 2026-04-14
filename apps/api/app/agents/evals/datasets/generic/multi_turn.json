@@ -1,0 +1,191 @@
+{
+  "name": "Multi-Turn Conversation Coherence",
+  "description": "Tests the assistant's ability to maintain context across multiple turns, resolve references, handle corrections, track topic switches, and manage complex multi-step interactions",
+  "version": "1.0.0",
+  "eval_type": "multi_turn",
+  "items": [
+    {
+      "messages": [
+        {"role": "user", "content": "schedule a meeting with dave on tuesday at 10am"},
+        {"role": "user", "content": "actually make that thursday"}
+      ],
+      "expected_output": "Should update the meeting from Tuesday to Thursday, keeping all other details (Dave, 10am) intact. Should not ask for re-confirmation of time or attendee.",
+      "context": "Simple mid-conversation correction of a single detail.",
+      "tags": ["correction", "detail-update"],
+      "metadata": { "difficulty": "easy", "category": "corrections", "turns": 2 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "write me a short email to the marketing team about the product launch delay"},
+        {"role": "user", "content": "make it shorter"},
+        {"role": "user", "content": "add a line about the new timeline being march 15"},
+        {"role": "user", "content": "actually make it more formal, this is going to leadership not marketing"}
+      ],
+      "expected_output": "Should produce a formal, concise email addressed to leadership (not marketing) about the product launch delay, including the March 15 timeline. Should incorporate ALL prior refinements: the shortened length, the added timeline, AND the audience/tone change. Should not lose any of the iterative adjustments.",
+      "context": "Progressive refinement over 4 turns with an audience change in the last turn.",
+      "tags": ["progressive-refinement", "audience-change"],
+      "metadata": { "difficulty": "hard", "category": "refinement", "turns": 4 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "remind me to call the dentist tomorrow"},
+        {"role": "user", "content": "oh wait before that, whats the weather looking like for saturday?"},
+        {"role": "user", "content": "ok cool. so yeah the dentist reminder, can you make it for 9am specifically?"}
+      ],
+      "expected_output": "Should set the dentist reminder for 9am tomorrow, correctly returning to the original topic after the weather digression. Should not confuse the weather query details with the reminder details.",
+      "context": "Topic switch (dentist to weather) and return to original topic.",
+      "tags": ["topic-switch", "topic-return"],
+      "metadata": { "difficulty": "medium", "category": "topic-management", "turns": 3 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "find me flights to chicago next weekend"},
+        {"role": "user", "content": "what about boston instead"},
+        {"role": "user", "content": "hmm go back to the chicago options"}
+      ],
+      "expected_output": "Should return to the Chicago flight options from the first query without requiring the user to re-specify dates. 'Go back' should restore the Chicago results from earlier in the conversation. Should NOT re-search or ask for dates again.",
+      "context": "User explores options, changes mind, then wants to return to earlier results.",
+      "tags": ["undo", "state-restoration"],
+      "metadata": { "difficulty": "medium", "category": "undo-go-back", "turns": 3 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "I need to plan a birthday party for my daughter"},
+        {"role": "user", "content": "she's turning 7"},
+        {"role": "user", "content": "we want it at the park"},
+        {"role": "user", "content": "about 15 kids"},
+        {"role": "user", "content": "ok now send the invite to sarah's mom, jake's mom, and the rest of the class parents"}
+      ],
+      "expected_output": "Should compose and send a birthday party invitation incorporating ALL accumulated details: 7th birthday, at the park, ~15 kids. Should send to the specified recipients. Should resolve 'sarah's mom' and 'jake's mom' from contacts and 'rest of the class parents' from available group/list data.",
+      "context": "Gradual information accumulation over 5 turns, culminating in an action that requires all gathered context.",
+      "tags": ["information-accumulation", "reference-resolution"],
+      "metadata": { "difficulty": "hard", "category": "multi-step-task", "turns": 5 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "send the report to him"},
+        {"role": "user", "content": "mike. the one from the meeting earlier"}
+      ],
+      "expected_output": "Should resolve 'him' to Mike based on the clarification, and 'the report' to the most recently discussed or relevant report. Should send the correct report to Mike. Should NOT ask which Mike if the meeting context narrows it down.",
+      "context": "User references 'him' and 'the report' ambiguously. Earlier in the session, the user discussed a status report and had a meeting with Mike Chen.",
+      "tags": ["reference-resolution", "pronoun-resolution"],
+      "metadata": { "difficulty": "medium", "category": "reference-chains", "turns": 2 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "create a grocery list: eggs, milk, bread, chicken, rice"},
+        {"role": "user", "content": "add avocados and tomatoes to that"},
+        {"role": "user", "content": "remove the chicken actually, we still have some"},
+        {"role": "user", "content": "how many items on the list now?"}
+      ],
+      "expected_output": "Should correctly report 6 items: eggs, milk, bread, rice, avocados, tomatoes. Must have properly tracked the additions and removal across turns.",
+      "context": "List manipulation across multiple turns requiring accurate state tracking.",
+      "tags": ["list-management", "state-tracking"],
+      "metadata": { "difficulty": "medium", "category": "building-on-prior", "turns": 4 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "schedule a meeting with the design team for tuesday at 2pm"},
+        {"role": "user", "content": "I said tuesday earlier right? or was it monday? I can't remember what I originally said"},
+        {"role": "user", "content": "no wait I think I said monday first then changed to tuesday"}
+      ],
+      "expected_output": "Should accurately recall that the user originally said Tuesday in the first message. Should correct the user's false memory that they said Monday first. Should not fabricate or guess at prior conversation content.",
+      "context": "User is confused about their own prior instructions and asks the assistant to arbitrate. The original instruction was Tuesday. Tests whether assistant accurately recalls or fabricates.",
+      "tags": ["self-reference", "conversation-recall"],
+      "metadata": { "difficulty": "hard", "category": "contradictions", "turns": 3 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "draft a slack message to the team about friday's outage"},
+        {"role": "user", "content": "hmm actually forget that. can you check if my flight has any delays?"},
+        {"role": "user", "content": "ok great no delays. now back to that slack message, can you finish it?"}
+      ],
+      "expected_output": "Should resume drafting the Slack message about Friday's outage, picking up from where it was abandoned. Should not start from scratch or ask what the message was about. The flight check was a complete interruption, not a context change.",
+      "context": "User abandons a task, does something unrelated, then returns to the original task.",
+      "tags": ["task-abandonment", "task-resumption"],
+      "metadata": { "difficulty": "medium", "category": "task-switching", "turns": 3 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "I like my calendar notifications 15 minutes before"},
+        {"role": "user", "content": "and I prefer morning meetings over afternoon"},
+        {"role": "user", "content": "schedule a meeting with alex sometime this week"}
+      ],
+      "expected_output": "Should schedule the meeting in the morning (based on stated preference in turn 2) and set a 15-minute notification (based on turn 1). Should apply both stated preferences without the user needing to re-specify them.",
+      "context": "User reveals preferences across earlier turns that should be applied to a later action.",
+      "tags": ["preference-tracking", "implicit-application"],
+      "metadata": { "difficulty": "hard", "category": "preference-revelation", "turns": 3 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "book dinner tonight for 4 people at that italian place"},
+        {"role": "user", "content": "wait actually 5 people, marcus is coming too"},
+        {"role": "user", "content": "and make it 7:30 not 7"},
+        {"role": "user", "content": "scratch all that. just order pizza for delivery instead"}
+      ],
+      "expected_output": "Should completely abandon the restaurant reservation and switch to ordering pizza for delivery. Should not ask about the number of people or time for the pizza order since those details applied to the reservation. May ask how many pizzas or what toppings.",
+      "context": "User makes multiple refinements then abandons the entire approach for something different.",
+      "tags": ["full-pivot", "context-reset"],
+      "metadata": { "difficulty": "medium", "category": "task-switching", "turns": 4 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "I need to prep for 3 things today: the board presentation, the 1:1 with jamie, and the product review"},
+        {"role": "user", "content": "lets start with the board deck. pull the latest revenue numbers"},
+        {"role": "user", "content": "ok good. now for the jamie 1:1, whats on our agenda from last time?"},
+        {"role": "user", "content": "great. for the product review, summarize the open bugs"},
+        {"role": "user", "content": "ok go back to the board deck, I want to add a slide about hiring"}
+      ],
+      "expected_output": "Should return to the board presentation context and help add a hiring slide, remembering the revenue numbers already pulled in turn 2. Should maintain awareness of all three preparation tracks and which one is currently active.",
+      "context": "User juggles three parallel preparation tasks, switching between them.",
+      "tags": ["parallel-tasks", "context-switching"],
+      "metadata": { "difficulty": "hard", "category": "multi-step-task", "turns": 5 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "whats the status on that thing I asked you about yesterday"},
+        {"role": "user", "content": "the expense report thing"}
+      ],
+      "expected_output": "Should attempt to retrieve context about the expense report from the previous session. If session memory does not persist, should acknowledge that honestly rather than guessing. If it does persist, should provide the actual status.",
+      "context": "Cross-session reference. Tests whether the assistant handles session boundaries honestly.",
+      "tags": ["cross-session", "honesty"],
+      "metadata": { "difficulty": "hard", "category": "reference-chains", "turns": 2 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "set up a weekly team standup. monday wednesday friday at 9am"},
+        {"role": "user", "content": "wait thats 3 times a week not weekly lol. just mondays at 9"},
+        {"role": "user", "content": "add the engineering team to it"}
+      ],
+      "expected_output": "Should create a weekly recurring meeting on Mondays at 9am with the engineering team. Should have properly handled the user's self-correction (from MWF to Monday only) with humor/grace and applied the final attendee addition.",
+      "context": "User corrects their own mistake mid-conversation.",
+      "tags": ["self-correction", "humor"],
+      "metadata": { "difficulty": "easy", "category": "corrections", "turns": 3 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "I want to send a thank you to everyone who helped with the launch"},
+        {"role": "user", "content": "the engineering team, the design team, oh and don't forget lisa from marketing"},
+        {"role": "user", "content": "actually remove the design team, they weren't involved in this one"},
+        {"role": "user", "content": "and add a line about the celebration dinner on friday"}
+      ],
+      "expected_output": "Should send a thank you message to the engineering team and Lisa from marketing (NOT the design team, which was removed in turn 3), mentioning the celebration dinner on Friday. Must track all additions and removals accurately.",
+      "context": "Incremental modification of recipients and content across turns.",
+      "tags": ["incremental-modification", "recipient-tracking"],
+      "metadata": { "difficulty": "medium", "category": "building-on-prior", "turns": 4 }
+    },
+    {
+      "messages": [
+        {"role": "user", "content": "compare our Q1 and Q2 sales numbers"},
+        {"role": "user", "content": "now break that down by region"},
+        {"role": "user", "content": "just north america and europe"},
+        {"role": "user", "content": "which region grew faster?"},
+        {"role": "user", "content": "send that comparison to the sales leads with a note saying we should discuss this at the next all-hands"}
+      ],
+      "expected_output": "Should send the NA vs Europe Q1/Q2 sales comparison (not all regions) to the sales leads with the suggested note. The final action requires correctly synthesizing the entire conversation chain: initial comparison, regional breakdown, region filter, growth analysis, and then packaging it for sending.",
+      "context": "Progressive drill-down analysis culminating in a sharing action.",
+      "tags": ["progressive-analysis", "drill-down", "action-from-analysis"],
+      "metadata": { "difficulty": "hard", "category": "multi-step-task", "turns": 5 }
+    }
+  ]
+}
