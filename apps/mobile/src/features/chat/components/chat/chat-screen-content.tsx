@@ -116,6 +116,8 @@ function getDateKey(date: Date): string {
 function buildListItems(messages: Message[]): ListItem[] {
   const items: ListItem[] = [];
   let lastDateKey: string | null = null;
+  const todayKey = getDateKey(new Date());
+  const seenDateKeys = new Set<string>();
 
   for (const message of messages) {
     const msgDate = new Date(message.timestamp);
@@ -127,10 +129,16 @@ function buildListItems(messages: Message[]): ListItem[] {
         date: message.timestamp.toISOString(),
         id: `date-${dateKey}`,
       });
+      seenDateKeys.add(dateKey);
       lastDateKey = dateKey;
     }
 
     items.push({ type: "message", data: message });
+  }
+
+  // Hide "Today" separator when it's the only date group — adds no value
+  if (seenDateKeys.size === 1 && seenDateKeys.has(todayKey)) {
+    return items.filter((i) => i.type !== "date-separator");
   }
 
   return items;
@@ -188,6 +196,7 @@ export function ChatScreenContent({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isAtBottomRef = useRef(true);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
   // Clear input state when switching conversations
   useEffect(() => {
@@ -228,7 +237,10 @@ export function ChatScreenContent({
 
     const keyboardWillShow = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      () => {
+      (e) => {
+        if (Platform.OS === "android") {
+          setAndroidKeyboardHeight(e.endCoordinates.height);
+        }
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setTimeout(() => scrollToBottom(), 50);
       },
@@ -237,6 +249,9 @@ export function ChatScreenContent({
     const keyboardWillHide = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
       () => {
+        if (Platform.OS === "android") {
+          setAndroidKeyboardHeight(0);
+        }
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       },
     );
@@ -523,7 +538,12 @@ export function ChatScreenContent({
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={0}
     >
-      <View style={{ flex: 1 }}>
+      <View
+        style={{
+          flex: 1,
+          paddingBottom: Platform.OS === "android" ? androidKeyboardHeight : 0,
+        }}
+      >
         {showSkeleton ? (
           <View style={{ flex: 1 }}>
             <MessageSkeleton />

@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
-import { Button, PressableFeedback } from "heroui-native";
+import { PressableFeedback } from "heroui-native";
 import { useCallback, useRef, useState } from "react";
-import { Keyboard, TextInput, View } from "react-native";
+import { Keyboard, Pressable, TextInput, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -19,7 +19,6 @@ import {
 import { Text } from "@/components/ui/text";
 import { ConnectDrawerTrigger } from "@/features/integrations/components/connect-drawer";
 import { useResponsive } from "@/lib/responsive";
-import { cn } from "@/lib/utils";
 import type { AttachmentFile } from "./attachment-preview";
 import { AttachmentPreview } from "./attachment-preview";
 import { AttachmentSheet, type AttachmentSheetRef } from "./attachment-sheet";
@@ -204,6 +203,7 @@ export function Composer({
     onSend?.(message, pendingAttachments);
     setMessage("");
     setAttachments([]);
+    Keyboard.dismiss();
   }, [
     isStreaming,
     onCancel,
@@ -477,42 +477,50 @@ export function Composer({
               gap: spacing.sm,
             }}
           >
-            <Button
-              variant="secondary"
-              isIconOnly
-              size="sm"
-              className="rounded-full"
+            <Pressable
               onPress={handlePlusPress}
+              style={{
+                width: moderateScale(32, 0.5),
+                height: moderateScale(32, 0.5),
+                borderRadius: moderateScale(16, 0.5),
+                backgroundColor: "rgba(39,39,42,0.8)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
               <AppIcon
                 icon={PlusSignIcon}
                 size={iconSize.md - 2}
                 color="#8e8e93"
               />
-            </Button>
+            </Pressable>
 
             <ConnectDrawerTrigger onOpen={dismissKeyboard} />
           </View>
 
           {/* Right side: send / stop button */}
           <Animated.View style={sendAnimatedStyle}>
-            <Button
-              variant="ghost"
-              isIconOnly
-              size="sm"
-              className={cn("rounded-full", {
-                "bg-danger": isStreaming,
-                "bg-accent": !isStreaming && hasContent,
-                "bg-default": !isStreaming && !hasContent,
-              })}
+            <Pressable
               onPress={handleSend}
-              isDisabled={!isStreaming && !hasContent}
+              disabled={!isStreaming && !hasContent}
+              style={{
+                width: moderateScale(32, 0.5),
+                height: moderateScale(32, 0.5),
+                borderRadius: moderateScale(16, 0.5),
+                backgroundColor: isStreaming
+                  ? "rgba(239,68,68,0.9)"
+                  : hasContent
+                    ? "#00bbff"
+                    : "rgba(39,39,42,0.8)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
               {isStreaming ? (
                 <View
                   style={{
-                    width: iconSize.sm - 2,
-                    height: iconSize.sm - 2,
+                    width: iconSize.sm - 4,
+                    height: iconSize.sm - 4,
                     borderRadius: 2,
                     backgroundColor: "#ffffff",
                   }}
@@ -522,10 +530,10 @@ export function Composer({
                   icon={ArrowUp02Icon}
                   size={iconSize.sm}
                   strokeWidth={2.5}
-                  color={hasContent ? "#000000" : "#8e8e93"}
+                  color={hasContent ? "#000000" : "#52525b"}
                 />
               )}
-            </Button>
+            </Pressable>
           </Animated.View>
         </View>
       </View>

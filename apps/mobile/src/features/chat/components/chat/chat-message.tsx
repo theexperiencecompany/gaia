@@ -3,13 +3,12 @@ import {
   splitMessageByBreaks,
 } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
-import { Avatar, PressableFeedback } from "heroui-native";
+import { PressableFeedback } from "heroui-native";
 import { useCallback, useMemo, useRef } from "react";
 import { ScrollView, View } from "react-native";
 import { AppIcon, Brain02Icon } from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
-import { useAuth } from "@/features/auth/hooks/use-auth";
 import { ThinkingCard } from "@/features/chat/components/streaming/ThinkingCard";
 import { ToolProgressCard } from "@/features/chat/components/streaming/ToolProgressCard";
 import { useResponsive } from "@/lib/responsive";
@@ -56,8 +55,7 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
       contentContainerStyle={{
         flexDirection: "row",
         gap: spacing.sm,
-        paddingLeft: moderateScale(32, 0.5),
-        paddingRight: spacing.md,
+        paddingHorizontal: spacing.md,
       }}
       keyboardShouldPersistTaps="handled"
     >
@@ -133,8 +131,7 @@ function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
     <View
       style={{
         marginTop: spacing.xs + 2,
-        paddingLeft: moderateScale(32, 0.5),
-        paddingRight: spacing.md,
+        paddingHorizontal: spacing.md,
       }}
     >
       <View
@@ -170,47 +167,6 @@ function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
   );
 }
 
-// -- User avatar --------------------------------------------------------------
-
-interface UserAvatarProps {
-  name?: string;
-  picture?: string;
-  size: number;
-}
-
-function UserAvatar({ name, picture, size }: UserAvatarProps) {
-  const initials = name
-    ? name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase()
-    : "U";
-
-  return (
-    <Avatar
-      alt={name ?? "User"}
-      size="sm"
-      color="default"
-      style={{ width: size, height: size }}
-    >
-      {picture ? <Avatar.Image source={{ uri: picture }} /> : null}
-      <Avatar.Fallback>
-        <Text
-          style={{
-            fontSize: size * 0.4,
-            fontWeight: "600",
-            color: "#ffffff",
-          }}
-        >
-          {initials}
-        </Text>
-      </Avatar.Fallback>
-    </Avatar>
-  );
-}
-
 // -- ChatMessage --------------------------------------------------------------
 
 interface ChatMessageProps {
@@ -235,11 +191,8 @@ export function ChatMessage({
   progressMessage = null,
 }: ChatMessageProps) {
   const isUser = message.isUser;
-  const { spacing, width, moderateScale } = useResponsive();
-  const { user } = useAuth();
+  const { spacing } = useResponsive();
   const memorySheetRef = useRef<MemoryBottomSheetRef>(null);
-
-  const avatarSize = moderateScale(24, 0.5);
 
   // Strip <thinking> tags from raw text so they are never rendered in the bubble.
   const parsedContent = useMemo(
@@ -256,7 +209,6 @@ export function ChatMessage({
   const showToolProgress = showLoadingState && progressMessage !== null;
   const showThinkingCard = showLoadingState && !showToolProgress;
 
-  // Determine if the image is still being generated (imageData present but url is empty)
   const isGeneratingImage =
     !isUser && message.imageData != null && !message.imageData.url;
 
@@ -265,9 +217,6 @@ export function ChatMessage({
   const { data: linkPreviewData } = useLinkPreview(
     !isUser && !isLoading && rawText.length > 0 ? rawText : "",
   );
-
-  // Message max width adapts to screen size (80% of screen width, min 280, max 400)
-  const messageMaxWidth = Math.min(Math.max(width * 0.8, 280), 400);
 
   const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -296,14 +245,13 @@ export function ChatMessage({
           alignItems: "flex-end",
           justifyContent: "flex-end",
           paddingHorizontal: spacing.md,
-          gap: spacing.sm,
         }}
       >
         <View
           style={{
             flexDirection: "column",
             gap: spacing.xs,
-            maxWidth: messageMaxWidth,
+            maxWidth: "82%",
           }}
         >
           {message.replyToMessage && (
@@ -336,7 +284,6 @@ export function ChatMessage({
                 key={`${message.id}-${index}`}
                 message={part}
                 variant="sent"
-                showAvatar={false}
                 grouped={
                   messageParts.length === 1
                     ? "none"
@@ -350,12 +297,6 @@ export function ChatMessage({
             );
           })}
         </View>
-
-        <UserAvatar
-          name={user?.name}
-          picture={user?.picture}
-          size={avatarSize}
-        />
       </PressableFeedback>
     );
   }
@@ -369,61 +310,66 @@ export function ChatMessage({
         flexDirection: "column",
         paddingVertical: spacing.sm,
         alignItems: "flex-start",
+        width: "100%",
       }}
     >
-      <View
-        style={{
-          flexDirection: "column",
-          gap: spacing.sm,
-          paddingHorizontal: spacing.md,
-          maxWidth: messageMaxWidth,
-        }}
-      >
-        {/* Tool data cards */}
-        {message.toolData?.length ? (
+      {/* Tool data cards — full width, rendered before message text */}
+      {message.toolData?.length ? (
+        <View style={{ width: "100%", marginBottom: spacing.xs }}>
           <ToolDataRenderer toolData={message.toolData} />
-        ) : null}
+        </View>
+      ) : null}
 
-        {/* Thinking / reasoning bubble (collapsible) */}
-        {parsedContent.thinking ? (
-          <View style={{ paddingLeft: avatarSize + spacing.sm }}>
-            <ThinkingBubble thinkingContent={parsedContent.thinking} />
-          </View>
-        ) : null}
+      {/* Thinking / reasoning bubble (collapsible) */}
+      {parsedContent.thinking ? (
+        <View
+          style={{ paddingHorizontal: spacing.md, marginBottom: spacing.xs }}
+        >
+          <ThinkingBubble thinkingContent={parsedContent.thinking} />
+        </View>
+      ) : null}
 
-        {/* Image data */}
+      {/* Main message content */}
+      <View style={{ width: "100%" }}>
         {message.imageData || isGeneratingImage ? (
-          <ImageBubble
-            imageData={message.imageData ?? { url: "", prompt: "" }}
-            isGenerating={isGeneratingImage}
-            caption={
-              messageParts.length > 0 ? messageParts.join(" ") : undefined
-            }
-          />
+          <View style={{ paddingHorizontal: spacing.md }}>
+            <ImageBubble
+              imageData={message.imageData ?? { url: "", prompt: "" }}
+              isGenerating={isGeneratingImage}
+              caption={
+                messageParts.length > 0 ? messageParts.join(" ") : undefined
+              }
+            />
+          </View>
         ) : showToolProgress ? (
-          <ToolProgressCard
-            toolName={progressToolName}
-            progressMessage={progressMessage}
-          />
+          <View style={{ paddingHorizontal: spacing.md }}>
+            <ToolProgressCard
+              toolName={progressToolName}
+              progressMessage={progressMessage}
+            />
+          </View>
         ) : showThinkingCard ? (
-          <ThinkingCard
-            message={
-              loadingMessage !== "Thinking..." ? loadingMessage : undefined
-            }
-          />
+          <View style={{ paddingHorizontal: spacing.md }}>
+            <ThinkingCard
+              message={
+                loadingMessage !== "Thinking..." ? loadingMessage : undefined
+              }
+            />
+          </View>
         ) : showLoadingState ? (
-          <LoadingIndicator
-            progress={
-              loadingMessage !== "Thinking..." ? loadingMessage : undefined
-            }
-          />
+          <View style={{ paddingHorizontal: spacing.md }}>
+            <LoadingIndicator
+              progress={
+                loadingMessage !== "Thinking..." ? loadingMessage : undefined
+              }
+            />
+          </View>
         ) : (
           messageParts.map((part, index) => (
             <MessageBubble
               key={`${message.id}-${index}`}
               message={part}
               variant="received"
-              showAvatar={index === 0}
               grouped={
                 messageParts.length === 1
                   ? "none"
@@ -436,12 +382,14 @@ export function ChatMessage({
             />
           ))
         )}
+      </View>
 
-        {/* Link preview – shown below message content for AI messages */}
-        {!isUser &&
-        !isLoading &&
-        linkPreviewUrls.length > 0 &&
-        linkPreviewData?.length ? (
+      {/* Link preview – shown below message content for AI messages */}
+      {!isUser &&
+      !isLoading &&
+      linkPreviewUrls.length > 0 &&
+      linkPreviewData?.length ? (
+        <View style={{ paddingHorizontal: spacing.md, marginTop: spacing.xs }}>
           <LinkPreviewCard
             url={linkPreviewData[0].url}
             title={linkPreviewData[0].title}
@@ -450,10 +398,10 @@ export function ChatMessage({
             favicon={linkPreviewData[0].favicon}
             domain={linkPreviewData[0].domain}
           />
-        ) : null}
-      </View>
+        </View>
+      ) : null}
 
-      {/* Memory indicator pill – shown below the AI message when memory was updated */}
+      {/* Memory indicator pill */}
       {message.memoryData ? (
         <PressableFeedback
           onPress={() =>

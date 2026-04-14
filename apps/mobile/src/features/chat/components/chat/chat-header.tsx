@@ -2,9 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import {
-  BubbleChatAddIcon,
   Cancel01Icon,
   Menu01Icon,
+  PencilEdit02Icon,
   Tick01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -187,7 +187,7 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
         ) : (
           <Pressable onPress={onNewChatPress}>
             <View style={{ padding: moderateScale(4, 0.5) }}>
-              <BubbleChatAddIcon size={iconSize.md - 2} color="#bbbbbb" />
+              <PencilEdit02Icon size={iconSize.md - 2} color="#bbbbbb" />
             </View>
           </Pressable>
         )}
