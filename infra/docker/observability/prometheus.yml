@@ -6,7 +6,7 @@ scrape_configs:
   - job_name: gaia-api
     # Bearer token must match METRICS_TOKEN in the API's environment.
     authorization:
-      credentials_file: /etc/prometheus/metrics_token
+      credentials_file: /run/secrets/gaia_metrics_token
     static_configs:
       - targets: ["gaia-backend:80"]
     metrics_path: /metrics
