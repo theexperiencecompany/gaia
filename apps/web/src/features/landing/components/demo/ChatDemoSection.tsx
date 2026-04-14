@@ -11,7 +11,8 @@ import {
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import Link from "next/link";
 import {

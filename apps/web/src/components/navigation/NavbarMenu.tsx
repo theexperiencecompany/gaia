@@ -10,8 +10,8 @@ import {
   product,
   resources,
 } from "@/config/appConfig";
-import { Link } from "@/i18n/navigation";
 import { wallpapers } from "@/config/wallpapers";
+import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
 
 interface NavbarMenuProps {
@@ -20,7 +20,8 @@ interface NavbarMenuProps {
 
 type InternalHref = React.ComponentProps<typeof Link>["href"];
 
-interface ListItemBaseProps extends Omit<React.ComponentPropsWithoutRef<"a">, "href"> {
+interface ListItemBaseProps
+  extends Omit<React.ComponentPropsWithoutRef<"a">, "href"> {
   title: string;
   children?: React.ReactNode;
   icon?: React.ReactNode;
