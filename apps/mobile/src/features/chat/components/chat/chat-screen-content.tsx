@@ -537,7 +537,6 @@ export function ChatScreenContent({
                 paddingTop: spacing.md,
                 paddingBottom: spacing.md,
               }}
-              estimatedItemSize={100}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
