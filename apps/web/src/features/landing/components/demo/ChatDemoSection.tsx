@@ -18,6 +18,7 @@ import Link from "next/link";
 import {
   forwardRef,
   memo,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -86,6 +87,86 @@ const TypingText = memo(
   }),
 );
 
+const MemoDemoSidebar = memo(DemoSidebar);
+const MemoDemoToolCalls = memo(DemoToolCalls);
+const MemoDemoFinalCard = memo(DemoFinalCard);
+const MemoDemoChatHeader = memo(DemoChatHeader);
+const MemoDemoNotificationsPopover = memo(DemoNotificationsPopover);
+const MemoDemoDashboardView = memo(DemoDashboardView);
+const MemoDemoCalendarView = memo(DemoCalendarView);
+const MemoDemoWorkflowsView = memo(DemoWorkflowsView);
+const MemoDemoGoalsView = memo(DemoGoalsView);
+const MemoDemoIntegrationsView = memo(DemoIntegrationsView);
+const MemoDemoTodosView = memo(DemoTodosView);
+
+const UserAvatar = memo(function UserAvatar() {
+  return (
+    <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
+      <AvatarImage
+        src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
+        alt="User"
+        loading="lazy"
+        decoding="async"
+      />
+      <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
+        U
+      </AvatarFallback>
+    </Avatar>
+  );
+});
+
+const AryanAvatar = memo(function AryanAvatar() {
+  return (
+    <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
+      <AvatarImage
+        src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
+        alt="Aryan"
+        loading="lazy"
+        decoding="async"
+      />
+      <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
+        AR
+      </AvatarFallback>
+    </Avatar>
+  );
+});
+
+const GaiaLogo = memo(function GaiaLogo({
+  className,
+  priority,
+}: {
+  className?: string;
+  priority?: boolean;
+}) {
+  return (
+    <Image
+      src="/images/logos/logo.webp"
+      width={28}
+      height={28}
+      loading={priority ? "eager" : "lazy"}
+      priority={priority}
+      sizes="28px"
+      alt="GAIA"
+      className={className}
+    />
+  );
+});
+
+const OgImage = memo(function OgImage() {
+  return (
+    <Image
+      src="/og-image.webp"
+      alt="GAIA"
+      width={460}
+      height={194}
+      priority
+      loading="eager"
+      sizes="(min-width: 640px) 460px, 90vw"
+      className="rounded-xl object-cover aspect-video"
+    />
+  );
+});
+
 export default function ChatDemoSection() {
   const [activePage, setActivePage] = useState<DemoPage>("chats");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -108,97 +189,101 @@ export default function ChatDemoSection() {
   const activeCaseRef = useRef(0);
   const typingTextRef = useRef<TypingTextHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const phaseRef = useRef<Phase>(phase);
 
-  const clearAll = () => {
+  const clearAll = useCallback(() => {
     for (const t of timers.current) {
       clearTimeout(t);
       clearInterval(t);
     }
     timers.current = [];
-  };
+  }, []);
 
-  const add = (fn: () => void, delay: number) => {
+  const add = useCallback((fn: () => void, delay: number) => {
     timers.current.push(setTimeout(fn, delay));
-  };
+  }, []);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
       if (messagesRef.current)
         messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
     });
-  };
+  }, []);
 
-  const runAnimation = (ucIndex: number) => {
-    const useCase = USE_CASES[ucIndex];
-    const T = BASE_TIMINGS;
+  const runAnimation = useCallback(
+    (ucIndex: number) => {
+      const useCase = USE_CASES[ucIndex];
+      const T = BASE_TIMINGS;
 
-    clearAll();
-    setPhase("idle");
-    setLoadingText("GAIA is thinking...");
-    setLoadingKey(0);
-    setLoadingCat(undefined);
-    setToolsExpanded(false);
-    typingTextRef.current?.setTypedText("");
-
-    add(() => {
-      setPhase("user_sent");
-      scrollToBottom();
-    }, T.userMsg);
-
-    add(() => {
-      setPhase("thinking");
-      setLoadingText(useCase.loadingTexts[0]);
-      setLoadingKey((k) => k + 1);
+      clearAll();
+      setPhase("idle");
+      setLoadingText("GAIA is thinking...");
+      setLoadingKey(0);
       setLoadingCat(undefined);
-      scrollToBottom();
-    }, T.thinking);
+      setToolsExpanded(false);
+      typingTextRef.current?.setTypedText("");
 
-    add(() => {
-      setPhase("loading1");
-      setLoadingText(useCase.loadingTexts[1]);
-      setLoadingKey((k) => k + 1);
-      setLoadingCat(useCase.tools[2]?.category);
-    }, T.loading1);
+      add(() => {
+        setPhase("user_sent");
+        scrollToBottom();
+      }, T.userMsg);
 
-    add(() => {
-      setPhase("loading2");
-      setLoadingText(useCase.loadingTexts[2]);
-      setLoadingKey((k) => k + 1);
-      setLoadingCat(useCase.tools[3]?.category);
-    }, T.loading2);
+      add(() => {
+        setPhase("thinking");
+        setLoadingText(useCase.loadingTexts[0]);
+        setLoadingKey((k) => k + 1);
+        setLoadingCat(undefined);
+        scrollToBottom();
+      }, T.thinking);
 
-    add(() => setPhase("tool_calls"), T.toolCalls);
+      add(() => {
+        setPhase("loading1");
+        setLoadingText(useCase.loadingTexts[1]);
+        setLoadingKey((k) => k + 1);
+        setLoadingCat(useCase.tools[2]?.category);
+      }, T.loading1);
 
-    add(() => {
-      setPhase("responding");
-      const response = useCase.botResponse;
-      let i = 0;
-      const tick = setInterval(() => {
-        i += 3;
-        typingTextRef.current?.setTypedText(response.slice(0, i));
-        if (i >= response.length) {
-          clearInterval(tick);
-          typingTextRef.current?.setTypedText(response);
-        }
-      }, 18);
-      timers.current.push(tick);
-    }, T.botResponse);
+      add(() => {
+        setPhase("loading2");
+        setLoadingText(useCase.loadingTexts[2]);
+        setLoadingKey((k) => k + 1);
+        setLoadingCat(useCase.tools[3]?.category);
+      }, T.loading2);
 
-    add(() => {
-      setPhase("final_card");
-      scrollToBottom();
-    }, T.finalCard);
+      add(() => setPhase("tool_calls"), T.toolCalls);
 
-    add(() => setPhase("done"), T.done);
+      add(() => {
+        setPhase("responding");
+        const response = useCase.botResponse;
+        let i = 0;
+        const tick = setInterval(() => {
+          i += 3;
+          typingTextRef.current?.setTypedText(response.slice(0, i));
+          if (i >= response.length) {
+            clearInterval(tick);
+            typingTextRef.current?.setTypedText(response);
+          }
+        }, 18);
+        timers.current.push(tick);
+      }, T.botResponse);
 
-    // Auto-advance to next use case after holding the end state
-    add(() => {
-      const next = (ucIndex + 1) % USE_CASES.length;
-      activeCaseRef.current = next;
-      setActiveUseCase(next);
-      runAnimation(next);
-    }, T.loop);
-  };
+      add(() => {
+        setPhase("final_card");
+        scrollToBottom();
+      }, T.finalCard);
+
+      add(() => setPhase("done"), T.done);
+
+      // Auto-advance to next use case after holding the end state
+      add(() => {
+        const next = (ucIndex + 1) % USE_CASES.length;
+        activeCaseRef.current = next;
+        setActiveUseCase(next);
+        runAnimation(next);
+      }, T.loop);
+    },
+    [add, clearAll, scrollToBottom],
+  );
 
   useEffect(() => {
     const node = containerRef.current;
@@ -228,24 +313,76 @@ export default function ChatDemoSection() {
       observer.disconnect();
       clearAll();
     };
-  }, [activePage]);
+  }, [activePage, clearAll, runAnimation]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   useEffect(() => {
     setSidebarOpen(window.innerWidth >= 768);
   }, []);
 
-  const switchUseCase = (idx: number) => {
-    activeCaseRef.current = idx;
-    setActiveUseCase(idx);
-    runAnimation(idx);
-  };
+  const switchUseCase = useCallback(
+    (idx: number) => {
+      activeCaseRef.current = idx;
+      setActiveUseCase(idx);
+      runAnimation(idx);
+    },
+    [runAnimation],
+  );
 
-  const handleUserSend = (message: string) => {
-    clearAll();
-    setCustomUserMessage(message);
-    setPhase("cta");
-    scrollToBottom();
-  };
+  const handleUserSend = useCallback(
+    (message: string) => {
+      clearAll();
+      setCustomUserMessage(message);
+      setPhase("cta");
+      scrollToBottom();
+    },
+    [clearAll, scrollToBottom],
+  );
+
+  const handleIntegrationSelect = useCallback((id: string) => {
+    setSelectedIntegrationId(id);
+    setActivePage("integrations");
+  }, []);
+
+  const handlePageChange = useCallback(
+    (page: DemoPage) => {
+      setActivePage(page);
+      if (page !== "integrations") setSelectedIntegrationId(null);
+      if (page !== "chats") {
+        clearAll();
+      } else if (phaseRef.current === "idle") {
+        runAnimation(activeCaseRef.current);
+      }
+    },
+    [clearAll, runAnimation],
+  );
+
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarOpen((o) => !o);
+  }, []);
+
+  const handleNotificationsClick = useCallback(() => {
+    setNotificationsOpen((o) => !o);
+  }, []);
+
+  const handleNotificationsClose = useCallback(() => {
+    setNotificationsOpen(false);
+  }, []);
+
+  const handleIntegrationsSelectionChange = useCallback((id: string | null) => {
+    setSelectedIntegrationId(id);
+  }, []);
+
+  const handleToolsToggle = useCallback(() => {
+    setToolsExpanded((e) => !e);
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    switchUseCase(activeUseCase);
+  }, [activeUseCase, switchUseCase]);
 
   const uc = USE_CASES[activeUseCase];
 
@@ -270,6 +407,53 @@ export default function ChatDemoSection() {
         : null,
     [loadingCat],
   );
+
+  const activePageContent = (() => {
+    switch (activePage) {
+      case "dashboard":
+        return (
+          <div className="flex-1 overflow-y-auto">
+            <MemoDemoDashboardView />
+          </div>
+        );
+      case "calendar":
+        return (
+          <div className="flex flex-1 overflow-hidden">
+            <MemoDemoCalendarView />
+          </div>
+        );
+      case "workflows":
+        return (
+          <div className="flex-1 overflow-y-auto">
+            <MemoDemoWorkflowsView />
+          </div>
+        );
+      case "goals":
+        return (
+          <div className="flex flex-1 overflow-hidden">
+            <MemoDemoGoalsView />
+          </div>
+        );
+      case "integrations":
+        return (
+          <div className="flex flex-1 overflow-hidden">
+            <MemoDemoIntegrationsView
+              externalSelectedId={selectedIntegrationId}
+              onSelectionChange={handleIntegrationsSelectionChange}
+            />
+          </div>
+        );
+      case "todos":
+        return (
+          <div className="flex flex-1 overflow-hidden">
+            <MemoDemoTodosView />
+          </div>
+        );
+      case "chats":
+      default:
+        return null;
+    }
+  })();
 
   return (
     <div
@@ -315,74 +499,31 @@ export default function ChatDemoSection() {
           </div>
         </div>
         <div className="flex h-full" style={{ height: "calc(100% - 36px)" }}>
-          <DemoSidebar
+          <MemoDemoSidebar
             open={sidebarOpen}
             activePage={activePage}
             selectedIntegrationId={selectedIntegrationId}
-            onIntegrationSelect={(id) => {
-              setSelectedIntegrationId(id);
-              setActivePage("integrations");
-            }}
-            onPageChange={(page) => {
-              setActivePage(page);
-              if (page !== "integrations") setSelectedIntegrationId(null);
-              if (page !== "chats") {
-                clearAll();
-              } else if (phase === "idle") {
-                runAnimation(activeCaseRef.current);
-              }
-            }}
+            onIntegrationSelect={handleIntegrationSelect}
+            onPageChange={handlePageChange}
           />
 
           <div
             className="relative flex min-w-0 flex-1 flex-col"
             style={{ backgroundColor: "#111111" }}
           >
-            <DemoChatHeader
+            <MemoDemoChatHeader
               sidebarOpen={sidebarOpen}
               activePage={activePage}
-              onToggleSidebar={() => setSidebarOpen((o) => !o)}
-              onNotificationsClick={() => setNotificationsOpen((o) => !o)}
+              onToggleSidebar={handleToggleSidebar}
+              onNotificationsClick={handleNotificationsClick}
             />
 
-            <DemoNotificationsPopover
+            <MemoDemoNotificationsPopover
               open={notificationsOpen}
-              onClose={() => setNotificationsOpen(false)}
+              onClose={handleNotificationsClose}
             />
 
-            {activePage === "dashboard" && (
-              <div className="flex-1 overflow-y-auto">
-                <DemoDashboardView />
-              </div>
-            )}
-            {activePage === "calendar" && (
-              <div className="flex flex-1 overflow-hidden">
-                <DemoCalendarView />
-              </div>
-            )}
-            {activePage === "workflows" && (
-              <div className="flex-1 overflow-y-auto">
-                <DemoWorkflowsView />
-              </div>
-            )}
-            {activePage === "goals" && (
-              <div className="flex flex-1 overflow-hidden">
-                <DemoGoalsView />
-              </div>
-            )}
-            {activePage === "integrations" && (
-              <div className="flex flex-1 overflow-hidden">
-                <DemoIntegrationsView
-                  externalSelectedId={selectedIntegrationId}
-                  onSelectionChange={setSelectedIntegrationId}
-                />
-              </div>
-            )}
-            {activePage === "todos" && (
-              <div className="flex flex-1 overflow-hidden">
-                <DemoTodosView />
-              </div>
-            )}
+            {activePageContent}
 
             {activePage === "chats" && (
               <>
@@ -406,40 +547,20 @@ export default function ChatDemoSection() {
                             </div>
                           </div>
                           <div className="min-w-10">
-                            <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
-                              <AvatarImage
-                                src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
-                                alt="User"
-                              />
-                              <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
-                                U
-                              </AvatarFallback>
-                            </Avatar>
+                            <UserAvatar />
                           </div>
                         </div>
 
                         {/* GAIA Image outside bubble */}
                         <div className="mb-3 ml-10.75 animate-in fade-in slide-in-from-bottom-2 duration-300 delay-200">
-                          <Image
-                            src="/og-image.webp"
-                            alt="GAIA"
-                            width={460}
-                            height={194}
-                            className="rounded-xl object-cover aspect-video"
-                          />
+                          <OgImage />
                         </div>
 
                         {/* Bot message and buttons */}
                         <div className="flex items-start gap-1">
                           {/* GAIA logo */}
                           <div className="min-w-10 shrink-0 animate-in fade-in zoom-in-95 duration-300 delay-300">
-                            <Image
-                              src="/images/logos/logo.webp"
-                              width={28}
-                              height={28}
-                              loading="lazy"
-                              alt="GAIA"
-                            />
+                            <GaiaLogo />
                           </div>
 
                           <div className="flex-1 flex flex-col gap-3">
@@ -513,15 +634,7 @@ export default function ChatDemoSection() {
                           </div>
                         </div>
                         <div className="min-w-10">
-                          <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
-                            <AvatarImage
-                              src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
-                              alt="Aryan"
-                            />
-                            <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
-                              AR
-                            </AvatarFallback>
-                          </Avatar>
+                          <AryanAvatar />
                         </div>
                       </div>
                     )}
@@ -567,10 +680,10 @@ export default function ChatDemoSection() {
                       {/* Tool calls — above all bot content */}
                       {showTools && (
                         <div className="mb-2 ml-10.75">
-                          <DemoToolCalls
+                          <MemoDemoToolCalls
                             tools={uc.tools}
                             expanded={toolsExpanded}
-                            onToggle={() => setToolsExpanded((e) => !e)}
+                            onToggle={handleToolsToggle}
                           />
                         </div>
                       )}
@@ -581,7 +694,7 @@ export default function ChatDemoSection() {
                           key={`card-${uc.id}`}
                           className="ml-10.75 mb-3 animate-in fade-in slide-in-from-bottom-2 zoom-in-95 duration-300"
                         >
-                          <DemoFinalCard type={uc.finalCard} />
+                          <MemoDemoFinalCard type={uc.finalCard} />
                         </div>
                       )}
 
@@ -594,14 +707,7 @@ export default function ChatDemoSection() {
                               key="bot-logo"
                               className="animate-in fade-in zoom-in-95 duration-200"
                             >
-                              <Image
-                                src="/images/logos/logo.webp"
-                                width={28}
-                                height={28}
-                                loading="lazy"
-                                alt="GAIA"
-                                className="relative z-10"
-                              />
+                              <GaiaLogo className="relative z-10" />
                             </div>
                           )}
                         </div>
@@ -693,7 +799,7 @@ export default function ChatDemoSection() {
             type="button"
             aria-label="Retry"
             title="Replay demo"
-            onPress={() => switchUseCase(activeUseCase)}
+            onPress={handleRetry}
             isIconOnly
             radius="full"
             variant="flat"

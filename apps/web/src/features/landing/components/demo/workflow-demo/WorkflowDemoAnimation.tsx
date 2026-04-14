@@ -5,7 +5,7 @@ import { ArrowRight02Icon, RedoIcon } from "@icons";
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import DemoCommunityCards from "./DemoCommunityCards";
 import DemoExecutionChat from "./DemoExecutionChat";
@@ -36,6 +36,33 @@ const PHASE_ORDER: WorkflowDemoPhase[] = [
   "done",
 ];
 
+const MemoDemoWorkflowModal = memo(DemoWorkflowModal);
+const MemoDemoWorkflowCard = memo(DemoWorkflowCard);
+const MemoDemoExecutionChat = memo(DemoExecutionChat);
+const MemoDemoCommunityCards = memo(DemoCommunityCards);
+const MemoDummyComposer = memo(DummyComposer);
+
+const WorkflowBackground = memo(function WorkflowBackground() {
+  return (
+    <Image
+      src="/images/wallpapers/mesh_gradient_1.webp"
+      alt="Mesh gradient background"
+      width={1920}
+      height={1080}
+      sizes="100vw"
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        position: "absolute",
+        inset: 0,
+      }}
+      className="object-cover"
+      priority
+    />
+  );
+});
+
 export default function WorkflowDemoAnimation() {
   const [phase, setPhase] = useState<WorkflowDemoPhase>("idle");
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -43,14 +70,14 @@ export default function WorkflowDemoAnimation() {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { once: true, amount: 0.3 });
 
-  const clearAll = () => {
+  const clearAll = useCallback(() => {
     for (const t of timers.current) clearTimeout(t);
     timers.current = [];
-  };
+  }, []);
 
-  const add = (fn: () => void, delay: number) => {
+  const add = useCallback((fn: () => void, delay: number) => {
     timers.current.push(setTimeout(fn, delay));
-  };
+  }, []);
 
   const runAnimation = useCallback(() => {
     const T = WORKFLOW_TIMINGS;
@@ -74,12 +101,15 @@ export default function WorkflowDemoAnimation() {
 
     // Loop
     add(() => runAnimation(), T.loop);
-  }, []);
+  }, [add, clearAll]);
 
-  const goToPhase = useCallback((targetPhase: WorkflowDemoPhase) => {
-    clearAll();
-    setPhase(targetPhase);
-  }, []);
+  const goToPhase = useCallback(
+    (targetPhase: WorkflowDemoPhase) => {
+      clearAll();
+      setPhase(targetPhase);
+    },
+    [clearAll],
+  );
 
   const prevPhase = useCallback(() => {
     const idx = PHASE_ORDER.indexOf(phase);
@@ -97,45 +127,64 @@ export default function WorkflowDemoAnimation() {
       runAnimation();
     }
     return () => clearAll();
-  }, [isInView, runAnimation]);
+  }, [clearAll, isInView, runAnimation]);
 
   // Derive states for child components
-  const showModal = [
-    "modal_appear",
-    "trigger_config",
-    "schedule_set",
-    "steps_generating",
-  ].includes(phase);
+  const showModal = useMemo(
+    () =>
+      [
+        "modal_appear",
+        "trigger_config",
+        "schedule_set",
+        "steps_generating",
+      ].includes(phase),
+    [phase],
+  );
 
-  const showCard = [
-    "card_appear",
-    "execution_start",
-    "tool_calls",
-    "execution_response",
-    "execution_complete",
-  ].includes(phase);
+  const showCard = useMemo(
+    () =>
+      [
+        "card_appear",
+        "execution_start",
+        "tool_calls",
+        "execution_response",
+        "execution_complete",
+      ].includes(phase),
+    [phase],
+  );
 
-  const cardState = ["execution_start", "tool_calls"].includes(phase)
-    ? ("executing" as const)
-    : ["execution_complete"].includes(phase)
-      ? ("completed" as const)
-      : ("idle" as const);
+  const cardState = useMemo(() => {
+    if (["execution_start", "tool_calls"].includes(phase)) {
+      return "executing" as const;
+    }
+    if (["execution_complete"].includes(phase)) {
+      return "completed" as const;
+    }
+    return "idle" as const;
+  }, [phase]);
 
-  const showExecChat = [
-    "tool_calls",
-    "execution_response",
-    "execution_complete",
-  ].includes(phase);
+  const showExecChat = useMemo(
+    () =>
+      ["tool_calls", "execution_response", "execution_complete"].includes(
+        phase,
+      ),
+    [phase],
+  );
 
-  const showCommunity = [
-    "publish_button",
-    "publish_click",
-    "community_cards",
-    "done",
-  ].includes(phase);
+  const showCommunity = useMemo(
+    () =>
+      ["publish_button", "publish_click", "community_cards", "done"].includes(
+        phase,
+      ),
+    [phase],
+  );
 
   // Show composer during execution phases
   const showComposer = showCard;
+
+  const handleRestart = useCallback(() => {
+    runAnimation();
+  }, [runAnimation]);
 
   return (
     <div ref={containerRef} className="flex flex-col items-center gap-4">
@@ -156,22 +205,7 @@ export default function WorkflowDemoAnimation() {
             ease: "linear",
           }}
         >
-          <Image
-            src="/images/wallpapers/mesh_gradient_1.webp"
-            alt="Mesh gradient background"
-            width={1920}
-            height={1080}
-            sizes="100vw"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              position: "absolute",
-              inset: 0,
-            }}
-            className="object-cover"
-            priority
-          />
+          <WorkflowBackground />
         </m.div>
 
         {/* Overlay for readability */}
@@ -188,7 +222,7 @@ export default function WorkflowDemoAnimation() {
                 transition={{ duration: 0.25, ease: wfEase }}
                 style={{ willChange: "opacity" }}
               >
-                <DemoWorkflowModal phase={phase} />
+                <MemoDemoWorkflowModal phase={phase} />
               </m.div>
             )}
 
@@ -216,14 +250,14 @@ export default function WorkflowDemoAnimation() {
                     colorScheme="dark"
                   />
                   {showExecChat && (
-                    <DemoExecutionChat phase={phase} colorScheme="dark" />
+                    <MemoDemoExecutionChat phase={phase} colorScheme="dark" />
                   )}
                 </div>
 
                 {/* Fixed composer at bottom */}
                 {showComposer && (
                   <div className="shrink-0 px-3 pb-3">
-                    <DummyComposer hideIntegrationBanner fullWidth />
+                    <MemoDummyComposer hideIntegrationBanner fullWidth />
                   </div>
                 )}
               </m.div>
@@ -239,7 +273,7 @@ export default function WorkflowDemoAnimation() {
                 transition={{ duration: 0.2, ease: wfEase }}
                 className="w-full px-4"
               >
-                <DemoCommunityCards phase={phase} colorScheme="dark" />
+                <MemoDemoCommunityCards phase={phase} colorScheme="dark" />
               </m.div>
             )}
           </AnimatePresence>
@@ -280,7 +314,7 @@ export default function WorkflowDemoAnimation() {
           size="sm"
           aria-label="Restart demo"
           title="Restart demo"
-          onPress={() => runAnimation()}
+          onPress={handleRestart}
           className="rounded-full"
         >
           <RedoIcon width={18} height={18} />
