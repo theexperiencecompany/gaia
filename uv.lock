@@ -2118,7 +2118,7 @@ backend = [
     { name = "more-itertools", specifier = "==10.6.0" },
     { name = "motor", specifier = "==3.6.0" },
     { name = "openai", specifier = ">=1.69.0" },
-    { name = "opik", specifier = ">=1.9.47" },
+    { name = "opik", specifier = ">=1.9.47,<1.9.80" },
     { name = "pandas", specifier = ">=2.3.0" },
     { name = "pillow", specifier = "==12.1.1" },
     { name = "posthog", specifier = ">=7.4.2" },
@@ -4490,7 +4490,7 @@ wheels = [
 
 [[package]]
 name = "opik"
-version = "1.9.88"
+version = "1.9.79"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "boto3-stubs", extra = ["bedrock-runtime"] },
@@ -4509,9 +4509,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "uuid6" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/14/22/cb1627fb028d61a8bc435cab3f22a5c7b63b2c71cae1ec6f09c030175b0a/opik-1.9.88.tar.gz", hash = "sha256:02464bf5d48d125656fb147660bb2c9e9e54c3baee57b98454293633c186deb0", size = 623227, upload-time = "2026-01-19T14:47:53.128Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/3b/c110c40e0599ddbda7f118d90599df36e7054a3e081733dd491763361983/opik-1.9.79.tar.gz", hash = "sha256:afd808e21b7f6d8073e0539303cf0d5d967561d007f002632a2a8f7ab389be60", size = 617031, upload-time = "2026-01-13T12:00:39.114Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/cd/7e7862df155ea8f0cf17ff5a32cc8755a12ae8b2f67f50493d9a734a958a/opik-1.9.88-py3-none-any.whl", hash = "sha256:a95b73d1c0b1a7eda407622b30cb04bd99f9e6fd3b8761970f104e604a782ca1", size = 1096901, upload-time = "2026-01-19T14:47:50.96Z" },
+    { url = "https://files.pythonhosted.org/packages/98/4a/1a0832e209291f237e80f26311f707b1c74990db79cf219204d8113e141e/opik-1.9.79-py3-none-any.whl", hash = "sha256:f8b381c7c91919d444ab20920b54598e17e738046de75d1cee17544445dd9dd1", size = 1088182, upload-time = "2026-01-13T12:00:37.131Z" },
 ]
 
 [[package]]
