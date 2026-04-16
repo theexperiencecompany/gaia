@@ -1,20 +1,28 @@
-import type { CodeData, CodeOutput } from "@gaia/shared";
-import { Card } from "heroui-native";
-import type React from "react";
-import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import type { CodeChartData, CodeData, CodeOutput } from "@gaia/shared";
+import { useCallback, useRef, useState } from "react";
+import { Animated, Pressable, ScrollView, View } from "react-native";
 import {
+  ArrowDown02Icon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
-  CodeIcon,
   SourceCodeCircleIcon,
 } from "@/components/icons";
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
 import { THEME } from "@/features/chat/components/code-block/syntax-theme";
 import { tokenizeLine } from "@/features/chat/components/code-block/tokenizer";
+import {
+  ChartCard,
+  type ChartData,
+} from "@/features/chat/components/tool-cards/chart-card";
+import {
+  SectionLabel,
+  ToolCardHeader,
+  ToolCardInner,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
-// ─── Syntax-highlighted code renderer ────────────────────────────────────────
+// -- Syntax-highlighted code renderer ----------------------------------------
 
 function SyntaxLine({ line, language }: { line: string; language: string }) {
   const tokens = tokenizeLine(line, language);
@@ -53,7 +61,7 @@ function SyntaxHighlightedCode({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      style={{ backgroundColor: THEME.background }}
+      style={{ backgroundColor: THEME.background, borderRadius: 12 }}
       contentContainerStyle={{ padding: 12 }}
     >
       <View>
@@ -80,9 +88,9 @@ function SyntaxHighlightedCode({
   );
 }
 
-// ─── Status helpers ───────────────────────────────────────────────────────────
+// -- Status chip --------------------------------------------------------------
 
-function StatusIcon({
+function StatusChip({
   status,
   hasError,
 }: {
@@ -91,284 +99,285 @@ function StatusIcon({
 }) {
   if (status === "executing") {
     return (
-      <View className="w-3 h-3 rounded-full border-2 border-[#00bbff] border-t-transparent" />
+      <View className="flex-row items-center gap-1.5 px-2 py-1 rounded-full bg-zinc-700">
+        <View className="w-1.5 h-1.5 rounded-full bg-[#00bbff]" />
+        <Text className="text-[10px] font-semibold uppercase text-zinc-300">
+          Running
+        </Text>
+      </View>
     );
   }
   if (status === "error" || hasError) {
-    return <AppIcon icon={Cancel01Icon} size={13} color="#ff453a" />;
+    return (
+      <View className="flex-row items-center gap-1 px-2 py-1 rounded-full bg-red-500/15">
+        <AppIcon icon={Cancel01Icon} size={11} color="#ff453a" />
+        <Text className="text-[10px] font-semibold uppercase text-red-400">
+          Failed
+        </Text>
+      </View>
+    );
   }
   if (status === "completed" && !hasError) {
-    return <AppIcon icon={CheckmarkCircle02Icon} size={13} color="#34c759" />;
+    return (
+      <View className="flex-row items-center gap-1 px-2 py-1 rounded-full bg-green-500/15">
+        <AppIcon icon={CheckmarkCircle02Icon} size={11} color="#34c759" />
+        <Text className="text-[10px] font-semibold uppercase text-green-400">
+          Success
+        </Text>
+      </View>
+    );
   }
-  return <AppIcon icon={SourceCodeCircleIcon} size={13} color="#8e8e93" />;
+  return null;
 }
 
-function getStatusText(
-  status?: CodeData["status"],
-  hasError?: boolean,
-): string {
-  if (status === "executing") return "Running";
-  if (status === "error" || hasError) return "Failed";
-  if (status === "completed" && !hasError) return "Success";
-  return "Output";
-}
-
-// ─── Collapsible section ──────────────────────────────────────────────────────
+// -- Collapsible section ------------------------------------------------------
 
 function CollapsibleSection({
-  title,
-  icon,
+  label,
   defaultOpen = false,
   children,
 }: {
-  title: string;
-  icon: React.ReactElement;
+  label: string;
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const chevronAnim = useRef(new Animated.Value(defaultOpen ? 1 : 0)).current;
+
+  const toggle = useCallback(() => {
+    setOpen((prev) => {
+      const next = !prev;
+      Animated.timing(chevronAnim, {
+        toValue: next ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      return next;
+    });
+  }, [chevronAnim]);
+
+  const chevronRotate = chevronAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "-180deg"],
+  });
 
   return (
-    <View className="rounded-xl overflow-hidden border border-white/8 mb-2">
+    <ToolCardInner dense>
       <Pressable
-        onPress={() => setOpen((prev) => !prev)}
-        className="flex-row items-center justify-between px-3 py-2.5 bg-white/5 active:opacity-70"
+        onPress={toggle}
+        className="flex-row items-center justify-between"
       >
-        <View className="flex-row items-center gap-2">
-          {icon}
-          <Text className="text-sm font-medium text-foreground">{title}</Text>
-        </View>
-        <Text className="text-muted text-xs">{open ? "▲" : "▼"}</Text>
+        <SectionLabel>{label}</SectionLabel>
+        <Animated.View
+          style={{ transform: [{ rotate: chevronRotate }], marginBottom: 6 }}
+        >
+          <AppIcon icon={ArrowDown02Icon} size={14} color="#a1a1aa" />
+        </Animated.View>
       </Pressable>
-      {open && <View>{children}</View>}
-    </View>
+      {open && <View className="mt-1">{children}</View>}
+    </ToolCardInner>
   );
 }
 
-// ─── Output display ───────────────────────────────────────────────────────────
+// -- Output display -----------------------------------------------------------
 
-function OutputContent({
-  output,
-  status,
-  language,
-}: {
-  output?: CodeOutput | null;
-  status?: CodeData["status"];
-  language: string;
-}) {
-  const hasError = !!(output?.error || output?.stderr);
+function OutputSection({ output }: { output: CodeOutput }) {
+  const hasStdout = !!output.stdout;
+  const hasStderr = !!output.stderr;
+  const hasResults = !!(output.results && output.results.length > 0);
+  const hasError = !!output.error;
 
-  if (status === "executing" && !output) {
-    return (
-      <View className="flex-row items-center gap-3 p-3">
-        <View className="w-2 h-2 rounded-full bg-[#00bbff]" />
-        <Text className="text-sm text-muted">Executing {language} code…</Text>
-      </View>
-    );
-  }
-
-  if (!output) {
-    return (
-      <View className="p-3">
-        <Text className="text-sm text-muted text-center">Ready to execute</Text>
-      </View>
-    );
+  if (!hasStdout && !hasStderr && !hasResults && !hasError) {
+    return <Text className="text-zinc-500 text-xs">No output produced</Text>;
   }
 
   return (
-    <View style={{ backgroundColor: "#0d0d0d" }}>
-      {/* stdout */}
-      {!!output.stdout && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ padding: 12 }}
-        >
-          <Text
-            style={{
-              color: "#34c759",
-              fontFamily: "monospace",
-              fontSize: 12,
-              lineHeight: 18,
-            }}
-          >
-            {output.stdout}
+    <View className="gap-2">
+      {hasStdout && (
+        <View>
+          <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+            stdout
           </Text>
-        </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingRight: 8 }}
+          >
+            <Text
+              className="text-zinc-100 text-xs"
+              style={{ fontFamily: "monospace", lineHeight: 18 }}
+            >
+              {output.stdout}
+            </Text>
+          </ScrollView>
+        </View>
       )}
 
-      {/* results */}
-      {output.results && output.results.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{
-            padding: 12,
-            paddingTop: output.stdout ? 0 : 12,
-          }}
-        >
-          <View>
-            {output.results.map((result, idx) => {
-              const resultKey = `result-${idx}`;
-              return (
+      {hasResults && (
+        <View>
+          <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+            results
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingRight: 8 }}
+          >
+            <View>
+              {output.results?.map((result, idx) => (
                 <Text
-                  key={resultKey}
-                  style={{
-                    color: "#00bbff",
-                    fontFamily: "monospace",
-                    fontSize: 12,
-                    lineHeight: 18,
-                  }}
+                  // biome-ignore lint/suspicious/noArrayIndexKey: results list order is stable
+                  key={`result-${idx}`}
+                  className="text-zinc-300 text-xs"
+                  style={{ fontFamily: "monospace", lineHeight: 18 }}
                 >
                   {result}
                 </Text>
-              );
-            })}
-          </View>
-        </ScrollView>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
       )}
 
-      {/* stderr */}
-      {!!output.stderr && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ padding: 12, paddingTop: 0 }}
-        >
-          <Text
-            style={{
-              color: "#ff453a",
-              fontFamily: "monospace",
-              fontSize: 12,
-              lineHeight: 18,
-            }}
-          >
-            {output.stderr}
+      {hasStderr && (
+        <View>
+          <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+            stderr
           </Text>
-        </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingRight: 8 }}
+          >
+            <Text
+              className="text-red-400 text-xs"
+              style={{ fontFamily: "monospace", lineHeight: 18 }}
+            >
+              {output.stderr}
+            </Text>
+          </ScrollView>
+        </View>
       )}
 
-      {/* execution error */}
-      {!!output.error && (
-        <View style={{ padding: 12, paddingTop: 0 }}>
-          <Text
-            className="text-[10px] font-semibold text-muted mb-1"
-            style={{ letterSpacing: 0.5 }}
-          >
-            EXECUTION ERROR
+      {hasError && (
+        <View>
+          <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+            error
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <Text
-              style={{
-                color: "#ff453a",
-                fontFamily: "monospace",
-                fontSize: 12,
-                lineHeight: 18,
-              }}
+              className="text-red-400 text-xs"
+              style={{ fontFamily: "monospace", lineHeight: 18 }}
             >
               {output.error}
             </Text>
           </ScrollView>
         </View>
       )}
-
-      {/* footer status */}
-      <View className="flex-row items-center justify-between px-3 py-2 border-t border-white/8">
-        <Text className="text-[10px] text-muted">
-          Status: {status ?? "unknown"}
-        </Text>
-        <Text
-          className={`text-[10px] font-medium ${hasError ? "text-red-400" : "text-[#34c759]"}`}
-        >
-          {hasError ? "Failed" : "Success"}
-        </Text>
-      </View>
-
-      {/* no output */}
-      {!output.stdout &&
-        !output.stderr &&
-        !output.results?.length &&
-        !output.error && (
-          <View className="py-4 px-3">
-            <Text className="text-sm text-muted text-center">
-              No output produced
-            </Text>
-          </View>
-        )}
     </View>
   );
 }
 
-// ─── Main card ────────────────────────────────────────────────────────────────
+// -- Chart adapter ------------------------------------------------------------
+
+function normalizeChartType(type?: string): ChartData["type"] {
+  if (type === "line") return "line";
+  if (type === "pie") return "pie";
+  return "bar";
+}
+
+function toChartData(chart: CodeChartData): ChartData | null {
+  const source = chart.chart_data;
+  if (!source || !source.elements || source.elements.length === 0) {
+    return null;
+  }
+  return {
+    type: normalizeChartType(source.type),
+    title: source.title || chart.title,
+    data: source.elements.map((el) => ({
+      label: el.label,
+      value: el.value,
+    })),
+    xLabel: source.x_label,
+    yLabel: source.y_label,
+  };
+}
+
+// -- Main card ----------------------------------------------------------------
 
 export function CodeExecutionCard({ data }: { data: CodeData }) {
   const language = data.language || "text";
   const hasError = !!(data.error || data.output?.error || data.output?.stderr);
-  const _hasOutput = !!(
-    data.output?.stdout ||
-    data.output?.stderr ||
-    data.output?.results?.length ||
-    data.output?.error
+  const hasCode = !!data.code;
+  const hasOutput = !!(
+    data.output &&
+    (data.output.stdout ||
+      data.output.stderr ||
+      data.output.results?.length ||
+      data.output.error)
   );
+  const charts = (data.charts ?? [])
+    .map(toChartData)
+    .filter((c): c is ChartData => c !== null);
+  const hasChart = charts.length > 0;
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <AppIcon icon={SourceCodeCircleIcon} size={14} color="#8e8e93" />
-          <Text className="text-xs text-muted flex-1">Code Execution</Text>
-          {!!language && language !== "text" && (
-            <View className="rounded-full bg-white/10 px-2 py-0.5">
-              <Text className="text-[10px] text-muted font-medium">
-                {language}
-              </Text>
-            </View>
-          )}
-        </View>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={SourceCodeCircleIcon}
+        title="Code Execution"
+        subtitle={language !== "text" ? language : undefined}
+        trailing={<StatusChip status={data.status} hasError={hasError} />}
+      />
 
-        {/* Code section */}
-        {!!data.code && (
-          <CollapsibleSection
-            title="Executed Code"
-            defaultOpen={false}
-            icon={<AppIcon icon={CodeIcon} size={13} color="#8e8e93" />}
-          >
-            <SyntaxHighlightedCode code={data.code} language={language} />
+      <View className="gap-2">
+        {hasCode && (
+          <CollapsibleSection label="Code" defaultOpen={!hasOutput}>
+            <SyntaxHighlightedCode code={data.code ?? ""} language={language} />
           </CollapsibleSection>
         )}
 
-        {/* Output section */}
-        <CollapsibleSection
-          title={getStatusText(data.status, hasError)}
-          defaultOpen
-          icon={<StatusIcon status={data.status} hasError={hasError} />}
-        >
-          <OutputContent
-            output={data.output}
-            status={data.status}
-            language={language}
-          />
-        </CollapsibleSection>
+        {(hasOutput || data.status === "executing") && (
+          <CollapsibleSection label="Output" defaultOpen>
+            {data.output ? (
+              <OutputSection output={data.output} />
+            ) : (
+              <View className="flex-row items-center gap-2">
+                <View className="w-1.5 h-1.5 rounded-full bg-[#00bbff]" />
+                <Text className="text-zinc-400 text-xs">
+                  Executing {language} code…
+                </Text>
+              </View>
+            )}
+          </CollapsibleSection>
+        )}
 
-        {/* Inline error (when output object is absent) */}
-        {data.error && !data.output && (
-          <View className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 mt-1">
-            <Text
-              className="text-[10px] font-semibold text-red-400 mb-1"
-              style={{ letterSpacing: 0.5 }}
+        {hasChart &&
+          charts.map((chart, idx) => (
+            <CollapsibleSection
+              // biome-ignore lint/suspicious/noArrayIndexKey: stable chart list per run
+              key={`chart-${idx}`}
+              label={charts.length > 1 ? `Chart ${idx + 1}` : "Chart"}
+              defaultOpen
             >
-              ERROR
+              <ChartCard toolData={chart} />
+            </CollapsibleSection>
+          ))}
+
+        {data.error && !data.output && (
+          <ToolCardInner dense>
+            <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+              Error
             </Text>
             <Text
-              className="text-sm text-red-400"
+              className="text-red-400 text-sm"
               style={{ fontFamily: "monospace" }}
             >
               {data.error}
             </Text>
-          </View>
+          </ToolCardInner>
         )}
-      </Card.Body>
-    </Card>
+      </View>
+    </ToolCardShell>
   );
 }
