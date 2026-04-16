@@ -14,7 +14,6 @@ from typing import AsyncGenerator, Optional
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from langsmith import traceable
-from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.tools.core.registry import get_tool_registry
@@ -273,8 +272,12 @@ def build_agent_config(
 
     # Add OpikTracer in production, or in development only if configured
     # This prevents cluttered error logs when Opik isn't set up locally
+    # Import is deferred to avoid litellm module conflict at startup (crawl4ai
+    # installs unclecode-litellm which shadows the real litellm module).
     is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
     if settings.ENV == "production" or is_opik_configured:
+        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
+
         callbacks.append(
             OpikTracer(
                 tags=["langchain", settings.ENV],
