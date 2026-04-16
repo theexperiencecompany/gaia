@@ -1,21 +1,35 @@
-import { Accordion, Avatar, Card, Chip } from "heroui-native";
+import { useState } from "react";
 import { View } from "react-native";
-import { AppIcon, Mail01Icon } from "@/components/icons";
+import { Mail01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardInner,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
+
+// -- Types --------------------------------------------------------------------
 
 export interface EmailThreadMessage {
+  id?: string;
   from?: string;
   from_name?: string;
-  body?: string;
+  subject?: string;
+  time?: string;
   snippet?: string;
+  body?: string;
   date?: string;
+  content?: { text: string; html: string };
 }
 
 export interface EmailThreadData {
   thread_id?: string;
   subject?: string;
   messages?: EmailThreadMessage[];
+  messages_count?: number;
 }
+
+// -- Helpers ------------------------------------------------------------------
 
 function formatRelativeDate(dateStr?: string): string {
   if (!dateStr) return "";
@@ -41,113 +55,141 @@ function extractFromName(from?: string, fromName?: string): string {
 }
 
 function senderInitials(name: string): string {
-  const parts = name.trim().split(" ");
+  const trimmed = name.trim();
+  if (!trimmed) return "?";
+  const parts = trimmed.split(/\s+/);
   if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+    const first = parts[0][0] ?? "";
+    const last = parts[parts.length - 1][0] ?? "";
+    return `${first}${last}`.toUpperCase();
   }
-  return name.slice(0, 2).toUpperCase();
+  return trimmed.slice(0, 2).toUpperCase();
 }
+
+const HTML_ENTITIES: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+  "&nbsp;": " ",
+};
+
+function stripHtml(input: string): string {
+  if (!input) return "";
+  return input
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(
+      /&(amp|lt|gt|quot|apos|nbsp|#39);/g,
+      (match) => HTML_ENTITIES[match] ?? match,
+    )
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function getBodyText(message: EmailThreadMessage): string {
+  const htmlSource =
+    message.content?.html ?? (looksLikeHtml(message.body) ? message.body : "");
+  if (htmlSource) {
+    const stripped = stripHtml(htmlSource);
+    if (stripped) return stripped;
+  }
+  return (
+    message.content?.text ??
+    message.body ??
+    message.snippet ??
+    ""
+  ).trim();
+}
+
+function looksLikeHtml(input?: string): boolean {
+  if (!input) return false;
+  return /<\/?[a-z][\s\S]*?>/i.test(input);
+}
+
+// -- Message item -------------------------------------------------------------
 
 interface MessageItemProps {
   message: EmailThreadMessage;
-  index: number;
 }
 
-function MessageItem({ message, index }: MessageItemProps) {
+function MessageItem({ message }: MessageItemProps) {
+  const [expanded, setExpanded] = useState(false);
   const senderName = extractFromName(message.from, message.from_name);
   const initials = senderInitials(senderName);
-  const bodyText = message.body || message.snippet || "";
-  const relativeDate = formatRelativeDate(message.date);
+  const bodyText = getBodyText(message);
+  const relativeDate = formatRelativeDate(message.date ?? message.time);
+  const previewText = bodyText.replace(/\s+/g, " ").trim();
 
   return (
-    <Accordion.Item value={`msg-${index}`} className="px-0">
-      <Accordion.Trigger className="flex-row items-center gap-3 px-4 py-3">
-        <Avatar alt={senderName} size="sm" className="bg-primary/20 shrink-0">
-          <Avatar.Fallback className="text-primary text-xs font-semibold">
-            {initials}
-          </Avatar.Fallback>
-        </Avatar>
+    <ToolCardInner dense onPress={() => setExpanded((v) => !v)}>
+      <View className="flex-row items-center gap-3">
+        <View className="w-8 h-8 rounded-full bg-primary/20 items-center justify-center">
+          <Text className="text-primary text-xs font-semibold">{initials}</Text>
+        </View>
         <View className="flex-1 min-w-0">
-          <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center justify-between gap-2">
             <Text
-              className="text-foreground text-sm font-medium flex-1 mr-2"
+              className="text-zinc-100 text-sm font-medium flex-1"
               numberOfLines={1}
             >
               {senderName}
             </Text>
             {!!relativeDate && (
-              <Text className="text-[#8e8e93] text-xs shrink-0">
+              <Text className="text-zinc-500 text-xs shrink-0">
                 {relativeDate}
               </Text>
             )}
           </View>
-          {!!bodyText && (
-            <Text className="text-[#8e8e93] text-xs mt-0.5" numberOfLines={1}>
-              {bodyText}
+          {!expanded && !!previewText && (
+            <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
+              {previewText}
             </Text>
           )}
         </View>
-        <Accordion.Indicator iconProps={{ size: 14, color: "#8e8e93" }} />
-      </Accordion.Trigger>
-      <Accordion.Content className="px-4 pb-3 pt-0">
-        <View className="pl-11">
-          <Text className="text-foreground/80 text-sm leading-relaxed">
+      </View>
+      {expanded && !!bodyText && (
+        <View className="mt-2 pl-11">
+          <Text className="text-zinc-200 text-sm leading-relaxed">
             {bodyText}
           </Text>
         </View>
-      </Accordion.Content>
-    </Accordion.Item>
+      )}
+    </ToolCardInner>
   );
 }
 
+// -- Email thread card --------------------------------------------------------
+
 export function EmailThreadCard({ data }: { data: EmailThreadData }) {
-  const messageCount = data.messages?.length || 0;
+  const messages = data.messages ?? [];
+  const messageCount = messages.length;
+  const subject = data.subject?.trim() || "No Subject";
+  const subtitle = `${messageCount} message${messageCount !== 1 ? "s" : ""}`;
 
   return (
-    <Card
-      variant="secondary"
-      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
-    >
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <AppIcon icon={Mail01Icon} size={14} color="#8e8e93" />
-          <Text className="text-xs text-[#8e8e93] flex-1" numberOfLines={1}>
-            {data.subject || "No Subject"}
-          </Text>
-          <Chip
-            size="sm"
-            variant="secondary"
-            color="default"
-            className="bg-white/10"
-          >
-            <Chip.Label>
-              {messageCount} msg{messageCount !== 1 ? "s" : ""}
-            </Chip.Label>
-          </Chip>
-        </View>
+    <ToolCardShell>
+      <ToolCardHeader icon={Mail01Icon} title={subject} subtitle={subtitle} />
 
-        {/* Messages accordion */}
-        {messageCount > 0 ? (
-          <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
-            <Accordion>
-              {(data.messages ?? []).map((message, index) => (
-                <MessageItem
-                  key={`msg-${message.from || index}-${index}`}
-                  message={message}
-                  index={index}
-                />
-              ))}
-            </Accordion>
-          </View>
-        ) : (
-          <View className="rounded-xl bg-white/5 border border-white/8 px-4 py-3">
-            <Text className="text-[#8e8e93] text-sm">
-              No messages in thread
-            </Text>
-          </View>
-        )}
-      </Card.Body>
-    </Card>
+      {messageCount === 0 ? (
+        <Text className="text-zinc-500 text-sm">No messages in thread</Text>
+      ) : (
+        <View className="gap-1.5">
+          {messages.map((message, index) => (
+            <MessageItem
+              key={message.id ?? `${message.from ?? "msg"}-${index}`}
+              message={message}
+            />
+          ))}
+        </View>
+      )}
+    </ToolCardShell>
   );
 }
