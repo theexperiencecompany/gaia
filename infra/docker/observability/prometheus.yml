@@ -23,18 +23,48 @@ scrape_configs:
     static_configs:
       - targets: ["rabbitmq:15692"]
 
-  - job_name: cadvisor
-    scrape_interval: 15s
-    static_configs:
-      - targets: ["cadvisor:8080"]
-
   - job_name: arq_worker
     static_configs:
       - targets: ["arq_worker:9100"]
 
+  # node_exporter — mode: global, one per swarm node, port 9100 bound in host
+  # mode. Prometheus uses Swarm node discovery to find every node's host IP,
+  # then scrapes <node-ip>:9100 directly — no ingress mesh, no load balancing.
+  # Adding a new node automatically appears here within one scrape interval.
   - job_name: node
-    static_configs:
-      - targets: ["node_exporter:9100"]
+    dockerswarm_sd_configs:
+      - host: unix:///var/run/docker.sock
+        role: nodes
+    relabel_configs:
+      # Only scrape nodes that are active in the swarm
+      - source_labels: [__meta_dockerswarm_node_status]
+        regex: ready
+        action: keep
+      # node_exporter is bound to host port 9100 — use the node's host IP
+      - source_labels: [__meta_dockerswarm_node_address]
+        replacement: '$1:9100'
+        target_label: __address__
+      # Use the node hostname as the instance label for Grafana filtering
+      - source_labels: [__meta_dockerswarm_node_hostname]
+        target_label: instance
+
+  # cadvisor — mode: global, one per swarm node, port 8081 bound in host mode
+  # (8080 is taken by chromadb). Same pattern as node_exporter above.
+  - job_name: cadvisor
+    scrape_interval: 15s
+    dockerswarm_sd_configs:
+      - host: unix:///var/run/docker.sock
+        role: nodes
+    relabel_configs:
+      - source_labels: [__meta_dockerswarm_node_status]
+        regex: ready
+        action: keep
+      # cadvisor is bound to host port 8081 — use the node's host IP
+      - source_labels: [__meta_dockerswarm_node_address]
+        replacement: '$1:8081'
+        target_label: __address__
+      - source_labels: [__meta_dockerswarm_node_hostname]
+        target_label: instance
 
   # Blackbox HTTP probes for services without native Prometheus metrics
   - job_name: chromadb

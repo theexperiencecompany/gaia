@@ -82,9 +82,6 @@ services:
       resources:
         limits:
           memory: 4G
-      placement:
-        constraints:
-          - node.role == manager
 
   # ---------------------------------------------------------------------------
   # ARQ Worker
@@ -139,9 +136,6 @@ services:
       resources:
         limits:
           memory: 2G
-      placement:
-        constraints:
-          - node.role == manager
 
   # ---------------------------------------------------------------------------
   # Bots
@@ -189,9 +183,6 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-      placement:
-        constraints:
-          - node.role == manager
 
   slack-bot:
     image: ghcr.io/theexperiencecompany/gaia-bot-slack:latest
@@ -235,9 +226,6 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-      placement:
-        constraints:
-          - node.role == manager
 
   telegram-bot:
     image: ghcr.io/theexperiencecompany/gaia-bot-telegram:latest
@@ -281,9 +269,6 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-      placement:
-        constraints:
-          - node.role == manager
 
   whatsapp-bot:
     image: ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest
@@ -327,9 +312,6 @@ services:
       restart_policy:
         condition: any
         delay: 5s
-      placement:
-        constraints:
-          - node.role == manager
 
   # ---------------------------------------------------------------------------
   # Infrastructure
@@ -362,7 +344,7 @@ services:
         delay: 5s
       placement:
         constraints:
-          - node.role == manager
+          - node.labels.type == storage
 
   postgres:
     image: postgres:18-alpine
@@ -391,7 +373,7 @@ services:
         delay: 5s
       placement:
         constraints:
-          - node.role == manager
+          - node.labels.type == storage
 
   redis:
     image: redis:8-alpine
@@ -420,7 +402,7 @@ services:
         delay: 5s
       placement:
         constraints:
-          - node.role == manager
+          - node.labels.type == storage
 
   rabbitmq:
     image: rabbitmq:4.1.8-management
@@ -448,7 +430,7 @@ services:
         delay: 5s
       placement:
         constraints:
-          - node.role == manager
+          - node.labels.type == storage
 
   # ---------------------------------------------------------------------------
   # Metrics exporters
@@ -492,7 +474,9 @@ services:
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.54.1
-    container_name: cadvisor
+    # mode: global — one instance per swarm node.
+    # Port 8081 is bound in host mode so Prometheus can scrape each node
+    # individually at <node-ip>:8081 rather than through the ingress mesh.
     privileged: true
     volumes:
       - /:/rootfs:ro
@@ -503,10 +487,15 @@ services:
     command:
       - "--docker_only=true"
       - "--housekeeping_interval=30s"
+    ports:
+      - target: 8080
+        published: 8081
+        protocol: tcp
+        mode: host
     networks:
       - gaia-prod-shared
     deploy:
-      replicas: 1
+      mode: global
       restart_policy:
         condition: any
         delay: 5s
@@ -514,18 +503,22 @@ services:
         limits:
           memory: 256m
           cpus: "0.25"
-      placement:
-        constraints:
-          - node.role == manager
 
   node_exporter:
     image: prom/node-exporter:v1.8.2
-    container_name: node_exporter
+    # mode: global — one instance per swarm node.
+    # Port 9100 is bound in host mode so Prometheus can scrape each node
+    # individually at <node-ip>:9100 rather than through the ingress mesh.
     pid: host
     command:
       - "--path.rootfs=/host"
     volumes:
       - /:/host:ro,rslave
+    ports:
+      - target: 9100
+        published: 9100
+        protocol: tcp
+        mode: host
     networks:
       - gaia-prod-shared
     healthcheck:
@@ -534,13 +527,10 @@ services:
       timeout: 10s
       retries: 3
     deploy:
-      replicas: 1
+      mode: global
       restart_policy:
         condition: any
         delay: 5s
-      placement:
-        constraints:
-          - node.role == manager
 
   blackbox_exporter:
     image: prom/blackbox-exporter:v0.25.0
@@ -561,9 +551,11 @@ services:
   prometheus:
     image: prom/prometheus:v3.1.0
     container_name: prometheus
+    user: root  # needed to read /var/run/docker.sock for Swarm SD
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
@@ -626,7 +618,7 @@ services:
 
   promtail:
     image: grafana/promtail:3.3.2
-    container_name: promtail
+    # mode: global — runs one instance per swarm node to collect all container logs
     user: root
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
@@ -645,7 +637,7 @@ services:
     depends_on:
       - loki
     deploy:
-      replicas: 1
+      mode: global
       restart_policy:
         condition: any
         delay: 5s
@@ -653,9 +645,6 @@ services:
         limits:
           memory: 128m
           cpus: "0.25"
-      placement:
-        constraints:
-          - node.role == manager
 
   grafana:
     image: grafana/grafana:11.4.0
