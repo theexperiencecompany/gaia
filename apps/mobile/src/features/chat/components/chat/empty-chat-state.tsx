@@ -1,3 +1,4 @@
+import { getCompleteTimeBasedGreeting } from "@gaia/shared/utils";
 import { Image } from "expo-image";
 import { useMemo } from "react";
 import { View } from "react-native";
@@ -6,26 +7,7 @@ import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
 
-const GaiaLogo = require("@shared/assets/logo/gaia.png");
-
-function getGreeting(name?: string): string {
-  const hour = new Date().getHours();
-  let base: string;
-  if (hour >= 5 && hour < 12) {
-    base = "Good morning";
-  } else if (hour >= 12 && hour < 17) {
-    base = "Good afternoon";
-  } else if (hour >= 17 && hour < 21) {
-    base = "Good evening";
-  } else {
-    base = "Good night";
-  }
-  if (name?.trim()) {
-    const firstName = name.trim().split(" ")[0];
-    return `${base}, ${firstName}`;
-  }
-  return base;
-}
+const GaiaLogo = require("@shared/assets/logo/logo.svg");
 
 interface EmptyChatStateProps {
   onSuggestionPress: (prompt: string) => void;
@@ -35,7 +17,10 @@ export function EmptyChatState({ onSuggestionPress: _ }: EmptyChatStateProps) {
   const { user } = useAuth();
   const { spacing, fontSize, moderateScale } = useResponsive();
 
-  const greeting = useMemo(() => getGreeting(user?.name), [user?.name]);
+  const greeting = useMemo(
+    () => getCompleteTimeBasedGreeting(user?.name),
+    [user?.name],
+  );
 
   return (
     <View
@@ -44,6 +29,7 @@ export function EmptyChatState({ onSuggestionPress: _ }: EmptyChatStateProps) {
         alignItems: "center",
         justifyContent: "center",
         paddingHorizontal: spacing.lg,
+        paddingBottom: spacing.xl,
       }}
     >
       <Animated.View
@@ -74,6 +60,7 @@ export function EmptyChatState({ onSuggestionPress: _ }: EmptyChatStateProps) {
             textAlign: "center",
             letterSpacing: -0.5,
             marginBottom: spacing.xs,
+            lineHeight: moderateScale(36, 0.4),
           }}
         >
           {greeting}
