@@ -1,8 +1,13 @@
-import type { NewsResult, SearchResults, WebResult } from "@gaia/shared";
-import { Card, Chip, PressableFeedback } from "heroui-native";
+import type {
+  ImageResult,
+  NewsResult,
+  SearchResults,
+  WebResult,
+} from "@gaia/shared";
 import { useEffect, useState } from "react";
-import { Image, Linking, View } from "react-native";
+import { Image, Linking, Pressable, ScrollView, View } from "react-native";
 import Animated, {
+  FadeInRight,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -16,6 +21,11 @@ import {
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardInner,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -30,6 +40,12 @@ function getHostname(url?: string): string {
   }
 }
 
+type Tab = "web" | "images" | "news";
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // ---------------------------------------------------------------------------
 // Shared sub-components
 // ---------------------------------------------------------------------------
@@ -40,7 +56,7 @@ function FaviconImage({ url }: { url?: string }) {
 
   if (!hostname || errored) {
     return (
-      <View className="w-4 h-4 rounded-full bg-white/10 items-center justify-center">
+      <View className="w-4 h-4 rounded-full bg-zinc-700 items-center justify-center">
         <AppIcon icon={Globe02Icon} size={10} color="#8e8e93" />
       </View>
     );
@@ -57,93 +73,89 @@ function FaviconImage({ url }: { url?: string }) {
   );
 }
 
-function WebResultItem({ result }: { result: WebResult }) {
+function WebResultRow({ result }: { result: WebResult }) {
   const hostname = getHostname(result.url);
   const description = result.content || result.snippet;
 
   return (
-    <PressableFeedback
+    <ToolCardInner
+      dense
       onPress={() => result.url && Linking.openURL(result.url)}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "flex-start",
-          padding: 12,
-          gap: 10,
-        }}
-      >
+      <View className="flex-row items-start gap-2.5">
         <View style={{ marginTop: 2 }}>
           <FaviconImage url={result.url} />
         </View>
         <View className="flex-1 gap-0.5">
-          <Text
-            style={{ fontSize: 13, color: "#e4e4e7", fontWeight: "500" }}
-            numberOfLines={2}
-          >
+          {!!hostname && (
+            <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+              {hostname}
+            </Text>
+          )}
+          <Text className="text-primary text-sm font-medium" numberOfLines={2}>
             {result.title || hostname || "Untitled"}
           </Text>
           {!!description && (
-            <Text style={{ fontSize: 12, color: "#8e8e93" }} numberOfLines={2}>
+            <Text className="text-zinc-400 text-xs" numberOfLines={3}>
               {description}
-            </Text>
-          )}
-          {!!hostname && (
-            <Text
-              className="text-[11px] text-[#00bbff] mt-0.5"
-              numberOfLines={1}
-            >
-              {hostname}
             </Text>
           )}
         </View>
       </View>
-    </PressableFeedback>
+    </ToolCardInner>
   );
 }
 
-function NewsResultItem({ article }: { article: NewsResult }) {
-  const hostname = getHostname(article.url);
+function NewsResultRow({ article }: { article: NewsResult }) {
   const description = article.content;
 
   return (
-    <PressableFeedback
+    <ToolCardInner
+      dense
       onPress={() => article.url && Linking.openURL(article.url)}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "flex-start",
-          padding: 12,
-          gap: 10,
-        }}
-      >
-        <View style={{ marginTop: 2 }}>
-          <FaviconImage url={article.url} />
+      <View className="flex-row items-start gap-2.5">
+        <View
+          className="w-4 h-4 rounded-full bg-zinc-700 items-center justify-center"
+          style={{ marginTop: 2 }}
+        >
+          <AppIcon icon={News01Icon} size={10} color="#8e8e93" />
         </View>
         <View className="flex-1 gap-0.5">
-          <Text
-            style={{ fontSize: 13, color: "#e4e4e7", fontWeight: "500" }}
-            numberOfLines={2}
-          >
+          {!!article.published_date && (
+            <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+              {article.published_date}
+            </Text>
+          )}
+          <Text className="text-primary text-sm font-medium" numberOfLines={2}>
             {article.title || "Untitled"}
           </Text>
           {!!description && (
-            <Text style={{ fontSize: 12, color: "#8e8e93" }} numberOfLines={2}>
+            <Text className="text-zinc-400 text-xs" numberOfLines={3}>
               {description}
-            </Text>
-          )}
-          {!!hostname && (
-            <Text
-              className="text-[11px] text-[#00bbff] mt-0.5"
-              numberOfLines={1}
-            >
-              {hostname}
             </Text>
           )}
         </View>
       </View>
-    </PressableFeedback>
+    </ToolCardInner>
+  );
+}
+
+function ImageTile({ image, index }: { image: ImageResult; index: number }) {
+  const url = typeof image === "string" ? image : undefined;
+
+  if (!url) return null;
+
+  return (
+    <Animated.View entering={FadeInRight.delay(index * 40).duration(280)}>
+      <Pressable onPress={() => Linking.openURL(url)}>
+        <Image
+          source={{ uri: url }}
+          style={{ width: 128, height: 96, borderRadius: 12 }}
+          resizeMode="cover"
+        />
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -182,33 +194,61 @@ function SearchRunningCard({ data }: { data: SearchResults }) {
   const progressText = data.progress ?? "Searching the web...";
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <View className="w-5 h-5 rounded-md bg-[#00bbff]/15 items-center justify-center">
-            <AppIcon icon={Search01Icon} size={12} color="#00bbff" />
-          </View>
-          <Text className="text-xs font-medium text-[#00bbff]">Web Search</Text>
-          <View className="ml-auto">
-            <PulsingDot />
-          </View>
-        </View>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Search01Icon}
+        title="Web Search"
+        trailing={<PulsingDot />}
+      />
+      {!!queryText && (
+        <ToolCardInner dense className="mb-2">
+          <Text className="text-zinc-500 text-xs mb-0.5">Query</Text>
+          <Text className="text-zinc-100 text-sm font-medium">
+            &quot;{queryText}&quot;
+          </Text>
+        </ToolCardInner>
+      )}
+      <Text className="text-zinc-400 text-xs">{progressText}</Text>
+    </ToolCardShell>
+  );
+}
 
-        {/* Query */}
-        {!!queryText && (
-          <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
-            <Text className="text-xs text-muted mb-0.5">Query</Text>
-            <Text className="text-sm text-foreground font-medium">
-              "{queryText}"
+// ---------------------------------------------------------------------------
+// Tab chips
+// ---------------------------------------------------------------------------
+
+function TabChips({
+  tabs,
+  active,
+  onSelect,
+}: {
+  tabs: Tab[];
+  active: Tab;
+  onSelect: (tab: Tab) => void;
+}) {
+  return (
+    <View className="flex-row gap-2 mb-3">
+      {tabs.map((tab) => {
+        const isActive = tab === active;
+        return (
+          <Pressable
+            key={tab}
+            onPress={() => onSelect(tab)}
+            className={`px-3 py-1.5 rounded-full ${
+              isActive ? "bg-primary" : "bg-zinc-700"
+            }`}
+          >
+            <Text
+              className={`text-xs font-medium ${
+                isActive ? "text-black" : "text-zinc-300"
+              }`}
+            >
+              {capitalize(tab)}
             </Text>
-          </View>
-        )}
-
-        {/* Progress */}
-        <Text className="text-xs text-muted">{progressText}</Text>
-      </Card.Body>
-    </Card>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -217,122 +257,92 @@ function SearchRunningCard({ data }: { data: SearchResults }) {
 // ---------------------------------------------------------------------------
 
 function SearchCompleteCard({ data }: { data: SearchResults }) {
-  const [expanded, setExpanded] = useState(false);
   const webResults = data.web ?? [];
+  const imageResults = data.images ?? [];
   const newsResults = data.news ?? [];
-  const totalResults = webResults.length + newsResults.length;
 
-  // Show up to 5 web results before collapsing
-  const MAX_VISIBLE = 5;
-  const visibleWebResults = expanded
-    ? webResults
-    : webResults.slice(0, MAX_VISIBLE);
-  const hasMore = webResults.length > MAX_VISIBLE || newsResults.length > 0;
+  const hasImages = imageResults.length > 0;
+  const hasNews = newsResults.length > 0;
+
+  const tabs: Tab[] = [
+    "web",
+    ...(hasImages ? (["images"] as Tab[]) : []),
+    ...(hasNews ? (["news"] as Tab[]) : []),
+  ];
+
+  const [active, setActive] = useState<Tab>("web");
+
+  const totalResults =
+    webResults.length + imageResults.length + newsResults.length;
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center gap-2">
-            <AppIcon icon={Search01Icon} size={14} color="#8e8e93" />
-            <Text className="text-xs text-muted">Search Results</Text>
-          </View>
-          <View className="flex-row items-center gap-2">
-            {totalResults > 0 && (
-              <Chip
-                size="sm"
-                variant="secondary"
-                color="default"
-                animation="disable-all"
-              >
-                <Chip.Label>
-                  {totalResults} result{totalResults !== 1 ? "s" : ""}
-                </Chip.Label>
-              </Chip>
-            )}
-          </View>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Search01Icon}
+        title="Search Results"
+        count={totalResults > 0 ? totalResults : undefined}
+      />
+
+      {!!data.query && (
+        <ToolCardInner dense className="mb-3">
+          <Text className="text-zinc-500 text-xs mb-0.5">Query</Text>
+          <Text className="text-zinc-100 text-sm font-medium">
+            &quot;{data.query}&quot;
+          </Text>
+        </ToolCardInner>
+      )}
+
+      {!!data.answer && (
+        <ToolCardInner dense className="mb-3">
+          <Text className="text-zinc-500 text-xs mb-0.5">Answer</Text>
+          <Text className="text-zinc-100 text-sm" numberOfLines={4}>
+            {data.answer}
+          </Text>
+        </ToolCardInner>
+      )}
+
+      {tabs.length > 1 && (
+        <TabChips tabs={tabs} active={active} onSelect={setActive} />
+      )}
+
+      {active === "web" && webResults.length > 0 && (
+        <View className="gap-1.5">
+          {webResults.map((result, index) => (
+            <WebResultRow
+              key={result.url || result.title || String(index)}
+              result={result}
+            />
+          ))}
         </View>
+      )}
 
-        {/* Query */}
-        {!!data.query && (
-          <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
-            <Text className="text-xs text-muted mb-0.5">Query</Text>
-            <Text className="text-sm text-foreground font-medium">
-              "{data.query}"
-            </Text>
-          </View>
-        )}
+      {active === "images" && hasImages && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+        >
+          {imageResults.map((img, index) => (
+            <ImageTile
+              key={typeof img === "string" ? img : String(index)}
+              image={img}
+              index={index}
+            />
+          ))}
+        </ScrollView>
+      )}
 
-        {/* Answer snippet */}
-        {!!data.answer && (
-          <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
-            <Text className="text-xs text-muted mb-0.5">Answer</Text>
-            <Text className="text-sm text-foreground" numberOfLines={4}>
-              {data.answer}
-            </Text>
-          </View>
-        )}
-
-        {/* Web results */}
-        {visibleWebResults.length > 0 && (
-          <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
-            {visibleWebResults.map((result, index) => (
-              <View key={result.url || result.title || String(index)}>
-                {index > 0 && (
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: "rgba(255,255,255,0.07)",
-                      marginVertical: 4,
-                    }}
-                  />
-                )}
-                <WebResultItem result={result} />
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* News results (only when expanded) */}
-        {expanded && newsResults.length > 0 && (
-          <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden mt-2">
-            <View className="flex-row items-center gap-1.5 py-2 px-3 border-b border-white/8">
-              <AppIcon icon={News01Icon} size={12} color="#8e8e93" />
-              <Text className="text-[11px] text-muted font-medium">News</Text>
-            </View>
-            {newsResults.map((article, index) => (
-              <View key={article.url || article.title || String(index)}>
-                {index > 0 && (
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: "rgba(255,255,255,0.07)",
-                      marginVertical: 4,
-                    }}
-                  />
-                )}
-                <NewsResultItem article={article} />
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Expand / collapse */}
-        {hasMore && (
-          <PressableFeedback
-            onPress={() => setExpanded((prev) => !prev)}
-            className="mt-2.5 py-1.5 items-center"
-          >
-            <Text className="text-xs text-[#00bbff] font-medium">
-              {expanded
-                ? "Show less"
-                : `Show all ${totalResults} result${totalResults !== 1 ? "s" : ""}`}
-            </Text>
-          </PressableFeedback>
-        )}
-      </Card.Body>
-    </Card>
+      {active === "news" && hasNews && (
+        <View className="gap-1.5">
+          {newsResults.map((article, index) => (
+            <NewsResultRow
+              key={article.url || article.title || String(index)}
+              article={article}
+            />
+          ))}
+        </View>
+      )}
+    </ToolCardShell>
   );
 }
 

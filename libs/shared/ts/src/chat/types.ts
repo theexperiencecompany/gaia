@@ -130,6 +130,8 @@ export interface NewsResult {
   score?: number;
   raw_content?: string;
   favicon?: string;
+  published_date?: string;
+  source?: string;
 }
 
 export type ImageResult = string;
