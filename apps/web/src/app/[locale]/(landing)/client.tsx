@@ -156,9 +156,9 @@ export default function LandingPageClient({
           <TiredBoringAssistants />
           <WorkflowSection />
           <UseCasesSectionLanding />
-          <TodoShowcaseSection />
-          <ProductivityOSShowcaseSection />
           <BotsShowcaseSection />
+          <TodoShowcaseSection />
+          {/* <ProductivityOSShowcaseSection /> */}
           <OpenSource />
           <FAQAccordion />
           <LandingDownloadSection />

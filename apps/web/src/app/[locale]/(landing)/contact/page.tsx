@@ -29,7 +29,16 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export default function ContactPage() {
+export default async function ContactPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    type?: string;
+    title?: string;
+    description?: string;
+  }>;
+}) {
+  const params = await searchParams;
   const contactSchema = generateContactPageSchema();
   const webPageSchema = generateWebPageSchema(
     title,
@@ -68,7 +77,12 @@ export default function ContactPage() {
             <h2 id="inquiries-heading" className="mb-4 text-lg font-medium">
               Send us a message
             </h2>
-            <ContactForm aria-labelledby="inquiries-heading" />
+            <ContactForm
+              aria-labelledby="inquiries-heading"
+              initialType={params.type}
+              initialTitle={params.title}
+              initialDescription={params.description}
+            />
           </section>
         </section>
       </main>

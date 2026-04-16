@@ -64,9 +64,10 @@ Services gated by profile (not started by default):
 - `worker` — `arq_worker`
 - `voice` — `voice-agent-worker`
 - `bots` — `discord-bot`, `slack-bot`, `telegram-bot`, `whatsapp-bot`
+- `observability` — `loki`, `promtail`, `grafana`
 - `all` — everything above
 
-Infrastructure services (postgres, redis, mongo, chromadb, rabbitmq, observability stack) start without any profile.
+Infrastructure services (postgres, redis, mongo, chromadb, rabbitmq) start without any profile. Observability stack (loki/promtail/grafana) is opt-in — set `COMPOSE_PROFILES=observability` in `infra/docker/.env` or run `docker compose --profile observability up -d`.
 
 ## Service Dependencies
 

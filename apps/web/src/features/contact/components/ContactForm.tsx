@@ -12,11 +12,24 @@ import {
 import { useContactSupport } from "@/features/support/hooks/useContactSupport";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
-type Props = React.ComponentProps<"form">;
+type Props = React.ComponentProps<"form"> & {
+  initialType?: string;
+  initialTitle?: string;
+  initialDescription?: string;
+};
 
-export default function ContactForm(props: Props) {
+export default function ContactForm({
+  initialType,
+  initialTitle,
+  initialDescription,
+  ...formProps
+}: Props) {
   const { formData, handleInputChange, isSubmitting, submitRequest } =
-    useContactSupport();
+    useContactSupport({
+      type: initialType,
+      title: initialTitle,
+      description: initialDescription,
+    });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -31,7 +44,7 @@ export default function ContactForm(props: Props) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-6" {...props}>
+    <form onSubmit={onSubmit} className="grid gap-6" {...formProps}>
       <Select
         label="Request Type"
         placeholder="Select a request type"

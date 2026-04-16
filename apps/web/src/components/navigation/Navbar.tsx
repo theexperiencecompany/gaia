@@ -34,7 +34,7 @@ const AnimatedNumber = dynamic(() => import("animated-number-react"), {
 const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Product", menu: "product" },
   { type: "link", label: "Pricing", href: "/pricing" },
-  { type: "link", label: "Manifesto", href: "/manifesto" },
+  { type: "link", label: "About", href: "/about" },
   { type: "dropdown", label: "Resources", menu: "resources" },
 ] as const;
 

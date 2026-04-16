@@ -275,6 +275,10 @@
   }
 }
 
+.tableheadingtest {
+  border-radius: 1000px !important;
+}
+
 .hero-split-word {
   display: inline-block;
   opacity: 0;

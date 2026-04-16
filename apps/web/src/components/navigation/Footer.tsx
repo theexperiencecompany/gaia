@@ -90,7 +90,7 @@ export default function Footer() {
           src="/images/wallpapers/bands_gradient_black.png"
           alt=""
           fill={true}
-          className="mt-10 z-[-1]"
+          className="z-[-1]"
         />
         <div className="flex h-fit w-full items-center justify-center px-6 sm:px-4">
           <div className="grid w-full max-w-7xl grid-cols-2 sm:grid-cols-6 gap-6 sm:gap-3">
@@ -164,7 +164,7 @@ export default function Footer() {
                       href={link.href}
                       className="group relative flex w-full cursor-pointer justify-start py-1 text-sm sm:justify-end"
                     >
-                      <span className="text-foreground-500 transition-colors group-hover:text-primary">
+                      <span className="text-zinc-400 transition-colors group-hover:text-primary">
                         {link.label}
                       </span>
                     </Link>
@@ -173,7 +173,7 @@ export default function Footer() {
             ))}
           </div>
         </div>
-        <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-2 py-6 pb-3 text-xs font-light text-zinc-300 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10 mb-5">
+        <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-2 py-6 pb-3 text-xs font-light text-black sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10 mb-5">
           <div className="order-2 flex items-center gap-3 sm:order-1">
             {connect.map((link) => (
               <Link
@@ -181,7 +181,7 @@ export default function Footer() {
                 href={link.href}
                 target={link.external ? "_blank" : "_self"}
                 rel={link.external ? "noopener noreferrer" : undefined}
-                className="cursor-pointer text-zinc-300 transition-colors hover:text-foreground"
+                className="cursor-pointer text-black transition-colors hover:text-zinc-700"
                 title={link.description}
               >
                 {React.isValidElement(link.icon)
@@ -206,7 +206,7 @@ export default function Footer() {
             >
               Terms of Use
             </Link>
-            <div className="h-4 border-l border-zinc-400" />
+            <div className="h-4 border-l border-black" />
 
             <Link
               href={"/privacy"}
