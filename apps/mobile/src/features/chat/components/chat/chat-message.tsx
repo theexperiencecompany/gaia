@@ -5,7 +5,8 @@ import {
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
 import { useCallback, useMemo, useRef } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { AppIcon, Brain02Icon } from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
@@ -43,42 +44,27 @@ interface FollowUpActionsProps {
 }
 
 function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
-  const { spacing, fontSize, moderateScale } = useResponsive();
-
   if (!actions.length) return null;
 
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: spacing.sm,
-        marginTop: spacing.sm,
-        paddingHorizontal: spacing.md,
-      }}
-    >
-      {actions.map((action) => (
-        <PressableFeedback
+    <View className="flex-row flex-wrap gap-2 mt-2 px-4">
+      {actions.map((action, i) => (
+        <Animated.View
           key={action}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            onActionPress?.(action);
-          }}
-          style={{
-            borderRadius: moderateScale(20, 0.5),
-            borderWidth: 1,
-            borderStyle: "dashed",
-            borderColor: "rgba(255,255,255,0.25)",
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.xs + 2,
-          }}
+          entering={FadeInDown.delay(i * 60)
+            .duration(300)
+            .springify()}
         >
-          <Text
-            style={{ fontSize: fontSize.xs, color: "rgba(255,255,255,0.7)" }}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onActionPress?.(action);
+            }}
+            className="px-3.5 py-1.5 rounded-full bg-zinc-800 active:bg-zinc-700"
           >
-            {action}
-          </Text>
-        </PressableFeedback>
+            <Text className="text-zinc-300 text-sm">{action}</Text>
+          </Pressable>
+        </Animated.View>
       ))}
     </View>
   );
