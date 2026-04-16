@@ -1,9 +1,15 @@
 import type {
+  ArtifactData,
   CodeData,
+  RateLimitData,
   RedditData,
   SearchResults,
   TodoProgressData,
+  TwitterSearchData,
+  TwitterUserData,
   WeatherData,
+  WorkflowCreatedData,
+  WorkflowDraftData,
 } from "@gaia/shared";
 import { Card, PressableFeedback } from "heroui-native";
 import React, { useCallback, useRef, useState } from "react";
@@ -15,6 +21,7 @@ import { useResponsive } from "@/lib/responsive";
 import { EmailComposeCard } from "../components/chat/email-compose-card";
 import type { EmailComposeData, ToolDataEntry } from "./registry";
 import {
+  ArtifactCard,
   CalendarDeleteCard,
   type CalendarDeleteOption,
   CalendarEditCard,
@@ -41,10 +48,13 @@ import {
   type GoogleDocsData,
   IntegrationConnectionCard,
   type IntegrationConnectionData,
+  IntegrationListCard,
+  type IntegrationListData,
   NotificationCard,
   type NotificationData,
   PeopleSearchCard,
   type PeopleSearchData,
+  RateLimitCard,
   RedditCard,
   SearchResultsCard,
   SupportTicketCard,
@@ -52,7 +62,11 @@ import {
   TodoCard,
   type TodoData,
   TodoProgressCard,
+  TwitterSearchCard,
+  TwitterUserCard,
   WeatherCard,
+  WorkflowCreatedCard,
+  WorkflowDraftCard,
 } from "./tool-cards";
 
 function getToolDisplayName(toolName: string): string {
@@ -307,13 +321,51 @@ const TOOL_RENDERERS: Record<
     />
   ),
 
-  integration_list_data: (_data, baseKey) => (
-    <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
-      <Card.Body className="py-3 px-4">
-        <Text className="text-foreground text-sm">Available Integrations</Text>
-      </Card.Body>
-    </Card>
+  integration_list_data: (data, baseKey) => {
+    // Backend may stream grouped data (array) — merge into one list
+    const items = Array.isArray(data)
+      ? (data as IntegrationListData[])
+      : [data as IntegrationListData];
+    const merged: IntegrationListData = items.reduce<IntegrationListData>(
+      (acc, item) => ({
+        hasSuggestions: acc.hasSuggestions || item.hasSuggestions,
+        message: acc.message ?? item.message,
+        suggested: [...(acc.suggested ?? []), ...(item.suggested ?? [])],
+        integrations: [
+          ...(acc.integrations ?? []),
+          ...(item.integrations ?? []),
+        ],
+      }),
+      {},
+    );
+    return <IntegrationListCard key={baseKey} data={merged} />;
+  },
+
+  twitter_search_data: (data, baseKey) => (
+    <TwitterSearchCard key={baseKey} data={data as TwitterSearchData} />
   ),
+
+  twitter_user_data: (data, baseKey) => {
+    const users = Array.isArray(data) ? data : [data];
+    return <TwitterUserCard key={baseKey} data={users as TwitterUserData[]} />;
+  },
+
+  workflow_draft: (data, baseKey) => (
+    <WorkflowDraftCard key={baseKey} data={data as WorkflowDraftData} />
+  ),
+
+  workflow_created: (data, baseKey) => (
+    <WorkflowCreatedCard key={baseKey} data={data as WorkflowCreatedData} />
+  ),
+
+  rate_limit_data: (data, baseKey) => (
+    <RateLimitCard key={baseKey} data={data as RateLimitData} />
+  ),
+
+  artifact_data: (data, baseKey) => {
+    const files = Array.isArray(data) ? data : [data];
+    return <ArtifactCard key={baseKey} data={files as ArtifactData[]} />;
+  },
 
   reddit_data: (data, baseKey) => {
     const items = Array.isArray(data) ? data : [data];
