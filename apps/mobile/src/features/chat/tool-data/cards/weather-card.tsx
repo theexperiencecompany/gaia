@@ -1,7 +1,7 @@
 import type { WeatherData } from "@gaia/shared";
-import { Card, PressableFeedback } from "heroui-native";
+import { PressableFeedback } from "heroui-native";
 import { useMemo, useState } from "react";
-import { View } from "react-native";
+import { ScrollView, View } from "react-native";
 import {
   type AnyIcon,
   AppIcon,
@@ -13,13 +13,17 @@ import {
   CloudSnowIcon,
   DropletIcon,
   FastWindIcon,
-  Location01Icon,
   Sun03Icon,
   SunriseIcon,
   SunsetIcon,
   Tornado02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  SectionLabel,
+  ToolCardInner,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 function celsiusToFahrenheit(c: number): number {
   return (c * 9) / 5 + 32;
@@ -154,148 +158,131 @@ export function WeatherCard({ data }: { data: WeatherData }) {
       ? formatTime(data.sys.sunset, data.timezone)
       : undefined;
 
+  const hasForecast = !!(data.forecast && data.forecast.length > 0);
+
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header: location + unit toggle */}
-        <View className="flex-row items-start justify-between mb-3">
-          <View className="flex-row items-start gap-1.5 flex-1">
-            <AppIcon
-              icon={Location01Icon}
-              size={14}
-              color="#8e8e93"
-              style={{ marginTop: 2 }}
-            />
-            <View className="flex-1">
-              <Text className="text-sm font-semibold text-foreground">
-                {cityName}
-                {countryName ? `, ${countryName}` : ""}
+    <ToolCardShell>
+      {/* Hero zone */}
+      <View className="flex-row items-start justify-between mb-3">
+        <View className="flex-1 pr-3">
+          <Text className="text-zinc-400 text-sm font-medium">
+            {cityName}
+            {countryName ? `, ${countryName}` : ""}
+          </Text>
+          {displayTemp !== undefined ? (
+            <View className="flex-row items-baseline mt-1">
+              <Text
+                className="text-zinc-100"
+                style={{ fontSize: 56, fontWeight: "300", lineHeight: 60 }}
+              >
+                {displayTemp}
               </Text>
-              {data.location?.region ? (
-                <Text className="text-xs" style={{ color: accentColor }}>
-                  {data.location.region}
-                </Text>
-              ) : null}
+              <Text className="text-zinc-400 text-2xl font-light ml-1">
+                °{useFahrenheit ? "F" : (data.unit ?? "C")}
+              </Text>
             </View>
-          </View>
+          ) : null}
+          {description ? (
+            <Text className="text-zinc-100 text-base capitalize mt-1">
+              {description}
+            </Text>
+          ) : null}
+          {displayFeelsLike !== undefined ? (
+            <Text className="text-zinc-500 text-xs mt-0.5">
+              Feels like {displayFeelsLike}°
+            </Text>
+          ) : null}
+        </View>
+
+        <View className="items-end gap-3">
           {hasRichData && (
             <PressableFeedback
               onPress={() => setUseFahrenheit((p) => !p)}
-              className="rounded-full bg-white/10 px-2.5 py-1"
+              className="rounded-full bg-zinc-700 px-3 py-1"
             >
-              <Text className="text-xs text-muted font-medium">
+              <Text className="text-zinc-100 text-xs font-medium">
                 °{useFahrenheit ? "C" : "F"}
               </Text>
             </PressableFeedback>
           )}
+          <AppIcon icon={mainIconName} size={64} color={accentColor} />
         </View>
+      </View>
 
-        {/* Main weather display */}
-        <View className="rounded-xl bg-white/5 border border-white/10 p-3 mb-3">
-          <View className="flex-row items-center justify-between">
-            <View className="items-center justify-center w-16 h-16">
-              <AppIcon icon={mainIconName} size={52} color={accentColor} />
-            </View>
-
-            <View className="items-end flex-1">
-              {displayTemp !== undefined ? (
-                <View className="flex-row items-baseline">
-                  <Text
-                    className="font-bold text-foreground"
-                    style={{ fontSize: 48, lineHeight: 52 }}
-                  >
-                    {displayTemp}
-                  </Text>
-                  <Text className="text-xl font-medium text-foreground/80 ml-0.5">
-                    °{useFahrenheit ? "F" : (data.unit ?? "C")}
-                  </Text>
-                </View>
-              ) : null}
-              {description ? (
-                <Text
-                  className="text-sm font-medium capitalize mt-0.5"
-                  style={{ color: accentColor }}
-                >
-                  {description}
-                </Text>
-              ) : null}
-              {displayFeelsLike !== undefined ? (
-                <Text className="text-xs text-muted mt-0.5">
-                  Feels like {displayFeelsLike}°
-                </Text>
-              ) : null}
-            </View>
-          </View>
-        </View>
-
-        {/* Secondary stats row */}
+      {/* Stats grid: humidity, wind, pressure */}
+      {(humidity !== undefined ||
+        windSpeed !== undefined ||
+        data.main?.pressure !== undefined) && (
         <View className="flex-row gap-2 mb-2">
           {humidity !== undefined && (
-            <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 items-center gap-1">
+            <ToolCardInner dense className="flex-1 items-center">
               <AppIcon icon={DropletIcon} size={18} color={accentColor} />
-              <Text className="text-[10px] text-muted">Humidity</Text>
-              <Text className="text-sm font-semibold text-foreground">
+              <Text className="text-zinc-100 text-lg font-medium mt-1">
                 {humidity}%
               </Text>
-            </View>
+              <SectionLabel>HUMIDITY</SectionLabel>
+            </ToolCardInner>
           )}
           {windSpeed !== undefined && (
-            <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 items-center gap-1">
+            <ToolCardInner dense className="flex-1 items-center">
               <AppIcon icon={FastWindIcon} size={18} color={accentColor} />
-              <Text className="text-[10px] text-muted">Wind</Text>
-              <Text className="text-sm font-semibold text-foreground">
-                {windSpeed} m/s
+              <Text className="text-zinc-100 text-lg font-medium mt-1">
+                {windSpeed}
+                <Text className="text-zinc-400 text-xs"> m/s</Text>
               </Text>
-            </View>
+              <SectionLabel>WIND</SectionLabel>
+            </ToolCardInner>
           )}
           {data.main?.pressure !== undefined && (
-            <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 items-center gap-1">
+            <ToolCardInner dense className="flex-1 items-center">
               <AppIcon icon={CloudIcon} size={18} color={accentColor} />
-              <Text className="text-[10px] text-muted">Pressure</Text>
-              <Text className="text-sm font-semibold text-foreground">
+              <Text className="text-zinc-100 text-lg font-medium mt-1">
                 {data.main.pressure}
               </Text>
-            </View>
+              <SectionLabel>PRESSURE</SectionLabel>
+            </ToolCardInner>
           )}
         </View>
+      )}
 
-        {/* Sunrise / Sunset */}
-        {(sunriseStr || sunsetStr) && (
-          <View className="flex-row gap-2 mb-2">
-            {sunriseStr && (
-              <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 flex-row items-center gap-2">
-                <AppIcon icon={SunriseIcon} size={16} color={accentColor} />
-                <View>
-                  <Text className="text-[10px] text-muted">Sunrise</Text>
-                  <Text className="text-xs font-semibold text-foreground">
-                    {sunriseStr}
-                  </Text>
-                </View>
+      {/* Sunrise / Sunset */}
+      {(sunriseStr || sunsetStr) && (
+        <View className="flex-row gap-2 mb-2">
+          {sunriseStr && (
+            <ToolCardInner dense className="flex-1 flex-row items-center gap-2">
+              <AppIcon icon={SunriseIcon} size={18} color={accentColor} />
+              <View className="flex-1">
+                <Text className="text-zinc-100 text-lg font-medium">
+                  {sunriseStr}
+                </Text>
+                <SectionLabel>SUNRISE</SectionLabel>
               </View>
-            )}
-            {sunsetStr && (
-              <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 flex-row items-center gap-2">
-                <AppIcon icon={SunsetIcon} size={16} color={accentColor} />
-                <View>
-                  <Text className="text-[10px] text-muted">Sunset</Text>
-                  <Text className="text-xs font-semibold text-foreground">
-                    {sunsetStr}
-                  </Text>
-                </View>
+            </ToolCardInner>
+          )}
+          {sunsetStr && (
+            <ToolCardInner dense className="flex-1 flex-row items-center gap-2">
+              <AppIcon icon={SunsetIcon} size={18} color={accentColor} />
+              <View className="flex-1">
+                <Text className="text-zinc-100 text-lg font-medium">
+                  {sunsetStr}
+                </Text>
+                <SectionLabel>SUNSET</SectionLabel>
               </View>
-            )}
-          </View>
-        )}
+            </ToolCardInner>
+          )}
+        </View>
+      )}
 
-        {/* Weekly forecast */}
-        {data.forecast && data.forecast.length > 0 && (
-          <View className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
-            <View className="px-3 py-2 border-b border-white/8">
-              <Text className="text-xs text-muted font-medium">
-                Weekly Forecast
-              </Text>
-            </View>
-            {data.forecast.map((day) => {
+      {/* Weekly forecast */}
+      {hasForecast && (
+        <View>
+          <SectionLabel>FORECAST</SectionLabel>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
+          >
+            {data.forecast!.map((day) => {
               const dayTemp = useFahrenheit
                 ? Math.round(celsiusToFahrenheit(day.temp_max))
                 : Math.round(day.temp_max);
@@ -305,40 +292,25 @@ export function WeatherCard({ data }: { data: WeatherData }) {
               const dayIcon = getWeatherIconForCondition(day.weather.main);
 
               return (
-                <View
-                  key={`${day.date}-${dayTemp}`}
-                  className="flex-row items-center px-3 py-2 border-b border-white/8"
+                <ToolCardInner
+                  key={`${day.date}-${dayTemp}-${nightTemp}`}
+                  dense
+                  className="items-center w-16"
                 >
-                  <AppIcon icon={dayIcon} size={20} color={accentColor} />
-                  <Text className="text-xs font-semibold text-foreground ml-2 w-10">
+                  <Text className="text-zinc-400 text-xs">
                     {getDayOfWeek(day.date)}
                   </Text>
-                  <Text
-                    className="text-xs text-muted flex-1 capitalize"
-                    numberOfLines={1}
-                  >
-                    {day.weather.description}
-                  </Text>
-                  <View className="flex-row items-center gap-3">
-                    <View className="flex-row items-center gap-1">
-                      <AppIcon icon={Sun03Icon} size={14} color="#FCD34D" />
-                      <Text className="text-xs font-medium text-foreground">
-                        {dayTemp}°
-                      </Text>
-                    </View>
-                    <View className="flex-row items-center gap-1">
-                      <AppIcon icon={CloudIcon} size={14} color="#93C5FD" />
-                      <Text className="text-xs text-foreground/70">
-                        {nightTemp}°
-                      </Text>
-                    </View>
+                  <View className="my-1">
+                    <AppIcon icon={dayIcon} size={22} color={accentColor} />
                   </View>
-                </View>
+                  <Text className="text-zinc-100 text-sm">{dayTemp}°</Text>
+                  <Text className="text-zinc-500 text-xs">{nightTemp}°</Text>
+                </ToolCardInner>
               );
             })}
-          </View>
-        )}
-      </Card.Body>
-    </Card>
+          </ScrollView>
+        </View>
+      )}
+    </ToolCardShell>
   );
 }
