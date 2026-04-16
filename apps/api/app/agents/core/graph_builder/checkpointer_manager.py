@@ -40,10 +40,19 @@ class CheckpointerManager:
             "prepare_threshold": 0,
         }
 
+        # max_idle and max_lifetime protect against stale connections. Idle
+        # TCP sockets on Docker overlay / NAT can be silently killed; without
+        # recycling, the pool hands out dead connections and chat_stream
+        # fails with "server closed the connection unexpectedly". check=...
+        # pings each connection before use as a safety net.
         self.pool = AsyncConnectionPool(
             conninfo=self.conninfo,
+            min_size=1,
             max_size=self.max_pool_size,
+            max_idle=300,  # close connections idle for > 5 min
+            max_lifetime=1800,  # recycle every 30 min regardless
             kwargs=connection_kwargs,
+            check=AsyncConnectionPool.check_connection,
             open=False,
             timeout=30,
         )

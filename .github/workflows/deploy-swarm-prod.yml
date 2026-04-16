@@ -48,28 +48,17 @@ jobs:
     environment: production
     permissions:
       contents: read
-      id-token: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          token_format: access_token
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
         with:
-          gcp_zone: ${{ secrets.GCP_ZONE }}
+          ssh_key: ${{ secrets.PROD_VM_SSH_KEY }}
+          ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
+          ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -201,28 +190,17 @@ jobs:
     environment: production
     permissions:
       contents: read
-      id-token: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          token_format: access_token
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
         with:
-          gcp_zone: ${{ secrets.GCP_ZONE }}
+          ssh_key: ${{ secrets.PROD_VM_SSH_KEY }}
+          ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
+          ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

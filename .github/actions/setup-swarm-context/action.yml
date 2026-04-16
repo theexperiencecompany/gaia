@@ -1,37 +1,53 @@
 name: Set up Docker Swarm context
 description: >
-  Bootstraps gcloud SSH keys via OS Login and creates a Docker context
-  pointing at the production GCP VM. Requires gcloud CLI to already be
-  authenticated (GCP WIF) before this action runs.
+  Configures SSH access to the production VM and creates a Docker
+  context pointing at it. The private key, host, and username are pulled
+  from GitHub secrets.
 
 inputs:
-  gcp_zone:
-    description: GCP zone of the production VM
+  ssh_key:
+    description: Private SSH key for the production VM
+    required: true
+  ssh_host:
+    description: Hostname or IP of the production VM
+    required: true
+  ssh_user:
+    description: SSH username on the production VM
     required: true
 
 runs:
   using: composite
   steps:
-    - name: Bootstrap SSH keys and create Docker context
+    - name: Configure SSH and Docker context
       shell: bash
       env:
-        GCP_ZONE: ${{ inputs.gcp_zone }}
+        SSH_KEY: ${{ inputs.ssh_key }}
+        SSH_HOST: ${{ inputs.ssh_host }}
+        SSH_USER: ${{ inputs.ssh_user }}
       run: |
-        # A throwaway ssh call causes gcloud to generate + register an
-        # ephemeral keypair via OS Login (~/.ssh/google_compute_engine).
-        gcloud compute ssh ubuntu@gaia-backend \
-          --zone="$GCP_ZONE" \
-          --command="docker info > /dev/null"
+        set -euo pipefail
 
-        VM_IP=$(gcloud compute instances describe gaia-backend \
-          --zone="$GCP_ZONE" \
-          --format="get(networkInterfaces[0].accessConfigs[0].natIP)")
-
-        # Tell SSH to use gcloud's key for this IP.
         mkdir -p ~/.ssh
-        printf 'Host %s\n  IdentityFile ~/.ssh/google_compute_engine\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n' \
-          "$VM_IP" >> ~/.ssh/config
+        chmod 700 ~/.ssh
+
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/prod_vm_key
+        chmod 600 ~/.ssh/prod_vm_key
+
+        # Trust the host (avoid interactive prompt) and pin the key to this host.
+        ssh-keyscan -T 10 "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+        cat >> ~/.ssh/config <<EOF
+        Host $SSH_HOST
+          User $SSH_USER
+          IdentityFile ~/.ssh/prod_vm_key
+          IdentitiesOnly yes
+          StrictHostKeyChecking accept-new
+        EOF
+        chmod 600 ~/.ssh/config
+
+        # Sanity check — fail fast if the VM is unreachable.
+        ssh -o BatchMode=yes "$SSH_USER@$SSH_HOST" "docker info >/dev/null"
 
         docker context create prod \
-          --docker "host=ssh://ubuntu@$VM_IP" \
-          --description "Production GCP VM (gaia-backend)"
+          --docker "host=ssh://$SSH_USER@$SSH_HOST" \
+          --description "Production VM (Docker Swarm)"
