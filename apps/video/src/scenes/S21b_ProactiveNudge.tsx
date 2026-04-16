@@ -16,7 +16,7 @@ import { SFX } from "../sfx";
 import { BotTail } from "./S06_UserChat";
 
 const MESSAGE =
-  "Noticed your Q4 review moved to 3pm.\nUpdated your calendar. Emailed your team.";
+  "Noticed your Q4 review moved to 3pm. Updated your calendar. Emailed your team.";
 
 const CARD_DELAY_CAL = 8;
 const CARD_DELAY_EMAIL = 28;
@@ -52,6 +52,7 @@ const CalendarEventCard: React.FC<CardAnimProps> = ({ delay }) => {
         background: "#27272a",
         padding: 24,
         height: "100%",
+        overflow: "hidden",
         boxSizing: "border-box",
         transform: `translateY(${cardY}px) scale(${cardScale})`,
         opacity,
@@ -218,7 +219,7 @@ const EmailComposeCard: React.FC<CardAnimProps> = ({ delay }) => {
           style={{
             display: "flex",
             gap: 10,
-            fontSize: 22,
+            fontSize: 26,
             fontFamily: FONTS.body,
             paddingBottom: 10,
           }}
@@ -234,7 +235,7 @@ const EmailComposeCard: React.FC<CardAnimProps> = ({ delay }) => {
           style={{
             display: "flex",
             gap: 10,
-            fontSize: 22,
+            fontSize: 26,
             fontFamily: FONTS.body,
             paddingBottom: 10,
           }}
@@ -248,7 +249,7 @@ const EmailComposeCard: React.FC<CardAnimProps> = ({ delay }) => {
 
         <div
           style={{
-            fontSize: 21,
+            fontSize: 30,
             color: "#d4d4d8",
             fontFamily: FONTS.body,
             lineHeight: 1.65,
@@ -329,8 +330,9 @@ export const S21b_ProactiveNudge: React.FC = () => {
           inset: 0,
           display: "flex",
           flexDirection: "column",
+          justifyContent: "center",
           padding: "52px 100px",
-          gap: 20,
+          gap: 36,
         }}
       >
         {/* Headline */}
@@ -355,11 +357,11 @@ export const S21b_ProactiveNudge: React.FC = () => {
         </div>
 
         {/* Cards — side by side */}
-        <div style={{ display: "flex", gap: 20, flex: 1, minHeight: 0 }}>
-          <div style={{ flex: 1 }}>
+        <div style={{ display: "flex", gap: 20, height: 380 }}>
+          <div style={{ flex: 1, height: "100%", overflow: "hidden" }}>
             <CalendarEventCard delay={CARD_DELAY_CAL} />
           </div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, height: "100%", overflow: "hidden" }}>
             <EmailComposeCard delay={CARD_DELAY_EMAIL} />
           </div>
         </div>
@@ -385,7 +387,7 @@ export const S21b_ProactiveNudge: React.FC = () => {
               marginTop: 4,
             }}
           />
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative", flex: 1 }}>
             <div
               style={{
                 background: "#27272a",
@@ -395,7 +397,9 @@ export const S21b_ProactiveNudge: React.FC = () => {
                 fontSize: 30,
                 lineHeight: 1.65,
                 fontFamily: FONTS.body,
-                whiteSpace: "pre-wrap",
+                whiteSpace: "nowrap",
+                width: "100%",
+                boxSizing: "border-box",
               }}
             >
               {MESSAGE}

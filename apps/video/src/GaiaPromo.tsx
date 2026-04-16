@@ -34,8 +34,8 @@ import { S26c_IntegrationPage } from "./scenes/S26c_IntegrationPage";
 import { S26d_IntegrationTagline } from "./scenes/S26d_IntegrationTagline";
 import { S27_CommunityCards } from "./scenes/S27_CommunityCards";
 // Act 7 & 8: Platform + Close
-import { S28_DashboardReveal } from "./scenes/S28_DashboardReveal";
-import { S29_OneDashboard } from "./scenes/S29_OneDashboard";
+// import { S28_DashboardReveal } from "./scenes/S28_DashboardReveal";
+// import { S29_OneDashboard } from "./scenes/S29_OneDashboard";
 import { S31_NotJustAssistant } from "./scenes/S31_NotJustAssistant";
 import { S32_ProductivityOS } from "./scenes/S32_ProductivityOS";
 import { S34_SearchBarCTA } from "./scenes/S34_SearchBarCTA";
@@ -286,7 +286,7 @@ export const GaiaPromo: React.FC = () => {
         />
 
         {/* === ACT 7: THE PLATFORM === */}
-        <TransitionSeries.Sequence durationInFrames={70}>
+        {/* <TransitionSeries.Sequence durationInFrames={70}>
           <S28_DashboardReveal />
         </TransitionSeries.Sequence>
         <TransitionSeries.Transition
@@ -303,7 +303,7 @@ export const GaiaPromo: React.FC = () => {
         <TransitionSeries.Transition
           presentation={fade()}
           timing={linearTiming({ durationInFrames: 4 })}
-        />
+        /> */}
 
         {/* === ACT 8: THE CLOSE === */}
         <TransitionSeries.Sequence durationInFrames={50}>
@@ -334,7 +334,7 @@ export const GaiaPromo: React.FC = () => {
       </TransitionSeries>
 
       {/* Background music — loops for full video duration */}
-      {/* <Audio src={staticFile("sounds/1.mp3")} volume={0.5 } loop /> */}
+      <Audio src={staticFile("Silence 2 Beats edited.mp3")} volume={0.5} loop />
 
       {/* Slide / wipe transition whoosh sounds */}
       {SLIDE_FRAMES.map((frame) => (

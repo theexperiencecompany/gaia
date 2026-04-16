@@ -2,7 +2,8 @@
   "name": "@gaia/video",
   "version": "0.0.1",
   "scripts": {
-    "start": "remotion studio src/index.ts",
+    "start": "remotion studio src/index.ts --port 3000",
+    "dev": "remotion studio src/index.ts --port 3000",
     "build": "remotion bundle src/index.ts",
     "render": "remotion render src/index.ts GaiaPromo out/promo.mp4"
   },

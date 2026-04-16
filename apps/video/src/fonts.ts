@@ -32,11 +32,6 @@ Promise.all([
     url: staticFile("fonts/AeonikExtendedProTRIAL-Air.otf"),
     weight: "400",
   }),
-  loadFont({
-    family: "Anonymous Pro",
-    url: staticFile("fonts/AnonymousPro-Regular.woff2"),
-    weight: "400",
-  }),
 ])
   .then(() => continueRender(waitForFonts))
   .catch((err) => {
