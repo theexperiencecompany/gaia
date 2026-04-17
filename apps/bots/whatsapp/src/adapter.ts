@@ -10,7 +10,7 @@
  * - **Rich messages** rendered as WhatsApp markdown (*bold*, _italic_)
  * - **No streaming** — full response sent once complete (streaming: false)
  * - **No message editing** — WhatsApp API does not support edits
- * - **Typing indicator** refreshed every 20s via markRead to survive long responses
+ * - **Typing indicator** fired once per message (Meta hard-caps bubble at 25s)
  *
  * @module
  */
@@ -71,6 +71,17 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
   /** Tracks users who have already received a welcome message this process. */
   private readonly welcomeSent = new Set<string>();
+  /**
+   * Tracks users whose platform_links status has been confirmed as linked this
+   * process. Avoids a backend round-trip on every first-seen message after restart.
+   */
+  private readonly linkedUsers = new Set<string>();
+  /**
+   * Per-user message processing queue. Serializes handleIncomingMessage calls for
+   * the same waId so rapid messages or batched webhook deliveries never run in
+   * parallel — eliminates overlapping typing states and interleaved replies.
+   */
+  private readonly messageQueues = new Map<string, Promise<void>>();
   private readonly adapterLogger = createBotLogger("whatsapp", "adapter");
 
   private get whatsAppClient(): WhatsAppClient {
@@ -162,14 +173,17 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           has_text: Boolean(text),
         });
         if (text) {
-          // Fire-and-forget — do not await so webhook returns 200 quickly
-          this.handleIncomingMessage(waId, text, event.message.id).catch(
-            (err) =>
+          // Enqueue per user — webhook returns 200 immediately while processing
+          // is serialized: messages from the same user run one at a time, in order.
+          const msgId = event.message.id;
+          this.enqueueForUser(waId, () =>
+            this.handleIncomingMessage(waId, text, msgId).catch((err) =>
               this.adapterLogger.error("incoming_message_processing_failed", {
                 wa_hash: waIdHash,
-                message_id: event.message.id,
+                message_id: msgId,
                 ...sanitizeErrorForLog(err),
               }),
+            ),
           );
         } else if (event.message.type !== "text") {
           // Non-text message (image, audio, video, document, etc.)
@@ -202,6 +216,29 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   // ---------------------------------------------------------------------------
 
   /**
+   * Serializes message processing per user. Chains the new task onto the tail of
+   * the existing promise for this waId so messages are always handled one at a
+   * time, in order. Cleans up the map entry once the task settles.
+   */
+  private enqueueForUser(waId: string, fn: () => Promise<void>): void {
+    const previous = this.messageQueues.get(waId) ?? Promise.resolve();
+    const task = previous
+      .catch(() => undefined) // previous failure must not block the queue
+      .then(() => fn());
+    this.messageQueues.set(waId, task);
+    task.then(
+      () => {
+        if (this.messageQueues.get(waId) === task)
+          this.messageQueues.delete(waId);
+      },
+      () => {
+        if (this.messageQueues.get(waId) === task)
+          this.messageQueues.delete(waId);
+      },
+    );
+  }
+
+  /**
    * Dispatches an incoming WhatsApp message to the appropriate handler.
    *
    * Shows a typing indicator immediately (mark-as-read + typing via Kapso API),
@@ -224,77 +261,95 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       is_command: text.startsWith("/"),
     });
 
-    // Show typing indicator — mark message as read and display "typing..." bubble.
-    // WhatsApp auto-dismisses after ~25s, so we refresh every 20s to keep it alive
-    // for long-running responses. The interval is cleared when a reply is sent.
-    const showTyping = () =>
-      this.whatsAppClient.messages
-        .markRead({
-          phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
-          messageId,
-          typingIndicator: { type: "text" },
-        })
-        .catch((err: unknown) =>
-          this.adapterLogger.error("typing_indicator_failed", {
-            wa_hash: waIdHash,
-            message_id: messageId,
-            ...sanitizeErrorForLog(err),
-          }),
-        );
+    // Show typing indicator once — mark message as read with typing bubble.
+    // Meta's API ties the indicator to a specific unread wamid; re-calling markRead
+    // on an already-read message is undefined behavior (not documented to re-trigger).
+    // The bubble auto-dismisses after 25s or when we send a reply — whichever comes
+    // first. We accept that hard ceiling instead of issuing unreliable refresh calls.
+    this.whatsAppClient.messages
+      .markRead({
+        phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
+        messageId,
+        typingIndicator: { type: "text" },
+      })
+      .catch((err: unknown) =>
+        this.adapterLogger.error("typing_indicator_failed", {
+          wa_hash: waIdHash,
+          message_id: messageId,
+          ...sanitizeErrorForLog(err),
+        }),
+      );
 
-    showTyping();
-    const typingInterval = setInterval(showTyping, 20_000);
-    const clearTyping = () => clearInterval(typingInterval);
-
-    // Send welcome message on first contact from this user (per-process)
+    // Welcome gate — only for users not yet seen this process.
+    // linkedUsers caches platform_links results so only the very first message per
+    // user per process pays the backend round-trip. A 2s timeout prevents a slow
+    // backend from delaying the whole message on first contact.
     if (!this.welcomeSent.has(waId)) {
-      this.welcomeSent.add(waId);
-      await this.sendWelcome(waId);
-      // Re-show typing — sending the welcome message dismisses the indicator
-      showTyping();
+      this.welcomeSent.add(waId); // mark immediately to block concurrent welcome sends
+
+      let isLinked = this.linkedUsers.has(waId);
+      if (!isLinked) {
+        try {
+          const timeoutMs = 2_000;
+          const statusPromise = this.gaia.checkAuthStatus("whatsapp", waId);
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("auth_check_timeout")),
+              timeoutMs,
+            ),
+          );
+          const status = await Promise.race([statusPromise, timeoutPromise]);
+          isLinked = status.authenticated;
+          if (isLinked) this.linkedUsers.add(waId);
+        } catch (err) {
+          // Timeout or network error — default to unlinked (welcome fires, harmless)
+          this.adapterLogger.warn("welcome_auth_check_failed", {
+            wa_hash: waIdHash,
+            ...sanitizeErrorForLog(err),
+          });
+        }
+      }
+
+      if (!isLinked) {
+        await this.sendWelcome(waId);
+        // Intentionally no showTyping() re-call: re-triggering markRead on an
+        // already-read wamid after an outbound send is undefined behavior per Meta.
+        // The actual reply follows immediately after welcome.
+      }
     }
 
     const target = this.createWaTarget(waId, messageId);
 
-    try {
-      if (text.startsWith("/")) {
-        const withoutSlash = text.slice(1);
-        const spaceIndex = withoutSlash.indexOf(" ");
-        const commandName = (
-          spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
-        ).toLowerCase();
-        const rest =
-          spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim();
+    if (text.startsWith("/")) {
+      const withoutSlash = text.slice(1);
+      const spaceIndex = withoutSlash.indexOf(" ");
+      const commandName = (
+        spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
+      ).toLowerCase();
+      const rest =
+        spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim();
 
-        if (commandName === "gaia") {
-          if (!rest) {
-            await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
-            return;
-          }
-          await this.handleStreamingMessage(waId, rest);
+      if (commandName === "gaia") {
+        if (!rest) {
+          await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
           return;
         }
-
-        const args: Record<string, string | number | boolean | undefined> = {};
-        if (commandName === "todo" || commandName === "workflow") {
-          const parsed = parseTextArgs(rest);
-          args.subcommand = parsed.subcommand;
-        }
-
-        await this.dispatchCommand(
-          commandName,
-          target,
-          args,
-          rest || undefined,
-        );
+        await this.handleStreamingMessage(waId, rest);
         return;
       }
 
-      // Plain text — treat as chat
-      await this.handleStreamingMessage(waId, text);
-    } finally {
-      clearTyping();
+      const args: Record<string, string | number | boolean | undefined> = {};
+      if (commandName === "todo" || commandName === "workflow") {
+        const parsed = parseTextArgs(rest);
+        args.subcommand = parsed.subcommand;
+      }
+
+      await this.dispatchCommand(commandName, target, args, rest || undefined);
+      return;
     }
+
+    // Plain text — treat as chat
+    await this.handleStreamingMessage(waId, text);
   }
 
   /**
@@ -302,8 +357,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    *
    * WhatsApp streaming is disabled (STREAMING_DEFAULTS.whatsapp.streaming = false),
    * so the full response is accumulated and sent as a single message.
-   * The typing indicator is refreshed every 20s by handleIncomingMessage
-   * and cleared when processing completes.
+   * The typing indicator was already fired once before this is called and will
+   * auto-dismiss when the reply is sent (Meta's hard 25s ceiling).
    */
   private async handleStreamingMessage(
     waId: string,
@@ -393,7 +448,11 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    *
    * Adapted from Discord's DM welcome embed — rendered as WhatsApp markdown
    * since WhatsApp has no native embed/button support.
-   * Tracked per-process via {@link welcomeSent} Set (resets on restart).
+   *
+   * Gated by platform_links check via `gaia.checkAuthStatus` (2s timeout) — linked
+   * users skip the welcome entirely and are cached in {@link linkedUsers} for the
+   * process lifetime. Unlinked users receive it once per process restart at most,
+   * tracked via {@link welcomeSent}.
    */
   private async sendWelcome(waId: string): Promise<void> {
     const text =
