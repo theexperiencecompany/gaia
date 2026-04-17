@@ -76,7 +76,6 @@ function AppConnectionsIcons({
           })}
         </span>
       ))}
-      <span className="ml-1 text-sm text-zinc-500">…</span>
     </div>
   );
 }
@@ -230,10 +229,7 @@ export function ComparisonTable({
             <ColumnLabel name="GAIA" logo="/images/logos/logo_bg_grey.png" />
           </TableColumn>
           <TableColumn key="chatgpt" style={{ borderRadius: 0 }}>
-            <ColumnLabel
-              name="ChatGPT"
-              logo="https://static.vecteezy.com/system/resources/previews/024/558/807/non_2x/openai-chatgpt-logo-icon-free-png.png"
-            />
+            <ColumnLabel name="ChatGPT" logo="/images/logos/chatgpt.png" />
           </TableColumn>
           <TableColumn
             key="gemini"
@@ -244,10 +240,7 @@ export function ComparisonTable({
               borderBottomRightRadius: 0,
             }}
           >
-            <ColumnLabel
-              name="Gemini"
-              logo="https://static.vecteezy.com/system/resources/previews/055/687/055/non_2x/rectangle-gemini-google-icon-symbol-logo-free-png.png"
-            />
+            <ColumnLabel name="Gemini" logo="/images/logos/gemini.png" />
           </TableColumn>
         </TableHeader>
         <TableBody items={features}>

@@ -23,9 +23,9 @@ import {
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
-import Link from "next/link";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "@/i18n/navigation";
 
 import LargeHeader from "../shared/LargeHeader";
 

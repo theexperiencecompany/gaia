@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
 import ContactForm from "@/features/contact/components/ContactForm";
 import ContactSidebar from "@/features/contact/components/ContactSidebar";
+import { SUPPORT_REQUEST_TYPES } from "@/features/support/constants/supportConstants";
 import {
   generateBreadcrumbSchema,
   generateContactPageSchema,
@@ -39,6 +40,9 @@ export default async function ContactPage({
   }>;
 }) {
   const params = await searchParams;
+  const validTypes = Object.values(SUPPORT_REQUEST_TYPES) as string[];
+  const initialType =
+    params.type && validTypes.includes(params.type) ? params.type : undefined;
   const contactSchema = generateContactPageSchema();
   const webPageSchema = generateWebPageSchema(
     title,
@@ -79,7 +83,7 @@ export default async function ContactPage({
             </h2>
             <ContactForm
               aria-labelledby="inquiries-heading"
-              initialType={params.type}
+              initialType={initialType}
               initialTitle={params.title}
               initialDescription={params.description}
             />

@@ -10,7 +10,7 @@ export const homepageFAQs: FAQItem[] = [
   {
     question: "How is GAIA different from Claude Cowork?",
     answer:
-      "Claude Cowork runs on your desktop. You install it and give it tasks to run on your laptop. It can't do anything without a prompt. It can't be messaged from WhatsApp or Slack. Close your laptop and it stops. GAIA runs in the cloud. You text it from WhatsApp Telegram Slack Discord or the web. It also watches your inbox and calendar on its own so it can surface things before you ask.",
+      "Claude Cowork runs on your desktop. You install it and give it tasks to run on your laptop. It can't do anything without a prompt. It can't be messaged from WhatsApp or Slack. Close your laptop and it stops. GAIA runs in the cloud. You text it from WhatsApp, Telegram, Slack, Discord or the web. It also watches your inbox and calendar on its own so it can surface things before you ask.",
   },
   {
     question: "How is GAIA different from OpenClaw?",
