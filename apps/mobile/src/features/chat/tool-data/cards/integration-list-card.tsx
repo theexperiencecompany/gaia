@@ -44,7 +44,7 @@ function IntegrationRow({ item }: { item: IntegrationListItem }) {
             resizeMode="contain"
           />
         ) : (
-          <View className="w-8 h-8 rounded-lg bg-zinc-800 items-center justify-center">
+          <View className="w-8 h-8 rounded-lg bg-zinc-700 items-center justify-center">
             <AppIcon icon={PlusSignIcon} size={16} color="#00bbff" />
           </View>
         )}

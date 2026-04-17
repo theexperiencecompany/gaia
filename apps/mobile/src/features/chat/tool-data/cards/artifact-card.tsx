@@ -17,7 +17,194 @@ import {
   ToolCardShell,
 } from "@/features/chat/tool-data/primitives";
 
-// -- Helpers -----------------------------------------------------------------
+// -- File type config (mirrors web FILE_TYPE_CONFIG) --------------------------
+
+interface FileTypeConfig {
+  label: string;
+  color: string; // text color class
+  bg: string; // pill bg class
+  icon: "code" | "file" | "image" | "pdf";
+}
+
+const FILE_TYPE_CONFIG: Record<string, FileTypeConfig> = {
+  md: {
+    label: "Markdown",
+    color: "text-violet-400",
+    bg: "bg-violet-400/10",
+    icon: "file",
+  },
+  html: {
+    label: "HTML",
+    color: "text-amber-400",
+    bg: "bg-amber-400/10",
+    icon: "code",
+  },
+  htm: {
+    label: "HTML",
+    color: "text-amber-400",
+    bg: "bg-amber-400/10",
+    icon: "code",
+  },
+  txt: {
+    label: "Text",
+    color: "text-zinc-400",
+    bg: "bg-zinc-700",
+    icon: "file",
+  },
+  json: {
+    label: "JSON",
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
+    icon: "code",
+  },
+  py: {
+    label: "Python",
+    color: "text-primary",
+    bg: "bg-primary/10",
+    icon: "code",
+  },
+  js: {
+    label: "JavaScript",
+    color: "text-amber-400",
+    bg: "bg-amber-400/10",
+    icon: "code",
+  },
+  ts: {
+    label: "TypeScript",
+    color: "text-primary",
+    bg: "bg-primary/10",
+    icon: "code",
+  },
+  tsx: {
+    label: "TSX",
+    color: "text-primary",
+    bg: "bg-primary/10",
+    icon: "code",
+  },
+  jsx: {
+    label: "JSX",
+    color: "text-amber-400",
+    bg: "bg-amber-400/10",
+    icon: "code",
+  },
+  css: {
+    label: "CSS",
+    color: "text-violet-400",
+    bg: "bg-violet-400/10",
+    icon: "code",
+  },
+  csv: {
+    label: "CSV",
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
+    icon: "file",
+  },
+  sql: {
+    label: "SQL",
+    color: "text-primary",
+    bg: "bg-primary/10",
+    icon: "code",
+  },
+  yaml: {
+    label: "YAML",
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
+    icon: "code",
+  },
+  yml: {
+    label: "YAML",
+    color: "text-emerald-400",
+    bg: "bg-emerald-400/10",
+    icon: "code",
+  },
+  xml: {
+    label: "XML",
+    color: "text-amber-400",
+    bg: "bg-amber-400/10",
+    icon: "code",
+  },
+  sh: {
+    label: "Shell",
+    color: "text-zinc-300",
+    bg: "bg-zinc-700",
+    icon: "code",
+  },
+  pdf: {
+    label: "PDF",
+    color: "text-red-400",
+    bg: "bg-red-400/10",
+    icon: "pdf",
+  },
+  png: {
+    label: "PNG",
+    color: "text-pink-400",
+    bg: "bg-pink-400/10",
+    icon: "image",
+  },
+  jpg: {
+    label: "JPEG",
+    color: "text-pink-400",
+    bg: "bg-pink-400/10",
+    icon: "image",
+  },
+  jpeg: {
+    label: "JPEG",
+    color: "text-pink-400",
+    bg: "bg-pink-400/10",
+    icon: "image",
+  },
+  gif: {
+    label: "GIF",
+    color: "text-pink-400",
+    bg: "bg-pink-400/10",
+    icon: "image",
+  },
+  webp: {
+    label: "WebP",
+    color: "text-pink-400",
+    bg: "bg-pink-400/10",
+    icon: "image",
+  },
+  svg: {
+    label: "SVG",
+    color: "text-pink-400",
+    bg: "bg-pink-400/10",
+    icon: "image",
+  },
+};
+
+function getFileConfig(filename: string, contentType?: string): FileTypeConfig {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  if (FILE_TYPE_CONFIG[ext]) return FILE_TYPE_CONFIG[ext];
+
+  // Fall back on content type
+  const type = (contentType ?? "").toLowerCase();
+  if (type.startsWith("image/")) {
+    return {
+      label: "Image",
+      color: "text-pink-400",
+      bg: "bg-pink-400/10",
+      icon: "image",
+    };
+  }
+  if (type.includes("pdf")) {
+    return {
+      label: "PDF",
+      color: "text-red-400",
+      bg: "bg-red-400/10",
+      icon: "pdf",
+    };
+  }
+
+  return {
+    label: ext.toUpperCase() || "File",
+    color: "text-zinc-400",
+    bg: "bg-zinc-700",
+    icon: "file",
+  };
+}
+
+// -- Helpers ------------------------------------------------------------------
 
 function formatFileSize(bytes?: number): string | undefined {
   if (bytes === undefined || bytes === null) return undefined;
@@ -29,38 +216,18 @@ function formatFileSize(bytes?: number): string | undefined {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-function getFileIcon(contentType?: string, filename?: string): AnyIcon {
-  const type = (contentType ?? "").toLowerCase();
-  const name = (filename ?? "").toLowerCase();
-
-  if (type.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg)$/.test(name)) {
-    return Image01Icon;
-  }
-  if (type.includes("pdf") || name.endsWith(".pdf")) {
-    return DocumentAttachmentIcon;
-  }
-  if (
-    type.includes("json") ||
-    type.includes("javascript") ||
-    type.includes("typescript") ||
-    /\.(js|ts|tsx|jsx|json|py|go|rs|rb|java|cpp|c|css|html)$/.test(name)
-  ) {
-    return CodeIcon;
-  }
-  if (
-    type.includes("document") ||
-    type.includes("text") ||
-    /\.(doc|docx|txt|md)$/.test(name)
-  ) {
-    return FileEmpty02Icon;
-  }
-  return File01Icon;
+function getFileIcon(iconKind: FileTypeConfig["icon"]): AnyIcon {
+  if (iconKind === "image") return Image01Icon;
+  if (iconKind === "pdf") return DocumentAttachmentIcon;
+  if (iconKind === "code") return CodeIcon;
+  return FileEmpty02Icon;
 }
 
-// -- File row ----------------------------------------------------------------
+// -- File row -----------------------------------------------------------------
 
 function FileRow({ file }: { file: ArtifactData }) {
-  const icon = getFileIcon(file.content_type, file.filename);
+  const config = getFileConfig(file.filename ?? "", file.content_type);
+  const icon = getFileIcon(config.icon);
   const size = formatFileSize(file.size_bytes);
   const hasUrl = Boolean(file.path);
 
@@ -69,23 +236,36 @@ function FileRow({ file }: { file: ArtifactData }) {
   return (
     <ToolCardInner dense onPress={onPress}>
       <View className="flex-row items-center gap-3">
-        <View className="w-8 h-8 rounded-full bg-zinc-800 items-center justify-center">
+        {/* File type icon — square container, matches web shrink-0 pattern */}
+        <View className="w-8 h-8 rounded-lg bg-zinc-700 items-center justify-center shrink-0">
           <AppIcon icon={icon} size={16} color="#00bbff" />
         </View>
+
         <View className="flex-1 min-w-0">
-          <Text className="text-zinc-100 text-sm font-medium" numberOfLines={1}>
-            {file.filename ?? "Untitled"}
-          </Text>
-          {(size || file.content_type) && (
-            <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
-              {[size, file.content_type]
-                .filter((s): s is string => !!s && s.length > 0)
-                .join(" · ")}
+          {/* File type chip + filename row (mirrors web layout) */}
+          <View className="flex-row items-center gap-2 mb-0.5 flex-wrap">
+            <View className={`rounded-full px-2 py-0.5 ${config.bg}`}>
+              <Text className={`text-[10px] font-medium ${config.color}`}>
+                {config.label}
+              </Text>
+            </View>
+            <Text
+              className="text-zinc-100 text-sm font-medium flex-shrink"
+              numberOfLines={1}
+            >
+              {file.filename ?? "Untitled"}
             </Text>
-          )}
+          </View>
+          <Text className="text-zinc-400 text-xs" numberOfLines={1}>
+            {[size, hasUrl ? "Tap to open" : undefined]
+              .filter((s): s is string => !!s)
+              .join(" · ")}
+          </Text>
         </View>
+
+        {/* Download action */}
         {hasUrl ? (
-          <View className="flex-row items-center gap-1">
+          <View className="flex-row items-center gap-1 shrink-0">
             <AppIcon icon={Download02Icon} size={14} color="#00bbff" />
             <Text className="text-primary text-xs font-semibold">Download</Text>
           </View>
@@ -95,7 +275,7 @@ function FileRow({ file }: { file: ArtifactData }) {
   );
 }
 
-// -- Card --------------------------------------------------------------------
+// -- Card ---------------------------------------------------------------------
 
 export function ArtifactCard({ data }: { data: ArtifactData[] }) {
   const files = Array.isArray(data) ? data : [data];

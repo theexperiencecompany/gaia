@@ -1,127 +1,144 @@
-import { Card, Chip, PressableFeedback, Separator } from "heroui-native";
 import { View } from "react-native";
-import { AppIcon, Mail01Icon } from "@/components/icons";
+import Svg, { Path } from "react-native-svg";
 import { Text } from "@/components/ui/text";
+import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
 
 export interface EmailFetchItem {
+  id?: string;
+  thread_id?: string;
   from?: string;
   from_name?: string;
   subject?: string;
   snippet?: string;
+  time?: string;
   date?: string;
   is_unread?: boolean;
 }
 
-function formatRelativeDate(dateStr?: string): string {
-  if (!dateStr) return "";
-  const date = new Date(dateStr);
-  if (Number.isNaN(date.getTime())) return dateStr;
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+export function GmailIcon({
+  width = 20,
+  height = 20,
+}: {
+  width?: number;
+  height?: number;
+}) {
+  return (
+    <Svg width={width} height={height} viewBox="0 0 256 193">
+      <Path
+        d="M58.182 192.05V93.14L27.507 65.077L0 49.504v125.091c0 9.658 7.825 17.455 17.455 17.455z"
+        fill="#4285f4"
+      />
+      <Path
+        d="M197.818 192.05h40.727c9.659 0 17.455-7.826 17.455-17.455V49.505l-31.156 17.837l-27.026 25.798z"
+        fill="#34a853"
+      />
+      <Path
+        d="m58.182 93.14l-4.174-38.647l4.174-36.989L128 69.868l69.818-52.364l4.669 34.992l-4.669 40.644L128 145.504z"
+        fill="#ea4335"
+      />
+      <Path
+        d="M197.818 17.504V93.14L256 49.504V26.231c0-21.585-24.64-33.89-41.89-20.945z"
+        fill="#fbbc04"
+      />
+      <Path
+        d="m0 49.504l26.759 20.07L58.182 93.14V17.504L41.89 5.286C24.61-7.66 0 4.646 0 26.23z"
+        fill="#c5221f"
+      />
+    </Svg>
+  );
 }
 
-function extractFromName(from?: string, fromName?: string): string {
-  if (fromName) return fromName;
-  if (!from) return "Unknown";
-  const match = from.match(/^([^<]+)</);
+function extractSenderName(from: string): string {
+  const match = from.match(/^"?([^"<]+)"?\s*</);
   if (match) return match[1].trim();
-  return from;
+
+  const spaceMatch = from.match(/^([^<]+)\s+</);
+  if (spaceMatch) return spaceMatch[1].trim();
+
+  const emailMatch = from.match(/<([^>]+)>/);
+  if (emailMatch) return emailMatch[1].split("@")[0];
+
+  return from.split("@")[0] || from;
 }
 
-interface EmailRowProps {
+function formatTime(time: string | null | undefined): string {
+  if (!time) return "";
+
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+
+  if (diffInHours < 24) {
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+  if (diffInHours < 48) return "Yesterday";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function EmailRow({
+  email,
+  isLast,
+}: {
   email: EmailFetchItem;
-  onOpenThread?: () => void;
-}
-
-function EmailRow({ email, onOpenThread }: EmailRowProps) {
-  const senderName = extractFromName(email.from, email.from_name);
-  const relativeDate = formatRelativeDate(email.date);
+  isLast: boolean;
+}) {
+  const senderName = extractSenderName(email.from || "Unknown Sender");
+  const subject = email.subject || "Unknown Subject";
+  const timeLabel = formatTime(email.time ?? email.date ?? null);
 
   return (
-    <PressableFeedback onPress={onOpenThread} className="px-4 py-3">
-      <View className="flex-row items-start">
-        <View className="mr-3 mt-1.5">
-          {email.is_unread ? (
-            <View className="w-2 h-2 rounded-full bg-primary" />
-          ) : (
-            <View className="w-2 h-2" />
-          )}
-        </View>
-        <View className="flex-1 min-w-0">
-          <View className="flex-row items-center justify-between mb-0.5">
-            <Text
-              className={`text-sm flex-1 mr-2 ${email.is_unread ? "text-foreground font-semibold" : "text-foreground"}`}
-              numberOfLines={1}
-            >
-              {senderName}
-            </Text>
-            <Text className="text-[#8e8e93] text-xs shrink-0">
-              {relativeDate}
-            </Text>
-          </View>
-          <Text
-            className={`text-sm mb-0.5 ${email.is_unread ? "text-foreground font-medium" : "text-foreground/80"}`}
-            numberOfLines={1}
-          >
-            {email.subject || "No Subject"}
-          </Text>
-          {email.snippet && (
-            <Text className="text-[#8e8e93] text-xs" numberOfLines={2}>
-              {email.snippet}
-            </Text>
-          )}
-        </View>
+    <View
+      className={`flex-row items-center gap-4 p-3${isLast ? "" : " border-b border-zinc-700"}`}
+    >
+      <View className="w-40 flex-shrink-0">
+        <Text className="text-zinc-300 text-sm font-medium" numberOfLines={1}>
+          {senderName}
+        </Text>
       </View>
-    </PressableFeedback>
+      <View className="flex-1 min-w-0">
+        <Text className="text-white text-sm" numberOfLines={1}>
+          {subject}
+        </Text>
+      </View>
+      {!!timeLabel && (
+        <Text className="text-zinc-400 text-xs">{timeLabel}</Text>
+      )}
+    </View>
   );
 }
 
 export function EmailFetchCard({ data }: { data: EmailFetchItem[] }) {
-  const unreadCount = data.filter((e) => e.is_unread).length;
+  const count = data.length;
+  const plural = count === 1 ? "" : "s";
 
   return (
-    <Card
-      variant="secondary"
-      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
+    <CollapsibleCard
+      customIcon={<GmailIcon width={20} height={20} />}
+      title={(open) => `${open ? "Hide" : "Show"} ${count} Email${plural}`}
+      titleTone="muted"
+      radius="3xl"
     >
-      <Card.Body className="py-3 px-4">
-        <View className="flex-row items-center gap-2 mb-3">
-          <AppIcon icon={Mail01Icon} size={14} color="#8e8e93" />
-          <Text className="text-xs text-[#8e8e93] flex-1">
-            {data.length} Email{data.length !== 1 ? "s" : ""}
-          </Text>
-          {unreadCount > 0 && (
-            <Chip size="sm" variant="soft" color="accent">
-              <Chip.Label>{unreadCount} unread</Chip.Label>
-            </Chip>
-          )}
-        </View>
-        <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
-          {data.slice(0, 5).map((email, index) => (
-            <View key={`email-${email.subject || index}`}>
-              {index > 0 && <Separator className="bg-white/8" />}
-              <EmailRow email={email} />
-            </View>
+      {count > 0 ? (
+        <View>
+          {data.map((email, index) => (
+            <EmailRow
+              key={email.id ?? email.thread_id ?? `email-${index}`}
+              email={email}
+              isLast={index === count - 1}
+            />
           ))}
-          {data.length > 5 && (
-            <>
-              <Separator className="bg-white/8" />
-              <View className="px-4 py-2">
-                <Text className="text-[#8e8e93] text-xs text-center">
-                  +{data.length - 5} more emails
-                </Text>
-              </View>
-            </>
-          )}
         </View>
-      </Card.Body>
-    </Card>
+      ) : (
+        <Text className="py-3 text-zinc-500 text-sm">No emails found</Text>
+      )}
+    </CollapsibleCard>
   );
 }

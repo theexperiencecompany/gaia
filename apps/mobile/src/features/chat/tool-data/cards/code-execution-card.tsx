@@ -1,6 +1,15 @@
 import type { CodeChartData, CodeData, CodeOutput } from "@gaia/shared";
 import { useCallback, useRef, useState } from "react";
-import { Animated, Pressable, ScrollView, View } from "react-native";
+import {
+  Animated,
+  Pressable,
+  Text as RNText,
+  ScrollView,
+  View,
+} from "react-native";
+
+const MONO_FONT = "RobotoMono_400Regular";
+
 import {
   ArrowDown02Icon,
   Cancel01Icon,
@@ -39,7 +48,7 @@ function SyntaxLine({ line, language }: { line: string; language: string }) {
           <Text
             // biome-ignore lint/suspicious/noArrayIndexKey: stable token list per line
             key={idx}
-            style={{ color, fontFamily: "monospace" }}
+            style={{ color, fontFamily: MONO_FONT }}
           >
             {token.value}
           </Text>
@@ -71,7 +80,7 @@ function SyntaxHighlightedCode({
             <Text
               style={{
                 color: THEME.gutterText,
-                fontFamily: "monospace",
+                fontFamily: MONO_FONT,
                 fontSize: 11,
                 minWidth: 28,
                 marginRight: 8,
@@ -203,12 +212,16 @@ function OutputSection({ output }: { output: CodeOutput }) {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingRight: 8 }}
           >
-            <Text
-              className="text-zinc-100 text-xs"
-              style={{ fontFamily: "monospace", lineHeight: 18 }}
+            <RNText
+              style={{
+                fontFamily: MONO_FONT,
+                fontSize: 12,
+                lineHeight: 18,
+                color: "#4ade80",
+              }}
             >
               {output.stdout}
-            </Text>
+            </RNText>
           </ScrollView>
         </View>
       )}
@@ -225,14 +238,18 @@ function OutputSection({ output }: { output: CodeOutput }) {
           >
             <View>
               {output.results?.map((result, idx) => (
-                <Text
+                <RNText
                   // biome-ignore lint/suspicious/noArrayIndexKey: results list order is stable
                   key={`result-${idx}`}
-                  className="text-zinc-300 text-xs"
-                  style={{ fontFamily: "monospace", lineHeight: 18 }}
+                  style={{
+                    fontFamily: MONO_FONT,
+                    fontSize: 12,
+                    lineHeight: 18,
+                    color: "#60a5fa",
+                  }}
                 >
                   {result}
-                </Text>
+                </RNText>
               ))}
             </View>
           </ScrollView>
@@ -249,12 +266,16 @@ function OutputSection({ output }: { output: CodeOutput }) {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingRight: 8 }}
           >
-            <Text
-              className="text-red-400 text-xs"
-              style={{ fontFamily: "monospace", lineHeight: 18 }}
+            <RNText
+              style={{
+                fontFamily: MONO_FONT,
+                fontSize: 12,
+                lineHeight: 18,
+                color: "#f87171",
+              }}
             >
               {output.stderr}
-            </Text>
+            </RNText>
           </ScrollView>
         </View>
       )}
@@ -265,12 +286,16 @@ function OutputSection({ output }: { output: CodeOutput }) {
             error
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <Text
-              className="text-red-400 text-xs"
-              style={{ fontFamily: "monospace", lineHeight: 18 }}
+            <RNText
+              style={{
+                fontFamily: MONO_FONT,
+                fontSize: 12,
+                lineHeight: 18,
+                color: "#f87171",
+              }}
             >
               {output.error}
-            </Text>
+            </RNText>
           </ScrollView>
         </View>
       )}
@@ -371,7 +396,7 @@ export function CodeExecutionCard({ data }: { data: CodeData }) {
             </Text>
             <Text
               className="text-red-400 text-sm"
-              style={{ fontFamily: "monospace" }}
+              style={{ fontFamily: MONO_FONT }}
             >
               {data.error}
             </Text>

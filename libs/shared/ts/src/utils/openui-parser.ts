@@ -1,4 +1,10 @@
-import type { Library } from "@openuidev/react-lang";
+/**
+ * Minimal structural type for @openuidev/react-lang's Library.
+ * Duck-typed to avoid a hard dep on a specific openui version.
+ */
+export interface OpenUILibraryLike {
+  components: Record<string, { props: { shape: Record<string, unknown> } }>;
+}
 
 export interface ContentSegment {
   type: "markdown" | "openui";
@@ -31,7 +37,6 @@ export function parseOpenUISegments(
     const openIdx = text.indexOf(OPENUI_OPEN, cursor);
 
     if (openIdx === -1) {
-      // No more OpenUI blocks — rest is markdown
       const remaining = text.slice(cursor);
       if (remaining) {
         segments.push({
@@ -43,7 +48,6 @@ export function parseOpenUISegments(
       break;
     }
 
-    // Push markdown before the OpenUI block
     if (openIdx > cursor) {
       const markdownBefore = text.slice(cursor, openIdx);
       if (markdownBefore.trim()) {
@@ -55,16 +59,13 @@ export function parseOpenUISegments(
       }
     }
 
-    // Find the content start (after ":::openui\n" or ":::openui")
     const contentStart = openIdx + OPENUI_OPEN.length;
 
-    // Find closing fence: look for "\n:::" that is NOT followed by "openui"
     let closeIdx = -1;
     let searchFrom = contentStart;
     while (searchFrom < text.length) {
       const candidate = text.indexOf(OPENUI_CLOSE, searchFrom);
       if (candidate === -1) break;
-      // Make sure this ":::" is the closing fence, not another ":::openui"
       const afterClose = candidate + OPENUI_CLOSE.length;
       if (
         afterClose >= text.length ||
@@ -77,7 +78,6 @@ export function parseOpenUISegments(
     }
 
     if (closeIdx !== -1) {
-      // Complete OpenUI block
       const openUIContent = text.slice(contentStart, closeIdx).trim();
       if (openUIContent) {
         segments.push({
@@ -86,10 +86,8 @@ export function parseOpenUISegments(
           isComplete: true,
         });
       }
-      // Move past the closing fence + newline
       cursor = closeIdx + OPENUI_CLOSE.length;
     } else {
-      // Unclosed block — still streaming or malformed
       const openUIContent = text.slice(contentStart).trim();
       if (openUIContent) {
         segments.push({
@@ -102,7 +100,6 @@ export function parseOpenUISegments(
     }
   }
 
-  // Filter out empty segments
   return segments.filter((s) => s.content.trim().length > 0);
 }
 
@@ -117,14 +114,12 @@ export function splitByBreaksPreservingFences(content: string): string[] {
   if (!content?.trim()) return [];
   if (!content.includes(BREAK)) return [content];
   if (!content.includes(OPENUI_OPEN)) {
-    // Fast path: no fences, split normally
     return content
       .split(BREAK)
       .map((p) => p.trim())
       .filter((p) => p.length > 0);
   }
 
-  // Build a set of ranges [start, end) that are inside OpenUI fences
   const fenceRanges: Array<[number, number]> = [];
   let search = 0;
   while (search < content.length) {
@@ -149,7 +144,6 @@ export function splitByBreaksPreservingFences(content: string): string[] {
       fenceRanges.push([openIdx, closeIdx]);
       search = closeIdx;
     } else {
-      // Unclosed fence — protect to end
       fenceRanges.push([openIdx, content.length]);
       break;
     }
@@ -158,7 +152,6 @@ export function splitByBreaksPreservingFences(content: string): string[] {
   const isInsideFence = (pos: number) =>
     fenceRanges.some(([s, e]) => pos >= s && pos < e);
 
-  // Find break positions that are NOT inside fences
   const parts: string[] = [];
   let cursor = 0;
   let breakIdx = content.indexOf(BREAK, cursor);
@@ -176,14 +169,6 @@ export function splitByBreaksPreservingFences(content: string): string[] {
   return parts;
 }
 
-// ---------------------------------------------------------------------------
-// Named-arg normalizer
-// ---------------------------------------------------------------------------
-
-/**
- * Split a raw arg-list string at top-level commas.
- * Commas inside (), [], {}, or "" are ignored.
- */
 function splitTopLevelArgs(s: string): string[] {
   const args: string[] = [];
   let depth = 0;
@@ -217,11 +202,6 @@ function splitTopLevelArgs(s: string): string[] {
   return args;
 }
 
-/**
- * If `arg` looks like `identifier = value`, return {name, value}.
- * Only matches plain lowercase/underscore identifiers (not strings or
- * PascalCase component refs).
- */
 function parseNamedArg(arg: string): { name: string; value: string } | null {
   const trimmed = arg.trim();
   const m = trimmed.match(/^([a-z_][a-zA-Z0-9_]*)\s*=\s*([\s\S]*)$/);
@@ -230,24 +210,17 @@ function parseNamedArg(arg: string): { name: string; value: string } | null {
 }
 
 /**
- * Convert openui code that uses named args  (`key=value`) into the
+ * Convert openui code that uses named args (`key=value`) into the
  * positional form the parser expects, using the library's schema field order.
- *
- * - If a line has no named args it is returned unchanged.
- * - If ANY top-level arg is positional while others are named, the whole line
- *   is returned unchanged (ambiguous, fall back to parser).
- * - Unknown component names are returned unchanged.
- *
- * @example
- * Input:  `root = DataCard(title="Server", fields=[{"label":"k","value":"v"}])`
- * Output: `root = DataCard("Server", [{"label":"k","value":"v"}])`
  */
-export function normalizeOpenUICode(code: string, library: Library): string {
+export function normalizeOpenUICode(
+  code: string,
+  library: OpenUILibraryLike,
+): string {
   const lines = code.split("\n");
 
   return lines
     .map((line) => {
-      // Match: optional leading whitespace, identifier, =, PascalCase(...)
       const m = line.match(/^(\s*\w+\s*=\s*)([A-Z]\w*)\(([\s\S]*)\)(\s*)$/);
       if (!m) return line;
 
@@ -258,14 +231,11 @@ export function normalizeOpenUICode(code: string, library: Library): string {
       const rawArgs = splitTopLevelArgs(argsStr);
       const parsed = rawArgs.map(parseNamedArg);
 
-      // No named args — nothing to do
       if (parsed.every((p) => p === null)) return line;
 
-      // Mixed positional + named — ambiguous, leave as-is
       if (parsed.some((p) => p !== null) && parsed.some((p) => p === null))
         return line;
 
-      // All named — reorder to schema field order
       const namedMap: Record<string, string> = {};
       for (const p of parsed as { name: string; value: string }[]) {
         namedMap[p.name] = p.value;
@@ -276,7 +246,6 @@ export function normalizeOpenUICode(code: string, library: Library): string {
       );
       const positionalArgs = fieldNames.map((f) => namedMap[f] ?? "null");
 
-      // Trim trailing nulls so optional args at the end are simply omitted
       while (
         positionalArgs.length > 0 &&
         positionalArgs[positionalArgs.length - 1] === "null"

@@ -28,6 +28,8 @@ import {
   type CalendarEditOption,
   CalendarFetchCard,
   type CalendarFetchItem,
+  CalendarListFetchCard,
+  type CalendarListFetchItem,
   type CalendarOption,
   CalendarOptionsCard,
   CodeExecutionCard,
@@ -245,9 +247,9 @@ const TOOL_RENDERERS: Record<
   calendar_list_fetch_data: (data, baseKey) => {
     const calendars = Array.isArray(data) ? data : [data];
     return (
-      <CalendarFetchCard
+      <CalendarListFetchCard
         key={baseKey}
-        data={calendars as CalendarFetchItem[]}
+        data={calendars as CalendarListFetchItem[]}
       />
     );
   },

@@ -1,14 +1,7 @@
-import { useState } from "react";
-import { View } from "react-native";
-import { Mail01Icon } from "@/components/icons";
+import { ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
-import {
-  ToolCardHeader,
-  ToolCardInner,
-  ToolCardShell,
-} from "@/features/chat/tool-data/primitives";
-
-// -- Types --------------------------------------------------------------------
+import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
+import { GmailIcon } from "./email-fetch-card";
 
 export interface EmailThreadMessage {
   id?: string;
@@ -29,41 +22,46 @@ export interface EmailThreadData {
   messages_count?: number;
 }
 
-// -- Helpers ------------------------------------------------------------------
-
-function formatRelativeDate(dateStr?: string): string {
-  if (!dateStr) return "";
-  const date = new Date(dateStr);
-  if (Number.isNaN(date.getTime())) return dateStr;
+function formatTime(time?: string | null): string {
+  if (!time) return "Yesterday";
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) return "";
   const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+  if (diffInHours < 24) {
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
   }
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  if (diffInHours < 48) return "Yesterday";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 }
 
-function extractFromName(from?: string, fromName?: string): string {
-  if (fromName) return fromName;
-  if (!from) return "Unknown";
-  const match = from.match(/^([^<]+)</);
-  if (match) return match[1].trim();
-  return from;
+function parseEmail(from?: string): { name: string; email: string } {
+  if (!from) return { name: "", email: "" };
+  const match = from.match(/^(.*?)\s*<(.+?)>$/) || from.match(/(.+)/);
+  if (match) {
+    return {
+      name: match[1] ? match[1].trim().replace(/^"|"$/g, "") : "",
+      email: match[2] || "",
+    };
+  }
+  return { name: "", email: from };
 }
 
-function senderInitials(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return "?";
-  const parts = trimmed.split(/\s+/);
-  if (parts.length >= 2) {
-    const first = parts[0][0] ?? "";
-    const last = parts[parts.length - 1][0] ?? "";
-    return `${first}${last}`.toUpperCase();
-  }
-  return trimmed.slice(0, 2).toUpperCase();
+function resolveSender(message: EmailThreadMessage): {
+  name: string;
+  email: string;
+} {
+  const parsed = parseEmail(message.from);
+  const name = parsed.name || message.from_name || "";
+  const email = parsed.email || (!parsed.name ? (message.from ?? "") : "");
+  return { name, email };
 }
 
 const HTML_ENTITIES: Record<string, string> = {
@@ -94,6 +92,11 @@ function stripHtml(input: string): string {
     .trim();
 }
 
+function looksLikeHtml(input?: string): boolean {
+  if (!input) return false;
+  return /<\/?[a-z][\s\S]*?>/i.test(input);
+}
+
 function getBodyText(message: EmailThreadMessage): string {
   const htmlSource =
     message.content?.html ?? (looksLikeHtml(message.body) ? message.body : "");
@@ -109,87 +112,95 @@ function getBodyText(message: EmailThreadMessage): string {
   ).trim();
 }
 
-function looksLikeHtml(input?: string): boolean {
-  if (!input) return false;
-  return /<\/?[a-z][\s\S]*?>/i.test(input);
+function PillLabel({ children }: { children: string }) {
+  return (
+    <View className="px-2 py-0.5 rounded-sm bg-zinc-700/50">
+      <Text className="text-zinc-400 text-[11px] font-medium">{children}</Text>
+    </View>
+  );
 }
 
-// -- Message item -------------------------------------------------------------
-
-interface MessageItemProps {
-  message: EmailThreadMessage;
-}
-
-function MessageItem({ message }: MessageItemProps) {
-  const [expanded, setExpanded] = useState(false);
-  const senderName = extractFromName(message.from, message.from_name);
-  const initials = senderInitials(senderName);
+function MessageItem({ message }: { message: EmailThreadMessage }) {
+  const { name: senderName, email: senderEmail } = resolveSender(message);
+  const time = formatTime(message.time ?? message.date);
   const bodyText = getBodyText(message);
-  const relativeDate = formatRelativeDate(message.date ?? message.time);
-  const previewText = bodyText.replace(/\s+/g, " ").trim();
 
   return (
-    <ToolCardInner dense onPress={() => setExpanded((v) => !v)}>
-      <View className="flex-row items-center gap-3">
-        <View className="w-8 h-8 rounded-full bg-primary/20 items-center justify-center">
-          <Text className="text-primary text-xs font-semibold">{initials}</Text>
-        </View>
-        <View className="flex-1 min-w-0">
-          <View className="flex-row items-center justify-between gap-2">
-            <Text
-              className="text-zinc-100 text-sm font-medium flex-1"
-              numberOfLines={1}
-            >
+    <View className="pb-2 mb-4 gap-1">
+      <View className="flex-row items-center justify-between gap-2">
+        <View className="flex-row items-center gap-2 flex-1 min-w-0">
+          <View style={{ width: 60 }}>
+            <PillLabel>From</PillLabel>
+          </View>
+          {!!senderName && (
+            <Text className="text-zinc-400 text-sm shrink" numberOfLines={1}>
               {senderName}
             </Text>
-            {!!relativeDate && (
-              <Text className="text-zinc-500 text-xs shrink-0">
-                {relativeDate}
-              </Text>
-            )}
-          </View>
-          {!expanded && !!previewText && (
-            <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
-              {previewText}
+          )}
+          {!!senderEmail && (
+            <Text
+              className="text-zinc-500 text-xs font-light shrink"
+              numberOfLines={1}
+            >
+              {senderEmail}
             </Text>
           )}
         </View>
+        {!!time && (
+          <Text className="text-zinc-500 text-xs shrink-0">{time}</Text>
+        )}
       </View>
-      {expanded && !!bodyText && (
-        <View className="mt-2 pl-11">
+
+      {!!message.subject && (
+        <View className="flex-row items-center gap-2">
+          <View style={{ width: 60 }}>
+            <PillLabel>Subject</PillLabel>
+          </View>
+          <Text
+            className="text-zinc-400 text-sm font-medium flex-1"
+            numberOfLines={2}
+          >
+            {message.subject}
+          </Text>
+        </View>
+      )}
+
+      {!!bodyText && (
+        <View className="mt-3 rounded-xl bg-zinc-900 p-3">
           <Text className="text-zinc-200 text-sm leading-relaxed">
             {bodyText}
           </Text>
         </View>
       )}
-    </ToolCardInner>
+    </View>
   );
 }
 
-// -- Email thread card --------------------------------------------------------
-
 export function EmailThreadCard({ data }: { data: EmailThreadData }) {
   const messages = data.messages ?? [];
-  const messageCount = messages.length;
-  const subject = data.subject?.trim() || "No Subject";
-  const subtitle = `${messageCount} message${messageCount !== 1 ? "s" : ""}`;
 
   return (
-    <ToolCardShell>
-      <ToolCardHeader icon={Mail01Icon} title={subject} subtitle={subtitle} />
-
-      {messageCount === 0 ? (
+    <CollapsibleCard
+      customIcon={<GmailIcon width={22} height={22} />}
+      title="Fetched Email Thread"
+      radius="2xl"
+    >
+      {messages.length === 0 ? (
         <Text className="text-zinc-500 text-sm">No messages in thread</Text>
       ) : (
-        <View className="gap-1.5">
+        <ScrollView
+          style={{ maxHeight: 400 }}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
           {messages.map((message, index) => (
             <MessageItem
               key={message.id ?? `${message.from ?? "msg"}-${index}`}
               message={message}
             />
           ))}
-        </View>
+        </ScrollView>
       )}
-    </ToolCardShell>
+    </CollapsibleCard>
   );
 }

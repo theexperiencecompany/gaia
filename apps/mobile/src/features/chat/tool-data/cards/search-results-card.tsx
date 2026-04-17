@@ -5,7 +5,7 @@ import type {
   WebResult,
 } from "@gaia/shared";
 import { useEffect, useState } from "react";
-import { Image, Linking, Pressable, ScrollView, View } from "react-native";
+import { Image, Linking, Pressable, View } from "react-native";
 import Animated, {
   FadeInRight,
   useAnimatedStyle,
@@ -16,6 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   AppIcon,
+  ArrowRight01Icon,
   Globe02Icon,
   News01Icon,
   Search01Icon,
@@ -40,24 +41,25 @@ function getHostname(url?: string): string {
   }
 }
 
-type Tab = "web" | "images" | "news";
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 // ---------------------------------------------------------------------------
 // Shared sub-components
 // ---------------------------------------------------------------------------
 
-function FaviconImage({ url }: { url?: string }) {
+function FaviconImage({ url, size = 14 }: { url?: string; size?: number }) {
   const [errored, setErrored] = useState(false);
   const hostname = getHostname(url);
 
   if (!hostname || errored) {
     return (
-      <View className="w-4 h-4 rounded-full bg-zinc-700 items-center justify-center">
-        <AppIcon icon={Globe02Icon} size={10} color="#8e8e93" />
+      <View
+        className="rounded-full bg-zinc-700 items-center justify-center"
+        style={{ width: size, height: size }}
+      >
+        <AppIcon
+          icon={Globe02Icon}
+          size={Math.round(size * 0.7)}
+          color="#8e8e93"
+        />
       </View>
     );
   }
@@ -67,9 +69,58 @@ function FaviconImage({ url }: { url?: string }) {
       source={{
         uri: `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`,
       }}
-      style={{ width: 14, height: 14, borderRadius: 7 }}
+      style={{ width: size, height: size, borderRadius: size / 2 }}
       onError={() => setErrored(true)}
     />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sources pill + expanded web list (matches web's SourcesButton + WebResults)
+// ---------------------------------------------------------------------------
+
+function SourcesPill({
+  web,
+  expanded,
+  onToggle,
+}: {
+  web: WebResult[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const previewFavicons = web.slice(0, 4);
+
+  return (
+    <Pressable
+      onPress={onToggle}
+      className="self-start flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-700"
+      android_ripple={{ color: "rgba(255,255,255,0.05)" }}
+    >
+      <View className="flex-row" style={{ marginRight: 4 }}>
+        {previewFavicons.map((result, index) => (
+          <View
+            key={(result.url ?? "") + (result.title ?? index)}
+            style={{
+              marginLeft: index === 0 ? 0 : -6,
+              width: 20,
+              height: 20,
+              borderRadius: 10,
+              backgroundColor: "#3f3f46",
+              borderWidth: 2,
+              borderColor: "#18181b",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
+            }}
+          >
+            <FaviconImage url={result.url} size={16} />
+          </View>
+        ))}
+      </View>
+      <Text className="text-zinc-300 text-xs font-medium">
+        {expanded ? "Hide sources" : "Search Results"}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -82,76 +133,98 @@ function WebResultRow({ result }: { result: WebResult }) {
       dense
       onPress={() => result.url && Linking.openURL(result.url)}
     >
-      <View className="flex-row items-start gap-2.5">
-        <View style={{ marginTop: 2 }}>
-          <FaviconImage url={result.url} />
-        </View>
-        <View className="flex-1 gap-0.5">
-          {!!hostname && (
-            <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+      <View className="gap-1">
+        <Text className="text-zinc-100 text-sm font-medium" numberOfLines={1}>
+          {result.title || hostname || "Untitled"}
+        </Text>
+        {!!description && (
+          <Text className="text-zinc-500 text-xs" numberOfLines={2}>
+            {description}
+          </Text>
+        )}
+        {!!hostname && (
+          <View className="flex-row items-center gap-1.5 mt-0.5">
+            <FaviconImage url={result.url} size={14} />
+            <Text className="text-primary text-xs" numberOfLines={1}>
               {hostname}
             </Text>
-          )}
-          <Text className="text-primary text-sm font-medium" numberOfLines={2}>
-            {result.title || hostname || "Untitled"}
-          </Text>
-          {!!description && (
-            <Text className="text-zinc-400 text-xs" numberOfLines={3}>
-              {description}
-            </Text>
-          )}
-        </View>
+          </View>
+        )}
       </View>
     </ToolCardInner>
   );
 }
+
+// ---------------------------------------------------------------------------
+// News list (matches web's NewsResults: icon + title + content + score)
+// ---------------------------------------------------------------------------
 
 function NewsResultRow({ article }: { article: NewsResult }) {
   const description = article.content;
 
   return (
-    <ToolCardInner
-      dense
-      onPress={() => article.url && Linking.openURL(article.url)}
-    >
-      <View className="flex-row items-start gap-2.5">
-        <View
-          className="w-4 h-4 rounded-full bg-zinc-700 items-center justify-center"
-          style={{ marginTop: 2 }}
+    <ToolCardInner onPress={() => article.url && Linking.openURL(article.url)}>
+      <View className="flex-row items-center gap-2 mb-1">
+        <AppIcon icon={News01Icon} size={18} color="#00bbff" />
+        <Text
+          className="text-primary text-lg font-medium flex-1"
+          numberOfLines={1}
         >
-          <AppIcon icon={News01Icon} size={10} color="#8e8e93" />
-        </View>
-        <View className="flex-1 gap-0.5">
-          {!!article.published_date && (
-            <Text className="text-zinc-500 text-xs" numberOfLines={1}>
-              {article.published_date}
-            </Text>
-          )}
-          <Text className="text-primary text-sm font-medium" numberOfLines={2}>
-            {article.title || "Untitled"}
-          </Text>
-          {!!description && (
-            <Text className="text-zinc-400 text-xs" numberOfLines={3}>
-              {description}
-            </Text>
-          )}
-        </View>
+          {article.title || "Untitled"}
+        </Text>
       </View>
+      {!!description && (
+        <Text className="text-zinc-300 text-sm mb-1" numberOfLines={2}>
+          {description}
+        </Text>
+      )}
+      {typeof article.score === "number" && (
+        <Text className="text-zinc-500 text-xs">
+          Score: {article.score.toFixed(2)}
+        </Text>
+      )}
     </ToolCardInner>
   );
 }
 
-function ImageTile({ image, index }: { image: ImageResult; index: number }) {
-  const url = typeof image === "string" ? image : undefined;
+// ---------------------------------------------------------------------------
+// Image carousel (matches web's ImageResults: rotated, overlapping, +N cycle)
+// ---------------------------------------------------------------------------
 
-  if (!url) return null;
+const IMAGE_TILE_SIZE = 112;
+const IMAGE_OVERLAP = -40;
+const MAX_VISIBLE_IMAGES = 5;
+
+function ImageTile({
+  imageUrl,
+  index,
+  totalVisible,
+}: {
+  imageUrl: string;
+  index: number;
+  totalVisible: number;
+}) {
+  const rotation =
+    totalVisible > 1 ? (index % 2 === 0 ? "8deg" : "-8deg") : "0deg";
 
   return (
-    <Animated.View entering={FadeInRight.delay(index * 40).duration(280)}>
-      <Pressable onPress={() => Linking.openURL(url)}>
+    <Animated.View
+      entering={FadeInRight.delay(index * 50).duration(280)}
+      style={{
+        transform: [{ rotate: rotation }],
+        zIndex: index,
+        marginLeft: index === 0 ? 0 : IMAGE_OVERLAP,
+      }}
+    >
+      <Pressable onPress={() => Linking.openURL(imageUrl)}>
         <Image
-          source={{ uri: url }}
-          style={{ width: 128, height: 96, borderRadius: 12 }}
+          source={{ uri: imageUrl }}
+          style={{
+            width: IMAGE_TILE_SIZE,
+            height: IMAGE_TILE_SIZE,
+            borderRadius: 16,
+            backgroundColor: "#27272a",
+          }}
           resizeMode="cover"
         />
       </Pressable>
@@ -159,8 +232,70 @@ function ImageTile({ image, index }: { image: ImageResult; index: number }) {
   );
 }
 
+function ImageResults({ images }: { images: ImageResult[] }) {
+  const validImages = images.filter(
+    (url): url is string => typeof url === "string" && url.length > 0,
+  );
+  const [startIndex, setStartIndex] = useState(0);
+
+  if (validImages.length === 0) return null;
+
+  const displayImages = validImages.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_IMAGES,
+  );
+  const remaining = validImages.length - (startIndex + MAX_VISIBLE_IMAGES);
+  const nextBatchCount =
+    remaining > 0
+      ? remaining
+      : Math.min(MAX_VISIBLE_IMAGES, validImages.length - MAX_VISIBLE_IMAGES);
+
+  const cycleNext = () => {
+    const nextStart = startIndex + MAX_VISIBLE_IMAGES;
+    setStartIndex(nextStart >= validImages.length ? 0 : nextStart);
+  };
+
+  const showCycleButton = validImages.length > MAX_VISIBLE_IMAGES;
+
+  return (
+    <View className="flex-row items-center py-2">
+      {displayImages.map((imageUrl, index) => (
+        <ImageTile
+          key={`${imageUrl}-${startIndex}-${index}`}
+          imageUrl={imageUrl}
+          index={index}
+          totalVisible={displayImages.length}
+        />
+      ))}
+      {showCycleButton && (
+        <Pressable
+          onPress={cycleNext}
+          style={{
+            marginLeft: IMAGE_OVERLAP,
+            zIndex: displayImages.length,
+            width: IMAGE_TILE_SIZE,
+            height: IMAGE_TILE_SIZE,
+            borderRadius: 16,
+            backgroundColor: "rgba(39,39,42,0.8)",
+            alignItems: "center",
+            justifyContent: "center",
+            transform: [
+              { rotate: displayImages.length % 2 === 0 ? "8deg" : "-8deg" },
+            ],
+          }}
+        >
+          <Text className="text-zinc-100 text-base font-semibold mb-1">
+            +{nextBatchCount}
+          </Text>
+          <AppIcon icon={ArrowRight01Icon} size={16} color="#d4d4d8" />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Running / streaming state
+// Running / streaming state (mobile-only — web has no equivalent)
 // ---------------------------------------------------------------------------
 
 function PulsingDot() {
@@ -214,46 +349,7 @@ function SearchRunningCard({ data }: { data: SearchResults }) {
 }
 
 // ---------------------------------------------------------------------------
-// Tab chips
-// ---------------------------------------------------------------------------
-
-function TabChips({
-  tabs,
-  active,
-  onSelect,
-}: {
-  tabs: Tab[];
-  active: Tab;
-  onSelect: (tab: Tab) => void;
-}) {
-  return (
-    <View className="flex-row gap-2 mb-3">
-      {tabs.map((tab) => {
-        const isActive = tab === active;
-        return (
-          <Pressable
-            key={tab}
-            onPress={() => onSelect(tab)}
-            className={`px-3 py-1.5 rounded-full ${
-              isActive ? "bg-primary" : "bg-zinc-700"
-            }`}
-          >
-            <Text
-              className={`text-xs font-medium ${
-                isActive ? "text-black" : "text-zinc-300"
-              }`}
-            >
-              {capitalize(tab)}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Complete state
+// Complete state (mirrors web's SearchResultsTabs exactly)
 // ---------------------------------------------------------------------------
 
 function SearchCompleteCard({ data }: { data: SearchResults }) {
@@ -261,87 +357,50 @@ function SearchCompleteCard({ data }: { data: SearchResults }) {
   const imageResults = data.images ?? [];
   const newsResults = data.news ?? [];
 
+  const hasWeb = webResults.length > 0;
   const hasImages = imageResults.length > 0;
   const hasNews = newsResults.length > 0;
 
-  const tabs: Tab[] = [
-    "web",
-    ...(hasImages ? (["images"] as Tab[]) : []),
-    ...(hasNews ? (["news"] as Tab[]) : []),
-  ];
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
 
-  const [active, setActive] = useState<Tab>("web");
-
-  const totalResults =
-    webResults.length + imageResults.length + newsResults.length;
+  if (!hasWeb && !hasImages && !hasNews) return null;
 
   return (
     <ToolCardShell>
-      <ToolCardHeader
-        icon={Search01Icon}
-        title="Search Results"
-        count={totalResults > 0 ? totalResults : undefined}
-      />
-
-      {!!data.query && (
-        <ToolCardInner dense className="mb-3">
-          <Text className="text-zinc-500 text-xs mb-0.5">Query</Text>
-          <Text className="text-zinc-100 text-sm font-medium">
-            &quot;{data.query}&quot;
-          </Text>
-        </ToolCardInner>
-      )}
-
-      {!!data.answer && (
-        <ToolCardInner dense className="mb-3">
-          <Text className="text-zinc-500 text-xs mb-0.5">Answer</Text>
-          <Text className="text-zinc-100 text-sm" numberOfLines={4}>
-            {data.answer}
-          </Text>
-        </ToolCardInner>
-      )}
-
-      {tabs.length > 1 && (
-        <TabChips tabs={tabs} active={active} onSelect={setActive} />
-      )}
-
-      {active === "web" && webResults.length > 0 && (
-        <View className="gap-1.5">
-          {webResults.map((result, index) => (
-            <WebResultRow
-              key={result.url || result.title || String(index)}
-              result={result}
+      <View className="gap-4">
+        {hasWeb && (
+          <View className="gap-2">
+            <SourcesPill
+              web={webResults}
+              expanded={sourcesExpanded}
+              onToggle={() => setSourcesExpanded((prev) => !prev)}
             />
-          ))}
-        </View>
-      )}
+            {sourcesExpanded && (
+              <View className="gap-1.5">
+                {webResults.map((result, index) => (
+                  <WebResultRow
+                    key={result.url || result.title || String(index)}
+                    result={result}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        )}
 
-      {active === "images" && hasImages && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
-        >
-          {imageResults.map((img, index) => (
-            <ImageTile
-              key={typeof img === "string" ? img : String(index)}
-              image={img}
-              index={index}
-            />
-          ))}
-        </ScrollView>
-      )}
+        {hasImages && <ImageResults images={imageResults} />}
 
-      {active === "news" && hasNews && (
-        <View className="gap-1.5">
-          {newsResults.map((article, index) => (
-            <NewsResultRow
-              key={article.url || article.title || String(index)}
-              article={article}
-            />
-          ))}
-        </View>
-      )}
+        {hasNews && (
+          <View className="gap-2">
+            {newsResults.map((article, index) => (
+              <NewsResultRow
+                key={article.url || article.title || String(index)}
+                article={article}
+              />
+            ))}
+          </View>
+        )}
+      </View>
     </ToolCardShell>
   );
 }

@@ -5,7 +5,6 @@ import { Text } from "@/components/ui/text";
 import {
   SectionLabel,
   ToolCardHeader,
-  ToolCardInner,
   ToolCardShell,
 } from "@/features/chat/tool-data/primitives";
 
@@ -130,41 +129,74 @@ export function CalendarFetchCard({
                 const title = ev.summary ?? ev.title ?? "Untitled Event";
                 const timeLabel = formatTimeRange(ev);
                 const calendarLabel = ev.calendar_name ?? ev.calendar_source;
-                const meta = [timeLabel, calendarLabel]
-                  .filter((s): s is string => !!s && s.length > 0)
-                  .join(" · ");
                 const accent = ev.background_color ?? "#00bbff";
+                const tinted = `${accent}20`;
                 const key = `${date}-${title}-${evIdx}`;
 
                 const onPress = onEventPress
                   ? () => onEventPress(ev, evIdx)
                   : undefined;
 
-                return (
-                  <ToolCardInner key={key} dense onPress={onPress}>
-                    <View className="flex-row items-start gap-3">
-                      <View
-                        className="w-1 rounded-full self-stretch"
-                        style={{ backgroundColor: accent }}
-                      />
-                      <View className="flex-1 min-w-0">
-                        <Text
-                          className="text-zinc-100 text-sm font-medium"
-                          numberOfLines={2}
-                        >
-                          {title}
-                        </Text>
-                        {meta ? (
+                const content = (
+                  <View className="flex-row items-start gap-3">
+                    <View
+                      className="w-1 rounded-full self-stretch"
+                      style={{ backgroundColor: accent }}
+                    />
+                    <View className="flex-1 min-w-0">
+                      <Text
+                        className="text-zinc-200 text-sm font-medium leading-tight"
+                        numberOfLines={2}
+                      >
+                        {title}
+                      </Text>
+                      <View className="flex-row items-center gap-1.5 mt-0.5">
+                        {timeLabel ? (
                           <Text
-                            className="text-zinc-500 text-xs mt-0.5"
+                            className="text-zinc-400 text-xs"
                             numberOfLines={1}
                           >
-                            {meta}
+                            {timeLabel}
+                          </Text>
+                        ) : null}
+                        {timeLabel && calendarLabel ? (
+                          <View className="w-0.5 h-0.5 rounded-full bg-zinc-500" />
+                        ) : null}
+                        {calendarLabel ? (
+                          <Text
+                            className="text-zinc-400 text-xs"
+                            numberOfLines={1}
+                          >
+                            {calendarLabel}
                           </Text>
                         ) : null}
                       </View>
                     </View>
-                  </ToolCardInner>
+                  </View>
+                );
+
+                if (onPress) {
+                  return (
+                    <Pressable
+                      key={key}
+                      onPress={onPress}
+                      className="rounded-xl p-3"
+                      style={{ backgroundColor: tinted }}
+                      android_ripple={{ color: "rgba(255,255,255,0.05)" }}
+                    >
+                      {content}
+                    </Pressable>
+                  );
+                }
+
+                return (
+                  <View
+                    key={key}
+                    className="rounded-xl p-3"
+                    style={{ backgroundColor: tinted }}
+                  >
+                    {content}
+                  </View>
                 );
               })}
             </View>

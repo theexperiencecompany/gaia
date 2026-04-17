@@ -1,9 +1,9 @@
-import { useRouter } from "expo-router";
 import { useCallback, useRef } from "react";
 import { Pressable, View } from "react-native";
 import { AlertCircleIcon, ConnectIcon } from "@/components/icons";
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
+import { ToolCardShell } from "@/features/chat/tool-data/primitives";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { connectIntegration } from "@/features/integrations/api/integrations-api";
 import {
@@ -19,6 +19,7 @@ export interface IntegrationConnectionData {
   connect_url?: string;
   auth_type?: "oauth" | "bearer" | "none";
   icon_url?: string;
+  description?: string;
 }
 
 function formatIntegrationName(id?: string): string {
@@ -31,7 +32,6 @@ export function IntegrationConnectionCard({
 }: {
   data: IntegrationConnectionData;
 }) {
-  const router = useRouter();
   const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
 
   const integrationId = data.integration_id ?? data.integration_name ?? "";
@@ -46,7 +46,7 @@ export function IntegrationConnectionCard({
       })
     : null;
 
-  const handleConnectNow = useCallback(() => {
+  const handleConnect = useCallback(() => {
     if (authType === "bearer") {
       bearerSheetRef.current?.open({
         integrationId,
@@ -54,179 +54,59 @@ export function IntegrationConnectionCard({
         iconUrl: data.icon_url,
       });
     } else {
-      // OAuth or none — launch the browser flow
       void connectIntegration(integrationId);
     }
   }, [authType, integrationId, displayName, data.icon_url]);
 
-  const handleSkip = useCallback(() => {
-    // Dismiss the card by navigating back or doing nothing.
-    // In chat context, "skip" means the user acknowledges and continues.
-  }, []);
-
-  const handleManage = useCallback(() => {
-    router.push("/(app)/(tabs)/integrations");
-  }, [router]);
-
   return (
-    <View
-      style={{
-        marginHorizontal: 16,
-        marginVertical: 8,
-        borderRadius: 16,
-        backgroundColor: "#171920",
-        overflow: "hidden",
-      }}
-    >
-      <View style={{ padding: 16 }}>
-        {/* Header: icon + name + "Not Connected" label */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            gap: 12,
-            marginBottom: 12,
-          }}
-        >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 12,
-              backgroundColor: "rgba(255,255,255,0.05)",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            {icon ?? <AppIcon icon={ConnectIcon} size={18} color="#a1a1aa" />}
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: "600",
-                  color: "#f4f4f5",
-                }}
-              >
-                {displayName}
-              </Text>
-              <View
-                style={{
-                  borderRadius: 999,
-                  backgroundColor: "rgba(234,179,8,0.1)",
-                  paddingHorizontal: 8,
-                  paddingVertical: 2,
-                }}
-              >
-                <Text style={{ fontSize: 11, color: "#eab308" }}>
-                  Not Connected
-                </Text>
-              </View>
-            </View>
-            <Text style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
-              This requires {displayName} to be connected
-            </Text>
-          </View>
+    <ToolCardShell>
+      {/* Header: icon + name + "Not Connected" badge */}
+      <View className="flex-row items-start gap-3 mb-3">
+        <View className="w-9 h-9 rounded-xl bg-zinc-700 items-center justify-center shrink-0">
+          {icon ?? <AppIcon icon={ConnectIcon} size={18} color="#a1a1aa" />}
         </View>
 
-        {/* Warning message */}
-        {data.message && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "flex-start",
-              gap: 8,
-              borderRadius: 12,
-              backgroundColor: "rgba(234,179,8,0.05)",
-              borderWidth: 1,
-              borderColor: "rgba(234,179,8,0.15)",
-              padding: 12,
-              marginBottom: 12,
-            }}
-          >
-            <AppIcon icon={AlertCircleIcon} size={14} color="#eab308" />
-            <Text
-              style={{
-                fontSize: 12,
-                color: "rgba(234,179,8,0.9)",
-                flex: 1,
-                lineHeight: 18,
-              }}
-            >
-              {data.message}
+        <View className="flex-1">
+          <View className="flex-row items-center gap-2 flex-wrap">
+            <Text className="text-zinc-100 text-sm font-semibold">
+              {displayName}
             </Text>
+            <View className="rounded-full bg-amber-400/10 px-2 py-0.5">
+              <Text className="text-amber-400 text-[11px]">Not Connected</Text>
+            </View>
           </View>
-        )}
-
-        {/* Action buttons */}
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {/* Connect Now */}
-          <Pressable
-            onPress={handleConnectNow}
-            style={({ pressed }) => ({
-              flex: 1,
-              alignItems: "center",
-              justifyContent: "center",
-              paddingVertical: 10,
-              borderRadius: 10,
-              backgroundColor: pressed
-                ? "rgba(0,170,230,0.9)"
-                : "rgba(0,187,255,0.85)",
-            })}
-          >
-            <Text style={{ fontSize: 13, fontWeight: "600", color: "#fff" }}>
-              Connect Now
+          {data.description ? (
+            <Text className="text-zinc-400 text-xs mt-0.5" numberOfLines={2}>
+              {data.description}
             </Text>
-          </Pressable>
-
-          {/* Manage */}
-          <Pressable
-            onPress={handleManage}
-            style={({ pressed }) => ({
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: 10,
-              backgroundColor: pressed
-                ? "rgba(255,255,255,0.1)"
-                : "rgba(255,255,255,0.06)",
-            })}
-          >
-            <Text style={{ fontSize: 13, fontWeight: "500", color: "#a1a1aa" }}>
-              Manage
+          ) : (
+            <Text className="text-zinc-500 text-xs mt-0.5">
+              This requires {displayName} to be connected
             </Text>
-          </Pressable>
-
-          {/* Skip */}
-          <Pressable
-            onPress={handleSkip}
-            style={({ pressed }) => ({
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: 10,
-              backgroundColor: pressed
-                ? "rgba(255,255,255,0.06)"
-                : "transparent",
-            })}
-          >
-            <Text style={{ fontSize: 13, fontWeight: "400", color: "#71717a" }}>
-              Skip
-            </Text>
-          </Pressable>
+          )}
         </View>
       </View>
 
-      {/* BearerTokenSheet mounted here so it has access to the card context */}
+      {/* Warning message */}
+      {data.message ? (
+        <View className="flex-row items-start gap-2 rounded-xl bg-amber-400/5 p-3 mb-3">
+          <AppIcon icon={AlertCircleIcon} size={14} color="#fbbf24" />
+          <Text className="text-amber-400 text-xs flex-1 leading-[18px]">
+            {data.message}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Connect button — matches web: single primary action */}
+      <Pressable
+        onPress={handleConnect}
+        className="rounded-xl bg-primary items-center justify-center py-2.5"
+        android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+      >
+        <Text className="text-black text-sm font-semibold">Connect</Text>
+      </Pressable>
+
       <BearerTokenSheet ref={bearerSheetRef} />
-    </View>
+    </ToolCardShell>
   );
 }

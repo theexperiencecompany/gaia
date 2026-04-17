@@ -1,100 +1,200 @@
 import type { RateLimitData } from "@gaia/shared";
 import { Pressable, View } from "react-native";
-import { Alert01Icon, AppIcon } from "@/components/icons";
+import {
+  Alert01Icon,
+  AppIcon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  UploadCircle01Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { ToolCardShell } from "@/features/chat/tool-data/primitives";
 
-const WARNING_COLOR = "#f59e0b";
-
 // -- Helpers -----------------------------------------------------------------
 
-function formatResetTime(resetTime?: string): string | undefined {
-  if (!resetTime) return undefined;
-  const date = new Date(resetTime);
-  if (Number.isNaN(date.getTime())) return resetTime;
-
-  const now = new Date();
-  const diffMs = date.getTime() - now.getTime();
-  const diffMinutes = Math.round(diffMs / 60_000);
-
-  if (diffMinutes <= 0) return "now";
-  if (diffMinutes < 60) {
-    return `in ${diffMinutes} minute${diffMinutes !== 1 ? "s" : ""}`;
-  }
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) {
-    return `in ${diffHours} hour${diffHours !== 1 ? "s" : ""}`;
-  }
-  const diffDays = Math.round(diffHours / 24);
-  return `in ${diffDays} day${diffDays !== 1 ? "s" : ""}`;
+interface ResetInfo {
+  label: string;
+  detail: string;
 }
 
-function humanizeFeature(feature: string): string {
-  return feature.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+function getResetInfo(resetTime?: string): ResetInfo | null {
+  if (!resetTime) return null;
+  const reset = new Date(resetTime);
+  const diffMs = reset.getTime() - Date.now();
+  if (diffMs <= 0) {
+    return {
+      label: "Resets very soon",
+      detail: "Your limit will refresh shortly.",
+    };
+  }
+  const diffMins = Math.ceil(diffMs / 60_000);
+  if (diffMins > 60) {
+    const hours = Math.ceil(diffMins / 60);
+    return {
+      label: `Resets in ${hours} hour${hours !== 1 ? "s" : ""}`,
+      detail: `Available again at ${reset.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+    };
+  }
+  return {
+    label: `Resets in ${diffMins} minute${diffMins !== 1 ? "s" : ""}`,
+    detail: `Available again at ${reset.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+  };
 }
+
+function formatFeatureName(feature?: string): string {
+  if (!feature) return "This Feature";
+  return feature
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+const PRO_BENEFITS = [
+  "10x higher daily limits on all features",
+  "Priority responses and faster processing",
+];
 
 // -- Card --------------------------------------------------------------------
 
 interface RateLimitCardProps {
   data: RateLimitData;
-  upgradeUrl?: string;
   onUpgrade?: () => void;
 }
 
-export function RateLimitCard({
-  data,
-  upgradeUrl: _upgradeUrl,
-  onUpgrade,
-}: RateLimitCardProps) {
-  const featureLabel = humanizeFeature(data.feature ?? "this feature");
-  const planLabel = data.plan_required
-    ? data.plan_required.charAt(0).toUpperCase() + data.plan_required.slice(1)
-    : undefined;
-  const resetLabel = formatResetTime(data.reset_time);
+export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
+  const { feature, plan_required, reset_time } = data;
+  const isUpgradeRequired = !!plan_required;
+  const resetInfo = getResetInfo(reset_time);
+  const featureName = formatFeatureName(feature);
+  const planName = plan_required?.toUpperCase() ?? "PRO";
 
   return (
     <ToolCardShell>
-      <View className="flex-row items-start gap-3">
-        <View
-          className="w-1 rounded-full self-stretch"
-          style={{ backgroundColor: WARNING_COLOR }}
-        />
-        <View className="flex-1">
-          <View className="flex-row items-center gap-2">
-            <AppIcon icon={Alert01Icon} size={18} color={WARNING_COLOR} />
-            <Text
-              className="text-sm font-semibold"
-              style={{ color: WARNING_COLOR }}
-            >
-              Rate limit reached
+      {/* Header */}
+      <View className="flex-row items-start justify-between gap-3 mb-4">
+        <View className="flex-row items-center gap-3 flex-1 min-w-0">
+          <View
+            className={`w-10 h-10 rounded-xl items-center justify-center shrink-0 ${
+              isUpgradeRequired ? "bg-amber-500/15" : "bg-red-500/15"
+            }`}
+          >
+            <AppIcon
+              icon={isUpgradeRequired ? UploadCircle01Icon : Clock01Icon}
+              size={20}
+              color={isUpgradeRequired ? "#f59e0b" : "#f87171"}
+            />
+          </View>
+          <View className="flex-1 min-w-0">
+            <Text className="text-sm font-semibold text-zinc-100 leading-tight">
+              {featureName}
+            </Text>
+            <Text className="text-xs text-zinc-500 mt-0.5">
+              {isUpgradeRequired
+                ? `Requires ${planName} plan`
+                : "Daily limit reached"}
             </Text>
           </View>
-          <Text className="text-zinc-100 text-sm mt-2">
-            You've reached the usage limit for{" "}
-            <Text className="font-semibold">{featureLabel}</Text>.
-          </Text>
-          {resetLabel ? (
-            <Text className="text-zinc-400 text-xs mt-1">
-              Resets {resetLabel}
-            </Text>
-          ) : null}
-          {planLabel ? (
-            <Text className="text-zinc-400 text-xs mt-1">
-              Upgrade to {planLabel} for more.
-            </Text>
-          ) : null}
+        </View>
 
-          {onUpgrade ? (
-            <Pressable
-              onPress={onUpgrade}
-              className="mt-3 rounded-xl py-2.5 items-center"
-              style={{ backgroundColor: WARNING_COLOR }}
-            >
-              <Text className="text-black text-sm font-semibold">Upgrade</Text>
-            </Pressable>
-          ) : null}
+        {/* Badge */}
+        <View
+          className={`px-2.5 py-1 rounded-full shrink-0 ${
+            isUpgradeRequired ? "bg-amber-500/15" : "bg-red-500/15"
+          }`}
+        >
+          <Text
+            className="text-xs font-semibold"
+            style={{ color: isUpgradeRequired ? "#f59e0b" : "#f87171" }}
+          >
+            {isUpgradeRequired ? planName : "Limit Hit"}
+          </Text>
         </View>
       </View>
+
+      {/* Divider */}
+      <View className="h-px bg-zinc-700/50 mb-4" />
+
+      {/* Body */}
+      {isUpgradeRequired ? (
+        <View className="gap-3 mb-4">
+          {/* Explanation */}
+          <Text className="text-xs leading-relaxed text-zinc-400">
+            <Text className="font-medium text-zinc-200">{featureName}</Text> is
+            a <Text className="font-medium text-amber-400">{planName}</Text>{" "}
+            feature and isn&apos;t included in your current plan. Upgrade to
+            unlock it and get significantly higher limits across every feature.
+          </Text>
+
+          {/* Benefits */}
+          <View className="gap-1.5">
+            {PRO_BENEFITS.map((benefit) => (
+              <View key={benefit} className="flex-row items-start gap-2">
+                <AppIcon
+                  icon={CheckmarkCircle02Icon}
+                  size={14}
+                  color="#00bbff"
+                />
+                <Text className="text-xs text-zinc-400 flex-1">{benefit}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : (
+        <View className="gap-3 mb-4">
+          {/* What happened */}
+          <Text className="text-xs leading-relaxed text-zinc-400">
+            You&apos;ve used all your{" "}
+            <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
+            calls for today. Your limit will automatically reset — no action
+            needed.
+          </Text>
+
+          {/* Reset time block */}
+          {resetInfo && (
+            <View className="flex-row items-center gap-3 rounded-xl bg-zinc-700 px-3 py-2.5">
+              <AppIcon icon={Clock01Icon} size={16} color="#a1a1aa" />
+              <View className="gap-0.5">
+                <Text className="text-xs font-medium text-zinc-200">
+                  {resetInfo.label}
+                </Text>
+                <Text className="text-[11px] text-zinc-400">
+                  {resetInfo.detail}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Upgrade nudge */}
+          <View className="flex-row items-start gap-2 px-3">
+            <AppIcon icon={Alert01Icon} size={14} color="#a1a1aa" />
+            <Text className="text-xs text-zinc-400 flex-1">
+              Need more? Upgrade to{" "}
+              <Text className="font-medium text-zinc-300">PRO</Text> for 10x
+              higher daily limits on {featureName} and all other features.
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Divider */}
+      <View className="h-px bg-zinc-700/50 mb-3" />
+
+      {/* Footer CTA */}
+      <Pressable
+        onPress={onUpgrade}
+        android_ripple={{ color: "rgba(255,255,255,0.1)" }}
+        className={`rounded-xl py-2.5 items-center ${
+          isUpgradeRequired ? "bg-[#00bbff]" : "bg-[#00bbff]/15"
+        }`}
+      >
+        <Text
+          className={`text-sm font-medium ${
+            isUpgradeRequired ? "text-black" : "text-[#00bbff]"
+          }`}
+        >
+          {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
+        </Text>
+      </Pressable>
     </ToolCardShell>
   );
 }

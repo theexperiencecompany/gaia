@@ -1,4 +1,4 @@
-import { Card, Chip } from "heroui-native";
+import { Chip } from "heroui-native";
 import { View } from "react-native";
 import {
   AppIcon,
@@ -6,6 +6,10 @@ import {
   Notification02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardInner,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 export interface NotificationItem {
   title?: string;
@@ -13,6 +17,7 @@ export interface NotificationItem {
   type?: string;
   status?: string;
   created_at?: string;
+  metadata?: { reminder_id?: string };
   // Support nested content structure (NotificationRecord shape)
   content?: {
     title?: string;
@@ -24,11 +29,11 @@ export interface NotificationData {
   notifications?: NotificationItem[];
 }
 
-const typeConfig: Record<string, { bgColor: string; iconColor: string }> = {
-  info: { bgColor: "bg-[#00bbff]/15", iconColor: "#00bbff" },
-  success: { bgColor: "bg-green-500/15", iconColor: "#4ade80" },
-  warning: { bgColor: "bg-yellow-500/15", iconColor: "#facc15" },
-  error: { bgColor: "bg-red-500/15", iconColor: "#f87171" },
+const TYPE_CONFIG: Record<string, { iconColor: string }> = {
+  info: { iconColor: "#00bbff" },
+  success: { iconColor: "#4ade80" },
+  warning: { iconColor: "#facc15" },
+  error: { iconColor: "#f87171" },
 };
 
 function formatRelativeTime(isoString?: string): string | null {
@@ -49,46 +54,55 @@ function NotificationRow({ item }: { item: NotificationItem }) {
   const title = item.content?.title ?? item.title;
   const body = item.content?.body ?? item.body;
   const typeKey = item.type?.toLowerCase() ?? "info";
-  const config = typeConfig[typeKey] ?? typeConfig.info;
+  const { iconColor } = TYPE_CONFIG[typeKey] ?? TYPE_CONFIG.info;
   const relativeTime = formatRelativeTime(item.created_at);
   const isUnread =
     item.status === "delivered" || item.status === "pending" || !item.status;
+  const categoryLabel = item.metadata?.reminder_id ? "reminder" : "system";
 
   return (
-    <View className="flex-row items-start gap-3 py-2.5 border-b border-white/8 last:border-b-0">
-      <View className={`rounded-full p-1.5 mt-0.5 ${config.bgColor}`}>
+    <ToolCardInner>
+      <View className="flex-row items-start justify-between gap-3">
+        <View className="flex-1 min-w-0">
+          <View className="flex-row items-center gap-2">
+            {!!title && (
+              <Text
+                className={`text-sm font-medium flex-1 ${isUnread ? "text-zinc-100" : "text-zinc-400"}`}
+                numberOfLines={1}
+              >
+                {title}
+              </Text>
+            )}
+            {isUnread && (
+              <View className="w-1.5 h-1.5 rounded-full bg-[#00bbff] shrink-0" />
+            )}
+          </View>
+          {!!body && (
+            <Text
+              className="text-sm font-light text-zinc-400 mt-1 leading-snug"
+              numberOfLines={2}
+            >
+              {body}
+            </Text>
+          )}
+          <View className="flex-row items-center gap-2 mt-1">
+            {!!relativeTime && (
+              <Text className="text-xs text-zinc-500">{relativeTime}</Text>
+            )}
+            <View className="px-1.5 py-0.5 rounded-full bg-zinc-800">
+              <Text className="text-[10px] text-zinc-400 capitalize">
+                {categoryLabel}
+              </Text>
+            </View>
+          </View>
+        </View>
         <AppIcon
           icon={isUnread ? Notification02Icon : Notification01Icon}
-          size={13}
-          color={config.iconColor}
+          size={14}
+          color={isUnread ? iconColor : "#71717a"}
         />
       </View>
-      <View className="flex-1 min-w-0">
-        <View className="flex-row items-center justify-between gap-2">
-          {!!title && (
-            <Text
-              className={`text-sm font-medium flex-1 ${isUnread ? "text-white" : "text-[#8e8e93]"}`}
-              numberOfLines={1}
-            >
-              {title}
-            </Text>
-          )}
-          {!!relativeTime && (
-            <Text className="text-[10px] text-[#8e8e93] flex-shrink-0">
-              {relativeTime}
-            </Text>
-          )}
-        </View>
-        {!!body && (
-          <Text
-            className="text-xs text-[#8e8e93] mt-0.5 leading-[16px]"
-            numberOfLines={2}
-          >
-            {body}
-          </Text>
-        )}
-      </View>
-    </View>
+    </ToolCardInner>
   );
 }
 
@@ -101,59 +115,75 @@ export function NotificationCard({ data }: { data: NotificationData }) {
 
   if (count === 0) {
     return (
-      <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-6 px-4 items-center">
-          <AppIcon icon={Notification01Icon} size={24} color="#8e8e93" />
-          <Text className="text-sm text-[#8e8e93] mt-2">No notifications</Text>
-        </Card.Body>
-      </Card>
+      <ToolCardShell>
+        <View className="flex-row items-center gap-2 mb-3">
+          <AppIcon icon={Notification01Icon} size={14} color="#71717a" />
+          <Text className="text-xs text-zinc-500">Notifications</Text>
+        </View>
+        <View className="py-8 items-center">
+          <AppIcon icon={Notification01Icon} size={32} color="#3f3f46" />
+          <Text className="text-sm font-medium text-zinc-300 mt-4">
+            No notifications found
+          </Text>
+          <Text className="text-xs text-zinc-400 mt-1 text-center">
+            You're all caught up! New notifications will appear here.
+          </Text>
+        </View>
+      </ToolCardShell>
     );
   }
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <AppIcon icon={Notification01Icon} size={14} color="#8e8e93" />
-          <Text className="text-xs text-[#8e8e93]">Notifications</Text>
-          <View className="flex-row items-center gap-1.5 ml-auto">
+    <ToolCardShell>
+      {/* Header */}
+      <View className="flex-row items-center gap-2 mb-3">
+        <AppIcon icon={Notification01Icon} size={14} color="#71717a" />
+        <Text className="text-xs text-zinc-500">Notifications</Text>
+        <View className="flex-row items-center gap-1.5 ml-auto">
+          <Chip
+            size="sm"
+            variant="secondary"
+            color="default"
+            animation="disable-all"
+          >
+            <Chip.Label>{count} total</Chip.Label>
+          </Chip>
+          {unreadCount > 0 && (
             <Chip
               size="sm"
-              variant="secondary"
-              color="default"
+              variant="primary"
+              color="accent"
               animation="disable-all"
             >
-              <Chip.Label>{count} total</Chip.Label>
+              <Chip.Label>{unreadCount} unread</Chip.Label>
             </Chip>
-            {unreadCount > 0 && (
-              <Chip
-                size="sm"
-                variant="primary"
-                color="accent"
-                animation="disable-all"
-              >
-                <Chip.Label>{unreadCount} unread</Chip.Label>
-              </Chip>
-            )}
-          </View>
+          )}
         </View>
+      </View>
 
-        {/* Notifications list */}
-        <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
-          {notifications.map((item, index) => (
-            <NotificationRow
-              key={
-                item.content?.title ||
-                item.title ||
-                item.created_at ||
-                String(index)
-              }
-              item={item}
-            />
-          ))}
+      {/* Notification rows */}
+      <View className="gap-2">
+        {notifications.map((item, index) => (
+          <NotificationRow
+            key={
+              item.content?.title ||
+              item.title ||
+              item.created_at ||
+              String(index)
+            }
+            item={item}
+          />
+        ))}
+      </View>
+
+      {/* Footer: unread count summary */}
+      {unreadCount > 0 && (
+        <View className="border-t border-zinc-700 mt-3 pt-3">
+          <Text className="text-sm text-zinc-400">
+            {unreadCount} unread notification{unreadCount !== 1 ? "s" : ""}
+          </Text>
         </View>
-      </Card.Body>
-    </Card>
+      )}
+    </ToolCardShell>
   );
 }

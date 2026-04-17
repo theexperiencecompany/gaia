@@ -9,10 +9,19 @@ import type {
 } from "@gaia/shared";
 import { useState } from "react";
 import { View } from "react-native";
-import { AppIcon, CheckListIcon, Flag02Icon } from "@/components/icons";
+import {
+  AppIcon,
+  ArrowRight01Icon,
+  Calendar03Icon,
+  CheckListIcon,
+  CheckmarkCircle02Icon,
+  Flag02Icon,
+  Folder02Icon,
+  Tag01Icon,
+  Tick02Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
-  SectionLabel,
   ToolCardHeader,
   ToolCardInner,
   ToolCardShell,
@@ -35,7 +44,7 @@ const PRIORITY_META: Record<
   { color: string; bg: string }
 > = {
   high: { color: "#ef4444", bg: "rgba(239, 68, 68, 0.1)" },
-  medium: { color: "#f59e0b", bg: "rgba(245, 158, 11, 0.1)" },
+  medium: { color: "#eab308", bg: "rgba(234, 179, 8, 0.1)" },
   low: { color: "#3b82f6", bg: "rgba(59, 130, 246, 0.1)" },
 };
 
@@ -98,14 +107,12 @@ function StatCell({
   return (
     <ToolCardInner dense className="flex-1 items-center">
       <Text
-        className="text-2xl font-semibold"
+        className="text-xl font-semibold"
         style={color ? { color } : undefined}
       >
         {value}
       </Text>
-      <View className="mt-1">
-        <SectionLabel>{label}</SectionLabel>
-      </View>
+      <Text className="text-xs text-zinc-500 mt-0.5">{label}</Text>
     </ToolCardInner>
   );
 }
@@ -121,56 +128,96 @@ function TodoItemRow({ todo }: { todo: TodoItem }) {
   const hasDescription = Boolean(todo.description);
   const hasLabels = todo.labels.length > 0;
   const hasSubtasks = todo.subtasks.length > 0;
-  const hasExpandable = hasDescription || hasLabels || hasSubtasks;
+  const hasExpandable = hasDescription || hasSubtasks;
+
+  const completedSubtasks = todo.subtasks.filter((s) => s.completed).length;
 
   return (
     <ToolCardInner
       dense
       onPress={hasExpandable ? () => setExpanded((v) => !v) : undefined}
     >
-      <View className="flex-row items-center gap-3">
+      {/* Title row */}
+      <View className="flex-row items-start gap-3">
+        {/* Checkbox */}
         <View
-          className={`w-5 h-5 rounded-full ${
-            todo.completed ? "bg-emerald-500" : "bg-zinc-700"
+          className={`mt-0.5 w-4 h-4 shrink-0 rounded-full border-2 items-center justify-center ${
+            todo.completed
+              ? "border-emerald-500 bg-emerald-500"
+              : "border-zinc-600"
           }`}
-        />
-        <Text
-          className={`flex-1 text-sm font-medium ${
-            todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"
-          }`}
-          numberOfLines={expanded ? 0 : 1}
         >
-          {todo.title}
-        </Text>
-        {priorityMeta && (
-          <View
-            className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: priorityMeta.bg }}
+          {todo.completed && (
+            <AppIcon icon={Tick02Icon} size={10} color="#ffffff" />
+          )}
+        </View>
+
+        {/* Title + expand arrow */}
+        <View className="flex-1 flex-row items-start justify-between gap-2">
+          <Text
+            className={`flex-1 text-sm font-medium ${
+              todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"
+            }`}
+            numberOfLines={expanded ? 0 : 1}
           >
-            <AppIcon icon={Flag02Icon} size={10} color={priorityMeta.color} />
-            <Text
-              className="text-[10px] font-semibold uppercase"
-              style={{ color: priorityMeta.color }}
+            {todo.title}
+          </Text>
+          {hasExpandable && (
+            <View
+              style={{
+                transform: [{ rotate: expanded ? "90deg" : "0deg" }],
+              }}
             >
-              {todo.priority}
-            </Text>
-          </View>
-        )}
+              <AppIcon icon={ArrowRight01Icon} size={16} color="#71717a" />
+            </View>
+          )}
+        </View>
       </View>
 
-      {(dueInfo || todo.project) && (
-        <View className="flex-row flex-wrap items-center gap-1.5 mt-2 pl-8">
+      {/* Metadata row */}
+      {(priorityMeta ||
+        dueInfo ||
+        todo.project ||
+        hasLabels ||
+        hasSubtasks) && (
+        <View className="flex-row flex-wrap items-center gap-1.5 mt-2 pl-7">
+          {priorityMeta && (
+            <View
+              className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: priorityMeta.bg }}
+            >
+              <AppIcon icon={Flag02Icon} size={10} color={priorityMeta.color} />
+              <Text
+                className="text-[10px] font-semibold"
+                style={{ color: priorityMeta.color }}
+              >
+                {todo.priority}
+              </Text>
+            </View>
+          )}
+
           {dueInfo && (
             <View
-              className="px-2 py-0.5 rounded-full"
+              className="flex-row items-center gap-1 px-2 py-0.5 rounded-full"
               style={
                 dueInfo.isOverdue
                   ? { backgroundColor: "rgba(239, 68, 68, 0.1)" }
                   : dueInfo.isToday
                     ? { backgroundColor: "rgba(245, 158, 11, 0.1)" }
-                    : undefined
+                    : { backgroundColor: "rgba(161, 161, 170, 0.1)" }
               }
             >
+              <AppIcon
+                icon={Calendar03Icon}
+                size={10}
+                color={
+                  dueInfo.isOverdue
+                    ? "#ef4444"
+                    : dueInfo.isToday
+                      ? "#f59e0b"
+                      : "#a1a1aa"
+                }
+              />
               <Text
                 className="text-[10px] font-medium"
                 style={{
@@ -185,57 +232,84 @@ function TodoItemRow({ todo }: { todo: TodoItem }) {
               </Text>
             </View>
           )}
+
           {todo.project && (
-            <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-700">
+            <View className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800">
               {todo.project.color ? (
                 <View
                   className="h-2 w-2 rounded-full"
                   style={{ backgroundColor: todo.project.color }}
                 />
-              ) : null}
+              ) : (
+                <AppIcon icon={Folder02Icon} size={10} color="#71717a" />
+              )}
               <Text
-                className="text-[10px] text-zinc-300 font-medium"
+                className="text-[10px] text-zinc-400 font-medium"
                 numberOfLines={1}
               >
                 {todo.project.name}
               </Text>
             </View>
           )}
+
+          {todo.labels.map((label) => (
+            <View
+              key={label}
+              className="flex-row items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800"
+            >
+              <AppIcon icon={Tag01Icon} size={10} color="#71717a" />
+              <Text className="text-zinc-400 text-[10px]">{label}</Text>
+            </View>
+          ))}
+
+          {hasSubtasks && (
+            <View className="px-2 py-0.5 rounded-full bg-zinc-800">
+              <Text className="text-zinc-400 text-[10px]">
+                {completedSubtasks}/{todo.subtasks.length} subtasks
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
+      {/* Expanded content */}
       {expanded && hasExpandable && (
-        <View className="mt-2 gap-2 pl-8">
+        <View className="mt-3 gap-3 pl-7">
           {hasDescription && (
-            <Text className="text-zinc-400 text-xs">{todo.description}</Text>
+            <Text className="text-sm text-zinc-400">{todo.description}</Text>
           )}
-          {hasLabels && (
-            <View className="flex-row flex-wrap gap-1">
-              {todo.labels.map((label) => (
-                <View
-                  key={label}
-                  className="bg-zinc-700 px-2 py-0.5 rounded-full"
-                >
-                  <Text className="text-zinc-300 text-[10px]">{label}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+
           {hasSubtasks && (
             <View className="gap-1">
-              <SectionLabel>SUBTASKS</SectionLabel>
+              <Text className="text-xs font-medium text-zinc-500">
+                Subtasks
+              </Text>
               {todo.subtasks.map((subtask) => (
-                <Text
+                <View
                   key={subtask.id}
-                  className={`text-xs ${
-                    subtask.completed
-                      ? "text-zinc-500 line-through"
-                      : "text-zinc-400"
-                  }`}
+                  className="flex-row items-center gap-2 pl-2"
                 >
-                  {"· "}
-                  {subtask.title}
-                </Text>
+                  <View
+                    className={`w-4 h-4 rounded-full border-2 items-center justify-center ${
+                      subtask.completed
+                        ? "border-emerald-500 bg-emerald-500"
+                        : "border-zinc-600"
+                    }`}
+                  >
+                    {subtask.completed && (
+                      <AppIcon icon={Tick02Icon} size={10} color="#ffffff" />
+                    )}
+                  </View>
+                  <Text
+                    className={`text-xs ${
+                      subtask.completed
+                        ? "text-zinc-500 line-through"
+                        : "text-zinc-300"
+                    }`}
+                  >
+                    {subtask.title}
+                  </Text>
+                </View>
               ))}
             </View>
           )}
@@ -255,22 +329,22 @@ export function TodoCard({ data }: { data: TodoData }) {
     const s = data.stats;
     return (
       <ToolCardShell>
-        <ToolCardHeader icon={CheckListIcon} title="Stats" />
+        <ToolCardHeader icon={CheckListIcon} title="Task Overview" />
         <View className="flex-row gap-2">
-          <StatCell value={s.total} label="TOTAL" />
-          <StatCell value={s.completed} label="DONE" color="#10b981" />
-          <StatCell value={s.pending} label="PENDING" color="#f59e0b" />
+          <StatCell value={s.total} label="Total" />
+          <StatCell value={s.completed} label="Done" color="#10b981" />
+          <StatCell value={s.pending} label="Pending" color="#eab308" />
         </View>
         {(s.overdue > 0 || s.today > 0 || s.upcoming > 0) && (
           <View className="flex-row gap-2 mt-2">
             {s.overdue > 0 && (
-              <StatCell value={s.overdue} label="OVERDUE" color="#ef4444" />
+              <StatCell value={s.overdue} label="Overdue" color="#ef4444" />
             )}
             {s.today > 0 && (
-              <StatCell value={s.today} label="TODAY" color="#3b82f6" />
+              <StatCell value={s.today} label="Today" color="#3b82f6" />
             )}
             {s.upcoming > 0 && (
-              <StatCell value={s.upcoming} label="SOON" color="#a855f7" />
+              <StatCell value={s.upcoming} label="Soon" color="#a855f7" />
             )}
           </View>
         )}
@@ -284,10 +358,10 @@ export function TodoCard({ data }: { data: TodoData }) {
       <ToolCardShell>
         <ToolCardHeader
           icon={CheckListIcon}
-          title="Projects"
+          title="Your Projects"
           count={data.projects.length}
         />
-        <View className="gap-1.5">
+        <View className="gap-2">
           {data.projects.map((project) => (
             <ToolCardInner key={project.id} dense>
               <View className="flex-row items-center justify-between">
@@ -305,7 +379,7 @@ export function TodoCard({ data }: { data: TodoData }) {
                     {project.name}
                   </Text>
                 </View>
-                <View className="flex-row items-center gap-1">
+                <View className="flex-row items-center gap-2">
                   {project.todo_count !== undefined && (
                     <Text className="text-xs text-zinc-500">
                       {project.todo_count} tasks
@@ -313,7 +387,7 @@ export function TodoCard({ data }: { data: TodoData }) {
                   )}
                   {project.completion_percentage !== undefined && (
                     <Text className="text-xs text-zinc-500">
-                      {" · "}
+                      {"· "}
                       {Math.round(project.completion_percentage)}%
                     </Text>
                   )}
@@ -335,7 +409,7 @@ export function TodoCard({ data }: { data: TodoData }) {
           title={getListTitle(action)}
           count={data.todos.length}
         />
-        <View className="gap-1.5">
+        <View className="gap-2">
           {data.todos.map((todo) => (
             <TodoItemRow key={todo.id} todo={todo} />
           ))}
@@ -351,11 +425,13 @@ export function TodoCard({ data }: { data: TodoData }) {
   if (action === "list" && (!data.todos || data.todos.length === 0)) {
     return (
       <ToolCardShell>
-        <ToolCardHeader icon={CheckListIcon} title="Tasks" />
-        <Text className="text-zinc-300 text-sm">No tasks found</Text>
-        {data.message && (
-          <Text className="text-xs text-zinc-500 mt-1">{data.message}</Text>
-        )}
+        <View className="items-center py-2">
+          <AppIcon icon={CheckmarkCircle02Icon} size={32} color="#52525b" />
+          <Text className="mt-2 text-sm text-zinc-300">No tasks found</Text>
+          {data.message && (
+            <Text className="text-xs text-zinc-500 mt-1">{data.message}</Text>
+          )}
+        </View>
       </ToolCardShell>
     );
   }
@@ -366,21 +442,11 @@ export function TodoCard({ data }: { data: TodoData }) {
     return (
       <ToolCardShell>
         <View className="flex-row items-center gap-2">
-          <View
-            className="w-5 h-5 rounded-full items-center justify-center"
-            style={{
-              backgroundColor: isDelete
-                ? "rgba(239, 68, 68, 0.15)"
-                : "rgba(16, 185, 129, 0.15)",
-            }}
-          >
-            <Text
-              className="text-[10px] font-semibold"
-              style={{ color: isDelete ? "#ef4444" : "#10b981" }}
-            >
-              {isDelete ? "–" : "+"}
-            </Text>
-          </View>
+          <AppIcon
+            icon={CheckmarkCircle02Icon}
+            size={16}
+            color={isDelete ? "#ef4444" : "#10b981"}
+          />
           <Text className="text-sm text-zinc-100 flex-1">{data.message}</Text>
         </View>
       </ToolCardShell>

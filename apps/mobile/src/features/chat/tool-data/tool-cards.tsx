@@ -2,6 +2,7 @@ export * from "./cards/artifact-card";
 export * from "./cards/calendar-delete-card";
 export * from "./cards/calendar-edit-card";
 export * from "./cards/calendar-fetch-card";
+export * from "./cards/calendar-list-fetch-card";
 export * from "./cards/calendar-options-card";
 export * from "./cards/chart-card";
 export * from "./cards/code-execution-card";

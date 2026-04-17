@@ -37,5 +37,5 @@ export type {
   WebResult,
   WorkflowCreatedData,
   WorkflowDraftData,
-} from "@gaia/shared";
-export { getToolData, isKnownTool } from "@gaia/shared";
+} from "@gaia/shared/chat";
+export { getToolData, isKnownTool } from "@gaia/shared/chat";

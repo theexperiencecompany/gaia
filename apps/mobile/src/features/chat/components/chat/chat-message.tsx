@@ -1,6 +1,7 @@
 import {
+  parseOpenUISegments,
   parseThinkingFromText,
-  splitMessageByBreaks,
+  splitByBreaksPreservingFences,
 } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
@@ -20,6 +21,7 @@ import {
   MemoryBottomSheet,
   type MemoryBottomSheetRef,
 } from "../memory/memory-bottom-sheet";
+import { OpenUIRenderer } from "../openui/OpenUIRenderer";
 import { ImageBubble } from "./image-bubble";
 import { LinkPreviewCard } from "./link-preview-card";
 import { LoadingIndicator } from "./loading-indicator";
@@ -186,9 +188,9 @@ export function ChatMessage({
     [message.text],
   );
 
-  const messageParts = splitMessageByBreaks(parsedContent.cleanText).filter(
-    Boolean,
-  );
+  const messageParts = splitByBreaksPreservingFences(
+    parsedContent.cleanText,
+  ).filter(Boolean);
 
   const _hasContent = messageParts.length > 0;
   const showLoadingState = !isUser && isLoading && !_hasContent;
@@ -351,22 +353,42 @@ export function ChatMessage({
             />
           </View>
         ) : (
-          messageParts.map((part, index) => (
-            <MessageBubble
-              key={`${message.id}-${index}`}
-              message={part}
-              variant="received"
-              grouped={
-                messageParts.length === 1
-                  ? "none"
-                  : index === 0
-                    ? "first"
-                    : index === messageParts.length - 1
-                      ? "last"
-                      : "middle"
+          messageParts.map((part, partIndex) => {
+            const segments = parseOpenUISegments(part, !!isLoading);
+            const grouped =
+              messageParts.length === 1
+                ? "none"
+                : partIndex === 0
+                  ? "first"
+                  : partIndex === messageParts.length - 1
+                    ? "last"
+                    : "middle";
+
+            return segments.map((segment, segIndex) => {
+              const key = `${message.id}-${partIndex}-${segIndex}`;
+              if (segment.type === "openui") {
+                return (
+                  <View
+                    key={key}
+                    style={{ paddingHorizontal: spacing.md, width: "100%" }}
+                  >
+                    <OpenUIRenderer
+                      code={segment.content}
+                      isStreaming={!segment.isComplete}
+                    />
+                  </View>
+                );
               }
-            />
-          ))
+              return (
+                <MessageBubble
+                  key={key}
+                  message={segment.content}
+                  variant="received"
+                  grouped={grouped}
+                />
+              );
+            });
+          })
         )}
       </View>
 

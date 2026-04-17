@@ -1,9 +1,5 @@
-// greetingUtils.ts - Utility functions for time-based greetings
+// Utility functions for time-based greetings. Platform-agnostic.
 
-/**
- * Get a simple time-based greeting (Good morning, Good afternoon, etc.)
- * @returns A simple greeting string based on the current time
- */
 export const getSimpleTimeGreeting = (): string => {
   const currentHour = new Date().getHours();
 
@@ -18,12 +14,6 @@ export const getSimpleTimeGreeting = (): string => {
   }
 };
 
-/**
- * Get a conversational greeting message based on the current time of day
- * @param userName - Optional user's name for personalization
- * @param includeName - Whether to include the user's name in the greeting (default: true)
- * @returns A greeting string appropriate for the current time with proper name placement
- */
 const getTimeBasedGreeting = (
   userName?: string,
   includeName: boolean = true,
@@ -115,27 +105,14 @@ const getTimeBasedGreeting = (
   const randomIndex = Math.floor(Math.random() * greetings.length);
   const template = greetings[randomIndex];
 
-  // Handle name replacement
   if (!includeName || !userName || userName.trim() === "") {
     return template.replace("{name}", "");
   }
 
-  // Extract first name from full name
   const firstName = userName.split(" ")[0];
   return template.replace("{name}", `, ${firstName}`);
 };
 
-/**
- * Get a personalized greeting message with user's name
- * @param userName - The user's name to include in the greeting
- * @returns A personalized greeting string
- */
-
-/**
- * Get a complete time-based greeting
- * @param userName - Optional user's name for personalization
- * @returns A greeting string
- */
 export const getCompleteTimeBasedGreeting = (userName?: string): string => {
   return getTimeBasedGreeting(userName);
 };

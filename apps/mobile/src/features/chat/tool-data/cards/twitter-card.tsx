@@ -7,12 +7,14 @@ import { Image, Linking, View } from "react-native";
 import {
   AppIcon,
   BubbleChatIcon,
+  Calendar03Icon,
+  CheckmarkCircle01Icon,
   FavouriteIcon,
+  Globe02Icon,
   LinkSquare02Icon,
+  Location01Icon,
   RepeatIcon,
   TwitterIcon,
-  UserCircle02Icon,
-  UserGroupIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
@@ -37,6 +39,16 @@ function formatDate(dateStr?: string): string {
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatJoinDate(dateStr?: string): string {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-US", {
+    month: "long",
     year: "numeric",
   });
 }
@@ -74,10 +86,10 @@ function TwitterAvatar({
   }
   return (
     <View
-      className="items-center justify-center bg-primary/20"
+      className="items-center justify-center bg-zinc-700"
       style={{ width: size, height: size, borderRadius: size / 2 }}
     >
-      <Text className="text-primary text-sm font-semibold">
+      <Text className="text-zinc-200 text-sm font-semibold">
         {fallback.charAt(0).toUpperCase() || "?"}
       </Text>
     </View>
@@ -99,13 +111,17 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
       <View className="flex-row items-start gap-3">
         <TwitterAvatar url={author.profile_image_url} fallback={author.name} />
         <View className="flex-1 min-w-0">
-          <View className="flex-row items-center gap-1">
+          {/* Author header */}
+          <View className="flex-row items-center gap-1 flex-wrap">
             <Text
               className="text-zinc-100 text-sm font-semibold"
               numberOfLines={1}
             >
               {author.name}
             </Text>
+            {author.verified && (
+              <AppIcon icon={CheckmarkCircle01Icon} size={13} color="#1d9bf0" />
+            )}
             <Text className="text-zinc-500 text-xs" numberOfLines={1}>
               @{author.username}
             </Text>
@@ -118,7 +134,11 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
               </>
             ) : null}
           </View>
-          <Text className="text-zinc-100 text-sm mt-1">{tweet.text}</Text>
+          {/* Tweet body */}
+          <Text className="text-zinc-200 text-sm mt-1 leading-relaxed">
+            {tweet.text}
+          </Text>
+          {/* Engagement metrics */}
           <View className="flex-row items-center gap-5 mt-2">
             <View className="flex-row items-center gap-1.5">
               <AppIcon icon={FavouriteIcon} size={12} color="#a1a1aa" />
@@ -154,42 +174,80 @@ function UserRow({ user }: { user: TwitterUserData }) {
   return (
     <ToolCardInner dense onPress={() => openUserProfile(user)}>
       <View className="flex-row items-start gap-3">
-        <TwitterAvatar url={user.profile_image_url} fallback={user.name} />
+        <TwitterAvatar
+          url={user.profile_image_url}
+          fallback={user.name}
+          size={40}
+        />
         <View className="flex-1 min-w-0">
-          <View className="flex-row items-center gap-1">
-            <Text
-              className="text-zinc-100 text-sm font-semibold"
-              numberOfLines={1}
-            >
+          {/* Name + verified + handle */}
+          <View className="flex-row items-center gap-1 flex-wrap">
+            <Text className="text-zinc-100 text-sm font-bold" numberOfLines={1}>
               {user.name}
             </Text>
-            <Text className="text-zinc-500 text-xs" numberOfLines={1}>
-              @{user.username}
-            </Text>
+            {user.verified && (
+              <AppIcon icon={CheckmarkCircle01Icon} size={13} color="#1d9bf0" />
+            )}
           </View>
+          <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+            @{user.username}
+          </Text>
+
+          {/* Bio */}
           {user.description ? (
-            <Text className="text-zinc-300 text-xs mt-1" numberOfLines={2}>
+            <Text
+              className="text-zinc-200 text-sm mt-1.5 leading-relaxed"
+              numberOfLines={3}
+            >
               {user.description}
             </Text>
           ) : null}
+
+          {/* Meta: location, url, join date */}
+          {user.location || user.url || user.created_at ? (
+            <View className="flex-row items-center flex-wrap gap-x-3 gap-y-1 mt-1.5">
+              {user.location ? (
+                <View className="flex-row items-center gap-1">
+                  <AppIcon icon={Location01Icon} size={12} color="#71717a" />
+                  <Text className="text-zinc-500 text-xs">{user.location}</Text>
+                </View>
+              ) : null}
+              {user.url ? (
+                <View className="flex-row items-center gap-1">
+                  <AppIcon icon={Globe02Icon} size={12} color="#71717a" />
+                  <Text className="text-[#1d9bf0] text-xs" numberOfLines={1}>
+                    {user.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                  </Text>
+                </View>
+              ) : null}
+              {user.created_at ? (
+                <View className="flex-row items-center gap-1">
+                  <AppIcon icon={Calendar03Icon} size={12} color="#71717a" />
+                  <Text className="text-zinc-500 text-xs">
+                    Joined {formatJoinDate(user.created_at)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* Following / Followers stats */}
           <View className="flex-row items-center gap-4 mt-2">
-            {metrics.followers_count !== undefined && (
-              <View className="flex-row items-center gap-1.5">
-                <AppIcon icon={UserGroupIcon} size={12} color="#a1a1aa" />
-                <Text className="text-zinc-400 text-xs">
-                  {formatNumber(metrics.followers_count)} followers
+            {metrics.following_count !== undefined && (
+              <View className="flex-row items-center gap-1">
+                <Text className="text-zinc-100 text-sm font-bold">
+                  {formatNumber(metrics.following_count)}
                 </Text>
+                <Text className="text-zinc-500 text-xs">Following</Text>
               </View>
             )}
-            {metrics.following_count !== undefined && (
-              <Text className="text-zinc-400 text-xs">
-                {formatNumber(metrics.following_count)} following
-              </Text>
-            )}
-            {metrics.tweet_count !== undefined && (
-              <Text className="text-zinc-400 text-xs">
-                {formatNumber(metrics.tweet_count)} posts
-              </Text>
+            {metrics.followers_count !== undefined && (
+              <View className="flex-row items-center gap-1">
+                <Text className="text-zinc-100 text-sm font-bold">
+                  {formatNumber(metrics.followers_count)}
+                </Text>
+                <Text className="text-zinc-500 text-xs">Followers</Text>
+              </View>
             )}
           </View>
         </View>
@@ -209,6 +267,7 @@ export function TwitterSearchCard({ data }: { data: TwitterSearchData }) {
     <ToolCardShell>
       <ToolCardHeader
         icon={TwitterIcon}
+        iconColor="#1d9bf0"
         title="Twitter"
         subtitle={
           resultCount > 0
@@ -236,8 +295,9 @@ export function TwitterUserCard({ data }: { data: TwitterUserData[] }) {
   return (
     <ToolCardShell>
       <ToolCardHeader
-        icon={UserCircle02Icon}
-        title="Twitter Users"
+        icon={TwitterIcon}
+        iconColor="#1d9bf0"
+        title="Twitter Profiles"
         count={users.length}
       />
       {users.length === 0 ? (

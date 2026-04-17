@@ -156,6 +156,10 @@ export default function RootLayout() {
                         name="signup/index"
                         options={{ headerShown: false }}
                       />
+                      <Stack.Screen
+                        name="openui-demo/index"
+                        options={{ headerShown: false }}
+                      />
                     </Stack>
                     <StatusBar style="auto" />
                   </BottomSheetModalProvider>

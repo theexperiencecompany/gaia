@@ -25,6 +25,10 @@ import {
 } from "../../api/chat-api";
 import { useChat } from "../../hooks/use-chat";
 import { useChatContext } from "../../hooks/use-chat-context";
+import {
+  useComposerStore,
+  usePendingPrompt,
+} from "../../stores/composer-store";
 import type { ReplyToMessageData } from "../../types";
 import type { AttachmentFile } from "../composer/attachment-preview";
 import { Composer } from "../composer/composer";
@@ -172,6 +176,16 @@ export function ChatScreenContent({
   const insets = useSafeAreaInsets();
 
   const [inputValue, setInputValue] = useState("");
+  const pendingPrompt = usePendingPrompt();
+  const consumePendingPrompt = useComposerStore(
+    (state) => state.consumePendingPrompt,
+  );
+  useEffect(() => {
+    if (pendingPrompt) {
+      setInputValue(pendingPrompt);
+      consumePendingPrompt();
+    }
+  }, [pendingPrompt, consumePendingPrompt]);
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState(() =>
     getRelevantThinkingMessage(""),

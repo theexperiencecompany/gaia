@@ -4,10 +4,9 @@ import {
   type ParseResult,
   Renderer,
 } from "@openuidev/react-lang";
+import { dispatchOpenUIAction, normalizeOpenUICode } from "@shared/utils";
 import React from "react";
 import { genericLibrary } from "@/config/openui/genericLibrary";
-import { dispatchOpenUIAction } from "@/features/chat/actions/openUIActionDispatcher";
-import { normalizeOpenUICode } from "@/features/chat/utils/openUIParser";
 import { useAppendToInput } from "@/stores/composerStore";
 
 interface OpenUIRendererProps {
@@ -59,7 +58,12 @@ function OpenUIRendererInner({ code, isStreaming }: OpenUIRendererProps) {
 
   const handleAction = React.useCallback(
     (event: ActionEvent) => {
-      dispatchOpenUIAction(event, appendToInput).catch((err) => {
+      dispatchOpenUIAction(event, {
+        appendToInput,
+        openUrl: (url) => {
+          window.open(url, "_blank", "noopener,noreferrer");
+        },
+      }).catch((err) => {
         console.error("[OpenUIRenderer] Action dispatch failed:", err);
       });
     },
