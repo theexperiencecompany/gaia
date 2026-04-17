@@ -62,9 +62,9 @@ flowchart TD
 
   subgraph BACKEND_DEPLOY["deploy-swarm-prod.yml (Swarm app stack)"]
     direction TB
-    DEPLOY_BACKEND --> D_AUTH["Auth to GCP (WIF) + GHCR"]:::deploy
+    DEPLOY_BACKEND --> D_AUTH["SSH key setup + GHCR login"]:::deploy
     D_AUTH --> D_CTX["Create Docker context over SSH"]:::deploy
-    D_CTX --> D_STACK["docker stack deploy gaia-prod-app"]:::deploy
+    D_CTX --> D_STACK["docker stack deploy gaia-prod"]:::deploy
     D_STACK --> D_NOTIFY["Loki annotation + Discord notify"]:::deploy
   end
 
@@ -112,10 +112,10 @@ flowchart TD
 5. Trigger `deploy-swarm-prod.yml` and/or `deploy-frontend.yml` based on plan outputs.
 
 ### `.github/workflows/deploy-swarm-prod.yml`
-1. Authenticate to Google Cloud via WIF and log in to GHCR.
-2. Bootstrap gcloud SSH keys via OS Login; create Docker context pointing at the GCP VM.
-3. Run `docker --context prod stack deploy --with-registry-auth` for the app stack (`gaia-prod-app`).
-   Swarm handles rolling update and auto-rollback on health check failure — no manual verify step needed.
+1. Install SSH private key from `PROD_VM_SSH_KEY` via the `setup-swarm-context` composite action and log in to GHCR.
+2. Create Docker context pointing at the Hetzner VM over SSH.
+3. Run `docker --context prod stack deploy --with-registry-auth` for the app stack (`gaia-prod`).
+   Swarm handles rolling update; the workflow polls both `gaia-backend` and `arq_worker` for convergence and fails on auto-rollback.
 4. Push a deploy annotation to Loki and send status to Discord.
 5. Manual `workflow_dispatch` supports `action=rollback` with `rollback_mode=last` (Docker service rollback) or `rollback_mode=digest` (redeploy pinned image).
 

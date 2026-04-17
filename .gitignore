@@ -126,5 +126,10 @@ i18n.cache
 .worktrees/
 superpowers/
 
-# Operator runbooks and local prod config
-ops/
+# Local prod config (secrets, credentials, etc.) — runbooks should be tracked
+ops/*.env
+ops/secrets/
+ops/**/*.key
+ops/**/*.pem
+ops/**/*.p12
+ops/**/*.pfx
