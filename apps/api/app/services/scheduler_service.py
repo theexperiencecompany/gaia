@@ -302,19 +302,30 @@ class BaseSchedulerService(ABC):
             log.error("ARQ pool not initialized")
             return False
 
-        # Ensure scheduled_at is timezone-aware
-        if scheduled_at.tzinfo is None:
+        tz_was_naive = scheduled_at.tzinfo is None
+        if tz_was_naive:
             scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+            log.warning(
+                f"Task {task_id} scheduled_at was naive; assumed UTC — this is a "
+                f"common source of timezone drift, check the caller",
+            )
 
-        # Check if scheduled time is in the past - if so, schedule for now + small buffer
-        # This prevents Redis PSETEX errors from negative expire times
         now = datetime.now(timezone.utc)
-        if scheduled_at <= now:
+        past_due = scheduled_at <= now
+        if past_due:
             log.warning(
                 f"Task {task_id} scheduled_at ({scheduled_at}) is in the past, "
                 f"rescheduling to execute in 120 seconds"
             )
             scheduled_at = now + timedelta(seconds=120)
+
+        defer_seconds = int((scheduled_at - now).total_seconds())
+        log.set(
+            scheduled_at_utc=scheduled_at.isoformat(),
+            defer_seconds=defer_seconds,
+            scheduled_at_was_naive=tz_was_naive,
+            scheduled_at_past_due=past_due,
+        )
 
         job_name = self.get_job_name()
         job = await self.arq_pool.enqueue_job(
@@ -325,6 +336,7 @@ class BaseSchedulerService(ABC):
             log.error(f"Failed to enqueue task {task_id}")
             return False
 
+        log.set(arq_job_id=job.job_id, arq_job_name=job_name)
         log.debug(f"Enqueued task {task_id} with job ID {job.job_id}")
         return True
 

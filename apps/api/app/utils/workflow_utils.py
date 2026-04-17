@@ -152,8 +152,20 @@ def get_user_time(config: RunnableConfig) -> datetime:
 
 
 def get_user_timezone(config: RunnableConfig) -> str:
-    """Extract user_timezone from config. Falls back to +00:00 (UTC)."""
-    return config.get("configurable", {}).get("user_timezone", "+00:00")
+    """Extract user_timezone from config. Falls back to +00:00 (UTC).
+
+    Emits `timezone_source` on the wide event so timezone resolution is
+    always traceable. When the config carries no user_timezone we warn
+    loudly — this is the exact silent-UTC drift that causes scheduled
+    workflows to fire at the user's offset hours late.
+    """
+    tz = config.get("configurable", {}).get("user_timezone")
+    if tz:
+        log.set(timezone_source="agent_config", user_timezone=tz)
+        return tz
+    log.set(timezone_source="fallback_utc", user_timezone="+00:00")
+    log.warning("get_user_timezone: no user_timezone in config, falling back to +00:00")
+    return "+00:00"
 
 
 def can_create_directly(draft: FinalizedOutput) -> bool:

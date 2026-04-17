@@ -134,6 +134,20 @@ class WorkflowService:
                 trigger_config.timezone = timezone_to_use
                 if trigger_config.cron_expression:
                     trigger_config.update_next_run(user_timezone=timezone_to_use)
+                log.set(
+                    trigger_type=str(trigger_config.type),
+                    trigger_name=trigger_config.trigger_name,
+                    cron_expression=trigger_config.cron_expression,
+                    trigger_timezone=trigger_config.timezone,
+                    next_run_utc=trigger_config.next_run.isoformat()
+                    if trigger_config.next_run
+                    else None,
+                )
+            else:
+                log.set(
+                    trigger_type=str(trigger_config.type),
+                    trigger_name=trigger_config.trigger_name,
+                )
 
             # Use provided steps or initialize empty list for generation
             workflow_steps = request.steps if request.steps else []
