@@ -201,7 +201,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     // Remove any webhook that may have been set during development.
     // A webhook prevents long polling and immediately returns 409.
     try {
-      await this.bot.api.deleteWebhook();
+      await this.bot.api.deleteWebhook({ drop_pending_updates: true });
     } catch (e) {
       this.adapterLogger.warn("delete_webhook_failed", undefined, e);
     }
@@ -230,7 +230,15 @@ export class TelegramAdapter extends BaseBotAdapter {
           startWithRetry(35_000);
         } else {
           this.adapterLogger.error("long_poll_fatal", undefined, err);
-          process.exit(1);
+          void this.shutdown()
+            .catch((shutdownErr) =>
+              this.adapterLogger.error(
+                "shutdown_failed",
+                undefined,
+                shutdownErr,
+              ),
+            )
+            .finally(() => process.exit(1));
         }
       });
     };

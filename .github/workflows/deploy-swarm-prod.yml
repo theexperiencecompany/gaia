@@ -43,7 +43,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_call' || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy')
+    if: inputs.action == 'deploy'
     runs-on: blacksmith-2vcpu-ubuntu-2404
     environment: production
     permissions:
@@ -129,11 +129,13 @@ jobs:
           TS_NS="$(date +%s%N)"
           LINE=$(printf '{"event":"deploy","service":"api","sha":"%s","actor":"%s","ref":"%s"}' \
             "${{ github.sha }}" "${{ github.actor }}" "${{ github.ref_name }}")
+          PAYLOAD=$(jq -n \
+            --arg ts "$TS_NS" \
+            --arg line "$LINE" \
+            '{"streams":[{"stream":{"event":"deploy","service":"ci","source":"github_actions"},"values":[[$ts,$line]]}]}')
           curl -sS -X POST "$LOKI_PUSH_URL" \
             -H "Content-Type: application/json" \
-            --data-binary @- <<EOF
-          {"streams":[{"stream":{"event":"deploy","service":"ci","source":"github_actions"},"values":[["$TS_NS","$LINE"]]}]}
-          EOF
+            -d "$PAYLOAD"
 
       - name: Notify Discord — deploy succeeded
         if: success()
@@ -171,7 +173,7 @@ jobs:
           color: "#ff6b6b"
           message: |
             **Backend Deploy Failed — Convergence Timeout**
-            gaia-backend did not reach Running state within 5 minutes. Check `docker service ps gaia-prod_gaia-backend` on the VM.
+            gaia-backend and arq_worker did not reach Running state within 5 minutes. Check `docker service ps gaia-prod_gaia-backend` and `docker service ps gaia-prod_arq_worker` on the VM.
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
@@ -228,10 +230,8 @@ jobs:
             done
           elif [ "$ROLLBACK_MODE" = "digest" ]; then
             [ -z "$IMAGE_DIGEST" ] && echo "image_digest required for digest mode" && exit 1
-            GAIA_API_IMAGE="$IMAGE_DIGEST" docker --context prod stack deploy \
-              --with-registry-auth \
-              -c infra/docker/docker-compose.prod.yml \
-              gaia-prod
+            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_gaia-backend
+            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_arq_worker
           fi
 
       - name: Wait for rollback convergence
@@ -266,11 +266,13 @@ jobs:
           TS_NS="$(date +%s%N)"
           LINE=$(printf '{"event":"rollback","mode":"%s","actor":"%s","ref":"%s"}' \
             "${{ inputs.rollback_mode }}" "${{ github.actor }}" "${{ github.ref_name }}")
+          PAYLOAD=$(jq -n \
+            --arg ts "$TS_NS" \
+            --arg line "$LINE" \
+            '{"streams":[{"stream":{"event":"rollback","service":"ci","source":"github_actions"},"values":[[$ts,$line]]}]}')
           curl -sS -X POST "$LOKI_PUSH_URL" \
             -H "Content-Type: application/json" \
-            --data-binary @- <<EOF
-          {"streams":[{"stream":{"event":"rollback","service":"ci","source":"github_actions"},"values":[["$TS_NS","$LINE"]]}]}
-          EOF
+            -d "$PAYLOAD"
 
       - name: Notify Discord — rollback succeeded
         if: success()

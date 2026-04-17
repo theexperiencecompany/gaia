@@ -270,10 +270,10 @@ def build_agent_config(
 
     callbacks: list[BaseCallbackHandler] = []
 
-    # Add OpikTracer in production, or in development only if configured
-    # This prevents cluttered error logs when Opik isn't set up locally
-    # Import is deferred to avoid litellm module conflict at startup (crawl4ai
-    # installs unclecode-litellm which shadows the real litellm module).
+    # Add OpikTracer in production, or in development only if configured.
+    # Import is deferred to avoid paying the cost when Opik is unused and to
+    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
+    # which conflicts with the real litellm at module load time).
     is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
     if settings.ENV == "production" or is_opik_configured:
         from opik.integrations.langchain import OpikTracer  # noqa: PLC0415

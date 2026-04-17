@@ -17,7 +17,7 @@ from langgraph.checkpoint.postgres.aio import (
     AsyncPostgresSaver,
 )
 from langgraph.store.postgres import AsyncPostgresStore
-from psycopg_pool import AsyncConnectionPool
+from psycopg_pool import AsyncConnectionPool, ConnectionPool
 
 
 class CheckpointerManager:
@@ -52,7 +52,7 @@ class CheckpointerManager:
             max_idle=300,  # close connections idle for > 5 min
             max_lifetime=1800,  # recycle every 30 min regardless
             kwargs=connection_kwargs,
-            check=AsyncConnectionPool.check_connection,
+            check=ConnectionPool.check_connection,
             open=False,
             timeout=30,
         )

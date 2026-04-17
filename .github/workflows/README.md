@@ -151,7 +151,7 @@ flowchart TD
 ## File Map
 - `.github/workflows/main.yml`: CI quality gate and master promotion policy — delegates to Dagger for quality checks.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
-- `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on GCP VM.
+- `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.
 - `.github/workflows/deploy.yml`: legacy compose-based deploy (superseded by deploy-swarm-prod.yml, kept for reference).
 - `.github/workflows/deploy-frontend.yml`: frontend sync path for Vercel source repository.
 - `.github/workflows/release-please.yml`: release PR/tag automation and CLI publish dispatch.

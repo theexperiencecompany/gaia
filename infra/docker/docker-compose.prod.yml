@@ -1,9 +1,8 @@
-# This file is used for both:
-#   docker compose    — manual ops on the VM (env_file is read, secrets are skipped)
-#   docker stack deploy — CI-driven Swarm deploys (env_file is ignored, secrets are used)
-#
-# Secret injection is handled by scripts/docker-entrypoint.sh, baked into each image.
-# The entrypoint reads /run/secrets/* files and exports them as env vars before exec.
+# Production stack — deployed via `docker stack deploy`.
+# Secrets are mounted as files under /run/secrets/*; scripts/docker-entrypoint.sh
+# (baked into each image) reads them and exports env vars before exec.
+# This file can also be used with `docker compose` for local rehearsal — see
+# scripts/swarm/lab-rehearsal.sh.
 
 secrets:
   gaia_infisical_token:
@@ -32,7 +31,6 @@ services:
 
   gaia-backend:
     image: ghcr.io/theexperiencecompany/gaia:latest
-    container_name: gaia-backend
     working_dir: /app/apps/api
     command: python -m uvicorn app.main:app --host 0.0.0.0 --port 80 --no-access-log --workers 2 --timeout-keep-alive 65 --timeout-graceful-shutdown 30 --h11-max-incomplete-event-size 16777216
     environment:
@@ -70,11 +68,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
-    depends_on:
-      - chromadb
-      - postgres
-      - rabbitmq
-      - redis
     deploy:
       replicas: 1
       update_config:
@@ -101,7 +94,6 @@ services:
 
   arq_worker:
     image: ghcr.io/theexperiencecompany/gaia:latest
-    container_name: arq_worker
     working_dir: /app/apps/api
     command: python -m arq app.worker.WorkerSettings
     environment:
@@ -127,8 +119,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-    depends_on:
-      - redis
     deploy:
       replicas: 1
       update_config:
@@ -155,7 +145,6 @@ services:
 
   discord-bot:
     image: ghcr.io/theexperiencecompany/gaia-bot-discord:latest
-    container_name: discord-bot
     environment:
       BOT_SERVER_PORT: "3200"
       LOG_FORMAT: json
@@ -185,8 +174,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    depends_on:
-      - gaia-backend
     deploy:
       replicas: 1
       update_config:
@@ -204,7 +191,6 @@ services:
 
   slack-bot:
     image: ghcr.io/theexperiencecompany/gaia-bot-slack:latest
-    container_name: slack-bot
     environment:
       BOT_SERVER_PORT: "3201"
       LOG_FORMAT: json
@@ -234,8 +220,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    depends_on:
-      - gaia-backend
     deploy:
       replicas: 1
       update_config:
@@ -253,7 +237,6 @@ services:
 
   telegram-bot:
     image: ghcr.io/theexperiencecompany/gaia-bot-telegram:latest
-    container_name: telegram-bot
     environment:
       BOT_SERVER_PORT: "3202"
       LOG_FORMAT: json
@@ -283,8 +266,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    depends_on:
-      - gaia-backend
     deploy:
       replicas: 1
       update_config:
@@ -302,7 +283,6 @@ services:
 
   whatsapp-bot:
     image: ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest
-    container_name: whatsapp-bot
     environment:
       BOT_SERVER_PORT: "3203"
       LOG_FORMAT: json
@@ -332,8 +312,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    depends_on:
-      - gaia-backend
     deploy:
       replicas: 1
       update_config:
@@ -355,7 +333,6 @@ services:
 
   chromadb:
     image: chromadb/chroma:1.5.1
-    container_name: chromadb
     volumes:
       - chroma_data:/chroma/chroma
     environment:
@@ -390,7 +367,6 @@ services:
 
   postgres:
     image: postgres:18-alpine
-    container_name: postgres
     environment:
       POSTGRES_USER: postgres
       # Password is read from the Swarm secret file at /run/secrets/gaia_postgres_password.
@@ -429,7 +405,6 @@ services:
 
   redis:
     image: redis:8-alpine
-    container_name: redis
     command: >
       redis-server
       --maxmemory 2gb
@@ -458,7 +433,6 @@ services:
 
   rabbitmq:
     image: rabbitmq:4.1.8-management
-    container_name: rabbitmq
     # RabbitMQ 4.x deprecated RABBITMQ_DEFAULT_USER/PASS env vars. Users are
     # managed via `rabbitmqctl` against the running broker and persist in the
     # data volume. The Swarm secret `gaia_rabbitmq_default_pass` exists for
@@ -508,7 +482,6 @@ services:
 
   postgres_exporter:
     image: prometheuscommunity/postgres-exporter:v0.17.0
-    container_name: postgres_exporter
     # The exporter composes DATA_SOURCE_NAME from URI + USER + PASS. Only the
     # password is secret — user and host are safe to commit. PASS_FILE reads
     # the secret contents as the password.
@@ -520,8 +493,6 @@ services:
       - gaia_postgres_password
     networks:
       - gaia-prod-shared
-    depends_on:
-      - postgres
     deploy:
       replicas: 1
       restart_policy:
@@ -533,13 +504,10 @@ services:
 
   redis_exporter:
     image: oliver006/redis_exporter:v1.66.0
-    container_name: redis_exporter
     environment:
       REDIS_ADDR: "redis://redis:6379"
     networks:
       - gaia-prod-shared
-    depends_on:
-      - redis
     deploy:
       replicas: 1
       restart_policy:
@@ -611,7 +579,6 @@ services:
 
   blackbox_exporter:
     image: prom/blackbox-exporter:v0.25.0
-    container_name: blackbox_exporter
     volumes:
       - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
     networks:
@@ -627,7 +594,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.1.0
-    container_name: prometheus
     user: root  # needed to read /var/run/docker.sock for Swarm SD
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
@@ -664,7 +630,6 @@ services:
 
   loki:
     image: grafana/loki:3.3.2
-    container_name: loki
     volumes:
       - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
       - loki_data:/loki
@@ -711,16 +676,10 @@ services:
     networks:
       - gaia-prod-shared
     healthcheck:
-      test:
-        - CMD
-        - bash
-        - -c
-        - "exec 3<>/dev/tcp/127.0.0.1/9080 && printf 'GET /ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q 200"
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:9080/ready || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-    depends_on:
-      - loki
     deploy:
       mode: global
       restart_policy:
@@ -733,7 +692,6 @@ services:
 
   grafana:
     image: grafana/grafana:11.4.0
-    container_name: grafana
     ports:
       # Loopback only — Nginx on the host proxies logs.heygaia.io to this.
       - target: 3000
@@ -761,8 +719,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    depends_on:
-      - loki
     deploy:
       replicas: 1
       restart_policy:
@@ -782,7 +738,6 @@ services:
 
   voice-agent-worker:
     image: ghcr.io/theexperiencecompany/gaia-voice-agent:latest
-    container_name: voice-agent-worker
     working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: "1"
@@ -796,8 +751,6 @@ services:
       - voice_agent_models:/home/appuser/.cache/huggingface
     networks:
       - gaia-prod-shared
-    depends_on:
-      - gaia-backend
     deploy:
       # replicas: 0 — not started by default; scale up manually when needed:
       #   docker --context gaia-prod service scale gaia-prod_voice-agent-worker=1
