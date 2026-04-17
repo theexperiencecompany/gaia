@@ -17,7 +17,7 @@ from langgraph.checkpoint.postgres.aio import (
     AsyncPostgresSaver,
 )
 from langgraph.store.postgres import AsyncPostgresStore
-from psycopg_pool import AsyncConnectionPool, ConnectionPool
+from psycopg_pool import AsyncConnectionPool
 
 
 class CheckpointerManager:
@@ -35,16 +35,22 @@ class CheckpointerManager:
         """
         Initialize the connection pool and checkpointer.
         """
+        # Swarm VXLAN overlay silently drops idle TCP connections (conntrack
+        # timeout ~15 min). Without keepalives + pool recycling the pool hands
+        # out dead sockets and chat_stream fails with "server closed the
+        # connection unexpectedly". Defence in depth:
+        #   1. libpq TCP keepalives keep the NAT entry alive.
+        #   2. max_idle / max_lifetime recycle in the pool.
+        #   3. check=... pings each connection before handing it out.
         connection_kwargs = {
             "autocommit": True,
             "prepare_threshold": 0,
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
         }
 
-        # max_idle and max_lifetime protect against stale connections. Idle
-        # TCP sockets on Docker overlay / NAT can be silently killed; without
-        # recycling, the pool hands out dead connections and chat_stream
-        # fails with "server closed the connection unexpectedly". check=...
-        # pings each connection before use as a safety net.
         self.pool = AsyncConnectionPool(
             conninfo=self.conninfo,
             min_size=1,
@@ -52,7 +58,7 @@ class CheckpointerManager:
             max_idle=300,  # close connections idle for > 5 min
             max_lifetime=1800,  # recycle every 30 min regardless
             kwargs=connection_kwargs,
-            check=ConnectionPool.check_connection,
+            check=AsyncConnectionPool.check_connection,
             open=False,
             timeout=30,
         )
