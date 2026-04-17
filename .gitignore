@@ -1,5 +1,6 @@
 .history
 .claude/worktrees
+.claude/scheduled_tasks.lock
 venv
 api/__pycache__
 */__pycache__/*
