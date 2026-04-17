@@ -261,95 +261,96 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       is_command: text.startsWith("/"),
     });
 
-    // Show typing indicator once — mark message as read with typing bubble.
-    // Meta's API ties the indicator to a specific unread wamid; re-calling markRead
-    // on an already-read message is undefined behavior (not documented to re-trigger).
-    // The bubble auto-dismisses after 25s or when we send a reply — whichever comes
-    // first. We accept that hard ceiling instead of issuing unreliable refresh calls.
-    this.whatsAppClient.messages
-      .markRead({
-        phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
-        messageId,
-        typingIndicator: { type: "text" },
-      })
-      .catch((err: unknown) =>
-        this.adapterLogger.error("typing_indicator_failed", {
-          wa_hash: waIdHash,
-          message_id: messageId,
-          ...sanitizeErrorForLog(err),
-        }),
-      );
-
-    // Welcome gate — only for users not yet seen this process.
-    // linkedUsers caches platform_links results so only the very first message per
-    // user per process pays the backend round-trip. A 2s timeout prevents a slow
-    // backend from delaying the whole message on first contact.
-    if (!this.welcomeSent.has(waId)) {
-      this.welcomeSent.add(waId); // mark immediately to block concurrent welcome sends
-
-      let isLinked = this.linkedUsers.has(waId);
-      if (!isLinked) {
-        try {
-          const timeoutMs = 2_000;
-          const statusPromise = this.gaia.checkAuthStatus("whatsapp", waId);
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error("auth_check_timeout")),
-              timeoutMs,
-            ),
-          );
-          const status = await Promise.race([statusPromise, timeoutPromise]);
-          isLinked = status.authenticated;
-          if (isLinked) this.linkedUsers.add(waId);
-        } catch (err) {
-          // Timeout or network error — default to unlinked (welcome fires, harmless)
-          this.adapterLogger.warn("welcome_auth_check_failed", {
+    const showTyping = () =>
+      this.whatsAppClient.messages
+        .markRead({
+          phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
+          messageId,
+          typingIndicator: { type: "text" },
+        })
+        .catch((err: unknown) =>
+          this.adapterLogger.error("typing_indicator_failed", {
             wa_hash: waIdHash,
+            message_id: messageId,
             ...sanitizeErrorForLog(err),
-          });
+          }),
+        );
+
+    showTyping();
+    const typingInterval = setInterval(showTyping, 20_000);
+    const clearTyping = () => clearInterval(typingInterval);
+
+    try {
+      if (!this.welcomeSent.has(waId)) {
+        this.welcomeSent.add(waId);
+
+        let isLinked = this.linkedUsers.has(waId);
+        if (!isLinked) {
+          try {
+            const timeoutMs = 2_000;
+            const statusPromise = this.gaia.checkAuthStatus("whatsapp", waId);
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error("auth_check_timeout")),
+                timeoutMs,
+              ),
+            );
+            const status = await Promise.race([statusPromise, timeoutPromise]);
+            isLinked = status.authenticated;
+            if (isLinked) this.linkedUsers.add(waId);
+          } catch (err) {
+            this.adapterLogger.warn("welcome_auth_check_failed", {
+              wa_hash: waIdHash,
+              ...sanitizeErrorForLog(err),
+            });
+          }
+        }
+
+        if (!isLinked) {
+          await this.sendWelcome(waId);
+          showTyping();
         }
       }
 
-      if (!isLinked) {
-        await this.sendWelcome(waId);
-        // Intentionally no showTyping() re-call: re-triggering markRead on an
-        // already-read wamid after an outbound send is undefined behavior per Meta.
-        // The actual reply follows immediately after welcome.
-      }
-    }
+      const target = this.createWaTarget(waId, messageId);
 
-    const target = this.createWaTarget(waId, messageId);
+      if (text.startsWith("/")) {
+        const withoutSlash = text.slice(1);
+        const spaceIndex = withoutSlash.indexOf(" ");
+        const commandName = (
+          spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
+        ).toLowerCase();
+        const rest =
+          spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim();
 
-    if (text.startsWith("/")) {
-      const withoutSlash = text.slice(1);
-      const spaceIndex = withoutSlash.indexOf(" ");
-      const commandName = (
-        spaceIndex === -1 ? withoutSlash : withoutSlash.slice(0, spaceIndex)
-      ).toLowerCase();
-      const rest =
-        spaceIndex === -1 ? "" : withoutSlash.slice(spaceIndex + 1).trim();
-
-      if (commandName === "gaia") {
-        if (!rest) {
-          await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
+        if (commandName === "gaia") {
+          if (!rest) {
+            await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
+            return;
+          }
+          await this.handleStreamingMessage(waId, rest);
           return;
         }
-        await this.handleStreamingMessage(waId, rest);
+
+        const args: Record<string, string | number | boolean | undefined> = {};
+        if (commandName === "todo" || commandName === "workflow") {
+          const parsed = parseTextArgs(rest);
+          args.subcommand = parsed.subcommand;
+        }
+
+        await this.dispatchCommand(
+          commandName,
+          target,
+          args,
+          rest || undefined,
+        );
         return;
       }
 
-      const args: Record<string, string | number | boolean | undefined> = {};
-      if (commandName === "todo" || commandName === "workflow") {
-        const parsed = parseTextArgs(rest);
-        args.subcommand = parsed.subcommand;
-      }
-
-      await this.dispatchCommand(commandName, target, args, rest || undefined);
-      return;
+      await this.handleStreamingMessage(waId, text);
+    } finally {
+      clearTyping();
     }
-
-    // Plain text — treat as chat
-    await this.handleStreamingMessage(waId, text);
   }
 
   /**
