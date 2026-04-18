@@ -32,8 +32,39 @@ const nextConfig = {
   turbopack: {
     root: path.join(__dirname, "../.."),
     // Change the value here to swap the entire icon variant across the app
+    // node:* aliases rewrite Node built-in specifiers to their bare form so
+    // Turbopack does not emit chunks named `[externals]_node:foo_*.js` — the
+    // colon is illegal on NTFS and breaks `next build` on Windows during
+    // standalone output tracing (breaks the Electron Windows installer).
+    // See: https://github.com/vercel/next.js/discussions/86194
+    // and:  https://nextjs-forum.com/post/1471409705514569798
     resolveAlias: {
       "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
+      "node:inspector": "inspector",
+      "node:fs": "fs",
+      "node:fs/promises": "fs/promises",
+      "node:path": "path",
+      "node:stream": "stream",
+      "node:stream/web": "stream/web",
+      "node:url": "url",
+      "node:util": "util",
+      "node:crypto": "crypto",
+      "node:buffer": "buffer",
+      "node:os": "os",
+      "node:child_process": "child_process",
+      "node:http": "http",
+      "node:https": "https",
+      "node:net": "net",
+      "node:tls": "tls",
+      "node:zlib": "zlib",
+      "node:events": "events",
+      "node:async_hooks": "async_hooks",
+      "node:assert": "assert",
+      "node:querystring": "querystring",
+      "node:worker_threads": "worker_threads",
+      "node:process": "process",
+      "node:perf_hooks": "perf_hooks",
+      "node:diagnostics_channel": "diagnostics_channel",
     },
   },
   serverExternalPackages: ["moment", "moment-timezone"],
