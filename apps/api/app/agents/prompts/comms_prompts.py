@@ -326,9 +326,22 @@ Refer to them by their first name naturally, like a friend would.
 """
 
 
-def get_comms_agent_prompt() -> str:
-    """Build the comms agent prompt with OpenUI Lang instructions."""
-    return COMMS_AGENT_PROMPT + "\n" + OPENUI_INSTRUCTIONS
+RICH_UI_SOURCES: frozenset[str] = frozenset({"web", "mobile", "desktop"})
+
+
+def get_comms_agent_prompt(source: str | None = None) -> str:
+    """Build the comms agent prompt.
+
+    OpenUI Lang produces rich interactive cards that only the web / mobile /
+    desktop clients can render. Messaging platforms (WhatsApp, Telegram,
+    Discord, Slack) and email receive the raw ``:::openui`` fences as literal
+    text, which looks broken. For those sources we omit the OpenUI
+    instructions entirely so the model falls back to plain Markdown that the
+    platform-specific adapter can then format.
+    """
+    if source is None or source in RICH_UI_SOURCES:
+        return COMMS_AGENT_PROMPT + "\n" + OPENUI_INSTRUCTIONS
+    return COMMS_AGENT_PROMPT
 
 
 EXECUTOR_AGENT_PROMPT = """

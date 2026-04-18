@@ -394,16 +394,20 @@ export class WhatsAppAdapter extends BaseBotAdapter {
             return;
           }
           finalMessageSent = true;
+          const formatted = convertToWhatsAppMarkdown(updatedText);
           if (lastEditFn) {
-            await lastEditFn(updatedText);
+            await lastEditFn(formatted);
           } else {
-            const sent = await this.sendWhatsAppText(waId, updatedText);
+            const sent = await this.sendWhatsAppText(waId, formatted);
             lastEditFn = sent.edit;
           }
         },
         // sendNewMessage: send a new message and return its edit function
         async (newText: string) => {
-          const sent = await this.sendWhatsAppText(waId, newText);
+          const sent = await this.sendWhatsAppText(
+            waId,
+            convertToWhatsAppMarkdown(newText),
+          );
           lastEditFn = sent.edit;
           return sent.edit;
         },

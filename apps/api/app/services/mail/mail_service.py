@@ -7,6 +7,7 @@ from app.services.composio.composio_service import (
     get_composio_service,
 )
 from app.utils.general_utils import transform_gmail_message
+from app.utils.markdown_utils import convert_markdown_to_html, is_markdown_content
 from fastapi import UploadFile
 
 
@@ -122,6 +123,14 @@ async def send_email(
         is_reply = bool(thread_id)
         tool_name = "GMAIL_REPLY_TO_THREAD" if is_reply else "GMAIL_SEND_EMAIL"
         body_param = "message_body" if is_reply else "body"
+
+        # Gmail renders `**bold**` / `### heading` literally when the body is
+        # plain text. Auto-upgrade Markdown bodies to HTML so recipients see
+        # proper formatting instead of raw syntax. If the caller already set
+        # is_html (they know what they're passing), we respect that and skip.
+        if not is_html and body and is_markdown_content(body):
+            body = convert_markdown_to_html(body)
+            is_html = True
 
         # Build parameters
         parameters: Dict[str, Any] = {
