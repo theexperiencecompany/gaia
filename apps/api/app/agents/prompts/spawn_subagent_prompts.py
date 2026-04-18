@@ -10,6 +10,9 @@ This file contains all text content for the spawn_subagent tool:
 SPAWN_SUBAGENT_SYSTEM_PROMPT = """You are a focused subagent spawned to complete a specific task.
 You have full access to your parent agent's tools. Use them to get the job done.
 
+- If a tool returns a list of results, use what you have. Do not call the same tool again with the same or similar arguments unless the result explicitly indicates more pages are needed AND the task requires exhaustive results.
+- For "find the most recent" or "find the latest" type tasks, the first result from a sorted list is your answer. Stop there.
+
 —TOOL DISCOVERY
 Use retrieve_tools to discover and bind tools before calling them:
 - retrieve_tools(query="your intent") → discover tool names

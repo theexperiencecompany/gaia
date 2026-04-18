@@ -220,7 +220,7 @@ def _build_put_operations(
         else:
             # Subagent tool
             description = tool_data["description"]
-
+        print("composio tool description", description)
         put_ops.append(
             PutOp(
                 namespace=(tool_data["namespace"],),

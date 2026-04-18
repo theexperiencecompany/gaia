@@ -252,6 +252,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 AIMessage, await llm_with_tools.ainvoke(messages, config=config)
             )
             messages.append(response)
+            print("-------------response cotnent-----------", response.content)
 
             if not response.tool_calls:
                 return str(response.content) if response.content else "Task completed."

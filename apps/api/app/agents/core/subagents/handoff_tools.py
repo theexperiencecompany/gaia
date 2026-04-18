@@ -39,6 +39,7 @@ from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import (
     check_integration_status,
 )
+from app.services.provider_metadata_service import get_provider_metadata
 from app.utils.agent_utils import parse_subagent_id
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -46,6 +47,42 @@ from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore, PutOp
 
 SUBAGENTS_NAMESPACE = ("subagents",)
+
+
+def _extract_service_username(metadata: dict | None) -> str | None:
+    if not metadata:
+        return None
+    for key in ("username", "login", "handle"):
+        value = metadata.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _sanitize_task_user_reference(
+    task: str,
+    gaia_name: str | None,
+    provider_hint: str,
+    service_username: str | None,
+) -> str:
+    if not gaia_name:
+        return task
+
+    lowered = task.lower()
+    if provider_hint.lower() not in lowered:
+        return task
+
+    replacement = service_username or "authenticated user"
+    patterns = [
+        rf"(user\s*[:=]?\s*['\"]?)({re.escape(gaia_name)})(['\"]?)",
+        rf"(username\s*[:=]?\s*['\"]?)({re.escape(gaia_name)})(['\"]?)",
+        rf"(account\s*[:=]?\s*['\"]?)({re.escape(gaia_name)})(['\"]?)",
+    ]
+
+    updated = task
+    for pattern in patterns:
+        updated = re.sub(pattern, rf"\1{replacement}\3", updated, flags=re.IGNORECASE)
+    return updated
 
 
 async def check_integration_connection(
@@ -437,12 +474,30 @@ async def handoff(
             user_id=user_id,
         )
 
+        # Avoid passing Gaia display name as a service username
+        provider_meta = None
+        provider_name = None
+        integration = get_integration_by_id(int_id)
+        if integration and integration.provider and user_id:
+            provider_name = integration.provider
+            provider_meta = await get_provider_metadata(user_id, integration.provider)
+        service_username = _extract_service_username(provider_meta)
+        integration_usernames: dict[str, str] = {}
+        if provider_name and service_username:
+            integration_usernames[provider_name] = service_username
+        sanitized_task = _sanitize_task_user_reference(
+            task=task,
+            gaia_name=user.get("name"),
+            provider_hint=(provider_name or int_id),
+            service_username=service_username,
+        )
+
         # Build messages using shared helper (includes context message - fixes the bug!)
         messages = await build_initial_messages(
             system_message=system_message,
             agent_name=agent_name,
             configurable=new_configurable,
-            task=task,
+            task=sanitized_task,
             user_id=user_id,
             subagent_id=agent_name,
         )
@@ -454,7 +509,12 @@ async def handoff(
             config=subagent_config,
             configurable=new_configurable,
             integration_id=int_id,
-            initial_state={"messages": messages, "todos": []},
+            initial_state={
+                "messages": messages,
+                "todos": [],
+                "intent": sanitized_task,
+                "integration_usernames": integration_usernames,
+            },
             user_id=user_id,
             stream_id=stream_id,
         )

@@ -56,6 +56,7 @@ from app.override.langgraph_bigtool.utils import (
     dedupe_tool_bindings,
     format_selected_tools,
 )
+from shared.py.wide_events import log
 
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
@@ -190,6 +191,19 @@ def create_agent(
         tools_to_bind.extend(middleware_tools)
         tools_to_bind = dedupe_tool_bindings(tools_to_bind)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+
+        try:
+            recent_messages = state.get("messages", [])[-6:]
+            preview = []
+            for msg in recent_messages:
+                role = msg.__class__.__name__
+                content = getattr(msg, "content", "")
+                if isinstance(content, str) and len(content) > 200:
+                    content = content[:197] + "..."
+                preview.append({"role": role, "content": content})
+            log.info("acall_model message preview", preview=preview)
+        except Exception as e:
+            log.debug(f"Failed to log message preview: {e}")
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
             middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [

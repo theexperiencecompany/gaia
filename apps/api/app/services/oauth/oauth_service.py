@@ -362,6 +362,13 @@ async def handle_oauth_connection(
     except Exception as e:
         log.warning(f"Failed to invalidate OAuth status cache: {e}")
 
+    # Invalidate tool namespace cache so retrieval uses fresh integration status
+    try:
+        await delete_cache(f"tool_namespaces:{user_id}")
+        log.info(f"Tool namespaces cache invalidated for user {user_id}")
+    except Exception as e:
+        log.warning(f"Failed to invalidate tool namespaces cache: {e}")
+
     # Update user_integrations status in MongoDB
     try:
         await update_user_integration_status(

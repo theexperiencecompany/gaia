@@ -386,10 +386,12 @@ def build_initial_state(
     """
     state = {
         "query": request.message,
+        "intent": request.message,
         "messages": history,
         "current_datetime": datetime.now(timezone.utc).isoformat(),
         "mem0_user_id": user_id,
         "conversation_id": conversation_id,
+        "integration_usernames": {},
         "selected_tool": request.selectedTool,
         "selected_workflow": request.selectedWorkflow,
         "selected_calendar_event": request.selectedCalendarEvent,

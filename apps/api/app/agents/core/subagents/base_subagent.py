@@ -164,6 +164,8 @@ class SubAgentFactory:
             log.info(
                 f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
             )
+        print(f"DEBUG valid_auto_bind for {provider}: {valid_auto_bind}",flush=True)
+        print(f"DEBUG scoped_tool_dict keys: {list(scoped_tool_dict.keys())[:20]}",True)
 
         parent_tool_runtime = build_provider_parent_tool_runtime_config(
             provider_tool_names=initial_tool_ids,
