@@ -532,6 +532,9 @@ services:
     command:
       - "--docker_only=true"
       - "--housekeeping_interval=30s"
+    # Port 8081 is bound in host mode so Prometheus can scrape each Swarm node
+    # individually at <node-ip>:8081 rather than through the ingress mesh.
+    # Binding to 0.0.0.0 is intentional for cross-node scraping; restrict access via firewall.
     ports:
       - target: 8080
         published: 8081
@@ -707,7 +710,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
-      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-https://hooks.slack.com/services/PLACEHOLDER}
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL}
       SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
     secrets:
       - gaia_grafana_admin_password

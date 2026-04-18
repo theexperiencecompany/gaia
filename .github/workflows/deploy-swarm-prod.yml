@@ -226,7 +226,7 @@ jobs:
             for svc in $(docker --context prod stack services gaia-prod --format '{{.Name}}' \
               | grep -E 'gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot'); do
               echo "Rolling back $svc..."
-              docker --context prod service rollback "$svc" || true
+              docker --context prod service rollback "$svc"
             done
           elif [ "$ROLLBACK_MODE" = "digest" ]; then
             [ -z "$IMAGE_DIGEST" ] && echo "image_digest required for digest mode" && exit 1
@@ -236,22 +236,32 @@ jobs:
 
       - name: Wait for rollback convergence
         id: converge
+        env:
+          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
         run: |
-          echo "Waiting for gaia-backend to stabilise after rollback (up to 3 minutes)..."
+          if [ "$ROLLBACK_MODE" = "last" ]; then
+            SERVICES=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
+              | grep -E 'gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot')
+          else
+            SERVICES="gaia-prod_gaia-backend gaia-prod_arq_worker"
+          fi
+          echo "Waiting for services to stabilise (up to 3 minutes): $SERVICES"
           DEADLINE=$(( $(date +%s) + 180 ))
           while true; do
-            running=$(docker --context prod service ps gaia-prod_gaia-backend \
-              --filter desired-state=running \
-              --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
-            running=${running:-0}
-            if [ "$running" -ge 1 ]; then
-              echo "gaia-backend is running"
+            pending=()
+            for svc in $SERVICES; do
+              running=$(docker --context prod service ps "$svc" \
+                --filter desired-state=running \
+                --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
+              [ "${running:-0}" -lt 1 ] && pending+=("$svc")
+            done
+            if [ "${#pending[@]}" -eq 0 ]; then
+              echo "All services are running"
               break
             fi
-            now=$(date +%s)
-            if [ "$now" -ge "$DEADLINE" ]; then
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
               echo "timed_out=true" >> "$GITHUB_OUTPUT"
-              echo "::warning::gaia-backend did not stabilise within 3 minutes after rollback"
+              echo "::warning::Did not stabilise within 3 minutes: ${pending[*]}"
               break  # don't fail — rollback itself succeeded
             fi
             sleep 10
@@ -285,7 +295,7 @@ jobs:
             **Backend Rollback Succeeded**
             **Mode:** ${{ inputs.rollback_mode }}${{ inputs.image_digest && format(' (`{0}`)', inputs.image_digest) || '' }}
             **Actor:** ${{ github.actor }}
-            ${{ steps.converge.outputs.timed_out == 'true' && '⚠️ Note: gaia-backend took longer than 3 minutes to stabilise — verify manually.' || '' }}
+            ${{ steps.converge.outputs.timed_out == 'true' && '⚠️ Note: not all services stabilised within 3 minutes — verify manually.' || '' }}
 
       - name: Notify Discord — rollback failed
         if: failure()
