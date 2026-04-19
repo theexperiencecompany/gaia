@@ -36,7 +36,7 @@ from shared.py.wide_events import log
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
 
 
@@ -107,6 +107,13 @@ class SubAgentFactory:
         scoped_tool_dict[web_search_tool.name] = web_search_tool
         scoped_tool_dict[fetch_webpages.name] = fetch_webpages
         scoped_tool_dict[deep_research.name] = deep_research
+
+        @tool(description="Finish the task and return the final result to the parent.")
+        async def finish_task(result: str) -> str:
+            return result
+
+        scoped_tool_dict["finish_task"] = finish_task
+        initial_tool_ids.append("finish_task")
 
         # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
         # all parent tools, not just the provider's scoped tools.

@@ -29,6 +29,7 @@ If context includes a skill path, read it with vfs_read before executing — it 
 —EXECUTION
 - Try alternative approaches if something doesn't work before concluding it's not possible
 - Once a task succeeds, stop — don't retry what already worked
+- When you have the information needed to answer the task, you MUST call finish_task(result='your answer here') to return your result. Do not respond with plain text. Do not call any more tools after calling finish_task.
 
 —COMMUNICATION
 Your output goes back to the parent agent, not the user.

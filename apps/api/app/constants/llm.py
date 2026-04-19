@@ -1,6 +1,6 @@
 DEFAULT_LLM_PROVIDER = "gemini"
 AGENT_RECURSION_LIMIT = 75  # Main agent graphs (comms, executor, provider subagents)
-SUBAGENT_RECURSION_LIMIT = 25  # Spawned subagents (spawn_subagent tool loop)
+SUBAGENT_RECURSION_LIMIT = 10  # Spawned subagents (spawn_subagent tool loop)
 DEFAULT_MAX_TOKENS = 1_000_000
 DEFAULT_MODEL_NAME = "gemini-3.1-flash-lite-preview"
 # Direct Gemini API model

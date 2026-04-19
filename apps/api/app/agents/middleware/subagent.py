@@ -233,6 +233,11 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             config=config,
             inherited_tool_names=inherited_tool_names,
         )
+        @tool(description="Finish the task and return the final result to the parent.")
+        async def finish_task(result: str) -> str:
+            return result
+
+        tools_by_name["finish_task"] = finish_task
         bound_tool_names: set[str] = set(tools_by_name.keys())
 
         llm_with_tools = (
@@ -256,6 +261,14 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
             if not response.tool_calls:
                 return str(response.content) if response.content else "Task completed."
+
+            for tc in response.tool_calls:
+                if tc["name"] == "finish_task":
+                    args = tc.get("args", {})
+                    result = args.get("result")
+                    if result is None:
+                        return "Task completed."
+                    return str(result)
 
             regular_calls: list[ToolCall] = []
             for tc in response.tool_calls:
