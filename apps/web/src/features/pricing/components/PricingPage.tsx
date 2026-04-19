@@ -47,16 +47,19 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
           sizes="100vw"
           priority
           fill
-          className="aspect-video object-cover object-bottom opacity-65"
+          className="aspect-video object-cover object-bottom opacity-80"
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background via-background to-transparent" />
       </div>
 
       <div className="relative z-1 flex flex-col items-center gap-2">
         <div className="flex w-full flex-col items-center justify-center gap-3 text-white">
-          <h1 className="font-serif text-8xl font-normal">Level Up</h1>
-          <span className="text-xl font-light text-zinc-300">
-            Start free. Work smarter. Upgrade when GAIA proves itself.
+          <h1 className="font-serif text-7xl font-normal">
+            Cheaper than the hours you'd waste
+          </h1>
+          <span className="max-w-2xl text-center text-xl font-light text-zinc-100">
+            Free is genuinely useful. Pro is when GAIA starts doing the work of
+            a teammate. Enterprise is when it does it for the whole team.
           </span>
         </div>
 
@@ -92,7 +95,9 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
         </div>
       </div>
 
-      <FinalSection />
+      <div className="w-full -mb-16 lg:-mb-20">
+        <FinalSection />
+      </div>
     </div>
   );
 }

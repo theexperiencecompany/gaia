@@ -61,8 +61,11 @@ async def construct_langchain_messages(
     Returns:
         List of LangChain messages ready for agent processing
     """
-    # Start with system message containing user name and instructions
-    system_msg = create_system_message(user_id, user_name, agent_type)
+    # Start with system message containing user name and instructions.
+    # Passing `source` lets the comms prompt drop OpenUI Lang on messaging
+    # platforms (whatsapp/telegram/discord/slack) where rich cards can't
+    # render and would otherwise leak as literal `:::openui` fences.
+    system_msg = create_system_message(user_id, user_name, agent_type, source=source)
     chain_msgs = [system_msg]
 
     # Add relevant memories if user context available

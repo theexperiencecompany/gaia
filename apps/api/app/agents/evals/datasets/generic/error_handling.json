@@ -1,0 +1,148 @@
+{
+  "name": "Error Handling and Robustness",
+  "description": "Tests the assistant's ability to handle malformed input, edge cases, contradictory requests, service failures, and other adversarial or unusual scenarios gracefully without crashing or producing nonsensical output.",
+  "version": "1.0.0",
+  "eval_type": "error_handling",
+  "items": [
+    {
+      "input": "",
+      "expected_output": "The assistant should handle empty input gracefully. It can prompt the user to share what they need help with, without producing an error or ignoring the turn entirely.",
+      "context": "User sends a completely empty message. Tests blank input handling.",
+      "tags": ["empty-input", "edge-case"],
+      "metadata": { "difficulty": "easy", "category": "malformed-input" }
+    },
+    {
+      "input": "   ",
+      "expected_output": "The assistant should treat whitespace-only input the same as empty input. A gentle prompt to the user is appropriate.",
+      "context": "User sends only whitespace characters. Tests whitespace-only input handling.",
+      "tags": ["whitespace", "edge-case"],
+      "metadata": { "difficulty": "easy", "category": "malformed-input" }
+    },
+    {
+      "input": "i need you to summarize this article i found: Maritime navigation has undergone a profound transformation over the centuries, evolving from rudimentary celestial observation to the sophisticated satellite-based systems we rely on today. In the ancient world, seafarers navigated primarily by observing the positions of stars, the sun, and the moon. Polynesian navigators, for instance, developed an intricate system of wayfinding that incorporated star paths, ocean swells, wind patterns, and even the flight paths of birds to traverse thousands of miles of open Pacific Ocean without any instruments whatsoever. Their knowledge was passed down orally through generations, representing one of humanity's most remarkable feats of spatial reasoning and environmental awareness. The Mediterranean civilizations, including the Phoenicians and Greeks, similarly relied on celestial navigation but began supplementing it with early cartographic efforts. The Greeks contributed significantly to navigation theory through their understanding of geometry and astronomy. Eratosthenes calculated the circumference of the Earth with surprising accuracy around 240 BCE, and Ptolemy's Geographia provided coordinate-based mapping that would influence navigation for over a millennium. The magnetic compass, likely invented in China during the Han Dynasty for geomantic purposes, eventually made its way to European navigators by the 12th century. This single instrument revolutionized maritime travel by providing a reliable directional reference independent of weather conditions or time of day. Combined with the astrolabe and later the cross-staff, navigators could determine both direction and latitude with reasonable precision. The Age of Exploration in the 15th and 16th centuries pushed navigation technology forward dramatically. Portuguese and Spanish expeditions demanded better tools and techniques. The development of the carrack and caravel ship designs allowed longer voyages, but navigation remained imprecise, particularly in determining longitude. The longitude problem persisted for centuries and caused countless shipwrecks and lost expeditions. It was not until John Harrison developed his marine chronometer in the mid-18th century that sailors could reliably determine their east-west position at sea. Harrison's H4 chronometer, completed in 1759, was a masterpiece of precision engineering that kept accurate time despite the rolling of a ship, changes in temperature, and variations in humidity. The British Parliament had offered a prize of 20,000 pounds for a practical solution to the longitude problem, and Harrison's chronometers ultimately claimed that reward, though not without considerable political controversy and delay. The 19th century brought further refinements including improved sextants, standardized nautical charts produced by national hydrographic offices, and the establishment of international maritime conventions. The introduction of steam power reduced dependence on wind patterns, fundamentally changing route planning. The 20th century saw the most dramatic changes with the invention of radio navigation systems such as LORAN, developed during World War II, which used synchronized radio signals from shore-based transmitters to allow ships and aircraft to determine their position. Radar technology, also a product of wartime research, gave navigators the ability to detect obstacles, coastlines, and other vessels in poor visibility. The culmination of this long evolution arrived with the Global Positioning System, originally developed by the United States Department of Defense. GPS uses a constellation of at least 24 satellites orbiting the Earth to provide precise position, velocity, and timing information to receivers anywhere on the planet. Modern GPS receivers can determine position to within a few meters, a level of accuracy that would have seemed miraculous to the navigators of previous centuries. Today, integrated bridge systems on modern vessels combine GPS, radar, electronic chart displays, and automated identification systems into unified navigation suites. These systems can automatically plot courses, avoid hazards, and even control the vessel's steering. Yet despite all this technology, the fundamental principles established by ancient navigators remain relevant, and maritime training still emphasizes celestial navigation as a backup skill in case electronic systems fail.",
+      "expected_output": "The assistant should attempt to summarize the content faithfully, handling the long input without truncating important points or refusing outright. If the input exceeds processing limits, it should explain the limitation clearly.",
+      "context": "Extremely long input. Tests handling of large payloads and graceful degradation if limits are hit.",
+      "tags": ["long-input", "summarization", "limits"],
+      "metadata": { "difficulty": "medium", "category": "input-length" }
+    },
+    {
+      "input": "puedes ayudarme to schedule a meeting pour demain at 3pm bitte?",
+      "expected_output": "The assistant should parse the multilingual input (Spanish, English, French, German) and understand the core request: schedule a meeting for tomorrow at 3pm. It should respond in the user's apparent primary language or ask which language they prefer.",
+      "context": "Single message mixing four languages. Tests multilingual input parsing.",
+      "tags": ["multilingual", "mixed-language", "scheduling"],
+      "metadata": { "difficulty": "medium", "category": "language-mixing" }
+    },
+    {
+      "input": "\ud83c\udf89\ud83c\udf82\ud83c\udf88",
+      "expected_output": "The assistant should interpret the celebratory emojis contextually (party, cake, balloon suggest a birthday or celebration) and respond appropriately, perhaps asking if there is a birthday to plan for or congratulating the user.",
+      "context": "Emoji-only message with no text. Tests non-text input interpretation.",
+      "tags": ["emoji-only", "non-text", "interpretation"],
+      "metadata": { "difficulty": "medium", "category": "non-text-input" }
+    },
+    {
+      "input": "cn u plz shedule a meting with jhon abt the budgt reviw tomrow at 2",
+      "expected_output": "The assistant should parse through the typos and abbreviations to understand: schedule a meeting with John about the budget review tomorrow at 2pm. It should confirm the interpreted details before proceeding.",
+      "context": "Heavy typos and abbreviations throughout. Tests typo tolerance and intent extraction.",
+      "tags": ["typos", "abbreviations", "robustness"],
+      "metadata": { "difficulty": "easy", "category": "malformed-input" }
+    },
+    {
+      "input": "i tried to check my email but it keeps saying server error, can you check whats going on",
+      "expected_output": "The assistant should acknowledge the service issue, explain what it can and cannot diagnose, and offer practical troubleshooting steps or alternative ways to access email. It should not pretend to fix a server it cannot access.",
+      "context": "User reports a service failure and expects the assistant to help. Tests service unavailability handling.",
+      "tags": ["service-error", "troubleshooting", "capability-honesty"],
+      "metadata": { "difficulty": "medium", "category": "service-failure" }
+    },
+    {
+      "input": "schedule my meeting with lisa at 2pm and also cancel my meeting with lisa at 2pm",
+      "expected_output": "The assistant should recognize the contradiction and ask the user to clarify which action they want. It should not execute both actions or silently pick one.",
+      "context": "Contradictory instructions in a single message. Tests contradiction detection.",
+      "tags": ["contradiction", "same-message", "clarification"],
+      "metadata": { "difficulty": "medium", "category": "contradictory-request" }
+    },
+    {
+      "input": "delete my 3pm meeting today",
+      "expected_output": "The assistant should check for a 3pm meeting. If none exists, it should inform the user clearly rather than confirming a deletion that did not happen or fabricating a meeting to delete.",
+      "context": "User references an item that may not exist. Tests nonexistent resource handling.",
+      "tags": ["nonexistent-item", "deletion", "honesty"],
+      "metadata": { "difficulty": "medium", "category": "nonexistent-resource" }
+    },
+    {
+      "input": "send the report to dave, also remind me at 5 to call mom, oh and whats the weather tomorrow, and can you book a table for 2 at that italian place tonight",
+      "expected_output": "The assistant should parse all four distinct requests, address each one systematically, and clarify any ambiguous details (which report, which Italian place). It should not drop any of the requests.",
+      "context": "Rapid-fire multiple unrelated requests in one message. Tests multi-request parsing.",
+      "tags": ["multi-request", "rapid-fire", "completeness"],
+      "metadata": { "difficulty": "hard", "category": "multi-request" }
+    },
+    {
+      "input": "can you please sche",
+      "expected_output": "The assistant should recognize the message appears cut off and ask the user to complete their request. It should not guess what the user intended to say.",
+      "context": "Message is truncated mid-word. Tests incomplete input handling.",
+      "tags": ["truncated", "incomplete", "clarification"],
+      "metadata": { "difficulty": "easy", "category": "incomplete-input" }
+    },
+    {
+      "input": "asdfghjkl",
+      "expected_output": "The assistant should recognize this as nonsensical keyboard input and politely ask the user what they need help with. It should not attempt to interpret it as a meaningful command.",
+      "context": "Random keyboard mashing. Tests nonsense input handling.",
+      "tags": ["nonsense", "keyboard-mash", "graceful-handling"],
+      "metadata": { "difficulty": "easy", "category": "nonsense-input" }
+    },
+    {
+      "input": "set my alarm for 25:00",
+      "expected_output": "The assistant should recognize that 25:00 is not a valid time and inform the user. It should ask if they meant a specific valid time like 1:00 AM or ask for clarification.",
+      "context": "Impossible time value. Tests input validation for temporal data.",
+      "tags": ["invalid-time", "validation", "impossible-request"],
+      "metadata": { "difficulty": "medium", "category": "invalid-input" }
+    },
+    {
+      "input": "do the thing",
+      "expected_output": "The assistant should ask for clarification about what 'the thing' refers to. If there is recent conversation context that makes it clear, it can proceed. Otherwise it must ask.",
+      "context": "Extremely vague request with no context. Tests ambiguity handling.",
+      "tags": ["vague", "ambiguous", "clarification-needed"],
+      "metadata": { "difficulty": "medium", "category": "ambiguous-input" }
+    },
+    {
+      "input": "I need you to email john@company.com AND john@company.com AND john@company.com AND john@company.com the same message about the Q3 report. Make sure each one gets a separate email.",
+      "expected_output": "The assistant should recognize that the same email address is repeated four times and point this out to the user rather than sending four duplicate emails. It should ask if they meant different recipients.",
+      "context": "Repeated identical data that would cause duplicate actions. Tests deduplication awareness.",
+      "tags": ["deduplication", "repeated-data", "validation"],
+      "metadata": { "difficulty": "medium", "category": "duplicate-detection" }
+    },
+    {
+      "input": "translate this to french: [no text follows]",
+      "expected_output": "The assistant should note that no text was provided to translate and ask the user to include the content they want translated.",
+      "context": "User references content that is missing from the message. Tests missing payload detection.",
+      "tags": ["missing-content", "incomplete", "clarification"],
+      "metadata": { "difficulty": "easy", "category": "missing-input" }
+    },
+    {
+      "input": "remind me about the thing at the place with the person on the day",
+      "expected_output": "The assistant should recognize that every detail is missing and systematically ask for: what thing, what place, which person, and which day. It should not fill in any of these with guesses.",
+      "context": "Every specific detail is replaced with a placeholder. Tests handling of maximally vague input.",
+      "tags": ["vague", "all-placeholders", "clarification-needed"],
+      "metadata": { "difficulty": "hard", "category": "ambiguous-input" }
+    },
+    {
+      "input": "URGENT!!!!! NEED THIS DONE NOW!!!!! SEND THE EMAIL TO EVERYONE ABOUT THE THING ASAP!!!!!",
+      "expected_output": "The assistant should remain calm, not match the urgency in tone, and methodically ask what email, to whom specifically, and about what topic. Urgency does not override the need for complete information.",
+      "context": "High-pressure, all-caps message with insufficient detail. Tests composure under urgency and resistance to skipping validation.",
+      "tags": ["urgency", "caps-lock", "incomplete", "composure"],
+      "metadata": { "difficulty": "hard", "category": "pressure-handling" }
+    },
+    {
+      "input": "create a meeting for february 30th at noon",
+      "expected_output": "The assistant should recognize that February 30th does not exist in any year and inform the user. It should suggest valid late-February dates as alternatives.",
+      "context": "Impossible calendar date. Tests date validation.",
+      "tags": ["invalid-date", "validation", "calendar"],
+      "metadata": { "difficulty": "medium", "category": "invalid-input" }
+    },
+    {
+      "input": "hey\nhey\nhey\nhey\nhey\nhey\nhey\nhey are you there\nhello\nhello\nhi\nhi\nhi",
+      "expected_output": "The assistant should respond once, acknowledging the user's repeated attempts to get attention, and ask how it can help. It should not respond to each line individually.",
+      "context": "Spammy repeated input. Tests handling of repetitive messages.",
+      "tags": ["spam", "repeated", "patience"],
+      "metadata": { "difficulty": "hard", "category": "spam-handling" }
+    }
+  ]
+}

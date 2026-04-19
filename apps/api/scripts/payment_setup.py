@@ -165,6 +165,23 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             ],
             "is_active": True,
         },
+        {
+            # Enterprise — lead capture only, no Dodo product.
+            "dodo_product_id": "",
+            "name": "Enterprise",
+            "description": "For teams ready to roll GAIA out to every employee.",
+            "amount": 0,  # Custom pricing, frontend shows 'Custom' label.
+            "currency": "USD",
+            "duration": "monthly",
+            "max_users": 0,  # 0 == unlimited, contact sales
+            "features": [
+                "Self host or private cloud deployment",
+                "SSO, SCIM provisioning, audit logs",
+                "Custom integrations built for your stack",
+                "Dedicated solutions engineer and SLA",
+            ],
+            "is_active": True,
+        },
     ]
 
     # Connect to database

@@ -42,6 +42,7 @@ export default function HeroSection({
               staggerDelay={0.08}
               className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible"
               gradient="linear-gradient(to bottom, #ffffff, #dbdbdb)"
+              lcpOptimized
               disableIntersectionObserver
               as="h1"
             />
@@ -52,6 +53,7 @@ export default function HeroSection({
               staggerDelay={0.08}
               className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible"
               gradient="linear-gradient(to bottom, #837e88, #000000)"
+              lcpOptimized
               disableIntersectionObserver
               as="h1"
             />

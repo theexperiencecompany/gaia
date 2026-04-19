@@ -3,7 +3,8 @@
 import { Button } from "@heroui/button";
 import { CheckmarkBadge01Icon } from "@icons";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { useState } from "react";
 import { DUMMY_NOTIFICATIONS, ease } from "./demoConstants";
 

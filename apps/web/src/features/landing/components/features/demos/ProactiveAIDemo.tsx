@@ -7,7 +7,8 @@ import {
   MessageMultiple01Icon,
   SourceCodeCircleIcon,
 } from "@icons";
-import { m, useInView } from "motion/react";
+import { useInView } from "motion/react";
+import * as m from "motion/react-m";
 import { useEffect, useRef, useState } from "react";
 
 const BRIEFING_ITEMS = [

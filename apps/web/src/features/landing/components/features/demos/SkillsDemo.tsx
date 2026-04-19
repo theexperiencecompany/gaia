@@ -1,6 +1,7 @@
 "use client";
 
-import { AnimatePresence, m, useInView } from "motion/react";
+import { AnimatePresence, useInView } from "motion/react";
+import * as m from "motion/react-m";
 import { useEffect, useRef, useState } from "react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

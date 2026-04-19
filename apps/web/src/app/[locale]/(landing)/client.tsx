@@ -54,6 +54,10 @@ const ProductivityOSShowcaseSection = dynamic(
     ),
   { loading: SectionLoader },
 );
+const BotsShowcaseSection = dynamic(
+  () => import("@/features/landing/components/sections/BotsShowcaseSection"),
+  { loading: SectionLoader },
+);
 const OpenSource = dynamic(
   () => import("@/features/landing/components/sections/OpenSource"),
   { loading: SectionLoader },
@@ -152,8 +156,9 @@ export default function LandingPageClient({
           <TiredBoringAssistants />
           <WorkflowSection />
           <UseCasesSectionLanding />
+          <BotsShowcaseSection />
           <TodoShowcaseSection />
-          <ProductivityOSShowcaseSection />
+          {/* <ProductivityOSShowcaseSection /> */}
           <OpenSource />
           <FAQAccordion />
           <LandingDownloadSection />

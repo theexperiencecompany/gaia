@@ -6,8 +6,8 @@ import {
   ZapIcon,
 } from "@icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import EmailComposeCard from "@/features/mail/components/EmailComposeCard";
 import { FOUNDER_EMAIL } from "./demoConstants";
+import EmailComposeCard from "./EmailComposeCardLoader";
 import type { FinalCardType } from "./types";
 
 // ─── Workflow card (developer use case) ───────────────────────────────────────

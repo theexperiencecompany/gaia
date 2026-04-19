@@ -1,6 +1,6 @@
 "use client";
 
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { useId, useRef } from "react";
 
 import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver";
@@ -21,6 +21,7 @@ interface SplitTextBlurProps {
   as?: "h1" | "h2" | "h3" | "div";
   gradient?: string;
   showGlowTextBg?: boolean;
+  lcpOptimized?: boolean;
 }
 
 const SplitTextBlur = ({
@@ -37,6 +38,7 @@ const SplitTextBlur = ({
   disableIntersectionObserver = false,
   gradient = "linear-gradient(to bottom, #a3a3a3, #ffffff)",
   showGlowTextBg = false,
+  lcpOptimized = false,
   as = "div",
 }: SplitTextBlurProps) => {
   const ref = useRef<HTMLDivElement>(null);
@@ -45,7 +47,7 @@ const SplitTextBlur = ({
   const words = text.split(" ");
 
   const containerVariants = {
-    hidden: { opacity: 0 },
+    hidden: { opacity: lcpOptimized ? 1 : 0 },
     visible: {
       opacity: 1,
       transition: {
@@ -58,7 +60,7 @@ const SplitTextBlur = ({
 
   const wordVariants = {
     hidden: {
-      opacity: 0,
+      opacity: lcpOptimized ? 1 : 0,
       filter: "blur(10px)",
       y: yOffset,
     },

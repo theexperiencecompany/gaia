@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authApi } from "@/features/auth/api/authApi";
@@ -18,6 +19,7 @@ const ONBOARDING_STORAGE_KEY = "gaia-onboarding-state";
 
 export const useOnboarding = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const user = useUser();
   const { setUser } = useUserActions();
   const [isInitialized, setIsInitialized] = useState(false);
@@ -406,6 +408,13 @@ export const useOnboarding = () => {
           response = await authApi.completeOnboarding(onboardingData);
           break; // Success, exit retry loop
         } catch (error: unknown) {
+          const status = (error as { response?: { status?: number } }).response
+            ?.status;
+          // Do not retry deterministic client errors.
+          if (status === 409 || status === 422) {
+            throw error;
+          }
+
           retryCount++;
           if (retryCount >= maxRetries) {
             throw error; // Re-throw if max retries reached
@@ -419,6 +428,8 @@ export const useOnboarding = () => {
       }
 
       if (response?.success) {
+        toast.success("Welcome! Your preferences have been saved.");
+
         // Track onboarding completion
         trackEvent(ANALYTICS_EVENTS.ONBOARDING_COMPLETED, {
           profession: onboardingState.userResponses.profession,
@@ -445,6 +456,8 @@ export const useOnboarding = () => {
             onboarding: response.user.onboarding,
             selected_model: response.user.selected_model,
           });
+
+          queryClient.setQueryData(["current-user"], response.user);
         }
 
         // Fetch conversations to populate sidebar with seeded data
@@ -456,7 +469,7 @@ export const useOnboarding = () => {
         }
 
         // Navigate to the main chat page
-        router.push("/c");
+        router.replace("/c");
       } else {
         throw new Error("Failed to complete onboarding");
       }
@@ -465,15 +478,68 @@ export const useOnboarding = () => {
 
       // Provide specific error messages
       const errorObj = error as {
-        response?: { status?: number };
+        response?: {
+          status?: number;
+          data?: {
+            code?: string;
+            message?: string;
+            detail?: string | Array<{ msg: string; loc?: string[] }>;
+          };
+        };
         message?: string;
         code?: string;
       };
 
-      if (errorObj?.response?.status === 409) {
-        router.push("/c");
+      const conflictCode = errorObj.response?.data?.code;
+
+      if (
+        errorObj?.response?.status === 409 &&
+        conflictCode === "ONBOARDING_ALREADY_COMPLETED"
+      ) {
+        try {
+          const latestUser = await authApi.fetchUserInfo();
+          setUser({
+            userId: latestUser.user_id,
+            name: latestUser.name,
+            email: latestUser.email,
+            profilePicture: latestUser.picture,
+            timezone: latestUser.timezone,
+            onboarding: latestUser.onboarding,
+            selected_model: latestUser.selected_model,
+          });
+          queryClient.setQueryData(["current-user"], latestUser);
+        } catch (fetchError) {
+          console.error("Failed to refresh user state after 409:", fetchError);
+          const fallbackUser = {
+            userId: user.userId,
+            name: user.name,
+            email: user.email,
+            profilePicture: user.profilePicture,
+            timezone: user.timezone,
+            onboarding: {
+              ...user.onboarding,
+              completed: true,
+            },
+            selected_model: user.selected_model,
+          };
+          setUser(fallbackUser);
+          queryClient.setQueryData(["current-user"], fallbackUser);
+        }
+        router.replace("/c");
+      } else if (errorObj?.response?.status === 409) {
+        toast.error(
+          errorObj.response?.data?.message ||
+            "Onboarding state conflict. Please refresh and try again.",
+        );
       } else if (errorObj?.response?.status === 422) {
-        toast.error("Please check your input and try again.");
+        const detail = errorObj.response?.data?.detail;
+        let validationMessage = "Please check your input and try again.";
+        if (Array.isArray(detail) && detail.length > 0) {
+          validationMessage = detail.map((e) => e.msg).join(". ");
+        } else if (typeof detail === "string" && detail.length > 0) {
+          validationMessage = detail;
+        }
+        toast.error(validationMessage);
       } else if (
         errorObj?.message?.includes("network") ||
         errorObj?.code === "NETWORK_ERROR"

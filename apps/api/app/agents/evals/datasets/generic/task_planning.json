@@ -1,0 +1,141 @@
+{
+  "name": "Task Planning",
+  "description": "Tests complex task breakdown, multi-step planning, sequencing, scope clarification, batch operations, and handling tasks with time constraints or requiring user confirmation.",
+  "version": "1.0.0",
+  "eval_type": "task_planning",
+  "items": [
+    {
+      "input": "plan my trip to tokyo next week",
+      "expected_output": "Should break this into logical steps: confirm travel dates, check flights, find accommodation, create an itinerary. Should ask about budget, travel preferences, and must-see activities before planning. Should not just dump a generic Tokyo guide.",
+      "context": "Open-ended travel planning request with minimal detail. Tests structured breakdown of a complex multi-domain task.",
+      "tags": ["travel", "multi-step", "planning"],
+      "metadata": { "difficulty": "medium", "category": "travel-planning" }
+    },
+    {
+      "input": "help me prep for my monday standup",
+      "expected_output": "Should gather information from multiple sources: recent calendar events, completed tasks/todos, any commits or project updates. Should synthesize this into talking points covering what was done, what's planned, and any blockers.",
+      "context": "Requires pulling data from multiple sources and synthesizing it into a structured format. Tests cross-domain information gathering.",
+      "tags": ["work", "standup", "multi-source", "synthesis"],
+      "metadata": { "difficulty": "medium", "category": "work-prep" }
+    },
+    {
+      "input": "i need to throw a birthday party for my daughter on saturday. shes turning 7",
+      "expected_output": "Should create a structured plan covering: venue (home or elsewhere), guest list and invitations, theme/decorations, food/cake, activities/entertainment, timeline for the day. Should ask about budget, number of kids, and any dietary restrictions. Should be age-appropriate for a 7-year-old.",
+      "context": "Event planning with a specific audience. Tests comprehensive planning with appropriate scope questions.",
+      "tags": ["event", "party", "planning", "logistics"],
+      "metadata": { "difficulty": "medium", "category": "event-planning" }
+    },
+    {
+      "input": "move all my friday meetings to monday",
+      "expected_output": "Should first retrieve all Friday meetings, then check Monday availability for conflicts. Should present the list of meetings to move and ask for confirmation before making changes. Should flag any conflicts on Monday.",
+      "context": "Batch calendar operation requiring conflict detection and confirmation. Tests batch processing with safety checks.",
+      "tags": ["calendar", "batch", "confirmation", "conflict-detection"],
+      "metadata": { "difficulty": "medium", "category": "batch-operations" }
+    },
+    {
+      "input": "I have exactly 30 minutes before my next meeting. whats the most important thing I should work on right now",
+      "expected_output": "Should review the user's tasks, todos, and upcoming deadlines to identify the highest-priority item that can be meaningfully progressed in 30 minutes. Should consider urgency, deadline proximity, and task size. Should not suggest a task that requires more than 30 minutes.",
+      "context": "Time-constrained prioritization. Tests ability to assess priorities against a hard time limit.",
+      "tags": ["prioritization", "time-constraint", "productivity"],
+      "metadata": { "difficulty": "medium", "category": "prioritization" }
+    },
+    {
+      "input": "set up evreything for my new project called Phoenix",
+      "expected_output": "Should ask what 'everything' means in the user's context: project management board, repository, communication channel, shared documents, calendar events, team invitations? Should present a checklist of common project setup tasks and ask which ones apply. Should not assume a specific toolset.",
+      "context": "Vague multi-domain setup request with typo. Tests scope clarification before execution.",
+      "tags": ["project-setup", "vague", "scope-clarification", "typo"],
+      "metadata": { "difficulty": "medium", "category": "scope-clarification" }
+    },
+    {
+      "input": "I want to start a weekly meal prep routine. can you help me figure this out",
+      "expected_output": "Should ask about dietary preferences, household size, cooking skill level, available time, and budget. Should then outline a phased approach: start with planning meals, create a shopping list, establish a prep schedule. Should suggest starting small rather than an overwhelming full-week plan.",
+      "context": "Lifestyle/habit planning that requires understanding personal constraints. Tests thoughtful phased planning.",
+      "tags": ["lifestyle", "meal-prep", "habit", "phased-planning"],
+      "metadata": { "difficulty": "medium", "category": "lifestyle-planning" }
+    },
+    {
+      "input": "ok heres what i need done today: respond to james email about the contract, finish the slide deck for thursdays presentation, book a dentist appointment, pick up groceries, and call mom. what order should I do these in",
+      "expected_output": "Should analyze the tasks by urgency, time-sensitivity, and dependencies. Should recommend calling the dentist first (business hours), responding to the contract email (time-sensitive business), finishing the slide deck (upcoming deadline), calling mom (flexible), and groceries last (can be done anytime). Should explain the reasoning briefly.",
+      "context": "Task sequencing with mixed personal and professional items. Tests prioritization logic and reasoning.",
+      "tags": ["sequencing", "prioritization", "mixed-tasks", "reasoning"],
+      "metadata": { "difficulty": "medium", "category": "task-sequencing" }
+    },
+    {
+      "input": "I need to prepare for a job interview next Thursday. I haven't done any prep yet and I'm nervous.",
+      "expected_output": "Should create a structured prep plan with daily milestones leading to Thursday. Should include: company research, role understanding, common questions practice, behavioral examples (STAR method), outfit preparation, logistics (location/video setup). Should prioritize based on remaining days.",
+      "context": "User has limited time for interview prep and is starting from scratch.",
+      "tags": ["interview-prep", "time-constrained", "structured-plan"],
+      "metadata": { "difficulty": "medium", "category": "preparation-plan" }
+    },
+    {
+      "input": "remind me to take my medication every day at 8am",
+      "expected_output": "Should set up a recurring daily reminder for 8am. Should confirm the time zone and ask if there's a specific medication name to include in the reminder. Should confirm the reminder is set.",
+      "context": "Simple recurring reminder. Tests basic task creation with recurrence.",
+      "tags": ["reminder", "recurring", "health"],
+      "metadata": { "difficulty": "easy", "category": "recurring-task" }
+    },
+    {
+      "input": "add buy milk to my shopping list",
+      "expected_output": "Should add 'buy milk' to the user's shopping list or todo list. If multiple lists exist, should ask which one. If no shopping list exists, should offer to create one.",
+      "context": "Simple single-item task creation. Tests straightforward task handling.",
+      "tags": ["todo", "shopping", "simple"],
+      "metadata": { "difficulty": "easy", "category": "simple-task" }
+    },
+    {
+      "input": "whats on my plate this week",
+      "expected_output": "Should compile a summary of the user's upcoming calendar events, pending todos, and approaching deadlines for the current week. Should present it in a clear, organized format grouped by day or priority.",
+      "context": "Colloquial way of asking for a weekly overview. Tests understanding of informal language and multi-source aggregation.",
+      "tags": ["overview", "weekly", "informal", "multi-source"],
+      "metadata": { "difficulty": "easy", "category": "overview" }
+    },
+    {
+      "input": "create a new event tmrw at 2pm",
+      "expected_output": "Should ask for the event title and any other details (duration, location, attendees) before creating. Should not create an untitled event. Should interpret 'tmrw' as tomorrow.",
+      "context": "Incomplete event creation with abbreviation. Tests gathering required fields.",
+      "tags": ["calendar", "incomplete", "abbreviation"],
+      "metadata": { "difficulty": "easy", "category": "incomplete-task" }
+    },
+    {
+      "input": "I need to prepare a presentation for the board next thursday. I have no slides yet and need to cover Q1 revenue, product roadmap, and hiring plan. Also need to rehearse it at least once. break this down for me",
+      "expected_output": "Should create a day-by-day plan working backwards from Thursday. Should include: research/data gathering phase, slide creation with specific sections, review/feedback cycle, and rehearsal time. Should account for the user's existing schedule and suggest blocking focused time slots.",
+      "context": "Time-sensitive multi-day project with clear deliverables. Tests backward planning from a deadline.",
+      "tags": ["presentation", "deadline", "backward-planning", "multi-day"],
+      "metadata": { "difficulty": "hard", "category": "deadline-planning" }
+    },
+    {
+      "input": "im switching jobs in 2 weeks. help me make sure I dont forget anything for the transition",
+      "expected_output": "Should create a comprehensive transition checklist covering: knowledge transfer documentation, handoff meetings, returning equipment, updating accounts/passwords, exporting personal data, farewell communications, updating LinkedIn, setting up at new job. Should sequence items appropriately (things to do first week vs last day).",
+      "context": "Life event requiring comprehensive planning across many domains. Tests thoroughness and domain knowledge.",
+      "tags": ["life-event", "transition", "comprehensive", "checklist"],
+      "metadata": { "difficulty": "hard", "category": "life-transition" }
+    },
+    {
+      "input": "I want to run a half marathon in 3 months. I can barely run a mile right now. build me a training plan",
+      "expected_output": "Should create a phased training plan (base building, endurance, peak, taper) spread across 12 weeks. Should start conservatively given the user's current fitness level. Should include rest days, cross-training, and gradual mileage increases. Should add a disclaimer about consulting a doctor. Should offer to set recurring reminders or calendar events for training days.",
+      "context": "Long-term goal requiring domain knowledge and phased planning. Tests ability to create realistic incremental plans.",
+      "tags": ["fitness", "long-term", "phased", "training"],
+      "metadata": { "difficulty": "hard", "category": "long-term-planning" }
+    },
+    {
+      "input": "we're moving to a new apartment on the 15th. theres so much to do I dont even know where to start. the lease on our current place ends on the 20th so we have some overlap",
+      "expected_output": "Should create a structured moving plan organized by timeframe: before moving day (packing, utilities transfer, address changes, hiring movers), moving day logistics, and post-move tasks (unpacking priority, old apartment cleaning, key return by the 20th). Should ask about distance, budget for movers, and whether they have help.",
+      "context": "Stressful life event with a hard deadline and overlapping timelines. Tests ability to create a calming, organized plan from chaos.",
+      "tags": ["moving", "life-event", "deadline", "logistics", "stress"],
+      "metadata": { "difficulty": "hard", "category": "life-event-planning" }
+    },
+    {
+      "input": "I committed to organizing the team offsite but I have no idea what I'm doing. its 15 people, 2 days, somewhere within 2 hours of San Francisco, budget is around 10k. go",
+      "expected_output": "Should break this into workstreams: venue research, agenda/activities planning, logistics (transport, meals, accommodation), budget allocation, communication to attendees, and contingency planning. Should ask about the team's preferences, any dietary restrictions, and the goals of the offsite (team building vs strategy vs both). Should provide a timeline for decisions.",
+      "context": "Complex event with constraints (people, budget, location, duration). Tests structured planning under real constraints.",
+      "tags": ["event", "corporate", "budget", "constraints", "multi-workstream"],
+      "metadata": { "difficulty": "hard", "category": "event-planning" }
+    },
+    {
+      "input": "I need to migrate our team from Slack to Teams. about 50 people, we use a ton of integrations. how do I even approach this",
+      "expected_output": "Should outline a migration strategy: audit current Slack usage (channels, integrations, bots, workflows), map Slack features to Teams equivalents, create a migration timeline with phases (pilot group first, then full rollout), plan for data migration (history export), user training, and a communication plan. Should flag that some Slack integrations may not have Teams equivalents and ask about critical ones.",
+      "context": "Technical migration project requiring both planning and change management. Tests ability to plan cross-cutting organizational changes.",
+      "tags": ["migration", "technical", "change-management", "organizational"],
+      "metadata": { "difficulty": "hard", "category": "technical-migration" }
+    }
+  ]
+}

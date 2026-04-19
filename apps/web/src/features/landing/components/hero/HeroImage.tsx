@@ -76,7 +76,7 @@ export default function HeroImage({
           width={1920}
           height={1080}
           sizes={"100vw"}
-          loading={"eager"}
+          priority
           style={{
             width: "100%",
             height: "100%",

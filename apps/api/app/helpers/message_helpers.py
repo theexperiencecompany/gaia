@@ -12,6 +12,7 @@ from app.agents.prompts.workflow_prompts import (
 from app.agents.templates.agent_template import (
     COMMS_PROMPT_TEMPLATE,
     EXECUTOR_PROMPT_TEMPLATE,
+    build_comms_prompt_template,
 )
 from app.models.message_models import (
     FileData,
@@ -32,6 +33,7 @@ def create_system_message(
     user_id: Optional[str] = None,
     user_name: Optional[str] = None,
     agent_type: Literal["comms", "executor"] = "comms",
+    source: Optional[str] = None,
 ) -> SystemMessage:
     """Create main system message with user name only.
 
@@ -39,11 +41,16 @@ def create_system_message(
         user_id: User's ID
         user_name: User's full name
         agent_type: Type of agent - "comms", "executor", or "main" (legacy)
+        source: Conversation source/platform (e.g. "whatsapp", "web"). Gates
+            OpenUI Lang out of the comms prompt for messaging platforms that
+            can't render interactive cards.
     """
-    template = {
-        "comms": COMMS_PROMPT_TEMPLATE,
-        "executor": EXECUTOR_PROMPT_TEMPLATE,
-    }.get(agent_type, COMMS_PROMPT_TEMPLATE)
+    if agent_type == "executor":
+        template = EXECUTOR_PROMPT_TEMPLATE
+    elif source is None:
+        template = COMMS_PROMPT_TEMPLATE
+    else:
+        template = build_comms_prompt_template(source)
 
     return SystemMessage(content=template.format(user_name=user_name or "there"))
 

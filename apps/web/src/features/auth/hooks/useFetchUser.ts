@@ -52,6 +52,11 @@ const useFetchUser = () => {
       });
       hasIdentified.current = true;
     }
+  }, [data, setUser]);
+
+  // Track session resume once, independent from store-syncing.
+  useEffect(() => {
+    if (!data) return;
 
     const isAuthRedirectPage = currentPath === "/redirect";
     const hasTrackedSessionResumed =
@@ -64,22 +69,30 @@ const useFetchUser = () => {
       });
       sessionStorage.setItem(SESSION_RESUMED_KEY, "true");
     }
+  }, [data, currentPath]);
 
-    // OAuth redirect routing — only runs when tokens are present in URL
+  // OAuth redirect routing — isolated from store syncing so route changes
+  // don't overwrite user state with stale query data.
+  useEffect(() => {
+    if (!data) return;
+
     const accessToken = searchParams.get("access_token");
     const refreshToken = searchParams.get("refresh_token");
-    if (accessToken && refreshToken) {
-      const needsOnboarding = !data.onboarding?.completed;
-      if (needsOnboarding && currentPath !== "/onboarding") {
-        router.push("/onboarding");
-      } else if (
-        !needsOnboarding &&
-        (currentPath === "/onboarding" || PUBLIC_PAGES.includes(currentPath))
-      ) {
-        router.push("/c");
-      }
+    if (!accessToken || !refreshToken) return;
+
+    const needsOnboarding = !data.onboarding?.completed;
+    if (needsOnboarding && currentPath !== "/onboarding") {
+      router.push("/onboarding");
+      return;
     }
-  }, [data, setUser, searchParams, router, currentPath]);
+
+    if (
+      !needsOnboarding &&
+      (currentPath === "/onboarding" || PUBLIC_PAGES.includes(currentPath))
+    ) {
+      router.push("/c");
+    }
+  }, [data, searchParams, router, currentPath]);
 
   // Clear user state on auth failure
   useEffect(() => {

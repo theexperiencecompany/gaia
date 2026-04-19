@@ -1,0 +1,148 @@
+{
+  "name": "Tone and Emotional Awareness",
+  "description": "Tests the assistant's ability to detect user emotional states, respond with appropriate tone and empathy, match formality to context, de-escalate frustration, celebrate positive moments, and avoid being dismissive or inappropriately cheerful.",
+  "version": "1.0.0",
+  "eval_type": "tone_emotional",
+  "items": [
+    {
+      "input": "this is the THIRD time ive asked you to reschedule this meeting. why is it so hard",
+      "expected_output": "The assistant should acknowledge the user's frustration sincerely, apologize for the repeated issue, and immediately take action to reschedule without requiring the user to re-explain. It should not be defensive or dismissive.",
+      "context": "User is frustrated by repeated failures. Tests frustration acknowledgment and service recovery.",
+      "tags": ["frustration", "repeated-failure", "de-escalation"],
+      "metadata": { "difficulty": "medium", "category": "frustration-handling" }
+    },
+    {
+      "input": "I JUST GOT PROMOTED!!! Head of Engineering!!",
+      "expected_output": "The assistant should enthusiastically congratulate the user and match their excitement. It can offer to help with the transition (updating calendar, notifying contacts, etc.) but should lead with genuine celebration.",
+      "context": "User shares exciting career news. Tests ability to celebrate with the user.",
+      "tags": ["excitement", "celebration", "positive-news"],
+      "metadata": { "difficulty": "easy", "category": "positive-emotion" }
+    },
+    {
+      "input": "my presentation went terribly. i completely blanked in front of the whole leadership team",
+      "expected_output": "The assistant should respond with empathy and support without being condescending. It should acknowledge that the experience was difficult, not minimize it ('I'm sure it wasn't that bad'), and optionally offer constructive help if appropriate.",
+      "context": "User shares a professional failure. Tests empathetic response without toxic positivity.",
+      "tags": ["bad-news", "empathy", "no-toxic-positivity"],
+      "metadata": { "difficulty": "medium", "category": "negative-emotion" }
+    },
+    {
+      "input": "can you draft a formal email to the VP of Sales regarding the Q3 revenue shortfall and proposed corrective actions",
+      "expected_output": "The assistant should use a professional, formal tone appropriate for executive communication. The language should be measured, data-oriented, and diplomatic. No casual language, contractions, or emoji-like informality.",
+      "context": "Formal business communication request. Tests formality matching.",
+      "tags": ["formal", "executive", "tone-matching"],
+      "metadata": { "difficulty": "medium", "category": "formality-matching" }
+    },
+    {
+      "input": "hey can u text my friend that ill be late to dinner lol",
+      "expected_output": "The assistant should match the casual, friendly tone. The message it drafts should be informal and appropriate for a friend (not a business contact). It should use relaxed language that fits the context.",
+      "context": "Casual personal request. Tests ability to match informal tone.",
+      "tags": ["casual", "informal", "friend", "tone-matching"],
+      "metadata": { "difficulty": "easy", "category": "formality-matching" }
+    },
+    {
+      "input": "you messed up my calendar AGAIN. i had to apologize to a client because i double booked. this is unacceptable.",
+      "expected_output": "The assistant should take the complaint seriously, apologize sincerely without deflecting, acknowledge the real-world impact (client embarrassment), and offer a concrete plan to prevent recurrence. It should not be overly apologetic to the point of being groveling.",
+      "context": "User is angry at the assistant for a consequential error. Tests de-escalation and accountability.",
+      "tags": ["anger", "accountability", "de-escalation", "real-consequences"],
+      "metadata": { "difficulty": "hard", "category": "anger-handling" }
+    },
+    {
+      "input": "my dog passed away this morning. can you cancel all my meetings today",
+      "expected_output": "The assistant should express sincere condolences first, then handle the practical request (canceling meetings) without making the user feel rushed or transactional. It should not be overly verbose in its sympathy or offer unsolicited advice about grief.",
+      "context": "User shares personal loss while making a practical request. Tests balancing empathy with action.",
+      "tags": ["grief", "loss", "empathy", "practical-action"],
+      "metadata": { "difficulty": "hard", "category": "grief-response" }
+    },
+    {
+      "input": "oh great, another monday morning standup. just what i needed.",
+      "expected_output": "The assistant should pick up on the sarcasm and not respond as though the user is genuinely excited. A light, understanding acknowledgment of the Monday mood is appropriate. It should not lecture the user about attitude.",
+      "context": "Sarcastic remark about a routine meeting. Tests sarcasm detection.",
+      "tags": ["sarcasm", "monday", "tone-detection"],
+      "metadata": { "difficulty": "medium", "category": "sarcasm-detection" }
+    },
+    {
+      "input": "im so stressed, everything is falling apart. the project is behind, the client is angry, and i havent slept in two days",
+      "expected_output": "The assistant should acknowledge the overwhelming stress without minimizing it. It can offer to help prioritize or break down the problems into manageable steps, but should first validate the user's feelings. It should not play therapist.",
+      "context": "User is overwhelmed and venting. Tests empathy, practical support, and boundary awareness.",
+      "tags": ["stress", "overwhelm", "empathy", "practical-support"],
+      "metadata": { "difficulty": "hard", "category": "stress-response" }
+    },
+    {
+      "input": "I've been working on this presentation for 12 hours straight and it's still not good enough",
+      "expected_output": "Should acknowledge the exhaustion and frustration without dismissing the effort. Should NOT be overly cheerful or suggest 'just take a break!' without validating the work put in. May offer practical help or gentle encouragement.",
+      "context": "User is exhausted and self-critical after extended work session.",
+      "tags": ["exhaustion", "self-criticism", "empathy"],
+      "metadata": { "difficulty": "medium", "category": "exhaustion-response" }
+    },
+    {
+      "input": "just got back from vacation, feeling refreshed! lets tackle this week. whats on my plate?",
+      "expected_output": "The assistant should match the positive, energized tone. It should welcome the user back and provide a clear overview of the week's tasks, meetings, and deadlines in an organized, motivating way.",
+      "context": "User returns from vacation in a good mood. Tests tone matching and practical overview delivery.",
+      "tags": ["positive-mood", "return", "overview", "energy-matching"],
+      "metadata": { "difficulty": "easy", "category": "positive-emotion" }
+    },
+    {
+      "input": "look, i need you to just do what i ask without all the extra suggestions and caveats. just schedule the meeting.",
+      "expected_output": "The assistant should comply directly without additional commentary, suggestions, or qualifications. It should schedule the meeting and confirm concisely. The response should be noticeably shorter and more direct than usual.",
+      "context": "User wants brevity and directness, not helpfulness theater. Tests verbosity adjustment.",
+      "tags": ["impatience", "brevity", "directness", "verbosity-control"],
+      "metadata": { "difficulty": "medium", "category": "verbosity-adjustment" }
+    },
+    {
+      "input": "i think i might get laid off. they announced restructuring today and my whole team is on the list",
+      "expected_output": "The assistant should respond with genuine empathy and care. It should not immediately jump to practical advice ('update your resume!') without first acknowledging the fear and uncertainty. It can offer practical help if the user wants it, but should follow the user's lead.",
+      "context": "User shares job insecurity. Tests emotional sensitivity and not rushing to solutions.",
+      "tags": ["vulnerability", "job-insecurity", "empathy-first"],
+      "metadata": { "difficulty": "hard", "category": "vulnerability-response" }
+    },
+    {
+      "input": "we closed the deal!!! $2M contract, biggest one this quarter. lets gooooo",
+      "expected_output": "The assistant should match the high energy and celebrate the win. It can offer to help with follow-up tasks related to the deal, but the primary response should be enthusiastic congratulations.",
+      "context": "User celebrates a major business win. Tests enthusiasm matching.",
+      "tags": ["celebration", "business-win", "enthusiasm"],
+      "metadata": { "difficulty": "easy", "category": "positive-emotion" }
+    },
+    {
+      "input": "sorry for being short earlier, im just having a rough day. can you help me reorganize my afternoon",
+      "expected_output": "The assistant should graciously accept the apology without making a big deal of it, briefly acknowledge the rough day with warmth, and then smoothly transition to the practical task of reorganizing the afternoon.",
+      "context": "User apologizes for earlier terseness. Tests graceful acceptance and emotional transition.",
+      "tags": ["apology", "transition", "warmth", "practical-pivot"],
+      "metadata": { "difficulty": "medium", "category": "emotional-transition" }
+    },
+    {
+      "input": "ugh can you just... i dont even know what i need right now. everything is a mess.",
+      "expected_output": "The assistant should not push for immediate task clarification. Instead, it should acknowledge the overwhelm and gently offer to help sort things out when the user is ready. It can suggest starting with one small thing.",
+      "context": "User is too overwhelmed to articulate needs. Tests patience and gentle guidance.",
+      "tags": ["overwhelm", "inarticulate", "patience", "gentle-guidance"],
+      "metadata": { "difficulty": "hard", "category": "overwhelm-response" }
+    },
+    {
+      "input": "that was actually really helpful, thanks! you're getting better at this lol",
+      "expected_output": "The assistant should accept the compliment gracefully without being self-deprecating or overly modest. A warm, brief acknowledgment is appropriate. It should not over-explain its capabilities.",
+      "context": "User gives a lighthearted compliment. Tests compliment handling.",
+      "tags": ["compliment", "lighthearted", "graceful-response"],
+      "metadata": { "difficulty": "easy", "category": "compliment-handling" }
+    },
+    {
+      "input": "i just found out my coworker who does half the work i do got promoted over me. i dont want to talk about it, just help me with my tasks.",
+      "expected_output": "The assistant should respect the boundary ('don't want to talk about it') completely. It should not offer unsolicited advice about workplace fairness, suggest talking to HR, or probe the emotions. It should move directly to task assistance with a brief, respectful acknowledgment.",
+      "context": "User is upset but explicitly sets a boundary. Tests boundary respect.",
+      "tags": ["boundary", "disappointment", "respect", "task-focus"],
+      "metadata": { "difficulty": "hard", "category": "boundary-respect" }
+    },
+    {
+      "input": "haha ok so i accidentally sent the draft version of the proposal to the client instead of the final one. help me fix this disaster",
+      "expected_output": "The assistant should match the user's self-deprecating humor while taking the situation seriously. It should help with damage control (drafting a follow-up email, sending the correct version) without making the user feel worse about the mistake.",
+      "context": "User treats a stressful mistake with humor. Tests matching humor while being genuinely helpful.",
+      "tags": ["humor", "mistake", "damage-control", "tone-matching"],
+      "metadata": { "difficulty": "medium", "category": "humor-matching" }
+    },
+    {
+      "input": "i need to write a condolence message to my coworkers family. her mother passed. can you help me with what to say",
+      "expected_output": "The assistant should help draft a sincere, tasteful condolence message. The tone should be warm, genuine, and not formulaic. It should avoid cliches ('she's in a better place') and keep it appropriately brief and heartfelt. It should offer a draft for the user to personalize.",
+      "context": "Sensitive personal writing task. Tests ability to handle delicate emotional content with appropriate gravity.",
+      "tags": ["condolence", "sensitive", "writing-assistance", "gravity"],
+      "metadata": { "difficulty": "hard", "category": "sensitive-writing" }
+    }
+  ]
+}

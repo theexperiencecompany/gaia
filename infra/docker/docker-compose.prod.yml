@@ -32,7 +32,7 @@ services:
   gaia-backend:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
-    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 80 --no-access-log --workers 2 --timeout-keep-alive 65 --timeout-graceful-shutdown 30 --h11-max-incomplete-event-size 16777216
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 80 --no-access-log --workers 1 --timeout-keep-alive 65 --timeout-graceful-shutdown 30 --h11-max-incomplete-event-size 16777216
     environment:
       PYTHONUNBUFFERED: "1"
       FORCE_COLOR: "0"

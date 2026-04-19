@@ -1,6 +1,7 @@
 "use client";
 
-import { m, useInView } from "motion/react";
+import { useInView } from "motion/react";
+import * as m from "motion/react-m";
 import { useRef } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import SectionHeader from "@/features/landing/components/demo/founders-demo/SectionHeader";

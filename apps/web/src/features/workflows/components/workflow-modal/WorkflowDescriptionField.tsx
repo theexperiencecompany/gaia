@@ -12,10 +12,8 @@ import {
 } from "react-hook-form";
 import { toast } from "@/lib/toast";
 import { workflowApi } from "../../api/workflowApi";
-import {
-  getBrowserTimezone,
-  type WorkflowFormData,
-} from "../../schemas/workflowFormSchema";
+import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { getBrowserTimezone } from "../../utils/browserTimezone";
 
 interface WorkflowDescriptionFieldProps {
   control: Control<WorkflowFormData>;

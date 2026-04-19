@@ -15,7 +15,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { formatRunCount } from "@/utils/formatters";
 
 import type { Workflow } from "../../api/workflowApi";
-import { getBrowserTimezone } from "../../schemas/workflowFormSchema";
+import { getBrowserTimezone } from "../../utils/browserTimezone";
 
 /**
  * Format a UTC date to a localized time string in the specified timezone.

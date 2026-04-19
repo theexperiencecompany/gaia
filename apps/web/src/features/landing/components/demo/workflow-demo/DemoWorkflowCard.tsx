@@ -1,7 +1,8 @@
 "use client";
 
 import { CheckmarkCircle02Icon, Loading03Icon, TimeScheduleIcon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 const DEMO_WORKFLOW = {

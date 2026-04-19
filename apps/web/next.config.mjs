@@ -32,26 +32,73 @@ const nextConfig = {
   turbopack: {
     root: path.join(__dirname, "../.."),
     // Change the value here to swap the entire icon variant across the app
+    // node:* aliases rewrite Node built-in specifiers to their bare form so
+    // Turbopack does not emit chunks named `[externals]_node:foo_*.js` — the
+    // colon is illegal on NTFS and breaks `next build` on Windows during
+    // standalone output tracing (breaks the Electron Windows installer).
+    // See: https://github.com/vercel/next.js/discussions/86194
+    // and:  https://nextjs-forum.com/post/1471409705514569798
     resolveAlias: {
       "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
+      "node:inspector": "inspector",
+      "node:fs": "fs",
+      "node:fs/promises": "fs/promises",
+      "node:path": "path",
+      "node:stream": "stream",
+      "node:stream/web": "stream/web",
+      "node:url": "url",
+      "node:util": "util",
+      "node:crypto": "crypto",
+      "node:buffer": "buffer",
+      "node:os": "os",
+      "node:child_process": "child_process",
+      "node:http": "http",
+      "node:https": "https",
+      "node:net": "net",
+      "node:tls": "tls",
+      "node:zlib": "zlib",
+      "node:events": "events",
+      "node:async_hooks": "async_hooks",
+      "node:assert": "assert",
+      "node:querystring": "querystring",
+      "node:worker_threads": "worker_threads",
+      "node:process": "process",
+      "node:perf_hooks": "perf_hooks",
+      "node:diagnostics_channel": "diagnostics_channel",
     },
   },
   serverExternalPackages: ["moment", "moment-timezone"],
   experimental: {
+    // Inline critical CSS via critters so the first paint doesn't wait on a
+    // separate CSS round-trip. Object form (e.g. `{ fonts: true, preload: "swap" }`)
+    // silently no-ops in Next 16.1.6 — stick with the boolean.
+    optimizeCss: true,
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
       "cytoscape",
       "@theexperiencecompany/gaia-icons/solid-rounded",
-      // "@heroui/*",
+      "@heroui/button",
+      "@heroui/chip",
+      "@heroui/modal",
+      "@heroui/system",
+      "@heroui/tooltip",
+      "@heroui/select",
+      "@heroui/scroll-shadow",
+      "@heroui/react",
+      "@heroui/skeleton",
+      "@heroui/spinner",
       "lucide-react",
       "@radix-ui/react-icons",
+      "@radix-ui/react-visually-hidden",
       "date-fns",
       "lodash",
       "motion/react",
+      "motion",
+      "schema-dts",
     ],
   },
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
     // Exclude cytoscape from bundle since it's not used (both client and server)
     config.resolve.alias = {
       ...config.resolve.alias,
@@ -62,6 +109,31 @@ const nextConfig = {
     // Alias @icons to the active icon variant — change here to swap the entire set
     config.resolve.alias["@icons"] =
       "@theexperiencecompany/gaia-icons/solid-rounded";
+
+    // Keep gaia-icons out of the eager/initial landing chunk.
+    // By default, modules reachable from >= 2 chunks get hoisted into a shared
+    // common chunk — that's how ~137 icons ended up on the critical path even
+    // though most are only referenced by dynamically-imported below-the-fold
+    // sections. Scoping this cache group to `chunks: "async"` means icons
+    // shared across async sections consolidate into a single async gaia-icons
+    // chunk that loads with the first async section, while the handful of
+    // icons reachable from initial code (Navbar) stay inlined in the main
+    // chunk.
+    if (!isServer && config.optimization?.splitChunks) {
+      const splitChunks = config.optimization.splitChunks;
+      splitChunks.cacheGroups = {
+        ...splitChunks.cacheGroups,
+        gaiaIcons: {
+          test: /[\\/]node_modules[\\/]@theexperiencecompany[\\/]gaia-icons[\\/]/,
+          name: "gaia-icons-async",
+          chunks: "async",
+          priority: 40,
+          reuseExistingChunk: true,
+          enforce: true,
+        },
+      };
+    }
+
     return config;
   },
   images: {

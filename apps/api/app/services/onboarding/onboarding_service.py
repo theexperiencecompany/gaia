@@ -11,6 +11,7 @@ from app.models.user_models import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
+from app.utils.errors import AppError
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
@@ -105,8 +106,10 @@ async def complete_onboarding(
             if not existing_user:
                 raise HTTPException(status_code=404, detail="User not found")
             elif existing_user.get("onboarding", {}).get("completed", False):
-                raise HTTPException(
-                    status_code=409, detail="Onboarding already completed"
+                raise AppError(
+                    message="Onboarding already completed",
+                    status_code=409,
+                    meta={"code": "ONBOARDING_ALREADY_COMPLETED"},
                 )
             else:
                 raise HTTPException(status_code=500, detail="Failed to update user")

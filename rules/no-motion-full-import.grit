@@ -1,0 +1,46 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Forbids importing the `motion` object from `motion/react`. The full
+// `motion` component tree pulls in the ~34KB feature bundle; the `m`
+// component from `motion/react-m` (2.3KB) should be used instead, paired
+// with <LazyMotion features={loadFeatures}>.
+//
+// Other named exports from `motion/react` (AnimatePresence, useInView,
+// useReducedMotion, LazyMotion, useAnimate, Variants type, MotionProps
+// type, etc.) remain allowed. See also `no-motion-react-heavy-imports.grit`
+// for the companion rule that blocks `m` from `motion/react`.
+//
+// GritQL limitation: metavariables don't match inside named import
+// specifier lists, so every position (and common co-import counts) for
+// `motion` must be enumerated explicitly. Both aliased and non-aliased
+// patterns are covered up to 4 co-imports; add more positions if a real
+// import grows larger.
+or {
+  `import { motion } from "motion/react"`,
+  `import { motion, $_ } from "motion/react"`,
+  `import { $_, motion } from "motion/react"`,
+  `import { motion, $_, $_ } from "motion/react"`,
+  `import { $_, motion, $_ } from "motion/react"`,
+  `import { $_, $_, motion } from "motion/react"`,
+  `import { motion, $_, $_, $_ } from "motion/react"`,
+  `import { $_, motion, $_, $_ } from "motion/react"`,
+  `import { $_, $_, motion, $_ } from "motion/react"`,
+  `import { $_, $_, $_, motion } from "motion/react"`,
+  `import { motion as $_ } from "motion/react"`,
+  `import { motion as $_, $_ } from "motion/react"`,
+  `import { $_, motion as $_ } from "motion/react"`,
+  `import { motion as $_, $_, $_ } from "motion/react"`,
+  `import { $_, motion as $_, $_ } from "motion/react"`,
+  `import { $_, $_, motion as $_ } from "motion/react"`,
+  `import { motion as $_, $_, $_, $_ } from "motion/react"`,
+  `import { $_, motion as $_, $_, $_ } from "motion/react"`,
+  `import { $_, $_, motion as $_, $_ } from "motion/react"`,
+  `import { $_, $_, $_, motion as $_ } from "motion/react"`
+} as $node where {
+  register_diagnostic(
+    span = $node,
+    message = "Do not import 'motion' from 'motion/react' — it pulls in the full ~34KB feature bundle. Use 'import * as m from motion/react-m' and render <m.div> etc. inside <LazyMotion features={loadFeatures}>.",
+    severity = "error"
+  )
+}

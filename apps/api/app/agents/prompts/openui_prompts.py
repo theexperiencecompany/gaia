@@ -148,13 +148,32 @@ CodeDiff(filename: string, oldCode: string, newCode: string, title?: string, dif
     newCode = all lines WITHOUT a - prefix (keep lines with + prefix but remove the +; keep unchanged lines as-is)
     Then pass them to CodeDiff. The component computes and renders the diff itself.
 
+--- Documents ---
+
+TextDocument(title: string, body: string, fields?: {label: string, value: string}[])
+  title: document type label shown at top (e.g. "Email Draft", "Blog Post", "Article", "Report", "Letter", "Essay")
+  body: initial rich text content (plain text or HTML — use <p>, <h2>, <h3>, <ul>, <ol>, <strong>, <em> for structure)
+  fields: optional metadata rows shown above the body (e.g. Author, Date, Subject, To, From, Word Count)
+  Use for: ANY long-form text output — articles, blog posts, essays, reports, documentation, letters, memos, email drafts, creative writing, summaries longer than ~3 paragraphs, READMEs, guides, how-tos, listicle articles, op-eds, newsletters, technical write-ups, and any content the user will read, review, or copy
+  MANDATORY: If your response contains more than ~3 paragraphs of prose, it MUST go in a TextDocument. Never dump long text as raw markdown.
+  Do NOT use when: actually sending an email (use the send_email tool directly), or when the user asked to send without reviewing
+
 --- Layout ---
 
 Row(items: component[])
-  Use for: placing components side-by-side (equal width). Best for StatRows, StatusCards, DataCards.
+  Use for: placing components side-by-side (equal width, 16:9 fixed height per cell).
+  ✓ Good: multiple StatRows, GaugeCharts, BarCharts, LineCharts, StatusCards, DataCards (2–3 items max)
+  ✗ Never use for: Timeline, Steps, Accordion, ResultList, TextDocument, AlertBanner — variable-height
+    components look broken (empty void or clipped) inside a fixed-height cell
+  ✗ Never put more than 3 items — cells become too narrow to read
+  ✗ Never mix component types in one Row (e.g. a chart next to a DataCard) — mismatched fill
+  ✗ Never wrap a single component — just emit it directly
 
 Stack(items: component[])
   Use for: placing components vertically. Nest Row inside Stack for mixed layouts.
+  ✓ Good: Stack([row, chart]) where row = Row([s1, s2, s3])
+  ✗ Never wrap a single component in Stack — pointless
+  ✗ Never nest Row inside Row — the fixed-height cells do not compose
 """
 
 _escaped_component_library = OPENUI_COMPONENT_LIBRARY_PROMPT.replace("{", "{{").replace(
@@ -413,6 +432,23 @@ Steps — ordered instructions:
   root = Steps([{{{{"title": "Install dependencies", "description": "Run pnpm install", "status": "complete"}}}}, {{{{"title": "Configure env", "description": "Copy .env.example to .env", "status": "active"}}}}, {{{{"title": "Start dev server", "description": "Run nx dev web", "status": "pending"}}}}], "Setup Guide")
   :::
 
+--- Documents ---
+
+TextDocument — email draft with metadata fields:
+  :::openui
+  root = TextDocument("Email Draft", "<p>Hi Sarah,</p><p>Just following up on our conversation from last week. I wanted to confirm that the timeline works for your team.</p><p>Looking forward to hearing from you.</p><p>Best,<br>Alex</p>", [{{{{"label": "To", "value": "sarah@example.com"}}}}, {{{{"label": "Subject", "value": "Timeline Confirmation"}}}}])
+  :::
+
+TextDocument — article or blog post (no fields needed):
+  :::openui
+  root = TextDocument("Blog Post", "<h2>Why TypeScript Wins in 2025</h2><p>TypeScript has become the default choice for serious JavaScript projects. Here is why that trend is only accelerating.</p><h3>Type Safety at Scale</h3><p>As codebases grow, untyped JavaScript becomes a liability. TypeScript catches entire classes of bugs at compile time that would otherwise surface in production.</p><h3>Ecosystem Adoption</h3><p>Every major framework — React, Vue, Angular, Next.js — ships first-class TypeScript support. The ecosystem has spoken.</p>")
+  :::
+
+TextDocument — report or summary with metadata:
+  :::openui
+  root = TextDocument("Weekly Report", "<h2>Summary</h2><p>This week the team shipped the new authentication flow and resolved 14 open bugs. Performance benchmarks improved by 18% following the Redis caching rollout.</p><h2>Highlights</h2><ul><li>Auth v2 deployed to production</li><li>14 bugs resolved</li><li>Redis caching live</li></ul><h2>Next Week</h2><p>Focus shifts to the mobile onboarding redesign and API rate limiting.</p>", [{{{{"label": "Author", "value": "Aryan"}}}}, {{{{"label": "Period", "value": "Apr 7 – Apr 12, 2025"}}}}])
+  :::
+
 --- Code ---
 
 CodeDiff — unified (default), no title:
@@ -440,7 +476,9 @@ Row — place any components side-by-side in equal-width columns:
   s3 = StatRow("Disk", 120, "GB")
   :::
 
-  Use Row for: multiple StatRows, side-by-side StatusCards, paired DataCards, or any components that should share horizontal space equally.
+  Row cells are fixed 16:9 height — only use components that look good at a fixed height.
+  ✓ StatRow, GaugeChart, BarChart, LineChart, StatusCard, DataCard (2–3 items max)
+  ✗ Timeline, Steps, Accordion, ResultList, TextDocument, AlertBanner — these have variable height
 
 Stack — combine multiple components vertically:
   :::openui
@@ -452,7 +490,9 @@ Stack — combine multiple components vertically:
   chart = BarChart([{{{{"month": "Jan", "revenue": 4200}}}}, {{{{"month": "Feb", "revenue": 5100}}}}], "month", ["revenue"], "Monthly Revenue")
   :::
 
-  Nest Row inside Stack to combine horizontal groups with other components. Any combination works.
+  Use Stack to combine a Row of stats with a chart below — this is the correct pattern.
+  ✗ Never wrap a single component in Stack — just emit it directly
+  ✗ Never nest Row inside Row — fixed-height cells do not compose
 
 ---
 
@@ -490,9 +530,12 @@ Quality guidelines:
 - Steps for anything with an ordered sequence — instructions, setup guides, migration plans
 - ActionCard for next-step suggestions after results
 - Carousel for swipeable options when showing 2+ items the user should browse one at a time
+- TextDocument for ANY long-form prose — articles, blog posts, essays, reports, documentation, letters, memos, newsletters, guides, how-tos, summaries. If your answer is more than ~3 paragraphs of continuous prose, it MUST be a TextDocument. Never dump walls of text as raw markdown.
 - CodeDiff for before/after code changes — never show diffs as raw markdown code blocks
 - Keep titles short. Don't repeat what you already said in text.
 - Prefer a single well-chosen component over stacking many. Use Stack only when the data genuinely splits into distinct sections.
+- Row cells are fixed 16:9 height — never put variable-height components (Timeline, Steps, Accordion, ResultList, TextDocument, AlertBanner) in a Row
+- Never put more than 3 items in a Row; never nest Row inside Row; never wrap a single component in Stack or Row
 
 ABSOLUTE RULE — CODE DIFFS:
 When showing before/after code, code modifications, patches, or any comparison of two code versions, you MUST use the CodeDiff :::openui component. NEVER use markdown ``` code fences for diffs. This is non-negotiable.
@@ -505,4 +548,66 @@ If you receive a unified diff (with +/- lines), reconstruct the two full files:
   oldCode = remove all + lines, strip the - prefix from - lines, keep context lines as-is
   newCode = remove all - lines, strip the + prefix from + lines, keep context lines as-is
 Then use: root = CodeDiff("filename.ext", oldCode, newCode, "Title")
+
+ABSOLUTE RULE — LONG TEXT CONTENT:
+Any response that contains more than ~3 paragraphs of prose MUST be wrapped in a TextDocument. This includes — but is not limited to: articles, blog posts, essays, op-eds, newsletters, reports, documentation pages, README content, how-to guides, technical write-ups, creative writing, cover letters, email drafts, memos, research summaries, and listicle-style articles. No exceptions.
+
+BAD — never do any of these:
+
+  ✗ WRONG — wall of markdown prose (should be TextDocument):
+    Sure! Here's an article on the topic.
+
+    ## Why Sleep Matters
+
+    Sleep is one of the most important...
+
+    ### The Science of Sleep
+
+    During REM cycles...
+
+    ### Practical Tips
+
+    - Go to bed at the same time...
+
+  ✗ WRONG — multiple markdown paragraphs for a "summary" or "draft":
+    Here's a draft for your blog post:
+
+    **Introduction**
+    The future of AI is...
+
+    **Main Points**
+    There are three reasons...
+
+    **Conclusion**
+    In summary, AI will...
+
+  ✗ WRONG — README / documentation dumped as raw markdown:
+    # My Project
+
+    ## Installation
+
+    Run `pnpm install`...
+
+    ## Usage
+
+    Import the module...
+
+CORRECT — always do this instead:
+
+  ✓ CORRECT — article or blog post:
+    :::openui
+    root = TextDocument("Blog Post", "<h2>Why Sleep Matters</h2><p>Sleep is one of the most important...</p><h3>The Science of Sleep</h3><p>During REM cycles...</p><h3>Practical Tips</h3><ul><li>Go to bed at the same time each night</li></ul>")
+    :::
+
+  ✓ CORRECT — email draft with metadata:
+    :::openui
+    root = TextDocument("Email Draft", "<p>Hi Sarah,</p><p>Following up on our conversation...</p>", [{{{{"label": "To", "value": "sarah@example.com"}}}}, {{{{"label": "Subject", "value": "Follow-up"}}}}])
+    :::
+
+  ✓ CORRECT — report with author/date metadata:
+    :::openui
+    root = TextDocument("Weekly Report", "<h2>Summary</h2><p>This week...</p><h2>Next Steps</h2><p>...</p>", [{{{{"label": "Author", "value": "Alex"}}}}, {{{{"label": "Date", "value": "Apr 12, 2025"}}}}])
+    :::
+
+Use rich HTML in the body for structure: <h2> for section headings, <h3> for subsections, <p> for paragraphs, <ul>/<ol> for lists, <strong>/<em> for emphasis. Plain text is only acceptable for very simple short content.
 """

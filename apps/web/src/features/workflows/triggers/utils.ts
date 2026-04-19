@@ -8,7 +8,10 @@ import type { Integration } from "@/features/integrations/types";
 
 import type { Workflow } from "../api/workflowApi";
 import { getScheduleDescription } from "../utils/cronUtils";
-import { getTriggerHandler, type TriggerDisplayInfo } from "./registry";
+import {
+  getTriggerDisplayInfoBySlug,
+  type TriggerDisplayInfo,
+} from "./registryDisplay";
 import type { TriggerConfig, TriggerSchema } from "./types";
 
 /**
@@ -54,25 +57,22 @@ export function getTriggerDisplayInfo(
 } {
   const { trigger_config } = workflow;
 
-  const triggerSlug = (trigger_config.trigger_name ||
+  const rawTriggerSlug = (trigger_config.trigger_name ||
     trigger_config.trigger_slug ||
     trigger_config.type) as string;
 
-  const handler = getTriggerHandler(triggerSlug);
+  // Normalize composio_slug format to the registry slug so lookups resolve
+  // correctly even when the backend returns composio-style slugs.
+  const triggerSlug =
+    findTriggerSchema(schemas, rawTriggerSlug)?.slug || rawTriggerSlug;
 
-  let displayInfo: TriggerDisplayInfo;
-  if (handler) {
-    const schema = schemas?.find((s) => handler.triggerSlugs.includes(s.slug));
-    displayInfo = handler.getDisplayInfo(
-      trigger_config as TriggerConfig,
-      schema,
-    );
-  } else {
-    displayInfo = {
-      label: "unknown trigger",
-      integrationId: null,
-    };
-  }
+  const displayInfo: TriggerDisplayInfo = getTriggerDisplayInfoBySlug(
+    triggerSlug,
+    trigger_config as TriggerConfig,
+  ) ?? {
+    label: "unknown trigger",
+    integrationId: null,
+  };
 
   if (
     trigger_config.type === "schedule" &&

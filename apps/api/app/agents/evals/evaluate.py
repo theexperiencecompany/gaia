@@ -428,9 +428,13 @@ async def evaluate_subagent(
     return await evaluator.run_evaluation()
 
 
-async def main():
-    """CLI entry point."""
-    parser = argparse.ArgumentParser(description="Evaluate subagents with Opik")
+async def main() -> None:
+    """CLI entry point for both subagent and generic evaluations."""
+    parser = argparse.ArgumentParser(
+        description="Evaluate subagents or generic assistant capabilities with Opik"
+    )
+
+    # Subagent evaluation args
     parser.add_argument("--subagent", "-s", type=str, help="Subagent ID to evaluate")
     parser.add_argument(
         "--create-dataset", "-c", action="store_true", help="Create/sync Opik dataset"
@@ -442,16 +446,135 @@ async def main():
         help="Use local dataset file instead of Opik",
     )
     parser.add_argument("--list", action="store_true", help="List available subagents")
+
+    # Generic evaluation args
+    parser.add_argument(
+        "--generic",
+        "-g",
+        type=str,
+        help="Generic eval type ID to run (or 'all' for all types)",
+    )
+    parser.add_argument(
+        "--list-generic",
+        action="store_true",
+        help="List available generic eval types",
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["prompt", "full"],
+        default="prompt",
+        help="Evaluation mode: 'prompt' (LLM only) or 'full' (real graph)",
+    )
+    parser.add_argument(
+        "--compare-baseline",
+        action="store_true",
+        help="Compare results against stored baseline scores",
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Save current results as new baseline",
+    )
+    parser.add_argument(
+        "--ab-test",
+        nargs=2,
+        metavar=("PROMPT_A_FILE", "PROMPT_B_FILE"),
+        help="Run A/B test with two system prompt files",
+    )
+    parser.add_argument(
+        "--rescore",
+        type=str,
+        help="Re-score an existing experiment by name",
+    )
+    parser.add_argument(
+        "--add-metrics",
+        type=str,
+        help="Comma-separated metric names to add when re-scoring",
+    )
+
     args = parser.parse_args()
 
+    # --- List commands ---
     if args.list:
         print("\nAvailable subagents:")
         for sid in list_available_subagents():
             print(f"  - {sid}")
         return
 
+    if args.list_generic:
+        from .generic_config import GENERIC_EVAL_CONFIGS
+
+        print("\nAvailable generic eval types:")
+        for cfg in GENERIC_EVAL_CONFIGS:
+            jury_tag = " [jury]" if cfg.use_jury else ""
+            mode_tag = " [mode A+B]" if cfg.supports_mode_a else " [mode B]"
+            print(f"  - {cfg.id:<30} {cfg.name}{jury_tag}{mode_tag}")
+        return
+
+    # --- Re-score existing experiment ---
+    if args.rescore:
+        if not args.add_metrics:
+            parser.error("--add-metrics is required with --rescore")
+        from .generic_evaluate import rescore_experiment
+
+        metric_names = [m.strip() for m in args.add_metrics.split(",")]
+        rescore_experiment(args.rescore, metric_names)
+        print(f"Re-scored experiment: {args.rescore}")
+        return
+
+    # --- Prompt A/B test ---
+    if args.ab_test:
+        if not args.generic:
+            parser.error("--generic is required with --ab-test")
+        if args.generic == "all":
+            parser.error("--ab-test requires a single --generic eval type, not 'all'")
+        from .generic_evaluate import run_prompt_ab_test
+
+        prompt_a_path, prompt_b_path = args.ab_test
+        prompt_a = await asyncio.to_thread(
+            Path(prompt_a_path).read_text, encoding="utf-8"
+        )
+        prompt_b = await asyncio.to_thread(
+            Path(prompt_b_path).read_text, encoding="utf-8"
+        )
+
+        comparison = await run_prompt_ab_test(args.generic, prompt_a, prompt_b)
+        print(f"\nA/B Test Results: {args.generic}")
+        print(f"Experiment A: {comparison['experiment_a']}")
+        print(f"Experiment B: {comparison['experiment_b']}")
+        print("\nMetric Comparison:")
+        for metric, vals in comparison["comparison"].items():
+            print(
+                f"  {metric}: A={vals['prompt_a']:.3f}  B={vals['prompt_b']:.3f}  "
+                f"delta={vals['delta']:+.3f}  winner={vals['winner']}"
+            )
+        return
+
+    # --- Generic evaluation ---
+    if args.generic:
+        from .generic_evaluate import evaluate_all_generic, evaluate_generic
+
+        if args.generic == "all":
+            await evaluate_all_generic(
+                mode=args.mode,
+                do_compare_baseline=args.compare_baseline,
+                do_update_baseline=args.update_baseline,
+            )
+        else:
+            await evaluate_generic(
+                eval_type=args.generic,
+                mode=args.mode,
+                do_compare_baseline=args.compare_baseline,
+                do_update_baseline=args.update_baseline,
+            )
+        return
+
+    # --- Subagent evaluation (original behavior) ---
     if not args.subagent:
-        parser.error("--subagent is required (use --list to see available)")
+        parser.error(
+            "--subagent or --generic is required (use --list or --list-generic)"
+        )
 
     config = get_config(args.subagent)
     if not config:
@@ -464,7 +587,7 @@ async def main():
 
     if args.create_dataset:
         await evaluator.create_dataset()
-        print(f"✓ Dataset '{config.dataset_name}' synced to Opik")
+        print(f"Dataset '{config.dataset_name}' synced to Opik")
 
     results = await evaluator.run_evaluation()
     evaluator.print_results(results)

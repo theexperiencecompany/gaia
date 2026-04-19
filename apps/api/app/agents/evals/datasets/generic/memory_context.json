@@ -1,0 +1,148 @@
+{
+  "name": "Memory and Context Use",
+  "description": "Tests the assistant's ability to recall prior conversation context, stored user preferences, correct earlier mistakes, handle contradictions across turns, and manage long-term vs session memory appropriately.",
+  "version": "1.0.0",
+  "eval_type": "memory_context",
+  "items": [
+    {
+      "input": "like i said, i want the report sent to my manager",
+      "expected_output": "The assistant should reference the earlier mention of the report and manager from conversation history. If no prior context exists, it should ask for clarification rather than guessing.",
+      "context": "User references a previous instruction without restating details. Tests backward reference resolution.",
+      "tags": ["back-reference", "conversation-history"],
+      "metadata": { "difficulty": "medium", "category": "implicit-reference" }
+    },
+    {
+      "input": "you know i dont like morning meetings, why did you suggest 9am",
+      "expected_output": "The assistant should acknowledge the stored preference for no morning meetings, apologize for the oversight, and offer alternative times in the afternoon or later morning.",
+      "context": "User has previously stated a preference against morning meetings. Tests preference recall and appropriate correction.",
+      "tags": ["preference-recall", "correction"],
+      "metadata": { "difficulty": "medium", "category": "preference-violation" }
+    },
+    {
+      "input": "actually scratch that, i meant tuesday not thursday",
+      "expected_output": "The assistant should update the previously discussed item from Thursday to Tuesday, confirm the change, and not require the user to restate the full context of what was being scheduled.",
+      "context": "User corrects a day-of-week error from an earlier message. Tests mid-conversation correction handling.",
+      "tags": ["correction", "context-update"],
+      "metadata": { "difficulty": "easy", "category": "self-correction" }
+    },
+    {
+      "input": "schedule the same thing for next week",
+      "expected_output": "The assistant should identify what was most recently scheduled, replicate it for the following week with the same time, duration, and participants, and confirm the details.",
+      "context": "User expects the assistant to know what 'the same thing' refers to from recent conversation. Tests implicit context resolution.",
+      "tags": ["implicit-context", "scheduling"],
+      "metadata": { "difficulty": "medium", "category": "implicit-reference" }
+    },
+    {
+      "input": "wait, earlier you said my flight was at 3pm but now you're saying 5pm. which is it?",
+      "expected_output": "The assistant should acknowledge the inconsistency, clarify which information is correct (or admit uncertainty if it cannot verify), and not fabricate an explanation for the discrepancy.",
+      "context": "User catches the assistant contradicting itself across turns. Tests consistency tracking and honest error admission.",
+      "tags": ["contradiction", "consistency", "honesty"],
+      "metadata": { "difficulty": "hard", "category": "self-contradiction" }
+    },
+    {
+      "input": "remember that for next time - i always want agendas attached to meeting invites",
+      "expected_output": "The assistant should confirm it will store this preference and apply it to future meeting scheduling. It should be clear about whether it can actually persist this across sessions.",
+      "context": "User explicitly requests a preference be stored long-term. Tests long-term memory commitment and honesty about capabilities.",
+      "tags": ["preference-storage", "long-term-memory"],
+      "metadata": { "difficulty": "medium", "category": "preference-storage" }
+    },
+    {
+      "input": "forget what i said about the budget being 50k, that was wrong",
+      "expected_output": "The assistant should acknowledge the retraction, remove or disregard the $50k budget figure from its working context, and not reference it in subsequent responses.",
+      "context": "User explicitly asks the assistant to discard previously provided information. Tests selective forgetting.",
+      "tags": ["forgetting", "context-update", "retraction"],
+      "metadata": { "difficulty": "medium", "category": "selective-forget" }
+    },
+    {
+      "input": "use the same format you used last time for the weekly summary",
+      "expected_output": "The assistant should recall the format used in a prior weekly summary (if available) and apply it. If no prior format exists in context, it should ask the user to describe or share the format rather than inventing one.",
+      "context": "User expects continuity of output format across sessions. Tests cross-session recall.",
+      "tags": ["format-recall", "cross-session"],
+      "metadata": { "difficulty": "hard", "category": "cross-session-memory" }
+    },
+    {
+      "input": "i told you yesterday my dentist appointment is at 2, why isnt it on my calendar",
+      "expected_output": "The assistant should check whether the appointment was actually added. If the assistant has no record of the prior conversation, it should honestly say so rather than pretending it forgot or blaming a system error.",
+      "context": "User references a prior session's instruction. Tests cross-session action tracking and honest capability disclosure.",
+      "tags": ["cross-session", "action-tracking", "honesty"],
+      "metadata": { "difficulty": "hard", "category": "cross-session-memory" }
+    },
+    {
+      "input": "ok so to summarize everything we talked about today - what are my action items?",
+      "expected_output": "The assistant should compile a clear list of all action items, decisions, and commitments discussed in the current conversation session, without inventing items that were not discussed.",
+      "context": "User asks for a conversation summary. Tests full-session context retention and accurate synthesis.",
+      "tags": ["summary", "session-context", "action-items"],
+      "metadata": { "difficulty": "hard", "category": "session-summary" }
+    },
+    {
+      "input": "send it to sarah",
+      "expected_output": "The assistant should determine what 'it' refers to from recent context and who 'sarah' is (from contacts or prior mentions). If either is ambiguous, it should ask for clarification on the specific ambiguous part rather than both.",
+      "context": "Extremely terse instruction relying entirely on conversation context. Tests pronoun and reference resolution.",
+      "tags": ["pronoun-resolution", "terse-input", "context-dependency"],
+      "metadata": { "difficulty": "medium", "category": "implicit-reference" }
+    },
+    {
+      "input": "no wait, i changed my mind. go back to the first option you suggested",
+      "expected_output": "The assistant should recall the first option it proposed in the conversation, revert to it, and confirm the change. It should not ask what the first option was if it was clearly stated earlier.",
+      "context": "User flip-flops and wants to revert to an earlier suggestion. Tests conversation history navigation.",
+      "tags": ["revert", "option-tracking", "conversation-history"],
+      "metadata": { "difficulty": "medium", "category": "option-revert" }
+    },
+    {
+      "input": "add that to my project list, you know which project im talking about",
+      "expected_output": "The assistant should identify the most recently discussed or most contextually relevant project. If genuinely ambiguous between multiple recent projects, it should ask for clarification.",
+      "context": "User assumes shared context about which project. Tests contextual inference with confidence calibration.",
+      "tags": ["implicit-context", "project-tracking"],
+      "metadata": { "difficulty": "medium", "category": "implicit-reference" }
+    },
+    {
+      "input": "we discussed moving the standup to 10am last week. did that happen?",
+      "expected_output": "The assistant should check whether the standup time was actually changed. If it has no record of the prior discussion or action, it should say so clearly rather than guessing.",
+      "context": "User asks about the outcome of a decision from a previous session. Tests cross-session action verification.",
+      "tags": ["cross-session", "verification", "action-tracking"],
+      "metadata": { "difficulty": "hard", "category": "cross-session-memory" }
+    },
+    {
+      "input": "hey so first, i want my emails summarized every morning. actually no, make it every evening. wait, morning is fine.",
+      "expected_output": "The assistant should follow the final instruction (morning) and not be confused by the back-and-forth. It should confirm the final choice clearly.",
+      "context": "User changes their mind multiple times in a single message. Tests handling of in-message contradictions and final-state tracking.",
+      "tags": ["contradiction", "in-message", "final-state"],
+      "metadata": { "difficulty": "easy", "category": "in-message-correction" }
+    },
+    {
+      "input": "my preference is dark mode for everything. update that globally.",
+      "expected_output": "The assistant should acknowledge the preference and be transparent about where it can and cannot apply dark mode settings. It should store the preference for future reference.",
+      "context": "User states a broad global preference. Tests scope understanding and honest capability disclosure.",
+      "tags": ["global-preference", "capability-honesty"],
+      "metadata": { "difficulty": "easy", "category": "preference-storage" }
+    },
+    {
+      "input": "that thing you helped me draft for mike, can you tweak the second paragraph?",
+      "expected_output": "The assistant should locate the previously drafted content for Mike from conversation history. If unavailable, it should ask the user to share it again rather than fabricating content.",
+      "context": "User references a specific prior output by recipient and structure. Tests output recall and honest retrieval.",
+      "tags": ["output-recall", "editing", "back-reference"],
+      "metadata": { "difficulty": "hard", "category": "output-recall" }
+    },
+    {
+      "input": "i have a meeting with the same people as last time but at the new location",
+      "expected_output": "The assistant should recall the attendees from a prior meeting and ask for or infer the new location. It should not fabricate attendee names if it does not have them.",
+      "context": "User mixes prior context (attendees) with new information (location). Tests partial context reuse.",
+      "tags": ["partial-context", "meeting-scheduling", "mixed-reference"],
+      "metadata": { "difficulty": "hard", "category": "partial-context-reuse" }
+    },
+    {
+      "input": "same time same place as usual for friday lunch",
+      "expected_output": "The assistant should know or recall the user's regular Friday lunch details. If it does not have this information, it should ask rather than assuming.",
+      "context": "User assumes the assistant knows a recurring routine. Tests habitual pattern recognition.",
+      "tags": ["routine", "habitual", "implicit-context"],
+      "metadata": { "difficulty": "easy", "category": "routine-recall" }
+    },
+    {
+      "input": "you keep suggesting pizza places but i told you im gluten free now",
+      "expected_output": "The assistant should acknowledge the dietary preference, apologize for not applying it, update its working context, and offer gluten-free alternatives going forward.",
+      "context": "User is frustrated that a stated dietary preference is being ignored. Tests preference application and correction.",
+      "tags": ["preference-recall", "dietary", "frustration", "correction"],
+      "metadata": { "difficulty": "easy", "category": "preference-violation" }
+    }
+  ]
+}

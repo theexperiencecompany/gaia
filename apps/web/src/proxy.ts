@@ -1,7 +1,15 @@
 import type { NextRequest } from "next/server";
 import createMiddleware from "next-intl/middleware";
+import { createLLmsTxt, isLLMsTxtPath } from "next-llms-txt";
 
 import { routing } from "./i18n/routing";
+
+const { GET: handleLLmsTxt } = createLLmsTxt({
+  autoDiscovery: {
+    appDir: "src/app/[locale]/(landing)",
+    rootDir: process.cwd(),
+  },
+});
 
 // Routes that have actual translations — only these get locale-prefixed URLs
 const translatedPrefixes = [
@@ -28,7 +36,10 @@ const intlMiddlewareDefaultOnly = createMiddleware({
   localeDetection: false,
 });
 
-export default function proxy(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
+  if (isLLMsTxtPath(request.nextUrl.pathname)) {
+    return await handleLLmsTxt(request);
+  }
   if (isTranslatedRoute(request.nextUrl.pathname)) {
     return intlMiddleware(request);
   }
@@ -38,5 +49,9 @@ export default function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|_vercel|sitemap|ingest|.*\\..*).*)", "/"],
+  matcher: [
+    "/((?!api|_next|_vercel|sitemap|ingest|.*\\..*).*)",
+    "/(.*\\.html\\.md)",
+    "/",
+  ],
 };

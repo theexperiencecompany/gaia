@@ -1,4 +1,4 @@
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 

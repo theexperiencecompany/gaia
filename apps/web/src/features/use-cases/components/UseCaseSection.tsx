@@ -1,20 +1,16 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
-import { gsap } from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ChevronUp } from "@/components/shared/icons";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import type { UseCase } from "@/types/features/workflowTypes";
-
-// Register GSAP plugin
-gsap.registerPlugin(ScrollTrigger);
 
 export default function UseCaseSection({
   dummySectionRef,
@@ -29,6 +25,7 @@ export default function UseCaseSection({
   hideAllCategory = false,
   rows,
   columns = 4,
+  scroller,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
@@ -42,6 +39,8 @@ export default function UseCaseSection({
   hideAllCategory?: boolean;
   rows?: number;
   columns?: number;
+  /** Pass null to skip scroll container detection (e.g. on landing page where window is the scroller). */
+  scroller?: HTMLElement | null;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -94,35 +93,34 @@ export default function UseCaseSection({
     ...dynamicCategories.filter((cat) => cat !== "featured"),
   ];
 
-  // Find scroll container - memoized to prevent effect re-runs
-  const getScrollContainer = useCallback(() => {
+  // Cache the scroll container to avoid repeated DOM traversals.
+  // When `scroller` prop is provided (including null), skip traversal entirely.
+  const scrollContainerCache = useRef<HTMLElement | null | undefined>(
+    undefined,
+  );
+
+  const getScrollContainer = useCallback((): HTMLElement | null => {
+    // Explicit prop provided — use it directly (null means window/no container)
+    if (scroller !== undefined) return scroller;
+
+    // Return cached result if already resolved
+    if (scrollContainerCache.current !== undefined) {
+      return scrollContainerCache.current;
+    }
+
+    // Walk up the DOM once and cache the result
     let current = dummySectionRef.current?.parentElement;
     while (current) {
       const styles = window.getComputedStyle(current);
       if (styles.overflowY === "auto" || styles.overflowY === "scroll") {
+        scrollContainerCache.current = current;
         return current;
       }
       current = current.parentElement;
     }
+    scrollContainerCache.current = null;
     return null;
-  }, [dummySectionRef]);
-
-  // Simple GSAP ScrollTrigger
-  useEffect(() => {
-    if (!dummySectionRef.current) return;
-
-    const scrollContainer = getScrollContainer();
-    if (!scrollContainer) return;
-
-    const trigger = ScrollTrigger.create({
-      trigger: dummySectionRef.current,
-      scroller: scrollContainer,
-      start: "top 50%",
-      end: "bottom-=10 40%",
-    });
-
-    return () => trigger.kill();
-  }, [dummySectionRef, getScrollContainer]);
+  }, [dummySectionRef, scroller]);
 
   const filteredUseCases =
     selectedCategory === null
@@ -138,8 +136,7 @@ export default function UseCaseSection({
   const handleCategoryClick = (category: string) => {
     const wasSelected = selectedCategory === category;
     const scrollContainer = getScrollContainer();
-
-    if (!scrollContainer) return;
+    const useWindowScroll = scrollContainer === null;
 
     if (wasSelected) {
       // Unselecting: for featured, go back to default, for others scroll to top and reset to featured
@@ -150,11 +147,11 @@ export default function UseCaseSection({
       } else {
         // For other categories, unselect and go back to featured as default
         setSelectedCategory("featured");
-        gsap.to(scrollContainer, {
-          scrollTop: 0,
-          duration: 0.5,
-          ease: "power2.out",
-        });
+        if (useWindowScroll) {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } else if (scrollContainer) {
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+        }
       }
     } else {
       // Selecting: only scroll if we need to bring the section into view
@@ -165,8 +162,16 @@ export default function UseCaseSection({
         if (!dummySectionRef.current) return;
 
         const sectionRect = dummySectionRef.current.getBoundingClientRect();
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const currentScrollTop = scrollContainer.scrollTop;
+        const containerRect = useWindowScroll
+          ? { top: 0, bottom: window.innerHeight }
+          : scrollContainer
+            ? scrollContainer.getBoundingClientRect()
+            : null;
+        if (!containerRect) return;
+
+        const currentScrollTop = useWindowScroll
+          ? window.scrollY
+          : (scrollContainer?.scrollTop ?? 0);
 
         // Only scroll if the section is not fully visible or if we need to scroll down
         const isSectionFullyVisible =
@@ -180,27 +185,22 @@ export default function UseCaseSection({
 
         // For other categories, only scroll if section is not fully visible
         if (!isSectionFullyVisible) {
-          const targetScrollTop =
+          const top = Math.max(
+            0,
             currentScrollTop +
-            (sectionRect.bottom - containerRect.bottom) +
-            100;
+              (sectionRect.bottom - containerRect.bottom) +
+              100,
+          );
 
-          gsap.to(scrollContainer, {
-            scrollTop: Math.max(0, targetScrollTop),
-            duration: 0.5,
-            ease: "power2.out",
-          });
+          if (useWindowScroll) {
+            window.scrollTo({ top, behavior: "smooth" });
+          } else if (scrollContainer) {
+            scrollContainer.scrollTo({ top, behavior: "smooth" });
+          }
         }
       }, 50);
     }
   };
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
-    };
-  }, []);
 
   return (
     <div className="w-full" ref={dummySectionRef}>

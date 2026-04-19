@@ -1,0 +1,54 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Enforces bundle-size discipline around the `motion` package.
+//
+// `motion/react` pulls in the full ~34KB animation feature set. The `m`
+// component ships separately from `motion/react-m` at only ~2.3KB, and
+// combined with <LazyMotion features={loadFeatures}> defers feature
+// loading to runtime.
+//
+// This rule forbids importing `m` from `motion/react` while still
+// allowing other named exports (AnimatePresence, useInView,
+// useReducedMotion, LazyMotion, useAnimate, Variants type, MotionProps
+// type, etc.) from `motion/react`. See also
+// `no-motion-full-import.grit` for the companion rule that blocks
+// `motion` from `motion/react`.
+//
+// GritQL limitation: metavariables don't match inside named import
+// specifier lists, so every position (and common co-import counts) for
+// `m` must be enumerated explicitly. Up to 5 co-imports is covered; add
+// more positions if a real import grows larger.
+or {
+  `import { m } from "motion/react"`,
+  `import { m, $_ } from "motion/react"`,
+  `import { $_, m } from "motion/react"`,
+  `import { m, $_, $_ } from "motion/react"`,
+  `import { $_, m, $_ } from "motion/react"`,
+  `import { $_, $_, m } from "motion/react"`,
+  `import { m, $_, $_, $_ } from "motion/react"`,
+  `import { $_, m, $_, $_ } from "motion/react"`,
+  `import { $_, $_, m, $_ } from "motion/react"`,
+  `import { $_, $_, $_, m } from "motion/react"`,
+  `import { m, $_, $_, $_, $_ } from "motion/react"`,
+  `import { $_, m, $_, $_, $_ } from "motion/react"`,
+  `import { $_, $_, m, $_, $_ } from "motion/react"`,
+  `import { $_, $_, $_, m, $_ } from "motion/react"`,
+  `import { $_, $_, $_, $_, m } from "motion/react"`,
+  `import { m as $_ } from "motion/react"`,
+  `import { m as $_, $_ } from "motion/react"`,
+  `import { $_, m as $_ } from "motion/react"`,
+  `import { m as $_, $_, $_ } from "motion/react"`,
+  `import { $_, m as $_, $_ } from "motion/react"`,
+  `import { $_, $_, m as $_ } from "motion/react"`,
+  `import { m as $_, $_, $_, $_ } from "motion/react"`,
+  `import { $_, m as $_, $_, $_ } from "motion/react"`,
+  `import { $_, $_, m as $_, $_ } from "motion/react"`,
+  `import { $_, $_, $_, m as $_ } from "motion/react"`
+} as $node where {
+  register_diagnostic(
+    span = $node,
+    message = "Import 'm' from 'motion/react-m' instead of 'motion/react' — saves ~32KB in the initial bundle. Use 'import * as m from motion/react-m' with <LazyMotion features={loadFeatures}>.",
+    severity = "error"
+  )
+}

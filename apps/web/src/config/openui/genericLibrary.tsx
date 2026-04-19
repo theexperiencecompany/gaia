@@ -23,6 +23,7 @@ import {
   treeViewDef,
   videoBlockDef,
 } from "./components/content";
+import { textDocumentDef } from "./components/document";
 import {
   accordionDef,
   actionCardDef,
@@ -62,6 +63,7 @@ export {
   TreeViewView,
   VideoBlockView,
 } from "./components/content";
+export { TextDocumentView } from "./components/document";
 // Re-export all views so the dev preview page can import from one place.
 export {
   AccordionView,
@@ -172,6 +174,7 @@ export const genericLibrary = createLibrary({
     alertBannerDef,
     stepsDef,
     codeDiffDef,
+    textDocumentDef,
   ],
   componentGroups: [
     {
@@ -243,6 +246,13 @@ export const genericLibrary = createLibrary({
       components: ["CodeDiff"],
       notes: [
         "CodeDiff for before/after code comparisons with syntax highlighting",
+      ],
+    },
+    {
+      name: "Documents",
+      components: ["TextDocument"],
+      notes: [
+        "TextDocument for emails, reports, letters — editable rich text with metadata fields",
       ],
     },
   ],

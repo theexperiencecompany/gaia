@@ -1,6 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
@@ -10,7 +12,11 @@ import { siteConfig } from "@/lib/seo";
 
 export default function Footer() {
   const user = useUser();
-  const isAuthenticated = user?.email;
+  // Gate auth-dependent rendering to client-only to prevent SSR/client hydration mismatch.
+  // SSR and first client render both treat the user as unauthenticated.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const isAuthenticated = mounted ? user?.email : undefined;
 
   const navigationSchema: WithContext<SiteNavigationElement> = {
     "@context": "https://schema.org",
@@ -66,7 +72,13 @@ export default function Footer() {
     "The power behind your ideas.",
     "Work smarter, not louder.",
   ];
-  const randomTagline = taglines[Math.floor(Math.random() * taglines.length)];
+  // Deterministic initial value — randomised after mount to prevent SSR/client mismatch.
+  // Math.random() during render produces different values server vs client → hydration error.
+  const [randomTagline, setRandomTagline] = useState(taglines[0]);
+  useEffect(() => {
+    setRandomTagline(taglines[Math.floor(Math.random() * taglines.length)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
@@ -78,7 +90,7 @@ export default function Footer() {
           src="/images/wallpapers/bands_gradient_black.png"
           alt=""
           fill={true}
-          className="mt-10 z-[-1]"
+          className="z-[-1]"
         />
         <div className="flex h-fit w-full items-center justify-center px-6 sm:px-4">
           <div className="grid w-full max-w-7xl grid-cols-2 sm:grid-cols-6 gap-6 sm:gap-3">
@@ -152,7 +164,7 @@ export default function Footer() {
                       href={link.href}
                       className="group relative flex w-full cursor-pointer justify-start py-1 text-sm sm:justify-end"
                     >
-                      <span className="text-foreground-500 transition-colors group-hover:text-primary">
+                      <span className="text-zinc-400 transition-colors group-hover:text-primary">
                         {link.label}
                       </span>
                     </Link>
@@ -161,7 +173,7 @@ export default function Footer() {
             ))}
           </div>
         </div>
-        <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-2 py-6 pb-3 text-xs font-light text-zinc-300 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10 mb-5">
+        <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-2 py-6 pb-3 text-xs font-light text-black sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10 mb-5">
           <div className="order-2 flex items-center gap-3 sm:order-1">
             {connect.map((link) => (
               <Link
@@ -169,7 +181,7 @@ export default function Footer() {
                 href={link.href}
                 target={link.external ? "_blank" : "_self"}
                 rel={link.external ? "noopener noreferrer" : undefined}
-                className="cursor-pointer text-zinc-300 transition-colors hover:text-foreground"
+                className="cursor-pointer text-black transition-colors hover:text-zinc-700"
                 title={link.description}
               >
                 {React.isValidElement(link.icon)
@@ -194,7 +206,7 @@ export default function Footer() {
             >
               Terms of Use
             </Link>
-            <div className="h-4 border-l border-zinc-400" />
+            <div className="h-4 border-l border-black" />
 
             <Link
               href={"/privacy"}

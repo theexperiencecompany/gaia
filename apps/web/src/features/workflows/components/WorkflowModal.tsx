@@ -19,7 +19,6 @@ import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 import { type Workflow, workflowApi } from "../api/workflowApi";
 import {
-  getBrowserTimezone,
   getDefaultFormValues,
   type WorkflowFormData,
   workflowFormSchema,
@@ -31,6 +30,7 @@ import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { createDefaultTriggerConfig } from "../triggers/registry";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
 import { findTriggerSchema } from "../triggers/utils";
+import { getBrowserTimezone } from "../utils/browserTimezone";
 
 interface WorkflowModalProps {
   isOpen: boolean;
