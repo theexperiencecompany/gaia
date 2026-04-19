@@ -46,6 +46,13 @@ class WhatsAppChannelAdapter(ExternalPlatformAdapter):
         """Build the notification payload and convert any CommonMark Markdown in
         the body/messages to WhatsApp's native formatting so ``**bold**`` and
         ``### headings`` don't render as literal characters in the chat bubble.
+
+        Order matters: we convert here (in ``transform``) rather than inside
+        ``_deliver_content``. The base class's splitter
+        (``_split_text`` → ``MAX_MESSAGE_LENGTH``) runs on the transformed
+        text during delivery, so chunk boundaries reflect the final WhatsApp
+        payload and link expansion (``[x](url)`` → ``x (url)``) won't push a
+        boundary past 4096 characters unexpectedly.
         """
         payload = await super().transform(notification)
         if payload.get("type") == "workflow_messages":
