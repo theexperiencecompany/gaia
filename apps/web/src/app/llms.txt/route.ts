@@ -37,7 +37,10 @@ function generateContent(
       if (!meta) return null;
       return { ...page, config: { ...meta } };
     })
-    .filter((p): p is PageInfo => p !== null && !!p.config?.title);
+    .filter((p): p is PageInfo => p !== null && !!p.config?.title)
+    .sort((a, b) =>
+      (a.config?.title ?? "").localeCompare(b.config?.title ?? ""),
+    );
 
   const lines: string[] = [
     `# ${siteConfig.short_name}`,
