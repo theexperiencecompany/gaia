@@ -667,8 +667,15 @@ def get_retrieve_tools_function(
                 and not isinstance(result[0], dict)
             ):
                 for item in result:
-                    namespace = item.namespace if hasattr(item, "namespace") else None
-                    chroma_preview.append(f"{namespace}::{item.key}")
+                    if isinstance(item, dict):
+                        namespace = item.get("namespace")
+                        tool_key = item.get("key")
+                    else:
+                        namespace = getattr(item, "namespace", None)
+                        tool_key = getattr(item, "key", None)
+                    if tool_key is None:
+                        continue
+                    chroma_preview.append(f"{namespace}::{tool_key}")
                     if len(chroma_preview) >= 10:
                         break
             if len(chroma_preview) >= 10:
