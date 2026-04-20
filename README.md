@@ -3,9 +3,6 @@
 
 # GAIA - Your Personal AI Assistant
 
-<!-- <img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA Web App" style="width:100%; border-radius:12px;"> -->
-
-
 <img alt="logo" src="apps/web/public/images/logos/macos.png" width=150 height=150 />
 
 <br />
@@ -16,48 +13,40 @@
 [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) ![last update](https://img.shields.io/github/commit-activity/m/theexperiencecompany/gaia) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/theexperiencecompany/gaia)
 
 [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![Twitter Follow](https://img.shields.io/twitter/follow/trygaia?style=social)](https://x.com/intent/user?screen_name=trygaia) [![Whatsapp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io) 
+
 </div>
 
-<b>[GAIA](https://heygaia.io)</b> is your proactive, personal AI assistant designed to increase your productivity.
-
-<!-- 
-
-## Table of Contents
-
-- [GAIA - Your Personal AI Assistant](#gaia---your-personal-ai-assistant)
-  - [Table of Contents](#table-of-contents)
-  - [The Problem](#the-problem)
-  - [Features](#features)
-  - [Getting Started](#getting-started)
-    - [Cloud (zero setup)](#cloud-zero-setup)
-    - [Self-host](#self-host)
-    - [Self-host or Develop](#self-host-or-develop)
-  - [Chat with GAIA on Your Favorite Platforms](#chat-with-gaia-on-your-favorite-platforms)
-  - [Monorepo Structure](#monorepo-structure)
-  - [Documentation](#documentation)
-  - [Community \& Support](#community--support)
-  - [Contributing](#contributing)
-  - [Tools We Love](#tools-we-love)
-  - [License](#license)
-  - [Contact](#contact)
-  - [Star History](#star-history) -->
+**[GAIA](https://heygaia.io)** is your proactive, personal AI assistant designed to increase your productivity.
 
 ## Why GAIA?
 
-<!-- Your day shouldn't start with triage. But it does; emails that need replies, todos that have rotted, calendar invites to action, Slack threads to catch up on, messages across five different apps. None of it is real work. It's maintenance. And it compounds. By the time you've processed enough of it to feel on top of things, your focus is already gone.
+We all drown in tools. Gmail, Calendar, Todos, Docs, Slack, Linear, WhatsApp — different stacks, same problem. Our days are eaten by small repetitive actions that are not real work. Each task feels small, but together they drain focus and energy. Over time inboxes clog, todo lists rot, and important things slip through.
 
-Automation was supposed to fix this, but it just moved the burden. You still have to explain your context, your tone, your preferences, every time, for every tool. A real assistant shouldn't need that. It should already know how you work, what matters to you, and what can be ignored. That's what GAIA is built to be. -->
+Most automation doesn't fix this. Tools are rigid, built for power users, and still require you to explain your context every single time. A real personal assistant should already know you — how you write, what you care about, what you ignore. GAIA removes this mental load. One assistant that understands your entire digital life, remembers everything, and proactively handles the boring repetitive work so you can focus on what matters.
 
-We all drown in tools. Gmail, Calendar, Todos, Docs, Slack, Linear, WhatsApp. Different stacks, same problem. Our days are eaten by small repetitive actions. Creating events, drafting emails, managing todos, reading useless messages. This is not real work. It is maintenance. Each task feels small, but together they drain focus and energy. Over time inboxes clog, todo lists rot, messages pile up, and important things slip through. This constant noise burns people out and pushes them into work they hate, not because the work is meaningless, but because their mental bandwidth is gone. This is how it started for us. We missed a time sensitive email because everything looked urgent and we were already exhausted.
+---
 
-Automation should solve this, but it does not. Most tools are rigid and built for power users. Even with LLMs, the burden stays on the user. You still explain context, preferences, and writing style again and again. That is wasted effort. A real personal assistant should already know you. It should understand how you write, what you care about, what you ignore, and how your day flows. Gaia removes this mental load. One assistant that understands your entire digital life, remembers everything, and proactively handles boring repetitive work. The real problem is time, energy, and cognitive overload. Open one dashboard, understand your day instantly. Everything else should just happen.
+## Table of Contents
+
+- [Features](#features)
+- [Getting Started](#getting-started)
+  - [Cloud (zero setup)](#cloud-zero-setup)
+  - [Self-host or Develop](#self-host-or-develop)
+- [Chat with GAIA on Your Favorite Platforms](#chat-with-gaia-on-your-favorite-platforms)
+- [Tech Stack](#tech-stack)
+- [Roadmap](#roadmap)
+- [Monorepo Structure](#monorepo-structure)
+- [Documentation](#documentation)
+- [Community & Support](#community--support)
+- [Contributing](#contributing)
+- [Tools We Love](#tools-we-love)
+- [License](#license)
+- [Contact](#contact)
+- [Star History](#star-history)
+
+---
 
 ## Features
-
-<!-- <img src="apps/web/public/images/screenshots/dashboard.png" alt="GAIA Dashboard" style="width:100%; border-radius:12px;"> -->
-
-<!-- <br /> -->
-<!-- <br /> -->
 
 - **Truly Proactive AI**: Acts before you ask — deadlines, emails, tasks handled
 - **Automated Workflows**: Eliminate repetitive work with multi-step automation
@@ -66,29 +55,45 @@ Automation should solve this, but it does not. Most tools are rigid and built fo
 - **Graph-Based Memory**: Everything connected — tasks, projects, meetings, documents
 - **Integration Marketplace**: Hundreds of integrations with Gmail, Slack, Notion, and more
 - **Multi-Platform**: Web, Desktop (macOS, Windows, Linux), and Mobile
-- **Message from anywhere**: Access GAIA on Discord, Slack, and Telegram
+- **Message from anywhere**: Access GAIA on Discord, Slack, Telegram, and WhatsApp
 - **Open Source & Self-Hostable**: Full transparency, runs on your own infrastructure
-<!-- 
+
+<br />
+
 <div align="center">
   <table>
     <tr>
-      <td width="50%">
-      <center>
-        <img src="apps/web/public/images/screenshots/desktop_dock.png" alt="GAIA Desktop App" style="width:100%; border-radius:12px;">
-        GAIA on Desktop
-         <a href="https://heygaia.io/download">
-          <img src="https://img.shields.io/badge/Download-00bbff?logoColor=white" alt="Download">
-        </a>
-      </center>
+      <td align="center" width="50%">
+        <img src="apps/web/public/images/screenshots/dashboard.png" alt="Dashboard" />
+        <br /><sub><b>Dashboard</b></sub>
       </td>
-      <td width="50%">
-      <center>
-  
-      </center>
+      <td align="center" width="50%">
+        <img src="apps/web/public/images/screenshots/todos.png" alt="Smart Todos" />
+        <br /><sub><b>Smart Todos</b></sub>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="50%">
+        <img src="apps/web/public/images/screenshots/calendar.png" alt="Calendar" />
+        <br /><sub><b>Calendar</b></sub>
+      </td>
+      <td align="center" width="50%">
+        <img src="apps/web/public/images/screenshots/workflows.png" alt="Automated Workflows" />
+        <br /><sub><b>Automated Workflows</b></sub>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="50%">
+        <img src="apps/web/public/images/screenshots/desktop_dock.png" alt="Desktop App" />
+        <br /><sub><b>Desktop App</b></sub>
+      </td>
+      <td align="center" width="50%">
+        <img src="apps/web/public/images/screenshots/phone_dock.png" alt="Mobile App" />
+        <br /><sub><b>Mobile App</b></sub>
       </td>
     </tr>
   </table>
-</div> -->
+</div>
 
 ## Getting Started
 
@@ -132,11 +137,38 @@ Use GAIA directly inside the tools you're already in!
 |&emsp;&emsp;&emsp;&emsp; | Platform | How to Use |
 |---|---|---|
 | <img src="/apps/web/public/images/icons/macos/discord.webp" alt="Discord" width="50" height="50"/>| **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) — use `/gaia` or `@mention` GAIA in any channel |
-| <img src="/apps/web/public/images/icons/macos/slack.webp"  alt="Slack" width="50" height="50" /> | **Slack** | Install the Slack app in your workspace and use `/gaia` and other slash commands |
+| <img src="/apps/web/public/images/icons/macos/slack.webp"  alt="Slack" width="50" height="50" /> | **Slack** | [Add GAIA to your workspace](https://heygaia.io/slack-bot) and use `/gaia` and other slash commands |
 |<img src="/apps/web/public/images/icons/macos/telegram.webp" alt="Telegram" width="50" height="50" />|  **Telegram** | [Message @heygaia_bot](https://t.me/heygaia_bot) and send messages or use `/gaia` commands |
 |<img src="/apps/web/public/images/icons/macos/whatsapp.webp" alt="WhatsApp" width="50" height="50" />|  **WhatsApp** | [Message GAIA](https://wa.me/12762088737) and send messages or use `/gaia` commands |
 
 See the [Bot Integrations Guide](https://docs.heygaia.io/bots/overview) for setup and usage details.
+
+
+## Tech Stack
+
+GAIA is a full-stack Nx monorepo spanning web, desktop, mobile, backend, voice, and infrastructure.
+
+| Layer | |
+|---|---|
+| **Web Frontend** | ![Next.js](https://img.shields.io/badge/Next.js_16-000?style=flat&logo=nextdotjs) ![React](https://img.shields.io/badge/React_19-61DAFB?style=flat&logo=react&logoColor=black) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white) ![Zustand](https://img.shields.io/badge/Zustand-443E38?style=flat&logo=react&logoColor=white) ![Framer Motion](https://img.shields.io/badge/Framer_Motion-0055FF?style=flat&logo=framer&logoColor=white) |
+| **Desktop** | ![Electron](https://img.shields.io/badge/Electron-47848F?style=flat&logo=electron&logoColor=white) |
+| **Mobile** | ![React Native](https://img.shields.io/badge/React_Native-61DAFB?style=flat&logo=react&logoColor=black) ![Expo](https://img.shields.io/badge/Expo-000020?style=flat&logo=expo&logoColor=white) |
+| **Backend** | ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white) ![Python](https://img.shields.io/badge/Python_3.11+-3776AB?style=flat&logo=python&logoColor=white) ![Pydantic](https://img.shields.io/badge/Pydantic-E92063?style=flat&logo=pydantic&logoColor=white) ![Uvicorn](https://img.shields.io/badge/Uvicorn-499848?style=flat&logo=gunicorn&logoColor=white) |
+| **AI / Agents** | ![LangGraph](https://img.shields.io/badge/LangGraph-1C3C3C?style=flat&logo=langchain&logoColor=white) ![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=flat&logo=langchain&logoColor=white) ![Mem0](https://img.shields.io/badge/Mem0-000?style=flat&logoColor=white) |
+| **LLM Providers** | ![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white) ![Gemini](https://img.shields.io/badge/Google_Gemini-4285F4?style=flat&logo=google&logoColor=white) ![OpenRouter](https://img.shields.io/badge/OpenRouter-6B21A8?style=flat&logoColor=white) |
+| **Databases** | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white) ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-FF4438?style=flat&logo=redis&logoColor=white) ![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6B00?style=flat&logoColor=white) |
+| **Queue & Tasks** | ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=flat&logo=rabbitmq&logoColor=white) ![ARQ](https://img.shields.io/badge/ARQ-FF4438?style=flat&logo=redis&logoColor=white) |
+| **Voice & Real-time** | ![LiveKit](https://img.shields.io/badge/LiveKit-DC2626?style=flat&logoColor=white) ![Deepgram](https://img.shields.io/badge/Deepgram-13EF93?style=flat&logoColor=black) ![ElevenLabs](https://img.shields.io/badge/ElevenLabs-000?style=flat&logoColor=white) |
+| **Monitoring** | ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat&logo=prometheus&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat&logo=grafana&logoColor=white) ![Sentry](https://img.shields.io/badge/Sentry-362D59?style=flat&logo=sentry&logoColor=white) ![PostHog](https://img.shields.io/badge/PostHog-F54E00?style=flat&logo=posthog&logoColor=white) ![Opik](https://img.shields.io/badge/Opik-6D28D9?style=flat&logoColor=white) |
+| **Infrastructure** | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) ![Vercel](https://img.shields.io/badge/Vercel-000?style=flat&logo=vercel&logoColor=white) ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-F38020?style=flat&logo=cloudflare&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat&logo=githubactions&logoColor=white) |
+| **Tooling** | ![Nx](https://img.shields.io/badge/Nx-143055?style=flat&logo=nx&logoColor=white) ![pnpm](https://img.shields.io/badge/pnpm-F69220?style=flat&logo=pnpm&logoColor=white) ![uv](https://img.shields.io/badge/uv-DE5FE9?style=flat&logo=astral&logoColor=white) ![Biome](https://img.shields.io/badge/Biome-60A5FA?style=flat&logo=biome&logoColor=white) ![Ruff](https://img.shields.io/badge/Ruff-D7FF64?style=flat&logo=ruff&logoColor=black) |
+
+
+## Roadmap
+
+We track upcoming features, planned improvements, and in-progress work publicly.
+
+**[View Roadmap](https://gaia.featurebase.app/roadmap)** · **[Submit a Feature Request](https://gaia.featurebase.app)**
 
 
 ## Monorepo Structure
@@ -211,7 +243,7 @@ GAIA is built on the shoulders of giants.
 
 We rely heavily on open-source software and world-class developer tools. This page exists to credit the projects that make building GAIA possible and to support the open-source culture that drives real progress.
 
-→ https://heygaia.io/thanks
+https://heygaia.io/thanks
 
 ## License
 
