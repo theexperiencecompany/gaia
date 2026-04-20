@@ -38,19 +38,8 @@ from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore, SearchItem
 
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
-_RETRIEVAL_LOG_PATH = Path("logs/retrieval-debug.log")
 
 
-async def _append_retrieval_log(line: str) -> None:
-    timestamp = datetime.now(timezone.utc).isoformat()
-    payload = f"{timestamp} {line}\n"
-
-    def _write() -> None:
-        _RETRIEVAL_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with _RETRIEVAL_LOG_PATH.open("a", encoding="utf-8") as handle:
-            handle.write(payload)
-
-    await asyncio.to_thread(_write)
 
 
 def _get_integration_for_space(tool_space: str):
@@ -132,9 +121,6 @@ async def _maybe_hydrate_missing_tools(
             await tool_registry._index_category_tools(category_name)
 
     refreshed = set(tool_registry.get_tool_names())
-    await _append_retrieval_log(
-        f"mode=hydrate tool_space={tool_space} hydrated={len(tools)} tools={missing_list}"
-    )
     return refreshed, len(tools)
 
 # ---------------------------------------------------------------------------
@@ -611,11 +597,7 @@ def get_retrieve_tools_function(
                     tools_filtered=len(exact_tool_names) - len(validated_tool_names),
                 )
             )
-            await _append_retrieval_log(
-                "mode=binding "
-                f"tool_space={tool_space} user_id={user_id} "
-                f"requested={len(exact_tool_names)} bound={len(validated_tool_names)}"
-            )
+        
             return RetrieveToolsResult(
                 tools_to_bind=validated_tool_names,
                 response=validated_tool_names,
@@ -715,15 +697,7 @@ def get_retrieve_tools_function(
                 candidates_after_filter=len(all_results),
             )
         )
-        await _append_retrieval_log(
-            "mode=discovery "
-            f"tool_space={tool_space} user_id={user_id} query={query!r} "
-            f"chroma_hits={chroma_hits} public_hits={public_hits} "
-            f"candidates={len(all_results)} tools={len(final_tools)} "
-            f"chroma_preview={chroma_preview} "
-            f"namespaces={sorted(user_namespaces)} hits_by_namespace={per_namespace_hits} "
-            f"hydrated={hydrated_count}"
-        )
+    
         return RetrieveToolsResult(
             tools_to_bind=final_tools,
             response=final_tools,

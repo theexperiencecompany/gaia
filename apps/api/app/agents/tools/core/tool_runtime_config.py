@@ -88,7 +88,7 @@ def build_child_tool_runtime_config(
             include_subagents_in_retrieve=False,
         )
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read", "vfs_cmd"],
+        initial_tool_names=["vfs_read", "vfs_cmd", "finish_task"],
         enable_retrieve_tools=not disable_retrieve_tools,
         include_subagents_in_retrieve=False,
     )
@@ -97,7 +97,7 @@ def build_child_tool_runtime_config(
 def build_executor_child_tool_runtime_config() -> ToolRuntimeConfig:
     """Build child tool runtime config for executor-spawned subagents."""
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read", "vfs_cmd"],
+        initial_tool_names=["vfs_read", "vfs_cmd", "finish_task"],
         enable_retrieve_tools=True,
         include_subagents_in_retrieve=False,
     )

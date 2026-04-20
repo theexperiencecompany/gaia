@@ -30,13 +30,14 @@ from app.agents.tools.core.tool_runtime_config import (
     build_provider_parent_tool_runtime_config,
 )
 from app.agents.tools.memory_tools import search_memory
+from app.agents.tools.finish_task_tool import finish_task
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.vfs_tools import vfs_cmd, vfs_read
 from shared.py.wide_events import log
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.tools import BaseTool, tool
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 
 
@@ -108,10 +109,6 @@ class SubAgentFactory:
         scoped_tool_dict[fetch_webpages.name] = fetch_webpages
         scoped_tool_dict[deep_research.name] = deep_research
 
-        @tool(description="Finish the task and return the final result to the parent.")
-        async def finish_task(result: str) -> str:
-            return result
-
         scoped_tool_dict["finish_task"] = finish_task
         initial_tool_ids.append("finish_task")
 
@@ -171,8 +168,6 @@ class SubAgentFactory:
             log.info(
                 f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
             )
-        print(f"DEBUG valid_auto_bind for {provider}: {valid_auto_bind}",flush=True)
-        print(f"DEBUG scoped_tool_dict keys: {list(scoped_tool_dict.keys())[:20]}",True)
 
         parent_tool_runtime = build_provider_parent_tool_runtime_config(
             provider_tool_names=initial_tool_ids,

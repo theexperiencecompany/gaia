@@ -14,9 +14,7 @@ from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
 )
-from app.agents.tools.core.retrieval import (
-    get_retrieve_tools_function,
-)
+from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from shared.py.wide_events import log
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
@@ -233,11 +231,6 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             config=config,
             inherited_tool_names=inherited_tool_names,
         )
-        @tool(description="Finish the task and return the final result to the parent.")
-        async def finish_task(result: str) -> str:
-            return result
-
-        tools_by_name["finish_task"] = finish_task
         bound_tool_names: set[str] = set(tools_by_name.keys())
 
         llm_with_tools = (
