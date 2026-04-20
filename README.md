@@ -16,6 +16,8 @@
 
 </div>
 
+![GAIA Demo](apps/web/public/videos/demo.mp4)
+
 **[GAIA](https://heygaia.io)** is your proactive, personal AI assistant designed to increase your productivity.
 
 ## Why GAIA?
