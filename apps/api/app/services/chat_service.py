@@ -310,9 +310,7 @@ async def _wait_for_http_subscriber(
     try:
         await asyncio.wait_for(start_event.wait(), timeout=5.0)
     except asyncio.TimeoutError:
-        log.warning(
-            f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway"
-        )
+        log.warning(f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
 
 
 async def _run_chat_stream(
