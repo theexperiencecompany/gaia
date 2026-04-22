@@ -25,6 +25,39 @@ from app.services.mcp.mcp_client import get_mcp_client
 from .base_subagent import SubAgentFactory
 
 
+# In-memory cache for per-user subagent graphs.
+#
+# **Why in-memory (not Redis)?** Values are compiled LangGraph objects that
+# embed ``functools.partial`` closures, bound-method references, and live
+# Pydantic models. These are NOT pickleable — the same restriction the repo
+# already documents for Composio tool objects in ``apps/api/CLAUDE.md``.
+# Attempting to store these in Redis would raise ``TypeError`` on every
+# write. Process-local memo is the only viable option.
+#
+# Keyed by ``(integration_id, user_id)``. Invalidated on process restart,
+# explicit calls to ``invalidate_user_subagent_cache()``, or MCP config
+# change. No TTL is applied because an MCP config change is the only
+# correctness-relevant invalidation and it's event-driven.
+_USER_SUBAGENT_CACHE: dict[tuple[str, str], Any] = {}
+_USER_SUBAGENT_LOCK = asyncio.Lock()
+
+
+def invalidate_user_subagent_cache(
+    integration_id: str, user_id: Optional[str] = None
+) -> None:
+    """Drop cached subagent graphs for a given integration.
+
+    If user_id is None, invalidates every user's graph for that integration
+    (useful when an MCP config changes globally).
+    """
+    if user_id is not None:
+        _USER_SUBAGENT_CACHE.pop((integration_id, user_id), None)
+        return
+    for key in list(_USER_SUBAGENT_CACHE.keys()):
+        if key[0] == integration_id:
+            _USER_SUBAGENT_CACHE.pop(key, None)
+
+
 async def create_subagent(integration_id: str):
     """
     Create a provider subagent graph on-demand.
@@ -109,21 +142,66 @@ async def create_subagent(integration_id: str):
 
 async def create_subagent_for_user(integration_id: str, user_id: str):
     """
-    Create a subagent for auth-required MCP integrations with user-specific tokens.
+    Create (or retrieve from in-memory cache) a per-user subagent graph.
 
-    This is used for:
+    The compiled graph is memoised in-process keyed by
+    ``(integration_id, user_id)`` so repeat handoffs skip the expensive
+    MCP-connect + ChromaDB-indexing rebuild. Invalidation happens on:
+      - process restart
+      - ``invalidate_user_subagent_cache(integration_id, user_id=?)``
+      - MCP config change (callers must invalidate explicitly)
+
+    Used for:
     - MCP integrations (platform) that require OAuth authentication
     - Custom MCP integrations created by users
 
-    Uses cached tools when available to avoid reconnecting to MCP server.
-
     Args:
-        integration_id: The integration ID from oauth_config or custom MCP ID (12-char hex)
+        integration_id: The integration ID from oauth_config or custom MCP ID
         user_id: The user's ID for token lookup
 
     Returns:
         Compiled subagent graph, or None if creation fails
     """
+    cache_key = (integration_id, user_id)
+    cached = _USER_SUBAGENT_CACHE.get(cache_key)
+    if cached is not None:
+        log.set(
+            subagent_graph_cache={
+                "integration_id": integration_id,
+                "user_id": user_id,
+                "outcome": "hit",
+            }
+        )
+        return cached
+
+    async with _USER_SUBAGENT_LOCK:
+        # Double-check: another task may have populated while we waited.
+        cached = _USER_SUBAGENT_CACHE.get(cache_key)
+        if cached is not None:
+            log.set(
+                subagent_graph_cache={
+                    "integration_id": integration_id,
+                    "user_id": user_id,
+                    "outcome": "hit_after_wait",
+                }
+            )
+            return cached
+
+        graph = await _build_user_subagent(integration_id, user_id)
+        if graph is not None:
+            _USER_SUBAGENT_CACHE[cache_key] = graph
+        log.set(
+            subagent_graph_cache={
+                "integration_id": integration_id,
+                "user_id": user_id,
+                "outcome": "miss_built" if graph is not None else "miss_failed",
+            }
+        )
+        return graph
+
+
+async def _build_user_subagent(integration_id: str, user_id: str):
+    """Build a per-user subagent graph from scratch (called on cache miss)."""
     integration = get_integration_by_id(integration_id)
 
     # Handle custom MCPs from MongoDB (not in OAUTH_INTEGRATIONS)

@@ -320,6 +320,8 @@ def build_agent_config(
 
     # Cherry-pick specific keys from base_configurable if provided
     # Only inherit model config and user context, not LangChain internal state
+    pinned_memories = None
+    pinned_skills = None
     if base_configurable:
         # Inherit model config from parent if not overridden
         provider_name = base_configurable.get("provider", provider_name)
@@ -330,6 +332,10 @@ def build_agent_config(
         subagent_id = subagent_id or base_configurable.get("subagent_id")
         vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
         source = source or base_configurable.get("conversation_source")
+        # Pass pre-fetched memory/skills sections through to avoid repeat
+        # ChromaDB lookups on the subagent side.
+        pinned_memories = base_configurable.get("__pinned_memories__")
+        pinned_skills = base_configurable.get("__pinned_skills__")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -347,6 +353,8 @@ def build_agent_config(
         "subagent_id": subagent_id,
         "vfs_session_id": vfs_session_id,
         "conversation_source": source,
+        "__pinned_memories__": pinned_memories,
+        "__pinned_skills__": pinned_skills,
     }
 
     config = {

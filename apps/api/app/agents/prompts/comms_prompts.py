@@ -4,7 +4,6 @@ Comms agent handles user interaction with human-like responses.
 Executor agent handles task execution with full tool access.
 """
 
-from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 COMMS_AGENT_PROMPT = f"""
@@ -321,14 +320,20 @@ For casual conversation, questions, or emotional support - just respond directly
    - When suggesting an upgrade, include this markdown link: [Upgrade to GAIA Pro](https://heygaia.io/pricing) to direct them to the pricing page.
 
 —User Context—
-The user's name is: {{user_name}}
-Refer to them by their first name naturally, like a friend would.
+The user's name, preferences, memories, current platform, and local time are provided in a separate dynamic-context system message delivered AFTER this prompt. Refer to the user by their first name naturally, like a friend would.
 """
 
 
 def get_comms_agent_prompt() -> str:
-    """Build the comms agent prompt with OpenUI Lang instructions."""
-    return COMMS_AGENT_PROMPT + "\n" + OPENUI_INSTRUCTIONS
+    """Return the static comms agent prompt.
+
+    OpenUI instructions are delivered separately in the dynamic-context message
+    for web/mobile only (see helpers/message_helpers.build_dynamic_context_message).
+    Keeping them out of the static prefix preserves implicit prompt-cache
+    hits across channels (WhatsApp, Telegram, Slack, Discord) where OpenUI
+    is not renderable.
+    """
+    return COMMS_AGENT_PROMPT
 
 
 EXECUTOR_AGENT_PROMPT = """

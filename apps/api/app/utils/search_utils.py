@@ -9,7 +9,11 @@ from tavily import TavilyClient
 
 from shared.py.wide_events import log
 from app.config.settings import settings
-from app.constants.cache import ONE_HOUR_TTL
+from app.constants.cache import (
+    ONE_HOUR_TTL,
+    WEBPAGE_FETCH_CACHE_TTL,
+    WEB_SEARCH_CACHE_TTL,
+)
 from app.decorators.caching import Cacheable
 from app.utils.exceptions import FetchError
 
@@ -105,7 +109,11 @@ async def fetch_tavily_search(
         return {}
 
 
-@Cacheable(key_pattern="search:{query}:{count}", ttl=ONE_HOUR_TTL, namespace="search")
+@Cacheable(
+    key_pattern="search:{query}:{count}",
+    ttl=WEB_SEARCH_CACHE_TTL,
+    namespace="search",
+)
 async def perform_search(query: str, count: int) -> dict:
     """
     Perform Tavily search and return comprehensive results.
@@ -149,7 +157,9 @@ async def perform_search(query: str, count: int) -> dict:
 
 
 @Cacheable(
-    key_pattern="firecrawl:{url}:{use_stealth}", ttl=ONE_HOUR_TTL, namespace="web"
+    key_pattern="firecrawl:{url}:{use_stealth}",
+    ttl=WEBPAGE_FETCH_CACHE_TTL,
+    namespace="web",
 )
 async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
     """

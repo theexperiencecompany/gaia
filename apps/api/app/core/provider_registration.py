@@ -31,6 +31,7 @@ from typing import Literal
 
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
+from app.agents.core.subagents.subagent_runner import get_subagent_integrations
 from app.agents.llm.client import register_llm_providers
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
@@ -76,6 +77,38 @@ def setup_warnings() -> None:
     warnings.filterwarnings(
         "ignore", category=PydanticDeprecatedSince20, module="langchain_core.tools.base"
     )
+
+
+async def warmup_subagent_graphs() -> None:
+    """Pre-warm compiled subagent graphs at startup.
+
+    The first handoff() in each worker process otherwise pays a cold-start
+    cost to build the subagent graph. Walking every subagent registered on
+    the provider registry here pushes that cost to startup where it's
+    amortised across all future requests.
+    """
+    integrations = get_subagent_integrations()
+    if not integrations:
+        log.info("No subagents to pre-warm")
+        return
+
+    agent_names = [
+        integ.subagent_config.agent_name
+        for integ in integrations
+        if integ.subagent_config and integ.subagent_config.agent_name
+    ]
+
+    async def _warm(name: str) -> None:
+        try:
+            await providers.aget(name)
+        except Exception as e:
+            log.warning(f"Subagent graph pre-warm failed for {name}: {e}")
+
+    await asyncio.gather(*(_warm(n) for n in agent_names), return_exceptions=True)
+    log.info(
+        "Subagent graphs pre-warmed",
+    )
+    log.set(subagent_warmup={"count": len(agent_names), "names": agent_names})
 
 
 setup_warnings()
@@ -236,6 +269,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         )
     )
     startup_services.append((warmup_tools_cache, "tools_cache_warmup"))
+    startup_services.append((warmup_subagent_graphs, "subagent_graph_warmup"))
 
     # FastAPI with hot reloading disabled: start serving quickly,
     # warm up in background.

@@ -454,6 +454,22 @@ def get_retrieve_tools_function(
         Configured retrieve_tools coroutine that returns RetrieveToolsResult
     """
 
+    # Session-scoped retrieval cache.
+    #
+    # **Why in-memory (not Redis)?** Each entry is scoped to ONE run of ONE
+    # thread. LangGraph serializes a thread's steps on a single worker during
+    # a run, so the cache never needs to cross workers. Moving this to Redis
+    # would pay a ~1ms round-trip for a cache hit and add no cross-worker
+    # value — the thread's next turn starts a new run, where stale session
+    # hits would be wrong anyway.
+    #
+    # Keyed by (thread_id, normalised_query) so two users never share entries.
+    # Bounded at ``_SESSION_CACHE_MAX`` to guard against pathological runaway
+    # loops filling the dict; eviction is FIFO-ish via iteration order.
+    _SESSION_CACHE: dict[tuple[str, str], RetrieveToolsResult] = {}
+    _SESSION_CACHE_HITS: dict[str, int] = {}
+    _SESSION_CACHE_MAX = 64
+
     async def retrieve_tools(
         store: Annotated[BaseStore, InjectedStore],
         config: RunnableConfig,
@@ -464,6 +480,25 @@ def get_retrieve_tools_function(
             raise ValueError(
                 "Either 'query' (for discovery) or 'exact_tool_names' (for binding) is required."
             )
+
+        thread_id = (config.get("configurable", {}) or {}).get("thread_id", "")
+        cache_key: Optional[tuple[str, str]] = None
+        if query and thread_id:
+            cache_key = (thread_id, query.strip().lower())
+            cached = _SESSION_CACHE.get(cache_key)
+            if cached is not None:
+                _SESSION_CACHE_HITS[thread_id] = (
+                    _SESSION_CACHE_HITS.get(thread_id, 0) + 1
+                )
+                log.set(
+                    tool_retrieval_cache={
+                        "outcome": "hit",
+                        "thread_id": thread_id,
+                        "query": query,
+                        "total_hits": _SESSION_CACHE_HITS[thread_id],
+                    }
+                )
+                return cached
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
@@ -550,10 +585,33 @@ def get_retrieve_tools_function(
                 tools_discovered=len(final_tools),
             )
         )
-        return RetrieveToolsResult(
+
+        result = RetrieveToolsResult(
             tools_to_bind=[],
             response=final_tools,
         )
+        if cache_key is not None:
+            # Bounded — evict oldest entry when full so long-running threads
+            # can't leak memory through this cache.
+            evicted = False
+            if len(_SESSION_CACHE) >= _SESSION_CACHE_MAX:
+                try:
+                    _SESSION_CACHE.pop(next(iter(_SESSION_CACHE)))
+                    evicted = True
+                except StopIteration:
+                    pass
+            _SESSION_CACHE[cache_key] = result
+            log.set(
+                tool_retrieval_cache={
+                    "outcome": "miss_stored",
+                    "thread_id": thread_id,
+                    "query": query,
+                    "tools_discovered": len(final_tools),
+                    "evicted_oldest": evicted,
+                    "cache_size": len(_SESSION_CACHE),
+                }
+            )
+        return result
 
     # Assign the LLM-facing docstring from pre-built constants
     if include_subagents:

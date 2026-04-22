@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_id
-from app.constants.cache import ONE_HOUR_TTL
+from app.constants.cache import PROVIDER_METADATA_CACHE_TTL
 from app.db.mongodb.collections import users_collection
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.services.composio.composio_service import get_composio_service
@@ -198,7 +198,10 @@ async def store_provider_metadata(
         return False
 
 
-@Cacheable(key_pattern="provider_metadata:{user_id}:{provider}", ttl=ONE_HOUR_TTL)
+@Cacheable(
+    key_pattern="provider_metadata:{user_id}:{provider}",
+    ttl=PROVIDER_METADATA_CACHE_TTL,
+)
 async def get_provider_metadata(
     user_id: str, provider: str
 ) -> Optional[Dict[str, str]]:

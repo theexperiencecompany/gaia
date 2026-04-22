@@ -83,16 +83,34 @@ async def follow_up_actions_node(
         parser = PydanticOutputParser(pydantic_object=FollowUpActions)
         recent_messages = messages[-4:] if len(messages) > 4 else messages
 
-        prompt = SUGGEST_FOLLOW_UP_ACTIONS.format(
-            conversation_summary=recent_messages,
-            tool_names=tool_names,
-            format_instructions=parser.get_format_instructions(),
+        # STATIC prompt prefix + DYNAMIC per-user/per-turn context message.
+        # Static byte-identical prefix lets even this free-tier chain benefit
+        # from any upstream caching and reduces throughput/latency.
+        dynamic_context = (
+            f"{parser.get_format_instructions()}\n\n"
+            f"Available tools: {tool_names}\n"
+            f"Context: {recent_messages}"
+        )
+
+        log.set(
+            follow_up_actions={
+                "tool_count": len(tool_names),
+                "recent_message_count": len(recent_messages),
+                "user_id": user_id,
+            }
         )
 
         result = await invoke_with_fallback(
             llm_chain,
             [
-                SystemMessage(content=prompt),
+                SystemMessage(content=SUGGEST_FOLLOW_UP_ACTIONS),
+                SystemMessage(
+                    content=dynamic_context,
+                    additional_kwargs={
+                        "dynamic_context": True,
+                        "memory_message": True,
+                    },
+                ),
                 HumanMessage(content=_pretty_print_messages(recent_messages)),
             ],
             config=cast(RunnableConfig, {**config, "silent": True}),

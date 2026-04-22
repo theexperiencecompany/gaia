@@ -9,6 +9,23 @@ from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 
 
+@pytest.fixture(autouse=True)
+def _clear_user_subagent_cache():
+    """Reset the in-memory per-user subagent graph cache between tests.
+
+    ``create_subagent_for_user`` memoises compiled graphs in a module-level
+    dict keyed by ``(integration_id, user_id)`` so repeat handoffs skip the
+    expensive rebuild. Tests deliberately simulate failure/success modes for
+    the same key, so the cache must be wiped between tests or the second
+    test would read the first test's cached MagicMock.
+    """
+    from app.agents.core.subagents import provider_subagents as _ps
+
+    _ps._USER_SUBAGENT_CACHE.clear()
+    yield
+    _ps._USER_SUBAGENT_CACHE.clear()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

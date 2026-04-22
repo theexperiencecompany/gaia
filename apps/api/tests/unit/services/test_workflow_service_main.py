@@ -1693,7 +1693,10 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
     async def test_generate_with_structured_output(
         self, mock_registry_fn, mock_init_llm
     ):
@@ -1733,7 +1736,10 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
     async def test_generate_fallback_text_parsing(
         self, mock_registry_fn, mock_init_llm
     ):
@@ -1759,7 +1765,10 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
     async def test_generate_empty_steps_retries_then_fails(
         self, mock_registry_fn, mock_init_llm
     ):
@@ -1783,7 +1792,10 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
     async def test_generate_llm_exception_retries(
         self, mock_registry_fn, mock_init_llm
     ):
@@ -1809,7 +1821,10 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
     async def test_generate_with_description(self, mock_registry_fn, mock_init_llm):
         """Description should be appended to the prompt context."""
         mock_registry = MagicMock()
@@ -1836,7 +1851,10 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch("app.services.workflow.generation_service.init_llm")
-    @patch("app.agents.tools.core.registry.get_tool_registry", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.generation_service.get_tool_registry",
+        new_callable=AsyncMock,
+    )
     async def test_generate_structured_output_not_implemented_fallback(
         self, mock_registry_fn, mock_init_llm
     ):
