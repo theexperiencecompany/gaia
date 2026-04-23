@@ -37,14 +37,22 @@ def _is_dynamic_context(msg: AnyMessage) -> bool:
     return _has_marker(msg, "dynamic_context") or _has_marker(msg, "memory_message")
 
 
+def _is_todo_context(msg: AnyMessage) -> bool:
+    """Todo-context messages are emitted by ``todo_pre_model_hook`` each step."""
+    return _has_marker(msg, "todo_context")
+
+
 def manage_system_prompts_node(
     state: State, config: RunnableConfig, store: BaseStore
 ) -> State:
-    """Keep only the latest static main prompt and the latest dynamic-context message.
+    """Keep only the latest system message in each of three slots.
 
     Logic:
-    - At most ONE static (non-dynamic-context) system prompt is kept — the latest.
+    - At most ONE static (non-dynamic, non-todo) system prompt is kept — the latest.
     - At most ONE dynamic-context system prompt is kept — the latest.
+    - At most ONE todo-context system prompt is kept — the latest. Emitted by
+      ``todo_pre_model_hook``; kept in its own slot so it does not collide with
+      the real static prompt when accumulated snapshots exist in state.
     - All other system messages are dropped. Non-system messages pass through.
 
     Runs as a pre-model hook so this also fires when a generation is cancelled
@@ -57,17 +65,25 @@ def manage_system_prompts_node(
 
         latest_static_idx: int | None = None
         latest_dynamic_idx: int | None = None
+        latest_todo_idx: int | None = None
         for idx in range(len(messages) - 1, -1, -1):
             msg = messages[idx]
             if msg.type != "system":
                 continue
-            if _is_dynamic_context(msg):
+            if _is_todo_context(msg):
+                if latest_todo_idx is None:
+                    latest_todo_idx = idx
+            elif _is_dynamic_context(msg):
                 if latest_dynamic_idx is None:
                     latest_dynamic_idx = idx
             else:
                 if latest_static_idx is None:
                     latest_static_idx = idx
-            if latest_static_idx is not None and latest_dynamic_idx is not None:
+            if (
+                latest_static_idx is not None
+                and latest_dynamic_idx is not None
+                and latest_todo_idx is not None
+            ):
                 break
 
         # Load-bearing ordering choice: the kept system messages MUST appear
@@ -79,10 +95,13 @@ def manage_system_prompts_node(
         # dropped. Preserving original order on multi-turn runs leaves system
         # messages at idx > 0, which wipes out the entire system prompt and
         # kills implicit caching. So we rebuild the list as
-        # ``[static, dynamic, ...non_system...]``.
+        # ``[static, dynamic, todo_context, ...non_system...]`` — the
+        # ``todo_context`` slot sits at the tail of ``system_instruction``
+        # so its per-step churn does not shift the cacheable prefix.
         dropped_system = 0
         static_msg: AnyMessage | None = None
         dynamic_msg: AnyMessage | None = None
+        todo_msg: AnyMessage | None = None
         non_system: list[AnyMessage] = []
         for idx, msg in enumerate(messages):
             if msg.type == "system":
@@ -90,6 +109,8 @@ def manage_system_prompts_node(
                     static_msg = msg
                 elif idx == latest_dynamic_idx:
                     dynamic_msg = msg
+                elif idx == latest_todo_idx:
+                    todo_msg = msg
                 else:
                     dropped_system += 1
             else:
@@ -100,6 +121,8 @@ def manage_system_prompts_node(
             filtered.append(static_msg)
         if dynamic_msg is not None:
             filtered.append(dynamic_msg)
+        if todo_msg is not None:
+            filtered.append(todo_msg)
         filtered.extend(non_system)
 
         log.set(
@@ -109,6 +132,7 @@ def manage_system_prompts_node(
                 "dropped_system_prompts": dropped_system,
                 "kept_static": static_msg is not None,
                 "kept_dynamic": dynamic_msg is not None,
+                "kept_todo": todo_msg is not None,
             }
         )
 

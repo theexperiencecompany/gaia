@@ -222,59 +222,66 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
 def create_todo_pre_model_hook(
     source: str = "executor",
 ) -> Callable[[State, RunnableConfig, BaseStore], State]:
-    """Create a pre-model hook that injects task context into system messages.
+    """Pre-model hook that emits a fresh ``todo_context`` SystemMessage each step.
 
-    Runs after manage_system_prompts_node. Reads todos from graph state
-    and appends TODO_SYSTEM_PROMPT + formatted task list to the latest
-    non-memory SystemMessage.
+    Kept in its own slot so the ``static + dynamic`` prefix stays byte-identical
+    across steps, preserving Gemini's implicit prompt cache.
 
     Args:
-        source: Identifier for logging (not used in hook logic)
+        source: Identifier for logging (not used in hook logic).
 
     Returns:
         Hook function with signature (State, RunnableConfig, BaseStore) -> State
     """
+    del source  # intentionally unused — kept for signature stability
 
     def todo_pre_model_hook(
         state: State, config: RunnableConfig, store: BaseStore
     ) -> State:
-        todos = state.get("todos", [])
-
         messages = list(state.get("messages", []))
         if not messages:
             return state
 
-        # Find the latest non-memory system message
-        latest_sys_idx = None
-        for idx, msg in enumerate(messages):
-            if isinstance(msg, SystemMessage):
-                extra = msg.model_extra or {}
-                is_memory = msg.additional_kwargs.get(
-                    "memory_message", False
-                ) or extra.get("memory_message", False)
-                if not is_memory:
-                    latest_sys_idx = idx
+        def _is_todo_context(msg: Any) -> bool:
+            if not isinstance(msg, SystemMessage):
+                return False
+            if msg.additional_kwargs.get("todo_context", False):
+                return True
+            extra = msg.model_extra or {}
+            return (
+                bool(extra.get("todo_context", False))
+                if isinstance(extra, dict)
+                else False
+            )
 
-        if latest_sys_idx is None:
-            return state
+        # Strip any prior todo_context SystemMessage. Without this, the next
+        # manage_system_prompts pass would drop the stale one anyway, but
+        # handling it here keeps the hook self-contained and idempotent.
+        filtered: list[Any] = [m for m in messages if not _is_todo_context(m)]
 
-        # Build todo context to append
+        todos = state.get("todos", [])
         parts = [TODO_SYSTEM_PROMPT]
-        todo_context = _format_todos(todos) if todos else ""
-        if todo_context:
-            parts.append(todo_context)
-        suffix = "\n\n".join(parts)
+        if todos:
+            parts.append(_format_todos(todos))
+        content = "\n\n".join(parts)
 
-        # Append to existing system message content
-        sys_msg = messages[latest_sys_idx]
-        base = sys_msg.content or ""
-        new_content = f"{base}\n\n{suffix}" if base else suffix
-
-        messages[latest_sys_idx] = SystemMessage(
-            content=new_content,
-            additional_kwargs=sys_msg.additional_kwargs,
+        todo_msg = SystemMessage(
+            content=content,
+            additional_kwargs={"todo_context": True},
         )
 
-        return cast(State, {**state, "messages": messages})
+        # Insert immediately after the leading contiguous run of
+        # SystemMessages so ``_parse_chat_history`` still promotes them all
+        # to Gemini's ``system_instruction`` (it silently drops any
+        # SystemMessage that appears after a non-system message).
+        insert_idx = 0
+        for m in filtered:
+            if isinstance(m, SystemMessage):
+                insert_idx += 1
+            else:
+                break
+        filtered.insert(insert_idx, todo_msg)
+
+        return cast(State, {**state, "messages": filtered})
 
     return todo_pre_model_hook
