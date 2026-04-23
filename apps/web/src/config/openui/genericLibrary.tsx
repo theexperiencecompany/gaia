@@ -9,7 +9,6 @@ import {
   pieChartDef,
   radarChartDef,
   scatterChartDef,
-  statRowDef,
 } from "./components/analytics";
 import { codeDiffDef } from "./components/code";
 import {
@@ -20,26 +19,33 @@ import {
   imageGalleryDef,
   mapBlockDef,
   numberTickerDef,
-  treeViewDef,
   videoBlockDef,
 } from "./components/content";
 import { textDocumentDef } from "./components/document";
 import {
   accordionDef,
-  actionCardDef,
-  avatarListDef,
-  comparisonTableDef,
-  dataCardDef,
+  copyableContentDef,
   fileTreeDef,
   kbdBlockDef,
-  progressListDef,
-  resultListDef,
-  selectableListDef,
-  statusCardDef,
   tabsBlockDef,
-  tagGroupDef,
 } from "./components/layout";
-import { alertBannerDef, stepsDef, timelineDef } from "./components/timeline";
+import {
+  avatarDef,
+  buttonDef,
+  buttonsDef,
+  calloutDef,
+  cardHeaderDef,
+  checkboxDef,
+  colDef,
+  progressDef,
+  radioDef,
+  statDef,
+  tableDef,
+  tagBlockDef,
+  tagDef,
+  textContentDef,
+} from "./components/primitives";
+import { stepsDef, timelineDef } from "./components/timeline";
 
 export {
   AreaChartView,
@@ -49,7 +55,6 @@ export {
   PieChartView,
   RadarChartView,
   ScatterChartView,
-  StatRowView,
 } from "./components/analytics";
 export { CodeDiffView } from "./components/code";
 export {
@@ -60,52 +65,216 @@ export {
   ImageGalleryView,
   MapBlockView,
   NumberTickerView,
-  TreeViewView,
   VideoBlockView,
 } from "./components/content";
 export { TextDocumentView } from "./components/document";
-// Re-export all views so the dev preview page can import from one place.
 export {
   AccordionView,
-  ActionCardView,
-  AvatarListView,
-  ComparisonTableView,
-  DataCardView,
+  CopyableContentView,
   FileTreeView,
   KbdBlockView,
-  ProgressListView,
-  ResultListView,
-  SelectableListView,
-  StatusCardView,
   TabsBlockView,
-  TagGroupView,
 } from "./components/layout";
 export {
-  AlertBannerView,
-  StepsView,
-  TimelineView,
-} from "./components/timeline";
+  AvatarView,
+  ButtonsView,
+  ButtonView,
+  CalloutView,
+  CardHeaderView,
+  CheckboxView,
+  ProgressView,
+  RadioView,
+  StatView,
+  TableView,
+  TagBlockView,
+  TagView,
+  TextContentView,
+} from "./components/primitives";
+export { StepsView, TimelineView } from "./components/timeline";
 
 // ---------------------------------------------------------------------------
-// Stack — internal layout wrapper (not LLM-visible as a standalone component)
+// Layout primitives
 // ---------------------------------------------------------------------------
 
 const stackSchema = z.object({
   items: z.array(z.unknown()),
+  direction: z.enum(["row", "column"]).optional(),
+  gap: z.enum(["xs", "s", "m", "l", "xl"]).optional(),
+  align: z.enum(["start", "center", "end", "stretch"]).optional(),
+  justify: z.enum(["start", "center", "end", "between", "around"]).optional(),
+  wrap: z.boolean().optional(),
 });
 
 const rowSchema = z.object({
   items: z.array(z.unknown()),
 });
 
+const cardSchema = z.object({
+  items: z.array(z.unknown()),
+  variant: z.enum(["card", "sunk", "clear"]).optional(),
+  direction: z.enum(["column", "row"]).optional(),
+  gap: z.enum(["xs", "s", "m", "l"]).optional(),
+  align: z.enum(["start", "center", "end", "stretch"]).optional(),
+});
+
+const gridSchema = z.object({
+  items: z.array(z.unknown()),
+  columns: z.number().min(1).max(4).optional(),
+});
+
+const columnSchema = z.object({
+  items: z.array(z.unknown()),
+});
+
+const separatorSchema = z.object({
+  label: z.string().optional(),
+});
+
 // ---------------------------------------------------------------------------
 // defineComponent calls
 // ---------------------------------------------------------------------------
 
+const GAP_MAP: Record<string, string> = {
+  xs: "gap-1",
+  s: "gap-2",
+  m: "gap-3",
+  l: "gap-5",
+  xl: "gap-8",
+};
+const ALIGN_MAP: Record<string, string> = {
+  start: "items-start",
+  center: "items-center",
+  end: "items-end",
+  stretch: "items-stretch",
+};
+const JUSTIFY_MAP: Record<string, string> = {
+  start: "justify-start",
+  center: "justify-center",
+  end: "justify-end",
+  between: "justify-between",
+  around: "justify-around",
+};
+
 const stackDef = defineComponent({
   name: "Stack",
-  description: "Vertical stack of multiple components.",
+  description:
+    "Flexible container — vertical (default) or horizontal row. Supports gap, align, justify, and wrap for kanban-style overflow.",
   props: stackSchema,
+  component: ({ props, renderNode }) => {
+    const isRow = props.direction === "row";
+    const gap = GAP_MAP[props.gap ?? "m"] ?? "gap-3";
+    const align = ALIGN_MAP[props.align ?? ""] ?? "";
+    const justify = JUSTIFY_MAP[props.justify ?? ""] ?? "";
+    const wrap = props.wrap ? "flex-wrap overflow-x-auto" : "";
+    const cls = [
+      "flex",
+      isRow ? "flex-row" : "flex-col",
+      gap,
+      align,
+      justify,
+      wrap,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return (
+      <div className={cls}>
+        {(props.items as unknown[]).map((item, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: generic opaque items have no stable key
+          <React.Fragment key={i}>{renderNode(item)}</React.Fragment>
+        ))}
+      </div>
+    );
+  },
+});
+
+const rowDef = defineComponent({
+  name: "Row",
+  description: "Horizontal row of equal-width components.",
+  props: rowSchema,
+  component: ({ props, renderNode }) => (
+    <div className="flex flex-wrap gap-3 items-stretch">
+      {(props.items as unknown[]).map((item, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: generic opaque items have no stable key
+        <div key={i} className="flex-1 min-w-[240px]">
+          {renderNode(item)}
+        </div>
+      ))}
+    </div>
+  ),
+});
+
+const CARD_VARIANT_CLS: Record<string, string> = {
+  card: "rounded-2xl bg-zinc-800 p-4",
+  sunk: "rounded-2xl bg-zinc-900 p-3",
+  clear: "rounded-2xl p-3",
+};
+const CARD_GAP_MAP: Record<string, string> = {
+  xs: "gap-1",
+  s: "gap-2",
+  m: "gap-3",
+  l: "gap-5",
+};
+
+const cardDef = defineComponent({
+  name: "Card",
+  description:
+    "Container with variant (card=zinc-800, sunk=zinc-900, clear=transparent). Use CardHeader as a child for title/subtitle. Supports direction, gap, and align.",
+  props: cardSchema,
+  component: ({ props, renderNode }) => {
+    const bg =
+      CARD_VARIANT_CLS[props.variant ?? "card"] ?? CARD_VARIANT_CLS.card;
+    const isRow = props.direction === "row";
+    const gap = CARD_GAP_MAP[props.gap ?? "m"] ?? "gap-3";
+    const align = ALIGN_MAP[props.align ?? ""] ?? "";
+    const innerCls = ["flex", isRow ? "flex-row" : "flex-col", gap, align]
+      .filter(Boolean)
+      .join(" ");
+    return (
+      <div className={`${bg} w-full`}>
+        <div className={innerCls}>
+          {(props.items as unknown[]).map((item, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: generic opaque items have no stable key
+            <React.Fragment key={i}>{renderNode(item)}</React.Fragment>
+          ))}
+        </div>
+      </div>
+    );
+  },
+});
+
+const gridDef = defineComponent({
+  name: "Grid",
+  description: "Responsive grid layout for multiple OpenUI components.",
+  props: gridSchema,
+  component: ({ props, renderNode }) => {
+    const requestedColumns = props.columns ?? 2;
+    const columns = Math.max(1, Math.min(4, requestedColumns));
+    const gridClass =
+      columns === 1
+        ? "grid grid-cols-1 gap-3"
+        : columns === 2
+          ? "grid grid-cols-1 md:grid-cols-2 gap-3"
+          : columns === 3
+            ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"
+            : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3";
+
+    return (
+      <div className={gridClass}>
+        {(props.items as unknown[]).map((item, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: generic opaque items have no stable key
+          <div key={i} className="min-w-0">
+            {renderNode(item)}
+          </div>
+        ))}
+      </div>
+    );
+  },
+});
+
+const columnDef = defineComponent({
+  name: "Column",
+  description: "Vertical column for a stack of components.",
+  props: columnSchema,
   component: ({ props, renderNode }) => (
     <div className="flex flex-col gap-3">
       {(props.items as unknown[]).map((item, i) => (
@@ -116,18 +285,23 @@ const stackDef = defineComponent({
   ),
 });
 
-const rowDef = defineComponent({
-  name: "Row",
-  description: "Horizontal row of equal-width components.",
-  props: rowSchema,
-  component: ({ props, renderNode }) => (
-    <div className="flex flex-row gap-3 items-stretch">
-      {(props.items as unknown[]).map((item, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: generic opaque items have no stable key
-        <div key={i} className="flex-1 min-w-0 aspect-video *:h-full">
-          {renderNode(item)}
+const separatorDef = defineComponent({
+  name: "Separator",
+  description: "Visual separator line with optional section label.",
+  props: separatorSchema,
+  component: ({ props }) => (
+    <div className="w-full max-w-4xl">
+      {props.label ? (
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-zinc-700" />
+          <span className="text-[11px] text-zinc-500 uppercase tracking-wide">
+            {props.label}
+          </span>
+          <div className="h-px flex-1 bg-zinc-700" />
         </div>
-      ))}
+      ) : (
+        <div className="h-px w-full bg-zinc-700" />
+      )}
     </div>
   ),
 });
@@ -138,22 +312,35 @@ const rowDef = defineComponent({
 
 export const genericLibrary = createLibrary({
   components: [
+    // Layout containers
     stackDef,
+    cardDef,
+    gridDef,
     rowDef,
-    dataCardDef,
-    resultListDef,
-    comparisonTableDef,
-    statusCardDef,
-    actionCardDef,
-    tagGroupDef,
+    columnDef,
+    separatorDef,
+    // Primitives
+    textContentDef,
+    cardHeaderDef,
+    tagDef,
+    tagBlockDef,
+    calloutDef,
+    statDef,
+    colDef,
+    tableDef,
+    buttonDef,
+    buttonsDef,
+    progressDef,
+    avatarDef,
+    checkboxDef,
+    radioDef,
+    // Layout & data components
+    copyableContentDef,
     fileTreeDef,
     accordionDef,
     tabsBlockDef,
-    progressListDef,
-    selectableListDef,
-    avatarListDef,
     kbdBlockDef,
-    statRowDef,
+    // Analytics
     barChartDef,
     lineChartDef,
     areaChartDef,
@@ -161,6 +348,7 @@ export const genericLibrary = createLibrary({
     scatterChartDef,
     radarChartDef,
     gaugeChartDef,
+    // Content
     imageBlockDef,
     imageGalleryDef,
     videoBlockDef,
@@ -169,37 +357,62 @@ export const genericLibrary = createLibrary({
     calendarMiniDef,
     numberTickerDef,
     carouselDef,
-    treeViewDef,
+    // Timeline
     timelineDef,
-    alertBannerDef,
     stepsDef,
+    // Code & docs
     codeDiffDef,
     textDocumentDef,
   ],
   componentGroups: [
     {
-      name: "Layout & Data",
+      name: "Primitives",
       components: [
-        "DataCard",
-        "ResultList",
-        "ComparisonTable",
-        "StatusCard",
-        "ActionCard",
-        "TagGroup",
+        "TextContent",
+        "CardHeader",
+        "Tag",
+        "TagBlock",
+        "Callout",
+        "Stat",
+        "Col",
+        "Table",
+        "Button",
+        "Buttons",
+        "Progress",
+        "Avatar",
+        "Checkbox",
+        "Radio",
+      ],
+      notes: [
+        "Col is a data-only child of Table — never render Col standalone",
+        "Buttons renders a row of Button children",
+        "Use Callout for important notices (not AlertBanner — removed)",
+      ],
+    },
+    {
+      name: "Layout",
+      components: [
+        "Stack",
+        "Card",
+        "Grid",
+        "Row",
+        "Column",
+        "Separator",
+        "CopyableContent",
         "FileTree",
         "Accordion",
         "TabsBlock",
-        "ProgressList",
-        "SelectableList",
-        "AvatarList",
         "KbdBlock",
       ],
-      notes: ["DataCard for single records", "ResultList for collections"],
+      notes: [
+        "Stack/Card/Grid/Row/Column are composition containers",
+        "Card variant: card=zinc-800, sunk=zinc-900, clear=transparent",
+        "FileTree variant: file (default) or generic (for non-file hierarchies)",
+      ],
     },
     {
       name: "Analytics",
       components: [
-        "StatRow",
         "BarChart",
         "LineChart",
         "AreaChart",
@@ -209,9 +422,9 @@ export const genericLibrary = createLibrary({
         "GaugeChart",
       ],
       notes: [
-        "StatRow for single KPI",
         "GaugeChart for value with min/max bounds",
         "RadarChart for multi-axis comparisons",
+        "Use Stat primitive for single KPI values instead of StatRow (removed)",
       ],
     },
     {
@@ -225,7 +438,6 @@ export const genericLibrary = createLibrary({
         "CalendarMini",
         "NumberTicker",
         "Carousel",
-        "TreeView",
       ],
       notes: [
         "VideoBlock auto-embeds YouTube and Vimeo URLs",
@@ -233,12 +445,12 @@ export const genericLibrary = createLibrary({
       ],
     },
     {
-      name: "Timeline & Notifications",
-      components: ["Timeline", "AlertBanner", "Steps"],
+      name: "Timeline",
+      components: ["Timeline", "Steps"],
       notes: [
-        "Timeline for event sequences",
-        "AlertBanner for inline notices",
-        "Steps for ordered instructions",
+        "Timeline supports actor, links, and action buttons per item",
+        "Steps for ordered instructions with complete/active/pending states",
+        "AlertBanner removed — use Callout primitive instead",
       ],
     },
     {

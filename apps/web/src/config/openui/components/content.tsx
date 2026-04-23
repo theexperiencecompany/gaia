@@ -1,6 +1,5 @@
 import { Calendar, type DateValue } from "@heroui/calendar";
 import { Button, Chip } from "@heroui/react";
-import { ArrowDown01Icon, ArrowRight01Icon } from "@icons";
 import { CalendarDate } from "@internationalized/date";
 import { defineComponent } from "@openuidev/react-lang";
 import * as m from "motion/react-m";
@@ -101,18 +100,6 @@ export const carouselSchema = z.object({
   autoPlay: z.boolean().optional(),
 });
 
-export const treeViewSchema = z.object({
-  nodes: z.array(
-    z.object({
-      id: z.string(),
-      label: z.string(),
-      description: z.string().optional(),
-      children: z.array(z.unknown()).optional(),
-    }),
-  ),
-  title: z.string().optional(),
-});
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -151,69 +138,6 @@ function GalleryImage({
   );
 }
 
-interface TreeNode {
-  id: string;
-  label: string;
-  description?: string;
-  children?: TreeNode[];
-}
-
-function TreeNodeItem({ node, depth }: { node: TreeNode; depth: number }) {
-  const [expanded, setExpanded] = React.useState(depth === 0);
-  const hasChildren = node.children && node.children.length > 0;
-
-  return (
-    <div>
-      <div
-        className="flex items-start gap-1.5 py-1 cursor-pointer select-none"
-        style={{ paddingLeft: `${depth * 16}px` }}
-        onClick={() => hasChildren && setExpanded((e) => !e)}
-      >
-        <span className="mt-0.5 w-3.5 h-3.5 shrink-0 flex items-center justify-center">
-          {hasChildren ? (
-            <span className="cursor-pointer">
-              {expanded ? (
-                <ArrowDown01Icon className="w-3 h-3 text-zinc-400" />
-              ) : (
-                <ArrowRight01Icon className="w-3 h-3 text-zinc-500" />
-              )}
-            </span>
-          ) : (
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-700 inline-block mt-0.5" />
-          )}
-        </span>
-        <div className="flex-1 min-w-0">
-          <span
-            className={
-              hasChildren
-                ? "text-sm font-medium text-zinc-300"
-                : "text-sm text-zinc-400"
-            }
-          >
-            {node.label}
-          </span>
-          {node.description && (
-            <span className="text-xs text-zinc-600 ml-2">
-              {node.description}
-            </span>
-          )}
-        </div>
-      </div>
-      {expanded && hasChildren && (
-        <div className="ml-3 border-l border-zinc-800 pl-1">
-          {node.children?.map((child) => (
-            <TreeNodeItem
-              key={child.id}
-              node={child as TreeNode}
-              depth={depth + 1}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CarouselDotIndicators() {
   const { selectedIndex, scrollSnaps, scrollTo } = useCarousel();
   if (scrollSnaps.length <= 1) return null;
@@ -244,7 +168,7 @@ function CarouselDotIndicators() {
 
 export function ImageBlockView(props: z.infer<typeof imageBlockSchema>) {
   return (
-    <div className="rounded-2xl overflow-hidden">
+    <div className="rounded-2xl overflow-hidden max-w-md">
       {/* biome-ignore lint/performance/noImgElement: external user-provided URLs */}
       <img
         src={props.src}
@@ -264,63 +188,67 @@ export function ImageGalleryView(props: z.infer<typeof imageGallerySchema>) {
   const images = props.images;
   const count = images.length;
 
-  if (count === 1) {
-    return <GalleryImage img={images[0]} />;
-  }
+  function inner() {
+    if (count === 1) {
+      return <GalleryImage img={images[0]} />;
+    }
 
-  if (count === 2) {
-    return (
-      <div className="grid grid-cols-2 gap-1.5">
-        {images.map((img) => (
-          <GalleryImage key={img.src} img={img} />
-        ))}
-      </div>
-    );
-  }
-
-  if (count === 3) {
-    return (
-      <div className="grid grid-cols-2 gap-1.5">
-        <GalleryImage img={images[0]} />
-        <GalleryImage img={images[1]} />
-        <div className="col-span-2">
-          <GalleryImage img={images[2]} />
-        </div>
-      </div>
-    );
-  }
-
-  if (count === 4) {
-    return (
-      <div className="grid grid-cols-2 gap-1.5">
-        {images.map((img) => (
-          <GalleryImage key={img.src} img={img} />
-        ))}
-      </div>
-    );
-  }
-
-  const topRow = images.slice(0, 3);
-  const bottomRow = images.slice(3);
-
-  return (
-    <div className="space-y-1.5">
-      <div className="grid grid-cols-3 gap-1.5">
-        {topRow.map((img) => (
-          <GalleryImage key={img.src} img={img} />
-        ))}
-      </div>
-      {bottomRow.length > 0 && (
-        <div
-          className={`grid grid-cols-${Math.min(bottomRow.length, 3)} gap-1.5`}
-        >
-          {bottomRow.map((img) => (
+    if (count === 2) {
+      return (
+        <div className="grid grid-cols-2 gap-1.5">
+          {images.map((img) => (
             <GalleryImage key={img.src} img={img} />
           ))}
         </div>
-      )}
-    </div>
-  );
+      );
+    }
+
+    if (count === 3) {
+      return (
+        <div className="grid grid-cols-2 gap-1.5">
+          <GalleryImage img={images[0]} />
+          <GalleryImage img={images[1]} />
+          <div className="col-span-2">
+            <GalleryImage img={images[2]} />
+          </div>
+        </div>
+      );
+    }
+
+    if (count === 4) {
+      return (
+        <div className="grid grid-cols-2 gap-1.5">
+          {images.map((img) => (
+            <GalleryImage key={img.src} img={img} />
+          ))}
+        </div>
+      );
+    }
+
+    const topRow = images.slice(0, 3);
+    const bottomRow = images.slice(3);
+
+    return (
+      <div className="space-y-1.5">
+        <div className="grid grid-cols-3 gap-1.5">
+          {topRow.map((img) => (
+            <GalleryImage key={img.src} img={img} />
+          ))}
+        </div>
+        {bottomRow.length > 0 && (
+          <div
+            className={`grid grid-cols-${Math.min(bottomRow.length, 3)} gap-1.5`}
+          >
+            {bottomRow.map((img) => (
+              <GalleryImage key={img.src} img={img} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return <div className="w-full max-w-lg">{inner()}</div>;
 }
 
 export function VideoBlockView(props: z.infer<typeof videoBlockSchema>) {
@@ -504,7 +432,7 @@ export function CarouselView(props: z.infer<typeof carouselSchema>) {
   const total = props.items.length;
 
   return (
-    <div>
+    <div className="w-full max-w-sm">
       <Carousel opts={{ align: "start", loop: true }}>
         <CarouselContent className="-ml-0">
           {props.items.map((item) => (
@@ -573,23 +501,6 @@ export function CarouselView(props: z.infer<typeof carouselSchema>) {
   );
 }
 
-export function TreeViewView(props: z.infer<typeof treeViewSchema>) {
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
-      <div className="rounded-2xl bg-zinc-900 p-3">
-        {props.nodes.map((node) => (
-          <TreeNodeItem key={node.id} node={node as TreeNode} depth={0} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Component definitions
 // ---------------------------------------------------------------------------
@@ -648,11 +559,4 @@ export const carouselDef = defineComponent({
   description: "Swipeable card carousel.",
   props: carouselSchema,
   component: ({ props }) => React.createElement(CarouselView, props),
-});
-
-export const treeViewDef = defineComponent({
-  name: "TreeView",
-  description: "Collapsible tree of nested nodes.",
-  props: treeViewSchema,
-  component: ({ props }) => React.createElement(TreeViewView, props),
 });

@@ -49,34 +49,27 @@ export function CodeDiffView(props: z.infer<typeof codeDiffSchema>) {
   }, [props.filename, props.oldCode, props.newCode, props.lang]);
 
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-2xl">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
+    <div className="rounded-xl overflow-hidden w-full min-w-fit max-w-2xl">
+      {fileDiff ? (
+        <FileDiff
+          fileDiff={fileDiff}
+          options={{
+            diffStyle: props.diffStyle ?? "unified",
+            theme: { dark: "github-dark", light: "github-light" },
+            themeType: "dark",
+            overflow: "scroll",
+            lineDiffType: props.lineDiffType ?? "word",
+            diffIndicators: props.diffIndicators ?? "bars",
+            disableLineNumbers: props.disableLineNumbers ?? false,
+            disableFileHeader: props.disableFileHeader ?? false,
+            expandUnchanged: props.expandUnchanged ?? false,
+          }}
+        />
+      ) : (
+        <div className="bg-zinc-900 p-3 text-xs text-zinc-500">
+          Loading diff…
+        </div>
       )}
-      <div className="rounded-xl overflow-hidden">
-        {fileDiff ? (
-          <FileDiff
-            fileDiff={fileDiff}
-            options={{
-              diffStyle: props.diffStyle ?? "unified",
-              theme: { dark: "github-dark", light: "github-light" },
-              themeType: "dark",
-              overflow: "scroll",
-              lineDiffType: props.lineDiffType ?? "word",
-              diffIndicators: props.diffIndicators ?? "bars",
-              disableLineNumbers: props.disableLineNumbers ?? false,
-              disableFileHeader: props.disableFileHeader ?? false,
-              expandUnchanged: props.expandUnchanged ?? false,
-            }}
-          />
-        ) : (
-          <div className="bg-zinc-900 p-3 text-xs text-zinc-500">
-            Loading diff…
-          </div>
-        )}
-      </div>
     </div>
   );
 }

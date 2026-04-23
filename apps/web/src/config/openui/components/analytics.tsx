@@ -1,5 +1,4 @@
 import { Card, CardBody, CardFooter, CardHeader } from "@heroui/card";
-import { ArrowDown01Icon, ArrowRight01Icon, ArrowUp01Icon } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import {
@@ -51,14 +50,6 @@ function toKeys(v: string | string[]): string[] {
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
-
-export const statRowSchema = z.object({
-  title: z.string(),
-  value: z.union([z.string(), z.number()]),
-  unit: z.string().optional(),
-  trend: z.enum(["up", "down", "neutral"]).optional(),
-  trendLabel: z.string().optional(),
-});
 
 const chartDataSchema = z.array(
   z.record(z.string(), z.union([z.string(), z.number()])),
@@ -143,24 +134,6 @@ export const gaugeChartSchema = z.object({
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-const TREND_STYLES: Record<string, { color: string }> = {
-  up: { color: "text-emerald-400" },
-  down: { color: "text-red-400" },
-  neutral: { color: "text-zinc-400" },
-};
-
-function TrendIcon({
-  trend,
-  className,
-}: {
-  trend: string;
-  className?: string;
-}) {
-  if (trend === "up") return <ArrowUp01Icon className={className} />;
-  if (trend === "down") return <ArrowDown01Icon className={className} />;
-  return <ArrowRight01Icon className={className} />;
-}
-
 function ChartCard({
   title,
   description,
@@ -205,34 +178,6 @@ function ChartCard({
 // ---------------------------------------------------------------------------
 // Views
 // ---------------------------------------------------------------------------
-
-export function StatRowView(props: z.infer<typeof statRowSchema>) {
-  const trendStyle = props.trend ? TREND_STYLES[props.trend] : null;
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-5 w-fit min-w-50 h-full flex flex-col justify-between">
-      <p className="text-xs text-zinc-500 truncate">{props.title}</p>
-      <div className="flex items-end gap-1.5">
-        <span className="text-4xl font-bold text-zinc-100 leading-none">
-          {props.value}
-        </span>
-        {props.unit && (
-          <span className="text-sm text-zinc-500 mb-0.5">{props.unit}</span>
-        )}
-      </div>
-      <div className="h-4 flex items-center">
-        {trendStyle && props.trendLabel && props.trend ? (
-          <div className={`flex items-center gap-1 ${trendStyle.color}`}>
-            <TrendIcon
-              trend={props.trend}
-              className={`w-3.5 h-3.5 ${trendStyle.color}`}
-            />
-            <span className="text-xs font-medium">{props.trendLabel}</span>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 export function BarChartView(props: z.infer<typeof barChartSchema>) {
   const keys = toKeys(props.yKeys);
@@ -905,13 +850,6 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
 // ---------------------------------------------------------------------------
 // Component definitions
 // ---------------------------------------------------------------------------
-
-export const statRowDef = defineComponent({
-  name: "StatRow",
-  description: "Single KPI with optional trend.",
-  props: statRowSchema,
-  component: ({ props }) => React.createElement(StatRowView, props),
-});
 
 export const barChartDef = defineComponent({
   name: "BarChart",

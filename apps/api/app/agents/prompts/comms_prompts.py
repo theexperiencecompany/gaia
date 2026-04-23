@@ -171,9 +171,9 @@ How it works: you write :::openui, then a simple expression like `root = DataCar
 Structured data means: lists of items, comparisons, stats/numbers, steps/instructions, status results, key-value pairs, timelines, file listings, code changes, or anything with repeated structure. If you find yourself about to write a markdown list, bullet points, or table — STOP and use the matching :::openui component instead.
 
 **When to use :::openui (ALWAYS for these):**
-- Listing anything (search results, options, recommendations, items) → ResultList, SelectableList, or Carousel
+- Listing anything (search results, options, recommendations, items) → DataTable, WorkItemList, SelectableList, Carousel, or ResultList (ResultList as fallback only)
 - Showing key-value info (profile, config, details, specs) → DataCard
-- Comparing two things → ComparisonTable
+- Comparing things (2+ options) → ComparisonTable (dynamic multi-column)
 - Showing a status or result → StatusCard
 - Steps, instructions, how-tos → Steps
 - Numbers, stats, KPIs → StatRow, GaugeChart, BarChart
@@ -182,6 +182,15 @@ Structured data means: lists of items, comparisons, stats/numbers, steps/instruc
 - Suggesting next actions → ActionCard
 - File/folder listings → FileTree
 - Code changes, diffs, before/after comparisons → CodeDiff (oldCode = original, newCode = modified, filename = the file path)
+- Copyable non-code text (prompts/notes/snippets) → CopyableContent
+- Cross-integration issue/task objects → WorkItemList
+- Cross-integration event streams → ActivityFeed
+- High-detail single records (issue/doc/thread/event) → EntityCard
+
+**ResultList restraint (important):**
+- Do NOT default to ResultList when links are already present and markdown links can render beautifully inline.
+- If data is tabular or has repeat fields, prefer DataTable/WorkItemList/EntityCard over ResultList.
+- Use ResultList only for compact, non-tabular, non-link-heavy quick item lists.
 
 **When NOT to use :::openui:**
 - Pure casual chat ("hey what's up", "lmao", "nah")
@@ -193,14 +202,14 @@ Structured data means: lists of items, comparisons, stats/numbers, steps/instruc
 
 **Pattern: casual message + openui component + casual follow-up**
 
-Example — user asks "compare react and vue":
+Example — user asks "compare react, vue, and svelte":
   "ooh solid question, here's the breakdown"
   {NEW_MESSAGE_BREAKER}
   :::openui
-  root = ComparisonTable("React", "Vue", [{{{{"label": "Learning Curve", "left": "Moderate", "right": "Easy", "highlight": true}}}}, {{{{"label": "Ecosystem", "left": "Massive", "right": "Growing"}}}}, {{{{"label": "Performance", "left": "Fast", "right": "Fast"}}}}], "React vs Vue")
+  root = ComparisonTable([{{{{"key": "criterion", "label": "Criterion", "emphasize": true}}}}, {{{{"key": "react", "label": "React"}}}}, {{{{"key": "vue", "label": "Vue"}}}}, {{{{"key": "svelte", "label": "Svelte"}}}}], [{{{{"values": {{{{"criterion": "Learning Curve", "react": "Moderate", "vue": "Easy", "svelte": "Easy"}}}}, "highlight": true}}}}, {{{{"values": {{{{"criterion": "Ecosystem", "react": "Massive", "vue": "Growing", "svelte": "Focused"}}}}}}}}, {{{{"values": {{{{"criterion": "Performance", "react": "Fast", "vue": "Fast", "svelte": "Very Fast"}}}}}}}}], "Framework Comparison")
   :::
   {NEW_MESSAGE_BREAKER}
-  "honestly both are solid, depends on what u vibe with more"
+  "all three are solid, depends on your stack + team"
 
 Example — user asks "what are the steps to set up a new project":
   "ez, here u go"
@@ -213,7 +222,7 @@ Example — user asks "what's trending on hackernews":
   "pulling hn rn"
   (after executor returns results)
   :::openui
-  root = ResultList([{{{{"title": "Show HN: I built a thing", "subtitle": "142 points", "badge": "Hot"}}}}, {{{{"title": "Why Rust is winning", "subtitle": "89 points"}}}}], "Hacker News Trending")
+  root = DataTable([{{{{"key": "title", "label": "Post", "emphasize": true}}}}, {{{{"key": "points", "label": "Points", "align": "end"}}}}, {{{{"key": "url", "label": "Link", "type": "link"}}}}], [{{{{"title": "Show HN: I built a thing", "points": "142", "url": "https://news.ycombinator.com/item?id=1"}}}}, {{{{"title": "Why Rust is winning", "points": "89", "url": "https://news.ycombinator.com/item?id=2"}}}}], "Hacker News Trending")
   :::
   {NEW_MESSAGE_BREAKER}
   "anything look interesting?"

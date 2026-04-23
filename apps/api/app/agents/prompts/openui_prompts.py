@@ -18,10 +18,25 @@ DataCard(title: string, fields: {label: string, value: string}[])
   Use for: single record details, config values, profile data
 
 ResultList(items: {title: string, subtitle?: string, body?: string, url?: string, badge?: string}[], title?: string)
-  Use for: lists of results, search hits, records
+  Use for: short lists when there are no rich links and no table structure
 
-ComparisonTable(leftLabel: string, rightLabel: string, rows: {label: string, left: string, right: string, highlight?: boolean}[], title?: string)
-  Use for: A vs B comparisons
+DataTable(columns: {key: string, label: string, align?: "start"|"center"|"end", type?: "text"|"number"|"link"|"badge", emphasize?: boolean}[], rows: {[key: string]: string}[], title?: string, description?: string)
+  Use for: generic tabular data with configurable columns and rows
+
+CopyableContent(content: string, title?: string, mode?: "inline"|"block", languageHint?: string)
+  Use for: non-code text users need to copy (prompts, notes, snippets)
+
+WorkItemList(title: string, items: {id: string, title: string, subtitle?: string, status?: string, priority?: string, assignee?: string, dueDate?: string, labels?: string[], progress?: number, details?: {label: string, value: string}[], links?: {label: string, url: string, type?: "primary"|"secondary"}[], actions?: {label: string, type: "continue_conversation", value: string}[]}[], description?: string, layout?: "table"|"cards"|"compact", showProgressRing?: boolean)
+  Use for: cross-integration work items (GitHub issues, Linear issues, tasks, tickets)
+
+ActivityFeed(title?: string, events: {id: string, time: string, actor?: string, action: string, target?: string, summary?: string, status?: "info"|"success"|"warning"|"error", metadata?: {label: string, value: string}[], links?: {label: string, url: string}[], actions?: {label: string, type: "continue_conversation", value: string}[]}[], variant?: "timeline"|"stacked"|"compact")
+  Use for: unified event streams across integrations
+
+EntityCard(title: string, subtitle?: string, status?: string, summary?: string, stats?: {label: string, value: string, trend?: "up"|"down"|"neutral"}[], sections?: {title: string, content?: string, fields?: {label: string, value: string}[], items?: string[]}[], links?: {label: string, url: string}[], actions?: {label: string, type: "continue_conversation", value: string}[])
+  Use for: high-detail single object cards (issue/doc/thread/event) with flexible sections
+
+ComparisonTable(columns: {key: string, label: string, align?: "start"|"center"|"end", emphasize?: boolean}[], rows: {values: {[key: string]: string}, highlight?: boolean}[], title?: string)
+  Use for: comparisons with 2+ dynamic columns
 
 StatusCard(title: string, status: "success"|"error"|"warning"|"info"|"pending", message?: string, detail?: string)
   Use for: operation results, confirmations, errors
@@ -160,20 +175,23 @@ TextDocument(title: string, body: string, fields?: {label: string, value: string
 
 --- Layout ---
 
+Card(title?: string, subtitle?: string, items: component[])
+  Use for: wrapping one or more components into a single titled container
+
+Grid(items: component[], columns?: number)
+  Use for: responsive multi-card layouts (1-4 columns)
+
 Row(items: component[])
-  Use for: placing components side-by-side (equal width, 16:9 fixed height per cell).
-  ✓ Good: multiple StatRows, GaugeCharts, BarCharts, LineCharts, StatusCards, DataCards (2–3 items max)
-  ✗ Never use for: Timeline, Steps, Accordion, ResultList, TextDocument, AlertBanner — variable-height
-    components look broken (empty void or clipped) inside a fixed-height cell
-  ✗ Never put more than 3 items — cells become too narrow to read
-  ✗ Never mix component types in one Row (e.g. a chart next to a DataCard) — mismatched fill
-  ✗ Never wrap a single component — just emit it directly
+  Use for: placing components side-by-side in responsive equal-priority columns
+
+Column(items: component[])
+  Use for: explicit vertical grouping inside Grid/Row compositions
+
+Separator(label?: string)
+  Use for: visual separation between sections; optional label for section titles
 
 Stack(items: component[])
-  Use for: placing components vertically. Nest Row inside Stack for mixed layouts.
-  ✓ Good: Stack([row, chart]) where row = Row([s1, s2, s3])
-  ✗ Never wrap a single component in Stack — pointless
-  ✗ Never nest Row inside Row — the fixed-height cells do not compose
+  Use for: placing components vertically. Nest Grid/Row/Column inside Stack for mixed layouts.
 """
 
 _escaped_component_library = OPENUI_COMPONENT_LIBRARY_PROMPT.replace("{", "{{").replace(
@@ -205,9 +223,12 @@ OpenUI Lang — strict syntax rules (violations cause silent blank rendering):
   RULE 5 — Use null ONLY to skip an optional argument in a middle position.
            Trailing optional arguments can simply be omitted.
   RULE 6 — Multi-component layouts:
-           Stack([c1, c2]) — vertical (top to bottom). Use for different component types.
-           Row([c1, c2]) — horizontal (side by side, equal width). Use for same-type components like StatRows, StatusCards, DataCards.
-           You can nest them: Stack([row, chart]) where row = Row([s1, s2]).
+           Stack([c1, c2]) — vertical stack.
+           Grid([c1, c2, c3], 2) — responsive grid with optional column count.
+           Row([c1, c2]) — horizontal row for equal-priority cards.
+           Column([c1, c2]) — explicit vertical group for nested layouts.
+           Card("Title", "subtitle", [c1, c2]) — titled wrapper around components.
+           Separator("optional label") — visual section divider.
            Forward references are allowed.
   RULE 7 — Strings must use double quotes. No single quotes.
   RULE 8 — Array items are objects with curly braces. Each key is a double-quoted string.
@@ -224,14 +245,43 @@ DataCard — single record with key-value pairs:
   root = DataCard("Server Info", [{{{{"label": "Host", "value": "prod-01"}}}}, {{{{"label": "IP", "value": "10.0.1.5"}}}}, {{{{"label": "OS", "value": "Ubuntu 24.04"}}}}])
   :::
 
-ResultList — list of results with optional badges and URLs:
+ResultList — use only for short lists without rich links/table structure:
   :::openui
-  root = ResultList([{{{{"title": "Getting Started Guide", "subtitle": "docs.example.com", "badge": "Popular"}}}}, {{{{"title": "API Reference", "body": "Full REST API documentation", "url": "https://docs.example.com/api"}}}}], "Search Results")
+  root = ResultList([{{{{"title": "Retry Build", "subtitle": "Last attempt failed", "badge": "Action"}}}}, {{{{"title": "Open Incident", "body": "Escalate to on-call", "badge": "Urgent"}}}}], "Quick Actions")
   :::
 
-ComparisonTable — side-by-side comparison of two options:
+DataTable — generic tabular data with configurable columns and links:
   :::openui
-  root = ComparisonTable("PostgreSQL", "MongoDB", [{{{{"label": "Type", "left": "Relational", "right": "Document"}}}}, {{{{"label": "Schema", "left": "Fixed", "right": "Flexible", "highlight": true}}}}, {{{{"label": "Joins", "left": "Native", "right": "Manual"}}}}], "Database Comparison")
+  root = DataTable([{{{{"key": "name", "label": "Name", "emphasize": true}}}}, {{{{"key": "owner", "label": "Owner"}}}}, {{{{"key": "url", "label": "Link", "type": "link"}}}}], [{{{{"name": "Roadmap", "owner": "Product", "url": "https://notion.so/roadmap"}}}}, {{{{"name": "Sprint Board", "owner": "Engineering", "url": "https://linear.app/team/board"}}}}], "Workspace Docs", "Prefer DataTable when link-rich data is tabular")
+  :::
+
+CopyableContent — non-code text that users should copy:
+  :::openui
+  root = CopyableContent("Please prioritize API latency fixes before adding new integrations this week.", "Priority Note", "block")
+  :::
+
+  :::openui
+  root = CopyableContent("/triage weekly incidents", null, "inline")
+  :::
+
+WorkItemList — cross-integration issue/task list with rich details:
+  :::openui
+  root = WorkItemList("Engineering Backlog", [{{{{"id": "ENG-341", "title": "Fix failing webhook retries", "subtitle": "GitHub", "status": "active", "priority": "high", "assignee": "Aryan", "dueDate": "Apr 30", "labels": ["backend", "incident"], "progress": 62, "details": [{{{{"label": "Comments", "value": "14"}}}}, {{{{"label": "Estimate", "value": "5 pts"}}}}], "links": [{{{{"label": "Open", "url": "https://github.com/org/repo/issues/341", "type": "primary"}}}}], "actions": [{{{{"label": "Draft update", "type": "continue_conversation", "value": "Draft a status update for ENG-341"}}}}]}}}}, {{{{"id": "LIN-88", "title": "Polish onboarding checklist", "subtitle": "Linear", "status": "pending", "priority": "medium", "assignee": "Sam", "labels": ["ux"], "progress": 20, "links": [{{{{"label": "Open", "url": "https://linear.app/team/issue/LIN-88"}}}}]}}}}], "Shared work item shape", "table", true)
+  :::
+
+ActivityFeed — unified event feed:
+  :::openui
+  root = ActivityFeed("Recent Activity", [{{{{"id": "evt-1", "time": "10:42", "actor": "Aryan", "action": "commented on", "target": "ENG-341", "summary": "Root cause narrowed to retry backoff handling", "status": "info", "metadata": [{{{{"label": "source", "value": "GitHub"}}}}, {{{{"label": "channel", "value": "#incidents"}}}}], "links": [{{{{"label": "View thread", "url": "https://github.com/org/repo/issues/341#issuecomment"}}}}]}}}}, {{{{"id": "evt-2", "time": "11:03", "actor": "Build Bot", "action": "reported", "target": "CI failure", "status": "warning", "summary": "e2e flaky on firefox", "actions": [{{{{"label": "Create follow-up", "type": "continue_conversation", "value": "Create a follow-up task for flaky firefox e2e"}}}}]}}}}], "timeline")
+  :::
+
+EntityCard — single rich object with sections and links:
+  :::openui
+  root = EntityCard("ENG-341", "Webhook retries", "active", "Retry logic spikes API pressure during outages.", [{{{{"label": "Progress", "value": "62%", "trend": "up"}}}}, {{{{"label": "Risk", "value": "Medium", "trend": "neutral"}}}}, {{{{"label": "ETA", "value": "Apr 30"}}}}], [{{{{"title": "Context", "content": "Issue appears when provider latency exceeds 6s."}}}}, {{{{"title": "Acceptance", "items": ["Backoff capped", "Retries observable", "No duplicate sends"]}}}}, {{{{"title": "Owners", "fields": [{{{{"label": "Driver", "value": "Aryan"}}}}, {{{{"label": "Reviewer", "value": "Priya"}}}}]}}}}], [{{{{"label": "GitHub Issue", "url": "https://github.com/org/repo/issues/341"}}}}, {{{{"label": "Linear Mirror", "url": "https://linear.app/team/issue/ENG-341"}}}}], [{{{{"label": "Write update", "type": "continue_conversation", "value": "Write a concise status update for ENG-341"}}}}])
+  :::
+
+ComparisonTable — dynamic multi-column comparison:
+  :::openui
+  root = ComparisonTable([{{{{"key": "criterion", "label": "Criterion", "emphasize": true}}}}, {{{{"key": "postgres", "label": "PostgreSQL"}}}}, {{{{"key": "mongodb", "label": "MongoDB"}}}}, {{{{"key": "mysql", "label": "MySQL"}}}}], [{{{{"values": {{{{"criterion": "Type", "postgres": "Relational", "mongodb": "Document", "mysql": "Relational"}}}}}}}}, {{{{"values": {{{{"criterion": "Schema", "postgres": "Strict", "mongodb": "Flexible", "mysql": "Strict"}}}}, "highlight": true}}}}, {{{{"values": {{{{"criterion": "Replication", "postgres": "Yes", "mongodb": "Yes", "mysql": "Yes"}}}}}}}}], "Database Comparison")
   :::
 
 StatusCard — operation result with status indicator:
@@ -468,17 +518,35 @@ CodeDiff — char-level diff, no header, expanded context:
 
 --- Multi-Component Layout ---
 
-Row — place any components side-by-side in equal-width columns:
+Grid — responsive card grid:
   :::openui
-  root = Row([s1, s2, s3])
+  root = Grid([s1, s2, s3, s4], 2)
   s1 = StatRow("CPU", 73, "%", "up", "+5%")
   s2 = StatRow("Memory", 4.2, "GB")
   s3 = StatRow("Disk", 120, "GB")
+  s4 = StatusCard("Worker Queue", "success", "Healthy")
   :::
 
-  Row cells are fixed 16:9 height — only use components that look good at a fixed height.
-  ✓ StatRow, GaugeChart, BarChart, LineChart, StatusCard, DataCard (2–3 items max)
-  ✗ Timeline, Steps, Accordion, ResultList, TextDocument, AlertBanner — these have variable height
+Card + Separator + Stack composition:
+  :::openui
+  root = Stack([summaryCard, sep, detailTable])
+  summaryCard = Card("Integration Snapshot", "last updated 5m ago", [summaryRow])
+  summaryRow = Row([a1, a2])
+  a1 = StatRow("Active", 12)
+  a2 = StatRow("Errors", 1)
+  sep = Separator("details")
+  detailTable = DataTable([{{{{"key": "source", "label": "Source"}}}}, {{{{"key": "records", "label": "Records", "align": "end"}}}}], [{{{{"source": "Linear", "records": "128"}}}}, {{{{"source": "Notion", "records": "540"}}}}], "Synced Data")
+  :::
+
+Row + Column mixed layout:
+  :::openui
+  root = Row([leftCol, rightCol])
+  leftCol = Column([c1, c2])
+  c1 = StatusCard("Sync", "success", "All integrations healthy")
+  c2 = CopyableContent("Sync at 09:00 UTC daily", "Automation Rule", "block")
+  rightCol = Column([c3])
+  c3 = ProgressList([{{{{"label": "Linear", "value": 92, "max": 100}}}}, {{{{"label": "Notion", "value": 84, "max": 100}}}}], "Coverage")
+  :::
 
 Stack — combine multiple components vertically:
   :::openui
@@ -517,9 +585,11 @@ Do NOT use :::openui for greetings, opinions, or plain conversational responses.
 IMPORTANT: You MUST use :::openui whenever your response contains structured data — lists, comparisons, stats, steps, timelines, key-value pairs, status results, or anything with repeated structure. Never fall back to markdown lists, tables, or bullet points when an OpenUI component exists for that data shape. The frontend renders OpenUI as rich interactive cards. Plain text and markdown look broken by comparison.
 
 Quality guidelines:
-- DataCard for single records; ResultList for collections; use markdown tables for tabular data
-- ComparisonTable when showing A vs B — two options, two configs, two products
-- ResultList handles overflow — pass all items, never truncate
+- DataCard for single records; DataTable for tabular data; ComparisonTable for comparisons with 2+ columns
+- Prefer inline markdown links when the list is mostly URLs and brief context is enough
+- Use ResultList sparingly; avoid it when links already render well in markdown or when DataTable/WorkItemList/EntityCard fits better
+- WorkItemList for cross-platform issue/task objects; ActivityFeed for events; EntityCard for deep single-record detail
+- CopyableContent for prompts, notes, and non-code text users may copy
 - StatusCard for any operation result (success or failure); AlertBanner for inline notices
 - StatRow for a single important number; BarChart/LineChart for trends; PieChart for proportions
 - RadarChart for multi-axis comparisons; GaugeChart for a value with min/max bounds
@@ -533,9 +603,8 @@ Quality guidelines:
 - TextDocument for ANY long-form prose — articles, blog posts, essays, reports, documentation, letters, memos, newsletters, guides, how-tos, summaries. If your answer is more than ~3 paragraphs of continuous prose, it MUST be a TextDocument. Never dump walls of text as raw markdown.
 - CodeDiff for before/after code changes — never show diffs as raw markdown code blocks
 - Keep titles short. Don't repeat what you already said in text.
-- Prefer a single well-chosen component over stacking many. Use Stack only when the data genuinely splits into distinct sections.
-- Row cells are fixed 16:9 height — never put variable-height components (Timeline, Steps, Accordion, ResultList, TextDocument, AlertBanner) in a Row
-- Never put more than 3 items in a Row; never nest Row inside Row; never wrap a single component in Stack or Row
+- Prefer a single well-chosen component over stacking many. Use Stack/Grid/Row/Column only when the data genuinely splits into sections.
+- Row and Grid should remain readable on small screens; use Column for nested vertical groupings.
 
 ABSOLUTE RULE — CODE DIFFS:
 When showing before/after code, code modifications, patches, or any comparison of two code versions, you MUST use the CodeDiff :::openui component. NEVER use markdown ``` code fences for diffs. This is non-negotiable.

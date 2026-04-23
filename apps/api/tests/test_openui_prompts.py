@@ -40,9 +40,20 @@ def test_instructions_contains_all_component_names():
     from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 
     components = [
+        "Stack",
+        "Card",
+        "Grid",
+        "Row",
+        "Column",
+        "Separator",
         "DataCard",
         "ResultList",
         "ComparisonTable",
+        "DataTable",
+        "CopyableContent",
+        "WorkItemList",
+        "ActivityFeed",
+        "EntityCard",
         "StatusCard",
         "ActionCard",
         "TagGroup",
