@@ -374,11 +374,25 @@ export class DiscordAdapter extends BaseBotAdapter {
         };
       },
       async (authUrl: string) => {
-        const content = `Please authenticate first: ${authUrl}`;
-        if (isFirstMessage) {
-          await interaction.editReply({ content });
-        } else if (lastFollowUp) {
-          await lastFollowUp.edit({ content });
+        const publicContent =
+          "To use GAIA, please authenticate first — check your DMs for the link.";
+        try {
+          await interaction.user.send(
+            `Please authenticate with GAIA: ${authUrl}`,
+          );
+          if (isFirstMessage) {
+            await interaction.editReply({ content: publicContent });
+          } else if (lastFollowUp) {
+            await lastFollowUp.edit({ content: publicContent });
+          }
+        } catch {
+          await interaction.followUp({
+            content: `Please authenticate with GAIA: ${authUrl}`,
+            ephemeral: true,
+          });
+          if (isFirstMessage) {
+            await interaction.editReply({ content: publicContent });
+          }
         }
       },
       async (errMsg: string) => {
@@ -750,13 +764,15 @@ export class DiscordAdapter extends BaseBotAdapter {
         async (authUrl: string) => {
           clearTyping();
           try {
-            await message.reply({
-              content: `Please link your GAIA account to use me here: ${authUrl}`,
-            });
+            await message.author.send(
+              `Please link your GAIA account to use me here: ${authUrl}`,
+            );
+            await send(
+              "To use GAIA here, please link your account — check your DMs for the link.",
+            );
           } catch {
-            // Ephemeral replies unsupported on some message types — fall back publicly
-            await sendOrEdit(
-              `Please link your GAIA account: ${authUrl}\n\n_This link is for you only — don't share it._`,
+            await send(
+              "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
             );
           }
         },

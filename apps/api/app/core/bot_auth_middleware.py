@@ -10,6 +10,7 @@ This middleware sets request.state.user and request.state.authenticated,
 allowing bot requests to use the same endpoints as normal web auth.
 """
 
+import secrets
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from app.config.settings import settings
@@ -102,7 +103,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         bot_api_key = getattr(settings, "GAIA_BOT_API_KEY", None)
         if not bot_api_key:
             return False
-        return api_key == bot_api_key
+        return secrets.compare_digest(api_key, bot_api_key)
 
     async def _authenticate_platform(
         self, platform: str, platform_user_id: str

@@ -18,7 +18,9 @@ export default async function LoginPage({
   searchParams: Promise<{ return_url?: string }>;
 }) {
   const { return_url: returnUrl } = await searchParams;
-  const oauthUrl = `${apiauth.getUri()}oauth/login/workos${returnUrl ? `?return_url=${encodeURIComponent(returnUrl)}` : ""}`;
+  const safeReturnUrl =
+    returnUrl && returnUrl.startsWith("/") ? returnUrl : undefined;
+  const oauthUrl = `${apiauth.getUri()}oauth/login/workos${safeReturnUrl ? `?return_url=${encodeURIComponent(safeReturnUrl)}` : ""}`;
 
   return (
     <div className="h-screen">

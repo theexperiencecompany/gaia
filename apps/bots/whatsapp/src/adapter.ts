@@ -40,6 +40,8 @@ import {
   verifyKapsoSignature,
 } from "./webhook";
 
+const REPLAY_WINDOW_MS = 5 * 60 * 1000;
+
 // ─── WhatsApp-specific config ─────────────────────────────────────────────────
 
 interface WhatsAppConfig {
@@ -167,6 +169,16 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         const waId = extractWaId(event);
         const waIdHash = hashLogIdentifier(waId);
         const text = extractTextBody(event);
+        // Reject events older than 5 minutes to prevent replay attacks.
+        const eventAgeMs = Date.now() - Number(event.message.timestamp) * 1000;
+        if (eventAgeMs > REPLAY_WINDOW_MS) {
+          this.adapterLogger.warn("webhook_event_replayed", {
+            wa_hash: waIdHash,
+            message_id: event.message.id,
+            age_ms: eventAgeMs,
+          });
+          continue;
+        }
         this.adapterLogger.info("webhook_message_received", {
           wa_hash: waIdHash,
           message_type: event.message.type,
