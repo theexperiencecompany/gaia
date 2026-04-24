@@ -1,6 +1,6 @@
-import { Button, Card, Chip } from "heroui-native";
+import { Card, Chip } from "heroui-native";
 import { useMemo, useState } from "react";
-import { Linking, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import {
   Alert01Icon,
   AppIcon,

@@ -14,11 +14,7 @@ import {
   ZapIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  ToolCardHeader,
-  ToolCardInner,
-  ToolCardShell,
-} from "../primitives";
+import { ToolCardHeader, ToolCardInner, ToolCardShell } from "../primitives";
 
 export type GoalAction =
   | "create"
@@ -171,8 +167,7 @@ function MetaPill({
 
 function RoadmapItem({ node }: { node: GoalRoadmapNode }) {
   const isComplete = !!node.data.isComplete;
-  const title =
-    node.data.title || node.data.label || "Untitled Task";
+  const title = node.data.title || node.data.label || "Untitled Task";
 
   return (
     <View className="flex-row items-center gap-3 py-1">
@@ -625,13 +620,8 @@ export function GoalCard({ data }: { data: GoalData }) {
       action === "create" ||
       action === "roadmap_generated" ||
       action === "node_updated";
-    const iconColor = isDelete
-      ? "#ef4444"
-      : isSuccess
-        ? "#22c55e"
-        : "#3b82f6";
-    const Icon =
-      isDelete || isSuccess ? CheckmarkCircle02Icon : Target02Icon;
+    const iconColor = isDelete ? "#ef4444" : isSuccess ? "#22c55e" : "#3b82f6";
+    const Icon = isDelete || isSuccess ? CheckmarkCircle02Icon : Target02Icon;
 
     return (
       <ToolCardShell>
