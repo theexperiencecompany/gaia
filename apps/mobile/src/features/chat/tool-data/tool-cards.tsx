@@ -19,6 +19,7 @@ export * from "./cards/email-thread-card";
 export * from "./cards/goal-card";
 export * from "./cards/google-docs-card";
 export * from "./cards/integration-connection-card";
+export * from "./cards/integration-list-card";
 export * from "./cards/notification-card";
 export * from "./cards/people-search-card";
 export * from "./cards/rate-limit-card";

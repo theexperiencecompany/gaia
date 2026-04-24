@@ -109,14 +109,32 @@ class MemoryService:
             List of MemoryEntry objects
         """
         parsed_memories = []
+        dropped_cross_tenant = 0
         for memory_data in memories:
             try:
+                # Defence-in-depth (H12): Mem0 is supposed to scope results
+                # by the filters we passed, but if a misconfiguration or
+                # bug causes another user's memory to come back, we drop
+                # it locally instead of surfacing it to the wrong user.
+                raw_user_id = memory_data.get("user_id")
+                if raw_user_id and str(raw_user_id) != str(user_id):
+                    dropped_cross_tenant += 1
+                    continue
                 if memory_entry := self._parse_memory_result(memory_data):
                     memory_entry.user_id = user_id
                     parsed_memories.append(memory_entry)
             except Exception as e:
                 self.logger.warning(f"Failed to parse memory: {e}")
                 continue
+
+        if dropped_cross_tenant:
+            # Wide event so we can alert on this in production — it should
+            # be zero under normal operation.
+            log.warning(
+                "mem0_cross_tenant_result_dropped",
+                user_id=user_id,
+                dropped=dropped_cross_tenant,
+            )
 
         return parsed_memories
 

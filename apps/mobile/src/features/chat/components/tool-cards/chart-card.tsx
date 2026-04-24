@@ -73,11 +73,7 @@ function resolveChartIcon(type: ChartData["type"]): AnyIcon {
 
 // -- Bar chart ----------------------------------------------------------------
 
-function BarChart({
-  data,
-  xLabel,
-  yLabel,
-}: Omit<ChartData, "type" | "title">) {
+function BarChart({ data, xLabel, yLabel }: Omit<ChartData, "type" | "title">) {
   const maxValue = useMemo(
     () => Math.max(...data.map((d) => Math.abs(d.value)), 1),
     [data],
@@ -209,10 +205,7 @@ function DataTable({
                 flexShrink: 0,
               }}
             />
-            <Text
-              className="text-xs text-zinc-200 flex-1"
-              numberOfLines={1}
-            >
+            <Text className="text-xs text-zinc-200 flex-1" numberOfLines={1}>
               {point.label}
             </Text>
             <Text

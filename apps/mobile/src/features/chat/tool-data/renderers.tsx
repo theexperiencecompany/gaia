@@ -31,8 +31,12 @@ import {
   type GoalData,
   GoogleDocsCard,
   type GoogleDocsData,
+  ConnectionStatusCard,
+  type ConnectionStatusData,
   IntegrationConnectionCard,
   type IntegrationConnectionData,
+  type IntegrationListCardData,
+  IntegrationListCard,
   NotificationCard,
   type NotificationData,
   PeopleSearchCard,
@@ -227,19 +231,51 @@ const TOOL_RENDERERS: Record<
     <CodeExecutionCard key={baseKey} data={data as CodeData} />
   ),
 
-  integration_connection_required: (data, baseKey) => (
-    <IntegrationConnectionCard
-      key={baseKey}
-      data={data as IntegrationConnectionData}
-    />
-  ),
+  integration_connection_required: (data, baseKey) => {
+    // Backend can send a single item or an array (when grouped by stream).
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as IntegrationConnectionData[];
+    // De-duplicate by integration_id so we don't render the same prompt twice.
+    const seen = new Set<string>();
+    const unique = items.filter((item) => {
+      const key = item.integration_id ?? item.integration_name ?? "";
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return (
+      <React.Fragment key={baseKey}>
+        {unique.map((item, idx) => (
+          <IntegrationConnectionCard
+            key={`${baseKey}-${item.integration_id ?? item.integration_name ?? idx}`}
+            data={item}
+          />
+        ))}
+      </React.Fragment>
+    );
+  },
 
-  integration_list_data: (_data, baseKey) => (
-    <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
-      <Card.Body className="py-3 px-4">
-        <Text className="text-foreground text-sm">Available Integrations</Text>
-      </Card.Body>
-    </Card>
+  integration_list_data: (data, baseKey) => {
+    // Merge grouped payloads into a single card, matching web behaviour.
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as IntegrationListCardData[];
+    const seen = new Set<string>();
+    const suggested = items
+      .flatMap((item) => item.suggested ?? [])
+      .filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      });
+    return (
+      <IntegrationListCard key={baseKey} data={{ suggested }} />
+    );
+  },
+
+  connection_status_data: (data, baseKey) => (
+    <ConnectionStatusCard key={baseKey} data={data as ConnectionStatusData} />
   ),
 
   reddit_data: (data, baseKey) => {

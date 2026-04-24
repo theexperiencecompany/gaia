@@ -182,7 +182,11 @@ function DuePill({
   );
 }
 
-function PriorityPill({ priority }: { priority: Exclude<TodoPriority, "none"> }) {
+function PriorityPill({
+  priority,
+}: {
+  priority: Exclude<TodoPriority, "none">;
+}) {
   const s = PRIORITY_STYLE[priority];
   return (
     <View
@@ -244,11 +248,7 @@ function TodoItemRow({ todo }: { todo: TodoItem }) {
                     transform: [{ rotate: expanded ? "90deg" : "0deg" }],
                   }}
                 >
-                  <AppIcon
-                    icon={ArrowRight01Icon}
-                    size={14}
-                    color="#71717a"
-                  />
+                  <AppIcon icon={ArrowRight01Icon} size={14} color="#71717a" />
                 </View>
               </Pressable>
             ) : null}
@@ -276,11 +276,7 @@ function TodoItemRow({ todo }: { todo: TodoItem }) {
                       style={{ backgroundColor: todo.project.color }}
                     />
                   ) : (
-                    <AppIcon
-                      icon={Folder02Icon}
-                      size={10}
-                      color="#a1a1aa"
-                    />
+                    <AppIcon icon={Folder02Icon} size={10} color="#a1a1aa" />
                   )
                 }
               >
@@ -291,9 +287,7 @@ function TodoItemRow({ todo }: { todo: TodoItem }) {
             {todo.labels.map((label) => (
               <MetaPill
                 key={label}
-                leading={
-                  <AppIcon icon={Tag01Icon} size={10} color="#a1a1aa" />
-                }
+                leading={<AppIcon icon={Tag01Icon} size={10} color="#a1a1aa" />}
               >
                 {label}
               </MetaPill>
@@ -390,25 +384,13 @@ export function TodoCard({ data }: { data: TodoData }) {
         <ToolCardHeader title="Task Overview" />
         <View className="flex-row gap-2 mb-2">
           <StatBox value={s.total} label="Total" color="text-zinc-100" />
-          <StatBox
-            value={s.completed}
-            label="Done"
-            color="text-green-500"
-          />
-          <StatBox
-            value={s.pending}
-            label="Pending"
-            color="text-yellow-500"
-          />
+          <StatBox value={s.completed} label="Done" color="text-green-500" />
+          <StatBox value={s.pending} label="Pending" color="text-yellow-500" />
         </View>
         {s.overdue > 0 || s.today > 0 || s.upcoming > 0 ? (
           <View className="flex-row gap-2">
             {s.overdue > 0 ? (
-              <StatBox
-                value={s.overdue}
-                label="Overdue"
-                color="text-red-500"
-              />
+              <StatBox value={s.overdue} label="Overdue" color="text-red-500" />
             ) : null}
             {s.today > 0 ? (
               <StatBox value={s.today} label="Today" color="text-blue-500" />
@@ -486,8 +468,7 @@ export function TodoCard({ data }: { data: TodoData }) {
           title={headerLabel}
           trailing={
             <Text className="text-xs text-zinc-500">
-              {data.todos.length}{" "}
-              {data.todos.length === 1 ? "task" : "tasks"}
+              {data.todos.length} {data.todos.length === 1 ? "task" : "tasks"}
             </Text>
           }
         />
@@ -506,11 +487,7 @@ export function TodoCard({ data }: { data: TodoData }) {
     return (
       <ToolCardShell>
         <View className="items-center py-2">
-          <AppIcon
-            icon={CheckmarkCircle02Icon}
-            size={32}
-            color="#52525b"
-          />
+          <AppIcon icon={CheckmarkCircle02Icon} size={32} color="#52525b" />
           <Text className="mt-2 text-sm text-zinc-300">No tasks found</Text>
           {data.message ? (
             <Text className="mt-1 text-xs text-zinc-500">{data.message}</Text>

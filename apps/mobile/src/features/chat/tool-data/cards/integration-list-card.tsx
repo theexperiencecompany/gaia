@@ -50,7 +50,11 @@ function IntegrationRow({
   onPress: () => void;
   onAction?: () => void;
 }) {
-  const icon = getToolCategoryIcon(id, { size: 20, showBackground: false });
+  const icon = getToolCategoryIcon(
+    id,
+    { size: 20, showBackground: false },
+    iconUrl,
+  );
 
   return (
     <Pressable

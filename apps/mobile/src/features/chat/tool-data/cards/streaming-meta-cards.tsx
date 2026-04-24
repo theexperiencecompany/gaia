@@ -11,15 +11,9 @@ import {
   CodeIcon,
   CpuIcon,
   DocumentAttachmentIcon,
-  FavouriteIcon,
   FlashIcon,
   FlowIcon,
-  MessageMultiple01Icon,
-  RepeatIcon,
   Settings01Icon,
-  Share08Icon,
-  TwitterIcon,
-  UploadCircle01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
@@ -45,12 +39,6 @@ interface ArtifactItem {
   content_type?: string;
 }
 
-interface RateLimitData {
-  feature?: string;
-  plan_required?: string;
-  reset_time?: string;
-}
-
 interface WorkflowDraftData {
   suggested_title?: string;
   suggested_description?: string;
@@ -70,41 +58,6 @@ interface WorkflowCreatedData {
   };
 }
 
-interface TwitterAuthor {
-  username?: string;
-  name?: string;
-  verified?: boolean;
-  profile_image_url?: string;
-}
-
-interface TwitterTweetData {
-  id?: string;
-  text?: string;
-  created_at?: string;
-  author?: TwitterAuthor;
-  public_metrics?: {
-    like_count?: number;
-    reply_count?: number;
-    retweet_count?: number;
-  };
-}
-
-interface TwitterUserData {
-  id?: string;
-  username?: string;
-  name?: string;
-  description?: string;
-  verified?: boolean;
-  location?: string;
-  url?: string;
-  created_at?: string;
-  public_metrics?: {
-    followers_count?: number;
-    following_count?: number;
-    tweet_count?: number;
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -114,35 +67,6 @@ const formatBytes = (size?: number): string => {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const formatFeatureName = (feature?: string): string => {
-  if (!feature) return "This feature";
-  return feature
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-};
-
-const formatResetTime = (resetTime?: string): string | null => {
-  if (!resetTime) return null;
-  const parsed = new Date(resetTime);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const diffMs = parsed.getTime() - Date.now();
-  if (diffMs <= 0) return "Resets very soon";
-  const mins = Math.ceil(diffMs / 60000);
-  if (mins > 60) {
-    const hours = Math.ceil(mins / 60);
-    return `Resets in ${hours} hour${hours > 1 ? "s" : ""}`;
-  }
-  return `Resets in ${mins} minute${mins > 1 ? "s" : ""}`;
-};
-
-const getResetDetail = (resetTime?: string): string | null => {
-  if (!resetTime) return null;
-  const parsed = new Date(resetTime);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return `Available again at ${parsed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 };
 
 const getExtLabel = (filename?: string, contentType?: string): string => {

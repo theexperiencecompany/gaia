@@ -54,7 +54,6 @@ export interface ChartDisplayData {
 // ---------------------------------------------------------------------------
 
 const PRIMARY = "#00bbff";
-const MUTED = "#71717a"; // zinc-500
 const AXIS = "#a1a1aa"; // zinc-400
 const GRID = "rgba(255,255,255,0.06)";
 const CHART_HEIGHT = 180;
@@ -381,7 +380,13 @@ function PieChartView({ data }: { data: ChartData }) {
         >
           {elements.length}
         </SvgText>
-        <SvgText x={CX} y={CY + 10} fontSize={8} fill={AXIS} textAnchor="middle">
+        <SvgText
+          x={CX}
+          y={CY + 10}
+          fontSize={8}
+          fill={AXIS}
+          textAnchor="middle"
+        >
           items
         </SvgText>
       </Svg>
@@ -442,10 +447,7 @@ function DataTable({ data }: { data: ChartData }) {
           key={`row-${el.label}-${i}`}
           className={`flex-row px-3 py-2 ${i % 2 === 1 ? "bg-zinc-800/50" : ""}`}
         >
-          <Text
-            className="text-xs text-zinc-200 flex-1"
-            numberOfLines={1}
-          >
+          <Text className="text-xs text-zinc-200 flex-1" numberOfLines={1}>
             {el.label}
           </Text>
           <Text

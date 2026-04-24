@@ -109,13 +109,7 @@ function SourceTaskList({ todos }: { todos: TodoProgressItem[] }) {
   );
 }
 
-function CountPill({
-  completed,
-  total,
-}: {
-  completed: number;
-  total: number;
-}) {
+function CountPill({ completed, total }: { completed: number; total: number }) {
   return (
     <View className="rounded-full bg-zinc-700 px-2 py-0.5">
       <Text className="text-[11px] text-zinc-400">
@@ -184,9 +178,7 @@ function MultiSourceAccordionItem({
         onPress={onToggle}
         className="flex-row items-center gap-2 py-2 px-2"
       >
-        <View
-          style={{ transform: [{ rotate: isOpen ? "90deg" : "0deg" }] }}
-        >
+        <View style={{ transform: [{ rotate: isOpen ? "90deg" : "0deg" }] }}>
           <AppIcon icon={ArrowRight01Icon} size={12} color="#71717a" />
         </View>
         <Text
@@ -268,10 +260,6 @@ export function TodoProgressCard({
   }
 
   return (
-    <MultiSourceAccordion
-      activeSources={activeSources}
-      todo_progress={data}
-    />
+    <MultiSourceAccordion activeSources={activeSources} todo_progress={data} />
   );
 }
-
