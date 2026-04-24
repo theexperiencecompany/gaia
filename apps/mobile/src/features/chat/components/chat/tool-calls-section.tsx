@@ -1,13 +1,6 @@
 import { normalizeCategoryName } from "@gaia/shared/icons";
 import { useEffect, useRef, useState } from "react";
 import { Animated, LayoutAnimation, Pressable, View } from "react-native";
-import Animated_Reanimated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
 import {
   AppIcon,
   ArrowDown01Icon,
@@ -62,34 +55,36 @@ function formatCategoryLabel(category: string): string {
 }
 
 function PulsingDot({ color, size = 6 }: { color: string; size?: number }) {
-  const opacity = useSharedValue(1);
+  const opacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(0.3, { duration: 600 }),
-        withTiming(1, { duration: 600 }),
-      ),
-      -1,
-      false,
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.3,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]),
     );
+    animation.start();
+    return () => animation.stop();
   }, [opacity]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
-
   return (
-    <Animated_Reanimated.View
-      style={[
-        animatedStyle,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: color,
-        },
-      ]}
+    <Animated.View
+      style={{
+        opacity,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: color,
+      }}
     />
   );
 }

@@ -1,6 +1,6 @@
 import * as Linking from "expo-linking";
-import { memo, useCallback, useState } from "react";
-import { Text as RNText, View } from "react-native";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { Animated, Text as RNText, View } from "react-native";
 import { WebView } from "react-native-webview";
 import {
   CodeBlock,
@@ -21,6 +21,7 @@ const COLORS = {
 
 interface MarkdownRendererProps {
   content: string;
+  isStreaming?: boolean;
 }
 
 type InlineSegment =
@@ -542,17 +543,67 @@ function MathBlock({ code, inline }: { code: string; inline?: boolean }) {
   );
 }
 
+// -- Streaming cursor ---------------------------------------------------------
+
+function StreamingCursor() {
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity,
+        width: 2,
+        height: 16,
+        backgroundColor: COLORS.text,
+        marginLeft: 2,
+        marginTop: 2,
+        alignSelf: "flex-start",
+      }}
+    />
+  );
+}
+
 // -- Main component -----------------------------------------------------------
 
-function MarkdownRendererInner({ content }: MarkdownRendererProps) {
+function MarkdownRendererInner({
+  content,
+  isStreaming = false,
+}: MarkdownRendererProps) {
   if (!content || content.trim() === "") {
-    return null;
+    return isStreaming ? (
+      <View>
+        <StreamingCursor />
+      </View>
+    ) : null;
   }
 
   const blocks = parseMarkdown(content);
 
   if (blocks.length === 0) {
-    return null;
+    return isStreaming ? (
+      <View>
+        <StreamingCursor />
+      </View>
+    ) : null;
   }
 
   return (
@@ -599,6 +650,7 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
             return null;
         }
       })}
+      {isStreaming ? <StreamingCursor /> : null}
     </View>
   );
 }

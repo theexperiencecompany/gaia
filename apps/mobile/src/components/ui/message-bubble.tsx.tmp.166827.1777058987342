@@ -288,7 +288,10 @@ function MessageBubble({
                 <PulsingDots />
               </View>
             ) : variant === "received" ? (
-              <MarkdownRenderer content={message ?? ""} />
+              <MarkdownRenderer
+                content={message ?? ""}
+                isStreaming={isStreaming}
+              />
             ) : (
               <Text className={cn("text-base", "text-white")}>{message}</Text>
             ))}
