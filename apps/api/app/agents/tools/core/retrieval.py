@@ -9,6 +9,9 @@ This module provides the retrieve_tools function factory that supports:
 """
 
 import asyncio
+from datetime import datetime, timezone
+from pathlib import Path
+import asyncio
 from typing import (
     Annotated,
     Any,
@@ -26,6 +29,7 @@ from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.services.composio.composio_service import get_composio_service
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
@@ -36,6 +40,90 @@ from langgraph.store.base import BaseStore, SearchItem
 
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
 
+
+
+
+def _get_integration_for_space(tool_space: str):
+    for integration in OAUTH_INTEGRATIONS:
+        if (
+            integration.subagent_config
+            and integration.subagent_config.tool_space == tool_space
+        ):
+            return integration
+    return None
+
+
+async def _maybe_hydrate_missing_tools(
+    *,
+    tool_registry,
+    tool_space: str,
+    results: list[Any],
+    available_tool_names: set[str],
+) -> tuple[set[str], int]:
+    if tool_space in {"general", "subagents"}:
+        return available_tool_names, 0
+
+    integration = _get_integration_for_space(tool_space)
+    if not integration or not integration.composio_config:
+        return available_tool_names, 0
+
+    missing: set[str] = set()
+    for result in results:
+        if not isinstance(result, list) or not result:
+            continue
+        if isinstance(result[0], dict):
+            continue
+        for item in result:
+            if not hasattr(item, "namespace"):
+                continue
+            if item.namespace != (tool_space,):
+                continue
+            tool_key = str(item.key)
+            if tool_key.startswith("subagent:"):
+                continue
+            if tool_key not in available_tool_names:
+                missing.add(tool_key)
+
+    if not missing:
+        return available_tool_names, 0
+
+    missing_list = list(missing)[:10]
+    try:
+        composio_service = get_composio_service()
+        tools = await composio_service.get_tools_by_name(missing_list)
+    except Exception as e:
+        log.warning(f"Lazy hydration failed for {tool_space}: {e}")
+        return available_tool_names, 0
+
+    if not tools:
+        return available_tool_names, 0
+
+    category_name = None
+    category = None
+    for name, cat in tool_registry._categories.items():
+        if cat.space == tool_space:
+            category_name = name
+            category = cat
+            break
+
+    if category is None:
+        try:
+            await tool_registry.register_provider_tools(
+                toolkit_name=integration.composio_config.toolkit,
+                space_name=tool_space,
+                specific_tools=missing_list,
+            )
+        except Exception as e:
+            log.warning(f"Lazy hydration registry load failed for {tool_space}: {e}")
+            return available_tool_names, 0
+    else:
+        category.add_tools(tools)
+        if category_name:
+            await tool_registry._index_category_tools(category_name)
+
+    refreshed = set(tool_registry.get_tool_names())
+    return refreshed, len(tools)
+
 # ---------------------------------------------------------------------------
 # retrieve_tools docstring (doubles as LLM-facing tool description)
 # ---------------------------------------------------------------------------
@@ -44,95 +132,78 @@ WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
 # subagents never see delegation guidance they can't act on.
 
 _RETRIEVE_TOOLS_BASE_DOC = """\
-Discover available tools or load specific tools by exact name.
-
-This is your primary interface to the tool ecosystem. It supports TWO modes:
+Discover and load tools for execution. Supports two modes: discovery and binding.
 
 —DISCOVERY MODE (query)
-Use natural language to semantically search for relevant tools.
+Semantic search that returns tool names matching your intent. Tools are NOT loaded yet.
 
-IMPORTANT BEHAVIOR:
-- Discovery results are LIMITED and NOT exhaustive
-- Not all relevant tools may be returned in a single query
-- Absence of a tool in results does NOT mean it does not exist
-- You are expected to retry with different wording if needed
-
-You may:
-- Rephrase queries
-- Try broader or narrower intent
-- Use multiple intents in a single query (comma-separated)
-
-Examples of valid queries:
-- "send email"
-- "email operations"
-- "send email, delete draft"
-- "create pull request, list branches"
-
-The query is semantic, not keyword-based. Comma-separated intents
-are treated as a single semantic search and are encouraged when
-exploring related capabilities.
-
-Discovery mode ONLY returns tool names. Tools are NOT loaded.
+Rules:
+- One well-formed query is enough for most tasks. Do not retry unless results are clearly irrelevant.
+- Do not search repeatedly to be thorough. If the first result looks right, move to binding.
+- Comma-separated intents work: "list pull requests, get repo info"
 
 —BINDING MODE (exact_tool_names)
-Load tools by their exact names.
-- Use this ONLY after discovery or when exact names are already known
-- Invalid or unknown tool names are ignored
-- Successfully validated tools become available for execution
+Loads tools by exact name so they can be called. Use this after discovery or when you already know the name.
 
-—RECOMMENDED WORKFLOW
-1. Call retrieve_tools(query="your intent") to discover tools
-2. Review returned tool names
-3. Retry discovery with alternate queries if needed
-4. Call retrieve_tools(exact_tool_names=[...]) to bind tools
-5. Execute bound tools
+Rules:
+- Only bind tools you are about to use in the next 1-2 steps
+- Unknown or invalid names are silently ignored
+- You CANNOT call a tool that has not been bound first
 
-—TOOL BINDING (MANDATORY)
-You CANNOT call a tool unless it has been bound first via retrieve_tools.
-Calling an unbound tool will fail with an error.
+—STANDARD WORKFLOW
+Step 1: retrieve_tools(query="your intent")         → discover tool names
+Step 2: retrieve_tools(exact_tool_names=["TOOL_A"]) → bind for execution
+Step 3: Call the tool directly
 
-ALWAYS follow this sequence:
-1. retrieve_tools(query="your intent") — discover available tool names
-2. retrieve_tools(exact_tool_names=[...]) — bind the tools you need
-3. Call the bound tools
+Shortcut: If you already know the exact tool name, skip Step 1 and go straight to binding.
 
-—TOOL NAME FORMATS
-- Regular tools: "GMAIL_SEND_DRAFT", "CREATE_TODO"
+—EFFICIENCY RULES (follow these strictly)
+- Do not call retrieve_tools more than twice for a single task unless the first discovery returned completely irrelevant results
+- Do not discover the same intent twice with different wording unless the first returned nothing useful
+- Do not bind tools you are not going to call immediately
+- Once a tool is bound and returns results, use those results. Do not search for alternative tools.
+
+—TOOL NAME FORMAT
+Tools follow ALLCAPS_SNAKE_CASE naming: "GITHUB_LIST_PULL_REQUESTS", "GMAIL_SEND_EMAIL"
+Internal tools follow snake_case: "plan_tasks", "vfs_read"
 
 —ARGS
 query:
-    Natural language description of intent for discovery.
-    Results are limited and best-effort.
-    Retry with different phrasing if needed.
+    Natural language description of what you want to do.
+    Be specific about the action and the provider.
+    Example: "list pull requests", "send email", "create github issue"
 
 exact_tool_names:
-    Exact tool names to load and bind for execution.
+    List of exact tool names to load and make executable.
+    Example: ["GITHUB_LIST_PULL_REQUESTS", "GITHUB_GET_PULL_REQUEST"]
 
 —RETURNS
-RetrieveToolsResult with:
-- tools_to_bind: tools that are loaded and executable
-- response: tool names discovered or validated
+response: tool names discovered or validated
+tools_to_bind: tools that are now loaded and ready to call
 
 —EXAMPLES
-1. Find and reply to email (Gmail)
-Discover:
-  retrieve_tools(query="find emails, reply to thread")
-  → returns ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
-Bind & Execute:
-  retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS","GMAIL_REPLY_TO_THREAD"])
-  → GMAIL_FETCH_EMAILS(...) returns email list
-  → GMAIL_REPLY_TO_THREAD(...) sends reply
 
-2. Search, delete, and recreate tasks with subtasks (Todo)
-Discover:
-  retrieve_tools(query="search todos, delete task, create with subtasks")
-  → returns ["search_todos", "delete_todo", "create_todo", "add_subtask", ...]
-Bind & Execute:
-  retrieve_tools(exact_tool_names=["search_todos","delete_todo","create_todo","add_subtask"])
-  → search_todos(...) finds matching tasks
-  → delete_todo(...) removes old task
-  → create_todo(...) creates new task
-  → add_subtask(...) adds subtasks"""
+Simple read task:
+  retrieve_tools(query="list pull requests")
+  → ["GITHUB_LIST_PULL_REQUESTS", "GITHUB_LIST_PULL_REQUESTS_FOR_REPO", ...]
+  retrieve_tools(exact_tool_names=["GITHUB_LIST_PULL_REQUESTS"])
+  → GITHUB_LIST_PULL_REQUESTS(sort="updated", direction="desc")
+  → First result is the answer. Stop.
+
+Multi-tool task:
+  retrieve_tools(query="fetch emails, send reply")
+  → ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
+  retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD"])
+  → GMAIL_FETCH_EMAILS(...) → find the thread
+  → GMAIL_REPLY_TO_THREAD(...) → send reply. Done.
+
+Write task with verification:
+  retrieve_tools(query="list branches, create pull request")
+  → ["GITHUB_LIST_BRANCHES", "GITHUB_CREATE_PULL_REQUEST", ...]
+  retrieve_tools(exact_tool_names=["GITHUB_LIST_BRANCHES", "GITHUB_CREATE_PULL_REQUEST"])
+  → GITHUB_LIST_BRANCHES(...) → confirm branch name
+  → GITHUB_CREATE_PULL_REQUEST(...) → done.
+"""
 
 _RETRIEVE_TOOLS_SUBAGENT_SECTION = """
 
@@ -360,6 +431,23 @@ async def _process_search_results(
         if is_public_search:
             processed = _process_public_integration_result(result, idx)
         else:
+            try:
+                preview = [
+                    {
+                        "key": str(item.key),
+                        "namespace": item.namespace
+                        if hasattr(item, "namespace")
+                        else None,
+                        "score": item.score,
+                    }
+                    for item in result[:20]
+                ]
+                log.debug(
+                    f"Chroma search raw hits (task={idx}, tool_space={tool_space}): "
+                    f"{len(result)} items, preview={preview}"
+                )
+            except Exception as e:
+                log.debug(f"Chroma search raw hits log failed (task={idx}): {e}")
             processed = _process_chroma_search_result(
                 result,
                 idx,
@@ -460,6 +548,15 @@ def get_retrieve_tools_function(
         query: Optional[str] = None,
         exact_tool_names: Optional[list[str]] = None,
     ) -> RetrieveToolsResult:
+        log.info(
+            "retrieve_tools called",
+            query=query,
+            exact_tool_names=exact_tool_names,
+            tool_space=tool_space,
+            include_subagents=include_subagents,
+            user_id=config.get("configurable", {}).get("user_id")
+            or config.get("metadata", {}).get("user_id"),
+        )
         if not query and not exact_tool_names:
             raise ValueError(
                 "Either 'query' (for discovery) or 'exact_tool_names' (for binding) is required."
@@ -498,8 +595,10 @@ def get_retrieve_tools_function(
                     mode="binding",
                     tools_requested=len(exact_tool_names),
                     tools_bound=len(validated_tool_names),
+                    tools_filtered=len(exact_tool_names) - len(validated_tool_names),
                 )
             )
+        
             return RetrieveToolsResult(
                 tools_to_bind=validated_tool_names,
                 response=validated_tool_names,
@@ -519,10 +618,56 @@ def get_retrieve_tools_function(
 
         results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
+        available_tool_names_set = set(available_tool_names)
+        available_tool_names_set, hydrated_count = await _maybe_hydrate_missing_tools(
+            tool_registry=tool_registry,
+            tool_space=tool_space,
+            results=results,
+            available_tool_names=available_tool_names_set,
+        )
+
+        chroma_hits = 0
+        public_hits = 0
+        per_namespace_hits: dict[str, int] = {}
+        for result in results:
+            if not isinstance(result, list) or not result:
+                continue
+            if isinstance(result[0], dict):
+                public_hits += len(result)
+                continue
+            chroma_hits += len(result)
+            for item in result:
+                if not hasattr(item, "namespace"):
+                    continue
+                ns = "::".join(item.namespace) if item.namespace else "default"
+                per_namespace_hits[ns] = per_namespace_hits.get(ns, 0) + 1
+
+        chroma_preview: list[str] = []
+        for result in results:
+            if (
+                isinstance(result, list)
+                and result
+                and not isinstance(result[0], dict)
+            ):
+                for item in result:
+                    if isinstance(item, dict):
+                        namespace = item.get("namespace")
+                        tool_key = item.get("key")
+                    else:
+                        namespace = getattr(item, "namespace", None)
+                        tool_key = getattr(item, "key", None)
+                    if tool_key is None:
+                        continue
+                    chroma_preview.append(f"{namespace}::{tool_key}")
+                    if len(chroma_preview) >= 10:
+                        break
+            if len(chroma_preview) >= 10:
+                break
+
         # Process results
         all_results = await _process_search_results(
             results,
-            set(available_tool_names),
+            available_tool_names_set,
             tool_registry,
             include_subagents,
             tool_space,
@@ -548,10 +693,14 @@ def get_retrieve_tools_function(
                 query=query,
                 namespaces_searched=list(user_namespaces),
                 tools_discovered=len(final_tools),
+                chroma_hits=chroma_hits,
+                public_hits=public_hits,
+                candidates_after_filter=len(all_results),
             )
         )
+    
         return RetrieveToolsResult(
-            tools_to_bind=[],
+            tools_to_bind=final_tools,
             response=final_tools,
         )
 

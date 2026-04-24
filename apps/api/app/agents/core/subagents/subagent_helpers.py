@@ -160,7 +160,9 @@ async def create_agent_context_message(
 
     # Add user name context
     if user_name:
-        context_parts.append(f"User Name: {user_name}")
+        context_parts.append(
+            f"Gaia Display Name: {user_name} (not a connected service username)"
+        )
 
     # Add current UTC time
     utc_time = datetime.now(timezone.utc)

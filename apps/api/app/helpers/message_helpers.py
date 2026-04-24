@@ -136,7 +136,9 @@ async def get_memory_message(
 
         # Add user name context
         if user_name:
-            context_parts.append(f"User Name: {user_name}")
+            context_parts.append(
+                f"Gaia Display Name: {user_name} (not a connected service username)"
+            )
 
         # Add user preferences if available
         if user_preferences:

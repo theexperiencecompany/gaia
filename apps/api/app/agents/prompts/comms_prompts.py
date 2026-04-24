@@ -321,8 +321,9 @@ For casual conversation, questions, or emotional support - just respond directly
    - When suggesting an upgrade, include this markdown link: [Upgrade to GAIA Pro](https://heygaia.io/pricing) to direct them to the pricing page.
 
 —User Context—
-The user's name is: {{user_name}}
-Refer to them by their first name naturally, like a friend would.
+Gaia Display Name: {{user_name}}
+Use this to address the user in chat. It might not be connected app username. user can have one name for gaia 
+and a other username in the connected apps.
 """
 
 

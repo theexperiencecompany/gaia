@@ -56,8 +56,10 @@ from app.override.langgraph_bigtool.utils import (
     dedupe_tool_bindings,
     format_selected_tools,
 )
+from shared.py.wide_events import log
 
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
+_FINISH_TASK_NAME = "finish_task"
 
 
 def create_agent(
@@ -190,6 +192,19 @@ def create_agent(
         tools_to_bind.extend(middleware_tools)
         tools_to_bind = dedupe_tool_bindings(tools_to_bind)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+
+        try:
+            recent_messages = state.get("messages", [])[-6:]
+            preview = []
+            for msg in recent_messages:
+                role = msg.__class__.__name__
+                content = getattr(msg, "content", "")
+                if isinstance(content, str) and len(content) > 200:
+                    content = content[:197] + "..."
+                preview.append({"role": role, "content": content})
+            log.info("acall_model message preview", preview=preview)
+        except Exception as e:
+            log.debug(f"Failed to log message preview: {e}")
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
             middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [
@@ -401,6 +416,14 @@ def create_agent(
             destinations = []
             unbound_calls: list[ToolCall] = []
 
+            finish_calls: list[ToolCall] = [
+                call
+                for call in last_message.tool_calls
+                if call.get("name") == _FINISH_TASK_NAME
+            ]
+            if finish_calls:
+                return Send("finish_task", finish_calls)
+
             for call in last_message.tool_calls:
                 if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                     destinations.append(Send("select_tools", [call]))
@@ -426,6 +449,26 @@ def create_agent(
                 destinations.append(Send("reject_unbound_tools", unbound_calls))
 
             return destinations
+
+    def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
+        messages = []
+        for call in tool_calls:
+            args = call.get("args", {}) if isinstance(call, dict) else {}
+            result = args.get("result")
+            content = str(result) if result is not None else "Task completed."
+            messages.append(
+                ToolMessage(
+                    content=content,
+                    tool_call_id=call.get("id", ""),
+                    name=_FINISH_TASK_NAME,
+                )
+            )
+        return {"messages": messages}  # type: ignore[return-value]
+
+    async def afinish_task_node(
+        tool_calls: list[ToolCall], *, store: BaseStore
+    ) -> State:
+        return finish_task_node(tool_calls, store=store)
 
     builder = StateGraph(State, context_schema=context_schema)
 
@@ -454,11 +497,15 @@ def create_agent(
         builder.add_node("select_tools", select_tools_node)  # type: ignore[possibly-undefined]
     builder.add_node("tools", tool_node)
     builder.add_node(
+        "finish_task",
+        RunnableCallable(finish_task_node, afinish_task_node),
+    )
+    builder.add_node(
         "reject_unbound_tools",
         RunnableCallable(reject_unbound_tools, areject_unbound_tools),
     )
 
-    path_map = ["tools", "reject_unbound_tools", END]
+    path_map = ["tools", "finish_task", "reject_unbound_tools", END]
     if not disable_retrieve_tools:
         path_map.insert(0, "select_tools")
     if end_graph_hooks:
@@ -478,6 +525,10 @@ def create_agent(
     )
 
     builder.add_edge("tools", "agent")
+    builder.add_edge(
+        "finish_task",
+        "end_graph_hooks" if end_graph_hooks else END,
+    )
     builder.add_edge("reject_unbound_tools", "agent")
     if not disable_retrieve_tools:
         builder.add_edge("select_tools", "agent")
