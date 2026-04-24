@@ -108,11 +108,13 @@ Table([Col, Col, ...], title, striped)
     c2 = Col("PRs", [14, 8], "number", "end")
     c3 = Col("Status", ["Active", "Review"], "badge")
 
-Button(label, action, variant, color)
+Button(label, action, variant, color, url)
   variant: "primary" | "secondary" | "flat" | "ghost"
   color: "default" | "primary" | "success" | "warning" | "danger"
   action: follow-up message sent when pressed (continue_conversation).
-  Example: Button("Accept", "Proceed with deployment", "primary", "success")
+  url: if set, pressing opens the URL in a new tab (takes priority over action).
+  Example action: Button("Accept", "Proceed with deployment", "primary", "success")
+  Example link:   Button("View PR #648", null, "flat", null, "https://github.com/org/repo/pull/648")
 
 Buttons([Button, Button, ...])  Horizontal row of Button — action groups.
 

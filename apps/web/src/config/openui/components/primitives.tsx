@@ -86,6 +86,7 @@ export const buttonSchema = z.object({
   color: z
     .enum(["default", "primary", "danger", "warning", "success"])
     .optional(),
+  url: z.string().optional(),
 });
 
 export const progressSchema = z.object({
@@ -273,6 +274,13 @@ export function StatView(props: z.infer<typeof statSchema>) {
 export function ButtonView(props: z.infer<typeof buttonSchema>) {
   const triggerAction = useTriggerAction();
   const handlePress = () => {
+    if (props.url) {
+      triggerAction(props.label, undefined, {
+        type: "open_url",
+        params: { url: props.url },
+      });
+      return;
+    }
     if (props.action) triggerAction(props.action);
   };
 
