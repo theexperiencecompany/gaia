@@ -42,6 +42,10 @@ async def execute_code(
     if language.lower() not in valid_languages:
         return f"Error: Unsupported language '{language}'. Supported: {', '.join(valid_languages)}"
 
+    # Security (C11): this tool MUST only run code inside the E2B sandbox.
+    # If the API key is missing we fail closed — there is NO local
+    # ``exec`` / ``subprocess`` fallback and none may be added without a
+    # separate security review.
     if not hasattr(settings, "E2B_API_KEY") or not settings.E2B_API_KEY:
         return "Error: E2B API key not configured. Please set E2B_API_KEY in environment variables."
 

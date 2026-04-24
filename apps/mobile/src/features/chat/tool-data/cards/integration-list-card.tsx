@@ -67,10 +67,7 @@ function IntegrationRow({
 
       <View className="flex-1 min-w-0">
         <View className="flex-row items-center gap-2 flex-wrap">
-          <Text
-            className="text-sm font-medium text-zinc-100"
-            numberOfLines={1}
-          >
+          <Text className="text-sm font-medium text-zinc-100" numberOfLines={1}>
             {name}
           </Text>
           {isConnected ? (

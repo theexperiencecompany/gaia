@@ -80,37 +80,6 @@ const getExtLabel = (filename?: string, contentType?: string): string => {
   return "FILE";
 };
 
-const formatNumber = (num?: number): string => {
-  if (!num) return "0";
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
-  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
-  return num.toString();
-};
-
-const formatTweetDate = (dateStr?: string): string => {
-  if (!dateStr) return "";
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return dateStr;
-  }
-};
-
-const formatJoinDate = (dateStr?: string): string => {
-  if (!dateStr) return "";
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  } catch {
-    return dateStr;
-  }
-};
-
 const getTriggerInfo = (
   triggerType?: string,
   triggerLabel?: string,
