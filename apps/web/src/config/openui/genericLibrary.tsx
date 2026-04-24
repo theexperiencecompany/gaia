@@ -26,7 +26,7 @@ import {
   accordionDef,
   copyableContentDef,
   fileTreeDef,
-  kbdBlockDef,
+  kbdRowDef,
   tabsBlockDef,
 } from "./components/layout";
 import {
@@ -72,7 +72,7 @@ export {
   AccordionView,
   CopyableContentView,
   FileTreeView,
-  KbdBlockView,
+  KbdRowView,
   TabsBlockView,
 } from "./components/layout";
 export {
@@ -339,7 +339,7 @@ export const genericLibrary = createLibrary({
     fileTreeDef,
     accordionDef,
     tabsBlockDef,
-    kbdBlockDef,
+    kbdRowDef,
     // Analytics
     barChartDef,
     lineChartDef,
@@ -402,12 +402,13 @@ export const genericLibrary = createLibrary({
         "FileTree",
         "Accordion",
         "TabsBlock",
-        "KbdBlock",
+        "KbdRow",
       ],
       notes: [
         "Stack/Card/Grid/Row/Column are composition containers",
         "Card variant: card=zinc-800, sunk=zinc-900, clear=transparent",
         "FileTree variant: file (default) or generic (for non-file hierarchies)",
+        "KbdRow is a single shortcut row — compose multiple inside a Card for a reference table",
       ],
     },
     {

@@ -4,6 +4,7 @@ import React from "react";
 import {
   Area,
   Bar,
+  CartesianGrid,
   Cell,
   Label,
   LabelList,
@@ -45,6 +46,13 @@ const PIE_COLORS = ["#00bbff", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"];
 /** Coerce a string | string[] to string[] so charts never break on a bare string. */
 function toKeys(v: string | string[]): string[] {
   return Array.isArray(v) ? v : [v];
+}
+
+/** Compact number formatter: 1500 → "1.5K", 1200000 → "1.2M" */
+function fmtNum(v: number): string {
+  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return String(v);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,21 +147,16 @@ function ChartCard({
   description,
   footer,
   children,
-  dataPoints = 0,
 }: {
   title?: string;
   description?: string;
   footer?: string;
   children: React.ReactNode;
-  dataPoints?: number;
 }) {
-  // Scale width to data: ~80px per point, min 300px, max 3xl (48rem)
-  const width =
-    dataPoints > 0 ? Math.min(768, Math.max(300, dataPoints * 80)) : undefined;
   return (
     <Card
-      className="bg-zinc-800 border-none shadow-none max-w-3xl"
-      style={width ? { width } : { width: "100%" }}
+      className="bg-zinc-800 border-none shadow-none w-full max-w-3xl"
+      style={{ width: "100%" }}
     >
       {(title || description) && (
         <CardHeader className="pb-0 flex-col items-start">
@@ -199,13 +202,27 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-50 w-full">
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-[250px] w-full"
+      >
         <RechartsBarChart
           data={props.data}
           layout={isHorizontal ? "vertical" : "horizontal"}
+          margin={
+            isHorizontal
+              ? { top: 4, right: 48, bottom: 4, left: 4 }
+              : { top: 20, right: 8, bottom: 4, left: 8 }
+          }
         >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#3f3f46"
+            opacity={0.6}
+            vertical={isHorizontal}
+            horizontal={!isHorizontal}
+          />
           {isHorizontal ? (
             <>
               <YAxis
@@ -214,13 +231,14 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: "#71717a", fontSize: 11 }}
-                width={80}
+                width={88}
               />
               <XAxis
                 type="number"
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: "#71717a", fontSize: 11 }}
+                tickFormatter={fmtNum}
               />
             </>
           ) : (
@@ -235,20 +253,35 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: "#71717a", fontSize: 11 }}
+                tickFormatter={fmtNum}
+                width={40}
               />
             </>
           )}
-          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+          <ChartTooltip
+            cursor={{ fill: "rgba(255,255,255,0.04)" }}
+            content={<ChartTooltipContent />}
+          />
           {showLegend && <ChartLegend content={<ChartLegendContent />} />}
-          {keys.map((key) => (
+          {keys.map((key, ki) => (
             <Bar
               key={key}
               dataKey={key}
               fill={`var(--color-${key})`}
-              radius={8}
-              maxBarSize={40}
+              radius={isStacked && ki < keys.length - 1 ? 0 : [6, 6, 0, 0]}
+              maxBarSize={48}
               {...(isStacked ? { stackId: "stack" } : {})}
-            />
+            >
+              {!isStacked && !isHorizontal && keys.length === 1 && (
+                <LabelList
+                  dataKey={key}
+                  position="top"
+                  formatter={fmtNum}
+                  className="fill-foreground"
+                  fontSize={11}
+                />
+              )}
+            </Bar>
           ))}
         </RechartsBarChart>
       </ChartContainer>
@@ -271,15 +304,21 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-50 w-full">
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-[250px] w-full"
+      >
         <RechartsLineChart
           data={props.data}
-          {...(props.showLabels === true
-            ? { margin: { top: 24, left: 12, right: 12 } }
-            : {})}
+          margin={{ top: 20, right: 12, bottom: 4, left: 8 }}
         >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#3f3f46"
+            opacity={0.6}
+            vertical={false}
+          />
           <XAxis
             dataKey={props.xKey}
             axisLine={false}
@@ -290,8 +329,10 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#71717a", fontSize: 11 }}
+            tickFormatter={fmtNum}
+            width={40}
           />
-          <ChartTooltip content={<ChartTooltipContent />} />
+          <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
           {showLegend && <ChartLegend content={<ChartLegendContent />} />}
           {keys.map((key) => (
             <Line
@@ -305,14 +346,15 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
                   ? { fill: `var(--color-${key})` }
                   : false
               }
+              activeDot={{ r: 6 }}
             >
               {props.showLabels === true && (
                 <LabelList
                   position="top"
                   offset={12}
+                  className="fill-foreground"
                   fontSize={12}
-                  fill="#a1a1aa"
-                  dataKey={props.xKey}
+                  formatter={fmtNum}
                 />
               )}
             </Line>
@@ -338,10 +380,15 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-50 w-full">
-        <RechartsAreaChart data={props.data}>
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-[250px] w-full"
+      >
+        <RechartsAreaChart
+          data={props.data}
+          margin={{ top: 8, right: 12, bottom: 4, left: 8 }}
+        >
           <defs>
             {keys.map((key) => (
               <linearGradient
@@ -353,18 +400,24 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
                 y2="1"
               >
                 <stop
-                  offset="0%"
+                  offset="5%"
                   stopColor={`var(--color-${key})`}
-                  stopOpacity={0.4}
+                  stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
                   stopColor={`var(--color-${key})`}
-                  stopOpacity={0.05}
+                  stopOpacity={0.1}
                 />
               </linearGradient>
             ))}
           </defs>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#3f3f46"
+            opacity={0.6}
+            vertical={false}
+          />
           <XAxis
             dataKey={props.xKey}
             axisLine={false}
@@ -375,8 +428,13 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#71717a", fontSize: 11 }}
+            tickFormatter={fmtNum}
+            width={40}
           />
-          <ChartTooltip content={<ChartTooltipContent />} />
+          <ChartTooltip
+            cursor={false}
+            content={<ChartTooltipContent indicator="dot" />}
+          />
           {showLegend && <ChartLegend content={<ChartLegendContent />} />}
           {keys.map((key) => (
             <Area
@@ -384,8 +442,12 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
               type="natural"
               dataKey={key}
               stroke={`var(--color-${key})`}
-              strokeWidth={2}
+              strokeWidth={2.5}
               fill={`url(#gradient-${key})`}
+              fillOpacity={1}
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 0 }}
+              stackId={keys.length > 1 ? "a" : undefined}
             />
           ))}
         </RechartsAreaChart>
@@ -415,7 +477,6 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
       <ChartContainer
         config={chartConfig}
@@ -431,7 +492,9 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
               cy="50%"
               outerRadius={80}
               innerRadius={60}
-              strokeWidth={0}
+              paddingAngle={2}
+              strokeWidth={5}
+              stroke="#27272a"
             >
               {props.data.map((entry, i) => (
                 <Cell
@@ -454,16 +517,20 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
                           y={viewBox.cy}
                           className="fill-foreground text-2xl font-bold"
                         >
-                          {total}
+                          {fmtNum(total)}
                         </tspan>
-                        <tspan
-                          x={viewBox.cx}
-                          y={(viewBox.cy || 0) + 20}
-                          fontSize={12}
-                          fill="#71717a"
-                        >
-                          {props.valueKey}
-                        </tspan>
+                        {props.title && (
+                          <tspan
+                            x={viewBox.cx}
+                            y={(viewBox.cy || 0) + 20}
+                            fontSize={12}
+                            fill="#71717a"
+                          >
+                            {props.title.length > 14
+                              ? `${props.title.slice(0, 12)}…`
+                              : props.title}
+                          </tspan>
+                        )}
                       </text>
                     );
                   }
@@ -530,24 +597,41 @@ export function ScatterChartView(props: z.infer<typeof scatterChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-50 w-full">
-        <RechartsScatterChart>
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-[250px] w-full"
+      >
+        <RechartsScatterChart
+          margin={{ top: 20, right: 12, bottom: 4, left: 8 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" opacity={0.6} />
           <XAxis
             dataKey={props.xKey}
+            name={props.xKey}
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#71717a", fontSize: 11 }}
+            tickFormatter={fmtNum}
           />
           <YAxis
             dataKey={props.yKey}
+            name={props.yKey}
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#71717a", fontSize: 11 }}
+            tickFormatter={fmtNum}
+            width={40}
           />
-          <ChartTooltip content={<ChartTooltipContent />} />
-          <Scatter data={props.data} fill="var(--color-scatter)" />
+          <ChartTooltip
+            cursor={{ strokeDasharray: "3 3" }}
+            content={<ChartTooltipContent />}
+          />
+          <Scatter
+            data={props.data}
+            fill="var(--color-scatter)"
+            fillOpacity={0.8}
+          />
         </RechartsScatterChart>
       </ChartContainer>
     </ChartCard>
@@ -569,7 +653,6 @@ export function RadarChartView(props: z.infer<typeof radarChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
       <ChartContainer config={chartConfig} className="h-55 w-full">
         <RechartsRadarChart data={props.data}>
@@ -768,17 +851,13 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
     );
   }
 
-  // Default: "gauge" variant — radial chart with PolarGrid track ring
-  // PolarGrid draws the full ring as background track; endAngle is proportional to fill
-  const maxArc = 250;
-  const valueAngle = Math.max(1, (pct / 100) * maxArc);
-  const outerR = 65;
-  const innerR = 55;
-
+  // Default: "gauge" variant — single-arc radial chart
+  // RadialBar's built-in `background` prop renders the full track, then the
+  // filled portion is drawn on top at length proportional to pct.
   const gaugeConfig: ChartConfig = {
     value: { label: props.title ?? "Value", color },
   };
-  const gaugeData = [{ name: "value", value: 1, fill: color }];
+  const gaugeData = [{ name: "value", value: pct, fill: color }];
 
   return (
     <div
@@ -791,19 +870,23 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
       >
         <RadialBarChart
           data={gaugeData}
-          startAngle={0}
-          endAngle={valueAngle}
-          outerRadius={outerR}
-          innerRadius={innerR}
+          startAngle={90}
+          endAngle={-270}
+          outerRadius={70}
+          innerRadius={58}
+          barSize={12}
         >
-          <PolarGrid
-            gridType="circle"
-            radialLines={false}
-            stroke="none"
-            className="first:fill-zinc-700 last:fill-zinc-800"
-            polarRadius={[outerR, innerR]}
+          <PolarAngleAxis
+            type="number"
+            domain={[0, 100]}
+            tick={false}
+            axisLine={false}
           />
-          <RadialBar dataKey="value" cornerRadius={10} />
+          <RadialBar
+            dataKey="value"
+            cornerRadius={10}
+            background={{ fill: "#3f3f46" }}
+          />
           <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
             <Label
               content={({ viewBox }) => {

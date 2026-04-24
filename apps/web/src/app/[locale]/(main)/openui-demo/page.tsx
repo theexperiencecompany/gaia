@@ -1,12 +1,15 @@
 "use client";
 
 import { Divider } from "@heroui/divider";
+import { notFound } from "next/navigation";
 import type React from "react";
 import {
   AccordionView,
   AreaChartView,
+  AudioPlayerView,
   AvatarView,
   BarChartView,
+  ButtonsView,
   ButtonView,
   CalendarMiniView,
   CalloutView,
@@ -18,7 +21,8 @@ import {
   FileTreeView,
   GaugeChartView,
   ImageBlockView,
-  KbdBlockView,
+  ImageGalleryView,
+  KbdRowView,
   LineChartView,
   MapBlockView,
   NumberTickerView,
@@ -29,10 +33,12 @@ import {
   ScatterChartView,
   StatView,
   StepsView,
+  TableView,
   TabsBlockView,
   TagBlockView,
   TagView,
   TextContentView,
+  TextDocumentView,
   TimelineView,
   VideoBlockView,
 } from "@/config/openui/genericLibrary";
@@ -69,6 +75,9 @@ function Row({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 
 export default function OpenUIDemoPage() {
+  if (process.env.NODE_ENV !== "development") {
+    notFound();
+  }
   return (
     <div className="h-full min-h-0 overflow-y-auto p-4 md:p-6 pb-16">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -181,7 +190,10 @@ export default function OpenUIDemoPage() {
           </div>
         </Section>
 
-        <Section title="Avatar">
+        <Section
+          title="Avatar"
+          description="Default: image only. Pass showName to show label."
+        >
           <Row>
             <AvatarView
               name="Aryan Randeriya"
@@ -189,6 +201,12 @@ export default function OpenUIDemoPage() {
             />
             <AvatarView name="Jane Smith" />
             <AvatarView name="Bob" color="success" />
+            <AvatarView
+              name="Aryan Randeriya"
+              image="https://github.com/aryanranderiya.png"
+              showName
+            />
+            <AvatarView name="Jane Smith" showName />
           </Row>
         </Section>
 
@@ -201,24 +219,58 @@ export default function OpenUIDemoPage() {
             </div>
             <div className="space-y-1">
               <RadioView label="Free tier" value="free" />
-              <RadioView label="Pro — $12/mo" value="pro" />
+              <RadioView label="Pro — $12/mo" value="pro" selected />
               <RadioView label="Enterprise" value="enterprise" />
             </div>
           </Row>
         </Section>
 
-        <Section
-          title="Table"
-          description="Col + Table are DSL-only primitives (use via :::openui). Demo shows rendered output."
-        >
-          <div className="rounded-2xl bg-zinc-900 p-3 text-xs text-zinc-400">
-            <pre className="whitespace-pre-wrap">{`:::openui
-root = Table([name, role, status], "Team")
-name = Col("Name", ["Alice", "Bob", "Carol"])
-role = Col("Role", ["Engineer", "Designer", "PM"])
-status = Col("Status", ["active", "inactive", "active"], "badge")
-:::`}</pre>
-          </div>
+        <Section title="Table">
+          <TableView
+            title="Team roster"
+            cols={
+              [
+                {
+                  props: {
+                    header: "Name",
+                    values: [
+                      "Alice Chen",
+                      "Bob Kim",
+                      "Carol Davis",
+                      "Dave Park",
+                    ],
+                  },
+                },
+                {
+                  props: {
+                    header: "Role",
+                    values: [
+                      "Lead Engineer",
+                      "Designer",
+                      "Product Manager",
+                      "DevOps",
+                    ],
+                  },
+                },
+                {
+                  props: {
+                    header: "Status",
+                    values: ["active", "active", "inactive", "active"],
+                    type: "badge",
+                  },
+                },
+                {
+                  props: {
+                    header: "PRs merged",
+                    values: [42, 17, 3, 28],
+                    type: "number",
+                    align: "end",
+                  },
+                },
+              ] as Parameters<typeof TableView>[0]["cols"]
+            }
+            striped
+          />
         </Section>
 
         {/* ---------------------------------------------------------------- */}
@@ -226,16 +278,18 @@ status = Col("Status", ["active", "inactive", "active"], "badge")
         {/* ---------------------------------------------------------------- */}
 
         <Section title="CopyableContent">
-          <Row>
+          <div className="space-y-3">
             <CopyableContentView
-              content="GAIA_API_KEY=gaia_sk_prod_abc123xyz"
+              content={`GAIA_API_KEY=gaia_sk_prod_abc123xyz
+GAIA_WEBHOOK_SECRET=wh_secret_def456
+NEXT_PUBLIC_GAIA_URL=https://api.heygaia.io`}
               languageHint=".env"
             />
             <CopyableContentView
               content="npm install @gaia/sdk"
               mode="inline"
             />
-          </Row>
+          </div>
         </Section>
 
         <Section title="FileTree — file variant">
@@ -287,35 +341,102 @@ status = Col("Status", ["active", "inactive", "active"], "badge")
           />
         </Section>
 
-        <Section title="TabsBlock">
+        <Section
+          title="TabsBlock"
+          description="Each tab can hold any OpenUI content — charts, stats, timelines."
+        >
           <TabsBlockView
             tabs={[
               {
-                label: "Overview",
-                content: "Key metrics and recent activity for your workspace.",
+                label: "Analytics",
+                content: (
+                  <BarChartView
+                    title="Weekly API requests"
+                    data={[
+                      { day: "Mon", requests: 1200 },
+                      { day: "Tue", requests: 1800 },
+                      { day: "Wed", requests: 1600 },
+                      { day: "Thu", requests: 2100 },
+                      { day: "Fri", requests: 2400 },
+                    ]}
+                    xKey="day"
+                    yKeys={["requests"]}
+                  />
+                ),
               },
               {
-                label: "Members",
-                content: "Manage team members, roles, and permissions.",
+                label: "Health",
+                content: (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-3">
+                      <StatView value="99.8%" label="Uptime" trend="neutral" />
+                      <StatView
+                        value="23ms"
+                        label="P95 latency"
+                        trend="down"
+                        trendLabel="-4ms"
+                      />
+                      <StatView value="4 / 6" label="Nodes healthy" />
+                    </div>
+                    <ProgressView value={62} label="CPU" showValue />
+                    <ProgressView
+                      value={89}
+                      label="Memory"
+                      color="danger"
+                      showValue
+                    />
+                  </div>
+                ),
               },
               {
-                label: "Billing",
-                content: "View invoices and update your payment method.",
+                label: "Activity",
+                content: (
+                  <TimelineView
+                    items={[
+                      {
+                        time: "2026-04-24T11:00:00",
+                        title: "Deployment to production",
+                        actor: "aryanranderiya",
+                        status: "success",
+                        description: "v2.1.0 deployed across all regions.",
+                      },
+                      {
+                        time: "2026-04-24T10:30:00",
+                        title: "CI checks passed",
+                        status: "success",
+                        description: "All 48 tests passed in 2m 14s.",
+                      },
+                      {
+                        time: "2026-04-24T09:15:00",
+                        title: "Review requested",
+                        actor: "janedoe",
+                        status: "warning",
+                        description: "Awaiting 1 more approval.",
+                      },
+                    ]}
+                  />
+                ),
               },
             ]}
           />
         </Section>
 
-        <Section title="KbdBlock">
-          <KbdBlockView
-            title="Keyboard shortcuts"
-            shortcuts={[
-              { keys: ["⌘", "K"], description: "Open command palette" },
-              { keys: ["⌘", "Shift", "P"], description: "Quick actions" },
-              { keys: ["⌘", "Z"], description: "Undo last change" },
-              { keys: ["Esc"], description: "Close modal / dismiss" },
-            ]}
-          />
+        <Section
+          title="KbdRow"
+          description="Compose shortcut rows inside a Card for a full shortcut reference."
+        >
+          <div className="rounded-2xl bg-zinc-900 p-3 w-full max-w-lg space-y-2">
+            <p className="text-sm font-semibold text-zinc-100 mb-3">
+              Keyboard shortcuts
+            </p>
+            <KbdRowView keys={["⌘", "K"]} description="Open command palette" />
+            <KbdRowView
+              keys={["⌘", "Shift", "P"]}
+              description="Quick actions"
+            />
+            <KbdRowView keys={["⌘", "Z"]} description="Undo last change" />
+            <KbdRowView keys={["Esc"]} description="Close modal / dismiss" />
+          </div>
         </Section>
 
         {/* ---------------------------------------------------------------- */}
@@ -480,6 +601,70 @@ status = Col("Status", ["active", "inactive", "active"], "badge")
           />
         </Section>
 
+        <Section title="AudioPlayer">
+          <AudioPlayerView
+            src="https://cdn.pixabay.com/audio/2024/03/06/audio_e6f50b9524.mp3"
+            title="Episode 42 — The state of AI in 2026"
+            description="Weekly tech roundup, 28 min"
+          />
+        </Section>
+
+        <Section title="ImageGallery">
+          <ImageGalleryView
+            images={[
+              {
+                src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600",
+                alt: "Server rack",
+                caption: "Data center",
+              },
+              {
+                src: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600",
+                alt: "Code on monitor",
+                caption: "Terminal",
+              },
+              {
+                src: "https://images.unsplash.com/photo-1487058792275-0ad4aaf24ca7?w=600",
+                alt: "Abstract code",
+                caption: "Algorithms",
+              },
+              {
+                src: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600",
+                alt: "Glowing UI",
+                caption: "Interfaces",
+              },
+            ]}
+          />
+        </Section>
+
+        <Section title="MapBlock">
+          <MapBlockView
+            lat={40.7128}
+            lng={-74.006}
+            label="New York City"
+            zoom={12}
+          />
+        </Section>
+
+        <Section title="Buttons">
+          <ButtonsView
+            buttons={
+              [
+                {
+                  props: {
+                    label: "Accept",
+                    variant: "primary",
+                    color: "success",
+                  },
+                },
+                {
+                  props: { label: "Reject", variant: "flat", color: "danger" },
+                },
+                { props: { label: "Request more info", variant: "ghost" } },
+              ] as Parameters<typeof ButtonsView>[0]["buttons"]
+            }
+          />
+        </Section>
+
         {/* ---------------------------------------------------------------- */}
         {/* Timeline & Steps                                                  */}
         {/* ---------------------------------------------------------------- */}
@@ -553,6 +738,103 @@ status = Col("Status", ["active", "inactive", "active"], "badge")
   return \`Hello, \${name}!\`;
 }`}
           />
+        </Section>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Documents                                                         */}
+        {/* ---------------------------------------------------------------- */}
+
+        <Section title="TextDocument">
+          <TextDocumentView
+            title="Weekly Report"
+            body="<h2>Summary</h2><p>This week the team shipped the OpenUI primitives revamp and reduced the backend prompt size by 30%. Performance benchmarks improved by 18% after the chart margin rewrite.</p><h2>Highlights</h2><ul><li>OpenUI component library synced with backend</li><li>Demo page now covers every registered component</li><li>Anonymous Pro replaced with Geist Mono across the app</li></ul><h2>Next Week</h2><p>Focus shifts to the scalability audit findings and shadcn-style chart polish.</p>"
+            fields={[
+              { label: "Author", value: "Aryan" },
+              { label: "Period", value: "Apr 18 – Apr 24, 2026" },
+              { label: "Word Count", value: "178" },
+            ]}
+          />
+        </Section>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Layout containers                                                 */}
+        {/* ---------------------------------------------------------------- */}
+
+        <Section
+          title="Layout containers"
+          description="Stack, Card (card / sunk / clear variants), Grid, Row, Column, Separator. These are used by the LLM as composition wrappers — rendered here for visual reference."
+        >
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-zinc-800 p-4">
+              <p className="text-xs text-zinc-400 mb-2">
+                Card — variant="card" (zinc-800)
+              </p>
+              <div className="flex flex-col gap-3">
+                <CardHeaderView title="Project Atlas" subtitle="3 open items" />
+                <TagBlockView labels={["Active", "P1", "Engineering"]} />
+              </div>
+            </div>
+            <div className="rounded-2xl bg-zinc-900 p-3">
+              <p className="text-xs text-zinc-400 mb-2">
+                Card — variant="sunk" (zinc-900)
+              </p>
+              <StatView value="$4.2K" label="MRR" trend="up" trendLabel="+8%" />
+            </div>
+            <div className="rounded-2xl p-3">
+              <p className="text-xs text-zinc-400 mb-2">
+                Card — variant="clear" (transparent, no border)
+              </p>
+              <CalloutView
+                variant="info"
+                title="Transparent container with no surface"
+              />
+            </div>
+
+            <div className="w-full max-w-4xl">
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-zinc-700" />
+                <span className="text-[11px] text-zinc-500 uppercase tracking-wide">
+                  Separator with label
+                </span>
+                <div className="h-px flex-1 bg-zinc-700" />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs text-zinc-400 mb-2">
+                Grid — 3 columns of Stat
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                <StatView value="128" label="Users" />
+                <StatView value="42" label="Teams" />
+                <StatView value="1.2K" label="Events" />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs text-zinc-400 mb-2">
+                Row — equal-width flex children (min 240px each)
+              </p>
+              <div className="flex flex-wrap gap-3 items-stretch">
+                <div className="flex-1 min-w-[240px]">
+                  <StatView value="23ms" label="P95" />
+                </div>
+                <div className="flex-1 min-w-[240px]">
+                  <StatView value="99.9%" label="Uptime" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs text-zinc-400 mb-2">
+                Column + Stack — vertical grouping
+              </p>
+              <div className="flex flex-col gap-3">
+                <CalloutView variant="success" title="All systems healthy." />
+                <ProgressView value={72} label="Storage used" showValue />
+              </div>
+            </div>
+          </div>
         </Section>
 
         {/* ---------------------------------------------------------------- */}

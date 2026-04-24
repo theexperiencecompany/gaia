@@ -1,7 +1,7 @@
 import { Calendar, type DateValue } from "@heroui/calendar";
 import { Button, Chip } from "@heroui/react";
 import { CalendarDate } from "@internationalized/date";
-import { defineComponent } from "@openuidev/react-lang";
+import { defineComponent, useTriggerAction } from "@openuidev/react-lang";
 import * as m from "motion/react-m";
 import React from "react";
 import { z } from "zod";
@@ -421,13 +421,7 @@ export function NumberTickerView(props: z.infer<typeof numberTickerSchema>) {
 }
 
 export function CarouselView(props: z.infer<typeof carouselSchema>) {
-  const handleAction = (value: string) => {
-    window.dispatchEvent(
-      new CustomEvent("openui:action", {
-        detail: { type: "continue_conversation", value },
-      }),
-    );
-  };
+  const handleAction = useTriggerAction();
 
   const total = props.items.length;
 

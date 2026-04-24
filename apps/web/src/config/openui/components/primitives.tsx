@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@heroui/react";
 import { ArrowDown01Icon, ArrowRight01Icon, ArrowUp01Icon } from "@icons";
-import { defineComponent } from "@openuidev/react-lang";
+import { defineComponent, useTriggerAction } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
 
@@ -105,6 +105,7 @@ export const avatarSchema = z.object({
   color: z
     .enum(["primary", "success", "warning", "danger", "default"])
     .optional(),
+  showName: z.boolean().optional(),
 });
 
 export const checkboxSchema = z.object({
@@ -117,6 +118,7 @@ export const radioSchema = z.object({
   label: z.string(),
   value: z.string(),
   description: z.string().optional(),
+  selected: z.boolean().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -226,7 +228,7 @@ export function TagBlockView(props: z.infer<typeof tagBlockSchema>) {
 export function CalloutView(props: z.infer<typeof calloutSchema>) {
   const style = CALLOUT_STYLES[props.variant] ?? CALLOUT_STYLES.info;
   return (
-    <div className={`rounded-xl ${style.inner} p-3 w-full`}>
+    <div className={`rounded-xl ${style.inner} p-3 w-full max-w-lg`}>
       <p className={`text-sm font-semibold ${style.text}`}>{props.title}</p>
       {props.description && (
         <p className={`text-xs mt-1 ${style.accent}`}>{props.description}</p>
@@ -238,46 +240,45 @@ export function CalloutView(props: z.infer<typeof calloutSchema>) {
 export function StatView(props: z.infer<typeof statSchema>) {
   const trendStyle = props.trend ? TREND_STYLES[props.trend] : null;
   return (
-    <div className="flex flex-col gap-1">
+    <div className="rounded-xl bg-zinc-900 p-3 flex flex-col justify-between min-h-[80px]">
       <p className="text-xs text-zinc-500">{props.label}</p>
-      <div className="flex items-end gap-1">
-        <span className="text-2xl font-bold text-zinc-100 leading-none">
-          {typeof props.value === "number"
-            ? props.value.toLocaleString()
-            : props.value}
-        </span>
-        {props.unit && (
-          <span className="text-xs text-zinc-500 mb-0.5">{props.unit}</span>
+      <div className="mt-1">
+        <div className="flex items-end gap-1">
+          <span className="text-2xl font-bold text-zinc-100 leading-none">
+            {typeof props.value === "number"
+              ? props.value.toLocaleString()
+              : props.value}
+          </span>
+          {props.unit && (
+            <span className="text-xs text-zinc-500 mb-0.5">{props.unit}</span>
+          )}
+        </div>
+        {trendStyle && props.trendLabel ? (
+          <div className={`flex items-center gap-1 mt-1 ${trendStyle.color}`}>
+            {props.trend === "up" && <ArrowUp01Icon className="w-3 h-3" />}
+            {props.trend === "down" && <ArrowDown01Icon className="w-3 h-3" />}
+            {props.trend === "neutral" && (
+              <ArrowRight01Icon className="w-3 h-3" />
+            )}
+            <span className="text-xs font-medium">{props.trendLabel}</span>
+          </div>
+        ) : (
+          <div className="mt-1 h-4" />
         )}
       </div>
-      {trendStyle && props.trendLabel && (
-        <div className={`flex items-center gap-1 ${trendStyle.color}`}>
-          {props.trend === "up" && <ArrowUp01Icon className="w-3 h-3" />}
-          {props.trend === "down" && <ArrowDown01Icon className="w-3 h-3" />}
-          {props.trend === "neutral" && (
-            <ArrowRight01Icon className="w-3 h-3" />
-          )}
-          <span className="text-xs font-medium">{props.trendLabel}</span>
-        </div>
-      )}
     </div>
   );
 }
 
 export function ButtonView(props: z.infer<typeof buttonSchema>) {
+  const triggerAction = useTriggerAction();
   const handlePress = () => {
-    if (props.action) {
-      window.dispatchEvent(
-        new CustomEvent("openui:action", {
-          detail: { type: "continue_conversation", value: props.action },
-        }),
-      );
-    }
+    if (props.action) triggerAction(props.action);
   };
 
   const variantMap: Record<string, "solid" | "flat" | "ghost" | "bordered"> = {
     primary: "solid",
-    secondary: "bordered",
+    secondary: "flat",
     flat: "flat",
     ghost: "ghost",
   };
@@ -285,7 +286,11 @@ export function ButtonView(props: z.infer<typeof buttonSchema>) {
   const heroVariant = variantMap[props.variant ?? "flat"] ?? "flat";
   const heroColor =
     (props.color as "default" | "primary" | "danger" | "warning" | "success") ??
-    (props.variant === "primary" ? "primary" : "default");
+    (props.variant === "primary"
+      ? "primary"
+      : props.variant === "secondary"
+        ? "default"
+        : "default");
 
   return (
     <Button
@@ -335,7 +340,9 @@ export function AvatarView(props: z.infer<typeof avatarSchema>) {
         color={props.color ?? "default"}
         classNames={{ base: "shrink-0" }}
       />
-      <span className="text-sm text-zinc-300">{props.name}</span>
+      {props.showName && (
+        <span className="text-sm text-zinc-300">{props.name}</span>
+      )}
     </div>
   );
 }
@@ -362,7 +369,7 @@ export function CheckboxView(props: z.infer<typeof checkboxSchema>) {
 
 export function RadioView(props: z.infer<typeof radioSchema>) {
   return (
-    <RadioGroup value={props.value}>
+    <RadioGroup value={props.selected ? props.value : ""}>
       <Radio
         value={props.value}
         description={props.description}

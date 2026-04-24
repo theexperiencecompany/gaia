@@ -9,10 +9,12 @@ import {
 import {
   ArrowDown01Icon,
   ArrowRight01Icon,
+  CheckmarkCircle02Icon,
   Copy01Icon,
+  DashedLineCircleIcon,
   File01Icon,
   Folder02Icon,
-  Tick01Icon,
+  WorkflowCircle06Icon,
 } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
@@ -47,14 +49,12 @@ export const accordionSchema = z.object({
 });
 
 export const tabsBlockSchema = z.object({
-  tabs: z.array(z.object({ label: z.string(), content: z.string() })),
+  tabs: z.array(z.object({ label: z.string(), content: z.unknown() })),
 });
 
-export const kbdBlockSchema = z.object({
-  shortcuts: z.array(
-    z.object({ keys: z.array(z.string()), description: z.string() }),
-  ),
-  title: z.string().optional(),
+export const kbdRowSchema = z.object({
+  keys: z.array(z.string()),
+  description: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -130,17 +130,16 @@ function FileTreeNodeRow({
           ) : (
             <span className="w-3 h-3 shrink-0" />
           )}
-          {!generic &&
-            (isDir ? (
-              <Folder02Icon className="w-4 h-4 text-[#00bbff] shrink-0" />
+          {generic ? (
+            isDir ? (
+              <WorkflowCircle06Icon className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
             ) : (
-              <File01Icon className="w-4 h-4 text-zinc-500 shrink-0" />
-            ))}
-          {generic && isDir && (
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 shrink-0 ml-0.5" />
-          )}
-          {generic && !isDir && (
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0 ml-0.5" />
+              <DashedLineCircleIcon className="w-3.5 h-3.5 shrink-0 text-zinc-600" />
+            )
+          ) : isDir ? (
+            <Folder02Icon className="w-4 h-4 shrink-0 text-[#00bbff]" />
+          ) : (
+            <File01Icon className="w-4 h-4 shrink-0 text-zinc-500" />
           )}
           <div className="min-w-0">
             <span
@@ -201,46 +200,52 @@ export function CopyableContentView(
 
   if (inline) {
     return (
-      <div className="inline-flex items-center gap-2 rounded-xl bg-zinc-800 px-3 py-1.5 max-w-full">
-        <span className="text-xs text-zinc-300 truncate">{props.content}</span>
+      <div className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 px-2.5 py-1.5 max-w-full">
+        <span className="font-mono text-xs text-zinc-200 truncate">
+          {props.content}
+        </span>
         <Button
           isIconOnly
           size="sm"
           variant="light"
           onPress={copy}
           aria-label={copied ? "Copied" : "Copy content"}
-          className={copied ? "text-emerald-400" : "text-zinc-400"}
+          className={`shrink-0 aspect-square min-w-6 w-6 h-6 p-0 ${copied ? "text-emerald-400" : "text-zinc-500"}`}
         >
           {copied ? (
-            <Tick01Icon className="w-3.5 h-3.5" />
+            <CheckmarkCircle02Icon className="w-3.5 h-3.5" />
           ) : (
-            <Copy01Icon className="w-3.5 h-3.5" />
+            <Copy01Icon className="w-3 h-3" />
           )}
         </Button>
       </div>
     );
   }
 
+  const isCode =
+    props.languageHint !== undefined ||
+    props.content.includes("\n") ||
+    /^[A-Z_]+=/.test(props.content);
+
   return (
-    <div className="w-full min-w-fit max-w-3xl">
-      <div className="rounded-2xl bg-zinc-900 p-3">
-        {props.languageHint && (
-          <p className="text-xs text-zinc-500 mb-2">{props.languageHint}</p>
-        )}
-        <div className="flex items-start gap-2">
-          <p className="text-sm text-zinc-200 whitespace-pre-wrap break-words flex-1">
+    <div className="w-full max-w-3xl">
+      <div className="rounded-2xl bg-zinc-900 overflow-hidden">
+        <div className="flex items-start gap-3 p-4">
+          <pre
+            className={`flex-1 text-sm leading-relaxed break-words whitespace-pre-wrap ${isCode ? "font-mono text-zinc-200" : "font-sans text-zinc-300"}`}
+          >
             {props.content}
-          </p>
+          </pre>
           <Button
             isIconOnly
             size="sm"
             variant="light"
             onPress={copy}
             aria-label={copied ? "Copied" : "Copy content"}
-            className={`shrink-0 ${copied ? "text-emerald-400" : "text-zinc-500"}`}
+            className={`shrink-0 aspect-square min-w-7 w-7 h-7 p-0 ${copied ? "text-emerald-400" : "text-zinc-500"}`}
           >
             {copied ? (
-              <Tick01Icon className="w-3.5 h-3.5" />
+              <CheckmarkCircle02Icon className="w-4 h-4" />
             ) : (
               <Copy01Icon className="w-3.5 h-3.5" />
             )}
@@ -302,48 +307,44 @@ export function AccordionView(props: z.infer<typeof accordionSchema>) {
   );
 }
 
-export function TabsBlockView(props: z.infer<typeof tabsBlockSchema>) {
+export function TabsBlockView(props: {
+  tabs: Array<{ label: string; content: React.ReactNode }>;
+}) {
   return (
-    <Tabs variant="solid" size="sm">
-      {props.tabs.map((tab) => (
-        <Tab
-          key={tab.label}
-          title={<span className="text-sm">{tab.label}</span>}
-        >
-          <div className="rounded-2xl bg-zinc-800/50 p-4">
-            <p className="text-sm text-zinc-300 whitespace-pre-wrap">
-              {tab.content}
-            </p>
-          </div>
-        </Tab>
-      ))}
-    </Tabs>
+    <div className="w-full max-w-2xl">
+      <Tabs variant="solid" size="sm">
+        {props.tabs.map((tab) => (
+          <Tab
+            key={tab.label}
+            title={<span className="text-sm">{tab.label}</span>}
+          >
+            {typeof tab.content === "string" ? (
+              <p className="text-sm text-zinc-300 whitespace-pre-wrap pt-2 max-w-full">
+                {tab.content}
+              </p>
+            ) : (
+              <div className="pt-3 max-w-full [&>*]:max-w-full">
+                {tab.content}
+              </div>
+            )}
+          </Tab>
+        ))}
+      </Tabs>
+    </div>
   );
 }
 
-export function KbdBlockView(props: z.infer<typeof kbdBlockSchema>) {
+export function KbdRowView(props: z.infer<typeof kbdRowSchema>) {
   return (
-    <div className="w-full min-w-fit max-w-lg">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
+    <div className="flex items-center justify-between gap-4">
+      {props.description && (
+        <span className="text-xs text-zinc-400 flex-1">
+          {props.description}
+        </span>
       )}
-      <div className="space-y-2">
-        {props.shortcuts.map((shortcut) => (
-          <div
-            key={shortcut.description}
-            className="rounded-2xl bg-zinc-900 p-3 flex items-center justify-between gap-4"
-          >
-            <span className="text-xs text-zinc-400 flex-1">
-              {shortcut.description}
-            </span>
-            <div className="flex items-center gap-1 shrink-0">
-              {shortcut.keys.map((key) => (
-                <Kbd key={key}>{key}</Kbd>
-              ))}
-            </div>
-          </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {props.keys.map((key) => (
+          <Kbd key={key}>{key}</Kbd>
         ))}
       </div>
     </div>
@@ -379,14 +380,25 @@ export const accordionDef = defineComponent({
 
 export const tabsBlockDef = defineComponent({
   name: "TabsBlock",
-  description: "Tabbed content panels.",
+  description: "Tabbed content panels — each tab can contain any OpenUI node.",
   props: tabsBlockSchema,
-  component: ({ props }) => React.createElement(TabsBlockView, props),
+  component: ({ props, renderNode }) => (
+    <TabsBlockView
+      tabs={props.tabs.map((tab) => ({
+        label: tab.label,
+        content:
+          typeof tab.content === "string"
+            ? tab.content
+            : renderNode(tab.content),
+      }))}
+    />
+  ),
 });
 
-export const kbdBlockDef = defineComponent({
-  name: "KbdBlock",
-  description: "Keyboard shortcut reference table.",
-  props: kbdBlockSchema,
-  component: ({ props }) => React.createElement(KbdBlockView, props),
+export const kbdRowDef = defineComponent({
+  name: "KbdRow",
+  description:
+    "A single keyboard shortcut row — keys + description. Compose inside a Card for a shortcut table.",
+  props: kbdRowSchema,
+  component: ({ props }) => React.createElement(KbdRowView, props),
 });

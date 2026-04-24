@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Link } from "@heroui/link";
 import { CheckmarkCircle01Icon } from "@icons";
-import { defineComponent } from "@openuidev/react-lang";
+import { defineComponent, useTriggerAction } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
 
@@ -141,13 +141,7 @@ function StepDot({
 // ---------------------------------------------------------------------------
 
 export function TimelineView(props: z.infer<typeof timelineSchema>) {
-  const triggerAction = (value: string) => {
-    window.dispatchEvent(
-      new CustomEvent("openui:action", {
-        detail: { type: "continue_conversation", value },
-      }),
-    );
-  };
+  const triggerAction = useTriggerAction();
 
   return (
     <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-lg">
@@ -210,7 +204,7 @@ export function TimelineView(props: z.infer<typeof timelineSchema>) {
                     <div className="flex flex-wrap items-center gap-2 mt-2">
                       {item.links?.map((link) => (
                         <Link
-                          key={`${item.title}-${link.url}`}
+                          key={`${item.title}-${link.label}-${link.url}`}
                           href={link.url}
                           isExternal
                           className={
