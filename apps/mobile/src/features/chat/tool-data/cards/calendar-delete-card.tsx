@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
-import {
-  AppIcon,
-  Cancel01Icon,
-  Tick02Icon,
-} from "@/components/icons";
+import { AppIcon, Cancel01Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { ToolCardHeader, ToolCardShell } from "../primitives";
 
@@ -127,9 +123,7 @@ function EventRow({ event, status, onDelete }: EventRowProps) {
       }}
     >
       {/* Left color bar */}
-      <View
-        className="absolute left-1 top-0 h-full items-center justify-center"
-      >
+      <View className="absolute left-1 top-0 h-full items-center justify-center">
         <View
           className="w-1 rounded-full"
           style={{ height: "80%", backgroundColor: eventColor }}
@@ -142,7 +136,9 @@ function EventRow({ event, status, onDelete }: EventRowProps) {
           {summary ?? "Untitled Event"}
         </Text>
         {event.description ? (
-          <Text className="mt-1 text-xs text-zinc-400">{event.description}</Text>
+          <Text className="mt-1 text-xs text-zinc-400">
+            {event.description}
+          </Text>
         ) : null}
         <View className="mt-1">
           <Text className="text-xs text-zinc-400">{timeDisplay}</Text>

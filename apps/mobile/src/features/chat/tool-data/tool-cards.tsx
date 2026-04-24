@@ -21,6 +21,7 @@ export * from "./cards/google-docs-card";
 export * from "./cards/integration-connection-card";
 export * from "./cards/notification-card";
 export * from "./cards/people-search-card";
+export * from "./cards/rate-limit-card";
 export * from "./cards/reddit-card";
 export * from "./cards/search-results-card";
 export * from "./cards/streaming-meta-cards";

@@ -37,6 +37,8 @@ import {
   type NotificationData,
   PeopleSearchCard,
   type PeopleSearchData,
+  RateLimitCard,
+  type RateLimitData,
   RedditCard,
   type RedditData,
   type SearchResults,
@@ -269,6 +271,10 @@ const TOOL_RENDERERS: Record<
       data={data as TodoProgressData}
       isStreaming
     />
+  ),
+
+  rate_limit_data: (data, baseKey) => (
+    <RateLimitCard key={baseKey} data={data as RateLimitData} />
   ),
 
   twitter_search_data: (data, baseKey) => (

@@ -9,10 +9,7 @@ import {
 } from "@/components/icons";
 import type { AnyIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
-import {
-  ToolCardInner,
-  ToolCardShell,
-} from "@/features/chat/tool-data/primitives";
+import { ToolCardShell } from "@/features/chat/tool-data/primitives";
 
 export type TodoProgressStatus =
   | "pending"
@@ -83,17 +80,11 @@ function StatusIconView({ status }: { status: TodoProgressStatus }) {
   return <AppIcon icon={Icon} size={16} color={color} />;
 }
 
-function TaskRow({
-  todo,
-  isStreaming,
-}: {
-  todo: TodoProgressItem;
-  isStreaming?: boolean;
-}) {
+function TaskRow({ todo }: { todo: TodoProgressItem }) {
   return (
     <View className="flex-row items-start gap-2">
       <View className="shrink-0 mt-0.5">
-        <StatusIconView status={todo.status} isStreaming={isStreaming} />
+        <StatusIconView status={todo.status} />
       </View>
       <Text
         className={`flex-1 text-xs leading-5 ${
@@ -108,17 +99,11 @@ function TaskRow({
   );
 }
 
-function SourceTaskList({
-  todos,
-  isStreaming,
-}: {
-  todos: TodoProgressItem[];
-  isStreaming?: boolean;
-}) {
+function SourceTaskList({ todos }: { todos: TodoProgressItem[] }) {
   return (
     <View className="gap-1.5">
       {todos.map((todo) => (
-        <TaskRow key={todo.id} todo={todo} isStreaming={isStreaming} />
+        <TaskRow key={todo.id} todo={todo} />
       ))}
     </View>
   );
@@ -157,11 +142,9 @@ function ProgressBar({ pct, className }: { pct: number; className?: string }) {
 function SingleSourceCard({
   source,
   todos,
-  isStreaming,
 }: {
   source: string;
   todos: TodoProgressItem[];
-  isStreaming?: boolean;
 }) {
   const completedCount = todos.filter((t) => t.status === "completed").length;
   const pct = todos.length > 0 ? (completedCount / todos.length) * 100 : 0;
@@ -175,7 +158,7 @@ function SingleSourceCard({
         <CountPill completed={completedCount} total={todos.length} />
       </View>
       <ProgressBar pct={pct} className="mb-3" />
-      <SourceTaskList todos={todos} isStreaming={isStreaming} />
+      <SourceTaskList todos={todos} />
     </ToolCardShell>
   );
 }
@@ -185,13 +168,11 @@ function MultiSourceAccordionItem({
   snapshot,
   isOpen,
   onToggle,
-  isStreaming,
 }: {
   source: string;
   snapshot: TodoProgressSnapshot;
   isOpen: boolean;
   onToggle: () => void;
-  isStreaming?: boolean;
 }) {
   const todos = snapshot.todos;
   const completedCount = todos.filter((t) => t.status === "completed").length;
@@ -219,7 +200,7 @@ function MultiSourceAccordionItem({
       </Pressable>
       {isOpen ? (
         <View className="pb-2 px-2">
-          <SourceTaskList todos={todos} isStreaming={isStreaming} />
+          <SourceTaskList todos={todos} />
         </View>
       ) : null}
     </View>
@@ -229,11 +210,9 @@ function MultiSourceAccordionItem({
 function MultiSourceAccordion({
   activeSources,
   todo_progress,
-  isStreaming,
 }: {
   activeSources: string[];
   todo_progress: TodoProgressData;
-  isStreaming?: boolean;
 }) {
   const prevDataRef = useRef<TodoProgressData>({});
 
@@ -261,7 +240,6 @@ function MultiSourceAccordion({
           onToggle={() =>
             setOpenKey((prev) => (prev === source ? null : source))
           }
-          isStreaming={isStreaming}
         />
       ))}
     </ToolCardShell>
@@ -270,9 +248,10 @@ function MultiSourceAccordion({
 
 export function TodoProgressCard({
   data,
-  isStreaming,
 }: {
   data: TodoProgressData;
+  // isStreaming is accepted by the web card to drive a spinning loader;
+  // on mobile we currently render a static in-progress icon, so we ignore it.
   isStreaming?: boolean;
 }) {
   const sources = Object.keys(data);
@@ -285,20 +264,13 @@ export function TodoProgressCard({
 
   if (activeSources.length === 1) {
     const source = activeSources[0];
-    return (
-      <SingleSourceCard
-        source={source}
-        todos={data[source].todos}
-        isStreaming={isStreaming}
-      />
-    );
+    return <SingleSourceCard source={source} todos={data[source].todos} />;
   }
 
   return (
     <MultiSourceAccordion
       activeSources={activeSources}
       todo_progress={data}
-      isStreaming={isStreaming}
     />
   );
 }

@@ -9,8 +9,8 @@ import {
   PencilEdit01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { apiService } from "@/lib/api";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 export type SupportTicketType = "support" | "feature";
 
@@ -48,8 +48,7 @@ async function submitSupportRequest(
 
 function validate(data: SupportTicketData): string | null {
   if (!data.type) return "Type is required";
-  if (!data.title || data.title.trim().length === 0)
-    return "Title is required";
+  if (!data.title || data.title.trim().length === 0) return "Title is required";
   if (data.title.length > 200) return "Title must be under 200 characters";
   if (!data.description || data.description.trim().length < 10)
     return "Description must be at least 10 characters";
@@ -222,11 +221,7 @@ export function SupportTicketCard({ data }: { data: SupportTicketData }) {
             })}
           >
             {isSubmitted ? (
-              <AppIcon
-                icon={CheckmarkCircle01Icon}
-                size={14}
-                color="#22c55e"
-              />
+              <AppIcon icon={CheckmarkCircle01Icon} size={14} color="#22c55e" />
             ) : null}
             <Text
               className="text-sm font-medium"
@@ -352,7 +347,9 @@ export function SupportTicketCard({ data }: { data: SupportTicketData }) {
                     borderRadius: 999,
                     paddingHorizontal: 16,
                     paddingVertical: 10,
-                    backgroundColor: pressed ? "rgba(0,187,255,0.8)" : "#00bbff",
+                    backgroundColor: pressed
+                      ? "rgba(0,187,255,0.8)"
+                      : "#00bbff",
                   })}
                 >
                   <Text

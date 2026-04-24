@@ -60,10 +60,7 @@ export function EmailSentCard({ data }: { data: EmailSentData }) {
               <Text className="text-xs text-zinc-500" style={{ width: 64 }}>
                 Subject
               </Text>
-              <Text
-                className="text-sm text-zinc-200 flex-1"
-                numberOfLines={2}
-              >
+              <Text className="text-sm text-zinc-200 flex-1" numberOfLines={2}>
                 {data.subject}
               </Text>
             </View>
@@ -74,10 +71,7 @@ export function EmailSentCard({ data }: { data: EmailSentData }) {
               <Text className="text-xs text-zinc-500" style={{ width: 64 }}>
                 To
               </Text>
-              <Text
-                className="text-sm text-zinc-200 flex-1"
-                numberOfLines={2}
-              >
+              <Text className="text-sm text-zinc-200 flex-1" numberOfLines={2}>
                 {recipients.join(", ")}
               </Text>
             </View>
