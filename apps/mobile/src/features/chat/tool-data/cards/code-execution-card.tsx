@@ -1,17 +1,25 @@
-import { Card } from "heroui-native";
-import type React from "react";
-import { useState } from "react";
+import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
+import { useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import {
+  AppIcon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
-  CodeIcon,
+  Copy01Icon,
   SourceCodeCircleIcon,
+  Tick02Icon,
 } from "@/components/icons";
-import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
-import { THEME } from "@/features/chat/components/code-block/syntax-theme";
-import { tokenizeLine } from "@/features/chat/components/code-block/tokenizer";
+import { THEME } from "../../components/code-block/syntax-theme";
+import { tokenizeLine } from "../../components/code-block/tokenizer";
+import {
+  ToolCardHeader,
+  ToolCardInner,
+  ToolCardShell,
+} from "../primitives";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CodeOutput {
   stdout?: string;
@@ -28,7 +36,15 @@ export interface CodeData {
   error?: string;
 }
 
-// ─── Syntax-highlighted code renderer ────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const MONO_FONT = "RobotoMono_400Regular";
+
+const STDOUT_GREEN = "#86efac";
+const STDERR_RED = "#fca5a5";
+const RESULT_BLUE = "#60a5fa";
+
+// ─── Syntax-highlighted code ─────────────────────────────────────────────────
 
 function SyntaxLine({ line, language }: { line: string; language: string }) {
   const tokens = tokenizeLine(line, language);
@@ -45,7 +61,7 @@ function SyntaxLine({ line, language }: { line: string; language: string }) {
           <Text
             // biome-ignore lint/suspicious/noArrayIndexKey: stable token list per line
             key={idx}
-            style={{ color, fontFamily: "monospace" }}
+            style={{ color, fontFamily: MONO_FONT, fontSize: 12 }}
           >
             {token.value}
           </Text>
@@ -67,7 +83,7 @@ function SyntaxHighlightedCode({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      style={{ backgroundColor: THEME.background }}
+      style={{ backgroundColor: THEME.background, borderRadius: 12 }}
       contentContainerStyle={{ padding: 12 }}
     >
       <View>
@@ -77,7 +93,7 @@ function SyntaxHighlightedCode({
             <Text
               style={{
                 color: THEME.gutterText,
-                fontFamily: "monospace",
+                fontFamily: MONO_FONT,
                 fontSize: 11,
                 minWidth: 28,
                 marginRight: 8,
@@ -94,7 +110,7 @@ function SyntaxHighlightedCode({
   );
 }
 
-// ─── Status helpers ───────────────────────────────────────────────────────────
+// ─── Status helpers ──────────────────────────────────────────────────────────
 
 function StatusIcon({
   status,
@@ -105,16 +121,16 @@ function StatusIcon({
 }) {
   if (status === "executing") {
     return (
-      <View className="w-3 h-3 rounded-full border-2 border-[#00bbff] border-t-transparent" />
+      <View className="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent" />
     );
   }
   if (status === "error" || hasError) {
-    return <AppIcon icon={Cancel01Icon} size={13} color="#ff453a" />;
+    return <AppIcon icon={Cancel01Icon} size={12} color="#f87171" />;
   }
   if (status === "completed" && !hasError) {
-    return <AppIcon icon={CheckmarkCircle02Icon} size={13} color="#34c759" />;
+    return <AppIcon icon={CheckmarkCircle02Icon} size={12} color="#4ade80" />;
   }
-  return <AppIcon icon={SourceCodeCircleIcon} size={13} color="#8e8e93" />;
+  return <AppIcon icon={SourceCodeCircleIcon} size={12} color="#a1a1aa" />;
 }
 
 function getStatusText(
@@ -127,39 +143,87 @@ function getStatusText(
   return "Output";
 }
 
-// ─── Collapsible section ──────────────────────────────────────────────────────
+function statusPillClasses(
+  status?: CodeData["status"],
+  hasError?: boolean,
+): string {
+  if (status === "executing") return "bg-zinc-700";
+  if (status === "error" || hasError) return "bg-red-500/15";
+  if (status === "completed" && !hasError) return "bg-green-500/15";
+  return "bg-zinc-700";
+}
+
+function statusPillTextClasses(
+  status?: CodeData["status"],
+  hasError?: boolean,
+): string {
+  if (status === "executing") return "text-zinc-200";
+  if (status === "error" || hasError) return "text-red-400";
+  if (status === "completed" && !hasError) return "text-green-400";
+  return "text-zinc-200";
+}
+
+// ─── Copy button ─────────────────────────────────────────────────────────────
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    if (copied) return;
+    await Clipboard.setStringAsync(text);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [copied, text]);
+
+  return (
+    <Pressable
+      onPress={handleCopy}
+      className="flex-row items-center gap-1 rounded-lg bg-zinc-800 px-2 py-1"
+      hitSlop={6}
+    >
+      <AppIcon
+        icon={copied ? Tick02Icon : Copy01Icon}
+        size={12}
+        color={copied ? "#4ade80" : "#a1a1aa"}
+      />
+      <Text
+        className={`text-[10px] font-medium ${copied ? "text-green-400" : "text-zinc-400"}`}
+      >
+        {copied ? "Copied" : "Copy"}
+      </Text>
+    </Pressable>
+  );
+}
+
+// ─── Collapsible section ─────────────────────────────────────────────────────
 
 function CollapsibleSection({
   title,
-  icon,
   defaultOpen = false,
   children,
 }: {
   title: string;
-  icon: React.ReactElement;
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <View className="rounded-xl overflow-hidden border border-white/8 mb-2">
+    <View className="mb-2">
       <Pressable
         onPress={() => setOpen((prev) => !prev)}
-        className="flex-row items-center justify-between px-3 py-2.5 bg-white/5 active:opacity-70"
+        className="flex-row items-center justify-between py-2 active:opacity-70"
       >
-        <View className="flex-row items-center gap-2">
-          {icon}
-          <Text className="text-sm font-medium text-foreground">{title}</Text>
-        </View>
-        <Text className="text-muted text-xs">{open ? "▲" : "▼"}</Text>
+        <Text className="text-sm font-medium text-zinc-300">{title}</Text>
+        <Text className="text-zinc-500 text-xs">{open ? "Hide" : "Show"}</Text>
       </Pressable>
       {open && <View>{children}</View>}
     </View>
   );
 }
 
-// ─── Output display ───────────────────────────────────────────────────────────
+// ─── Output content ──────────────────────────────────────────────────────────
 
 function OutputContent({
   output,
@@ -174,215 +238,267 @@ function OutputContent({
 
   if (status === "executing" && !output) {
     return (
-      <View className="flex-row items-center gap-3 p-3">
-        <View className="w-2 h-2 rounded-full bg-[#00bbff]" />
-        <Text className="text-sm text-muted">Executing {language} code…</Text>
+      <View className="flex-row items-center gap-3 py-4">
+        <View className="w-2 h-2 rounded-full bg-blue-400" />
+        <Text className="text-sm text-zinc-400">
+          Executing {language} code…
+        </Text>
       </View>
     );
   }
 
   if (!output) {
     return (
-      <View className="p-3">
-        <Text className="text-sm text-muted text-center">Ready to execute</Text>
+      <View className="py-4">
+        <Text className="text-sm text-zinc-500 text-center">
+          Ready to execute
+        </Text>
       </View>
     );
   }
 
+  const hasAnyContent =
+    !!output.stdout ||
+    !!output.stderr ||
+    (output.results && output.results.length > 0) ||
+    !!output.error;
+
   return (
-    <View style={{ backgroundColor: "#0d0d0d" }}>
+    <View className="gap-2">
       {/* stdout */}
       {!!output.stdout && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ padding: 12 }}
+        <View
+          className="rounded-xl overflow-hidden"
+          style={{ backgroundColor: "#000" }}
         >
-          <Text
-            style={{
-              color: "#34c759",
-              fontFamily: "monospace",
-              fontSize: 12,
-              lineHeight: 18,
-            }}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ padding: 12 }}
           >
-            {output.stdout}
-          </Text>
-        </ScrollView>
-      )}
-
-      {/* results */}
-      {output.results && output.results.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{
-            padding: 12,
-            paddingTop: output.stdout ? 0 : 12,
-          }}
-        >
-          <View>
-            {output.results.map((result, idx) => {
-              const resultKey = `result-${idx}`;
-              return (
-                <Text
-                  key={resultKey}
-                  style={{
-                    color: "#00bbff",
-                    fontFamily: "monospace",
-                    fontSize: 12,
-                    lineHeight: 18,
-                  }}
-                >
-                  {result}
-                </Text>
-              );
-            })}
-          </View>
-        </ScrollView>
-      )}
-
-      {/* stderr */}
-      {!!output.stderr && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ padding: 12, paddingTop: 0 }}
-        >
-          <Text
-            style={{
-              color: "#ff453a",
-              fontFamily: "monospace",
-              fontSize: 12,
-              lineHeight: 18,
-            }}
-          >
-            {output.stderr}
-          </Text>
-        </ScrollView>
-      )}
-
-      {/* execution error */}
-      {!!output.error && (
-        <View style={{ padding: 12, paddingTop: 0 }}>
-          <Text
-            className="text-[10px] font-semibold text-muted mb-1"
-            style={{ letterSpacing: 0.5 }}
-          >
-            EXECUTION ERROR
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <Text
               style={{
-                color: "#ff453a",
-                fontFamily: "monospace",
+                color: STDOUT_GREEN,
+                fontFamily: MONO_FONT,
                 fontSize: 12,
                 lineHeight: 18,
               }}
             >
-              {output.error}
+              {output.stdout}
             </Text>
           </ScrollView>
         </View>
       )}
 
-      {/* footer status */}
-      <View className="flex-row items-center justify-between px-3 py-2 border-t border-white/8">
-        <Text className="text-[10px] text-muted">
+      {/* results */}
+      {output.results && output.results.length > 0 && (
+        <View
+          className="rounded-xl overflow-hidden"
+          style={{ backgroundColor: "#000" }}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ padding: 12 }}
+          >
+            <View>
+              {output.results.map((result, idx) => {
+                const resultKey = `result-${idx}`;
+                return (
+                  <Text
+                    key={resultKey}
+                    style={{
+                      color: RESULT_BLUE,
+                      fontFamily: MONO_FONT,
+                      fontSize: 12,
+                      lineHeight: 18,
+                    }}
+                  >
+                    {result}
+                  </Text>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* stderr */}
+      {!!output.stderr && (
+        <View
+          className="rounded-xl overflow-hidden"
+          style={{ backgroundColor: "#000" }}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ padding: 12 }}
+          >
+            <Text
+              style={{
+                color: STDERR_RED,
+                fontFamily: MONO_FONT,
+                fontSize: 12,
+                lineHeight: 18,
+              }}
+            >
+              {output.stderr}
+            </Text>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* execution error */}
+      {!!output.error && (
+        <View>
+          <Text
+            className="text-[10px] font-semibold text-zinc-500 mb-1"
+            style={{ letterSpacing: 0.5 }}
+          >
+            EXECUTION ERROR
+          </Text>
+          <View
+            className="rounded-xl overflow-hidden"
+            style={{ backgroundColor: "#000" }}
+          >
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ padding: 12 }}
+            >
+              <Text
+                style={{
+                  color: STDERR_RED,
+                  fontFamily: MONO_FONT,
+                  fontSize: 12,
+                  lineHeight: 18,
+                }}
+              >
+                {output.error}
+              </Text>
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* status footer */}
+      <View className="flex-row items-center justify-between pt-1">
+        <Text className="text-[11px] text-zinc-500">
           Status: {status ?? "unknown"}
         </Text>
         <Text
-          className={`text-[10px] font-medium ${hasError ? "text-red-400" : "text-[#34c759]"}`}
+          className={`text-[11px] font-medium ${hasError ? "text-red-400" : "text-green-400"}`}
         >
           {hasError ? "Failed" : "Success"}
         </Text>
       </View>
 
-      {/* no output */}
-      {!output.stdout &&
-        !output.stderr &&
-        !output.results?.length &&
-        !output.error && (
-          <View className="py-4 px-3">
-            <Text className="text-sm text-muted text-center">
-              No output produced
-            </Text>
-          </View>
-        )}
+      {!hasAnyContent && (
+        <Text className="text-sm text-zinc-500 text-center py-2">
+          No output produced
+        </Text>
+      )}
     </View>
   );
 }
 
-// ─── Main card ────────────────────────────────────────────────────────────────
+// ─── Main card ───────────────────────────────────────────────────────────────
 
 export function CodeExecutionCard({ data }: { data: CodeData }) {
   const language = data.language || "text";
   const hasError = !!(data.error || data.output?.error || data.output?.stderr);
-  const _hasOutput = !!(
-    data.output?.stdout ||
-    data.output?.stderr ||
-    data.output?.results?.length ||
-    data.output?.error
-  );
+  const hasAnyOutput =
+    !!data.output?.stdout ||
+    !!data.output?.stderr ||
+    (data.output?.results && data.output.results.length > 0) ||
+    !!data.output?.error;
+
+  const copyText = [
+    data.output?.stdout,
+    data.output?.stderr,
+    ...(data.output?.results ?? []),
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <AppIcon icon={SourceCodeCircleIcon} size={14} color="#8e8e93" />
-          <Text className="text-xs text-muted flex-1">Code Execution</Text>
-          {!!language && language !== "text" && (
-            <View className="rounded-full bg-white/10 px-2 py-0.5">
-              <Text className="text-[10px] text-muted font-medium">
-                {language}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Code section */}
-        {!!data.code && (
-          <CollapsibleSection
-            title="Executed Code"
-            defaultOpen={false}
-            icon={<AppIcon icon={CodeIcon} size={13} color="#8e8e93" />}
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={SourceCodeCircleIcon}
+        iconColor="#a1a1aa"
+        title="Code Execution"
+        trailing={
+          <View
+            className={`flex-row items-center gap-1.5 rounded-full px-2 py-1 ${statusPillClasses(data.status, hasError)}`}
           >
-            <SyntaxHighlightedCode code={data.code} language={language} />
-          </CollapsibleSection>
-        )}
-
-        {/* Output section */}
-        <CollapsibleSection
-          title={getStatusText(data.status, hasError)}
-          defaultOpen
-          icon={<StatusIcon status={data.status} hasError={hasError} />}
-        >
-          <OutputContent
-            output={data.output}
-            status={data.status}
-            language={language}
-          />
-        </CollapsibleSection>
-
-        {/* Inline error (when output object is absent) */}
-        {data.error && !data.output && (
-          <View className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 mt-1">
+            <StatusIcon status={data.status} hasError={hasError} />
             <Text
-              className="text-[10px] font-semibold text-red-400 mb-1"
-              style={{ letterSpacing: 0.5 }}
+              className={`text-[11px] font-medium ${statusPillTextClasses(data.status, hasError)}`}
             >
-              ERROR
-            </Text>
-            <Text
-              className="text-sm text-red-400"
-              style={{ fontFamily: "monospace" }}
-            >
-              {data.error}
+              {getStatusText(data.status, hasError)}
             </Text>
           </View>
-        )}
-      </Card.Body>
-    </Card>
+        }
+      />
+
+      {/* Code section */}
+      {!!data.code && (
+        <ToolCardInner className="mb-2">
+          <CollapsibleSection title="Executed Code" defaultOpen={false}>
+            <SyntaxHighlightedCode code={data.code} language={language} />
+          </CollapsibleSection>
+        </ToolCardInner>
+      )}
+
+      {/* Output section */}
+      <ToolCardInner>
+        <View className="flex-row items-center justify-between mb-2">
+          <Text className="text-sm font-medium text-zinc-300">
+            {getStatusText(data.status, hasError)}
+          </Text>
+          {hasAnyOutput && copyText.length > 0 && (
+            <CopyButton text={copyText} />
+          )}
+        </View>
+        <OutputContent
+          output={data.output}
+          status={data.status}
+          language={language}
+        />
+      </ToolCardInner>
+
+      {/* Inline error when output object is absent */}
+      {data.error && !data.output && (
+        <ToolCardInner className="mt-2">
+          <Text
+            className="text-[10px] font-semibold text-red-400 mb-1"
+            style={{ letterSpacing: 0.5 }}
+          >
+            ERROR
+          </Text>
+          <View
+            className="rounded-xl overflow-hidden"
+            style={{ backgroundColor: "#000" }}
+          >
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ padding: 12 }}
+            >
+              <Text
+                style={{
+                  color: STDERR_RED,
+                  fontFamily: MONO_FONT,
+                  fontSize: 12,
+                  lineHeight: 18,
+                }}
+              >
+                {data.error}
+              </Text>
+            </ScrollView>
+          </View>
+        </ToolCardInner>
+      )}
+    </ToolCardShell>
   );
 }

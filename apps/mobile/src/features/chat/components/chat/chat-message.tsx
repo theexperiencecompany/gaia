@@ -70,14 +70,12 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
           }}
           style={{
             borderRadius: moderateScale(20, 0.5),
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.15)",
-            backgroundColor: "rgba(255,255,255,0.05)",
+            backgroundColor: "#27272a",
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.xs + 2,
           }}
         >
-          <Text style={{ fontSize: fontSize.xs, color: "#ffffff" }}>
+          <Text style={{ fontSize: fontSize.xs, color: "#e4e4e7" }}>
             {action}
           </Text>
         </PressableFeedback>
@@ -147,8 +145,6 @@ function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
           borderRadius: moderateScale(12, 0.5),
           paddingHorizontal: spacing.sm + 2,
           paddingVertical: spacing.xs,
-          borderWidth: 1,
-          borderColor: "rgba(99, 102, 241, 0.2)",
         }}
       >
         <AppIcon
@@ -222,6 +218,8 @@ interface ChatMessageProps {
   loadingMessage?: string;
   progressToolName?: string | null;
   progressMessage?: string | null;
+  isLastMessage?: boolean;
+  isStreaming?: boolean;
 }
 
 export function ChatMessage({
@@ -233,6 +231,8 @@ export function ChatMessage({
   loadingMessage = "Thinking...",
   progressToolName = null,
   progressMessage = null,
+  isLastMessage = false,
+  isStreaming = false,
 }: ChatMessageProps) {
   const isUser = message.isUser;
   const { spacing, width, moderateScale } = useResponsive();
@@ -371,6 +371,17 @@ export function ChatMessage({
         alignItems: "flex-start",
       }}
     >
+      {/* Memory indicator pill – shown ABOVE the AI bubble (web parity) */}
+      {message.memoryData ? (
+        <PressableFeedback
+          onPress={() =>
+            memorySheetRef.current?.open(message.memoryData as MemoryDataShape)
+          }
+        >
+          <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
+        </PressableFeedback>
+      ) : null}
+
       <View
         style={{
           flexDirection: "column",
@@ -414,23 +425,28 @@ export function ChatMessage({
             }
           />
         ) : (
-          messageParts.map((part, index) => (
-            <MessageBubble
-              key={`${message.id}-${index}`}
-              message={part}
-              variant="received"
-              showAvatar={index === 0}
-              grouped={
-                messageParts.length === 1
-                  ? "none"
-                  : index === 0
-                    ? "first"
-                    : index === messageParts.length - 1
-                      ? "last"
-                      : "middle"
-              }
-            />
-          ))
+          messageParts.map((part, index) => {
+            const isLastPart = index === messageParts.length - 1;
+            return (
+              <MessageBubble
+                key={`${message.id}-${index}`}
+                message={part}
+                variant="received"
+                showAvatar={index === 0}
+                spinAvatar={index === 0 && isLastMessage && isStreaming}
+                isStreaming={isLastPart && isLastMessage && isStreaming}
+                grouped={
+                  messageParts.length === 1
+                    ? "none"
+                    : index === 0
+                      ? "first"
+                      : index === messageParts.length - 1
+                        ? "last"
+                        : "middle"
+                }
+              />
+            );
+          })
         )}
 
         {/* Link preview – shown below message content for AI messages */}
@@ -448,17 +464,6 @@ export function ChatMessage({
           />
         ) : null}
       </View>
-
-      {/* Memory indicator pill – shown below the AI message when memory was updated */}
-      {message.memoryData ? (
-        <PressableFeedback
-          onPress={() =>
-            memorySheetRef.current?.open(message.memoryData as MemoryDataShape)
-          }
-        >
-          <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
-        </PressableFeedback>
-      ) : null}
 
       {/* Follow-up action chips */}
       {message.followUpActions?.length ? (

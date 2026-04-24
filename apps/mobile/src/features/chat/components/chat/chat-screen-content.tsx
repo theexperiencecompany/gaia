@@ -482,6 +482,8 @@ export function ChatScreenContent({
           onLongPress={handleLongPressMessage}
           isLoading={showLoading}
           loadingMessage={showLoading ? displayMessage : undefined}
+          isLastMessage={isLastMessage}
+          isStreaming={isLastMessage && !message.isUser && isTyping}
         />
       );
     },

@@ -1,6 +1,5 @@
 import secrets
 from typing import Optional
-from urllib.parse import quote
 
 import httpx
 from shared.py.wide_events import log
@@ -26,6 +25,60 @@ from workos import WorkOSClient
 
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
+
+# One-time OAuth code exchange. We no longer put the sealed session token in
+# the deep-link query string (it ends up in logs / breadcrumbs / Referer
+# headers). Instead, after a successful WorkOS callback we:
+#   1. Generate a short opaque ``code`` value.
+#   2. Store ``code -> sealed_session`` in Redis with a 5-minute TTL.
+#   3. Redirect to ``deep_link?code=<code>``.
+#   4. The client POSTs the code to ``/oauth/exchange-code`` over TLS and
+#      gets the sealed session in the response body.
+_OAUTH_CODE_EXCHANGE_PREFIX = "oauth_code_exchange"
+_OAUTH_CODE_EXCHANGE_TTL = 300  # 5 minutes
+# CSRF binding for the desktop/mobile auth flow.
+_OAUTH_STATE_PREFIX = "oauth_state_binding"
+_OAUTH_STATE_TTL = 600  # 10 minutes
+
+
+async def _store_oauth_exchange_code(token: str) -> str:
+    """Store a sealed session in Redis and return a short opaque code."""
+    code = secrets.token_urlsafe(32)
+    await redis_cache.client.setex(
+        f"{_OAUTH_CODE_EXCHANGE_PREFIX}:{code}", _OAUTH_CODE_EXCHANGE_TTL, token
+    )
+    return code
+
+
+async def _consume_oauth_exchange_code(code: str) -> Optional[str]:
+    """Atomically consume an exchange code and return the stored token."""
+    key = f"{_OAUTH_CODE_EXCHANGE_PREFIX}:{code}"
+    token = await redis_cache.client.get(key)
+    if not token:
+        return None
+    # One-time use — delete after read. Use GETDEL if available.
+    await redis_cache.client.delete(key)
+    return token
+
+
+async def _store_oauth_state(state: str, flow: str) -> None:
+    """Bind a CSRF state to the flow that produced it."""
+    await redis_cache.client.setex(
+        f"{_OAUTH_STATE_PREFIX}:{state}", _OAUTH_STATE_TTL, flow
+    )
+
+
+async def _consume_oauth_state(state: str, expected_flow: str) -> bool:
+    """Validate + consume the state; returns True iff it matches the flow."""
+    if not state:
+        return False
+    key = f"{_OAUTH_STATE_PREFIX}:{state}"
+    stored = await redis_cache.client.get(key)
+    if not stored:
+        return False
+    await redis_cache.client.delete(key)
+    return stored == expected_flow
+
 
 workos = WorkOSClient(
     api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
@@ -113,8 +166,10 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
     Args:
         redirect_uri: The deep link URI to redirect back to (from Linking.createURL)
     """
-    # Generate a unique state to track this auth flow
+    # Generate a unique state to track this auth flow. Doubles as both the
+    # CSRF binding and the Redis key for the redirect URI.
     state = secrets.token_urlsafe(32)
+    await _store_oauth_state(state, OAUTH_FLOW_MOBILE)
 
     # Store the mobile app's redirect URI
     # Default to gaiamobile:// scheme if not provided
@@ -141,7 +196,8 @@ async def workos_mobile_callback(
 ) -> RedirectResponse:
     """
     Handle WorkOS SSO callback for mobile (Expo) apps.
-    Returns a deep link redirect to the mobile app with the auth token.
+    Returns a deep link redirect to the mobile app carrying a one-time
+    exchange code (never the sealed session itself — see C5).
     """
     # Get the stored redirect URI for this auth flow
     mobile_redirect: str | None = None
@@ -156,6 +212,13 @@ async def workos_mobile_callback(
 
     log.set(oauth_flow_type=OAUTH_FLOW_MOBILE)
     log.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
+
+    # CSRF binding: state must have been issued by our own /login endpoint
+    # for this flow. Without this, an attacker can hand a victim a crafted
+    # callback URL and complete login as the attacker's account.
+    if not await _consume_oauth_state(state or "", OAUTH_FLOW_MOBILE):
+        log.warning("Mobile OAuth state missing/invalid — rejecting callback")
+        return RedirectResponse(url=f"{mobile_redirect}?error=invalid_state")
 
     try:
         if not code:
@@ -193,7 +256,8 @@ async def workos_mobile_callback(
         log.set(user_id=str(user_id), is_new_user=is_new_user)
 
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(url=f"{mobile_redirect}?token={quote(token, safe='')}")
+        exchange_code = await _store_oauth_exchange_code(token)
+        return RedirectResponse(url=f"{mobile_redirect}?code={exchange_code}")
 
     except HTTPException as e:
         log.error(f"HTTP error during WorkOS mobile auth: {e.detail}")
@@ -215,9 +279,16 @@ async def login_workos_desktop():
     Returns:
         RedirectResponse: Redirects the user to the WorkOS SSO authorization URL
     """
+    # CSRF-binding state: without this, any attacker can craft a
+    # gaia://auth/callback URL and trick the desktop app into completing
+    # login as the attacker's account.
+    state = secrets.token_urlsafe(32)
+    await _store_oauth_state(state, OAUTH_FLOW_DESKTOP)
+
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_DESKTOP_REDIRECT_URI,
+        state=state,
     )
 
     return RedirectResponse(url=authorization_url)
@@ -226,18 +297,19 @@ async def login_workos_desktop():
 @router.get("/workos/desktop/callback")
 async def workos_desktop_callback(
     code: Optional[str] = None,
+    state: Optional[str] = None,
 ) -> RedirectResponse:
     """
     Handle the WorkOS SSO callback for desktop app.
-    Redirects to gaia:// protocol with auth token.
-
-    Args:
-        code: Authorization code from WorkOS
-
-    Returns:
-        RedirectResponse to gaia:// deep link with token
+    Redirects to gaia:// protocol with a short-lived one-time code that the
+    desktop app exchanges for the sealed session via POST /oauth/exchange-code.
     """
     log.set(oauth_flow_type=OAUTH_FLOW_DESKTOP)
+
+    if not await _consume_oauth_state(state or "", OAUTH_FLOW_DESKTOP):
+        log.warning("Desktop OAuth state missing/invalid — rejecting callback")
+        return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=invalid_state")
+
     try:
         # Validate code parameter
         if not code:
@@ -274,11 +346,9 @@ async def workos_desktop_callback(
         user_id, is_new_user = await store_user_info(name, email, picture_url)
         log.set(user_id=str(user_id), is_new_user=is_new_user)
 
-        # Return token via deep link - desktop app will handle storage
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(
-            url=f"{DESKTOP_DEEP_LINK}?token={quote(token, safe='')}"
-        )
+        exchange_code = await _store_oauth_exchange_code(token)
+        return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?code={exchange_code}")
 
     except HTTPException as e:
         log.error(f"HTTP error during WorkOS desktop auth: {e.detail}")
@@ -287,6 +357,27 @@ async def workos_desktop_callback(
     except Exception as e:
         log.error(f"Unexpected error during WorkOS desktop callback: {str(e)}")
         return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=server_error")
+
+
+class ExchangeCodeRequest(BaseModel):
+    """Body for the one-time code -> session exchange."""
+
+    code: str
+
+
+@router.post("/oauth/exchange-code")
+async def exchange_oauth_code(body: ExchangeCodeRequest) -> JSONResponse:
+    """Exchange a short-lived one-time ``code`` for the sealed WorkOS session.
+
+    Replaces the old pattern of handing the sealed session back in the deep
+    link query string, which leaked into reverse-proxy logs, APM
+    breadcrumbs, and Referer headers. The client POSTs the code over TLS
+    and receives the session in the JSON response body instead.
+    """
+    token = await _consume_oauth_exchange_code(body.code)
+    if not token:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    return JSONResponse(content={"token": token})
 
 
 @router.get("/workos/callback")

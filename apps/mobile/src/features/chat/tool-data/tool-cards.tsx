@@ -27,4 +27,5 @@ export * from "./cards/streaming-meta-cards";
 export * from "./cards/support-ticket-card";
 export * from "./cards/todo-card";
 export * from "./cards/todo-progress-card";
+export * from "./cards/twitter-card";
 export * from "./cards/weather-card";

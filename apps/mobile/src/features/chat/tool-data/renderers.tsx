@@ -47,6 +47,10 @@ import {
   type TodoData,
   TodoProgressCard,
   type TodoProgressData,
+  type TwitterSearchData,
+  TwitterSearchCard,
+  TwitterUserCard,
+  type TwitterUserData,
   WeatherCard,
   type WeatherData,
 } from "./tool-cards";
@@ -266,6 +270,15 @@ const TOOL_RENDERERS: Record<
       isStreaming
     />
   ),
+
+  twitter_search_data: (data, baseKey) => (
+    <TwitterSearchCard key={baseKey} data={data as TwitterSearchData} />
+  ),
+
+  twitter_user_data: (data, baseKey) => {
+    const users = Array.isArray(data) ? data : [data];
+    return <TwitterUserCard key={baseKey} data={users as TwitterUserData[]} />;
+  },
 };
 
 interface ToolDataRendererProps {

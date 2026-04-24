@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Image, Linking, View } from "react-native";
-import { AppIcon, SquareArrowUpRight02Icon, ToolsIcon } from "@/components/icons";
-import { Text } from "@/components/ui/text";
 import {
-  ToolCardHeader,
-  ToolCardInner,
-  ToolCardShell,
-} from "../primitives";
+  AppIcon,
+  SquareArrowUpRight02Icon,
+  ToolsIcon,
+} from "@/components/icons";
+import { Text } from "@/components/ui/text";
+import { ToolCardHeader, ToolCardInner, ToolCardShell } from "../primitives";
 
 const GOOGLE_DOCS_LOGO_URI =
   "https://upload.wikimedia.org/wikipedia/commons/thumb/0/01/Google_Docs_logo_%282020%29.svg/512px-Google_Docs_logo_%282020%29.svg.png";

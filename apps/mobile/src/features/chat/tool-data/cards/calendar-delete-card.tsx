@@ -1,25 +1,25 @@
-import { Button, Card, Chip } from "heroui-native";
 import { useState } from "react";
-import { ScrollView, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import {
   AppIcon,
-  Calendar03Icon,
   Cancel01Icon,
-  CheckmarkCircle01Icon,
-  Delete02Icon,
+  Tick02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { ToolCardHeader, ToolCardShell } from "../primitives";
 
 // -- Types --------------------------------------------------------------------
 
 export interface CalendarDeleteOption {
   event_id?: string;
   title?: string;
+  summary?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   background_color?: string;
   calendar_name?: string;
   description?: string;
+  is_all_day?: boolean;
 }
 
 type EventStatus = "idle" | "loading" | "completed";
@@ -30,28 +30,42 @@ interface CalendarDeleteCardProps {
   onDeleteAll?: (events: CalendarDeleteOption[]) => Promise<void>;
 }
 
+// -- Constants ----------------------------------------------------------------
+
+const DANGER_COLOR = "#ef4444";
+const DEFAULT_EVENT_COLOR = "#00bbff";
+
 // -- Helpers ------------------------------------------------------------------
 
-function formatDeletedTime(dt?: { dateTime?: string; date?: string }): string {
-  if (!dt) return "";
-  const raw = dt.dateTime || dt.date;
-  if (!raw) return "";
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return raw;
-  if (dt.date && !dt.dateTime) {
-    return date.toLocaleDateString([], {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-  }
-  return date.toLocaleString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
+function formatTimeRange(
+  start?: { dateTime?: string; date?: string },
+  end?: { dateTime?: string; date?: string },
+): string {
+  if (!start) return "";
+  const startRaw = start.dateTime || start.date;
+  if (!startRaw) return "";
+  const startDate = new Date(startRaw);
+  if (Number.isNaN(startDate.getTime())) return startRaw;
+
+  // All-day event
+  if (start.date && !start.dateTime) return "All day";
+
+  const startTime = startDate.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+
+  const endRaw = end?.dateTime || end?.date;
+  if (!endRaw) return startTime;
+  const endDate = new Date(endRaw);
+  if (Number.isNaN(endDate.getTime())) return startTime;
+
+  const endTime = endDate.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `${startTime} – ${endTime}`;
 }
 
 function groupByDate(
@@ -96,66 +110,68 @@ interface EventRowProps {
 }
 
 function EventRow({ event, status, onDelete }: EventRowProps) {
-  const timeStr = formatDeletedTime(event.start);
-  const eventColor = event.background_color ?? "#ef4444";
+  const eventColor = event.background_color || DEFAULT_EVENT_COLOR;
   const isCompleted = status === "completed";
   const isLoading = status === "loading";
+  const isDisabled = isCompleted || isLoading;
+
+  const summary = event.title || event.summary;
+  const timeDisplay = formatTimeRange(event.start, event.end);
 
   return (
     <View
-      className="flex-row items-center gap-3 py-3 px-4"
-      style={{ opacity: isCompleted ? 0.5 : 1 }}
+      className="relative flex-row items-end gap-2 rounded-2xl p-3 pr-2 pl-5"
+      style={{
+        backgroundColor: `${eventColor}20`,
+        opacity: isCompleted ? 0.5 : 1,
+      }}
     >
-      {/* Color bar + icon */}
-      <View className="items-center gap-1.5">
+      {/* Left color bar */}
+      <View
+        className="absolute left-1 top-0 h-full items-center justify-center"
+      >
         <View
-          className="w-8 h-8 rounded-xl items-center justify-center"
-          style={{ backgroundColor: `${eventColor}20` }}
-        >
-          <AppIcon
-            icon={isCompleted ? CheckmarkCircle01Icon : Calendar03Icon}
-            size={16}
-            color={isCompleted ? "#22c55e" : eventColor}
-          />
+          className="w-1 rounded-full"
+          style={{ height: "80%", backgroundColor: eventColor }}
+        />
+      </View>
+
+      {/* Event content */}
+      <View className="flex-1 min-w-0">
+        <Text className="text-base leading-tight text-white">
+          {summary ?? "Untitled Event"}
+        </Text>
+        {event.description ? (
+          <Text className="mt-1 text-xs text-zinc-400">{event.description}</Text>
+        ) : null}
+        <View className="mt-1">
+          <Text className="text-xs text-zinc-400">{timeDisplay}</Text>
         </View>
       </View>
 
-      {/* Event info */}
-      <View className="flex-1 min-w-0">
-        <Text
-          className={`text-sm font-medium mb-0.5 ${isCompleted ? "line-through text-foreground/50" : "text-foreground"}`}
-          numberOfLines={1}
-        >
-          {event.title ?? "Untitled Event"}
-        </Text>
-        {timeStr ? <Text className="text-muted text-xs">{timeStr}</Text> : null}
-        {event.calendar_name ? (
-          <Chip
-            size="sm"
-            variant="soft"
-            className="mt-1 self-start"
-            animation="disable-all"
-          >
-            <Chip.Label>{event.calendar_name}</Chip.Label>
-          </Chip>
-        ) : null}
-      </View>
-
       {/* Action button */}
-      <Button
-        size="sm"
-        variant={isCompleted ? "secondary" : "danger"}
-        isDisabled={isCompleted || isLoading}
-        onPress={onDelete}
-        className="flex-shrink-0 rounded-xl"
+      <Pressable
+        onPress={isDisabled ? undefined : onDelete}
+        disabled={isDisabled}
+        className="rounded-xl px-3 py-2 flex-row items-center gap-1.5"
+        style={{
+          backgroundColor: isCompleted
+            ? "rgba(255,255,255,0.08)"
+            : DANGER_COLOR,
+          opacity: isDisabled && !isCompleted ? 0.7 : 1,
+        }}
       >
-        {isCompleted ? (
-          <AppIcon icon={CheckmarkCircle01Icon} size={14} color="#22c55e" />
+        {isLoading ? (
+          <ActivityIndicator size="small" color="#ffffff" />
+        ) : isCompleted ? (
+          <>
+            <AppIcon icon={Tick02Icon} size={14} color="#ffffff" />
+            <Text className="text-xs font-medium text-white">Deleted</Text>
+          </>
         ) : (
-          <AppIcon icon={Delete02Icon} size={14} color="#fff" />
+          <Text className="text-xs font-medium text-white">Confirm</Text>
         )}
-        <Button.Label>{isCompleted ? "Deleted" : "Delete"}</Button.Label>
-      </Button>
+      </Pressable>
     </View>
   );
 }
@@ -169,6 +185,8 @@ export function CalendarDeleteCard({
 }: CalendarDeleteCardProps) {
   const [statuses, setStatuses] = useState<Record<string, EventStatus>>({});
   const [isDeletingAll, setIsDeletingAll] = useState(false);
+
+  if (!data?.length) return null;
 
   const getKey = (event: CalendarDeleteOption, index: number): string =>
     event.event_id ?? `delete-${index}`;
@@ -216,124 +234,81 @@ export function CalendarDeleteCard({
   );
 
   const eventsByDate = groupByDate(data);
+  const bulkDisabled = allCompleted || isDeletingAll;
 
   return (
-    <Card
-      variant="secondary"
-      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
-      animation="disable-all"
-    >
-      {/* Header */}
-      <Card.Header className="px-4 py-3 pb-0">
-        <View className="flex-row items-center gap-2">
-          <View className="w-7 h-7 rounded-xl bg-danger/15 items-center justify-center">
-            <AppIcon icon={Cancel01Icon} size={14} color="#ef4444" />
-          </View>
-          <View className="flex-1 min-w-0">
-            <Card.Title>
-              Event{data.length !== 1 ? "s" : ""} to Delete
-            </Card.Title>
-          </View>
-          <Chip size="sm" variant="soft" color="danger" animation="disable-all">
-            <Chip.Label>
-              {data.length} event{data.length !== 1 ? "s" : ""}
-            </Chip.Label>
-          </Chip>
-        </View>
-      </Card.Header>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Cancel01Icon}
+        iconColor={DANGER_COLOR}
+        title={`Event${data.length !== 1 ? "s" : ""} to Delete`}
+        count={data.length}
+      />
 
-      <Card.Body className="p-0">
-        <View
-          style={{
-            height: 1,
-            backgroundColor: "rgba(255,255,255,0.07)",
-            marginTop: 12,
-          }}
-        />
+      <ScrollView
+        style={{ maxHeight: 400 }}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="gap-3">
+          {Object.entries(eventsByDate).map(([dateKey, events]) => (
+            <View key={dateKey} className="gap-3">
+              {/* Date header with dotted divider lines */}
+              <View className="flex-row items-center">
+                <View className="flex-1 h-px bg-zinc-700" />
+                <Text className="px-3 text-xs text-zinc-500">
+                  {formatDateHeader(dateKey)}
+                </Text>
+                <View className="flex-1 h-px bg-zinc-700" />
+              </View>
 
-        {data.length === 0 ? (
-          <View className="px-4 py-3">
-            <Text className="text-muted text-sm">No events to delete</Text>
-          </View>
-        ) : (
-          <ScrollView
-            style={{ maxHeight: 360 }}
-            nestedScrollEnabled
-            showsVerticalScrollIndicator={false}
-          >
-            {Object.entries(eventsByDate).map(([dateKey, events]) => (
-              <View key={dateKey}>
-                {/* Date header */}
-                <View className="flex-row items-center gap-3 px-4 py-2">
-                  <View className="flex-1 h-px bg-white/8" />
-                  <Text className="text-muted text-xs">
-                    {formatDateHeader(dateKey)}
-                  </Text>
-                  <View className="flex-1 h-px bg-white/8" />
-                </View>
-
-                {events.map((event, localIdx) => {
+              <View className="gap-2">
+                {events.map((event) => {
                   const globalIdx = data.indexOf(event);
                   const key = getKey(event, globalIdx);
                   const status = statuses[key] ?? "idle";
                   return (
-                    <View key={key}>
-                      {localIdx > 0 && (
-                        <View
-                          style={{
-                            height: 1,
-                            backgroundColor: "rgba(255,255,255,0.07)",
-                            marginHorizontal: 16,
-                          }}
-                        />
-                      )}
-                      <EventRow
-                        event={event}
-                        status={status}
-                        onDelete={() => void handleDelete(event, key)}
-                      />
-                    </View>
+                    <EventRow
+                      key={key}
+                      event={event}
+                      status={status}
+                      onDelete={() => void handleDelete(event, key)}
+                    />
                   );
                 })}
               </View>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* Bulk delete footer */}
-        {data.length > 1 && onDeleteAll ? (
-          <>
-            <View
-              style={{ height: 1, backgroundColor: "rgba(255,255,255,0.07)" }}
-            />
-            <View className="px-4 py-3">
-              <Button
-                variant={allCompleted ? "secondary" : "danger"}
-                isDisabled={allCompleted || isDeletingAll}
-                onPress={() => void handleDeleteAll()}
-                className="w-full rounded-xl"
-              >
-                {allCompleted ? (
-                  <AppIcon
-                    icon={CheckmarkCircle01Icon}
-                    size={16}
-                    color="#22c55e"
-                  />
-                ) : (
-                  <AppIcon icon={Delete02Icon} size={16} color="#fff" />
-                )}
-                <Button.Label>
-                  {allCompleted
-                    ? "All Deleted"
-                    : someCompleted
-                      ? "Delete Remaining"
-                      : "Delete All Events"}
-                </Button.Label>
-              </Button>
             </View>
-          </>
-        ) : null}
-      </Card.Body>
-    </Card>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Bulk delete footer */}
+      {data.length > 1 ? (
+        <Pressable
+          onPress={bulkDisabled ? undefined : () => void handleDeleteAll()}
+          disabled={bulkDisabled}
+          className="mt-3 rounded-xl py-3 flex-row items-center justify-center gap-2"
+          style={{
+            backgroundColor: DANGER_COLOR,
+            opacity: bulkDisabled ? 0.5 : 1,
+          }}
+        >
+          {isDeletingAll ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : allCompleted ? (
+            <>
+              <AppIcon icon={Tick02Icon} size={18} color="#ffffff" />
+              <Text className="text-sm font-medium text-white">
+                All Deleted
+              </Text>
+            </>
+          ) : (
+            <Text className="text-sm font-medium text-white">
+              {someCompleted ? "Delete Remaining" : "Delete All Events"}
+            </Text>
+          )}
+        </Pressable>
+      ) : null}
+    </ToolCardShell>
   );
 }
