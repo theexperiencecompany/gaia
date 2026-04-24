@@ -183,9 +183,10 @@ export function ThinkingBubble({
         >
           <Text
             style={{
-              fontSize: fontSize.sm,
-              color: "#d4d4d8",
-              lineHeight: 20,
+              fontFamily: "RobotoMono_400Regular",
+              fontSize: fontSize.xs,
+              color: "#a1a1aa",
+              lineHeight: 18,
             }}
           >
             {thinkingContent}

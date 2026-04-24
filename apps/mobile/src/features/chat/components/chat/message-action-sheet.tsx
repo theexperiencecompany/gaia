@@ -15,6 +15,7 @@ import {
   Copy01Icon,
   Delete02Icon,
   LinkBackwardIcon,
+  Pin02Icon,
   RepeatIcon,
   Share01Icon,
   ThumbsDownIcon,
@@ -102,15 +103,7 @@ export const MessageActionSheet = forwardRef<
   MessageActionSheetProps
 >(
   (
-    {
-      config,
-      onDelete,
-      onPin: _onPin,
-      onRetry,
-      onReply,
-      onRegenerate,
-      onBranch,
-    },
+    { config, onDelete, onPin, onRetry, onReply, onRegenerate, onBranch },
     ref,
   ) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -124,13 +117,6 @@ export const MessageActionSheet = forwardRef<
     }));
 
     const handleCopyText = useCallback(async () => {
-      if (!config) return;
-      await Clipboard.setStringAsync(config.content);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setIsOpen(false);
-    }, [config]);
-
-    const handleCopyMarkdown = useCallback(async () => {
       if (!config) return;
       await Clipboard.setStringAsync(config.content);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -191,6 +177,13 @@ export const MessageActionSheet = forwardRef<
       onBranch?.(config.messageId, config.conversationId);
       setIsOpen(false);
     }, [config, onBranch]);
+
+    const handlePin = useCallback(() => {
+      if (!config) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      onPin(config.messageId, config.conversationId);
+      setIsOpen(false);
+    }, [config, onPin]);
 
     const handleReaction = useCallback(
       (reaction: ReactionType) => {
@@ -319,11 +312,6 @@ export const MessageActionSheet = forwardRef<
                 onPress={() => void handleCopyText()}
               />
               <ActionRow
-                icon={<AppIcon icon={Copy01Icon} size={20} color="#a1a1aa" />}
-                label="Copy as Markdown"
-                onPress={() => void handleCopyMarkdown()}
-              />
-              <ActionRow
                 icon={<AppIcon icon={Share01Icon} size={20} color="#a1a1aa" />}
                 label="Share"
                 onPress={() => void handleShare()}
@@ -338,6 +326,17 @@ export const MessageActionSheet = forwardRef<
                 }
                 label="Reply"
                 onPress={handleReply}
+              />
+              <ActionRow
+                icon={
+                  <AppIcon
+                    icon={Pin02Icon}
+                    size={20}
+                    color={config?.isPinned ? "#00bbff" : "#a1a1aa"}
+                  />
+                }
+                label={config?.isPinned ? "Unpin Message" : "Pin Message"}
+                onPress={handlePin}
               />
 
               {config?.isUser ? (

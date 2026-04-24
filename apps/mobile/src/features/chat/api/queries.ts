@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Conversation } from "@/features/chat/types";
 import { apiService } from "@/lib/api";
+import { chatDb } from "@/lib/db/chatDb";
 import type { Message } from "./chat-api";
 import { chatApi } from "./chat-api";
 
@@ -50,10 +51,42 @@ export const chatKeys = {
   messages: (id: string) => [...chatKeys.all, "messages", id] as const,
 };
 
+const MESSAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+async function fetchMessagesWithCache(
+  conversationId: string,
+): Promise<Message[]> {
+  // Check AsyncStorage first — if we have recent messages, return them
+  // immediately and avoid an API round-trip.
+  const cachedTimestamp = await chatDb.getMessagesTimestamp(conversationId);
+  const isCacheValid =
+    cachedTimestamp !== null &&
+    Date.now() - cachedTimestamp < MESSAGE_CACHE_TTL_MS;
+
+  if (isCacheValid) {
+    const cached = await chatDb.getMessages(conversationId);
+    if (cached.length > 0) {
+      return cached;
+    }
+  }
+
+  // Cache miss or expired — fetch from API and persist to AsyncStorage.
+  const messages = await chatApi.fetchMessages(conversationId);
+  if (messages.length > 0) {
+    chatDb.saveMessages(conversationId, messages).catch((err) => {
+      console.warn(
+        "[queries] Failed to persist messages to AsyncStorage:",
+        err,
+      );
+    });
+  }
+  return messages;
+}
+
 export function useConversationQuery(conversationId: string | null) {
   return useQuery({
     queryKey: chatKeys.messages(conversationId!),
-    queryFn: () => chatApi.fetchMessages(conversationId!),
+    queryFn: () => fetchMessagesWithCache(conversationId!),
     enabled: !!conversationId && !conversationId.startsWith("temp-"),
     staleTime: 5 * 60 * 1000,
   });

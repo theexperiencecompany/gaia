@@ -5,21 +5,29 @@ import type { Conversation } from "@/features/chat/types/index";
 const MESSAGES_PREFIX = "@chat_messages_";
 const CONVERSATIONS_KEY = "@chat_conversations";
 const MAX_CONVERSATIONS = 50;
+const MAX_MESSAGES_PER_CONVERSATION = 200;
 
 interface MessagesEntry {
-  messages: Message[];
+  messages: SerializedMessage[];
   timestamp: number;
 }
 
-function serializeMessage(msg: Message): Message {
+// Serialized form — Date fields are stored as ISO strings for JSON round-trip
+interface SerializedMessage extends Omit<Message, "timestamp"> {
+  timestamp: string;
+}
+
+function serializeMessage(msg: Message): SerializedMessage {
   return {
     ...msg,
     timestamp:
-      msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp),
+      msg.timestamp instanceof Date
+        ? msg.timestamp.toISOString()
+        : new Date(msg.timestamp).toISOString(),
   };
 }
 
-function deserializeMessage(raw: Message): Message {
+function deserializeMessage(raw: SerializedMessage): Message {
   return {
     ...raw,
     timestamp: new Date(raw.timestamp),
@@ -32,8 +40,9 @@ export const chatDb = {
     messages: Message[],
   ): Promise<void> => {
     try {
+      const limited = messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
       const entry: MessagesEntry = {
-        messages: messages.map(serializeMessage),
+        messages: limited.map(serializeMessage),
         timestamp: Date.now(),
       };
       await AsyncStorage.setItem(
@@ -56,6 +65,25 @@ export const chatDb = {
     } catch (error) {
       console.warn("[chatDb] Failed to get messages:", error);
       return [];
+    }
+  },
+
+  /**
+   * Returns the timestamp (ms since epoch) of when messages were last saved
+   * for the given conversation, or null if nothing is cached.
+   */
+  getMessagesTimestamp: async (
+    conversationId: string,
+  ): Promise<number | null> => {
+    try {
+      const raw = await AsyncStorage.getItem(
+        `${MESSAGES_PREFIX}${conversationId}`,
+      );
+      if (!raw) return null;
+      const entry = JSON.parse(raw) as MessagesEntry;
+      return entry.timestamp ?? null;
+    } catch {
+      return null;
     }
   },
 

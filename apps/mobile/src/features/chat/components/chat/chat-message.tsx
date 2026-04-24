@@ -163,6 +163,7 @@ interface ChatMessageProps {
   onReply?: (message: Message) => void;
   onLongPress?: (config: MessageActionConfig) => void;
   isLoading?: boolean;
+  isLastMessage?: boolean;
   loadingMessage?: string;
   progressToolName?: string | null;
   progressMessage?: string | null;
@@ -174,6 +175,7 @@ export function ChatMessage({
   onReply,
   onLongPress,
   isLoading = false,
+  isLastMessage = false,
   loadingMessage = "Thinking...",
   progressToolName = null,
   progressMessage = null,
@@ -345,13 +347,11 @@ export function ChatMessage({
             />
           </View>
         ) : showLoadingState ? (
-          <View style={{ paddingHorizontal: spacing.md }}>
-            <LoadingIndicator
-              progress={
-                loadingMessage !== "Thinking..." ? loadingMessage : undefined
-              }
-            />
-          </View>
+          <LoadingIndicator
+            progress={
+              loadingMessage !== "Thinking..." ? loadingMessage : undefined
+            }
+          />
         ) : (
           messageParts.map((part, partIndex) => {
             const segments = parseOpenUISegments(part, !!isLoading);
@@ -364,8 +364,15 @@ export function ChatMessage({
                     ? "last"
                     : "middle";
 
+            const totalSegments = segments.length;
             return segments.map((segment, segIndex) => {
               const key = `${message.id}-${partIndex}-${segIndex}`;
+              const isLastSegmentOfLastPart =
+                partIndex === messageParts.length - 1 &&
+                segIndex === totalSegments - 1;
+              const showCursor =
+                isLoading && isLastMessage && isLastSegmentOfLastPart;
+
               if (segment.type === "openui") {
                 return (
                   <View
@@ -385,6 +392,7 @@ export function ChatMessage({
                   message={segment.content}
                   variant="received"
                   grouped={grouped}
+                  isStreaming={showCursor}
                 />
               );
             });

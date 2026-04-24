@@ -3,6 +3,13 @@ import { PressableFeedback } from "heroui-native";
 import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, View } from "react-native";
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { AppIcon, Copy01Icon, Tick02Icon } from "@/components/icons";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
@@ -65,11 +72,49 @@ function CopyButton({ text }: CopyButtonProps) {
   );
 }
 
+// Blinking text cursor shown at the end of a streaming message
+function StreamingCursor() {
+  const opacity = useSharedValue(1);
+
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0, { duration: 300 }),
+        withTiming(1, { duration: 300 }),
+      ),
+      -1,
+      false,
+    );
+  }, [opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Reanimated.View
+      style={[
+        animatedStyle,
+        {
+          width: 2,
+          height: 16,
+          backgroundColor: "#ffffff",
+          borderRadius: 1,
+          marginLeft: 2,
+          alignSelf: "flex-end",
+          marginBottom: 1,
+        },
+      ]}
+    />
+  );
+}
+
 export interface MessageBubbleProps {
   message?: string;
   variant?: "sent" | "received" | "loading";
   grouped?: "none" | "first" | "middle" | "last";
   showAvatar?: boolean;
+  isStreaming?: boolean;
   children?: React.ReactNode;
 }
 
@@ -77,6 +122,7 @@ function MessageBubble({
   message,
   variant = "received",
   grouped = "none",
+  isStreaming = false,
   children,
 }: MessageBubbleProps) {
   const { spacing, fontSize, moderateScale } = useResponsive();
@@ -124,7 +170,8 @@ function MessageBubble({
   }
 
   // Received: no background, plain text with action row
-  const showActions = grouped === "last" || grouped === "none";
+  const showActions =
+    (grouped === "last" || grouped === "none") && !isStreaming;
 
   return (
     <View style={{ alignSelf: "flex-start", width: "100%" }}>
@@ -134,7 +181,14 @@ function MessageBubble({
           paddingVertical: spacing.xs + 2,
         }}
       >
-        {children ?? <MarkdownRenderer content={message ?? ""} />}
+        {children ?? (
+          <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
+            <View style={{ flex: 1 }}>
+              <MarkdownRenderer content={message ?? ""} />
+            </View>
+            {isStreaming ? <StreamingCursor /> : null}
+          </View>
+        )}
       </View>
 
       {showActions && (

@@ -517,7 +517,8 @@ export function ChatScreenContent({
           onFollowUpAction={handleFollowUpAction}
           onReply={handleReply}
           onLongPress={handleLongPressMessage}
-          isLoading={showLoading}
+          isLoading={isLastMessage && isTyping}
+          isLastMessage={isLastMessage}
           loadingMessage={showLoading ? displayMessage : undefined}
           progressToolName={showLoading ? progressToolName : null}
           progressMessage={showLoading ? progress : null}

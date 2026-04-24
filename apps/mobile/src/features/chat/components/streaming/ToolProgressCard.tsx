@@ -9,6 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { AppIcon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { useResponsive } from "@/lib/responsive";
 
 function formatToolName(toolName: string | null): string {
@@ -23,13 +24,18 @@ function formatToolName(toolName: string | null): string {
 interface ToolProgressCardProps {
   toolName: string | null;
   progressMessage: string | null;
+  toolCategory?: string | null;
+  toolIconUrl?: string | null;
 }
 
 export function ToolProgressCard({
   toolName,
   progressMessage,
+  toolCategory,
+  toolIconUrl,
 }: ToolProgressCardProps) {
   const { spacing, fontSize, moderateScale } = useResponsive();
+  const iconSize = moderateScale(16, 0.5);
 
   const pulseOpacity = useSharedValue(0.5);
   useEffect(() => {
@@ -49,6 +55,14 @@ export function ToolProgressCard({
 
   const message = progressMessage || formatToolName(toolName);
 
+  const categoryIcon = toolCategory
+    ? getToolCategoryIcon(
+        toolCategory,
+        { size: iconSize, showBackground: false },
+        toolIconUrl ?? undefined,
+      )
+    : null;
+
   return (
     <View
       style={{
@@ -59,12 +73,14 @@ export function ToolProgressCard({
       }}
     >
       <Animated.View style={pulseStyle}>
-        <AppIcon
-          icon={Brain02Icon}
-          size={moderateScale(16, 0.5)}
-          color="#a78bfa"
-          strokeWidth={1.5}
-        />
+        {categoryIcon ?? (
+          <AppIcon
+            icon={Brain02Icon}
+            size={iconSize}
+            color="#a78bfa"
+            strokeWidth={1.5}
+          />
+        )}
       </Animated.View>
       <Text
         style={{
