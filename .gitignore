@@ -134,3 +134,4 @@ ops/**/*.key
 ops/**/*.pem
 ops/**/*.p12
 ops/**/*.pfx
+chrome/

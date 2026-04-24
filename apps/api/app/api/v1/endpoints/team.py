@@ -1,11 +1,15 @@
 from typing import List
-from fastapi import APIRouter, status
-from app.models.team_models import TeamMemberCreate, TeamMemberUpdate, TeamMember
-from shared.py.wide_events import log
+
+from fastapi import APIRouter, HTTPException, status
+
 from app.decorators.caching import Cacheable
+from app.models.team_models import TeamMember
 from app.services.team_service import TeamService
+from shared.py.wide_events import log
 
 router = APIRouter()
+
+_DEPRECATED_DETAIL = "Endpoint not used anymore. Team members are managed out-of-band."
 
 
 @router.get("/team", response_model=List[TeamMember])
@@ -30,27 +34,20 @@ async def get_team_member(member_id: str):
     return result
 
 
-@router.post("/team", response_model=TeamMember, status_code=status.HTTP_201_CREATED)
-async def create_team_member(member: TeamMemberCreate):
-    """Create a new team member with cache invalidation."""
-    log.set(operation="create_team_member")
-    result = await TeamService.create_team_member(member)
-    log.set(outcome="success")
-    return result
+@router.post("/team", status_code=status.HTTP_410_GONE, include_in_schema=False)
+async def create_team_member_deprecated() -> None:
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail=_DEPRECATED_DETAIL)
 
 
-@router.put("/team/{member_id}", response_model=TeamMember)
-async def update_team_member(member_id: str, member: TeamMemberUpdate):
-    """Update a team member with cache invalidation."""
-    log.set(operation="update_team_member", member_id=member_id)
-    result = await TeamService.update_team_member(member_id, member)
-    log.set(outcome="success")
-    return result
+@router.put(
+    "/team/{member_id}", status_code=status.HTTP_410_GONE, include_in_schema=False
+)
+async def update_team_member_deprecated(member_id: str) -> None:
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail=_DEPRECATED_DETAIL)
 
 
-@router.delete("/team/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_team_member(member_id: str):
-    """Delete a team member with cache invalidation."""
-    log.set(operation="delete_team_member", member_id=member_id)
-    await TeamService.delete_team_member(member_id)
-    log.set(outcome="success")
+@router.delete(
+    "/team/{member_id}", status_code=status.HTTP_410_GONE, include_in_schema=False
+)
+async def delete_team_member_deprecated(member_id: str) -> None:
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail=_DEPRECATED_DETAIL)
