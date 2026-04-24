@@ -151,22 +151,8 @@ export function TodoProgressCard({
 
   if (activeSources.length === 0) return null;
 
-  const allTodos = activeSources.flatMap(
-    ([, snapshot]) => snapshot.todos ?? [],
-  );
-  const totalCompleted = allTodos.filter(
-    (t) => t.status === "completed",
-  ).length;
-
   return (
     <ToolCardShell>
-      <View className="flex-row items-center justify-between mb-3">
-        <Text className="text-xs text-zinc-400">
-          {isStreaming ? "Processing tasks..." : "Task Progress"}
-        </Text>
-        <CountChip completed={totalCompleted} total={allTodos.length} />
-      </View>
-
       <View className="gap-4">
         {activeSources.map(([source, snapshot]) => (
           <SourceSection

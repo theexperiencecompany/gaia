@@ -4,7 +4,6 @@ import type {
   GoalRoadmap,
   GoalRoadmapNode,
 } from "@gaia/shared";
-import { Button } from "heroui-native";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import {
@@ -12,9 +11,12 @@ import {
   ArrowRight01Icon,
   Calendar03Icon,
   Cancel01Icon,
+  ChartLineData01Icon,
   CheckmarkCircle02Icon,
+  Clock01Icon,
   Target02Icon,
   UserGroupIcon,
+  ZapIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
@@ -215,25 +217,23 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
         </View>
       )}
 
-      {/* Action buttons */}
+      {/* Action buttons — display-only (no navigation in mobile tool cards) */}
       <View className="flex-row gap-3 pt-2">
-        <Button
-          size="sm"
-          variant="primary"
-          className="flex-1"
-          animation="disable-all"
+        <View
+          className="flex-1 rounded-lg py-1.5 items-center justify-center"
+          style={{ backgroundColor: "rgba(0,187,255,0.12)" }}
         >
-          <Button.Label>View Goal</Button.Label>
-        </Button>
+          <Text className="text-xs font-semibold text-primary">View Goal</Text>
+        </View>
         {hasRoadmap && goal.todo_project_id && (
-          <Button
-            size="sm"
-            variant="secondary"
-            className="flex-1"
-            animation="disable-all"
+          <View
+            className="flex-1 rounded-lg py-1.5 items-center justify-center"
+            style={{ backgroundColor: "rgba(63,63,70,0.5)" }}
           >
-            <Button.Label>View Tasks</Button.Label>
-          </Button>
+            <Text className="text-xs font-semibold text-zinc-400">
+              View Tasks
+            </Text>
+          </View>
         )}
       </View>
     </ToolCardInner>
@@ -265,16 +265,14 @@ function SingleGoalCreateCard({ goal }: { goal: GoalItem }) {
         </View>
       </View>
 
-      {/* Action */}
+      {/* Action — display-only */}
       <View className="px-6 pb-6 pt-2">
-        <Button
-          size="md"
-          variant="primary"
-          className="w-full"
-          animation="disable-all"
+        <View
+          className="w-full rounded-xl py-2.5 items-center justify-center"
+          style={{ backgroundColor: "rgba(0,187,255,0.15)" }}
         >
-          <Button.Label>View Goal</Button.Label>
-        </Button>
+          <Text className="text-sm font-semibold text-primary">View Goal</Text>
+        </View>
       </View>
     </View>
   );
@@ -364,12 +362,62 @@ function StatsCard({ data }: { data: GoalData }) {
   );
 }
 
+// Loading-action icon map — mirrors web GoalSection
+const LOADING_ACTION_ICONS: Record<
+  string,
+  { icon: typeof ZapIcon; color: string }
+> = {
+  creating: { icon: ZapIcon, color: "#3b82f6" },
+  fetching: { icon: Clock01Icon, color: "#3b82f6" },
+  deleting: { icon: Clock01Icon, color: "#ef4444" },
+  updating_progress: { icon: ChartLineData01Icon, color: "#22c55e" },
+  generating_roadmap: { icon: UserGroupIcon, color: "#00bbff" },
+};
+
 export function GoalCard({ data }: { data: GoalData }) {
   const action = data.action ?? "list";
 
   // Stats view
   if (action === "stats" && data.stats) {
     return <StatsCard data={data} />;
+  }
+
+  // Loading / progress message states (creating, fetching, deleting,
+  // updating_progress, generating_roadmap) — mirrors web GoalSection
+  const loadingMeta = LOADING_ACTION_ICONS[action];
+  if (loadingMeta && data.message) {
+    return (
+      <ToolCardShell>
+        <View className="flex-row items-center gap-2">
+          <AppIcon
+            icon={loadingMeta.icon}
+            size={16}
+            color={loadingMeta.color}
+          />
+          <Text className="text-sm text-zinc-100 flex-1">{data.message}</Text>
+        </View>
+      </ToolCardShell>
+    );
+  }
+
+  // Roadmap needed — message + "Generate Roadmap" display button
+  if (action === "roadmap_needed" && data.message) {
+    return (
+      <ToolCardShell>
+        <View className="flex-row items-center gap-2 mb-3">
+          <AppIcon icon={UserGroupIcon} size={16} color="#00bbff" />
+          <Text className="text-sm text-zinc-300 flex-1">{data.message}</Text>
+        </View>
+        <View
+          className="w-full rounded-xl py-2.5 items-center justify-center"
+          style={{ backgroundColor: "rgba(0,187,255,0.15)" }}
+        >
+          <Text className="text-sm font-semibold text-primary">
+            Generate Roadmap
+          </Text>
+        </View>
+      </ToolCardShell>
+    );
   }
 
   // Single goal create — use rich card
@@ -414,7 +462,22 @@ export function GoalCard({ data }: { data: GoalData }) {
     );
   }
 
-  // Action message with no goals
+  // Empty state for list action — mirrors web
+  if (action === "list" && (!data.goals || data.goals.length === 0)) {
+    return (
+      <ToolCardShell>
+        <View className="items-center py-4">
+          <AppIcon icon={Target02Icon} size={32} color="#52525b" />
+          <Text className="mt-2 text-sm text-zinc-300">No goals found</Text>
+          {data.message && (
+            <Text className="text-xs text-zinc-500 mt-1">{data.message}</Text>
+          )}
+        </View>
+      </ToolCardShell>
+    );
+  }
+
+  // Action message with no goals (delete/success confirmation)
   if (data.message) {
     const isDelete = action === "delete";
     return (

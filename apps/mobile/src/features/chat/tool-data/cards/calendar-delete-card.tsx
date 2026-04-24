@@ -1,6 +1,5 @@
-import { Button } from "heroui-native";
 import { useState } from "react";
-import { ActivityIndicator, ScrollView, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import { AppIcon, Calendar03Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
@@ -140,24 +139,27 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
       </View>
 
       {/* Action button */}
-      <Button
-        size="sm"
-        variant={isCompleted ? "secondary" : "danger"}
-        isDisabled={isCompleted || isLoading}
-        onPress={onDelete}
-        className="flex-shrink-0"
+      <Pressable
+        onPress={isCompleted || isLoading ? undefined : onDelete}
+        className="flex-shrink-0 rounded-lg px-3 py-1.5 items-center justify-center flex-row gap-1"
+        style={{
+          backgroundColor: isCompleted
+            ? "rgba(63,63,70,0.6)"
+            : "rgba(239,68,68,0.15)",
+          opacity: isCompleted || isLoading ? 0.7 : 1,
+        }}
       >
         {isLoading ? (
           <ActivityIndicator size="small" color="#ffffff" />
         ) : isCompleted ? (
           <>
-            <AppIcon icon={Tick02Icon} size={16} color="#fff" />
-            <Button.Label>Deleted</Button.Label>
+            <AppIcon icon={Tick02Icon} size={14} color="#a1a1aa" />
+            <Text className="text-xs font-medium text-zinc-400">Deleted</Text>
           </>
         ) : (
-          <Button.Label>Confirm</Button.Label>
+          <Text className="text-xs font-semibold text-red-400">Confirm</Text>
         )}
-      </Button>
+      </Pressable>
     </View>
   );
 }
@@ -283,25 +285,35 @@ export function CalendarDeleteCard({
       </ScrollView>
 
       {data.length > 1 ? (
-        <Button
-          variant="danger"
-          isDisabled={allCompleted || isConfirmingAll}
-          onPress={() => void handleDeleteAll()}
-          className="mt-3 w-full"
+        <Pressable
+          onPress={
+            allCompleted || isConfirmingAll
+              ? undefined
+              : () => void handleDeleteAll()
+          }
+          className="mt-3 w-full rounded-xl py-2.5 items-center justify-center flex-row gap-2"
+          style={{
+            backgroundColor: allCompleted
+              ? "rgba(63,63,70,0.6)"
+              : "rgba(239,68,68,0.18)",
+            opacity: allCompleted || isConfirmingAll ? 0.7 : 1,
+          }}
         >
           {isConfirmingAll ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : allCompleted ? (
             <>
-              <AppIcon icon={Tick02Icon} size={18} color="#fff" />
-              <Button.Label>All Deleted</Button.Label>
+              <AppIcon icon={Tick02Icon} size={16} color="#a1a1aa" />
+              <Text className="text-sm font-semibold text-zinc-400">
+                All Deleted
+              </Text>
             </>
           ) : (
-            <Button.Label>
+            <Text className="text-sm font-semibold text-red-400">
               {someCompleted ? "Delete Remaining" : "Delete All Events"}
-            </Button.Label>
+            </Text>
           )}
-        </Button>
+        </Pressable>
       ) : null}
     </ToolCardShell>
   );

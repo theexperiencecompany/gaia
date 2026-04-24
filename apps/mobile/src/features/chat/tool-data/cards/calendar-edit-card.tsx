@@ -1,6 +1,5 @@
-import { Button } from "heroui-native";
 import { useState } from "react";
-import { ActivityIndicator, ScrollView, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import { AppIcon, Calendar03Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
@@ -225,24 +224,27 @@ function EventRow({ event, status, onEdit }: EventRowProps) {
           <Text className="mt-1 text-xs text-zinc-400">{updatedTime}</Text>
         </View>
 
-        <Button
-          size="sm"
-          variant={isCompleted ? "secondary" : "primary"}
-          isDisabled={isCompleted || isLoading}
-          onPress={onEdit}
-          className="flex-shrink-0"
+        <Pressable
+          onPress={isCompleted || isLoading ? undefined : onEdit}
+          className="flex-shrink-0 rounded-lg px-3 py-1.5 items-center justify-center flex-row gap-1"
+          style={{
+            backgroundColor: isCompleted
+              ? "rgba(63,63,70,0.6)"
+              : "rgba(0,187,255,0.15)",
+            opacity: isCompleted || isLoading ? 0.7 : 1,
+          }}
         >
           {isLoading ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : isCompleted ? (
             <>
-              <AppIcon icon={Tick02Icon} size={16} color="#fff" />
-              <Button.Label>Updated</Button.Label>
+              <AppIcon icon={Tick02Icon} size={14} color="#a1a1aa" />
+              <Text className="text-xs font-medium text-zinc-400">Updated</Text>
             </>
           ) : (
-            <Button.Label>Confirm</Button.Label>
+            <Text className="text-xs font-semibold text-primary">Confirm</Text>
           )}
-        </Button>
+        </Pressable>
       </View>
     </View>
   );
@@ -365,25 +367,35 @@ export function CalendarEditCard({
       </ScrollView>
 
       {data.length > 1 ? (
-        <Button
-          variant={allCompleted ? "secondary" : "primary"}
-          isDisabled={allCompleted || isUpdatingAll}
-          onPress={() => void handleEditAll()}
-          className="mt-3 w-full"
+        <Pressable
+          onPress={
+            allCompleted || isUpdatingAll
+              ? undefined
+              : () => void handleEditAll()
+          }
+          className="mt-3 w-full rounded-xl py-2.5 items-center justify-center flex-row gap-2"
+          style={{
+            backgroundColor: allCompleted
+              ? "rgba(63,63,70,0.6)"
+              : "rgba(0,187,255,0.18)",
+            opacity: allCompleted || isUpdatingAll ? 0.7 : 1,
+          }}
         >
           {isUpdatingAll ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : allCompleted ? (
             <>
-              <AppIcon icon={Tick02Icon} size={18} color="#fff" />
-              <Button.Label>All Updated</Button.Label>
+              <AppIcon icon={Tick02Icon} size={16} color="#a1a1aa" />
+              <Text className="text-sm font-semibold text-zinc-400">
+                All Updated
+              </Text>
             </>
           ) : (
-            <Button.Label>
+            <Text className="text-sm font-semibold text-primary">
               {someCompleted ? "Update Remaining" : "Update All Events"}
-            </Button.Label>
+            </Text>
           )}
-        </Button>
+        </Pressable>
       ) : null}
     </ToolCardShell>
   );

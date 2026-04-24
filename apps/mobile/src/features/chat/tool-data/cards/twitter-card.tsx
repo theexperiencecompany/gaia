@@ -14,6 +14,7 @@ import {
   LinkSquare02Icon,
   Location01Icon,
   RepeatIcon,
+  Share01Icon,
   TwitterIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -168,6 +169,7 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
                 {formatNumber(metrics.retweet_count)}
               </Text>
             </View>
+            <AppIcon icon={Share01Icon} size={13} color="#a1a1aa" />
           </View>
         </View>
 

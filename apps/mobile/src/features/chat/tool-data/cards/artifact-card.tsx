@@ -263,11 +263,16 @@ function FileRow({ file }: { file: ArtifactData }) {
           </Text>
         </View>
 
-        {/* Download action */}
+        {/* Open + Download actions — mirrors web's Open button + Download icon */}
         {hasUrl ? (
-          <View className="flex-row items-center gap-1 shrink-0">
-            <AppIcon icon={Download02Icon} size={14} color="#00bbff" />
-            <Text className="text-primary text-xs font-semibold">Download</Text>
+          <View className="flex-row items-center gap-2 shrink-0">
+            <View
+              className="rounded-lg px-2.5 py-1 items-center justify-center"
+              style={{ backgroundColor: "rgba(0,187,255,0.15)" }}
+            >
+              <Text className="text-primary text-xs font-semibold">Open</Text>
+            </View>
+            <AppIcon icon={Download02Icon} size={16} color="#71717a" />
           </View>
         ) : null}
       </View>

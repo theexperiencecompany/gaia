@@ -190,7 +190,13 @@ function CollapsibleSection({
 
 // -- Output display -----------------------------------------------------------
 
-function OutputSection({ output }: { output: CodeOutput }) {
+function OutputSection({
+  output,
+  status,
+}: {
+  output: CodeOutput;
+  status?: CodeData["status"];
+}) {
   const hasStdout = !!output.stdout;
   const hasStderr = !!output.stderr;
   const hasResults = !!(output.results && output.results.length > 0);
@@ -331,6 +337,18 @@ function OutputSection({ output }: { output: CodeOutput }) {
           </View>
         </View>
       )}
+
+      {/* Status footer row — mirrors web CodeExecutionOutput */}
+      <View className="flex-row items-center justify-between pt-1">
+        <Text className="text-[10px] text-zinc-500">
+          Status: {status ?? "unknown"}
+        </Text>
+        {!hasError && !hasStderr ? (
+          <Text className="text-[10px] text-green-400">Success</Text>
+        ) : (
+          <Text className="text-[10px] text-red-400">Failed</Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -397,7 +415,7 @@ export function CodeExecutionCard({ data }: { data: CodeData }) {
         {(hasOutput || data.status === "executing") && (
           <CollapsibleSection label="Output" defaultOpen>
             {data.output ? (
-              <OutputSection output={data.output} />
+              <OutputSection output={data.output} status={data.status} />
             ) : (
               <View className="flex-row items-center gap-2">
                 <View className="w-1.5 h-1.5 rounded-full bg-[#00bbff]" />
@@ -407,6 +425,15 @@ export function CodeExecutionCard({ data }: { data: CodeData }) {
               </View>
             )}
           </CollapsibleSection>
+        )}
+
+        {/* Ready to execute — no code running and no output yet */}
+        {!hasCode && !hasOutput && data.status !== "executing" && (
+          <ToolCardInner dense>
+            <Text className="text-zinc-500 text-xs text-center py-2">
+              Ready to execute
+            </Text>
+          </ToolCardInner>
         )}
 
         {hasChart &&

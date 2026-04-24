@@ -7,7 +7,6 @@ import type {
   SearchResults,
   WebResult,
 } from "@gaia/shared";
-import { Accordion, Tabs } from "heroui-native";
 import { useEffect, useState } from "react";
 import { Image, Linking, Pressable, View } from "react-native";
 import Animated, {
@@ -506,10 +505,16 @@ function MetadataSection({
 
 // ---------------------------------------------------------------------------
 // Completed state
-// Mirrors web: accordion toggle (Hide/Show Deep research Results) then tabs
+// Mirrors web: collapsible toggle (Hide/Show Deep research Results) then tabs
 // for Enhanced Results / Original Search / Search Info.
-// The accordion trigger shows only the text button — no extra chevron indicator.
+// Uses Pressable-based accordion + custom tab row — no heroui-native.
 // ---------------------------------------------------------------------------
+
+interface TabDef {
+  key: Tab;
+  label: string;
+  icon?: typeof Search01Icon;
+}
 
 function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
   const hasEnhanced =
@@ -523,91 +528,87 @@ function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
       ? "original"
       : "metadata";
 
+  const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+
+  const tabs: TabDef[] = [
+    ...(hasEnhanced
+      ? [{ key: "enhanced" as Tab, label: "Enhanced Results" }]
+      : []),
+    ...(hasOriginal
+      ? [
+          {
+            key: "original" as Tab,
+            label: "Original Search",
+            icon: Search01Icon,
+          },
+        ]
+      : []),
+    ...(hasMetadata
+      ? [{ key: "metadata" as Tab, label: "Search Info", icon: Globe02Icon }]
+      : []),
+  ];
 
   return (
     <ToolCardShell>
-      <Accordion
-        selectionMode="single"
-        defaultValue="1"
-        animation="disable-all"
-      >
-        <Accordion.Item value="1">
-          {({ isExpanded }) => (
-            <>
-              {/* Accordion trigger — text pill only, no chevron, matches web */}
-              <Accordion.Trigger className="p-0">
-                <View className="rounded-lg bg-white/10 px-3 py-1.5 self-start">
-                  <Text className="text-zinc-200 text-sm font-medium">
-                    {isExpanded
-                      ? "Hide Deep Research Results"
-                      : "Show Deep Research Results"}
-                  </Text>
-                </View>
-              </Accordion.Trigger>
+      {/* Accordion trigger — text pill only, no chevron, matches web */}
+      <Pressable onPress={() => setIsExpanded((prev) => !prev)}>
+        <View className="rounded-lg bg-white/10 px-3 py-1.5 self-start">
+          <Text className="text-zinc-200 text-sm font-medium">
+            {isExpanded
+              ? "Hide Deep Research Results"
+              : "Show Deep Research Results"}
+          </Text>
+        </View>
+      </Pressable>
 
-              {/* Tab content */}
-              <Accordion.Content>
-                <Tabs
-                  value={activeTab}
-                  onValueChange={(v) => setActiveTab(v as Tab)}
-                  variant="primary"
-                  animation="disable-all"
+      {isExpanded && (
+        <>
+          {/* Custom tab row */}
+          <View className="flex-row gap-1 mt-3 flex-wrap">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <Pressable
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  className="flex-row items-center gap-1 rounded-lg px-3 py-1.5"
+                  style={{
+                    backgroundColor: isActive
+                      ? "rgba(0,187,255,0.18)"
+                      : "rgba(63,63,70,0.4)",
+                  }}
                 >
-                  <Tabs.List className="mt-3">
-                    <Tabs.Indicator />
-                    {hasEnhanced && (
-                      <Tabs.Trigger value="enhanced">
-                        <Tabs.Label>Enhanced Results</Tabs.Label>
-                      </Tabs.Trigger>
-                    )}
-                    {hasOriginal && (
-                      <Tabs.Trigger value="original">
-                        <View className="flex-row items-center gap-1.5">
-                          <AppIcon
-                            icon={Search01Icon}
-                            size={13}
-                            color="#a1a1aa"
-                          />
-                          <Tabs.Label>Original Search</Tabs.Label>
-                        </View>
-                      </Tabs.Trigger>
-                    )}
-                    {hasMetadata && (
-                      <Tabs.Trigger value="metadata">
-                        <View className="flex-row items-center gap-1.5">
-                          <AppIcon
-                            icon={Globe02Icon}
-                            size={13}
-                            color="#a1a1aa"
-                          />
-                          <Tabs.Label>Search Info</Tabs.Label>
-                        </View>
-                      </Tabs.Trigger>
-                    )}
-                  </Tabs.List>
+                  {tab.icon && (
+                    <AppIcon
+                      icon={tab.icon}
+                      size={13}
+                      color={isActive ? "#00bbff" : "#a1a1aa"}
+                    />
+                  )}
+                  <Text
+                    className="text-xs font-medium"
+                    style={{ color: isActive ? "#00bbff" : "#a1a1aa" }}
+                  >
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-                  {hasEnhanced && data.enhanced_results && (
-                    <Tabs.Content value="enhanced">
-                      <EnhancedResultsSection results={data.enhanced_results} />
-                    </Tabs.Content>
-                  )}
-                  {hasOriginal && data.original_search && (
-                    <Tabs.Content value="original">
-                      <OriginalSearchSection search={data.original_search} />
-                    </Tabs.Content>
-                  )}
-                  {hasMetadata && data.metadata && (
-                    <Tabs.Content value="metadata">
-                      <MetadataSection metadata={data.metadata} />
-                    </Tabs.Content>
-                  )}
-                </Tabs>
-              </Accordion.Content>
-            </>
+          {/* Tab content */}
+          {activeTab === "enhanced" && hasEnhanced && data.enhanced_results && (
+            <EnhancedResultsSection results={data.enhanced_results} />
           )}
-        </Accordion.Item>
-      </Accordion>
+          {activeTab === "original" && hasOriginal && data.original_search && (
+            <OriginalSearchSection search={data.original_search} />
+          )}
+          {activeTab === "metadata" && hasMetadata && data.metadata && (
+            <MetadataSection metadata={data.metadata} />
+          )}
+        </>
+      )}
     </ToolCardShell>
   );
 }
