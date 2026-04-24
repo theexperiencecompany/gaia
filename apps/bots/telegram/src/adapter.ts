@@ -35,6 +35,7 @@ import {
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
+  sanitizeErrorForLog,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
 import { Bot, type Context } from "grammy";
@@ -151,7 +152,10 @@ export class TelegramAdapter extends BaseBotAdapter {
     try {
       await this.bot.api.setMyCommands(telegramCommands);
     } catch (e) {
-      this.adapterLogger.error("set_my_commands_failed", undefined, e);
+      this.adapterLogger.error(
+        "set_my_commands_failed",
+        sanitizeErrorForLog(e),
+      );
     }
   }
 
@@ -203,7 +207,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     try {
       await this.bot.api.deleteWebhook({ drop_pending_updates: true });
     } catch (e) {
-      this.adapterLogger.warn("delete_webhook_failed", undefined, e);
+      this.adapterLogger.warn("delete_webhook_failed", sanitizeErrorForLog(e));
     }
 
     const runBot = async (retryDelayMs = 0): Promise<void> => {
