@@ -34,7 +34,9 @@ def get_token(
 
     identity = f"user_{user_id}"
     display_name = user_email
-    agent_jwt = create_agent_token(user_id)
+    # Bind the agent token to (user_id, room_id) so a captured JWT cannot
+    # be used to impersonate this user in any other LiveKit room (C7).
+    agent_jwt = create_agent_token(user_id, room_id=room_name)
     metadata = {
         "identity": identity,
         "name": display_name,
