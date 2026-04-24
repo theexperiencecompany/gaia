@@ -16,6 +16,8 @@ import {
   CalendarOptionsCard,
   type CodeData,
   CodeExecutionCard,
+  ConnectionStatusCard,
+  type ConnectionStatusData,
   type ContactData,
   ContactListCard,
   DeepResearchCard,
@@ -31,12 +33,10 @@ import {
   type GoalData,
   GoogleDocsCard,
   type GoogleDocsData,
-  ConnectionStatusCard,
-  type ConnectionStatusData,
   IntegrationConnectionCard,
   type IntegrationConnectionData,
-  type IntegrationListCardData,
   IntegrationListCard,
+  type IntegrationListCardData,
   NotificationCard,
   type NotificationData,
   PeopleSearchCard,
@@ -53,8 +53,8 @@ import {
   type TodoData,
   TodoProgressCard,
   type TodoProgressData,
-  type TwitterSearchData,
   TwitterSearchCard,
+  type TwitterSearchData,
   TwitterUserCard,
   type TwitterUserData,
   WeatherCard,
@@ -269,9 +269,7 @@ const TOOL_RENDERERS: Record<
         seen.add(s.id);
         return true;
       });
-    return (
-      <IntegrationListCard key={baseKey} data={{ suggested }} />
-    );
+    return <IntegrationListCard key={baseKey} data={{ suggested }} />;
   },
 
   connection_status_data: (data, baseKey) => (

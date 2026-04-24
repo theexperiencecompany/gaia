@@ -549,7 +549,7 @@ export function GoalCard({ data }: { data: GoalData }) {
           <Text className="text-sm text-zinc-300 flex-1">{data.message}</Text>
         </View>
         <View className="w-full rounded-xl py-2.5 items-center justify-center bg-primary">
-          <Text className="text-sm font-semibold text-primary-foreground">
+          <Text className="text-sm font-semibold text-zinc-900">
             Generate Roadmap
           </Text>
         </View>

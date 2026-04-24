@@ -126,7 +126,9 @@ export function RateLimitCard({ data }: { data: RateLimitData }) {
               </Text>
               {" feature and isn"}
               {"'"}
-              {"t included in your current plan. Upgrade to unlock it and get significantly higher limits across every feature."}
+              {
+                "t included in your current plan. Upgrade to unlock it and get significantly higher limits across every feature."
+              }
             </Text>
 
             <View className="mt-3 gap-1.5">
@@ -166,7 +168,9 @@ export function RateLimitCard({ data }: { data: RateLimitData }) {
               <Text className="text-xs font-medium text-zinc-200">
                 {featureName}
               </Text>
-              {" calls for today. Your limit will automatically reset, no action needed."}
+              {
+                " calls for today. Your limit will automatically reset, no action needed."
+              }
             </Text>
           </ToolCardInner>
 

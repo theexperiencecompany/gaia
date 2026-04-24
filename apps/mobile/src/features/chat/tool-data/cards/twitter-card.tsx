@@ -2,23 +2,19 @@ import { useState } from "react";
 import { Image, Linking, Pressable, View } from "react-native";
 import {
   AppIcon,
-  Calendar01Icon,
-  CheckmarkBadge02Icon,
+  Calendar03Icon,
+  CheckmarkCircle02Icon,
   FavouriteIcon,
-  Link01Icon,
+  LinkSquare02Icon,
   Location01Icon,
-  MessageIcon,
-  NewTwitterIcon,
+  Message01Icon,
   RepeatIcon,
-  ShareIcon,
+  Share08Icon,
   SquareArrowUpRight02Icon,
+  TwitterIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  ToolCardHeader,
-  ToolCardInner,
-  ToolCardShell,
-} from "../primitives";
+import { ToolCardHeader, ToolCardInner, ToolCardShell } from "../primitives";
 
 const TWITTER_BLUE = "#1d9bf0";
 const TWITTER_LINK = "#1DA1F2";
@@ -179,11 +175,7 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
           onPress={() => openUserProfile(author.username)}
           className="active:opacity-70"
         >
-          <Avatar
-            uri={author.profile_image_url}
-            name={author.name}
-            size={40}
-          />
+          <Avatar uri={author.profile_image_url} name={author.name} size={40} />
         </Pressable>
 
         <View className="flex-1 min-w-0">
@@ -197,7 +189,7 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
             </Text>
             {author.verified && (
               <AppIcon
-                icon={CheckmarkBadge02Icon}
+                icon={CheckmarkCircle02Icon}
                 size={14}
                 color={TWITTER_BLUE}
               />
@@ -223,7 +215,7 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
           {/* Engagement row */}
           <View className="flex-row items-center gap-5 mt-3">
             <EngagementMetric
-              icon={MessageIcon}
+              icon={Message01Icon}
               value={metrics.reply_count}
               color="#71767b"
             />
@@ -237,11 +229,11 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
               value={metrics.like_count}
               color="#71767b"
             />
-            <EngagementMetric icon={ShareIcon} color="#71767b" />
+            <EngagementMetric icon={Share08Icon} color="#71767b" />
           </View>
         </View>
 
-        <AppIcon icon={Link01Icon} size={14} color="#71767b" />
+        <AppIcon icon={LinkSquare02Icon} size={14} color="#71767b" />
       </View>
     </ToolCardInner>
   );
@@ -258,24 +250,17 @@ function UserRow({ user }: { user: TwitterUserData }) {
   return (
     <ToolCardInner onPress={() => openUserProfile(user.username)}>
       <View className="flex-row items-start gap-3">
-        <Avatar
-          uri={user.profile_image_url}
-          name={user.name}
-          size={48}
-        />
+        <Avatar uri={user.profile_image_url} name={user.name} size={48} />
 
         <View className="flex-1 min-w-0">
           {/* Name + handle */}
           <View className="flex-row items-center gap-1 flex-wrap">
-            <Text
-              className="text-sm font-bold text-zinc-100"
-              numberOfLines={1}
-            >
+            <Text className="text-sm font-bold text-zinc-100" numberOfLines={1}>
               {user.name}
             </Text>
             {user.verified && (
               <AppIcon
-                icon={CheckmarkBadge02Icon}
+                icon={CheckmarkCircle02Icon}
                 size={14}
                 color={TWITTER_BLUE}
               />
@@ -305,7 +290,7 @@ function UserRow({ user }: { user: TwitterUserData }) {
             )}
             {!!hostFromUrl && (
               <View className="flex-row items-center gap-1">
-                <AppIcon icon={Link01Icon} size={12} color="#71767b" />
+                <AppIcon icon={LinkSquare02Icon} size={12} color="#71767b" />
                 <Text
                   className="text-xs"
                   style={{ color: TWITTER_LINK }}
@@ -317,7 +302,7 @@ function UserRow({ user }: { user: TwitterUserData }) {
             )}
             {!!user.created_at && (
               <View className="flex-row items-center gap-1">
-                <AppIcon icon={Calendar01Icon} size={12} color="#71767b" />
+                <AppIcon icon={Calendar03Icon} size={12} color="#71767b" />
                 <Text className="text-xs text-zinc-500">
                   Joined {formatJoinDate(user.created_at)}
                 </Text>
@@ -358,7 +343,7 @@ export function TwitterSearchCard({ data }: { data: TwitterSearchData }) {
     return (
       <ToolCardShell>
         <ToolCardHeader
-          icon={NewTwitterIcon}
+          icon={TwitterIcon}
           iconColor={TWITTER_BLUE}
           title="Twitter Search"
         />
@@ -372,7 +357,7 @@ export function TwitterSearchCard({ data }: { data: TwitterSearchData }) {
   return (
     <ToolCardShell>
       <ToolCardHeader
-        icon={NewTwitterIcon}
+        icon={TwitterIcon}
         iconColor={TWITTER_BLUE}
         title="Twitter Search"
         count={count}
@@ -399,7 +384,7 @@ export function TwitterUserCard({
     return (
       <ToolCardShell>
         <ToolCardHeader
-          icon={NewTwitterIcon}
+          icon={TwitterIcon}
           iconColor={TWITTER_BLUE}
           title={title ?? "Twitter Users"}
         />
@@ -413,7 +398,7 @@ export function TwitterUserCard({
   return (
     <ToolCardShell>
       <ToolCardHeader
-        icon={NewTwitterIcon}
+        icon={TwitterIcon}
         iconColor={TWITTER_BLUE}
         title={title ?? "Twitter Users"}
         count={users.length}

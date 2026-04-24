@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import { Text } from "@/components/ui/text";
 
 interface SectionLabelProps {
-  children: string;
+  children: ReactNode;
 }
 
 export function SectionLabel({ children }: SectionLabelProps) {
