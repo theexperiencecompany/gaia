@@ -1,4 +1,3 @@
-import { Chip } from "heroui-native";
 import { useState } from "react";
 import { Image, Linking, View } from "react-native";
 import { SquareArrowUpRight02Icon, ToolsIcon } from "@/components/icons";
@@ -56,6 +55,17 @@ function getActionLabel(action?: string): string {
   }
 }
 
+/** Action badge using bg contrast only — no borders */
+function ActionBadge({ label }: { label: string }) {
+  return (
+    <View className="px-2 py-0.5 rounded-full bg-[#00bbff]/10">
+      <Text className="text-[11px] font-medium text-[#00bbff] capitalize">
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function GoogleDocsIcon() {
   const [errored, setErrored] = useState(false);
 
@@ -100,7 +110,7 @@ export function GoogleDocsCard({ data }: { data: GoogleDocsData }) {
       <ToolCardInner onPress={url ? handleOpen : undefined}>
         <View className="flex-row items-center gap-3">
           {/* Google Docs icon */}
-          <View className="w-10 h-10 rounded-xl bg-white/5 items-center justify-center flex-shrink-0">
+          <View className="w-10 h-10 rounded-xl bg-zinc-700/50 items-center justify-center flex-shrink-0">
             <GoogleDocsIcon />
           </View>
 
@@ -112,26 +122,17 @@ export function GoogleDocsCard({ data }: { data: GoogleDocsData }) {
             >
               {title}
             </Text>
-            <View className="flex-row items-center gap-2 mt-0.5 flex-wrap">
-              {doc.modified_time && (
+            <View className="flex-row items-center gap-2 mt-1 flex-wrap">
+              {!!doc.modified_time && (
                 <Text className="text-[11px] text-zinc-500">
-                  Modified: {formatDate(doc.modified_time)}
+                  Modified {formatDate(doc.modified_time)}
                 </Text>
               )}
-              {!!actionLabel && (
-                <Chip
-                  size="sm"
-                  variant="primary"
-                  color="accent"
-                  animation="disable-all"
-                >
-                  <Chip.Label>{actionLabel}</Chip.Label>
-                </Chip>
-              )}
+              {!!actionLabel && <ActionBadge label={actionLabel} />}
             </View>
           </View>
 
-          {/* Open button */}
+          {/* Open link indicator */}
           {!!url && (
             <View className="flex-shrink-0 flex-row items-center gap-1.5 bg-zinc-700 rounded-xl px-3 py-2">
               <AppIcon

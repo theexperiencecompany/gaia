@@ -96,20 +96,38 @@ function EmailRow({
 
   return (
     <View
-      className={`flex-row items-center gap-4 p-3${isLast ? "" : " border-b border-zinc-700"}`}
+      className={`flex-row items-center gap-3 py-2.5${isLast ? "" : " mb-0.5"}`}
     >
-      <View className="w-40 flex-shrink-0">
-        <Text className="text-zinc-300 text-sm font-medium" numberOfLines={1}>
+      {/* Unread dot */}
+      <View className="w-1.5 items-center justify-center">
+        {email.is_unread ? (
+          <View className="w-1.5 h-1.5 rounded-full bg-[#00bbff]" />
+        ) : null}
+      </View>
+
+      {/* Sender name — fixed width so subjects align */}
+      <View className="w-28 flex-shrink-0">
+        <Text
+          className={`text-sm ${email.is_unread ? "font-semibold text-zinc-100" : "font-medium text-zinc-300"}`}
+          numberOfLines={1}
+        >
           {senderName}
         </Text>
       </View>
+
+      {/* Subject — fills remaining space */}
       <View className="flex-1 min-w-0">
-        <Text className="text-white text-sm" numberOfLines={1}>
+        <Text
+          className={`text-sm ${email.is_unread ? "text-zinc-200" : "text-zinc-400"}`}
+          numberOfLines={1}
+        >
           {subject}
         </Text>
       </View>
+
+      {/* Time — right-aligned, fixed */}
       {!!timeLabel && (
-        <Text className="text-zinc-400 text-xs">{timeLabel}</Text>
+        <Text className="text-xs text-zinc-500 flex-shrink-0">{timeLabel}</Text>
       )}
     </View>
   );
@@ -124,16 +142,18 @@ export function EmailFetchCard({ data }: { data: EmailFetchItem[] }) {
       customIcon={<GmailIcon width={20} height={20} />}
       title={(open) => `${open ? "Hide" : "Show"} ${count} Email${plural}`}
       titleTone="muted"
-      radius="3xl"
+      radius="2xl"
     >
       {count > 0 ? (
-        <View>
+        <View className="rounded-2xl bg-zinc-900 overflow-hidden">
           {data.map((email, index) => (
-            <EmailRow
+            <View
               key={email.id ?? email.thread_id ?? `email-${index}`}
-              email={email}
-              isLast={index === count - 1}
-            />
+              className="px-3"
+            >
+              <EmailRow email={email} isLast={index === count - 1} />
+              {index < count - 1 && <View className="h-px bg-zinc-800" />}
+            </View>
           ))}
         </View>
       ) : (

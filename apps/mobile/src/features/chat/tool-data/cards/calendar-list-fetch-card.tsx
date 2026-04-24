@@ -28,7 +28,8 @@ export function CalendarListFetchCard({ data }: CalendarListFetchCardProps) {
     <ToolCardShell>
       <ToolCardHeader
         icon={Calendar03Icon}
-        title={`Fetched ${data.length} Calendar${data.length === 1 ? "" : "s"}`}
+        title="Calendars"
+        count={data.length}
       />
 
       {sorted.length === 0 ? (
@@ -42,13 +43,14 @@ export function CalendarListFetchCard({ data }: CalendarListFetchCardProps) {
                 key={calendar.id}
                 className="flex-row items-center gap-3 rounded-xl bg-zinc-900 p-3"
               >
+                {/* Color dot */}
                 <View
                   className="w-3 h-3 rounded-full flex-shrink-0"
                   style={{ backgroundColor: dot }}
                 />
                 <View className="flex-1 min-w-0">
                   <Text
-                    className="text-zinc-200 text-sm font-medium"
+                    className="text-zinc-100 text-sm font-medium"
                     numberOfLines={1}
                   >
                     {calendar.name}

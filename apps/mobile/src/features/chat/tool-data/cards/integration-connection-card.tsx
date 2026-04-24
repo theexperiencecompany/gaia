@@ -1,6 +1,10 @@
 import { useCallback, useRef } from "react";
 import { Pressable, View } from "react-native";
-import { AlertCircleIcon, ConnectIcon } from "@/components/icons";
+import {
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+  ConnectIcon,
+} from "@/components/icons";
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
 import { ToolCardShell } from "@/features/chat/tool-data/primitives";
@@ -20,6 +24,8 @@ export interface IntegrationConnectionData {
   auth_type?: "oauth" | "bearer" | "none";
   icon_url?: string;
   description?: string;
+  // Status field — when present indicates current connection state
+  status?: "connected" | "disconnected" | "error";
 }
 
 function formatIntegrationName(id?: string): string {
@@ -38,6 +44,7 @@ export function IntegrationConnectionCard({
   const displayName =
     data.integration_name ?? formatIntegrationName(data.integration_id);
   const authType = data.auth_type ?? "oauth";
+  const isConnected = data.status === "connected";
 
   const icon = integrationId
     ? getToolCategoryIcon(integrationId, {
@@ -60,7 +67,7 @@ export function IntegrationConnectionCard({
 
   return (
     <ToolCardShell>
-      {/* Header: icon + name + "Not Connected" badge */}
+      {/* Header: icon + name + connection status badge */}
       <View className="flex-row items-start gap-3 mb-3">
         <View className="w-9 h-9 rounded-xl bg-zinc-700 items-center justify-center shrink-0">
           {icon ?? <AppIcon icon={ConnectIcon} size={18} color="#a1a1aa" />}
@@ -71,9 +78,26 @@ export function IntegrationConnectionCard({
             <Text className="text-zinc-100 text-sm font-semibold">
               {displayName}
             </Text>
-            <View className="rounded-full bg-amber-400/10 px-2 py-0.5">
-              <Text className="text-amber-400 text-[11px]">Not Connected</Text>
-            </View>
+            {isConnected ? (
+              /* Connected badge — green, matches web Chip color="success" */
+              <View className="flex-row items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5">
+                <AppIcon
+                  icon={CheckmarkCircle02Icon}
+                  size={10}
+                  color="#22c55e"
+                />
+                <Text className="text-green-400 text-[11px] font-medium">
+                  Connected
+                </Text>
+              </View>
+            ) : (
+              /* Not Connected badge — amber/warning, matches web Chip color="warning" */
+              <View className="rounded-full bg-amber-400/10 px-2 py-0.5">
+                <Text className="text-amber-400 text-[11px] font-medium">
+                  Not Connected
+                </Text>
+              </View>
+            )}
           </View>
           {data.description ? (
             <Text className="text-zinc-400 text-xs mt-0.5" numberOfLines={2}>
@@ -87,8 +111,8 @@ export function IntegrationConnectionCard({
         </View>
       </View>
 
-      {/* Warning message */}
-      {data.message ? (
+      {/* Warning message — only shown when not connected, matches web layout */}
+      {!isConnected && data.message ? (
         <View className="flex-row items-start gap-2 rounded-xl bg-amber-400/5 p-3 mb-3">
           <AppIcon icon={AlertCircleIcon} size={14} color="#fbbf24" />
           <Text className="text-amber-400 text-xs flex-1 leading-[18px]">
@@ -97,14 +121,16 @@ export function IntegrationConnectionCard({
         </View>
       ) : null}
 
-      {/* Connect button — matches web: single primary action */}
-      <Pressable
-        onPress={handleConnect}
-        className="rounded-xl bg-primary items-center justify-center py-2.5"
-        android_ripple={{ color: "rgba(0,0,0,0.1)" }}
-      >
-        <Text className="text-black text-sm font-semibold">Connect</Text>
-      </Pressable>
+      {/* Connect button — only shown when not connected */}
+      {!isConnected ? (
+        <Pressable
+          onPress={handleConnect}
+          className="rounded-xl bg-primary items-center justify-center py-2.5"
+          android_ripple={{ color: "rgba(0,0,0,0.1)" }}
+        >
+          <Text className="text-black text-sm font-semibold">Connect</Text>
+        </Pressable>
+      ) : null}
 
       <BearerTokenSheet ref={bearerSheetRef} />
     </ToolCardShell>

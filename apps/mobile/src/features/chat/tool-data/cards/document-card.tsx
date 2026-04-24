@@ -1,4 +1,3 @@
-import { Chip } from "heroui-native";
 import { Linking, Pressable, View } from "react-native";
 import { AppIcon, Download02Icon, File01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -18,38 +17,64 @@ export interface DocumentData {
   type?: string;
 }
 
-function getFileExtension(filename: string): string {
-  return filename.split(".").pop()?.toLowerCase() ?? "";
+// -- Extension pill config (mirrors web Chip color mapping) -------------------
+
+interface ExtPillConfig {
+  label: string;
+  color: string;
+  bg: string;
 }
 
-type ExtColors = {
-  variant: "primary" | "secondary" | "tertiary" | "soft";
-  color: "accent" | "default" | "success" | "warning" | "danger";
-};
-
-function getExtensionChipProps(ext: string): ExtColors {
+function getExtPillConfig(ext: string): ExtPillConfig {
   switch (ext) {
     case "pdf":
-      return { variant: "secondary", color: "danger" };
+      return { label: "PDF", color: "text-red-400", bg: "bg-red-400/10" };
     case "doc":
     case "docx":
-      return { variant: "primary", color: "accent" };
+      return {
+        label: ext.toUpperCase(),
+        color: "text-primary",
+        bg: "bg-primary/10",
+      };
     case "xls":
     case "xlsx":
+      return {
+        label: ext.toUpperCase(),
+        color: "text-emerald-400",
+        bg: "bg-emerald-400/10",
+      };
     case "csv":
-      return { variant: "secondary", color: "success" };
+      return {
+        label: "CSV",
+        color: "text-emerald-400",
+        bg: "bg-emerald-400/10",
+      };
     case "md":
-      return { variant: "secondary", color: "warning" };
+      return {
+        label: "Markdown",
+        color: "text-violet-400",
+        bg: "bg-violet-400/10",
+      };
+    case "txt":
+      return { label: "Text", color: "text-zinc-400", bg: "bg-zinc-700" };
     default:
-      return { variant: "secondary", color: "default" };
+      return {
+        label: ext ? ext.toUpperCase() : "File",
+        color: "text-zinc-400",
+        bg: "bg-zinc-700",
+      };
   }
+}
+
+function getFileExtension(filename: string): string {
+  return filename.split(".").pop()?.toLowerCase() ?? "";
 }
 
 export function DocumentCard({ data }: { data: DocumentData }) {
   const displayName = data.title || data.filename || "Untitled Document";
   const filename = data.filename || "";
   const ext = filename ? getFileExtension(filename) : (data.type ?? "");
-  const chipProps = getExtensionChipProps(ext);
+  const pillConfig = getExtPillConfig(ext);
   const showFilename =
     data.title && data.filename && data.title !== data.filename;
 
@@ -64,32 +89,31 @@ export function DocumentCard({ data }: { data: DocumentData }) {
       <ToolCardInner>
         <View className="flex-row items-center gap-3">
           {/* File icon */}
-          <View className="w-10 h-10 rounded-xl bg-[#00bbff]/10 items-center justify-center flex-shrink-0">
+          <View className="w-10 h-10 rounded-xl bg-zinc-700 items-center justify-center flex-shrink-0">
             <AppIcon icon={File01Icon} size={20} color="#00bbff" />
           </View>
 
           {/* File info */}
           <View className="flex-1 min-w-0">
-            <View className="flex-row items-center gap-2 flex-wrap">
+            <View className="flex-row items-center gap-2 flex-wrap mb-0.5">
               <Text
-                className="text-sm font-medium text-zinc-200 flex-shrink-1"
+                className="text-sm font-medium text-zinc-100 flex-shrink-1"
                 numberOfLines={1}
               >
                 {displayName}
               </Text>
               {!!ext && (
-                <Chip
-                  size="sm"
-                  variant={chipProps.variant}
-                  color={chipProps.color}
-                  animation="disable-all"
-                >
-                  <Chip.Label>{ext.toUpperCase()}</Chip.Label>
-                </Chip>
+                <View className={`rounded-full px-2 py-0.5 ${pillConfig.bg}`}>
+                  <Text
+                    className={`text-[10px] font-medium ${pillConfig.color}`}
+                  >
+                    {pillConfig.label}
+                  </Text>
+                </View>
               )}
             </View>
             {showFilename && (
-              <Text className="text-xs text-zinc-400 mt-0.5" numberOfLines={1}>
+              <Text className="text-xs text-zinc-400" numberOfLines={1}>
                 {data.filename}
               </Text>
             )}

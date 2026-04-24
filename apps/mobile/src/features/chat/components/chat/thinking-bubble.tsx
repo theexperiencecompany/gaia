@@ -2,7 +2,7 @@ import {
   getRandomThinkingMessage,
   getRelevantThinkingMessage,
 } from "@gaia/shared/utils";
-import { PressableFeedback, Surface } from "heroui-native";
+import { PressableFeedback } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, LayoutAnimation, View } from "react-native";
 import { AppIcon, ArrowDown02Icon, Brain02Icon } from "@/components/icons";
@@ -173,12 +173,10 @@ export function ThinkingBubble({
       </PressableFeedback>
 
       {isExpanded ? (
-        <Surface
+        <View
           style={{
             backgroundColor: "rgba(39, 39, 42, 0.8)",
-            borderWidth: 1,
-            borderColor: "rgba(63, 63, 70, 0.6)",
-            borderRadius: moderateScale(12, 0.5),
+            borderRadius: moderateScale(10, 0.5),
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.sm + 2,
           }}
@@ -192,7 +190,7 @@ export function ThinkingBubble({
           >
             {thinkingContent}
           </Text>
-        </Surface>
+        </View>
       ) : null}
     </View>
   );

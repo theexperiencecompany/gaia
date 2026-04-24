@@ -7,54 +7,9 @@ import Animated, {
   withSequence,
   withTiming,
 } from "react-native-reanimated";
-import {
-  AppIcon,
-  Brain02Icon,
-  Calendar03Icon,
-  CheckmarkCircle01Icon,
-  CpuIcon,
-  Mail01Icon,
-  Search01Icon,
-  Settings01Icon,
-  TaskDailyIcon,
-} from "@/components/icons";
+import { AppIcon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-
-type IconComponent = React.ComponentType<{
-  size?: number;
-  color?: string;
-  strokeWidth?: number;
-}>;
-
-function getToolIcon(toolName: string | null): IconComponent {
-  if (!toolName) return Brain02Icon;
-  const lower = toolName.toLowerCase();
-  if (lower.includes("search") || lower.includes("web")) return Search01Icon;
-  if (lower.includes("email") || lower.includes("mail")) return Mail01Icon;
-  if (
-    lower.includes("calendar") ||
-    lower.includes("event") ||
-    lower.includes("schedule")
-  )
-    return Calendar03Icon;
-  if (lower.includes("todo") || lower.includes("task")) return TaskDailyIcon;
-  if (
-    lower.includes("memory") ||
-    lower.includes("remember") ||
-    lower.includes("recall")
-  )
-    return CpuIcon;
-  if (lower.includes("setting") || lower.includes("config"))
-    return Settings01Icon;
-  if (
-    lower.includes("done") ||
-    lower.includes("complete") ||
-    lower.includes("finish")
-  )
-    return CheckmarkCircle01Icon;
-  return Brain02Icon;
-}
 
 function formatToolName(toolName: string | null): string {
   if (!toolName) return "Processing";
@@ -74,7 +29,7 @@ export function ToolProgressCard({
   toolName,
   progressMessage,
 }: ToolProgressCardProps) {
-  const { spacing, fontSize, iconSize } = useResponsive();
+  const { spacing, fontSize, moderateScale } = useResponsive();
 
   const pulseOpacity = useSharedValue(0.5);
   useEffect(() => {
@@ -92,7 +47,6 @@ export function ToolProgressCard({
     opacity: pulseOpacity.value,
   }));
 
-  const ToolIcon = getToolIcon(toolName);
   const message = progressMessage || formatToolName(toolName);
 
   return (
@@ -106,16 +60,16 @@ export function ToolProgressCard({
     >
       <Animated.View style={pulseStyle}>
         <AppIcon
-          icon={ToolIcon}
-          size={iconSize.sm}
-          color="#00bbff"
+          icon={Brain02Icon}
+          size={moderateScale(16, 0.5)}
+          color="#a78bfa"
           strokeWidth={1.5}
         />
       </Animated.View>
       <Text
         style={{
           fontSize: fontSize.sm,
-          color: "#71717a",
+          color: "#a1a1aa",
           fontWeight: "500",
           flex: 1,
         }}

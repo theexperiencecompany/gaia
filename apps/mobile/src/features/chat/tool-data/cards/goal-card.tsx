@@ -4,7 +4,7 @@ import type {
   GoalRoadmap,
   GoalRoadmapNode,
 } from "@gaia/shared";
-import { Button, Chip } from "heroui-native";
+import { Button } from "heroui-native";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import {
@@ -17,6 +17,11 @@ import {
   UserGroupIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardInner,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 export type { GoalData, GoalItem, GoalRoadmap, GoalRoadmapNode };
 
@@ -78,10 +83,21 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
   const hasRoadmap = roadmapTasks.length > 0;
   const hasExpandable = !!goal.description || hasRoadmap;
 
+  const metaIconColor =
+    progress >= 90
+      ? "#10b981"
+      : progress >= 75
+        ? "#3b82f6"
+        : progress >= 50
+          ? "#f59e0b"
+          : progress >= 25
+            ? "#f97316"
+            : "#ef4444";
+
   return (
-    <View className="rounded-xl bg-zinc-900 p-4 mb-3">
+    <ToolCardInner>
       {/* Title row with expand toggle */}
-      <View className="flex-row items-start justify-between gap-2 mb-4">
+      <View className="flex-row items-start justify-between gap-2">
         <View className="flex-1">
           <Text className="text-base font-semibold text-zinc-100">
             {goal.title}
@@ -89,21 +105,23 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
         </View>
         {hasExpandable && (
           <Pressable
-            className="rounded-lg p-2"
+            className="rounded-lg p-1 -mr-1"
             onPress={() => setIsExpanded((prev) => !prev)}
+            hitSlop={8}
           >
-            <AppIcon
-              icon={ArrowRight01Icon}
-              size={16}
-              color="#71717a"
-              style={isExpanded ? { transform: [{ rotate: "90deg" }] } : {}}
-            />
+            <View
+              style={{
+                transform: [{ rotate: isExpanded ? "90deg" : "0deg" }],
+              }}
+            >
+              <AppIcon icon={ArrowRight01Icon} size={16} color="#71717a" />
+            </View>
           </Pressable>
         )}
       </View>
 
       {/* Progress bar */}
-      <View className="mb-4">
+      <View className="mt-3 mb-3">
         <View className="flex-row items-center justify-between mb-2">
           <Text className="text-sm font-medium text-zinc-400">Progress</Text>
           <Text
@@ -121,26 +139,12 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
       </View>
 
       {/* Metadata pills */}
-      <View className="flex-row flex-wrap gap-2 mb-4">
+      <View className="flex-row flex-wrap gap-2 mb-3">
         {hasRoadmap && (
           <View
             className={`flex-row items-center gap-1 rounded-full px-3 py-1 ${getProgressBgColor(progress)}`}
           >
-            <AppIcon
-              icon={UserGroupIcon}
-              size={12}
-              color={
-                progress >= 90
-                  ? "#10b981"
-                  : progress >= 75
-                    ? "#3b82f6"
-                    : progress >= 50
-                      ? "#f59e0b"
-                      : progress >= 25
-                        ? "#f97316"
-                        : "#ef4444"
-              }
-            />
+            <AppIcon icon={UserGroupIcon} size={12} color={metaIconColor} />
             <Text
               className={`text-xs font-medium ${getProgressTextColor(progress)}`}
             >
@@ -150,7 +154,7 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
         )}
 
         {goal.created_at && (
-          <View className="flex-row items-center gap-1 rounded-full bg-zinc-800 px-3 py-1">
+          <View className="flex-row items-center gap-1 rounded-full bg-zinc-700 px-3 py-1">
             <AppIcon icon={Calendar03Icon} size={12} color="#71717a" />
             <Text className="text-xs font-medium text-zinc-400">
               {formatDate(goal.created_at)}
@@ -159,7 +163,7 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
         )}
 
         {goal.todo_project_id && (
-          <View className="flex-row items-center gap-1 rounded-full bg-zinc-800 px-3 py-1">
+          <View className="flex-row items-center gap-1 rounded-full bg-zinc-700 px-3 py-1">
             <AppIcon icon={Target02Icon} size={12} color="#71717a" />
             <Text className="text-xs font-medium text-zinc-400">
               Linked to Todos
@@ -170,7 +174,7 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
 
       {/* Expanded: description + roadmap tasks */}
       {isExpanded && (
-        <View className="border-t border-zinc-700 pt-4 mb-4 gap-4">
+        <View className="border-t border-zinc-700 pt-4 mb-3 gap-4">
           {goal.description && (
             <Text className="text-sm leading-relaxed text-zinc-400">
               {goal.description}
@@ -188,7 +192,7 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
                     className="flex-row items-center gap-3 py-1"
                   >
                     <View
-                      className={`h-4 w-4 items-center justify-center rounded-full border-2 ${node.data.isComplete ? "border-emerald-500 bg-emerald-500" : "border-zinc-600"}`}
+                      className={`h-4 w-4 items-center justify-center rounded-full border-2 ${node.data.isComplete ? "border-green-500 bg-green-500" : "border-zinc-600"}`}
                     >
                       {node.data.isComplete && (
                         <AppIcon
@@ -232,7 +236,7 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
           </Button>
         )}
       </View>
-    </View>
+    </ToolCardInner>
   );
 }
 
@@ -281,11 +285,12 @@ function StatsCard({ data }: { data: GoalData }) {
   if (!stats) return null;
 
   return (
-    <View className="mx-4 my-1 rounded-2xl bg-zinc-800 p-4">
-      <View className="flex-row items-center gap-2 mb-3">
-        <AppIcon icon={Target02Icon} size={16} color="#a855f7" />
-        <Text className="text-sm text-zinc-100">Goal Progress Overview</Text>
-      </View>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Target02Icon}
+        iconColor="#a855f7"
+        title="Goal Progress Overview"
+      />
       <View className="flex-row flex-wrap gap-2">
         <View className="rounded-xl bg-zinc-900 p-3 items-center flex-1 min-w-[30%]">
           <Text className="text-xl font-semibold text-zinc-100">
@@ -294,13 +299,13 @@ function StatsCard({ data }: { data: GoalData }) {
           <Text className="text-xs text-zinc-500">Total Goals</Text>
         </View>
         <View className="rounded-xl bg-zinc-900 p-3 items-center flex-1 min-w-[30%]">
-          <Text className="text-xl font-semibold text-purple-400">
+          <Text className="text-xl font-semibold text-blue-500">
             {stats.goals_with_roadmaps}
           </Text>
           <Text className="text-xs text-zinc-500">With Roadmaps</Text>
         </View>
         <View className="rounded-xl bg-zinc-900 p-3 items-center flex-1 min-w-[30%]">
-          <Text className="text-xl font-semibold text-emerald-500">
+          <Text className="text-xl font-semibold text-green-500">
             {stats.overall_completion_rate}%
           </Text>
           <Text className="text-xs text-zinc-500">Complete</Text>
@@ -312,7 +317,7 @@ function StatsCard({ data }: { data: GoalData }) {
           <Text className="text-xs text-zinc-500">Total Tasks</Text>
         </View>
         <View className="rounded-xl bg-zinc-900 p-3 items-center flex-1 min-w-[30%]">
-          <Text className="text-xl font-semibold text-emerald-500">
+          <Text className="text-xl font-semibold text-green-500">
             {stats.completed_tasks}
           </Text>
           <Text className="text-xs text-zinc-500">Done Tasks</Text>
@@ -334,7 +339,7 @@ function StatsCard({ data }: { data: GoalData }) {
             {stats.active_goals.map((goal) => (
               <View
                 key={goal.id}
-                className="flex-row items-center justify-between rounded-xl bg-zinc-900 p-4"
+                className="flex-row items-center justify-between rounded-xl bg-zinc-900 p-3"
               >
                 <View className="flex-row items-center gap-3 flex-1">
                   <AppIcon icon={Target02Icon} size={16} color="#a855f7" />
@@ -355,7 +360,7 @@ function StatsCard({ data }: { data: GoalData }) {
           </View>
         </View>
       )}
-    </View>
+    </ToolCardShell>
   );
 }
 
@@ -390,46 +395,39 @@ export function GoalCard({ data }: { data: GoalData }) {
                   : "Your Goals";
 
     return (
-      <View className="mx-4 my-1 rounded-2xl bg-zinc-800 p-4">
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center gap-2">
-            <AppIcon icon={Target02Icon} size={16} color="#a855f7" />
-            <Text className="text-sm text-zinc-100">{headerLabel}</Text>
-          </View>
-          <Text className="text-xs text-zinc-500">
-            {data.goals.length} {data.goals.length === 1 ? "goal" : "goals"}
-          </Text>
+      <ToolCardShell>
+        <ToolCardHeader
+          icon={Target02Icon}
+          iconColor="#a855f7"
+          title={headerLabel}
+          count={data.goals.length}
+        />
+        <View className="gap-3">
+          {data.goals.map((goal) => (
+            <GoalItemCard key={goal.id} goal={goal} />
+          ))}
         </View>
-        {data.goals.map((goal) => (
-          <GoalItemCard key={goal.id} goal={goal} />
-        ))}
         {data.message && (
-          <Text className="text-xs text-zinc-500 mt-1">{data.message}</Text>
+          <Text className="text-xs text-zinc-500 mt-3">{data.message}</Text>
         )}
-      </View>
+      </ToolCardShell>
     );
   }
 
   // Action message with no goals
   if (data.message) {
+    const isDelete = action === "delete";
     return (
-      <View className="mx-4 my-1 rounded-2xl bg-zinc-800 p-4">
+      <ToolCardShell>
         <View className="flex-row items-center gap-2">
-          <Chip
-            size="sm"
-            variant="soft"
-            color={action === "delete" ? "danger" : "success"}
-            animation="disable-all"
-          >
-            <AppIcon
-              icon={action === "delete" ? Cancel01Icon : CheckmarkCircle02Icon}
-              size={12}
-              color={action === "delete" ? "#f87171" : "#4ade80"}
-            />
-          </Chip>
+          <AppIcon
+            icon={isDelete ? Cancel01Icon : CheckmarkCircle02Icon}
+            size={16}
+            color={isDelete ? "#ef4444" : "#22c55e"}
+          />
           <Text className="text-sm text-zinc-100 flex-1">{data.message}</Text>
         </View>
-      </View>
+      </ToolCardShell>
     );
   }
 

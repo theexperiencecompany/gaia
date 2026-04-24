@@ -207,22 +207,30 @@ function OutputSection({ output }: { output: CodeOutput }) {
           <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
             stdout
           </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingRight: 8 }}
+          <View
+            style={{
+              backgroundColor: "#000000cc",
+              borderRadius: 10,
+              padding: 10,
+            }}
           >
-            <RNText
-              style={{
-                fontFamily: MONO_FONT,
-                fontSize: 12,
-                lineHeight: 18,
-                color: "#4ade80",
-              }}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingRight: 4 }}
             >
-              {output.stdout}
-            </RNText>
-          </ScrollView>
+              <RNText
+                style={{
+                  fontFamily: MONO_FONT,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  color: "#4ade80",
+                }}
+              >
+                {output.stdout}
+              </RNText>
+            </ScrollView>
+          </View>
         </View>
       )}
 
@@ -231,28 +239,36 @@ function OutputSection({ output }: { output: CodeOutput }) {
           <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
             results
           </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingRight: 8 }}
+          <View
+            style={{
+              backgroundColor: "#000000cc",
+              borderRadius: 10,
+              padding: 10,
+            }}
           >
-            <View>
-              {output.results?.map((result, idx) => (
-                <RNText
-                  // biome-ignore lint/suspicious/noArrayIndexKey: results list order is stable
-                  key={`result-${idx}`}
-                  style={{
-                    fontFamily: MONO_FONT,
-                    fontSize: 12,
-                    lineHeight: 18,
-                    color: "#60a5fa",
-                  }}
-                >
-                  {result}
-                </RNText>
-              ))}
-            </View>
-          </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingRight: 4 }}
+            >
+              <View>
+                {output.results?.map((result, idx) => (
+                  <RNText
+                    // biome-ignore lint/suspicious/noArrayIndexKey: results list order is stable
+                    key={`result-${idx}`}
+                    style={{
+                      fontFamily: MONO_FONT,
+                      fontSize: 12,
+                      lineHeight: 18,
+                      color: "#60a5fa",
+                    }}
+                  >
+                    {result}
+                  </RNText>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
         </View>
       )}
 
@@ -261,22 +277,30 @@ function OutputSection({ output }: { output: CodeOutput }) {
           <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
             stderr
           </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingRight: 8 }}
+          <View
+            style={{
+              backgroundColor: "#000000cc",
+              borderRadius: 10,
+              padding: 10,
+            }}
           >
-            <RNText
-              style={{
-                fontFamily: MONO_FONT,
-                fontSize: 12,
-                lineHeight: 18,
-                color: "#f87171",
-              }}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingRight: 4 }}
             >
-              {output.stderr}
-            </RNText>
-          </ScrollView>
+              <RNText
+                style={{
+                  fontFamily: MONO_FONT,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  color: "#f87171",
+                }}
+              >
+                {output.stderr}
+              </RNText>
+            </ScrollView>
+          </View>
         </View>
       )}
 
@@ -285,18 +309,26 @@ function OutputSection({ output }: { output: CodeOutput }) {
           <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
             error
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <RNText
-              style={{
-                fontFamily: MONO_FONT,
-                fontSize: 12,
-                lineHeight: 18,
-                color: "#f87171",
-              }}
-            >
-              {output.error}
-            </RNText>
-          </ScrollView>
+          <View
+            style={{
+              backgroundColor: "#000000cc",
+              borderRadius: 10,
+              padding: 10,
+            }}
+          >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <RNText
+                style={{
+                  fontFamily: MONO_FONT,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  color: "#f87171",
+                }}
+              >
+                {output.error}
+              </RNText>
+            </ScrollView>
+          </View>
         </View>
       )}
     </View>

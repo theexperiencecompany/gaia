@@ -60,8 +60,7 @@ function openTweet(tweet: TwitterTweetData) {
 }
 
 function openUserProfile(user: TwitterUserData) {
-  const url = user.url ?? `https://twitter.com/${user.username}`;
-  Linking.openURL(url);
+  Linking.openURL(`https://twitter.com/${user.username}`);
 }
 
 // -- Avatar ------------------------------------------------------------------
@@ -69,7 +68,7 @@ function openUserProfile(user: TwitterUserData) {
 function TwitterAvatar({
   url,
   fallback,
-  size = 36,
+  size = 40,
 }: {
   url?: string;
   fallback: string;
@@ -89,7 +88,10 @@ function TwitterAvatar({
       className="items-center justify-center bg-zinc-700"
       style={{ width: size, height: size, borderRadius: size / 2 }}
     >
-      <Text className="text-zinc-200 text-sm font-semibold">
+      <Text
+        className="text-zinc-200 font-semibold"
+        style={{ fontSize: size * 0.35 }}
+      >
         {fallback.charAt(0).toUpperCase() || "?"}
       </Text>
     </View>
@@ -109,7 +111,13 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
   return (
     <ToolCardInner dense onPress={() => openTweet(tweet)}>
       <View className="flex-row items-start gap-3">
-        <TwitterAvatar url={author.profile_image_url} fallback={author.name} />
+        {/* Avatar — 40px matches web h-10 w-10 */}
+        <TwitterAvatar
+          url={author.profile_image_url}
+          fallback={author.name}
+          size={40}
+        />
+
         <View className="flex-1 min-w-0">
           {/* Author header */}
           <View className="flex-row items-center gap-1 flex-wrap">
@@ -134,33 +142,37 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
               </>
             ) : null}
           </View>
+
           {/* Tweet body */}
-          <Text className="text-zinc-200 text-sm mt-1 leading-relaxed">
+          <Text className="text-zinc-200 text-sm mt-1.5 leading-relaxed">
             {tweet.text}
           </Text>
+
           {/* Engagement metrics */}
-          <View className="flex-row items-center gap-5 mt-2">
+          <View className="flex-row items-center gap-5 mt-2.5">
             <View className="flex-row items-center gap-1.5">
-              <AppIcon icon={FavouriteIcon} size={12} color="#a1a1aa" />
+              <AppIcon icon={FavouriteIcon} size={13} color="#a1a1aa" />
               <Text className="text-zinc-400 text-xs">
                 {formatNumber(metrics.like_count)}
               </Text>
             </View>
             <View className="flex-row items-center gap-1.5">
-              <AppIcon icon={BubbleChatIcon} size={12} color="#a1a1aa" />
+              <AppIcon icon={BubbleChatIcon} size={13} color="#a1a1aa" />
               <Text className="text-zinc-400 text-xs">
                 {formatNumber(metrics.reply_count)}
               </Text>
             </View>
             <View className="flex-row items-center gap-1.5">
-              <AppIcon icon={RepeatIcon} size={12} color="#a1a1aa" />
+              <AppIcon icon={RepeatIcon} size={13} color="#a1a1aa" />
               <Text className="text-zinc-400 text-xs">
                 {formatNumber(metrics.retweet_count)}
               </Text>
             </View>
           </View>
         </View>
-        <AppIcon icon={LinkSquare02Icon} size={12} color="#52525b" />
+
+        {/* External link indicator */}
+        <AppIcon icon={LinkSquare02Icon} size={14} color="#52525b" />
       </View>
     </ToolCardInner>
   );
@@ -174,13 +186,15 @@ function UserRow({ user }: { user: TwitterUserData }) {
   return (
     <ToolCardInner dense onPress={() => openUserProfile(user)}>
       <View className="flex-row items-start gap-3">
+        {/* Avatar — 48px matches web h-12 w-12 */}
         <TwitterAvatar
           url={user.profile_image_url}
           fallback={user.name}
-          size={40}
+          size={48}
         />
+
         <View className="flex-1 min-w-0">
-          {/* Name + verified + handle */}
+          {/* Name + verified badge */}
           <View className="flex-row items-center gap-1 flex-wrap">
             <Text className="text-zinc-100 text-sm font-bold" numberOfLines={1}>
               {user.name}
@@ -189,6 +203,8 @@ function UserRow({ user }: { user: TwitterUserData }) {
               <AppIcon icon={CheckmarkCircle01Icon} size={13} color="#1d9bf0" />
             )}
           </View>
+
+          {/* Handle */}
           <Text className="text-zinc-500 text-xs" numberOfLines={1}>
             @{user.username}
           </Text>
@@ -215,7 +231,11 @@ function UserRow({ user }: { user: TwitterUserData }) {
               {user.url ? (
                 <View className="flex-row items-center gap-1">
                   <AppIcon icon={Globe02Icon} size={12} color="#71717a" />
-                  <Text className="text-[#1d9bf0] text-xs" numberOfLines={1}>
+                  <Text
+                    className="text-xs"
+                    style={{ color: "#1d9bf0" }}
+                    numberOfLines={1}
+                  >
                     {user.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
                   </Text>
                 </View>
@@ -251,7 +271,9 @@ function UserRow({ user }: { user: TwitterUserData }) {
             )}
           </View>
         </View>
-        <AppIcon icon={LinkSquare02Icon} size={12} color="#52525b" />
+
+        {/* External link indicator */}
+        <AppIcon icon={LinkSquare02Icon} size={14} color="#52525b" />
       </View>
     </ToolCardInner>
   );

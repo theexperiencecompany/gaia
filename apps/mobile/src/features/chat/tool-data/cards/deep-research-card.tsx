@@ -7,10 +7,11 @@ import type {
   SearchResults,
   WebResult,
 } from "@gaia/shared";
-import { Accordion, PressableFeedback, Tabs } from "heroui-native";
+import { Accordion, Tabs } from "heroui-native";
 import { useEffect, useState } from "react";
-import { Image, Linking, ScrollView, View } from "react-native";
+import { Image, Linking, Pressable, View } from "react-native";
 import Animated, {
+  FadeInRight,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -45,7 +46,7 @@ function getHostname(url?: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Shared sub-components
+// Favicon image with globe fallback
 // ---------------------------------------------------------------------------
 
 function FaviconImage({ url }: { url?: string }) {
@@ -55,7 +56,7 @@ function FaviconImage({ url }: { url?: string }) {
   if (!hostname || errored) {
     return (
       <View className="w-4 h-4 rounded-full bg-zinc-700 items-center justify-center">
-        <AppIcon icon={Globe02Icon} size={10} color="#8e8e93" />
+        <AppIcon icon={Globe02Icon} size={10} color="#71717a" />
       </View>
     );
   }
@@ -153,8 +154,8 @@ function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
               key={`step-${index}-${step.slice(0, 10)}`}
               className="flex-row items-center gap-1.5"
             >
-              <View className="w-1 h-1 rounded-full bg-zinc-500" />
-              <Text className="text-zinc-400 text-[11px]" numberOfLines={1}>
+              <View className="w-1 h-1 rounded-full bg-zinc-600" />
+              <Text className="text-zinc-500 text-[11px]" numberOfLines={1}>
                 {step}
               </Text>
             </View>
@@ -206,24 +207,25 @@ function DeepResearchErrorCard() {
 }
 
 // ---------------------------------------------------------------------------
-// Completed state (original implementation, preserved)
+// Enhanced results tab
+// Web: each result shows title (blue, primary link), then LinkBackward icon
+// + hostname below it. Full content is commented out on web — not shown here.
 // ---------------------------------------------------------------------------
 
-// Web: Enhanced Results renders each result as a card with title link and
-// hostname link + icon. Full content block is commented out on web, so we
-// do not render `content` or `full_content` here either.
 function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
   const hostname = getHostname(result.url);
 
   return (
     <ToolCardInner onPress={() => result.url && Linking.openURL(result.url)}>
+      {/* Title — blue, truncated */}
       <Text className="text-[#00bbff] text-sm font-medium" numberOfLines={1}>
         {result.title || hostname || "Untitled"}
       </Text>
 
+      {/* Hostname with link icon */}
       {!!hostname && (
         <View className="flex-row items-center gap-1 mt-1">
-          <AppIcon icon={LinkBackwardIcon} size={12} color="#a1a1aa" />
+          <AppIcon icon={LinkBackwardIcon} size={12} color="#71717a" />
           <Text className="text-zinc-400 text-xs flex-1" numberOfLines={1}>
             {hostname}
           </Text>
@@ -235,7 +237,7 @@ function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
 
 function EnhancedResultsSection({ results }: { results: EnhancedWebResult[] }) {
   return (
-    <View className="gap-2">
+    <View className="gap-2 pt-3">
       {results.map((result, index) => (
         <EnhancedResultRow
           key={result.url || result.title || String(index)}
@@ -246,20 +248,29 @@ function EnhancedResultsSection({ results }: { results: EnhancedWebResult[] }) {
   );
 }
 
-// Web: WebResults row shows title, content (2 lines), then favicon + hostname.
+// ---------------------------------------------------------------------------
+// Original search tab — web results, images (rotated tiles), news
+// Web: WebResults shows title / content (2 lines) / favicon + hostname
+// ---------------------------------------------------------------------------
+
 function OriginalWebResultRow({ result }: { result: WebResult }) {
   const hostname = getHostname(result.url);
 
   return (
     <ToolCardInner onPress={() => result.url && Linking.openURL(result.url)}>
+      {/* Title — zinc-100 */}
       <Text className="text-zinc-100 text-sm font-medium" numberOfLines={1}>
         {result.title || hostname || "Untitled"}
       </Text>
+
+      {/* Content snippet — 2 lines, zinc-400 */}
       {!!result.content && (
         <Text className="text-zinc-400 text-xs mt-1" numberOfLines={2}>
           {result.content}
         </Text>
       )}
+
+      {/* Favicon + hostname */}
       {!!hostname && (
         <View className="flex-row items-center gap-2 mt-1.5">
           <FaviconImage url={result.url} />
@@ -272,8 +283,7 @@ function OriginalWebResultRow({ result }: { result: WebResult }) {
   );
 }
 
-// Web: NewsResult row shows NewsIcon + title (large), content (2 lines),
-// then a "Score: X.XX" line.
+// News row — NewsIcon + title, content snippet, score
 function OriginalNewsResultRow({ article }: { article: NewsResult }) {
   return (
     <ToolCardInner onPress={() => article.url && Linking.openURL(article.url)}>
@@ -287,12 +297,12 @@ function OriginalNewsResultRow({ article }: { article: NewsResult }) {
         </Text>
       </View>
       {!!article.content && (
-        <Text className="text-zinc-300 text-xs mt-1" numberOfLines={2}>
+        <Text className="text-zinc-400 text-xs mt-1" numberOfLines={2}>
           {article.content}
         </Text>
       )}
       {typeof article.score === "number" && (
-        <Text className="text-zinc-400 text-xs mt-1">
+        <Text className="text-zinc-500 text-xs mt-1">
           Score: {article.score.toFixed(2)}
         </Text>
       )}
@@ -300,40 +310,115 @@ function OriginalNewsResultRow({ article }: { article: NewsResult }) {
   );
 }
 
-function OriginalImageStrip({ images }: { images: ImageResult[] }) {
+// Image strip — rotated overlapping tiles matching the search results card
+// (consistent with web's ImageResults pattern)
+const IMAGE_TILE_SIZE = 96;
+const IMAGE_OVERLAP = -32;
+const MAX_VISIBLE_IMAGES = 4;
+
+function ImageTile({
+  url,
+  index,
+  total,
+}: {
+  url: string;
+  index: number;
+  total: number;
+}) {
+  const rotation = total > 1 ? (index % 2 === 0 ? "6deg" : "-6deg") : "0deg";
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+    <Animated.View
+      entering={FadeInRight.delay(index * 60).duration(150)}
+      style={{
+        transform: [{ rotate: rotation }],
+        zIndex: index,
+        marginLeft: index === 0 ? 0 : IMAGE_OVERLAP,
+      }}
     >
-      {images.map((image) => {
-        const url = typeof image === "string" ? image : undefined;
-        if (!url) return null;
-        return (
-          <PressableFeedback key={url} onPress={() => Linking.openURL(url)}>
-            <Image
-              source={{ uri: url }}
-              style={{ width: 128, height: 96, borderRadius: 12 }}
-              resizeMode="cover"
-            />
-          </PressableFeedback>
-        );
-      })}
-    </ScrollView>
+      <Pressable onPress={() => Linking.openURL(url)}>
+        <Image
+          source={{ uri: url }}
+          style={{
+            width: IMAGE_TILE_SIZE,
+            height: IMAGE_TILE_SIZE,
+            borderRadius: 14,
+            backgroundColor: "#27272a",
+          }}
+          resizeMode="cover"
+        />
+      </Pressable>
+    </Animated.View>
   );
 }
 
-// Web's original search tab renders <SearchResultsTabs/>, which shows only
-// web + images + news (query/answer are NOT shown here — they live in the
-// Info tab's metadata.query).
+function OriginalImageStrip({ images }: { images: ImageResult[] }) {
+  const validUrls = images.filter(
+    (img): img is string => typeof img === "string" && img.length > 0,
+  );
+  const [startIndex, setStartIndex] = useState(0);
+
+  if (validUrls.length === 0) return null;
+
+  const displayImages = validUrls.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_IMAGES,
+  );
+  const remaining = validUrls.length - (startIndex + MAX_VISIBLE_IMAGES);
+  const nextBatchCount =
+    remaining > 0
+      ? remaining
+      : Math.min(MAX_VISIBLE_IMAGES, validUrls.length - MAX_VISIBLE_IMAGES);
+  const showCycleButton = validUrls.length > MAX_VISIBLE_IMAGES;
+
+  const cycleNext = () => {
+    const next = startIndex + MAX_VISIBLE_IMAGES;
+    setStartIndex(next >= validUrls.length ? 0 : next);
+  };
+
+  return (
+    <View className="flex-row items-center py-2">
+      {displayImages.map((url, index) => (
+        <ImageTile
+          key={`${url}-${startIndex}`}
+          url={url}
+          index={index}
+          total={displayImages.length}
+        />
+      ))}
+      {showCycleButton && (
+        <Pressable
+          onPress={cycleNext}
+          style={{
+            marginLeft: IMAGE_OVERLAP,
+            zIndex: displayImages.length,
+            width: IMAGE_TILE_SIZE,
+            height: IMAGE_TILE_SIZE,
+            borderRadius: 14,
+            backgroundColor: "rgba(39,39,42,0.85)",
+            alignItems: "center",
+            justifyContent: "center",
+            transform: [
+              { rotate: displayImages.length % 2 === 0 ? "6deg" : "-6deg" },
+            ],
+          }}
+        >
+          <Text className="text-zinc-100 text-sm font-semibold">
+            +{nextBatchCount}
+          </Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 function OriginalSearchSection({ search }: { search: SearchResults }) {
   const webResults = search.web ?? [];
   const imageResults = search.images ?? [];
   const newsResults = search.news ?? [];
 
   return (
-    <View className="gap-3">
+    <View className="gap-3 pt-3">
       {webResults.length > 0 && (
         <View className="gap-2">
           {webResults.map((result, index) => (
@@ -361,9 +446,11 @@ function OriginalSearchSection({ search }: { search: SearchResults }) {
   );
 }
 
-// Web: SearchMetadata shows "Search Statistics" heading, then Query / Processing
-// Time / Content Size. Processing time and Content size are only rendered when
-// > 0 (matches web's conditional).
+// ---------------------------------------------------------------------------
+// Search metadata tab — query / elapsed time / content size
+// Web: "Search Statistics" heading, then label-value rows.
+// ---------------------------------------------------------------------------
+
 function MetadataSection({
   metadata,
 }: {
@@ -376,8 +463,9 @@ function MetadataSection({
     metadata.total_content_size > 0;
 
   return (
-    <ToolCardInner>
-      <Text className="text-zinc-100 text-sm font-semibold mb-2">
+    <ToolCardInner className="mt-3">
+      {/* Section heading — matches web's "Search Statistics" */}
+      <Text className="text-zinc-100 text-sm font-semibold mb-3">
         Search Statistics
       </Text>
 
@@ -416,12 +504,14 @@ function MetadataSection({
   );
 }
 
-// Web shows: accordion header (Hide/Show Deep research Results), then tabs
-// for Enhanced Results / Original Search / Search Info — no summary counts
-// or elapsed time outside the Info tab.
-function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+// ---------------------------------------------------------------------------
+// Completed state
+// Mirrors web: accordion toggle (Hide/Show Deep research Results) then tabs
+// for Enhanced Results / Original Search / Search Info.
+// The accordion trigger shows only the text button — no extra chevron indicator.
+// ---------------------------------------------------------------------------
 
+function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
   const hasEnhanced =
     !!data.enhanced_results && data.enhanced_results.length > 0;
   const hasOriginal = !!data.original_search;
@@ -440,67 +530,82 @@ function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
       <Accordion
         selectionMode="single"
         defaultValue="1"
-        onValueChange={(v: string | undefined) => setIsExpanded(!!v)}
+        animation="disable-all"
       >
         <Accordion.Item value="1">
-          <Accordion.Trigger>
-            <View className="rounded-lg bg-white/10 px-3 py-1">
-              <Text className="text-zinc-200 text-sm font-medium">
-                {isExpanded
-                  ? "Hide Deep Research Results"
-                  : "Show Deep Research Results"}
-              </Text>
-            </View>
-            <Accordion.Indicator />
-          </Accordion.Trigger>
-          <Accordion.Content>
-            <Tabs
-              value={activeTab}
-              onValueChange={(v) => setActiveTab(v as Tab)}
-              variant="primary"
-              animation="disable-all"
-            >
-              <Tabs.List>
-                <Tabs.Indicator />
-                {hasEnhanced && (
-                  <Tabs.Trigger value="enhanced">
-                    <Tabs.Label>Enhanced Results</Tabs.Label>
-                  </Tabs.Trigger>
-                )}
-                {hasOriginal && (
-                  <Tabs.Trigger value="original">
-                    <View className="flex-row items-center gap-1.5">
-                      <AppIcon icon={Search01Icon} size={13} color="#a1a1aa" />
-                      <Tabs.Label>Original Search</Tabs.Label>
-                    </View>
-                  </Tabs.Trigger>
-                )}
-                {hasMetadata && (
-                  <Tabs.Trigger value="metadata">
-                    <View className="flex-row items-center gap-1.5">
-                      <AppIcon icon={Globe02Icon} size={13} color="#a1a1aa" />
-                      <Tabs.Label>Search Info</Tabs.Label>
-                    </View>
-                  </Tabs.Trigger>
-                )}
-              </Tabs.List>
-              {hasEnhanced && data.enhanced_results && (
-                <Tabs.Content value="enhanced">
-                  <EnhancedResultsSection results={data.enhanced_results} />
-                </Tabs.Content>
-              )}
-              {hasOriginal && data.original_search && (
-                <Tabs.Content value="original">
-                  <OriginalSearchSection search={data.original_search} />
-                </Tabs.Content>
-              )}
-              {hasMetadata && data.metadata && (
-                <Tabs.Content value="metadata">
-                  <MetadataSection metadata={data.metadata} />
-                </Tabs.Content>
-              )}
-            </Tabs>
-          </Accordion.Content>
+          {({ isExpanded }) => (
+            <>
+              {/* Accordion trigger — text pill only, no chevron, matches web */}
+              <Accordion.Trigger className="p-0">
+                <View className="rounded-lg bg-white/10 px-3 py-1.5 self-start">
+                  <Text className="text-zinc-200 text-sm font-medium">
+                    {isExpanded
+                      ? "Hide Deep Research Results"
+                      : "Show Deep Research Results"}
+                  </Text>
+                </View>
+              </Accordion.Trigger>
+
+              {/* Tab content */}
+              <Accordion.Content>
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(v) => setActiveTab(v as Tab)}
+                  variant="primary"
+                  animation="disable-all"
+                >
+                  <Tabs.List className="mt-3">
+                    <Tabs.Indicator />
+                    {hasEnhanced && (
+                      <Tabs.Trigger value="enhanced">
+                        <Tabs.Label>Enhanced Results</Tabs.Label>
+                      </Tabs.Trigger>
+                    )}
+                    {hasOriginal && (
+                      <Tabs.Trigger value="original">
+                        <View className="flex-row items-center gap-1.5">
+                          <AppIcon
+                            icon={Search01Icon}
+                            size={13}
+                            color="#a1a1aa"
+                          />
+                          <Tabs.Label>Original Search</Tabs.Label>
+                        </View>
+                      </Tabs.Trigger>
+                    )}
+                    {hasMetadata && (
+                      <Tabs.Trigger value="metadata">
+                        <View className="flex-row items-center gap-1.5">
+                          <AppIcon
+                            icon={Globe02Icon}
+                            size={13}
+                            color="#a1a1aa"
+                          />
+                          <Tabs.Label>Search Info</Tabs.Label>
+                        </View>
+                      </Tabs.Trigger>
+                    )}
+                  </Tabs.List>
+
+                  {hasEnhanced && data.enhanced_results && (
+                    <Tabs.Content value="enhanced">
+                      <EnhancedResultsSection results={data.enhanced_results} />
+                    </Tabs.Content>
+                  )}
+                  {hasOriginal && data.original_search && (
+                    <Tabs.Content value="original">
+                      <OriginalSearchSection search={data.original_search} />
+                    </Tabs.Content>
+                  )}
+                  {hasMetadata && data.metadata && (
+                    <Tabs.Content value="metadata">
+                      <MetadataSection metadata={data.metadata} />
+                    </Tabs.Content>
+                  )}
+                </Tabs>
+              </Accordion.Content>
+            </>
+          )}
         </Accordion.Item>
       </Accordion>
     </ToolCardShell>

@@ -69,9 +69,7 @@ function TaskRow({
         className={`text-xs flex-1 leading-relaxed ${
           todo.status === "cancelled"
             ? "text-zinc-600 line-through"
-            : todo.status === "completed"
-              ? "text-zinc-400"
-              : "text-zinc-300"
+            : "text-zinc-300"
         }`}
       >
         {todo.content}
@@ -119,8 +117,8 @@ function SourceSection({
   const pct = todos.length > 0 ? (completedCount / todos.length) * 100 : 0;
 
   return (
-    <View className="mb-3">
-      <View className="flex-row items-center justify-between mb-1.5">
+    <View>
+      <View className="flex-row items-center justify-between mb-2">
         <Text className="text-xs font-medium text-zinc-400">
           {toTitleCase(source)}
         </Text>
@@ -169,14 +167,16 @@ export function TodoProgressCard({
         <CountChip completed={totalCompleted} total={allTodos.length} />
       </View>
 
-      {activeSources.map(([source, snapshot]) => (
-        <SourceSection
-          key={source}
-          source={source}
-          snapshot={snapshot}
-          isStreaming={isStreaming}
-        />
-      ))}
+      <View className="gap-4">
+        {activeSources.map(([source, snapshot]) => (
+          <SourceSection
+            key={source}
+            source={source}
+            snapshot={snapshot}
+            isStreaming={isStreaming}
+          />
+        ))}
+      </View>
     </ToolCardShell>
   );
 }

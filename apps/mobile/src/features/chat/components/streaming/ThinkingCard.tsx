@@ -3,6 +3,7 @@ import { View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
@@ -11,20 +12,22 @@ import { AppIcon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
-function AnimatedDot({ delay, size }: { delay: number; size: number }) {
+function AnimatedDot({ delayMs, size }: { delayMs: number; size: number }) {
   const opacity = useSharedValue(0.3);
 
   useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(0.3, { duration: delay }),
-        withTiming(1, { duration: 350 }),
-        withTiming(0.3, { duration: 350 }),
+    opacity.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 350 }),
+          withTiming(0.3, { duration: 350 }),
+        ),
+        -1,
+        false,
       ),
-      -1,
-      false,
     );
-  }, [opacity, delay]);
+  }, [opacity, delayMs]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -93,9 +96,9 @@ export function ThinkingCard({ message }: ThinkingCardProps) {
         {message || "Thinking"}
       </Text>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-        <AnimatedDot delay={0} size={dotSize} />
-        <AnimatedDot delay={200} size={dotSize} />
-        <AnimatedDot delay={400} size={dotSize} />
+        <AnimatedDot delayMs={0} size={dotSize} />
+        <AnimatedDot delayMs={200} size={dotSize} />
+        <AnimatedDot delayMs={400} size={dotSize} />
       </View>
     </View>
   );

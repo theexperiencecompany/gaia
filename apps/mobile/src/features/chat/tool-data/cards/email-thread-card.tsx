@@ -112,21 +112,29 @@ function getBodyText(message: EmailThreadMessage): string {
   ).trim();
 }
 
+/** Pill label matching web's <Chip variant="flat" size="sm" radius="sm"> */
 function PillLabel({ children }: { children: string }) {
   return (
-    <View className="px-2 py-0.5 rounded-sm bg-zinc-700/50">
+    <View className="px-2 py-0.5 rounded-md bg-zinc-700/60">
       <Text className="text-zinc-400 text-[11px] font-medium">{children}</Text>
     </View>
   );
 }
 
-function MessageItem({ message }: { message: EmailThreadMessage }) {
+function MessageItem({
+  message,
+  isLast,
+}: {
+  message: EmailThreadMessage;
+  isLast: boolean;
+}) {
   const { name: senderName, email: senderEmail } = resolveSender(message);
   const time = formatTime(message.time ?? message.date);
   const bodyText = getBodyText(message);
 
   return (
-    <View className="pb-2 mb-4 gap-1">
+    <View className={`gap-1.5${isLast ? "" : " mb-3 pb-3"}`}>
+      {/* From row */}
       <View className="flex-row items-center justify-between gap-2">
         <View className="flex-row items-center gap-2 flex-1 min-w-0">
           <View style={{ width: 60 }}>
@@ -147,10 +155,11 @@ function MessageItem({ message }: { message: EmailThreadMessage }) {
           )}
         </View>
         {!!time && (
-          <Text className="text-zinc-500 text-xs shrink-0">{time}</Text>
+          <Text className="text-zinc-500 text-xs flex-shrink-0">{time}</Text>
         )}
       </View>
 
+      {/* Subject row */}
       {!!message.subject && (
         <View className="flex-row items-center gap-2">
           <View style={{ width: 60 }}>
@@ -165,13 +174,17 @@ function MessageItem({ message }: { message: EmailThreadMessage }) {
         </View>
       )}
 
+      {/* Body */}
       {!!bodyText && (
-        <View className="mt-3 rounded-xl bg-zinc-900 p-3">
+        <View className="mt-2 rounded-2xl bg-zinc-900 p-3">
           <Text className="text-zinc-200 text-sm leading-relaxed">
             {bodyText}
           </Text>
         </View>
       )}
+
+      {/* Separator between messages */}
+      {!isLast && <View className="mt-3 h-px bg-zinc-700/50" />}
     </View>
   );
 }
@@ -197,6 +210,7 @@ export function EmailThreadCard({ data }: { data: EmailThreadData }) {
             <MessageItem
               key={message.id ?? `${message.from ?? "msg"}-${index}`}
               message={message}
+              isLast={index === messages.length - 1}
             />
           ))}
         </ScrollView>

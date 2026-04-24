@@ -121,7 +121,7 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
           <Text className="text-xs leading-relaxed text-zinc-400">
             <Text className="font-medium text-zinc-200">{featureName}</Text> is
             a <Text className="font-medium text-amber-400">{planName}</Text>{" "}
-            feature and isn&apos;t included in your current plan. Upgrade to
+            feature and isn{"'"}t included in your current plan. Upgrade to
             unlock it and get significantly higher limits across every feature.
           </Text>
 
@@ -129,11 +129,13 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
           <View className="gap-1.5">
             {PRO_BENEFITS.map((benefit) => (
               <View key={benefit} className="flex-row items-start gap-2">
-                <AppIcon
-                  icon={CheckmarkCircle02Icon}
-                  size={14}
-                  color="#00bbff"
-                />
+                <View className="mt-0.5">
+                  <AppIcon
+                    icon={CheckmarkCircle02Icon}
+                    size={14}
+                    color="#00bbff"
+                  />
+                </View>
                 <Text className="text-xs text-zinc-400 flex-1">{benefit}</Text>
               </View>
             ))}
@@ -143,7 +145,7 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
         <View className="gap-3 mb-4">
           {/* What happened */}
           <Text className="text-xs leading-relaxed text-zinc-400">
-            You&apos;ve used all your{" "}
+            You{"'"}ve used all your{" "}
             <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
             calls for today. Your limit will automatically reset — no action
             needed.
@@ -166,7 +168,9 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
 
           {/* Upgrade nudge */}
           <View className="flex-row items-start gap-2 px-3">
-            <AppIcon icon={Alert01Icon} size={14} color="#a1a1aa" />
+            <View className="mt-0.5">
+              <AppIcon icon={Alert01Icon} size={14} color="#a1a1aa" />
+            </View>
             <Text className="text-xs text-zinc-400 flex-1">
               Need more? Upgrade to{" "}
               <Text className="font-medium text-zinc-300">PRO</Text> for 10x

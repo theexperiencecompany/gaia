@@ -1,4 +1,3 @@
-import { Chip } from "heroui-native";
 import { View } from "react-native";
 import {
   AppIcon,
@@ -27,14 +26,8 @@ export interface NotificationItem {
 
 export interface NotificationData {
   notifications?: NotificationItem[];
+  title?: string;
 }
-
-const TYPE_CONFIG: Record<string, { iconColor: string }> = {
-  info: { iconColor: "#00bbff" },
-  success: { iconColor: "#4ade80" },
-  warning: { iconColor: "#facc15" },
-  error: { iconColor: "#f87171" },
-};
 
 function formatRelativeTime(isoString?: string): string | null {
   if (!isoString) return null;
@@ -53,11 +46,9 @@ function formatRelativeTime(isoString?: string): string | null {
 function NotificationRow({ item }: { item: NotificationItem }) {
   const title = item.content?.title ?? item.title;
   const body = item.content?.body ?? item.body;
-  const typeKey = item.type?.toLowerCase() ?? "info";
-  const { iconColor } = TYPE_CONFIG[typeKey] ?? TYPE_CONFIG.info;
-  const relativeTime = formatRelativeTime(item.created_at);
   const isUnread =
     item.status === "delivered" || item.status === "pending" || !item.status;
+  const relativeTime = formatRelativeTime(item.created_at);
   const categoryLabel = item.metadata?.reminder_id ? "reminder" : "system";
 
   return (
@@ -85,11 +76,11 @@ function NotificationRow({ item }: { item: NotificationItem }) {
               {body}
             </Text>
           )}
-          <View className="flex-row items-center gap-2 mt-1">
+          <View className="flex-row items-center gap-2 mt-1.5">
             {!!relativeTime && (
               <Text className="text-xs text-zinc-500">{relativeTime}</Text>
             )}
-            <View className="px-1.5 py-0.5 rounded-full bg-zinc-800">
+            <View className="px-1.5 py-0.5 rounded-full bg-zinc-700">
               <Text className="text-[10px] text-zinc-400 capitalize">
                 {categoryLabel}
               </Text>
@@ -98,8 +89,8 @@ function NotificationRow({ item }: { item: NotificationItem }) {
         </View>
         <AppIcon
           icon={isUnread ? Notification02Icon : Notification01Icon}
-          size={14}
-          color={isUnread ? iconColor : "#71717a"}
+          size={16}
+          color={isUnread ? "#00bbff" : "#71717a"}
         />
       </View>
     </ToolCardInner>
@@ -116,12 +107,16 @@ export function NotificationCard({ data }: { data: NotificationData }) {
   if (count === 0) {
     return (
       <ToolCardShell>
-        <View className="flex-row items-center gap-2 mb-3">
-          <AppIcon icon={Notification01Icon} size={14} color="#71717a" />
-          <Text className="text-xs text-zinc-500">Notifications</Text>
+        {/* Header — matches web: icon + title */}
+        <View className="flex-row items-center gap-3 mb-3">
+          <AppIcon icon={Notification01Icon} size={20} color="#71717a" />
+          <Text className="text-sm font-medium text-zinc-100">
+            {data.title ?? "Notifications"}
+          </Text>
         </View>
+        {/* Empty state — matches web: large icon + messages */}
         <View className="py-8 items-center">
-          <AppIcon icon={Notification01Icon} size={32} color="#3f3f46" />
+          <AppIcon icon={Notification01Icon} size={40} color="#3f3f46" />
           <Text className="text-sm font-medium text-zinc-300 mt-4">
             No notifications found
           </Text>
@@ -135,28 +130,24 @@ export function NotificationCard({ data }: { data: NotificationData }) {
 
   return (
     <ToolCardShell>
-      {/* Header */}
-      <View className="flex-row items-center gap-2 mb-3">
-        <AppIcon icon={Notification01Icon} size={14} color="#71717a" />
-        <Text className="text-xs text-zinc-500">Notifications</Text>
-        <View className="flex-row items-center gap-1.5 ml-auto">
-          <Chip
-            size="sm"
-            variant="secondary"
-            color="default"
-            animation="disable-all"
-          >
-            <Chip.Label>{count} total</Chip.Label>
-          </Chip>
+      {/* Header — icon + title + total count chip + unread chip */}
+      <View className="flex-row items-center gap-3 mb-3">
+        <AppIcon icon={Notification01Icon} size={20} color="#71717a" />
+        <Text className="text-sm font-medium text-zinc-100 flex-1">
+          {data.title ?? "Notifications"}
+        </Text>
+        <View className="flex-row items-center gap-1.5">
+          {/* Total count badge */}
+          <View className="px-2 py-0.5 rounded-full bg-zinc-700">
+            <Text className="text-zinc-300 text-xs font-medium">{count}</Text>
+          </View>
+          {/* Unread badge */}
           {unreadCount > 0 && (
-            <Chip
-              size="sm"
-              variant="primary"
-              color="accent"
-              animation="disable-all"
-            >
-              <Chip.Label>{unreadCount} unread</Chip.Label>
-            </Chip>
+            <View className="px-2 py-0.5 rounded-full bg-blue-900/30">
+              <Text className="text-blue-400 text-xs font-medium">
+                {unreadCount} unread
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -176,7 +167,7 @@ export function NotificationCard({ data }: { data: NotificationData }) {
         ))}
       </View>
 
-      {/* Footer: unread count summary */}
+      {/* Footer: unread summary — matches web */}
       {unreadCount > 0 && (
         <View className="border-t border-zinc-700 mt-3 pt-3">
           <Text className="text-sm text-zinc-400">

@@ -1,12 +1,5 @@
 import { normalizeCategoryName } from "@gaia/shared/icons";
-import {
-  Accordion,
-  Card,
-  Chip,
-  Separator,
-  Spinner,
-  Surface,
-} from "heroui-native";
+import { Accordion, Card } from "heroui-native";
 import { useEffect } from "react";
 import { View } from "react-native";
 import Animated, {
@@ -91,24 +84,12 @@ function StatusIndicator({
   status?: "running" | "done" | "error";
 }) {
   if (!status || status === "running") {
-    return (
-      <Chip size="sm" variant="soft" color="accent">
-        <Spinner size="sm" color="default" />
-      </Chip>
-    );
+    return <PulsingDot color="#60a5fa" />;
   }
   if (status === "done") {
-    return (
-      <Chip size="sm" variant="soft" color="success">
-        <AppIcon icon={CheckmarkCircle01Icon} size={12} color="#34d399" />
-      </Chip>
-    );
+    return <AppIcon icon={CheckmarkCircle01Icon} size={14} color="#34d399" />;
   }
-  return (
-    <Chip size="sm" variant="soft" color="danger">
-      <AppIcon icon={Cancel01Icon} size={12} color="#f87171" />
-    </Chip>
-  );
+  return <AppIcon icon={Cancel01Icon} size={14} color="#f87171" />;
 }
 
 function ToolIcon({
@@ -251,145 +232,192 @@ function ToolCallItem({
 
   const itemValue = call.tool_call_id || `${call.tool_name || "tool"}`;
 
-  if (!hasDetails) {
-    return (
-      <>
+  const iconColumn = (
+    <View style={{ alignItems: "center", alignSelf: "stretch" }}>
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <ToolIcon
+          category={call.tool_category || "general"}
+          iconUrl={call.icon_url}
+          size={18}
+        />
+      </View>
+      {!isLast && (
         <View
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-            paddingVertical: 8,
-            paddingHorizontal: 4,
+            width: 1,
+            flex: 1,
+            minHeight: 8,
+            backgroundColor: "#3f3f46",
+            marginTop: 2,
           }}
-        >
-          <ToolIcon
-            category={call.tool_category || "general"}
-            iconUrl={call.icon_url}
-            size={18}
-          />
-          <View style={{ flex: 1, minWidth: 0 }}>
+        />
+      )}
+    </View>
+  );
+
+  if (!hasDetails) {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "stretch",
+          gap: 8,
+          paddingVertical: 4,
+        }}
+      >
+        {iconColumn}
+        <View style={{ flex: 1, minWidth: 0, paddingTop: 6 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
             <Text
               style={{
                 fontSize: 12,
                 color: "#a1a1aa",
                 fontWeight: "500",
+                flex: 1,
               }}
               numberOfLines={2}
             >
               {displayName}
             </Text>
-            {hasCategoryText && categoryLabel && (
-              <Text
-                style={{
-                  fontSize: 10,
-                  color: "#71717a",
-                  marginTop: 1,
-                }}
-              >
-                {categoryLabel}
-              </Text>
-            )}
+            <StatusIndicator status={call.status} />
           </View>
-          <StatusIndicator status={call.status} />
+          {hasCategoryText && categoryLabel && (
+            <Text
+              style={{
+                fontSize: 10,
+                color: "#71717a",
+                marginTop: 2,
+              }}
+            >
+              {categoryLabel}
+            </Text>
+          )}
         </View>
-        {!isLast && <Separator />}
-      </>
+      </View>
     );
   }
 
   return (
-    <>
-      <Accordion selectionMode="single">
-        <Accordion.Item value={itemValue}>
-          <Accordion.Trigger className="flex-row items-center gap-2 px-1 py-2">
-            <ToolIcon
-              category={call.tool_category || "general"}
-              iconUrl={call.icon_url}
-              size={18}
-            />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: "#a1a1aa",
-                  fontWeight: "500",
-                }}
-                numberOfLines={2}
-              >
-                {displayName}
-              </Text>
-              {hasCategoryText && categoryLabel && (
-                <Text
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "stretch",
+        gap: 8,
+        paddingVertical: 4,
+      }}
+    >
+      {iconColumn}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Accordion selectionMode="single">
+          <Accordion.Item value={itemValue}>
+            <Accordion.Trigger className="flex-row items-center gap-2 px-0 py-1.5">
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View
                   style={{
-                    fontSize: 10,
-                    color: "#71717a",
-                    marginTop: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
                   }}
                 >
-                  {categoryLabel}
-                </Text>
-              )}
-            </View>
-            <StatusIndicator status={call.status} />
-            <Accordion.Indicator iconProps={{ size: 12, color: "#71717a" }} />
-          </Accordion.Trigger>
-          <Accordion.Content>
-            <Surface
-              variant="secondary"
-              style={{
-                borderRadius: 10,
-                padding: 10,
-                gap: 6,
-                marginBottom: 4,
-              }}
-            >
-              {hasInputs && (
-                <View>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: "#a1a1aa",
+                      fontWeight: "500",
+                      flex: 1,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {displayName}
+                  </Text>
+                  <StatusIndicator status={call.status} />
+                  <Accordion.Indicator
+                    iconProps={{ size: 12, color: "#71717a" }}
+                  />
+                </View>
+                {hasCategoryText && categoryLabel && (
                   <Text
                     style={{
                       fontSize: 10,
                       color: "#71717a",
-                      fontWeight: "500",
-                      marginBottom: 3,
+                      marginTop: 2,
                     }}
                   >
-                    Input
+                    {categoryLabel}
                   </Text>
-                  <Text
-                    style={{ fontSize: 11, color: "#d4d4d8" }}
-                    numberOfLines={6}
-                  >
-                    {JSON.stringify(call.inputs, null, 2)}
-                  </Text>
-                </View>
-              )}
-              {hasOutput && (
-                <View>
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      color: "#71717a",
-                      fontWeight: "500",
-                      marginBottom: 3,
-                    }}
-                  >
-                    Output
-                  </Text>
-                  <Text
-                    style={{ fontSize: 11, color: "#d4d4d8" }}
-                    numberOfLines={10}
-                  >
-                    {call.output}
-                  </Text>
-                </View>
-              )}
-            </Surface>
-          </Accordion.Content>
-        </Accordion.Item>
-      </Accordion>
-      {!isLast && <Separator />}
-    </>
+                )}
+              </View>
+            </Accordion.Trigger>
+            <Accordion.Content>
+              <View
+                style={{
+                  backgroundColor: "rgba(39, 39, 42, 0.5)",
+                  borderRadius: 10,
+                  padding: 10,
+                  gap: 8,
+                  marginBottom: 4,
+                }}
+              >
+                {hasInputs && (
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        color: "#71717a",
+                        fontWeight: "500",
+                        marginBottom: 3,
+                      }}
+                    >
+                      Input
+                    </Text>
+                    <Text
+                      style={{ fontSize: 11, color: "#d4d4d8" }}
+                      numberOfLines={6}
+                    >
+                      {JSON.stringify(call.inputs, null, 2)}
+                    </Text>
+                  </View>
+                )}
+                {hasOutput && (
+                  <View>
+                    <Text
+                      style={{
+                        fontSize: 10,
+                        color: "#71717a",
+                        fontWeight: "500",
+                        marginBottom: 3,
+                      }}
+                    >
+                      Output
+                    </Text>
+                    <Text
+                      style={{ fontSize: 11, color: "#d4d4d8" }}
+                      numberOfLines={10}
+                    >
+                      {call.output}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </Accordion.Content>
+          </Accordion.Item>
+        </Accordion>
+      </View>
+    </View>
   );
 }
 
@@ -405,7 +433,7 @@ export function ToolCallsSection({ tool_calls_data }: ToolCallsSectionProps) {
       <Accordion.Item value="tool-calls">
         <Accordion.Trigger className="flex-row items-center gap-1.5 py-1">
           <StackedToolIcons calls={tool_calls_data} />
-          <View className="flex-row items-center gap-1">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             {hasRunning && <PulsingDot color="#60a5fa" />}
             <Text
               style={{

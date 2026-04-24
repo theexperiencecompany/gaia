@@ -1,5 +1,6 @@
 import { Image, Linking, View } from "react-native";
-import { AppIcon, ConnectIcon, PlusSignIcon } from "@/components/icons";
+import { ConnectIcon, PlusSignIcon } from "@/components/icons";
+import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
 import {
   ToolCardHeader,
@@ -62,10 +63,19 @@ function IntegrationRow({ item }: { item: IntegrationListItem }) {
             </Text>
           ) : null}
         </View>
-        <View className="flex-row items-center gap-1 rounded-full bg-primary px-3 py-1">
-          <AppIcon icon={ConnectIcon} size={12} color="#000000" />
-          <Text className="text-black text-xs font-semibold">Connect</Text>
-        </View>
+        {/* Connect CTA — only shown when a connect_url is available */}
+        {connectUrl ? (
+          <View className="flex-row items-center gap-1 rounded-full bg-primary px-3 py-1">
+            <AppIcon icon={ConnectIcon} size={12} color="#000000" />
+            <Text className="text-black text-xs font-semibold">Connect</Text>
+          </View>
+        ) : (
+          <View className="rounded-full bg-zinc-700 px-3 py-1">
+            <Text className="text-zinc-400 text-xs font-medium">
+              {item.authType ?? "OAuth"}
+            </Text>
+          </View>
+        )}
       </View>
     </ToolCardInner>
   );
@@ -100,7 +110,11 @@ export function IntegrationListCard({ data }: { data: IntegrationListData }) {
           ))}
         </View>
       ) : (
-        <Text className="text-zinc-500 text-sm">No integrations available</Text>
+        <ToolCardInner>
+          <Text className="text-zinc-500 text-sm text-center py-2">
+            No integrations available
+          </Text>
+        </ToolCardInner>
       )}
     </ToolCardShell>
   );

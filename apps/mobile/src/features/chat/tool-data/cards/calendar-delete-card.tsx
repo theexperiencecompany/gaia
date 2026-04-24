@@ -1,8 +1,12 @@
 import { Button } from "heroui-native";
 import { useState } from "react";
-import { ScrollView, View } from "react-native";
-import { AppIcon, Tick02Icon } from "@/components/icons";
+import { ActivityIndicator, ScrollView, View } from "react-native";
+import { AppIcon, Calendar03Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 // -- Types --------------------------------------------------------------------
 
@@ -29,57 +33,37 @@ interface CalendarDeleteCardProps {
 
 // -- Helpers ------------------------------------------------------------------
 
+function formatTimeString(date: Date): string {
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 || 12;
+  if (minutes === 0) return `${hour12} ${ampm}`;
+  return `${hour12}:${minutes.toString().padStart(2, "0")} ${ampm}`;
+}
+
 function formatTimeRange(startTime: string, endTime: string): string {
   const start = new Date(startTime);
   const end = new Date(endTime);
-
-  const fmt = (d: Date): string => {
-    const hours = d.getHours();
-    const minutes = d.getMinutes();
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const hour12 = hours % 12 || 12;
-    const minuteStr = minutes.toString().padStart(2, "0");
-    if (minutes === 0) return `${hour12} ${ampm}`;
-    return `${hour12}:${minuteStr} ${ampm}`;
-  };
-
-  const startStr = fmt(start);
-  const endStr = fmt(end);
-
-  if (start.getHours() < 12 && end.getHours() >= 12) {
-    return `${startStr} – ${endStr}`;
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return "All day";
   }
-  if (start.getHours() >= 12 && end.getHours() >= 12) {
-    return `${startStr.replace(" PM", "")} – ${endStr}`;
-  }
-  if (start.getHours() < 12 && end.getHours() < 12) {
-    return `${startStr.replace(" AM", "")} – ${endStr}`;
-  }
-  return `${startStr} – ${endStr}`;
+  return `${formatTimeString(start)} – ${formatTimeString(end)}`;
 }
 
 function formatDateWithRelative(dateString: string): string {
   const date = new Date(`${dateString}T12:00:00`);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
   const target = new Date(date);
   target.setHours(0, 0, 0, 0);
-
+  const dayMs = 86_400_000;
+  const diff = target.getTime() - today.getTime();
   const full = date.toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
   });
-
-  const dayMs = 86_400_000;
-  const diff = target.getTime() - today.getTime();
   if (diff === 0) return `${full} (Today)`;
   if (diff === dayMs) return `${full} (Tomorrow)`;
   if (diff === -dayMs) return `${full} (Yesterday)`;
@@ -123,17 +107,14 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
 
   return (
     <View
-      className="relative flex-row items-end gap-2 rounded-lg py-3 pr-2 pl-5"
+      className="relative flex-row items-end rounded-lg py-3 pr-2 pl-5"
       style={{
         backgroundColor: `${eventColor}20`,
         opacity: isCompleted ? 0.5 : 1,
       }}
     >
       {/* Vertical color bar */}
-      <View
-        className="absolute left-1 top-0 bottom-0 items-center justify-center"
-        pointerEvents="none"
-      >
+      <View className="absolute left-1 top-0 bottom-0 items-center justify-center">
         <View
           className="w-1 rounded-full"
           style={{ backgroundColor: eventColor, height: "80%" }}
@@ -142,7 +123,10 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
 
       {/* Content */}
       <View className="flex-1 min-w-0">
-        <Text className="text-base leading-tight text-white" numberOfLines={2}>
+        <Text
+          className="text-base leading-tight text-zinc-100"
+          numberOfLines={2}
+        >
           {event.summary}
         </Text>
         {event.description ? (
@@ -163,7 +147,9 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
         onPress={onDelete}
         className="flex-shrink-0"
       >
-        {isCompleted ? (
+        {isLoading ? (
+          <ActivityIndicator size="small" color="#ffffff" />
+        ) : isCompleted ? (
           <>
             <AppIcon icon={Tick02Icon} size={16} color="#fff" />
             <Button.Label>Deleted</Button.Label>
@@ -247,46 +233,53 @@ export function CalendarDeleteCard({
   const eventsByDate = groupByDate(data);
 
   return (
-    <View className="mx-4 my-1 w-full max-w-md rounded-3xl bg-zinc-800 p-4">
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Calendar03Icon}
+        title="Delete Events"
+        iconColor="#ef4444"
+      />
+
       <ScrollView
         style={{ maxHeight: 400 }}
-        className="mt-2"
         nestedScrollEnabled
         showsVerticalScrollIndicator={false}
       >
-        {Object.entries(eventsByDate).map(([dateKey, events], groupIdx) => (
-          <View
-            key={dateKey}
-            className="gap-3"
-            style={{ marginTop: groupIdx === 0 ? 0 : 12 }}
-          >
-            {/* Date separator */}
-            <View className="flex-row items-center">
-              <View className="flex-1 h-px bg-zinc-700" />
-              <Text className="px-3 text-xs text-zinc-500">
-                {formatDateWithRelative(dateKey)}
-              </Text>
-              <View className="flex-1 h-px bg-zinc-700" />
-            </View>
+        <View className="gap-3">
+          {Object.entries(eventsByDate).map(([dateKey, events], groupIdx) => (
+            <View
+              key={dateKey}
+              className="gap-3"
+              style={{ marginTop: groupIdx === 0 ? 0 : 4 }}
+            >
+              {/* Date rail */}
+              <View className="flex-row items-center">
+                <View className="flex-1 h-px bg-zinc-700" />
+                <Text className="px-3 text-xs text-zinc-500">
+                  {formatDateWithRelative(dateKey)}
+                </Text>
+                <View className="flex-1 h-px bg-zinc-700" />
+              </View>
 
-            {/* Events */}
-            <View className="gap-2">
-              {events.map((event) => {
-                const globalIdx = data.indexOf(event);
-                const key = getKey(event, globalIdx);
-                const status = statuses[key] ?? "idle";
-                return (
-                  <EventCard
-                    key={key}
-                    event={event}
-                    status={status}
-                    onDelete={() => void handleDelete(event, key)}
-                  />
-                );
-              })}
+              {/* Events */}
+              <View className="gap-2">
+                {events.map((event) => {
+                  const globalIdx = data.indexOf(event);
+                  const key = getKey(event, globalIdx);
+                  const status = statuses[key] ?? "idle";
+                  return (
+                    <EventCard
+                      key={key}
+                      event={event}
+                      status={status}
+                      onDelete={() => void handleDelete(event, key)}
+                    />
+                  );
+                })}
+              </View>
             </View>
-          </View>
-        ))}
+          ))}
+        </View>
       </ScrollView>
 
       {data.length > 1 ? (
@@ -296,7 +289,9 @@ export function CalendarDeleteCard({
           onPress={() => void handleDeleteAll()}
           className="mt-3 w-full"
         >
-          {allCompleted ? (
+          {isConfirmingAll ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : allCompleted ? (
             <>
               <AppIcon icon={Tick02Icon} size={18} color="#fff" />
               <Button.Label>All Deleted</Button.Label>
@@ -308,6 +303,6 @@ export function CalendarDeleteCard({
           )}
         </Button>
       ) : null}
-    </View>
+    </ToolCardShell>
   );
 }

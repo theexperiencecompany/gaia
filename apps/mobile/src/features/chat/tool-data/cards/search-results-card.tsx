@@ -42,7 +42,7 @@ function getHostname(url?: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Shared sub-components
+// Favicon image with globe fallback
 // ---------------------------------------------------------------------------
 
 function FaviconImage({ url, size = 14 }: { url?: string; size?: number }) {
@@ -58,7 +58,7 @@ function FaviconImage({ url, size = 14 }: { url?: string; size?: number }) {
         <AppIcon
           icon={Globe02Icon}
           size={Math.round(size * 0.7)}
-          color="#8e8e93"
+          color="#71717a"
         />
       </View>
     );
@@ -76,7 +76,9 @@ function FaviconImage({ url, size = 14 }: { url?: string; size?: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Sources pill + expanded web list (matches web's SourcesButton + WebResults)
+// Sources pill — stacked favicons + "Search Results" label
+// Mirrors web's SourcesButton: flat rounded-full button with overlapping
+// favicon circles, toggles an inline web results list on press.
 // ---------------------------------------------------------------------------
 
 function SourcesPill({
@@ -93,21 +95,22 @@ function SourcesPill({
   return (
     <Pressable
       onPress={onToggle}
-      className="self-start flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-700"
-      android_ripple={{ color: "rgba(255,255,255,0.05)" }}
+      className="self-start flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-700 active:bg-zinc-600"
+      android_ripple={{ color: "rgba(255,255,255,0.08)", borderless: false }}
     >
-      <View className="flex-row" style={{ marginRight: 4 }}>
+      {/* Overlapping favicon circles — mirrors web's -space-x-3 */}
+      <View className="flex-row">
         {previewFavicons.map((result, index) => (
           <View
             key={(result.url ?? "") + (result.title ?? index)}
             style={{
-              marginLeft: index === 0 ? 0 : -6,
+              marginLeft: index === 0 ? 0 : -8,
               width: 20,
               height: 20,
               borderRadius: 10,
               backgroundColor: "#3f3f46",
               borderWidth: 2,
-              borderColor: "#18181b",
+              borderColor: "#27272a",
               alignItems: "center",
               justifyContent: "center",
               overflow: "hidden",
@@ -124,6 +127,11 @@ function SourcesPill({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Web result row — title, snippet (2 lines), favicon + hostname
+// Mirrors web's WebResults list item exactly.
+// ---------------------------------------------------------------------------
+
 function WebResultRow({ result }: { result: WebResult }) {
   const hostname = getHostname(result.url);
   const description = result.content || result.snippet;
@@ -134,18 +142,23 @@ function WebResultRow({ result }: { result: WebResult }) {
       onPress={() => result.url && Linking.openURL(result.url)}
     >
       <View className="gap-1">
+        {/* Title — truncated single line, zinc-100 */}
         <Text className="text-zinc-100 text-sm font-medium" numberOfLines={1}>
           {result.title || hostname || "Untitled"}
         </Text>
+
+        {/* Snippet — 2 line clamp, zinc-500 */}
         {!!description && (
           <Text className="text-zinc-500 text-xs" numberOfLines={2}>
             {description}
           </Text>
         )}
+
+        {/* Favicon + hostname row — primary blue */}
         {!!hostname && (
           <View className="flex-row items-center gap-1.5 mt-0.5">
             <FaviconImage url={result.url} size={14} />
-            <Text className="text-primary text-xs" numberOfLines={1}>
+            <Text className="text-[#00bbff] text-xs" numberOfLines={1}>
               {hostname}
             </Text>
           </View>
@@ -156,28 +169,32 @@ function WebResultRow({ result }: { result: WebResult }) {
 }
 
 // ---------------------------------------------------------------------------
-// News list (matches web's NewsResults: icon + title + content + score)
+// News result row — news icon + title (large), content snippet, score
+// Mirrors web's NewsResults: icon + text-lg title, 2-line content, score.
 // ---------------------------------------------------------------------------
 
 function NewsResultRow({ article }: { article: NewsResult }) {
-  const description = article.content;
-
   return (
     <ToolCardInner onPress={() => article.url && Linking.openURL(article.url)}>
+      {/* Header row: news icon + title */}
       <View className="flex-row items-center gap-2 mb-1">
         <AppIcon icon={News01Icon} size={18} color="#00bbff" />
         <Text
-          className="text-primary text-lg font-medium flex-1"
+          className="text-[#00bbff] text-base font-medium flex-1"
           numberOfLines={1}
         >
           {article.title || "Untitled"}
         </Text>
       </View>
-      {!!description && (
-        <Text className="text-zinc-300 text-sm mb-1" numberOfLines={2}>
-          {description}
+
+      {/* Content snippet — 2 line clamp, zinc-400 */}
+      {!!article.content && (
+        <Text className="text-zinc-400 text-sm mb-1" numberOfLines={2}>
+          {article.content}
         </Text>
       )}
+
+      {/* Relevance score */}
       {typeof article.score === "number" && (
         <Text className="text-zinc-500 text-xs">
           Score: {article.score.toFixed(2)}
@@ -188,7 +205,9 @@ function NewsResultRow({ article }: { article: NewsResult }) {
 }
 
 // ---------------------------------------------------------------------------
-// Image carousel (matches web's ImageResults: rotated, overlapping, +N cycle)
+// Image carousel — rotated overlapping tiles with +N cycle button
+// Mirrors web's ImageResults exactly: alternating ±8deg rotation, -space-x-14
+// overlap, cycle button with arrow icon.
 // ---------------------------------------------------------------------------
 
 const IMAGE_TILE_SIZE = 112;
@@ -209,7 +228,7 @@ function ImageTile({
 
   return (
     <Animated.View
-      entering={FadeInRight.delay(index * 50).duration(280)}
+      entering={FadeInRight.delay(index * 70).duration(150)}
       style={{
         transform: [{ rotate: rotation }],
         zIndex: index,
@@ -261,7 +280,7 @@ function ImageResults({ images }: { images: ImageResult[] }) {
     <View className="flex-row items-center py-2">
       {displayImages.map((imageUrl, index) => (
         <ImageTile
-          key={`${imageUrl}-${startIndex}-${index}`}
+          key={`${imageUrl}-${startIndex}`}
           imageUrl={imageUrl}
           index={index}
           totalVisible={displayImages.length}
@@ -276,18 +295,19 @@ function ImageResults({ images }: { images: ImageResult[] }) {
             width: IMAGE_TILE_SIZE,
             height: IMAGE_TILE_SIZE,
             borderRadius: 16,
-            backgroundColor: "rgba(39,39,42,0.8)",
+            backgroundColor: "rgba(39,39,42,0.85)",
             alignItems: "center",
             justifyContent: "center",
+            gap: 6,
             transform: [
               { rotate: displayImages.length % 2 === 0 ? "8deg" : "-8deg" },
             ],
           }}
         >
-          <Text className="text-zinc-100 text-base font-semibold mb-1">
+          <Text className="text-zinc-100 text-base font-semibold">
             +{nextBatchCount}
           </Text>
-          <AppIcon icon={ArrowRight01Icon} size={16} color="#d4d4d8" />
+          <AppIcon icon={ArrowRight01Icon} size={16} color="#a1a1aa" />
         </Pressable>
       )}
     </View>
@@ -295,7 +315,7 @@ function ImageResults({ images }: { images: ImageResult[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Running / streaming state (mobile-only — web has no equivalent)
+// Running / streaming state
 // ---------------------------------------------------------------------------
 
 function PulsingDot() {
@@ -349,7 +369,9 @@ function SearchRunningCard({ data }: { data: SearchResults }) {
 }
 
 // ---------------------------------------------------------------------------
-// Complete state (mirrors web's SearchResultsTabs exactly)
+// Complete state — sources pill + expandable web list + images + news
+// Mirrors web's SearchResultsTabs layout: sources pill (web), images, news,
+// each section separated by gap-6 to match web's space-y-6.
 // ---------------------------------------------------------------------------
 
 function SearchCompleteCard({ data }: { data: SearchResults }) {
@@ -367,7 +389,8 @@ function SearchCompleteCard({ data }: { data: SearchResults }) {
 
   return (
     <ToolCardShell>
-      <View className="gap-4">
+      <View className="gap-6">
+        {/* Web sources — pill toggle + expandable list */}
         {hasWeb && (
           <View className="gap-2">
             <SourcesPill
@@ -388,8 +411,10 @@ function SearchCompleteCard({ data }: { data: SearchResults }) {
           </View>
         )}
 
+        {/* Image carousel */}
         {hasImages && <ImageResults images={imageResults} />}
 
+        {/* News articles */}
         {hasNews && (
           <View className="gap-2">
             {newsResults.map((article, index) => (

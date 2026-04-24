@@ -1,8 +1,12 @@
-import { Button, Spinner } from "heroui-native";
+import { Button } from "heroui-native";
 import { useMemo, useState } from "react";
-import { ScrollView, View } from "react-native";
-import { AppIcon, Tick02Icon } from "@/components/icons";
+import { ActivityIndicator, ScrollView, View } from "react-native";
+import { AppIcon, Calendar03Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 // -- Types --------------------------------------------------------------------
 
@@ -106,7 +110,7 @@ function groupByDate(events: CalendarOption[]): Array<{
   }));
 }
 
-// -- Event card ---------------------------------------------------------------
+// -- Event row ----------------------------------------------------------------
 
 interface EventRowProps {
   event: CalendarOption;
@@ -122,7 +126,7 @@ function EventRow({ event, status, onConfirm }: EventRowProps) {
 
   return (
     <View
-      className="flex-row items-start gap-2 rounded-lg pl-5 pr-2 py-3"
+      className="relative flex-row items-end rounded-lg py-3 pl-5 pr-2"
       style={{
         backgroundColor: `${color}20`,
         opacity: isCompleted ? 0.5 : 1,
@@ -138,11 +142,14 @@ function EventRow({ event, status, onConfirm }: EventRowProps) {
 
       {/* Content */}
       <View className="flex-1 min-w-0">
-        <Text className="text-white text-base leading-tight">
+        <Text
+          className="text-zinc-100 text-base leading-tight"
+          numberOfLines={2}
+        >
           {event.summary}
         </Text>
         {event.description ? (
-          <Text className="text-zinc-400 text-xs mt-1">
+          <Text className="text-zinc-400 text-xs mt-1" numberOfLines={3}>
             {event.description}
           </Text>
         ) : null}
@@ -156,14 +163,18 @@ function EventRow({ event, status, onConfirm }: EventRowProps) {
           variant={isCompleted ? "secondary" : "primary"}
           isDisabled={isCompleted || isLoading}
           onPress={onConfirm}
-          className="flex-shrink-0 rounded-xl"
+          className="flex-shrink-0"
         >
           {isLoading ? (
-            <Spinner size="sm" color="default" />
+            <ActivityIndicator size="small" color="#ffffff" />
           ) : isCompleted ? (
-            <AppIcon icon={Tick02Icon} size={16} color="#ffffff" />
-          ) : null}
-          <Button.Label>{isCompleted ? "Added" : "Confirm"}</Button.Label>
+            <>
+              <AppIcon icon={Tick02Icon} size={16} color="#ffffff" />
+              <Button.Label>Added</Button.Label>
+            </>
+          ) : (
+            <Button.Label>Confirm</Button.Label>
+          )}
         </Button>
       ) : null}
     </View>
@@ -184,11 +195,11 @@ export function CalendarOptionsCard({
 
   if (!data.every((option) => option.summary)) {
     return (
-      <View className="mx-4 my-1 rounded-3xl bg-zinc-800 p-4">
+      <ToolCardShell>
         <Text className="text-red-400 text-sm">
           Error: Could not add Calendar event. Please try again later.
         </Text>
-      </View>
+      </ToolCardShell>
     );
   }
 
@@ -228,9 +239,15 @@ export function CalendarOptionsCard({
   const someCompleted = data.some((_, i) => statuses[i] === "completed");
 
   return (
-    <View className="mx-4 my-1 rounded-3xl bg-zinc-800 p-4">
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Calendar03Icon}
+        title="Add to Calendar"
+        count={data.length}
+      />
+
       <ScrollView
-        style={{ maxHeight: 400, marginTop: 8 }}
+        style={{ maxHeight: 400 }}
         nestedScrollEnabled
         showsVerticalScrollIndicator={false}
       >
@@ -271,22 +288,22 @@ export function CalendarOptionsCard({
           variant={allCompleted ? "secondary" : "primary"}
           isDisabled={allCompleted || isConfirmingAll}
           onPress={() => void handleConfirmAll()}
-          className="w-full rounded-xl mt-3"
+          className="w-full mt-3"
         >
           {isConfirmingAll ? (
-            <Spinner size="sm" color="default" />
+            <ActivityIndicator size="small" color="#ffffff" />
           ) : allCompleted ? (
-            <AppIcon icon={Tick02Icon} size={16} color="#ffffff" />
-          ) : null}
-          <Button.Label>
-            {allCompleted
-              ? "All Added"
-              : someCompleted
-                ? "Add Remaining"
-                : "Add All Events"}
-          </Button.Label>
+            <>
+              <AppIcon icon={Tick02Icon} size={16} color="#ffffff" />
+              <Button.Label>All Added</Button.Label>
+            </>
+          ) : (
+            <Button.Label>
+              {someCompleted ? "Add Remaining" : "Add All Events"}
+            </Button.Label>
+          )}
         </Button>
       ) : null}
-    </View>
+    </ToolCardShell>
   );
 }

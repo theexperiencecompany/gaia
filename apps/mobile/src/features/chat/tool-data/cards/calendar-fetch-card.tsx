@@ -3,7 +3,6 @@ import { Linking, Pressable, View } from "react-native";
 import { Calendar03Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
-  SectionLabel,
   ToolCardHeader,
   ToolCardShell,
 } from "@/features/chat/tool-data/primitives";
@@ -42,22 +41,23 @@ function isAllDay(ev: CalendarFetchItem): boolean {
   return !!ev.start?.date && !ev.start?.dateTime;
 }
 
-function formatDayHeader(dateStr: string): string {
-  const date = new Date(dateStr);
+function formatDateWithRelative(dateStr: string): string {
+  const date = new Date(`${dateStr}T12:00:00`);
   const today = new Date();
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-
-  if (date.toDateString() === today.toDateString()) return "TODAY";
-  if (date.toDateString() === tomorrow.toDateString()) return "TOMORROW";
-
-  return date
-    .toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    })
-    .toUpperCase();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+  const dayMs = 86_400_000;
+  const diff = target.getTime() - today.getTime();
+  const base = date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+  if (diff === 0) return `${base} (Today)`;
+  if (diff === dayMs) return `${base} (Tomorrow)`;
+  if (diff === -dayMs) return `${base} (Yesterday)`;
+  return base;
 }
 
 function formatTimeRange(ev: CalendarFetchItem): string {
@@ -100,7 +100,7 @@ export function CalendarFetchCard({
       const date = new Date(raw);
       const key = Number.isNaN(date.getTime())
         ? "Unscheduled"
-        : date.toDateString();
+        : date.toISOString().slice(0, 10);
       if (!map.has(key)) map.set(key, []);
       map.get(key)?.push(ev);
     }
@@ -118,90 +118,107 @@ export function CalendarFetchCard({
       {data.length === 0 ? (
         <Text className="text-zinc-500 text-sm">No events found</Text>
       ) : (
-        grouped.map(([date, events], groupIdx) => (
-          <View key={date}>
-            {groupIdx > 0 && <View className="h-px bg-zinc-700 my-2" />}
-            <SectionLabel>
-              {date === "Unscheduled" ? "UNSCHEDULED" : formatDayHeader(date)}
-            </SectionLabel>
-            <View className="gap-1.5">
-              {events.map((ev, evIdx) => {
-                const title = ev.summary ?? ev.title ?? "Untitled Event";
-                const timeLabel = formatTimeRange(ev);
-                const calendarLabel = ev.calendar_name ?? ev.calendar_source;
-                const accent = ev.background_color ?? "#00bbff";
-                const tinted = `${accent}20`;
-                const key = `${date}-${title}-${evIdx}`;
+        <View className="gap-3">
+          {grouped.map(([dateKey, events]) => (
+            <View key={dateKey} className="gap-2">
+              {/* Date rail — line / text / line (mirrors web) */}
+              <View className="flex-row items-center">
+                <View className="flex-1 h-px bg-zinc-700" />
+                <Text className="text-zinc-500 text-xs px-3">
+                  {dateKey === "Unscheduled"
+                    ? "Unscheduled"
+                    : formatDateWithRelative(dateKey)}
+                </Text>
+                <View className="flex-1 h-px bg-zinc-700" />
+              </View>
 
-                const onPress = onEventPress
-                  ? () => onEventPress(ev, evIdx)
-                  : undefined;
+              {/* Events */}
+              <View className="gap-1.5">
+                {events.map((ev, evIdx) => {
+                  const title = ev.summary ?? ev.title ?? "Untitled Event";
+                  const timeLabel = formatTimeRange(ev);
+                  const calendarLabel = ev.calendar_name ?? ev.calendar_source;
+                  const accent = ev.background_color ?? "#00bbff";
+                  const tinted = `${accent}20`;
+                  const key = `${dateKey}-${title}-${evIdx}`;
 
-                const content = (
-                  <View className="flex-row items-start gap-3">
-                    <View
-                      className="w-1 rounded-full self-stretch"
-                      style={{ backgroundColor: accent }}
-                    />
-                    <View className="flex-1 min-w-0">
-                      <Text
-                        className="text-zinc-200 text-sm font-medium leading-tight"
-                        numberOfLines={2}
-                      >
-                        {title}
-                      </Text>
-                      <View className="flex-row items-center gap-1.5 mt-0.5">
-                        {timeLabel ? (
-                          <Text
-                            className="text-zinc-400 text-xs"
-                            numberOfLines={1}
-                          >
-                            {timeLabel}
-                          </Text>
-                        ) : null}
-                        {timeLabel && calendarLabel ? (
-                          <View className="w-0.5 h-0.5 rounded-full bg-zinc-500" />
-                        ) : null}
-                        {calendarLabel ? (
-                          <Text
-                            className="text-zinc-400 text-xs"
-                            numberOfLines={1}
-                          >
-                            {calendarLabel}
-                          </Text>
-                        ) : null}
+                  const onPress = onEventPress
+                    ? () => onEventPress(ev, evIdx)
+                    : undefined;
+
+                  const content = (
+                    <View className="flex-row items-start gap-2">
+                      {/* Vertical color bar */}
+                      <View className="absolute left-1 top-0 bottom-0 items-center justify-center">
+                        <View
+                          className="w-1 rounded-full"
+                          style={{
+                            backgroundColor: accent,
+                            height: "80%",
+                          }}
+                        />
+                      </View>
+
+                      <View className="flex-1 min-w-0">
+                        <Text
+                          className="text-zinc-200 text-sm font-medium leading-tight"
+                          numberOfLines={2}
+                        >
+                          {title}
+                        </Text>
+                        <View className="flex-row items-center gap-1.5 mt-0.5">
+                          {timeLabel ? (
+                            <Text
+                              className="text-zinc-400 text-xs"
+                              numberOfLines={1}
+                            >
+                              {timeLabel}
+                            </Text>
+                          ) : null}
+                          {timeLabel && calendarLabel ? (
+                            <View className="w-0.5 h-0.5 rounded-full bg-zinc-500" />
+                          ) : null}
+                          {calendarLabel ? (
+                            <Text
+                              className="text-zinc-400 text-xs"
+                              numberOfLines={1}
+                            >
+                              {calendarLabel}
+                            </Text>
+                          ) : null}
+                        </View>
                       </View>
                     </View>
-                  </View>
-                );
+                  );
 
-                if (onPress) {
+                  if (onPress) {
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={onPress}
+                        className="relative rounded-lg py-3 pl-5 pr-2"
+                        style={{ backgroundColor: tinted }}
+                        android_ripple={{ color: "rgba(255,255,255,0.05)" }}
+                      >
+                        {content}
+                      </Pressable>
+                    );
+                  }
+
                   return (
-                    <Pressable
+                    <View
                       key={key}
-                      onPress={onPress}
-                      className="rounded-xl p-3"
+                      className="relative rounded-lg py-3 pl-5 pr-2"
                       style={{ backgroundColor: tinted }}
-                      android_ripple={{ color: "rgba(255,255,255,0.05)" }}
                     >
                       {content}
-                    </Pressable>
+                    </View>
                   );
-                }
-
-                return (
-                  <View
-                    key={key}
-                    className="rounded-xl p-3"
-                    style={{ backgroundColor: tinted }}
-                  >
-                    {content}
-                  </View>
-                );
-              })}
+                })}
+              </View>
             </View>
-          </View>
-        ))
+          ))}
+        </View>
       )}
 
       <Pressable
