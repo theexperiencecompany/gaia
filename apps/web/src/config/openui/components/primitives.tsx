@@ -294,11 +294,7 @@ export function ButtonView(props: z.infer<typeof buttonSchema>) {
   const heroVariant = variantMap[props.variant ?? "flat"] ?? "flat";
   const heroColor =
     (props.color as "default" | "primary" | "danger" | "warning" | "success") ??
-    (props.variant === "primary"
-      ? "primary"
-      : props.variant === "secondary"
-        ? "default"
-        : "default");
+    (props.variant === "primary" ? "primary" : "default");
 
   return (
     <Button
