@@ -3,6 +3,7 @@ from typing import Optional
 
 import pytz
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.middleware.rate_limiter import limiter
 from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
@@ -195,7 +196,8 @@ async def update_user_timezone(
 
 
 @router.get("/holo-card/{card_id}")
-async def get_public_holo_card(card_id: str):
+@limiter.limit("30/minute")
+async def get_public_holo_card(request: Request, card_id: str):
     """
     Get public holo card data by card ID (user ID).
     This endpoint is public and doesn't require authentication.
@@ -204,8 +206,11 @@ async def get_public_holo_card(card_id: str):
     try:
         log.set(operation="get_public_holo_card", card_id=card_id)
 
+        # Uniform 404 responses. Returning distinct errors for "malformed id",
+        # "not found", and "found but not onboarded" turns this endpoint into
+        # a user-enumeration oracle.
         if not ObjectId.is_valid(card_id):
-            raise HTTPException(status_code=400, detail="Invalid card ID")
+            raise HTTPException(status_code=404, detail="Card not found")
 
         user_doc = await users_collection.find_one({"_id": ObjectId(card_id)})
 

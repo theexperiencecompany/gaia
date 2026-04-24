@@ -87,7 +87,8 @@ promtail     → loki (healthy)
 - **Promtail mounts `apps/api/logs`** to ship logs from services running outside Docker (e.g., `nx dev api`). This directory is created automatically when file logging is enabled.
 - **`arq_worker` uses the same `gaia` image as `gaia-backend`** — build once, run both.
 - **RabbitMQ requires `observability/rabbitmq-enabled-plugins`** to be present (in dev compose). This file enables the Prometheus plugin.
-- **Grafana default credentials**: admin / changeme (dev), admin / `$GRAFANA_ADMIN_PASSWORD` (prod). Set `GRAFANA_ADMIN_PASSWORD` in `.env` before production deployment.
+- **Grafana default credentials**: admin / changeme (dev), admin / `$GRAFANA_ADMIN_PASSWORD` (prod). `docker-compose.prod.yml` uses `${VAR:?...}` syntax for `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `RABBITMQ_DEFAULT_USER`, `RABBITMQ_DEFAULT_PASS`, and `GRAFANA_ADMIN_PASSWORD` — the stack will refuse to start if any is missing.
+- **Prod ports bind to loopback only.** `docker-compose.prod.yml` binds Postgres, Redis, and RabbitMQ (AMQP + management + Prometheus) to `127.0.0.1`. Remote access requires a VPN or bastion host — never re-expose these on `0.0.0.0`.
 - **PostgreSQL database name is `langgraph`** (not `gaia` or `postgres`).
 - **`seed-models` service** in selfhost compose runs once (`restart: "no"`) to populate MongoDB with default model configs — it is not a persistent service.
 - **Voice agent caches HuggingFace models** in the `voice_agent_models` named volume. First start downloads models and is slow. In prod, `HF_HUB_OFFLINE=1` prevents re-downloads.

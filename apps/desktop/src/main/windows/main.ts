@@ -177,7 +177,7 @@ export async function createMainWindow(
       : join(__dirname, "../../resources/icons/256x256.png"),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },

@@ -1,10 +1,15 @@
 import base64
 import hashlib
 import hmac
+import time
 
 from fastapi import HTTPException, Request
 
 from app.config.settings import settings
+
+# Reject webhook events whose signed timestamp is older than this many seconds.
+# Without a freshness check, a captured valid request replays indefinitely.
+_WEBHOOK_FRESHNESS_WINDOW_SECONDS = 300
 
 
 async def verify_composio_webhook_signature(request: Request):
@@ -31,6 +36,21 @@ async def verify_composio_webhook_signature(request: Request):
     # Fail closed: always require a signature header
     if not signature_header:
         raise HTTPException(status_code=401, detail="Missing webhook signature")
+
+    # Freshness check: only meaningful if we actually verify the signed
+    # timestamp is recent, otherwise any captured request replays forever.
+    try:
+        ts = int(timestamp)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=401, detail="Missing or invalid webhook-timestamp header"
+        ) from None
+    if abs(time.time() - ts) > _WEBHOOK_FRESHNESS_WINDOW_SECONDS:
+        raise HTTPException(status_code=401, detail="Webhook timestamp out of window")
+
+    # Require webhook-id so dedup at the endpoint layer is always meaningful.
+    if not webhook_id:
+        raise HTTPException(status_code=400, detail="Missing webhook-id header")
 
     # Extract the signature (format: "v1,signature")
     if "," in signature_header:

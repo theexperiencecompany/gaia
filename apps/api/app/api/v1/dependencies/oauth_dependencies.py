@@ -150,6 +150,10 @@ def get_user_timezone(
     Returns:
         datetime: The current time in the user's timezone.
     """
+    # Validate header before constructing ZoneInfo to avoid a noisy DoS vector
+    # where attackers send malformed values that trigger ZoneInfo exceptions.
+    if not _is_valid_iana_or_offset(x_timezone):
+        x_timezone = "UTC"
     user_tz = ZoneInfo(x_timezone)
     now = datetime.now(user_tz)
 
