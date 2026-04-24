@@ -110,6 +110,7 @@ out
 postman/
 
 .agents/plans/
+.agents/recording/
 
 # whatsapp-web.js
 .wwebjs_auth/
