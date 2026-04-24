@@ -851,9 +851,9 @@ class TestRetryPolicyWiring:
         from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
 
         assert _AGENT_RETRY_POLICY.max_attempts == 3
-        assert _AGENT_RETRY_POLICY.initial_interval == 1.0
-        assert _AGENT_RETRY_POLICY.backoff_factor == 2.0
-        assert _AGENT_RETRY_POLICY.max_interval == 30.0
+        assert _AGENT_RETRY_POLICY.initial_interval == pytest.approx(1.0)
+        assert _AGENT_RETRY_POLICY.backoff_factor == pytest.approx(2.0)
+        assert _AGENT_RETRY_POLICY.max_interval == pytest.approx(30.0)
         assert _AGENT_RETRY_POLICY.jitter is True
 
     def test_retry_on_retryable_exceptions(self):
