@@ -1,15 +1,7 @@
 import { normalizeCategoryName } from "@gaia/shared/icons";
-import {
-  Accordion,
-  Card,
-  Chip,
-  Divider,
-  Spinner,
-  Surface,
-} from "heroui-native";
-import { useEffect } from "react";
-import { View } from "react-native";
-import Animated, {
+import { useEffect, useRef, useState } from "react";
+import { Animated, LayoutAnimation, Pressable, View } from "react-native";
+import Animated_Reanimated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -18,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   AppIcon,
+  ArrowDown01Icon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
   ToolsIcon,
@@ -42,6 +35,12 @@ interface ToolCallsSectionProps {
   tool_calls_data: ToolCallEntry[];
 }
 
+const CONNECTOR_COLOR = "#3f3f46";
+const TEXT_MUTED = "#a1a1aa";
+const TEXT_DIM = "#71717a";
+const TEXT_STRONG = "#d4d4d8";
+const DETAILS_BG = "rgba(39, 39, 42, 0.5)"; // bg-zinc-800/50
+
 function formatToolName(toolName: string): string {
   return toolName
     .toLowerCase()
@@ -52,7 +51,17 @@ function formatToolName(toolName: string): string {
     .trim();
 }
 
-function PulsingDot({ color }: { color: string }) {
+function formatCategoryLabel(category: string): string {
+  return category
+    .replace(/_/g, " ")
+    .split(" ")
+    .map(
+      (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+    )
+    .join(" ");
+}
+
+function PulsingDot({ color, size = 6 }: { color: string; size?: number }) {
   const opacity = useSharedValue(1);
 
   useEffect(() => {
@@ -71,13 +80,13 @@ function PulsingDot({ color }: { color: string }) {
   }));
 
   return (
-    <Animated.View
+    <Animated_Reanimated.View
       style={[
         animatedStyle,
         {
-          width: 6,
-          height: 6,
-          borderRadius: 3,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
           backgroundColor: color,
         },
       ]}
@@ -91,24 +100,14 @@ function StatusIndicator({
   status?: "running" | "done" | "error";
 }) {
   if (!status || status === "running") {
-    return (
-      <Chip size="sm" variant="soft" color="accent">
-        <Spinner size="sm" color="default" />
-      </Chip>
-    );
+    return <PulsingDot color="#60a5fa" />;
   }
   if (status === "done") {
     return (
-      <Chip size="sm" variant="soft" color="success">
-        <AppIcon icon={CheckmarkCircle01Icon} size={12} color="#34d399" />
-      </Chip>
+      <AppIcon icon={CheckmarkCircle01Icon} size={12} color="#34d399" />
     );
   }
-  return (
-    <Chip size="sm" variant="soft" color="danger">
-      <AppIcon icon={Cancel01Icon} size={12} color="#f87171" />
-    </Chip>
-  );
+  return <AppIcon icon={Cancel01Icon} size={12} color="#f87171" />;
 }
 
 function ToolIcon({
@@ -134,7 +133,7 @@ function ToolIcon({
         borderRadius: 8,
       }}
     >
-      <AppIcon icon={ToolsIcon} size={size} color="#a1a1aa" />
+      <AppIcon icon={ToolsIcon} size={size} color={TEXT_MUTED} />
     </View>
   );
 }
@@ -169,14 +168,12 @@ function StackedToolIcons({ calls }: { calls: ToolCallEntry[] }) {
           style={{
             marginLeft: index === 0 ? 0 : -6,
             zIndex: index,
+            minWidth: 28,
+            alignItems: "center",
+            justifyContent: "center",
             transform: [
               {
-                rotate:
-                  displayIcons.length > 1
-                    ? index % 2 === 0
-                      ? "8deg"
-                      : "-8deg"
-                    : "0deg",
+                rotate: index % 2 === 0 ? "8deg" : "-8deg",
               },
             ],
           }}
@@ -194,17 +191,17 @@ function StackedToolIcons({ calls }: { calls: ToolCallEntry[] }) {
             marginLeft: -6,
             width: 26,
             height: 26,
-            borderRadius: 6,
-            backgroundColor: "#3f3f46",
+            borderRadius: 8,
+            backgroundColor: "rgba(63, 63, 70, 0.6)",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
           <Text
             style={{
-              fontSize: 9,
-              color: "#a1a1aa",
-              fontWeight: "600",
+              fontSize: 10,
+              color: TEXT_MUTED,
+              fontWeight: "500",
             }}
           >
             +{overflow}
@@ -222,6 +219,9 @@ function ToolCallItem({
   call: ToolCallEntry;
   isLast: boolean;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const chevronRotation = useRef(new Animated.Value(0)).current;
+
   const hasInputs =
     call.inputs &&
     typeof call.inputs === "object" &&
@@ -239,206 +239,241 @@ function ToolCallItem({
   const categoryLabel = call.integration_name
     ? call.integration_name
     : call.tool_category
-      ? call.tool_category
-          .replace(/_/g, " ")
-          .split(" ")
-          .map(
-            (word) =>
-              word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
-          )
-          .join(" ")
+      ? formatCategoryLabel(call.tool_category)
       : null;
 
-  const itemValue = call.tool_call_id || `${call.tool_name || "tool"}`;
+  const toggle = () => {
+    if (!hasDetails) return;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsExpanded((prev) => {
+      const next = !prev;
+      Animated.timing(chevronRotation, {
+        toValue: next ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      return next;
+    });
+  };
 
-  if (!hasDetails) {
-    return (
-      <>
+  const chevronRotate = chevronRotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "180deg"],
+  });
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "stretch", gap: 8 }}>
+      {/* Timeline rail: icon + connector line */}
+      <View style={{ alignItems: "center", alignSelf: "stretch" }}>
         <View
           style={{
-            flexDirection: "row",
+            minHeight: 32,
+            minWidth: 32,
             alignItems: "center",
-            gap: 8,
-            paddingVertical: 8,
-            paddingHorizontal: 4,
+            justifyContent: "center",
           }}
         >
           <ToolIcon
             category={call.tool_category || "general"}
             iconUrl={call.icon_url}
-            size={18}
+            size={21}
           />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#a1a1aa",
-                fontWeight: "500",
-              }}
-              numberOfLines={2}
-            >
-              {displayName}
-            </Text>
-            {hasCategoryText && categoryLabel && (
-              <Text
-                style={{
-                  fontSize: 10,
-                  color: "#71717a",
-                  marginTop: 1,
-                }}
-              >
-                {categoryLabel}
-              </Text>
-            )}
-          </View>
-          <StatusIndicator status={call.status} />
         </View>
-        {!isLast && <Divider />}
-      </>
-    );
-  }
+        {!isLast && (
+          <View
+            style={{
+              width: 1,
+              flex: 1,
+              backgroundColor: CONNECTOR_COLOR,
+              minHeight: 16,
+            }}
+          />
+        )}
+      </View>
 
-  return (
-    <>
-      <Accordion selectionMode="single" isDividerVisible={false}>
-        <Accordion.Item value={itemValue}>
-          <Accordion.Trigger className="flex-row items-center gap-2 px-1 py-2">
-            <ToolIcon
-              category={call.tool_category || "general"}
-              iconUrl={call.icon_url}
-              size={18}
-            />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: "#a1a1aa",
-                  fontWeight: "500",
-                }}
-                numberOfLines={2}
-              >
-                {displayName}
-              </Text>
-              {hasCategoryText && categoryLabel && (
+      {/* Body */}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Pressable
+          onPress={toggle}
+          disabled={!hasDetails}
+          style={({ pressed }) => ({
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            paddingTop: hasCategoryText ? 0 : 8,
+            opacity: pressed && hasDetails ? 0.7 : 1,
+          })}
+        >
+          <Text
+            style={{
+              fontSize: 12,
+              color: TEXT_MUTED,
+              fontWeight: "500",
+              flexShrink: 1,
+            }}
+            numberOfLines={2}
+          >
+            {displayName}
+          </Text>
+          {hasDetails && (
+            <Animated.View
+              style={{ transform: [{ rotate: chevronRotate }] }}
+            >
+              <AppIcon icon={ArrowDown01Icon} size={14} color={TEXT_DIM} />
+            </Animated.View>
+          )}
+          <View style={{ marginLeft: "auto", paddingLeft: 6 }}>
+            <StatusIndicator status={call.status} />
+          </View>
+        </Pressable>
+
+        {hasCategoryText && categoryLabel && (
+          <Text
+            style={{
+              fontSize: 11,
+              color: TEXT_DIM,
+              marginTop: 1,
+            }}
+          >
+            {categoryLabel}
+          </Text>
+        )}
+
+        {isExpanded && hasDetails && (
+          <View
+            style={{
+              marginTop: 8,
+              marginBottom: 12,
+              backgroundColor: DETAILS_BG,
+              borderRadius: 12,
+              padding: 12,
+              gap: 8,
+            }}
+          >
+            {hasInputs && (
+              <View>
                 <Text
                   style={{
-                    fontSize: 10,
-                    color: "#71717a",
-                    marginTop: 1,
+                    fontSize: 11,
+                    color: TEXT_DIM,
+                    fontWeight: "500",
+                    marginBottom: 4,
                   }}
                 >
-                  {categoryLabel}
+                  Input
                 </Text>
-              )}
-            </View>
-            <StatusIndicator status={call.status} />
-            <Accordion.Indicator iconProps={{ size: 12, color: "#71717a" }} />
-          </Accordion.Trigger>
-          <Accordion.Content>
-            <Surface
-              variant="secondary"
-              style={{
-                borderRadius: 10,
-                padding: 10,
-                gap: 6,
-                marginBottom: 4,
-              }}
-            >
-              {hasInputs && (
-                <View>
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      color: "#71717a",
-                      fontWeight: "500",
-                      marginBottom: 3,
-                    }}
-                  >
-                    Input
-                  </Text>
-                  <Text
-                    style={{ fontSize: 11, color: "#d4d4d8" }}
-                    numberOfLines={6}
-                  >
-                    {JSON.stringify(call.inputs, null, 2)}
-                  </Text>
-                </View>
-              )}
-              {hasOutput && (
-                <View>
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      color: "#71717a",
-                      fontWeight: "500",
-                      marginBottom: 3,
-                    }}
-                  >
-                    Output
-                  </Text>
-                  <Text
-                    style={{ fontSize: 11, color: "#d4d4d8" }}
-                    numberOfLines={10}
-                  >
-                    {call.output}
-                  </Text>
-                </View>
-              )}
-            </Surface>
-          </Accordion.Content>
-        </Accordion.Item>
-      </Accordion>
-      {!isLast && <Divider />}
-    </>
+                <Text
+                  style={{ fontSize: 11, color: TEXT_STRONG }}
+                  numberOfLines={8}
+                >
+                  {JSON.stringify(call.inputs, null, 2)}
+                </Text>
+              </View>
+            )}
+            {hasOutput && (
+              <View>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: TEXT_DIM,
+                    fontWeight: "500",
+                    marginBottom: 4,
+                  }}
+                >
+                  Output
+                </Text>
+                <Text
+                  style={{ fontSize: 11, color: TEXT_STRONG }}
+                  numberOfLines={12}
+                >
+                  {call.output}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    </View>
   );
 }
 
 export function ToolCallsSection({ tool_calls_data }: ToolCallsSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const chevronRotation = useRef(new Animated.Value(0)).current;
+
   if (!tool_calls_data || tool_calls_data.length === 0) return null;
 
   const hasRunning = tool_calls_data.some(
     (call) => !call.status || call.status === "running",
   );
 
+  const toggle = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsExpanded((prev) => {
+      const next = !prev;
+      Animated.timing(chevronRotation, {
+        toValue: next ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      return next;
+    });
+  };
+
+  const chevronRotate = chevronRotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "180deg"],
+  });
+
+  const count = tool_calls_data.length;
+
   return (
-    <Accordion selectionMode="single" isDividerVisible={false}>
-      <Accordion.Item value="tool-calls">
-        <Accordion.Trigger className="flex-row items-center gap-1.5 py-1">
-          <StackedToolIcons calls={tool_calls_data} />
-          <View className="flex-row items-center gap-1">
-            {hasRunning && <PulsingDot color="#60a5fa" />}
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#71717a",
-                fontWeight: "500",
-              }}
-            >
-              Used {tool_calls_data.length} tool
-              {tool_calls_data.length > 1 ? "s" : ""}
-            </Text>
-          </View>
-          <Accordion.Indicator iconProps={{ size: 16, color: "#71717a" }} />
-        </Accordion.Trigger>
-        <Accordion.Content>
-          <Card
-            variant="secondary"
-            className="rounded-2xl mt-1 overflow-hidden"
+    <View style={{ alignSelf: "flex-start", maxWidth: 560 }}>
+      <Pressable
+        onPress={toggle}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          paddingVertical: 2,
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <StackedToolIcons calls={tool_calls_data} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {hasRunning && <PulsingDot color="#60a5fa" />}
+          <Text
+            style={{
+              fontSize: 12,
+              color: TEXT_DIM,
+              fontWeight: "500",
+            }}
           >
-            <Card.Body className="py-2 px-3">
-              {tool_calls_data.map((call, index) => (
-                <ToolCallItem
-                  key={
-                    call.tool_call_id || `${call.tool_name || "tool"}-${index}`
-                  }
-                  call={call}
-                  isLast={index === tool_calls_data.length - 1}
-                />
-              ))}
-            </Card.Body>
-          </Card>
-        </Accordion.Content>
-      </Accordion.Item>
-    </Accordion>
+            Used {count} tool{count > 1 ? "s" : ""}
+          </Text>
+        </View>
+        <Animated.View
+          style={{
+            marginLeft: 8,
+            transform: [{ rotate: chevronRotate }],
+          }}
+        >
+          <AppIcon icon={ArrowDown01Icon} size={16} color={TEXT_DIM} />
+        </Animated.View>
+      </Pressable>
+
+      {isExpanded && (
+        <View style={{ paddingVertical: 8 }}>
+          {tool_calls_data.map((call, index) => (
+            <ToolCallItem
+              key={
+                call.tool_call_id || `${call.tool_name || "tool"}-${index}`
+              }
+              call={call}
+              isLast={index === tool_calls_data.length - 1}
+            />
+          ))}
+        </View>
+      )}
+    </View>
   );
 }
