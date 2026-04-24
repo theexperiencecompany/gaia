@@ -125,3 +125,4 @@ docs/plans/
 i18n.cache
 .worktrees/
 superpowers/
+.claude/scheduled_tasks.lock
