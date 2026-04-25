@@ -126,3 +126,5 @@ docs/plans/
 i18n.cache
 .worktrees/
 superpowers/
+
+skills-lock.json
