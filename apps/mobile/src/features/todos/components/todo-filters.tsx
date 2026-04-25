@@ -150,7 +150,7 @@ export function TodoFilters({
                 borderRadius: 20,
                 backgroundColor: isActive ? `${opt.color}20` : "#18181b",
                 borderWidth: 1,
-                borderColor: isActive ? opt.color : "#27272a",
+                borderColor: isActive ? `${opt.color}60` : "#27272a",
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 6,

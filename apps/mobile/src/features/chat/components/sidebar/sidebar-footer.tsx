@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { ActivityIndicator, Image, Pressable, View } from "react-native";
-import { AppIcon, Settings02Icon } from "@/components/icons";
+import { AppIcon, ArrowRight01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
@@ -13,7 +13,7 @@ const AVATAR_ACCENT = "#00bbff";
 export function SidebarFooter() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const { spacing, fontSize, iconSize } = useResponsive();
+  const { spacing, fontSize } = useResponsive();
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -104,17 +104,7 @@ export function SidebarFooter() {
             GAIA Free
           </Text>
         </View>
-        <Pressable
-          onPress={() => router.push("/(app)/settings")}
-          hitSlop={8}
-          style={({ pressed }) => ({
-            padding: spacing.xs + 2,
-            borderRadius: 8,
-            backgroundColor: pressed ? "rgba(255,255,255,0.06)" : "transparent",
-          })}
-        >
-          <AppIcon icon={Settings02Icon} size={iconSize.sm} color="#71717a" />
-        </Pressable>
+        <AppIcon icon={ArrowRight01Icon} size={14} color="#3a3a3c" />
       </Pressable>
     </>
   );

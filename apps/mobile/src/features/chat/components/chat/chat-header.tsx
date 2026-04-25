@@ -1,14 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import {
   Cancel01Icon,
   Menu01Icon,
+  Notification01Icon,
   PencilEdit02Icon,
   Tick01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type { Conversation } from "@/features/chat/types";
+import { useInappNotifications } from "@/features/notifications/hooks/use-inapp-notifications";
 import { impactHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
 import { useChatStore } from "@/stores/chat-store";
@@ -25,6 +28,9 @@ interface ChatHeaderProps {
 export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
   const { spacing, iconSize, moderateScale, fontSize } = useResponsive();
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const { unreadNotifications } = useInappNotifications();
+  const hasUnread = unreadNotifications.length > 0;
 
   const activeChatId = useChatStore((state) => state.activeChatId);
   const { data: conversations } = useConversationsQuery();
@@ -177,7 +183,9 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
         ) : null}
       </View>
 
-      <View style={{ flexDirection: "row", gap: spacing.sm }}>
+      <View
+        style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+      >
         {isEditing ? (
           <Pressable onPress={commitRename}>
             <View style={{ padding: moderateScale(4, 0.5) }}>
@@ -185,11 +193,34 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
             </View>
           </Pressable>
         ) : (
-          <Pressable onPress={onNewChatPress}>
-            <View style={{ padding: moderateScale(4, 0.5) }}>
-              <PencilEdit02Icon size={iconSize.md - 2} color="#bbbbbb" />
-            </View>
-          </Pressable>
+          <>
+            <Pressable
+              onPress={() => router.push("/(app)/notifications")}
+              hitSlop={8}
+            >
+              <View style={{ padding: moderateScale(4, 0.5) }}>
+                <Notification01Icon size={iconSize.md - 2} color="#bbbbbb" />
+                {hasUnread ? (
+                  <View
+                    style={{
+                      position: "absolute",
+                      top: moderateScale(4, 0.5),
+                      right: moderateScale(4, 0.5),
+                      width: 7,
+                      height: 7,
+                      borderRadius: 3.5,
+                      backgroundColor: "#00bbff",
+                    }}
+                  />
+                ) : null}
+              </View>
+            </Pressable>
+            <Pressable onPress={onNewChatPress}>
+              <View style={{ padding: moderateScale(4, 0.5) }}>
+                <PencilEdit02Icon size={iconSize.md - 2} color="#bbbbbb" />
+              </View>
+            </Pressable>
+          </>
         )}
       </View>
     </View>

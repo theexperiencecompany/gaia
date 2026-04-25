@@ -6,7 +6,6 @@ import {
   AppIcon,
   CheckListIcon,
   ConnectIcon,
-  LayoutGridIcon,
   ZapIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -26,16 +25,8 @@ export const SIDEBAR_WIDTH = 300;
 const ACTIVE_BG = "rgba(255,255,255,0.08)";
 const ACTIVE_TEXT = "#e4e4e7";
 const INACTIVE_TEXT = "#71717a";
-const DIVIDER_COLOR = "#27272a";
-const SECTION_LABEL_COLOR = "#52525b";
 
 const NAV_ITEMS = [
-  {
-    icon: LayoutGridIcon,
-    label: "Home",
-    route: "/(app)/(tabs)/home",
-    matchPrefix: "/home",
-  },
   {
     icon: CheckListIcon,
     label: "Tasks",
@@ -107,25 +98,16 @@ function SidebarNav() {
         );
       })}
 
-      <View
-        style={{
-          height: 1,
-          backgroundColor: DIVIDER_COLOR,
-          marginHorizontal: spacing.sm,
-          marginTop: 8,
-          marginBottom: 2,
-        }}
-      />
       <Text
         style={{
           fontSize: 10,
-          fontWeight: "600",
-          letterSpacing: 0.8,
+          fontWeight: "500",
+          letterSpacing: 0.6,
           textTransform: "uppercase",
-          color: SECTION_LABEL_COLOR,
+          color: "#3a3a3c",
           paddingHorizontal: spacing.sm + 4,
-          paddingTop: 8,
-          paddingBottom: 2,
+          paddingTop: 12,
+          paddingBottom: 4,
         }}
       >
         Chats

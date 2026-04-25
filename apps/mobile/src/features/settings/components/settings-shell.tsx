@@ -246,7 +246,7 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
       <SettingsGroup label="General">
         <SettingsRow
           icon={UserCircle02Icon}
-          iconBg="rgba(0,187,255,0.15)"
+          iconBg="rgba(0,187,255,0.12)"
           iconColor="#00bbff"
           title="Profile"
           subtitle="Edit your display name and avatar"
@@ -255,8 +255,8 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
         />
         <SettingsRow
           icon={Settings01Icon}
-          iconBg="rgba(161,161,170,0.15)"
-          iconColor="#a1a1aa"
+          iconBg="rgba(255,255,255,0.07)"
+          iconColor="#8e8e93"
           title="Preferences"
           subtitle="Theme, language, and display options"
           showChevron
@@ -264,8 +264,8 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
         />
         <SettingsRow
           icon={Notification01Icon}
-          iconBg="rgba(251,146,60,0.15)"
-          iconColor="#fb923c"
+          iconBg="rgba(255,255,255,0.07)"
+          iconColor="#8e8e93"
           title="Notifications"
           subtitle="Alerts, sounds, and delivery settings"
           showChevron
@@ -278,8 +278,8 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
       <SettingsGroup label="Intelligence">
         <SettingsRow
           icon={BrainIcon}
-          iconBg="rgba(168,85,247,0.15)"
-          iconColor="#a855f7"
+          iconBg="rgba(255,255,255,0.07)"
+          iconColor="#8e8e93"
           title="Memory"
           subtitle="What GAIA remembers about you"
           showChevron
@@ -292,10 +292,10 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
       <SettingsGroup label="Connections">
         <SettingsRow
           icon={ConnectIcon}
-          iconBg="rgba(34,197,94,0.15)"
+          iconBg="rgba(34,197,94,0.12)"
           iconColor="#22c55e"
           title="Linked Accounts"
-          subtitle="Google, Slack, GitHub and more"
+          subtitle="Telegram, and more"
           showChevron
           isLast
           onPress={() => onSelect("linked-accounts")}
@@ -306,8 +306,8 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
       <SettingsGroup label="Billing">
         <SettingsRow
           icon={Analytics01Icon}
-          iconBg="rgba(99,102,241,0.15)"
-          iconColor="#6366f1"
+          iconBg="rgba(255,255,255,0.07)"
+          iconColor="#8e8e93"
           title="Usage"
           subtitle="Messages and API usage this month"
           showChevron
@@ -315,8 +315,8 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
         />
         <SettingsRow
           icon={CreditCardIcon}
-          iconBg="rgba(250,204,21,0.15)"
-          iconColor="#facc15"
+          iconBg="rgba(255,255,255,0.07)"
+          iconColor="#8e8e93"
           title="Subscription"
           subtitle="Manage your plan and billing"
           showChevron

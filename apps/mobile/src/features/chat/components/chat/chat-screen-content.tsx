@@ -18,11 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/lib/responsive";
 import type { Message } from "../../api/chat-api";
-import {
-  branchConversation,
-  deleteMessage,
-  pinMessage,
-} from "../../api/chat-api";
+import { pinMessage } from "../../api/chat-api";
 import { useChat } from "../../hooks/use-chat";
 import { useChatContext } from "../../hooks/use-chat-context";
 import {
@@ -304,35 +300,11 @@ export function ChatScreenContent({
     [activeChatId],
   );
 
-  const handleActionDelete = useCallback(
-    async (messageId: string, conversationId: string) => {
-      await deleteMessage(conversationId, messageId);
-      await refetch();
-    },
-    [refetch],
-  );
-
   const handleActionPin = useCallback(
     async (messageId: string, conversationId: string) => {
       await pinMessage(conversationId, messageId);
     },
     [],
-  );
-
-  const handleActionRetry = useCallback(
-    (messageId: string, _conversationId: string) => {
-      const msg = messages.find((m) => m.id === messageId);
-      if (msg) {
-        void sendMessage(msg.text, {
-          replyToMessage: null,
-          selectedWorkflow: null,
-          selectedTool: null,
-          toolCategory: null,
-          attachments: [],
-        });
-      }
-    },
-    [messages, sendMessage],
   );
 
   const handleActionReply = useCallback(
@@ -343,37 +315,6 @@ export function ChatScreenContent({
       }
     },
     [messages, handleReply],
-  );
-
-  const handleActionRegenerate = useCallback(
-    (messageId: string, _conversationId: string) => {
-      const msgIndex = messages.findIndex((m) => m.id === messageId);
-      if (msgIndex === -1) return;
-      for (let i = msgIndex - 1; i >= 0; i--) {
-        const candidate = messages[i];
-        if (candidate.isUser) {
-          void sendMessage(candidate.text, {
-            replyToMessage: null,
-            selectedWorkflow: null,
-            selectedTool: null,
-            toolCategory: null,
-            attachments: [],
-          });
-          return;
-        }
-      }
-    },
-    [messages, sendMessage],
-  );
-
-  const handleActionBranch = useCallback(
-    async (messageId: string, conversationId: string) => {
-      const newConvId = await branchConversation(conversationId, messageId);
-      if (newConvId) {
-        router.push(`/(app)/c/${newConvId}`);
-      }
-    },
-    [router],
   );
 
   const handleSend = useCallback(
@@ -641,18 +582,10 @@ export function ChatScreenContent({
       <MessageActionSheet
         ref={actionSheetRef}
         config={actionConfig}
-        onDelete={(messageId, conversationId) => {
-          void handleActionDelete(messageId, conversationId);
-        }}
         onPin={(messageId, conversationId) => {
           void handleActionPin(messageId, conversationId);
         }}
-        onRetry={handleActionRetry}
         onReply={handleActionReply}
-        onRegenerate={handleActionRegenerate}
-        onBranch={(messageId, conversationId) => {
-          void handleActionBranch(messageId, conversationId);
-        }}
       />
     </KeyboardAvoidingView>
   );
