@@ -6,6 +6,7 @@ import {
   Cancel01Icon,
   Delete02Icon,
   FolderIcon,
+  Notification01Icon,
   Settings01Icon,
   Tick02Icon,
 } from "@/components/icons";
@@ -162,7 +163,7 @@ export default function NotificationsScreen() {
               >
                 <Text
                   style={{
-                    color: "#16c1ff",
+                    color: "#00bbff",
                     fontSize: fontSize.xs,
                     fontWeight: "500",
                   }}
@@ -173,23 +174,32 @@ export default function NotificationsScreen() {
             </>
           ) : (
             <>
-              <Text
+              <View
                 style={{
-                  fontSize: fontSize.lg,
-                  fontWeight: "600",
-                  color: "#fff",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
-                Notifications
-              </Text>
+                <AppIcon icon={Notification01Icon} size={18} color="#8e8e93" />
+                <Text
+                  style={{
+                    fontSize: fontSize.base,
+                    fontWeight: "600",
+                    color: "#e8ebef",
+                  }}
+                >
+                  Notifications
+                </Text>
+              </View>
 
               <View style={{ flex: 1 }} />
 
               <Pressable
                 onPress={() => prefsSheetRef.current?.open()}
-                style={{ marginRight: spacing.sm, opacity: 0.7 }}
+                style={{ marginRight: spacing.sm }}
               >
-                <AppIcon icon={Settings01Icon} size={20} color="#8e8e93" />
+                <AppIcon icon={Settings01Icon} size={18} color="#48484a" />
               </Pressable>
 
               {unreadNotifications.length > 0 && (
@@ -200,7 +210,7 @@ export default function NotificationsScreen() {
                   }}
                   style={{
                     opacity: isMarkingAllAsRead ? 0.5 : 1,
-                    backgroundColor: "rgba(22,193,255,0.1)",
+                    backgroundColor: "rgba(0,187,255,0.1)",
                     borderRadius: 8,
                     paddingHorizontal: spacing.md,
                     paddingVertical: 6,
@@ -208,7 +218,7 @@ export default function NotificationsScreen() {
                 >
                   <Text
                     style={{
-                      color: "#16c1ff",
+                      color: "#00bbff",
                       fontSize: fontSize.xs,
                       fontWeight: "500",
                     }}
@@ -239,8 +249,8 @@ export default function NotificationsScreen() {
                   paddingHorizontal: spacing.md,
                   paddingVertical: spacing.xs,
                   backgroundColor: isActive
-                    ? "rgba(22,193,255,0.2)"
-                    : "rgba(255,255,255,0.07)",
+                    ? "rgba(0,187,255,0.18)"
+                    : "rgba(255,255,255,0.06)",
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 6,
@@ -249,7 +259,7 @@ export default function NotificationsScreen() {
                 <Text
                   style={{
                     fontSize: fontSize.xs,
-                    color: isActive ? "#9fe6ff" : "#c5cad2",
+                    color: isActive ? "#00bbff" : "#c5cad2",
                     fontWeight: isActive ? "600" : "400",
                   }}
                 >
@@ -259,8 +269,8 @@ export default function NotificationsScreen() {
                   <View
                     style={{
                       backgroundColor: isActive
-                        ? "rgba(22,193,255,0.3)"
-                        : "rgba(255,255,255,0.1)",
+                        ? "rgba(0,187,255,0.25)"
+                        : "rgba(255,255,255,0.08)",
                       borderRadius: 999,
                       minWidth: 18,
                       height: 18,
@@ -272,7 +282,7 @@ export default function NotificationsScreen() {
                     <Text
                       style={{
                         fontSize: fontSize.xs - 2,
-                        color: isActive ? "#9fe6ff" : "#8a9099",
+                        color: isActive ? "#00bbff" : "#71717a",
                         fontWeight: "600",
                       }}
                     >
