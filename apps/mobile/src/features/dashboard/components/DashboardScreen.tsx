@@ -1,6 +1,6 @@
 import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Button, Separator, Skeleton, SkeletonGroup } from "heroui-native";
+import { Button, Divider, Skeleton, SkeletonGroup } from "heroui-native";
 import { useCallback } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -203,7 +203,7 @@ export function DashboardScreen() {
               {todayTodos.map((todo) => (
                 <DashboardTodoItem key={todo.id} todo={todo} />
               ))}
-              <Separator style={{ marginHorizontal: spacing.md }} />
+              <Divider style={{ marginHorizontal: spacing.md }} />
               <Button
                 variant="ghost"
                 size="sm"
@@ -310,7 +310,7 @@ export function DashboardScreen() {
                   </View>
                 </View>
                 {index < reminders.length - 1 && (
-                  <Separator style={{ marginHorizontal: spacing.md }} />
+                  <Divider style={{ marginHorizontal: spacing.md }} />
                 )}
               </View>
             ))
@@ -382,7 +382,7 @@ export function DashboardScreen() {
                   </Text>
                 </View>
                 {index < conversations.length - 1 && (
-                  <Separator style={{ marginHorizontal: spacing.md }} />
+                  <Divider style={{ marginHorizontal: spacing.md }} />
                 )}
               </View>
             ))

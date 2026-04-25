@@ -134,6 +134,32 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
     return {"url": authorization_url}
 
 
+@router.get("/login/google/mobile")
+async def login_google_mobile(redirect_uri: Optional[str] = None):
+    """
+    Start Google OAuth flow directly for mobile apps, bypassing the WorkOS hosted UI.
+    Users go straight to Google's sign-in page instead of the WorkOS selection screen.
+
+    Args:
+        redirect_uri: The deep link URI to redirect back to (from Linking.createURL)
+    """
+    state = secrets.token_urlsafe(32)
+    mobile_callback = redirect_uri or MOBILE_DEEP_LINK
+    await _store_mobile_redirect(state, mobile_callback)
+
+    log.set(oauth_flow_type=OAUTH_FLOW_MOBILE)
+    log.info(
+        f"Mobile Google OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}..."
+    )
+
+    authorization_url = workos.user_management.get_authorization_url(
+        provider="GoogleOAuth",
+        redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
+        state=state,
+    )
+    return {"url": authorization_url}
+
+
 @router.get("/workos/mobile/callback")
 async def workos_mobile_callback(
     code: Optional[str] = None,

@@ -2,9 +2,8 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import {
   Button,
-  Card,
+  Divider,
   PressableFeedback,
-  Separator,
   SkeletonGroup,
 } from "heroui-native";
 import { useCallback, useRef, useState } from "react";
@@ -27,9 +26,9 @@ import Reanimated, {
 } from "react-native-reanimated";
 import {
   AppIcon,
-  BubbleChatIcon,
   Delete02Icon,
   FavouriteIcon,
+  PencilEdit02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -297,6 +296,7 @@ function ChatItem({
 }: ChatItemProps) {
   const { spacing, fontSize, iconSize } = useResponsive();
   const swipeableRef = useRef<SwipeableMethods>(null);
+  const [showSheet, setShowSheet] = useState(false);
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -316,22 +316,7 @@ function ChatItem({
 
   const handleLongPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(item.title, undefined, [
-      {
-        text: item.is_starred ? "Unstar" : "Star",
-        onPress: () => onToggleStar(item.id, !!item.is_starred),
-      },
-      {
-        text: "Rename",
-        onPress: () => onRename(item.id, item.title),
-      },
-      {
-        text: "Delete",
-        onPress: () => onDelete(item.id),
-        style: "destructive",
-      },
-      { text: "Cancel", style: "cancel" },
-    ]);
+    setShowSheet(true);
   };
 
   const handlePress = () => {
@@ -423,6 +408,126 @@ function ChatItem({
           </Text>
         </View>
       </PressableFeedback>
+
+      {/* Custom action sheet */}
+      <Modal
+        visible={showSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSheet(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)" }}
+          onPress={() => setShowSheet(false)}
+        />
+        <View
+          style={{
+            backgroundColor: "#18181b",
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+            paddingBottom: 32,
+          }}
+        >
+          {/* Handle */}
+          <View
+            style={{
+              width: 36,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: "#3f3f46",
+              alignSelf: "center",
+              marginTop: 10,
+              marginBottom: 14,
+            }}
+          />
+          {/* Title */}
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              color: "#71717a",
+              fontWeight: "500",
+              paddingHorizontal: spacing.lg,
+              paddingBottom: spacing.sm,
+            }}
+            numberOfLines={1}
+          >
+            {item.title}
+          </Text>
+          {/* Divider */}
+          <View style={{ height: 1, backgroundColor: "#27272a" }} />
+
+          {/* Star / Unstar */}
+          <Pressable
+            onPress={() => {
+              setShowSheet(false);
+              onToggleStar(item.id, !!item.is_starred);
+            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              paddingHorizontal: spacing.lg,
+              paddingVertical: spacing.md,
+              backgroundColor: pressed
+                ? "rgba(255,255,255,0.04)"
+                : "transparent",
+            })}
+          >
+            <AppIcon icon={FavouriteIcon} size={iconSize.sm} color="#a1a1aa" />
+            <Text style={{ fontSize: fontSize.base, color: "#ffffff" }}>
+              {item.is_starred ? "Unstar" : "Star"}
+            </Text>
+          </Pressable>
+
+          {/* Rename */}
+          <Pressable
+            onPress={() => {
+              setShowSheet(false);
+              onRename(item.id, item.title);
+            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              paddingHorizontal: spacing.lg,
+              paddingVertical: spacing.md,
+              backgroundColor: pressed
+                ? "rgba(255,255,255,0.04)"
+                : "transparent",
+            })}
+          >
+            <AppIcon
+              icon={PencilEdit02Icon}
+              size={iconSize.sm}
+              color="#a1a1aa"
+            />
+            <Text style={{ fontSize: fontSize.base, color: "#ffffff" }}>
+              Rename
+            </Text>
+          </Pressable>
+
+          {/* Delete */}
+          <Pressable
+            onPress={() => {
+              setShowSheet(false);
+              onDelete(item.id);
+            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              paddingHorizontal: spacing.lg,
+              paddingVertical: spacing.md,
+              backgroundColor: pressed ? "rgba(239,68,68,0.08)" : "transparent",
+            })}
+          >
+            <AppIcon icon={Delete02Icon} size={iconSize.sm} color="#ef4444" />
+            <Text style={{ fontSize: fontSize.base, color: "#ef4444" }}>
+              Delete
+            </Text>
+          </Pressable>
+        </View>
+      </Modal>
     </ReanimatedSwipeable>
   );
 }
@@ -458,7 +563,7 @@ function Section({
 
   return (
     <View style={{ marginBottom: 2 }}>
-      <Separator className="mx-3 mb-1" />
+      <Divider className="mx-3 mb-1" />
       <PressableFeedback
         onPress={onToggle}
         style={{
@@ -714,56 +819,62 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
 
   if (error) {
     return (
-      <Card
-        variant="secondary"
-        className="flex-1 items-center justify-center mx-3 rounded-2xl"
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
       >
-        <Card.Body className="items-center justify-center p-4">
-          <Card.Description className="text-center text-danger">
-            {error}
-          </Card.Description>
-        </Card.Body>
-      </Card>
+        <Text style={{ color: "#ef4444", fontSize: 13, textAlign: "center" }}>
+          {error}
+        </Text>
+      </View>
     );
   }
 
   if (filteredConversations.length === 0 && isSearching) {
     return (
-      <Card
-        variant="secondary"
-        className="flex-1 items-center justify-center mx-3 rounded-2xl"
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
       >
-        <Card.Body className="items-center justify-center gap-1 p-4">
-          <Card.Title className="text-center">No results found</Card.Title>
-          <Card.Description className="text-center">
-            Try a different search term
-          </Card.Description>
-        </Card.Body>
-      </Card>
+        <Text style={{ color: "#52525b", fontSize: 13, textAlign: "center" }}>
+          No results for "{searchQuery}"
+        </Text>
+      </View>
     );
   }
 
   if (conversations.length === 0) {
     return (
-      <Card
-        variant="secondary"
-        className="flex-1 items-center justify-center mx-3 rounded-2xl"
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
       >
-        <Card.Body className="items-center justify-center gap-3 py-10 px-5">
-          <Card
-            variant="secondary"
-            className="w-14 h-14 rounded-full items-center justify-center"
-          >
-            <Card.Body className="items-center justify-center p-0">
-              <AppIcon icon={BubbleChatIcon} size={28} color="#3f3f46" />
-            </Card.Body>
-          </Card>
-          <Card.Title className="text-center">No conversations yet</Card.Title>
-          <Card.Description className="text-center">
-            Start a new chat to begin
-          </Card.Description>
-        </Card.Body>
-      </Card>
+        <Text style={{ color: "#52525b", fontSize: 13, textAlign: "center" }}>
+          No conversations yet
+        </Text>
+        <Text
+          style={{
+            color: "#3f3f46",
+            fontSize: 12,
+            textAlign: "center",
+            marginTop: 4,
+          }}
+        >
+          Start a new chat to begin
+        </Text>
+      </View>
     );
   }
 

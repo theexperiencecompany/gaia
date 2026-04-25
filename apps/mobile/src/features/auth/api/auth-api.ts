@@ -19,7 +19,6 @@ export interface UserInfoResponse {
 
 export async function getLoginUrl(callbackUri: string): Promise<string> {
   const url = `${API_BASE_URL}/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`;
-  console.log("[Auth] Fetching login URL:", url);
   try {
     const response = await fetch(url);
 
@@ -28,7 +27,8 @@ export async function getLoginUrl(callbackUri: string): Promise<string> {
     }
 
     const data: LoginUrlResponse = await response.json();
-    return data.url;
+    // Replace WorkOS hosted UI with direct Google OAuth — same state/callback, no double-click
+    return data.url.replace("provider=authkit", "provider=GoogleOAuth");
   } catch (error) {
     console.error("Error getting login URL:", error);
     throw new Error("Failed to initiate login");

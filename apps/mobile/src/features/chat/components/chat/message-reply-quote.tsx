@@ -1,4 +1,4 @@
-import { Separator, Surface } from "heroui-native";
+import { Divider, Surface } from "heroui-native";
 import { View } from "react-native";
 import { AppIcon, LinkBackwardIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -41,7 +41,7 @@ export function MessageReplyQuote({
         overflow: "hidden",
       }}
     >
-      <Separator
+      <Divider
         orientation="vertical"
         thickness={3}
         style={{

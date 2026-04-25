@@ -1,97 +1,101 @@
-import { Button, PressableFeedback, Surface } from "heroui-native";
-import { Image, TextInput, View } from "react-native";
+import { PressableFeedback } from "heroui-native";
+import { TextInput, View } from "react-native";
 import {
   AppIcon,
-  ArrowLeft01Icon,
   Cancel01Icon,
   PencilEdit02Icon,
   Search01Icon,
 } from "@/components/icons";
+import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
 interface SidebarHeaderProps {
   onNewChat: () => void;
-  onClose?: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
 }
 
 export function SidebarHeader({
   onNewChat,
-  onClose,
   searchQuery,
   onSearchChange,
 }: SidebarHeaderProps) {
   const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
 
   return (
-    <Surface
-      variant="transparent"
-      style={{
-        paddingHorizontal: spacing.md,
-        paddingTop: spacing.lg,
-        paddingBottom: spacing.sm,
-      }}
-    >
+    <View>
+      {/* Top bar: title + new chat */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          gap: moderateScale(12, 0.5),
-          marginBottom: spacing.md,
-          paddingHorizontal: spacing.xs,
+          justifyContent: "space-between",
+          paddingHorizontal: spacing.md,
+          paddingTop: spacing.md,
+          paddingBottom: spacing.sm,
         }}
       >
-        {onClose ? (
-          <PressableFeedback
-            onPress={onClose}
-            hitSlop={8}
-            style={{ padding: 4 }}
-          >
-            <AppIcon
-              icon={ArrowLeft01Icon}
-              size={iconSize.sm}
-              color="#a1a1aa"
-            />
-          </PressableFeedback>
-        ) : (
-          <Image
-            source={require("@shared/assets/logo/logo.webp")}
-            style={{
-              width: moderateScale(28, 0.5),
-              height: moderateScale(28, 0.5),
-            }}
-            resizeMode="contain"
-          />
-        )}
-        <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            fontSize: fontSize.lg,
+            fontWeight: "700",
+            color: "#ffffff",
+            letterSpacing: -0.3,
+          }}
+        >
+          GAIA
+        </Text>
+        <PressableFeedback
+          onPress={onNewChat}
+          hitSlop={8}
+          style={{
+            padding: 8,
+            borderRadius: 8,
+            backgroundColor: "rgba(255,255,255,0.06)",
+          }}
+        >
+          <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#a1a1aa" />
+        </PressableFeedback>
+      </View>
+
+      {/* Search input */}
+      <View
+        style={{
+          paddingHorizontal: spacing.md,
+          paddingBottom: spacing.sm,
+        }}
+      >
+        <View style={{ position: "relative" }}>
           <TextInput
             placeholder="Search conversations..."
-            placeholderTextColor="#6b6b6e"
+            placeholderTextColor="#52525b"
             value={searchQuery}
             onChangeText={onSearchChange}
             style={{
-              flex: 1,
               fontSize: fontSize.sm,
               color: "#ffffff",
               backgroundColor: "#1c1c1e",
               borderRadius: moderateScale(10, 0.5),
               paddingHorizontal: moderateScale(12, 0.5),
               paddingVertical: spacing.sm,
-              paddingLeft: moderateScale(32, 0.5),
+              paddingLeft: moderateScale(36, 0.5),
             }}
           />
           <View
             style={{
               position: "absolute",
-              left: moderateScale(10, 0.5),
+              left: moderateScale(11, 0.5),
               top: 0,
               bottom: 0,
               justifyContent: "center",
             }}
             pointerEvents="none"
           >
-            <AppIcon icon={Search01Icon} size={iconSize.sm} color="#6b6b6e" />
+            <AppIcon
+              icon={Search01Icon}
+              size={iconSize.sm - 1}
+              color="#52525b"
+            />
           </View>
           {searchQuery.length > 0 && (
             <PressableFeedback
@@ -108,16 +112,12 @@ export function SidebarHeader({
               <AppIcon
                 icon={Cancel01Icon}
                 size={iconSize.sm - 2}
-                color="#6b6b6e"
+                color="#52525b"
               />
             </PressableFeedback>
           )}
         </View>
-
-        <Button variant="secondary" size="sm" isIconOnly onPress={onNewChat}>
-          <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#ffffff" />
-        </Button>
       </View>
-    </Surface>
+    </View>
   );
 }

@@ -1,9 +1,10 @@
-import { Button, Card, PressableFeedback, Spinner } from "heroui-native";
 import {
+  ActivityIndicator,
   Image,
-  KeyboardAvoidingView,
   Linking,
   Platform,
+  Pressable,
+  StatusBar,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -44,13 +45,15 @@ export function AuthScreen({
   onSubmit,
   onFooterLinkPress,
 }: AuthScreenProps) {
-  const { spacing, fontSize, moderateScale, width } = useResponsive();
-  const cardMaxWidth = Math.min(width * 0.9, 400);
-  const logoSize = moderateScale(48, 0.5);
-  const logoContainerSize = moderateScale(72, 0.5);
+  const { spacing, fontSize, moderateScale } = useResponsive();
 
   return (
     <View style={{ flex: 1, backgroundColor: "#060a14" }}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
       <Image
         source={backgroundSource}
         style={{ position: "absolute", width: "100%", height: "100%" }}
@@ -61,166 +64,212 @@ export function AuthScreen({
           position: "absolute",
           width: "100%",
           height: "100%",
-          backgroundColor: "rgba(0,0,0,0.5)",
+          backgroundColor: "rgba(0,0,0,0.55)",
         }}
       />
 
       <SafeAreaView style={{ flex: 1 }}>
-        <KeyboardAvoidingView
+        <View
           style={{
             flex: 1,
-            justifyContent: "center",
-            alignItems: "center",
-            paddingHorizontal: spacing.lg,
+            paddingHorizontal: spacing.xl,
+            paddingBottom: spacing.xl,
           }}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <Card
-            variant="secondary"
-            className="w-full overflow-hidden rounded-[24px] bg-[#171920]/95"
-            style={{ maxWidth: cardMaxWidth, width: "100%" }}
+          {/* Top section — logo + title */}
+          <View
+            style={{
+              flex: 1,
+              alignItems: "center",
+              justifyContent: "center",
+              gap: spacing.md,
+            }}
           >
-            <Card.Body
+            <View
               style={{
-                paddingHorizontal: spacing.xl,
-                paddingVertical: moderateScale(40, 0.5),
+                width: moderateScale(80, 0.5),
+                height: moderateScale(80, 0.5),
+                borderRadius: moderateScale(20, 0.5),
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(255,255,255,0.05)",
               }}
             >
-              {/* Logo + Title */}
-              <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
-                <View
-                  style={{
-                    width: logoContainerSize,
-                    height: logoContainerSize,
-                    borderRadius: logoContainerSize / 2,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: spacing.md,
-                  }}
-                >
-                  <Image
-                    source={gaiaLogoSource}
-                    style={{ width: logoSize, height: logoSize }}
-                    resizeMode="contain"
-                  />
-                </View>
-                <Text
-                  style={{
-                    fontSize: fontSize["2xl"],
-                    fontWeight: "bold",
-                    textAlign: "center",
-                  }}
-                >
-                  {title}
-                </Text>
-              </View>
-
-              {/* Google Button */}
-              <View style={{ width: "100%" }}>
-                <Button
-                  size="lg"
-                  className="bg-white"
-                  isDisabled={isLoading}
-                  onPress={onSubmit}
-                >
-                  {isLoading ? (
-                    <Spinner color="#000000" size="sm" />
-                  ) : (
-                    <>
-                      <Image
-                        source={googleLogoSource}
-                        style={{
-                          width: moderateScale(20, 0.5),
-                          height: moderateScale(20, 0.5),
-                          marginRight: spacing.sm,
-                        }}
-                        resizeMode="contain"
-                      />
-                      <Button.Label className="text-black">
-                        {buttonLabel}
-                      </Button.Label>
-                    </>
-                  )}
-                </Button>
-
-                {/* Switch screen link */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginTop: spacing.md,
-                  }}
-                >
-                  <Text style={{ fontSize: fontSize.base, color: "#8e8e93" }}>
-                    {footerQuestion}{" "}
-                  </Text>
-                  <PressableFeedback
-                    onPress={onFooterLinkPress}
-                    isDisabled={isLoading}
-                  >
-                    <Text
-                      style={{
-                        fontSize: fontSize.base,
-                        color: "#00bbff",
-                        fontWeight: "600",
-                      }}
-                    >
-                      {footerLinkLabel}
-                    </Text>
-                  </PressableFeedback>
-                </View>
-              </View>
-
-              {/* Legal footer */}
-              <View
+              <Image
+                source={gaiaLogoSource}
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginTop: spacing.lg,
-                  flexWrap: "wrap",
+                  width: moderateScale(52, 0.5),
+                  height: moderateScale(52, 0.5),
+                }}
+                resizeMode="contain"
+              />
+            </View>
+
+            <View style={{ alignItems: "center", gap: spacing.sm }}>
+              <Text
+                style={{
+                  fontSize: fontSize["3xl"],
+                  fontWeight: "700",
+                  color: "#ffffff",
+                  textAlign: "center",
+                  letterSpacing: -0.5,
                 }}
               >
-                <PressableFeedback
-                  onPress={() => Linking.openURL("https://heygaia.io/terms")}
-                >
+                {title}
+              </Text>
+              <Text
+                style={{
+                  fontSize: fontSize.base,
+                  color: "rgba(255,255,255,0.45)",
+                  textAlign: "center",
+                  lineHeight: fontSize.base * 1.5,
+                }}
+              >
+                Your personal AI, always one tap away.
+              </Text>
+            </View>
+          </View>
+
+          {/* Bottom section — button + footer */}
+          <View style={{ gap: spacing.md }}>
+            {/* Google sign-in button */}
+            <Pressable
+              onPress={onSubmit}
+              disabled={isLoading}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: spacing.sm,
+                backgroundColor: pressed ? "#f0f0f0" : "#ffffff",
+                borderRadius: 14,
+                paddingVertical: moderateScale(16, 0.5),
+                paddingHorizontal: spacing.xl,
+                opacity: isLoading ? 0.7 : 1,
+                ...Platform.select({
+                  ios: {
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.15,
+                    shadowRadius: 8,
+                  },
+                  android: { elevation: 4 },
+                }),
+              })}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#1a1a1a" size="small" />
+              ) : (
+                <>
+                  <Image
+                    source={googleLogoSource}
+                    style={{
+                      width: moderateScale(20, 0.5),
+                      height: moderateScale(20, 0.5),
+                    }}
+                    resizeMode="contain"
+                  />
                   <Text
                     style={{
-                      fontSize: fontSize.sm,
-                      color: "#8e8e93",
-                      textDecorationLine: "underline",
+                      fontSize: fontSize.base,
+                      fontWeight: "600",
+                      color: "#1a1a1a",
                     }}
                   >
-                    Terms of Service
+                    {buttonLabel}
                   </Text>
-                </PressableFeedback>
+                </>
+              )}
+            </Pressable>
+
+            {/* Toggle login/signup */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                paddingVertical: spacing.xs,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  color: "rgba(255,255,255,0.45)",
+                }}
+              >
+                {footerQuestion}
+              </Text>
+              <Pressable onPress={onFooterLinkPress} disabled={isLoading}>
                 <Text
                   style={{
                     fontSize: fontSize.sm,
-                    color: "#8e8e93",
-                    marginHorizontal: spacing.xs,
+                    color: "#38bdf8",
+                    fontWeight: "600",
                   }}
                 >
-                  and
+                  {footerLinkLabel}
                 </Text>
-                <PressableFeedback
-                  onPress={() => Linking.openURL("https://heygaia.io/privacy")}
+              </Pressable>
+            </View>
+
+            {/* Legal links */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                flexWrap: "wrap",
+                gap: 4,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: fontSize.xs,
+                  color: "rgba(255,255,255,0.25)",
+                }}
+              >
+                By continuing you agree to our
+              </Text>
+              <Pressable
+                onPress={() => void Linking.openURL("https://heygaia.io/terms")}
+              >
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: "rgba(255,255,255,0.4)",
+                    textDecorationLine: "underline",
+                  }}
                 >
-                  <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      color: "#8e8e93",
-                      textDecorationLine: "underline",
-                    }}
-                  >
-                    Privacy Policy
-                  </Text>
-                </PressableFeedback>
-              </View>
-            </Card.Body>
-          </Card>
-        </KeyboardAvoidingView>
+                  Terms
+                </Text>
+              </Pressable>
+              <Text
+                style={{
+                  fontSize: fontSize.xs,
+                  color: "rgba(255,255,255,0.25)",
+                }}
+              >
+                and
+              </Text>
+              <Pressable
+                onPress={() =>
+                  void Linking.openURL("https://heygaia.io/privacy")
+                }
+              >
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: "rgba(255,255,255,0.4)",
+                    textDecorationLine: "underline",
+                  }}
+                >
+                  Privacy Policy
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </SafeAreaView>
     </View>
   );

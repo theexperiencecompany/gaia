@@ -1,4 +1,4 @@
-import { Separator, SkeletonGroup, Surface } from "heroui-native";
+import { Divider, SkeletonGroup, Surface } from "heroui-native";
 import { useCallback, useState } from "react";
 import { RefreshControl, SectionList, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -91,7 +91,7 @@ export function CalendarScreen() {
           keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => (
             <>
-              {index > 0 && <Separator className="mx-4 my-0.5" />}
+              {index > 0 && <Divider className="mx-4 my-0.5" />}
               <EventItem event={item} />
             </>
           )}
