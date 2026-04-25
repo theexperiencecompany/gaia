@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { ActivityIndicator, Image, Pressable, View } from "react-native";
-import { AppIcon, Logout01Icon } from "@/components/icons";
+import { AppIcon, Settings02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
@@ -11,7 +11,7 @@ const AVATAR_BG = "#18181b";
 const AVATAR_ACCENT = "#00bbff";
 
 export function SidebarFooter() {
-  const { user, isLoading, signOut } = useAuth();
+  const { user, isLoading } = useAuth();
   const router = useRouter();
   const { spacing, fontSize, iconSize } = useResponsive();
 
@@ -52,16 +52,16 @@ export function SidebarFooter() {
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm + 2,
+          paddingVertical: spacing.sm + 4,
           gap: spacing.sm + 2,
-          opacity: pressed ? 0.6 : 1,
+          opacity: pressed ? 0.7 : 1,
         })}
       >
         <View
           style={{
-            width: 34,
-            height: 34,
-            borderRadius: 17,
+            width: 32,
+            height: 32,
+            borderRadius: 16,
             backgroundColor: AVATAR_BG,
             alignItems: "center",
             justifyContent: "center",
@@ -71,10 +71,16 @@ export function SidebarFooter() {
           {profilePicture ? (
             <Image
               source={{ uri: profilePicture }}
-              style={{ width: 34, height: 34 }}
+              style={{ width: 32, height: 32 }}
             />
           ) : (
-            <Text style={{ color: AVATAR_ACCENT, fontWeight: "600" }}>
+            <Text
+              style={{
+                color: AVATAR_ACCENT,
+                fontWeight: "600",
+                fontSize: 12,
+              }}
+            >
               {getInitials(user?.name)}
             </Text>
           )}
@@ -88,7 +94,7 @@ export function SidebarFooter() {
           </Text>
           <Text
             style={{
-              fontSize: fontSize.xs - 1,
+              fontSize: 10,
               color: MUTED_COLOR,
               textTransform: "uppercase",
               fontWeight: "600",
@@ -99,14 +105,15 @@ export function SidebarFooter() {
           </Text>
         </View>
         <Pressable
-          onPress={signOut}
+          onPress={() => router.push("/(app)/settings")}
           hitSlop={8}
           style={({ pressed }) => ({
             padding: spacing.xs + 2,
-            opacity: pressed ? 0.5 : 1,
+            borderRadius: 8,
+            backgroundColor: pressed ? "rgba(255,255,255,0.06)" : "transparent",
           })}
         >
-          <AppIcon icon={Logout01Icon} size={iconSize.sm} color="#ef4444" />
+          <AppIcon icon={Settings02Icon} size={iconSize.sm} color="#71717a" />
         </Pressable>
       </Pressable>
     </>

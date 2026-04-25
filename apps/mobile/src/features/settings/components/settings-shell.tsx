@@ -1,9 +1,25 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppIcon, ArrowLeft01Icon } from "@/components/icons";
+import { Alert, Image, Pressable, ScrollView, View } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import {
+  Analytics01Icon,
+  AppIcon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  BrainIcon,
+  ConnectIcon,
+  CreditCardIcon,
+  Logout01Icon,
+  Notification01Icon,
+  Settings01Icon,
+  UserCircle02Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import { AccountSection } from "@/features/settings/components/sections/account-section";
 import { LinkedAccountsSection } from "@/features/settings/components/sections/linked-accounts-section";
 import { MemorySection } from "@/features/settings/components/sections/memory-section";
@@ -13,6 +29,7 @@ import { ProfileSection } from "@/features/settings/components/sections/profile-
 import { SubscriptionSection } from "@/features/settings/components/sections/subscription-section";
 import { UsageSection } from "@/features/settings/components/sections/usage-section";
 import { useResponsive } from "@/lib/responsive";
+import { SettingsGroup, SettingsRow } from "./settings-row";
 
 export type SettingsSection =
   | "account"
@@ -24,16 +41,16 @@ export type SettingsSection =
   | "usage"
   | "subscription";
 
-const TABS: { key: SettingsSection; label: string }[] = [
-  { key: "account", label: "Account" },
-  { key: "profile", label: "Profile" },
-  { key: "preferences", label: "Preferences" },
-  { key: "notifications", label: "Notifications" },
-  { key: "linked-accounts", label: "Linked Accounts" },
-  { key: "memory", label: "Memory" },
-  { key: "usage", label: "Usage" },
-  { key: "subscription", label: "Subscription" },
-];
+const SECTION_LABELS: Record<SettingsSection, string> = {
+  account: "Account",
+  profile: "Profile",
+  preferences: "Preferences",
+  notifications: "Notifications",
+  "linked-accounts": "Linked Accounts",
+  memory: "Memory",
+  usage: "Usage",
+  subscription: "Subscription",
+};
 
 const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   account: AccountSection,
@@ -46,89 +63,313 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   subscription: SubscriptionSection,
 };
 
-export function SettingsShell() {
-  const router = useRouter();
+interface SettingsHeaderProps {
+  title: string;
+  onBack: () => void;
+}
+
+function SettingsHeader({ title, onBack }: SettingsHeaderProps) {
   const insets = useSafeAreaInsets();
   const { spacing, fontSize } = useResponsive();
-  const [activeSection, setActiveSection] =
-    useState<SettingsSection>("account");
-  const ActiveSectionComponent = SECTION_COMPONENTS[activeSection];
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0b0c0f" }}>
-      <View
+    <View
+      style={{
+        paddingTop: insets.top + spacing.xs,
+        paddingHorizontal: spacing.md,
+        paddingBottom: spacing.sm + 2,
+        flexDirection: "row",
+        alignItems: "center",
+        borderBottomWidth: 1,
+        borderBottomColor: "rgba(255,255,255,0.06)",
+        gap: spacing.sm,
+      }}
+    >
+      <Pressable
+        onPress={onBack}
+        hitSlop={8}
+        style={({ pressed }) => ({
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: pressed
+            ? "rgba(255,255,255,0.08)"
+            : "rgba(255,255,255,0.05)",
+        })}
+      >
+        <AppIcon icon={ArrowLeft01Icon} size={18} color="#ffffff" />
+      </Pressable>
+      <Text
         style={{
-          paddingTop: insets.top + spacing.sm,
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.md,
-          borderBottomWidth: 1,
-          borderBottomColor: "rgba(255,255,255,0.08)",
-          gap: spacing.md,
+          fontSize: fontSize.lg,
+          fontWeight: "700",
+          color: "#ffffff",
+          letterSpacing: -0.3,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Pressable
-            onPress={() => router.back()}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-          </Pressable>
+        {title}
+      </Text>
+    </View>
+  );
+}
+
+interface SettingsMenuProps {
+  onSelect: (section: SettingsSection) => void;
+}
+
+function SettingsMenu({ onSelect }: SettingsMenuProps) {
+  const { user, signOut } = useAuth();
+  const router = useRouter();
+  const { spacing, fontSize } = useResponsive();
+
+  const handleSignOut = () => {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          await signOut();
+          router.replace("/login");
+        },
+      },
+    ]);
+  };
+
+  const getInitials = (name?: string) => {
+    if (!name) return "U";
+    const parts = name.trim().split(" ");
+    if (parts.length >= 2)
+      return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+    return name[0].toUpperCase();
+  };
+
+  return (
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ padding: spacing.md, gap: spacing.lg }}
+    >
+      {/* Profile hero */}
+      <Pressable
+        onPress={() => onSelect("account")}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          backgroundColor: pressed
+            ? "rgba(255,255,255,0.04)"
+            : "rgba(255,255,255,0.03)",
+          borderRadius: 16,
+          padding: spacing.md,
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.07)",
+        })}
+      >
+        <View
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            backgroundColor: "#18181b",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          {user?.picture ? (
+            <Image
+              source={{ uri: user.picture }}
+              style={{ width: 52, height: 52 }}
+            />
+          ) : (
+            <Text
+              style={{
+                color: "#00bbff",
+                fontWeight: "700",
+                fontSize: fontSize.lg,
+              }}
+            >
+              {getInitials(user?.name)}
+            </Text>
+          )}
+        </View>
+        <View style={{ flex: 1 }}>
           <Text
             style={{
-              marginLeft: spacing.md,
               fontSize: fontSize.base,
               fontWeight: "600",
+              color: "#ffffff",
+            }}
+            numberOfLines={1}
+          >
+            {user?.name || "User"}
+          </Text>
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              color: "#71717a",
+              marginTop: 1,
+            }}
+            numberOfLines={1}
+          >
+            {user?.email || ""}
+          </Text>
+          <View
+            style={{
+              marginTop: 4,
+              alignSelf: "flex-start",
+              backgroundColor: "rgba(0,187,255,0.12)",
+              borderRadius: 4,
+              paddingHorizontal: 6,
+              paddingVertical: 1,
             }}
           >
-            Settings
-          </Text>
+            <Text
+              style={{
+                fontSize: 10,
+                color: "#00bbff",
+                fontWeight: "600",
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+              }}
+            >
+              GAIA Free
+            </Text>
+          </View>
         </View>
+        <AppIcon icon={ArrowRight01Icon} size={16} color="#3a3a3c" />
+      </Pressable>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: spacing.sm }}
-        >
-          {TABS.map(({ key, label }) => {
-            const isActive = activeSection === key;
-            return (
-              <Pressable
-                key={key}
-                onPress={() => setActiveSection(key)}
-                style={{
-                  borderRadius: 999,
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.xs,
-                  backgroundColor: isActive
-                    ? "rgba(22,193,255,0.2)"
-                    : "rgba(255,255,255,0.07)",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: isActive ? "#9fe6ff" : "#c5cad2",
-                    fontWeight: isActive ? "600" : "400",
-                  }}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+      {/* General */}
+      <SettingsGroup label="General">
+        <SettingsRow
+          icon={UserCircle02Icon}
+          iconBg="rgba(0,187,255,0.15)"
+          iconColor="#00bbff"
+          title="Profile"
+          subtitle="Edit your display name and avatar"
+          showChevron
+          onPress={() => onSelect("profile")}
+        />
+        <SettingsRow
+          icon={Settings01Icon}
+          iconBg="rgba(161,161,170,0.15)"
+          iconColor="#a1a1aa"
+          title="Preferences"
+          subtitle="Theme, language, and display options"
+          showChevron
+          onPress={() => onSelect("preferences")}
+        />
+        <SettingsRow
+          icon={Notification01Icon}
+          iconBg="rgba(251,146,60,0.15)"
+          iconColor="#fb923c"
+          title="Notifications"
+          subtitle="Alerts, sounds, and delivery settings"
+          showChevron
+          isLast
+          onPress={() => onSelect("notifications")}
+        />
+      </SettingsGroup>
 
-      <View style={{ flex: 1 }}>
-        <ActiveSectionComponent />
-      </View>
-    </View>
+      {/* Intelligence */}
+      <SettingsGroup label="Intelligence">
+        <SettingsRow
+          icon={BrainIcon}
+          iconBg="rgba(168,85,247,0.15)"
+          iconColor="#a855f7"
+          title="Memory"
+          subtitle="What GAIA remembers about you"
+          showChevron
+          isLast
+          onPress={() => onSelect("memory")}
+        />
+      </SettingsGroup>
+
+      {/* Connections */}
+      <SettingsGroup label="Connections">
+        <SettingsRow
+          icon={ConnectIcon}
+          iconBg="rgba(34,197,94,0.15)"
+          iconColor="#22c55e"
+          title="Linked Accounts"
+          subtitle="Google, Slack, GitHub and more"
+          showChevron
+          isLast
+          onPress={() => onSelect("linked-accounts")}
+        />
+      </SettingsGroup>
+
+      {/* Billing */}
+      <SettingsGroup label="Billing">
+        <SettingsRow
+          icon={Analytics01Icon}
+          iconBg="rgba(99,102,241,0.15)"
+          iconColor="#6366f1"
+          title="Usage"
+          subtitle="Messages and API usage this month"
+          showChevron
+          onPress={() => onSelect("usage")}
+        />
+        <SettingsRow
+          icon={CreditCardIcon}
+          iconBg="rgba(250,204,21,0.15)"
+          iconColor="#facc15"
+          title="Subscription"
+          subtitle="Manage your plan and billing"
+          showChevron
+          isLast
+          onPress={() => onSelect("subscription")}
+        />
+      </SettingsGroup>
+
+      {/* Danger zone */}
+      <SettingsGroup>
+        <SettingsRow
+          icon={Logout01Icon}
+          title="Sign Out"
+          isDestructive
+          isLast
+          onPress={handleSignOut}
+        />
+      </SettingsGroup>
+
+      <View style={{ height: spacing.lg }} />
+    </ScrollView>
+  );
+}
+
+export function SettingsShell() {
+  const router = useRouter();
+  const [activeSection, setActiveSection] = useState<SettingsSection | null>(
+    null,
+  );
+
+  if (activeSection) {
+    const SectionComponent = SECTION_COMPONENTS[activeSection];
+    return (
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: "#0b0c0f" }}
+        edges={["bottom"]}
+      >
+        <SettingsHeader
+          title={SECTION_LABELS[activeSection]}
+          onBack={() => setActiveSection(null)}
+        />
+        <SectionComponent />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: "#0b0c0f" }}
+      edges={["bottom"]}
+    >
+      <SettingsHeader title="Settings" onBack={() => router.back()} />
+      <SettingsMenu onSelect={setActiveSection} />
+    </SafeAreaView>
   );
 }
