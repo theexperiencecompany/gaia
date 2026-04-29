@@ -17,6 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.postgresql import Base
+from app.utils.crypto.token_encryption import EncryptedText
 
 # Keep ``Text`` importable for downstream callers still referencing the
 # raw type; the encrypted columns themselves use ``EncryptedText``.

@@ -5,6 +5,7 @@ import secrets
 from typing import Optional
 
 import httpx
+from pydantic import BaseModel
 from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings

@@ -42,12 +42,27 @@ export async function startOAuthFlow(): Promise<string> {
 
     if (result.type === "success" && result.url) {
       const parsed = Linking.parse(result.url);
-      const token = parsed.queryParams?.token as string | undefined;
+      const code = parsed.queryParams?.code as string | undefined;
 
-      if (!token) {
-        throw new Error("No token received from authentication");
+      if (!code) {
+        throw new Error("No code received from authentication");
       }
-      return token;
+
+      const exchangeRes = await fetch(`${API_BASE_URL}/oauth/exchange-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+
+      if (!exchangeRes.ok) {
+        throw new Error("Failed to exchange authentication code");
+      }
+
+      const data = (await exchangeRes.json()) as { token?: string };
+      if (!data.token) {
+        throw new Error("No token in exchange response");
+      }
+      return data.token;
     } else if (result.type === "cancel") {
       throw new Error("Authentication was cancelled");
     } else {

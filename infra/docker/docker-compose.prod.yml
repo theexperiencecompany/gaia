@@ -71,10 +71,10 @@ services:
       - chroma_data:/chroma/chroma
     environment:
       - PERSIST_DIRECTORY=/chroma/chroma
-      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HOST=127.0.0.1
       - CHROMA_SERVER_PORT=8000
     ports:
-      - "8080:8000"
+      - "127.0.0.1:${CHROMADB_HOST_PORT:-8080}:8000"
     restart: on-failure
     healthcheck:
       test:
@@ -305,7 +305,7 @@ services:
     image: prometheuscommunity/postgres-exporter:v0.17.0
     container_name: postgres_exporter
     environment:
-      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in production}@postgres:5432/${POSTGRES_DB:-langgraph}?sslmode=disable"
     restart: unless-stopped
     depends_on:
       postgres:
@@ -318,6 +318,7 @@ services:
     container_name: redis_exporter
     environment:
       REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required in production}
     restart: unless-stopped
     depends_on:
       redis:
@@ -448,7 +449,7 @@ services:
     image: grafana/grafana:11.4.0
     container_name: grafana
     ports:
-      - "${GRAFANA_HOST_PORT:-4000}:3000"
+      - "127.0.0.1:${GRAFANA_HOST_PORT:-4000}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
