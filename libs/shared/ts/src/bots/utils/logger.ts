@@ -31,8 +31,6 @@ const RESERVED_LOG_KEYS = new Set([
   "error",
 ]);
 
-let _warnedUnsaltedHash = false;
-
 export function hashLogIdentifier(
   value: string | number | undefined | null,
 ): string | undefined {
@@ -42,20 +40,10 @@ export function hashLogIdentifier(
   const secret =
     process.env.BOT_LOG_HASH_SECRET ?? process.env.GAIA_BOT_API_KEY;
 
-  if (!secret) {
-    if (!_warnedUnsaltedHash) {
-      _warnedUnsaltedHash = true;
-      console.error(
-        "[security] BOT_LOG_HASH_SECRET and GAIA_BOT_API_KEY are unset — " +
-          "user identifiers are hashed without a secret key and are reversible " +
-          "by dictionary attack. Set BOT_LOG_HASH_SECRET before deploying to production.",
-      );
-    }
-    const digest = createHash("sha256").update(normalized).digest("hex");
-    return `h_${digest.slice(0, 16)}`;
-  }
+  const digest = secret
+    ? createHmac("sha256", secret).update(normalized).digest("hex")
+    : createHash("sha256").update(normalized).digest("hex");
 
-  const digest = createHmac("sha256", secret).update(normalized).digest("hex");
   return `h_${digest.slice(0, 16)}`;
 }
 
