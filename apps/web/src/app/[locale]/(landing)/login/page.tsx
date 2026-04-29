@@ -19,7 +19,7 @@ export default async function LoginPage({
 }) {
   const { return_url: returnUrl } = await searchParams;
   const safeReturnUrl =
-    returnUrl && returnUrl.startsWith("/") ? returnUrl : undefined;
+    returnUrl && /^\/(?!\/)/.test(returnUrl) ? returnUrl : undefined;
   const oauthUrl = `${apiauth.getUri()}oauth/login/workos${safeReturnUrl ? `?return_url=${encodeURIComponent(safeReturnUrl)}` : ""}`;
 
   return (

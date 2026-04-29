@@ -43,12 +43,19 @@ export function hashLogIdentifier(
     process.env.BOT_LOG_HASH_SECRET ?? process.env.GAIA_BOT_API_KEY;
 
   if (!secret) {
-    if (!_warnedUnsaltedHash && process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "[security] BOT_LOG_HASH_SECRET and GAIA_BOT_API_KEY are unset — " +
+          "user identifiers cannot be hashed safely in production. " +
+          "Set BOT_LOG_HASH_SECRET to start the bot.",
+      );
+    }
+    if (!_warnedUnsaltedHash) {
       _warnedUnsaltedHash = true;
       console.warn(
         "[security] BOT_LOG_HASH_SECRET and GAIA_BOT_API_KEY are unset — " +
           "user identifiers are hashed without a secret key and are reversible " +
-          "by dictionary attack. Set BOT_LOG_HASH_SECRET to fix this.",
+          "by dictionary attack. Set BOT_LOG_HASH_SECRET before deploying to production.",
       );
     }
     const digest = createHash("sha256").update(normalized).digest("hex");

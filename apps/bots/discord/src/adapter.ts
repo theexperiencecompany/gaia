@@ -455,9 +455,15 @@ export class DiscordAdapter extends BaseBotAdapter {
           };
         },
         async (authUrl: string) => {
-          await interaction.editReply({
-            content: `Please link your GAIA account first: ${authUrl}`,
-          });
+          try {
+            await interaction.editReply({
+              content: `Please link your GAIA account first: ${authUrl}`,
+            });
+          } catch {
+            await interaction.user
+              .send(`Please link your GAIA account to use GAIA: ${authUrl}`)
+              .catch(() => {});
+          }
           replied = true;
         },
         async (err: string) => {
@@ -494,9 +500,15 @@ export class DiscordAdapter extends BaseBotAdapter {
           };
         },
         async (authUrl: string) => {
-          await interaction.editReply({
-            content: `Please link your GAIA account first: ${authUrl}`,
-          });
+          try {
+            await interaction.editReply({
+              content: `Please link your GAIA account first: ${authUrl}`,
+            });
+          } catch {
+            await interaction.user
+              .send(`Please link your GAIA account to use GAIA: ${authUrl}`)
+              .catch(() => {});
+          }
           replied = true;
         },
         async (err: string) => {
