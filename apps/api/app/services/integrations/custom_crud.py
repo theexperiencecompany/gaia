@@ -18,8 +18,10 @@ from app.db.redis import delete_cache, delete_cache_by_pattern
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.db_oauth import MCPCredential
 from app.models.integration_models import (
-    CreateCustomIntegrationRequest,
     Integration,
+)
+from app.schemas.integrations.requests import (
+    CreateCustomIntegrationRequest,
     UpdateCustomIntegrationRequest,
 )
 from app.models.mcp_config import MCPConfig

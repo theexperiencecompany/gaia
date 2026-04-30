@@ -10,6 +10,31 @@ from app.services.vfs import VFSAccessError, get_vfs
 router = APIRouter()
 
 
+def _validate_vfs_path(path: str) -> str:
+    """Defence-in-depth path normalization at the endpoint layer.
+
+    Rejects obvious path-traversal attempts (``..`` segments, null bytes,
+    backslash separators) and absolute OS-style paths before handing the
+    string to the VFS service. The service is expected to confine access
+    to the caller's namespace, but we refuse to rely on that alone.
+    """
+    if not path:
+        raise HTTPException(status_code=400, detail="path is required")
+    if "\x00" in path:
+        raise HTTPException(status_code=400, detail="null byte in path")
+    if "\\" in path:
+        raise HTTPException(status_code=400, detail="backslash not allowed in path")
+    if path.startswith("/"):
+        # VFS paths are relative; a leading slash may mean "escape to filesystem
+        # root" in the underlying implementation. Always reject.
+        raise HTTPException(status_code=400, detail="absolute paths not allowed")
+    # Block ".." as a path segment. Allow dots inside filenames (e.g. "foo.txt").
+    segments = path.split("/")
+    if any(seg == ".." for seg in segments):
+        raise HTTPException(status_code=400, detail="'..' segments not allowed")
+    return path
+
+
 class VFSReadResponse(BaseModel):
     """Response model for VFS file reads."""
 
@@ -26,6 +51,7 @@ async def read_vfs_file(
     user: dict = Depends(get_current_user),
 ) -> VFSReadResponse:
     """Read file content from VFS for the authenticated user."""
+    path = _validate_vfs_path(path)
     user_id = str(user["user_id"])
     vfs = await get_vfs()
 
@@ -56,6 +82,7 @@ async def get_vfs_info(
     user: dict = Depends(get_current_user),
 ) -> VFSNodeResponse:
     """Get metadata for a VFS file or folder."""
+    path = _validate_vfs_path(path)
     user_id = str(user["user_id"])
     vfs = await get_vfs()
 
@@ -75,6 +102,7 @@ async def list_vfs_dir(
     user: dict = Depends(get_current_user),
 ) -> VFSListResponse:
     """List contents of a VFS directory."""
+    path = _validate_vfs_path(path)
     user_id = str(user["user_id"])
     vfs = await get_vfs()
 

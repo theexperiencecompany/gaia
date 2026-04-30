@@ -196,6 +196,8 @@ interface MessageBubbleProps
     MessageBubbleVariantProps {
   message?: string;
   showAvatar?: boolean;
+  isStreaming?: boolean;
+  spinAvatar?: boolean;
 }
 
 function MessageBubble({
@@ -203,6 +205,8 @@ function MessageBubble({
   variant = "received",
   grouped = "none",
   showAvatar = true,
+  isStreaming = false,
+  spinAvatar = false,
   className,
   children,
   ...rest
@@ -210,6 +214,25 @@ function MessageBubble({
   const isLoading = variant === "loading";
   const { spacing, iconSize, fontSize, moderateScale } = useResponsive();
   const avatarSize = moderateScale(24, 0.5);
+
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!spinAvatar) return;
+    spinAnim.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spinAvatar, spinAnim]);
+  const spinRotate = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
 
   return (
     <View
@@ -221,15 +244,21 @@ function MessageBubble({
       }}
     >
       {variant !== "sent" && showAvatar && (
-        <Avatar
-          alt="Gaia"
-          size="sm"
-          color="default"
-          style={{ width: avatarSize, height: avatarSize }}
+        <Animated.View
+          style={
+            spinAvatar ? { transform: [{ rotate: spinRotate }] } : undefined
+          }
         >
-          <Avatar.Image source={GaiaLogo} />
-          <Avatar.Fallback>G</Avatar.Fallback>
-        </Avatar>
+          <Avatar
+            alt="Gaia"
+            size="sm"
+            color="default"
+            style={{ width: avatarSize, height: avatarSize }}
+          >
+            <Avatar.Image source={GaiaLogo} />
+            <Avatar.Fallback>G</Avatar.Fallback>
+          </Avatar>
+        </Animated.View>
       )}
       {variant !== "sent" && !showAvatar && (
         <View style={{ width: avatarSize, height: avatarSize }} />
@@ -259,7 +288,10 @@ function MessageBubble({
                 <PulsingDots />
               </View>
             ) : variant === "received" ? (
-              <MarkdownRenderer content={message ?? ""} />
+              <MarkdownRenderer
+                content={message ?? ""}
+                isStreaming={isStreaming}
+              />
             ) : (
               <Text className={cn("text-base", "text-white")}>{message}</Text>
             ))}

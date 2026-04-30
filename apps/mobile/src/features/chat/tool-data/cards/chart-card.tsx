@@ -1,4 +1,3 @@
-import { Card } from "heroui-native";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Svg, {
@@ -10,6 +9,7 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import {
+  type AnyIcon,
   AppIcon,
   BarChartIcon,
   ChartLineData01Icon,
@@ -17,6 +17,7 @@ import {
   PieChart01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { ToolCardInner, ToolCardShell } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Types (matching web ChartDisplay.tsx)
@@ -53,9 +54,8 @@ export interface ChartDisplayData {
 // ---------------------------------------------------------------------------
 
 const PRIMARY = "#00bbff";
-const _BG_CARD = "#171920";
-const MUTED = "#8e8e93";
-const GRID = "rgba(255,255,255,0.08)";
+const AXIS = "#a1a1aa"; // zinc-400
+const GRID = "rgba(255,255,255,0.06)";
 const CHART_HEIGHT = 180;
 const CHART_WIDTH = 280;
 const CHART_PAD = { top: 12, right: 12, bottom: 32, left: 36 };
@@ -105,14 +105,13 @@ function BarChartView({ data }: { data: ChartData }) {
   const barW = Math.max(6, plotW / elements.length - 4);
   const step = plotW / elements.length;
 
-  const yTicks = useMemo(() => {
-    const raw = [0, 0.25, 0.5, 0.75, 1].map((t) => maxVal * t);
-    return raw;
-  }, [maxVal]);
+  const yTicks = useMemo(
+    () => [0, 0.25, 0.5, 0.75, 1].map((t) => maxVal * t),
+    [maxVal],
+  );
 
   return (
     <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
-      {/* Y-axis grid lines + labels */}
       {yTicks.map((tick) => {
         const y = CHART_PAD.top + plotH - (tick / maxVal) * plotH;
         return (
@@ -129,7 +128,7 @@ function BarChartView({ data }: { data: ChartData }) {
               x={CHART_PAD.left - 4}
               y={y + 4}
               fontSize={8}
-              fill={MUTED}
+              fill={AXIS}
               textAnchor="end"
             >
               {formatAxisValue(tick)}
@@ -138,7 +137,6 @@ function BarChartView({ data }: { data: ChartData }) {
         );
       })}
 
-      {/* Bars */}
       {elements.map((el, i) => {
         const barH = clamp((el.value / maxVal) * plotH, 0, plotH);
         const x = CHART_PAD.left + i * step + step / 2 - barW / 2;
@@ -154,13 +152,13 @@ function BarChartView({ data }: { data: ChartData }) {
               height={barH}
               rx={3}
               fill={color}
-              opacity={0.85}
+              opacity={0.9}
             />
             <SvgText
               x={x + barW / 2}
               y={CHART_PAD.top + plotH + 14}
               fontSize={8}
-              fill={MUTED}
+              fill={AXIS}
               textAnchor="middle"
             >
               {truncateLabel(el.label)}
@@ -169,7 +167,6 @@ function BarChartView({ data }: { data: ChartData }) {
         );
       })}
 
-      {/* Y-axis line */}
       <Line
         x1={CHART_PAD.left}
         y1={CHART_PAD.top}
@@ -201,9 +198,10 @@ function LineChartView({ data }: { data: ChartData }) {
   );
   const range = Math.max(maxVal - minVal, 1);
 
-  const yTicks = useMemo(() => {
-    return [0, 0.25, 0.5, 0.75, 1].map((t) => minVal + range * t);
-  }, [minVal, range]);
+  const yTicks = useMemo(
+    () => [0, 0.25, 0.5, 0.75, 1].map((t) => minVal + range * t),
+    [minVal, range],
+  );
 
   const points = useMemo(
     () =>
@@ -223,12 +221,10 @@ function LineChartView({ data }: { data: ChartData }) {
       .join(" ");
   }, [points]);
 
-  const _step = plotW / Math.max(elements.length - 1, 1);
   const labelEvery = Math.ceil(elements.length / 6);
 
   return (
     <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
-      {/* Grid + Y labels */}
       {yTicks.map((tick) => {
         const y = CHART_PAD.top + plotH - ((tick - minVal) / range) * plotH;
         return (
@@ -245,7 +241,7 @@ function LineChartView({ data }: { data: ChartData }) {
               x={CHART_PAD.left - 4}
               y={y + 4}
               fontSize={8}
-              fill={MUTED}
+              fill={AXIS}
               textAnchor="end"
             >
               {formatAxisValue(tick)}
@@ -254,7 +250,6 @@ function LineChartView({ data }: { data: ChartData }) {
         );
       })}
 
-      {/* Area fill */}
       {pathD.length > 0 && (
         <Path
           d={`${pathD} L ${CHART_PAD.left + plotW} ${CHART_PAD.top + plotH} L ${CHART_PAD.left} ${CHART_PAD.top + plotH} Z`}
@@ -263,7 +258,6 @@ function LineChartView({ data }: { data: ChartData }) {
         />
       )}
 
-      {/* Line */}
       {pathD.length > 0 && (
         <Path
           d={pathD}
@@ -275,7 +269,6 @@ function LineChartView({ data }: { data: ChartData }) {
         />
       )}
 
-      {/* Data points */}
       {points.map((p) => (
         <Circle
           key={`dot-${p.el.label}`}
@@ -286,7 +279,6 @@ function LineChartView({ data }: { data: ChartData }) {
         />
       ))}
 
-      {/* X labels */}
       {points.map((p, i) => {
         if (i % labelEvery !== 0 && i !== points.length - 1) return null;
         return (
@@ -295,7 +287,7 @@ function LineChartView({ data }: { data: ChartData }) {
             x={p.x}
             y={CHART_PAD.top + plotH + 14}
             fontSize={8}
-            fill={MUTED}
+            fill={AXIS}
             textAnchor="middle"
           >
             {truncateLabel(p.el.label)}
@@ -303,7 +295,6 @@ function LineChartView({ data }: { data: ChartData }) {
         );
       })}
 
-      {/* Y-axis */}
       <Line
         x1={CHART_PAD.left}
         y1={CHART_PAD.top}
@@ -380,12 +371,11 @@ function PieChartView({ data }: { data: ChartData }) {
             opacity={0.9}
           />
         ))}
-        {/* Center label */}
         <SvgText
           x={CX}
           y={CY - 4}
           fontSize={10}
-          fill={MUTED}
+          fill={AXIS}
           textAnchor="middle"
         >
           {elements.length}
@@ -394,14 +384,13 @@ function PieChartView({ data }: { data: ChartData }) {
           x={CX}
           y={CY + 10}
           fontSize={8}
-          fill={MUTED}
+          fill={AXIS}
           textAnchor="middle"
         >
           items
         </SvgText>
       </Svg>
 
-      {/* Legend */}
       <View className="flex-row flex-wrap gap-x-3 gap-y-1 mt-1 px-2">
         {slices.map((slice) => (
           <View
@@ -409,14 +398,14 @@ function PieChartView({ data }: { data: ChartData }) {
             className="flex-row items-center gap-1"
           >
             <View
+              className="rounded-sm"
               style={{
                 width: 8,
                 height: 8,
-                borderRadius: 2,
                 backgroundColor: slice.color,
               }}
             />
-            <Text style={{ color: MUTED, fontSize: 10 }} numberOfLines={1}>
+            <Text className="text-[10px] text-zinc-400" numberOfLines={1}>
               {truncateLabel(slice.el.label, 12)}{" "}
               {total > 0 ? `${(slice.frac * 100).toFixed(0)}%` : ""}
             </Text>
@@ -428,52 +417,52 @@ function PieChartView({ data }: { data: ChartData }) {
 }
 
 // ---------------------------------------------------------------------------
-// Data table fallback
+// Data table fallback — bg-zinc-900 container with alternating rows, no borders
 // ---------------------------------------------------------------------------
 
 function DataTable({ data }: { data: ChartData }) {
   const elements = data.elements.slice(0, 10);
   return (
-    <View className="rounded-xl overflow-hidden border border-white/8">
-      {/* Header */}
-      <View className="flex-row bg-white/5 px-3 py-2">
-        <Text style={{ color: MUTED, fontSize: 11, flex: 1 }}>
+    <View className="rounded-2xl bg-zinc-900 overflow-hidden">
+      {/* Header row */}
+      <View className="flex-row bg-zinc-800/50 px-3 py-2">
+        <Text
+          className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex-1"
+          numberOfLines={1}
+        >
           {data.x_label || "Label"}
         </Text>
         <Text
-          style={{ color: MUTED, fontSize: 11, width: 80, textAlign: "right" }}
+          className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 text-right"
+          style={{ width: 90 }}
+          numberOfLines={1}
         >
           {data.y_label || "Value"}
           {data.y_unit ? ` (${data.y_unit})` : ""}
         </Text>
       </View>
+
       {elements.map((el, i) => (
         <View
           key={`row-${el.label}-${i}`}
-          className="flex-row px-3 py-2 border-t border-white/5"
+          className={`flex-row px-3 py-2 ${i % 2 === 1 ? "bg-zinc-800/50" : ""}`}
         >
-          <Text
-            className="text-foreground flex-1"
-            style={{ fontSize: 12 }}
-            numberOfLines={1}
-          >
+          <Text className="text-xs text-zinc-200 flex-1" numberOfLines={1}>
             {el.label}
           </Text>
           <Text
-            style={{
-              color: PRIMARY,
-              fontSize: 12,
-              width: 80,
-              textAlign: "right",
-            }}
+            className="text-xs font-medium text-right"
+            style={{ color: PRIMARY, width: 90 }}
+            numberOfLines={1}
           >
             {formatAxisValue(el.value)}
           </Text>
         </View>
       ))}
+
       {data.elements.length > 10 && (
-        <View className="px-3 py-2 border-t border-white/5">
-          <Text style={{ color: MUTED, fontSize: 11, textAlign: "center" }}>
+        <View className="px-3 py-2 bg-zinc-800/50">
+          <Text className="text-[11px] text-zinc-500 text-center">
             +{data.elements.length - 10} more rows
           </Text>
         </View>
@@ -488,25 +477,24 @@ function DataTable({ data }: { data: ChartData }) {
 
 type ChartViewMode = "chart" | "table";
 
-function ChartItem({ item }: { item: ChartDisplayData }) {
+function resolveChartIcon(type: string | undefined): AnyIcon {
+  if (type === "pie") return PieChart01Icon;
+  if (type === "line") return ChartLineData01Icon;
+  if (type === "bar") return BarChartIcon;
+  return ChartRingIcon;
+}
+
+function ChartItem({
+  item,
+  isLast,
+}: {
+  item: ChartDisplayData;
+  isLast: boolean;
+}) {
   const [viewMode, setViewMode] = useState<ChartViewMode>("chart");
   const cd = item.chart_data;
 
-  const chartTypeIcon =
-    cd?.type === "pie"
-      ? PieChart01Icon
-      : cd?.type === "line"
-        ? ChartLineData01Icon
-        : BarChartIcon;
-
-  const chartTypeLabel =
-    cd?.type === "bar"
-      ? "Bar"
-      : cd?.type === "line"
-        ? "Line"
-        : cd?.type === "pie"
-          ? "Pie"
-          : "Chart";
+  const chartTypeIcon = resolveChartIcon(cd?.type);
 
   const renderChart = () => {
     if (!cd) return null;
@@ -522,64 +510,61 @@ function ChartItem({ item }: { item: ChartDisplayData }) {
     }
   };
 
+  const title = item.title ?? cd?.title ?? "Chart";
+
   return (
-    <View className="mb-3">
-      {/* Item header */}
+    <View className={isLast ? "" : "mb-3"}>
+      {/* Item header — w-7 h-7 rounded-xl bg-zinc-700 icon */}
       <View className="flex-row items-center gap-2 mb-2">
-        <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
-          <AppIcon
-            icon={chartTypeIcon}
-            size={12}
-            color={PRIMARY}
-            strokeWidth={2}
-          />
+        <View className="w-7 h-7 rounded-xl bg-zinc-700 items-center justify-center">
+          <AppIcon icon={chartTypeIcon} size={14} color={PRIMARY} />
         </View>
         <Text
-          className="text-xs font-medium text-foreground flex-1"
+          className="text-sm font-medium text-zinc-100 flex-1"
           numberOfLines={1}
         >
-          {item.title ?? cd?.title ?? "Chart"}
+          {title}
         </Text>
-        <Text style={{ color: MUTED, fontSize: 10 }}>{chartTypeLabel}</Text>
       </View>
 
-      {/* Toggle chart / table */}
+      {/* Toggle chart / table — bg-zinc-700 */}
       {cd && (
         <View className="flex-row gap-1 mb-2 self-start">
-          {(["chart", "table"] as ChartViewMode[]).map((mode) => (
-            <Pressable
-              key={mode}
-              onPress={() => setViewMode(mode)}
-              className={`rounded-full px-2.5 py-1 ${viewMode === mode ? "bg-primary/20" : "bg-white/5"}`}
-            >
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: "500",
-                  color: viewMode === mode ? PRIMARY : MUTED,
-                }}
+          {(["chart", "table"] as ChartViewMode[]).map((mode) => {
+            const active = viewMode === mode;
+            return (
+              <Pressable
+                key={mode}
+                onPress={() => setViewMode(mode)}
+                className={`rounded-full px-2.5 py-1 ${active ? "bg-zinc-700" : "bg-zinc-900"}`}
               >
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              </Text>
-            </Pressable>
-          ))}
+                <Text
+                  className={`text-[11px] font-medium ${active ? "text-zinc-100" : "text-zinc-400"}`}
+                >
+                  {mode === "chart" ? "Chart" : "Table"}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       )}
 
-      {/* Chart or table */}
+      {/* Body */}
       {cd && viewMode === "chart" ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ paddingBottom: 4 }}>{renderChart()}</View>
-        </ScrollView>
+        <ToolCardInner>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ paddingBottom: 4 }}>{renderChart()}</View>
+          </ScrollView>
+        </ToolCardInner>
       ) : cd ? (
         <DataTable data={cd} />
       ) : null}
 
-      {/* Description */}
       {!!item.description && (
         <Text
-          style={{ color: MUTED, fontSize: 11, marginTop: 6, lineHeight: 16 }}
+          className="text-[11px] text-zinc-400 mt-1.5"
           numberOfLines={3}
+          style={{ lineHeight: 16 }}
         >
           {item.description}
         </Text>
@@ -600,48 +585,41 @@ export function ChartCard({ data }: { data: unknown }) {
 
   if (validCharts.length === 0) {
     return (
-      <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-3 px-4">
-          <View className="flex-row items-center gap-2">
-            <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
-              <AppIcon
-                icon={ChartRingIcon}
-                size={12}
-                color={PRIMARY}
-                strokeWidth={2}
-              />
-            </View>
-            <Text className="text-xs text-muted">Chart data unavailable</Text>
+      <ToolCardShell>
+        <View className="flex-row items-center gap-2">
+          <View className="w-7 h-7 rounded-xl bg-zinc-700 items-center justify-center">
+            <AppIcon icon={ChartRingIcon} size={14} color={PRIMARY} />
           </View>
-        </Card.Body>
-      </Card>
+          <Text className="text-sm font-medium text-zinc-100">
+            Chart data unavailable
+          </Text>
+        </View>
+      </ToolCardShell>
     );
   }
 
-  return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Card header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
-            <AppIcon
-              icon={ChartRingIcon}
-              size={12}
-              color={PRIMARY}
-              strokeWidth={2}
-            />
-          </View>
-          <Text className="text-xs font-medium text-muted">
-            {validCharts.length === 1
-              ? "Chart"
-              : `Charts · ${validCharts.length}`}
-          </Text>
-        </View>
+  const primaryType = validCharts[0]?.chart_data?.type;
+  const headerIcon = resolveChartIcon(primaryType);
+  const headerTitle =
+    validCharts.length === 1 ? "Chart" : `Charts · ${validCharts.length}`;
 
-        {validCharts.map((item, i) => (
-          <ChartItem key={item.id ?? `chart-${i}`} item={item} />
-        ))}
-      </Card.Body>
-    </Card>
+  return (
+    <ToolCardShell>
+      {/* Card header — w-7 h-7 rounded-xl bg-zinc-700 */}
+      <View className="flex-row items-center gap-2 mb-3">
+        <View className="w-7 h-7 rounded-xl bg-zinc-700 items-center justify-center">
+          <AppIcon icon={headerIcon} size={14} color={PRIMARY} />
+        </View>
+        <Text className="text-sm font-medium text-zinc-100">{headerTitle}</Text>
+      </View>
+
+      {validCharts.map((item, i) => (
+        <ChartItem
+          key={item.id ?? `chart-${i}`}
+          item={item}
+          isLast={i === validCharts.length - 1}
+        />
+      ))}
+    </ToolCardShell>
   );
 }

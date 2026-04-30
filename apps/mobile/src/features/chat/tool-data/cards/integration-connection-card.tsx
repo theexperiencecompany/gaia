@@ -1,15 +1,15 @@
-import { useRouter } from "expo-router";
 import { useCallback, useRef } from "react";
 import { Pressable, View } from "react-native";
 import { AlertCircleIcon, ConnectIcon } from "@/components/icons";
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
-import { connectIntegration } from "@/features/integrations/api/integrations-api";
 import {
   BearerTokenSheet,
   type BearerTokenSheetRef,
 } from "@/features/integrations/components/BearerTokenSheet";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { ToolCardShell } from "../primitives";
 
 export interface IntegrationConnectionData {
   // API sends integration_id; integration_name is a fallback for older payloads
@@ -31,13 +31,21 @@ export function IntegrationConnectionCard({
 }: {
   data: IntegrationConnectionData;
 }) {
-  const router = useRouter();
   const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
+  const { integrations, connect } = useIntegrations();
 
   const integrationId = data.integration_id ?? data.integration_name ?? "";
+  const integration = integrations.find((i) => i.id === integrationId);
   const displayName =
-    data.integration_name ?? formatIntegrationName(data.integration_id);
-  const authType = data.auth_type ?? "oauth";
+    integration?.name ??
+    data.integration_name ??
+    formatIntegrationName(data.integration_id);
+  const description = integration?.description;
+  const isConnected = integration?.status === "connected";
+  const authType =
+    integration?.authType ?? data.auth_type ?? ("oauth" as const);
+  const isAvailable =
+    integration?.source === "custom" || integration?.available !== false;
 
   const icon = integrationId
     ? getToolCategoryIcon(integrationId, {
@@ -46,187 +54,83 @@ export function IntegrationConnectionCard({
       })
     : null;
 
-  const handleConnectNow = useCallback(() => {
+  const handleConnect = useCallback(() => {
     if (authType === "bearer") {
       bearerSheetRef.current?.open({
         integrationId,
         integrationName: displayName,
         iconUrl: data.icon_url,
       });
-    } else {
-      // OAuth or none — launch the browser flow
-      void connectIntegration(integrationId);
+      return;
     }
-  }, [authType, integrationId, displayName, data.icon_url]);
-
-  const handleSkip = useCallback(() => {
-    // Dismiss the card by navigating back or doing nothing.
-    // In chat context, "skip" means the user acknowledges and continues.
-  }, []);
-
-  const handleManage = useCallback(() => {
-    router.push("/(app)/(tabs)/integrations");
-  }, [router]);
+    void connect(integrationId);
+  }, [authType, integrationId, displayName, data.icon_url, connect]);
 
   return (
-    <View
-      style={{
-        marginHorizontal: 16,
-        marginVertical: 8,
-        borderRadius: 16,
-        backgroundColor: "#171920",
-        overflow: "hidden",
-      }}
-    >
-      <View style={{ padding: 16 }}>
-        {/* Header: icon + name + "Not Connected" label */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            gap: 12,
-            marginBottom: 12,
-          }}
-        >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 12,
-              backgroundColor: "rgba(255,255,255,0.05)",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            {icon ?? <AppIcon icon={ConnectIcon} size={18} color="#a1a1aa" />}
-          </View>
+    <ToolCardShell>
+      {/* Header: icon + name + status badge */}
+      <View className="flex-row items-start gap-3">
+        <View className="w-8 h-8 rounded-full bg-zinc-700 items-center justify-center shrink-0">
+          {icon ?? <AppIcon icon={ConnectIcon} size={16} color="#a1a1aa" />}
+        </View>
 
-          <View style={{ flex: 1 }}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
+        <View className="flex-1 min-w-0">
+          <View className="flex-row items-center gap-2 flex-wrap">
+            <Text
+              className="text-sm font-medium text-zinc-100"
+              numberOfLines={1}
             >
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: "600",
-                  color: "#f4f4f5",
-                }}
-              >
-                {displayName}
-              </Text>
-              <View
-                style={{
-                  borderRadius: 999,
-                  backgroundColor: "rgba(234,179,8,0.1)",
-                  paddingHorizontal: 8,
-                  paddingVertical: 2,
-                }}
-              >
-                <Text style={{ fontSize: 11, color: "#eab308" }}>
+              {displayName}
+            </Text>
+            {isConnected ? (
+              <View className="rounded-full bg-green-500/15 px-2 py-0.5">
+                <Text className="text-[11px] font-medium text-green-500">
+                  Connected
+                </Text>
+              </View>
+            ) : (
+              <View className="rounded-full bg-amber-500/15 px-2 py-0.5">
+                <Text className="text-[11px] font-medium text-amber-500">
                   Not Connected
                 </Text>
               </View>
-            </View>
-            <Text style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
-              This requires {displayName} to be connected
-            </Text>
+            )}
           </View>
-        </View>
-
-        {/* Warning message */}
-        {data.message && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "flex-start",
-              gap: 8,
-              borderRadius: 12,
-              backgroundColor: "rgba(234,179,8,0.05)",
-              borderWidth: 1,
-              borderColor: "rgba(234,179,8,0.15)",
-              padding: 12,
-              marginBottom: 12,
-            }}
-          >
-            <AppIcon icon={AlertCircleIcon} size={14} color="#eab308" />
+          {description ? (
             <Text
-              style={{
-                fontSize: 12,
-                color: "rgba(234,179,8,0.9)",
-                flex: 1,
-                lineHeight: 18,
-              }}
+              className="text-xs font-light text-zinc-400 mt-0.5"
+              numberOfLines={2}
             >
-              {data.message}
+              {description}
             </Text>
-          </View>
-        )}
-
-        {/* Action buttons */}
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {/* Connect Now */}
-          <Pressable
-            onPress={handleConnectNow}
-            style={({ pressed }) => ({
-              flex: 1,
-              alignItems: "center",
-              justifyContent: "center",
-              paddingVertical: 10,
-              borderRadius: 10,
-              backgroundColor: pressed
-                ? "rgba(0,170,230,0.9)"
-                : "rgba(0,187,255,0.85)",
-            })}
-          >
-            <Text style={{ fontSize: 13, fontWeight: "600", color: "#fff" }}>
-              Connect Now
-            </Text>
-          </Pressable>
-
-          {/* Manage */}
-          <Pressable
-            onPress={handleManage}
-            style={({ pressed }) => ({
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: 10,
-              backgroundColor: pressed
-                ? "rgba(255,255,255,0.1)"
-                : "rgba(255,255,255,0.06)",
-            })}
-          >
-            <Text style={{ fontSize: 13, fontWeight: "500", color: "#a1a1aa" }}>
-              Manage
-            </Text>
-          </Pressable>
-
-          {/* Skip */}
-          <Pressable
-            onPress={handleSkip}
-            style={({ pressed }) => ({
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: 10,
-              backgroundColor: pressed
-                ? "rgba(255,255,255,0.06)"
-                : "transparent",
-            })}
-          >
-            <Text style={{ fontSize: 13, fontWeight: "400", color: "#71717a" }}>
-              Skip
-            </Text>
-          </Pressable>
+          ) : null}
         </View>
       </View>
 
-      {/* BearerTokenSheet mounted here so it has access to the card context */}
+      {/* Warning message + connect button */}
+      {!isConnected && isAvailable ? (
+        <View className="mt-3 gap-2">
+          {data.message ? (
+            <View className="flex-row items-start gap-2 rounded-2xl bg-amber-500/10 p-3">
+              <AppIcon icon={AlertCircleIcon} size={14} color="#f59e0b" />
+              <Text className="text-xs text-amber-500 flex-1 leading-[18px]">
+                {data.message}
+              </Text>
+            </View>
+          ) : null}
+
+          <Pressable
+            onPress={handleConnect}
+            className="rounded-2xl bg-brand active:bg-brand/90 py-3 items-center justify-center"
+          >
+            <Text className="text-sm font-semibold text-brand-foreground">
+              Connect
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <BearerTokenSheet ref={bearerSheetRef} />
-    </View>
+    </ToolCardShell>
   );
 }

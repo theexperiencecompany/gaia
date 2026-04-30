@@ -1,8 +1,11 @@
+import base64
+import hashlib
+import hmac
 import secrets
 from typing import Optional
-from urllib.parse import quote
 
 import httpx
+from pydantic import BaseModel
 from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
@@ -26,6 +29,110 @@ from workos import WorkOSClient
 
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
+
+# One-time OAuth code exchange. We no longer put the sealed session token in
+# the deep-link query string (it ends up in logs / breadcrumbs / Referer
+# headers). Instead, after a successful WorkOS callback we:
+#   1. Generate a short opaque ``code`` value.
+#   2. Store ``code -> sealed_session`` in Redis with a 5-minute TTL.
+#   3. Redirect to ``deep_link?code=<code>``.
+#   4. The client POSTs the code to ``/oauth/exchange-code`` over TLS and
+#      gets the sealed session in the response body.
+_OAUTH_CODE_EXCHANGE_PREFIX = "oauth_code_exchange"
+_OAUTH_CODE_EXCHANGE_TTL = 300  # 5 minutes
+# CSRF binding for the desktop/mobile auth flow.
+_OAUTH_STATE_PREFIX = "oauth_state_binding"
+_OAUTH_STATE_TTL = 600  # 10 minutes
+
+
+async def _store_oauth_exchange_code(
+    token: str, code_challenge: Optional[str] = None
+) -> str:
+    """Store a sealed session in Redis and return a short opaque code.
+
+    If ``code_challenge`` is set (H11 PKCE), it is stored alongside the
+    token so /oauth/exchange-code can verify the client's ``code_verifier``.
+    """
+    code = secrets.token_urlsafe(32)
+    # Pack as ``<token>|<challenge>`` so a single GET yields both halves.
+    packed = f"{token}|{code_challenge}" if code_challenge else token
+    await redis_cache.client.setex(
+        f"{_OAUTH_CODE_EXCHANGE_PREFIX}:{code}", _OAUTH_CODE_EXCHANGE_TTL, packed
+    )
+    return code
+
+
+async def _consume_oauth_exchange_code(
+    code: str, code_verifier: Optional[str] = None
+) -> Optional[str]:
+    """Atomically consume an exchange code and return the stored token.
+
+    When the code was stored with a PKCE challenge, ``code_verifier`` must
+    hash to that challenge or the exchange is rejected.
+    """
+    key = f"{_OAUTH_CODE_EXCHANGE_PREFIX}:{code}"
+    packed = await redis_cache.client.get(key)
+    if not packed:
+        return None
+    # One-time use — delete after read.
+    await redis_cache.client.delete(key)
+    token, _, stored_challenge = packed.partition("|")
+    if stored_challenge:
+        if not code_verifier:
+            return None
+        computed = _sha256_b64url(code_verifier)
+        if not hmac.compare_digest(computed, stored_challenge):
+            return None
+    return token
+
+
+async def _store_oauth_state(
+    state: str, flow: str, code_challenge: Optional[str] = None
+) -> None:
+    """Bind a CSRF state to the flow that produced it.
+
+    When ``code_challenge`` is provided (H11 PKCE), it is stored alongside
+    the flow and retrieved at exchange-code time so we can verify the
+    client presents a matching ``code_verifier``.
+    """
+    payload = flow
+    if code_challenge:
+        payload = f"{flow}|{code_challenge}"
+    await redis_cache.client.setex(
+        f"{_OAUTH_STATE_PREFIX}:{state}", _OAUTH_STATE_TTL, payload
+    )
+
+
+async def _consume_oauth_state(state: str, expected_flow: str) -> bool:
+    """Validate + consume the state; returns True iff it matches the flow.
+
+    Also side-effects the stored code_challenge onto the exchange-code
+    entry so /oauth/exchange-code can enforce PKCE.
+    """
+    if not state:
+        return False
+    key = f"{_OAUTH_STATE_PREFIX}:{state}"
+    stored = await redis_cache.client.get(key)
+    if not stored:
+        return False
+    await redis_cache.client.delete(key)
+    flow_part, _, challenge_part = stored.partition("|")
+    if flow_part != expected_flow:
+        return False
+    # Tuck the challenge into a side channel that the callback picks up
+    # before minting the exchange code. Keyed by state since it's unique.
+    if challenge_part:
+        await redis_cache.client.setex(
+            f"oauth_pkce_challenge:{state}", _OAUTH_STATE_TTL, challenge_part
+        )
+    return True
+
+
+def _sha256_b64url(data: str) -> str:
+    """SHA-256(data), base64url, no padding — PKCE S256 transform."""
+    digest = hashlib.sha256(data.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
 
 workos = WorkOSClient(
     api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
@@ -106,15 +213,23 @@ async def _get_and_delete_mobile_redirect(state: str) -> str | None:
 
 
 @router.get("/login/workos/mobile")
-async def login_workos_mobile(redirect_uri: Optional[str] = None):
+async def login_workos_mobile(
+    redirect_uri: Optional[str] = None,
+    code_challenge: Optional[str] = None,
+):
     """
     Start WorkOS SSO flow for mobile apps (Expo).
 
     Args:
         redirect_uri: The deep link URI to redirect back to (from Linking.createURL)
+        code_challenge: PKCE S256 challenge (H11). The client generates a
+            random ``code_verifier``, sends ``SHA256(code_verifier)`` here,
+            and presents the verifier again at ``/oauth/exchange-code``.
     """
-    # Generate a unique state to track this auth flow
+    # Generate a unique state to track this auth flow. Doubles as both the
+    # CSRF binding and the Redis key for the redirect URI.
     state = secrets.token_urlsafe(32)
+    await _store_oauth_state(state, OAUTH_FLOW_MOBILE, code_challenge=code_challenge)
 
     # Store the mobile app's redirect URI
     # Default to gaiamobile:// scheme if not provided
@@ -141,7 +256,8 @@ async def workos_mobile_callback(
 ) -> RedirectResponse:
     """
     Handle WorkOS SSO callback for mobile (Expo) apps.
-    Returns a deep link redirect to the mobile app with the auth token.
+    Returns a deep link redirect to the mobile app carrying a one-time
+    exchange code (never the sealed session itself — see C5).
     """
     # Get the stored redirect URI for this auth flow
     mobile_redirect: str | None = None
@@ -156,6 +272,13 @@ async def workos_mobile_callback(
 
     log.set(oauth_flow_type=OAUTH_FLOW_MOBILE)
     log.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
+
+    # CSRF binding: state must have been issued by our own /login endpoint
+    # for this flow. Without this, an attacker can hand a victim a crafted
+    # callback URL and complete login as the attacker's account.
+    if not await _consume_oauth_state(state or "", OAUTH_FLOW_MOBILE):
+        log.warning("Mobile OAuth state missing/invalid — rejecting callback")
+        return RedirectResponse(url=f"{mobile_redirect}?error=invalid_state")
 
     try:
         if not code:
@@ -193,7 +316,11 @@ async def workos_mobile_callback(
         log.set(user_id=str(user_id), is_new_user=is_new_user)
 
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(url=f"{mobile_redirect}?token={quote(token, safe='')}")
+        challenge = await redis_cache.client.get(f"oauth_pkce_challenge:{state}")
+        if challenge:
+            await redis_cache.client.delete(f"oauth_pkce_challenge:{state}")
+        exchange_code = await _store_oauth_exchange_code(token, challenge)
+        return RedirectResponse(url=f"{mobile_redirect}?code={exchange_code}")
 
     except HTTPException as e:
         log.error(f"HTTP error during WorkOS mobile auth: {e.detail}")
@@ -207,17 +334,28 @@ async def workos_mobile_callback(
 
 
 @router.get("/login/workos/desktop")
-async def login_workos_desktop():
+async def login_workos_desktop(code_challenge: Optional[str] = None):
     """
     Start the WorkOS SSO authentication flow for desktop app.
     Uses gaia:// protocol for callback redirect.
 
-    Returns:
-        RedirectResponse: Redirects the user to the WorkOS SSO authorization URL
+    Args:
+        code_challenge: Optional PKCE S256 challenge (H11). The desktop app
+            generates a random ``code_verifier``, sends
+            ``SHA256(code_verifier)`` here, and presents the verifier
+            again at ``/oauth/exchange-code`` to defeat on-device URL
+            handler interception.
     """
+    # CSRF-binding state: without this, any attacker can craft a
+    # gaia://auth/callback URL and trick the desktop app into completing
+    # login as the attacker's account.
+    state = secrets.token_urlsafe(32)
+    await _store_oauth_state(state, OAUTH_FLOW_DESKTOP, code_challenge=code_challenge)
+
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_DESKTOP_REDIRECT_URI,
+        state=state,
     )
 
     return RedirectResponse(url=authorization_url)
@@ -226,18 +364,19 @@ async def login_workos_desktop():
 @router.get("/workos/desktop/callback")
 async def workos_desktop_callback(
     code: Optional[str] = None,
+    state: Optional[str] = None,
 ) -> RedirectResponse:
     """
     Handle the WorkOS SSO callback for desktop app.
-    Redirects to gaia:// protocol with auth token.
-
-    Args:
-        code: Authorization code from WorkOS
-
-    Returns:
-        RedirectResponse to gaia:// deep link with token
+    Redirects to gaia:// protocol with a short-lived one-time code that the
+    desktop app exchanges for the sealed session via POST /oauth/exchange-code.
     """
     log.set(oauth_flow_type=OAUTH_FLOW_DESKTOP)
+
+    if not await _consume_oauth_state(state or "", OAUTH_FLOW_DESKTOP):
+        log.warning("Desktop OAuth state missing/invalid — rejecting callback")
+        return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=invalid_state")
+
     try:
         # Validate code parameter
         if not code:
@@ -274,11 +413,12 @@ async def workos_desktop_callback(
         user_id, is_new_user = await store_user_info(name, email, picture_url)
         log.set(user_id=str(user_id), is_new_user=is_new_user)
 
-        # Return token via deep link - desktop app will handle storage
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(
-            url=f"{DESKTOP_DEEP_LINK}?token={quote(token, safe='')}"
-        )
+        challenge = await redis_cache.client.get(f"oauth_pkce_challenge:{state}")
+        if challenge:
+            await redis_cache.client.delete(f"oauth_pkce_challenge:{state}")
+        exchange_code = await _store_oauth_exchange_code(token, challenge)
+        return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?code={exchange_code}")
 
     except HTTPException as e:
         log.error(f"HTTP error during WorkOS desktop auth: {e.detail}")
@@ -287,6 +427,37 @@ async def workos_desktop_callback(
     except Exception as e:
         log.error(f"Unexpected error during WorkOS desktop callback: {str(e)}")
         return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=server_error")
+
+
+class ExchangeCodeRequest(BaseModel):
+    """Body for the one-time code -> session exchange."""
+
+    code: str
+    # RFC 7636 PKCE (H11). Optional for backwards-compat, but when the
+    # login endpoint received a code_challenge this field becomes required.
+    code_verifier: Optional[str] = None
+
+
+@router.post("/oauth/exchange-code")
+async def exchange_oauth_code(body: ExchangeCodeRequest) -> JSONResponse:
+    """Exchange a short-lived one-time ``code`` for the sealed WorkOS session.
+
+    Replaces the old pattern of handing the sealed session back in the deep
+    link query string, which leaked into reverse-proxy logs, APM
+    breadcrumbs, and Referer headers. The client POSTs the code over TLS
+    and receives the session in the JSON response body instead.
+
+    If the original ``/login/workos/...`` call supplied ``code_challenge``
+    (PKCE), the client MUST also supply the matching ``code_verifier``
+    here. This defeats on-device URL-handler interception: even if a
+    malicious app on the user's device receives the ``gaia://`` redirect
+    and gets the one-time code, it cannot present the verifier that only
+    the legitimate app generated.
+    """
+    token = await _consume_oauth_exchange_code(body.code, body.code_verifier)
+    if not token:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    return JSONResponse(content={"token": token})
 
 
 @router.get("/workos/callback")

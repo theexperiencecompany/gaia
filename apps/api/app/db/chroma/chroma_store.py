@@ -2,13 +2,74 @@
 
 This module provides a persistent, scalable alternative to InMemoryStore
 using ChromaDB for vector storage and retrieval.
+
+Security note (H10): we serialize LangGraph state with pickle because
+state can contain arbitrary BaseMessage subclasses and user Pydantic
+models. To prevent a Chroma-level compromise from becoming RCE via
+``pickle.loads``, every stored document is prefixed with an HMAC
+computed with ``CHROMA_STATE_MAC_KEY``. On read, documents that fail
+MAC verification are dropped without being unpickled.
 """
 
 import asyncio
-import pickle  # nosec B403 - Used for internal trusted data serialization only
+import hashlib
+import hmac
+import pickle  # nosec B403 - MAC-authenticated internal serialization only
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
+
+from app.config.settings import settings
+
+
+_MAC_PREFIX = "mac1:"
+_MAC_SEP = ":"
+
+
+def _mac_key() -> bytes:
+    """Return the MAC key derived from the app's secret configuration.
+
+    Fall back to ``WORKOS_COOKIE_PASSWORD`` (always set in prod) so operators
+    don't need to provision an additional secret for the pickle MAC; the
+    threat model is "Chroma-level compromise cannot execute arbitrary
+    pickle", not "app-secret leak must not authenticate MACs".
+    """
+    raw = (
+        getattr(settings, "CHROMA_STATE_MAC_KEY", None)
+        or getattr(settings, "WORKOS_COOKIE_PASSWORD", None)
+        or "dev-only-chroma-mac-key"
+    )
+    return raw.encode("utf-8") if isinstance(raw, str) else raw
+
+
+def _sign_pickle(payload: bytes) -> str:
+    """Return ``mac1:<hex>:<latin1-pickle>`` for storage as a Chroma document."""
+    tag = hmac.new(_mac_key(), payload, hashlib.sha256).hexdigest()
+    return f"{_MAC_PREFIX}{tag}{_MAC_SEP}" + payload.decode("latin1")
+
+
+def _verify_and_unpickle(document: str) -> Any:
+    """Verify the MAC on a document and return the unpickled value.
+
+    Raises ``ValueError`` if the document is unsigned or has a bad MAC.
+    Legacy unsigned documents are rejected — they can only appear after a
+    database compromise or after this change rolled out on a fresh store.
+    """
+    if not document or not document.startswith(_MAC_PREFIX):
+        raise ValueError("chroma_store: document is unsigned (legacy or tampered)")
+    remainder = document[len(_MAC_PREFIX) :]
+    try:
+        tag, payload_str = remainder.split(_MAC_SEP, 1)
+    except ValueError as exc:
+        raise ValueError("chroma_store: malformed MAC envelope") from exc
+    payload = payload_str.encode("latin1")
+    expected = hmac.new(_mac_key(), payload, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(tag, expected):
+        raise ValueError("chroma_store: MAC verification failed — refusing to unpickle")
+    # Only reached after MAC verification — payload is known to have been
+    # produced by this app.
+    return pickle.loads(payload)  # nosec B301 - MAC-verified above
+
 
 from chromadb.api import AsyncClientAPI
 from shared.py.wide_events import log
@@ -252,8 +313,12 @@ class ChromaStore(BaseStore):
             metadata = result["metadatas"][0] if result["metadatas"] else {}
             document = result["documents"][0] if result["documents"] else None
 
-            # Deserialize value from document (stored as pickle base64)
-            value = pickle.loads(document.encode("latin1")) if document else {}  # nosec B301 - Internal trusted data only
+            # Deserialize value from document (MAC-authenticated pickle).
+            try:
+                value = _verify_and_unpickle(document) if document else {}
+            except ValueError as mac_err:
+                log.error(f"Dropping item {doc_id}: {mac_err}")
+                return None
 
             created_at_str = metadata.get("created_at")
             updated_at_str = metadata.get("updated_at")
@@ -304,8 +369,8 @@ class ChromaStore(BaseStore):
                 if not document:
                     continue
                 try:
-                    value = pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
-                except Exception as e:
+                    value = _verify_and_unpickle(document)
+                except (ValueError, Exception) as e:
                     log.debug(f"Failed to deserialize document at index {idx}: {e}")
                     continue
                 if not isinstance(value, dict):
@@ -431,11 +496,13 @@ class ChromaStore(BaseStore):
                                 if documents and documents[0]
                                 else None
                             )
-                            value = (
-                                pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
-                                if document
-                                else {}
-                            )
+                            try:
+                                value = (
+                                    _verify_and_unpickle(document) if document else {}
+                                )
+                            except ValueError as mac_err:
+                                log.error(f"Dropping search result: {mac_err}")
+                                continue
 
                             created_at_str = metadata.get("created_at")
                             updated_at_str = metadata.get("updated_at")
@@ -536,8 +603,9 @@ class ChromaStore(BaseStore):
         if isinstance(op.value, dict) and "tool_hash" in op.value:
             metadata["tool_hash"] = op.value["tool_hash"]
 
-        # Serialize value to document
-        document = pickle.dumps(op.value).decode("latin1")
+        # Serialize value to document. HMAC-prefix so that a later
+        # pickle.loads cannot be triggered on attacker-planted bytes (H10).
+        document = _sign_pickle(pickle.dumps(op.value))
 
         # Extract embedding from indexed fields
         embedding = None

@@ -1,4 +1,12 @@
-"""SQLAlchemy models for OAuth tokens and MCP credentials."""
+"""SQLAlchemy models for OAuth tokens and MCP credentials.
+
+Token material (access_token, refresh_token, serialized token_data,
+client_registration) is encrypted at rest using the ``EncryptedText``
+type decorator — see ``app/utils/crypto/token_encryption.py``. This
+prevents a Postgres breach (SQLi, leaked backup, compromised replica)
+from yielding live, impersonation-grade OAuth credentials for every
+user's mailbox and calendar (C2).
+"""
 
 from datetime import datetime
 from enum import Enum
@@ -9,6 +17,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.postgresql import Base
+from app.utils.crypto.token_encryption import EncryptedText
+
+# Keep ``Text`` importable for downstream callers still referencing the
+# raw type; the encrypted columns themselves use ``EncryptedText``.
+_ = Text
 
 
 class MCPAuthType(str, Enum):
@@ -35,10 +48,12 @@ class OAuthToken(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
-    access_token: Mapped[str] = mapped_column(Text, nullable=False)
-    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_token: Mapped[str] = mapped_column(EncryptedText, nullable=False)
+    refresh_token: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     token_data: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="JSON serialized token data"
+        EncryptedText,
+        nullable=False,
+        comment="JSON serialized token data (encrypted at rest)",
     )
     scopes: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Space-separated OAuth scopes"
@@ -69,10 +84,12 @@ class MCPCredential(Base):
         nullable=False,
         default=MCPCredentialStatus.PENDING,
     )
-    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_token: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    refresh_token: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    client_registration: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_registration: Mapped[str | None] = mapped_column(
+        EncryptedText, nullable=True
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -4,6 +4,8 @@ Service module for file upload functionality with vector search capabilities.
 
 import asyncio
 import io
+import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -21,6 +23,22 @@ from app.utils.embedding_utils import search_documents_by_similarity
 from app.utils.file_utils import generate_file_summary
 from fastapi import HTTPException, UploadFile
 from langchain_core.documents import Document
+
+_UNSAFE_FILENAME_CHARS = re.compile(r"[\x00-\x1f\x7f/\\]")
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Return a filesystem-safe version of ``filename``.
+
+    Strips any directory components (``..``, ``/``, ``\\``), removes control
+    characters, collapses whitespace, and falls back to ``file`` if empty.
+    """
+    base = os.path.basename(filename or "")
+    cleaned = _UNSAFE_FILENAME_CHARS.sub("", base).strip()
+    cleaned = re.sub(r"\s+", "_", cleaned)
+    if not cleaned or set(cleaned) == {"."}:
+        return "file"
+    return cleaned[:255]
 
 
 @CacheInvalidator(
@@ -56,12 +74,13 @@ async def upload_file_service(
         )
 
     file_id = str(uuid.uuid4())
-    public_id = f"file_{file_id}_{file.filename.replace(' ', '_')}"
+    safe_filename = _sanitize_filename(file.filename)
+    public_id = f"file_{file_id}_{safe_filename}"
     log.set(
         service="file_service",
         operation="upload",
         user_id=user_id,
-        filename=file.filename,
+        filename=safe_filename,
         content_type=file.content_type,
         file_id=file_id,
     )
@@ -87,7 +106,7 @@ async def upload_file_service(
         summary_task = generate_file_summary(
             file_content=content,
             content_type=file.content_type,
-            filename=file.filename,
+            filename=safe_filename,
         )
 
         upload_result, summary_result = await asyncio.gather(
@@ -107,7 +126,7 @@ async def upload_file_service(
         current_time = datetime.now(timezone.utc)
         file_metadata = {
             "file_id": file_id,
-            "filename": file.filename,
+            "filename": safe_filename,
             "type": file.content_type,
             "size": file_size,
             "url": file_url,
@@ -127,7 +146,7 @@ async def upload_file_service(
             _store_in_chromadb(
                 file_id=file_id,
                 user_id=user_id,
-                filename=file.filename,
+                filename=safe_filename,
                 content_type=file.content_type,
                 conversation_id=conversation_id,
                 file_description=summary_result,
@@ -137,7 +156,7 @@ async def upload_file_service(
         return {
             "file_id": file_id,
             "url": file_url,
-            "filename": file.filename,
+            "filename": safe_filename,
             "description": summary,
             "type": file.content_type,
         }
@@ -145,8 +164,9 @@ async def upload_file_service(
     except HTTPException:
         raise
     except Exception as e:
+        # Do not reflect internal exception text to the client (L7).
         log.error(f"Failed to upload file: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload file") from e
 
 
 def _process_file_summary(
@@ -362,10 +382,11 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
                         }
                     )
 
-            # Batch lookup missing files from database
+            # Batch lookup missing files from database. Filter by user_id to
+            # prevent cross-user file metadata leaking into the chat context.
             if missing_ids:
                 db_files = await files_collection.find(
-                    {"file_id": {"$in": missing_ids}}
+                    {"file_id": {"$in": missing_ids}, "user_id": user_id}
                 ).to_list(length=None)
 
                 for file_data in db_files:

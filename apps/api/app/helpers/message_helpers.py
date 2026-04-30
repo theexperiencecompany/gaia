@@ -72,9 +72,8 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
         )
         if results and (memories := getattr(results, "memories", None)):
             log.info(f"Added {len(memories)} memories to context")
-            return "\n\nBased on our previous conversations:\n" + "\n".join(
-                f"- {mem.content}" for mem in memories
-            )
+            items = "\n".join(f"- {mem.content}" for mem in memories)
+            return f"\n\nBased on our previous conversations:\n{items}"
     except Exception as e:
         log.warning(f"Error retrieving memories: {e}")
 
@@ -95,9 +94,8 @@ async def _get_gaia_knowledge_section(query: str) -> str:
         results = await gaia_knowledge_service.search_knowledge(query=query, limit=5)
         if results:
             log.info(f"Added {len(results)} knowledge items to context")
-            return "\n\nAbout Gaia (your identity and capabilities):\n" + "\n".join(
-                f"- {result.content}" for result in results
-            )
+            items = "\n".join(f"- {result.content}" for result in results)
+            return f"\n\nAbout Gaia (your identity and capabilities):\n{items}"
     except Exception as e:
         log.warning(f"Error retrieving GAIA knowledge: {e}")
 

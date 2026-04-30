@@ -9,6 +9,7 @@ import {
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
+import { ToolCardShell } from "../primitives";
 
 export type ConnectionStatus = "connected" | "disconnected" | "error";
 
@@ -26,24 +27,31 @@ function formatIntegrationName(id?: string): string {
   return id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-const STATUS_CONFIG: Record<
-  ConnectionStatus,
-  { label: string; color: string; bgColor: string }
-> = {
+interface StatusBadge {
+  label: string;
+  badgeClass: string;
+  textClass: string;
+  iconColor: string;
+}
+
+const STATUS_BADGE: Record<ConnectionStatus, StatusBadge> = {
   connected: {
     label: "Connected",
-    color: "#34c759",
-    bgColor: "rgba(52,199,89,0.1)",
+    badgeClass: "bg-green-500/15",
+    textClass: "text-green-500",
+    iconColor: "#22c55e",
   },
   disconnected: {
     label: "Disconnected",
-    color: "#8e8e93",
-    bgColor: "rgba(142,142,147,0.1)",
+    badgeClass: "bg-red-500/15",
+    textClass: "text-red-500",
+    iconColor: "#ef4444",
   },
   error: {
     label: "Connection Error",
-    color: "#ef4444",
-    bgColor: "rgba(239,68,68,0.1)",
+    badgeClass: "bg-red-500/15",
+    textClass: "text-red-500",
+    iconColor: "#ef4444",
   },
 };
 
@@ -53,13 +61,14 @@ export function ConnectionStatusCard({ data }: { data: ConnectionStatusData }) {
   const integrationId = data.integration_id ?? data.integration_name ?? "";
   const displayName =
     data.integration_name ?? formatIntegrationName(data.integration_id);
-  const statusConfig = STATUS_CONFIG[data.status];
+  const badge = STATUS_BADGE[data.status];
 
   const icon = integrationId
-    ? getToolCategoryIcon(integrationId, {
-        size: 20,
-        showBackground: false,
-      })
+    ? getToolCategoryIcon(
+        integrationId,
+        { size: 20, showBackground: false },
+        data.icon_url,
+      )
     : null;
 
   const handleManage = useCallback(() => {
@@ -67,159 +76,69 @@ export function ConnectionStatusCard({ data }: { data: ConnectionStatusData }) {
   }, [router]);
 
   return (
-    <View
-      style={{
-        marginHorizontal: 16,
-        marginVertical: 8,
-        borderRadius: 16,
-        backgroundColor: "#171920",
-        overflow: "hidden",
-      }}
-    >
-      <View style={{ padding: 16 }}>
-        {/* Header: icon + name + status badge */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-start",
-            gap: 12,
-            marginBottom: data.message || data.error_detail ? 12 : 0,
-          }}
-        >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 12,
-              backgroundColor: "rgba(255,255,255,0.05)",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            {icon ?? <AppIcon icon={ConnectIcon} size={18} color="#a1a1aa" />}
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 14,
-                  fontWeight: "600",
-                  color: "#f4f4f5",
-                }}
-              >
-                {displayName}
-              </Text>
-              {/* Status badge */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  borderRadius: 999,
-                  backgroundColor: statusConfig.bgColor,
-                  paddingHorizontal: 8,
-                  paddingVertical: 2,
-                }}
-              >
-                {data.status === "connected" ? (
-                  <AppIcon
-                    icon={CheckmarkCircle02Icon}
-                    size={10}
-                    color={statusConfig.color}
-                  />
-                ) : data.status === "error" ? (
-                  <AppIcon
-                    icon={AlertCircleIcon}
-                    size={10}
-                    color={statusConfig.color}
-                  />
-                ) : (
-                  <View
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: statusConfig.color,
-                    }}
-                  />
-                )}
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: statusConfig.color,
-                    fontWeight: "500",
-                  }}
-                >
-                  {statusConfig.label}
-                </Text>
-              </View>
-            </View>
-            {data.message && (
-              <Text style={{ fontSize: 12, color: "#71717a", marginTop: 2 }}>
-                {data.message}
-              </Text>
-            )}
-          </View>
+    <ToolCardShell>
+      {/* Header: icon + name + status badge */}
+      <View className="flex-row items-start gap-3">
+        <View className="w-8 h-8 rounded-full bg-zinc-700 items-center justify-center shrink-0">
+          {icon ?? <AppIcon icon={ConnectIcon} size={16} color="#a1a1aa" />}
         </View>
 
-        {/* Error detail block */}
-        {data.error_detail && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "flex-start",
-              gap: 8,
-              borderRadius: 12,
-              backgroundColor: "rgba(239,68,68,0.06)",
-              borderWidth: 1,
-              borderColor: "rgba(239,68,68,0.15)",
-              padding: 12,
-              marginBottom: 12,
-            }}
-          >
-            <AppIcon icon={AlertCircleIcon} size={14} color="#ef4444" />
+        <View className="flex-1 min-w-0">
+          <View className="flex-row items-center gap-2 flex-wrap">
             <Text
-              style={{
-                fontSize: 12,
-                color: "rgba(239,68,68,0.9)",
-                flex: 1,
-                lineHeight: 18,
-              }}
+              className="text-sm font-medium text-zinc-100"
+              numberOfLines={1}
             >
-              {data.error_detail}
+              {displayName}
             </Text>
+            <View
+              className={`flex-row items-center gap-1 rounded-full ${badge.badgeClass} px-2 py-0.5`}
+            >
+              {data.status === "connected" ? (
+                <AppIcon
+                  icon={CheckmarkCircle02Icon}
+                  size={10}
+                  color={badge.iconColor}
+                />
+              ) : (
+                <AppIcon
+                  icon={AlertCircleIcon}
+                  size={10}
+                  color={badge.iconColor}
+                />
+              )}
+              <Text className={`text-[11px] font-medium ${badge.textClass}`}>
+                {badge.label}
+              </Text>
+            </View>
           </View>
-        )}
-
-        {/* Manage button */}
-        <Pressable
-          onPress={handleManage}
-          style={({ pressed }) => ({
-            alignItems: "center",
-            justifyContent: "center",
-            paddingVertical: 10,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.1)",
-            backgroundColor: pressed
-              ? "rgba(255,255,255,0.08)"
-              : "rgba(255,255,255,0.04)",
-          })}
-        >
-          <Text style={{ fontSize: 13, fontWeight: "500", color: "#a1a1aa" }}>
-            Manage Integrations
-          </Text>
-        </Pressable>
+          {data.message ? (
+            <Text className="mt-0.5 text-xs text-zinc-400" numberOfLines={3}>
+              {data.message}
+            </Text>
+          ) : null}
+        </View>
       </View>
-    </View>
+
+      {/* Error detail block */}
+      {data.error_detail ? (
+        <View className="mt-3 flex-row items-start gap-2 rounded-2xl bg-red-500/10 p-3">
+          <AppIcon icon={AlertCircleIcon} size={14} color="#ef4444" />
+          <Text className="flex-1 text-xs text-red-500 leading-[18px]">
+            {data.error_detail}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Manage button */}
+      <Pressable
+        onPress={handleManage}
+        className="mt-3 items-center justify-center rounded-2xl bg-zinc-700 active:bg-zinc-700/70 py-3"
+      >
+        <Text className="text-sm font-medium text-zinc-200">
+          Manage Integrations
+        </Text>
+      </Pressable>
+    </ToolCardShell>
   );
 }

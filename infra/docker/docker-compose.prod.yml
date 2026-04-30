@@ -71,10 +71,10 @@ services:
       - chroma_data:/chroma/chroma
     environment:
       - PERSIST_DIRECTORY=/chroma/chroma
-      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HOST=127.0.0.1
       - CHROMA_SERVER_PORT=8000
     ports:
-      - "8080:8000"
+      - "127.0.0.1:${CHROMADB_HOST_PORT:-8080}:8000"
     restart: on-failure
     healthcheck:
       test:
@@ -90,11 +90,13 @@ services:
     image: postgres:18-alpine
     container_name: postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres # pragma: allowlist secret
-      POSTGRES_DB: langgraph
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in production}
+      POSTGRES_DB: ${POSTGRES_DB:-langgraph}
+    # Bind to loopback only — Postgres must not be reachable from the public
+    # internet. Put a VPN / bastion in front if remote access is needed.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: on-failure
@@ -112,12 +114,13 @@ services:
     container_name: redis
     command: >
       redis-server
+      --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD is required in production}"
       --maxmemory 2gb
       --maxmemory-policy allkeys-lru
       --save 60 1000
       --appendonly yes
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     restart: always
     volumes:
       - redis_data:/data
@@ -133,10 +136,13 @@ services:
   rabbitmq:
     image: rabbitmq:4.1.8-management
     container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:?RABBITMQ_DEFAULT_USER is required in production}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:?RABBITMQ_DEFAULT_PASS is required in production}
     ports:
-      - "5672:5672" # AMQP protocol
-      - "15672:15672" # Management UI
-      - "15692:15692" # Prometheus metrics
+      - "127.0.0.1:5672:5672" # AMQP protocol (loopback only)
+      - "127.0.0.1:15672:15672" # Management UI (loopback only)
+      - "127.0.0.1:15692:15692" # Prometheus metrics (loopback only)
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
@@ -299,7 +305,7 @@ services:
     image: prometheuscommunity/postgres-exporter:v0.17.0
     container_name: postgres_exporter
     environment:
-      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in production}@postgres:5432/${POSTGRES_DB:-langgraph}?sslmode=disable"
     restart: unless-stopped
     depends_on:
       postgres:
@@ -312,6 +318,7 @@ services:
     container_name: redis_exporter
     environment:
       REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required in production}
     restart: unless-stopped
     depends_on:
       redis:
@@ -442,14 +449,12 @@ services:
     image: grafana/grafana:11.4.0
     container_name: grafana
     ports:
-      - "${GRAFANA_HOST_PORT:-4000}:3000"
+      - "127.0.0.1:${GRAFANA_HOST_PORT:-4000}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
     environment:
-      # IMPORTANT: Set GRAFANA_ADMIN_PASSWORD in your .env file before deploying.
-      # The default "changeme" is intentionally obvious — change it for production.
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required in production}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       # Set GRAFANA_ROOT_URL if Grafana is behind a reverse proxy (e.g. https://grafana.example.com)

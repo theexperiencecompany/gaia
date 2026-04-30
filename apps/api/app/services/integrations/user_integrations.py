@@ -3,8 +3,11 @@
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Literal, Optional
 
+import httpx
+
 from app.agents.tools.core.registry import get_tool_registry
 from shared.py.wide_events import log
+from app.config.token_repository import token_repository
 from app.constants.cache import ONE_DAY_TTL
 from app.db.mongodb.collections import user_integrations_collection
 from app.db.utils import serialize_document
@@ -16,6 +19,87 @@ from app.models.integration_models import (
     UserIntegrationsListResponse,
 )
 from app.services.integrations.marketplace import get_integration_details
+
+# Provider-specific OAuth token revocation endpoints. Keyed by the canonical
+# integration_id so we can POST the refresh/access token on disconnect; a
+# local row deletion without upstream revoke leaves live tokens loose on the
+# provider side (H7). Absent entries mean "we don't know the endpoint —
+# proceed with local-only delete but log a warning".
+_OAUTH_REVOKE_ENDPOINTS: dict[str, str] = {
+    "google": "https://oauth2.googleapis.com/revoke",
+    "google_calendar": "https://oauth2.googleapis.com/revoke",
+    "gmail": "https://oauth2.googleapis.com/revoke",
+    "google_docs": "https://oauth2.googleapis.com/revoke",
+    "google_drive": "https://oauth2.googleapis.com/revoke",
+    "youtube": "https://oauth2.googleapis.com/revoke",
+    "slack": "https://slack.com/api/auth.revoke",
+    "github": "https://api.github.com/applications/{client_id}/grant",
+    "notion": "https://api.notion.com/v1/oauth/revoke",
+}
+
+_REVOKE_TIMEOUT_SECONDS = 5.0
+
+
+async def _revoke_upstream(user_id: str, integration_id: str) -> None:
+    """Best-effort revoke of the OAuth token at the provider.
+
+    Failures are logged (wide event) but not raised: an upstream revoke
+    failing must not block the user from disconnecting locally. A copy of
+    the token that has already leaked from our DB remains live until the
+    user revokes at the provider — this at least kills the happy-path copy.
+    """
+    endpoint = _OAUTH_REVOKE_ENDPOINTS.get(integration_id)
+    if not endpoint:
+        return
+
+    try:
+        token = await token_repository.get_token(
+            user_id=user_id, provider=integration_id, renew_if_expired=False
+        )
+    except Exception as exc:
+        log.info(
+            "oauth_revoke_skipped_no_token",
+            user_id=user_id,
+            integration_id=integration_id,
+            reason=str(exc),
+        )
+        return
+
+    access_token = token.get("access_token")
+    refresh_token = token.get("refresh_token")
+    if not access_token and not refresh_token:
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=_REVOKE_TIMEOUT_SECONDS) as client:
+            # Prefer refresh_token (revokes the whole grant for Google/Notion);
+            # fall back to access_token if that's all we have.
+            revoke_value = refresh_token or access_token
+            response = await client.post(
+                endpoint,
+                data={"token": revoke_value},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+        if response.status_code >= 400:
+            log.warning(
+                "oauth_revoke_upstream_error",
+                user_id=user_id,
+                integration_id=integration_id,
+                status_code=response.status_code,
+            )
+        else:
+            log.info(
+                "oauth_revoke_upstream_ok",
+                user_id=user_id,
+                integration_id=integration_id,
+            )
+    except Exception as exc:
+        log.warning(
+            "oauth_revoke_upstream_failed",
+            user_id=user_id,
+            integration_id=integration_id,
+            error=str(exc),
+        )
 
 
 async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
@@ -109,10 +193,19 @@ async def add_user_integration(
 
 @CacheInvalidator(key_patterns=["tools:user:{user_id}:*", "tool_namespaces:{user_id}"])
 async def remove_user_integration(user_id: str, integration_id: str) -> bool:
-    """Remove an integration from user's workspace."""
+    """Remove an integration from user's workspace.
+
+    Also attempts to revoke the OAuth token at the provider so the grant
+    dies even if a copy of the token has already leaked from our DB.
+    Upstream revoke failure is logged and does not block local deletion.
+    """
     log.set(
         integration={"provider": integration_id, "action": "remove_user_integration"}
     )
+
+    # Best-effort upstream revoke first; if it fails we still disconnect.
+    await _revoke_upstream(user_id, integration_id)
+
     result = await user_integrations_collection.delete_one(
         {
             "user_id": user_id,

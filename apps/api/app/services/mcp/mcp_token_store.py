@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from shared.py.wide_events import log
-from app.config.settings import settings
 from app.constants.cache import (
     OAUTH_DISCOVERY_PREFIX,
     OAUTH_DISCOVERY_TTL,
@@ -22,7 +21,6 @@ from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.utils.mcp_oauth_utils import introspect_token as do_introspect
-from cryptography.fernet import Fernet
 from sqlalchemy import select
 
 
@@ -31,30 +29,6 @@ class MCPTokenStore:
 
     def __init__(self, user_id: str):
         self.user_id = user_id
-        self._cipher: Optional[Fernet] = None
-
-    def _get_cipher(self) -> Fernet:
-        """Get Fernet cipher from Infisical secret (lazy init)."""
-        if self._cipher is None:
-            key = getattr(settings, "MCP_ENCRYPTION_KEY", None)
-            if not key:
-                raise ValueError("MCP_ENCRYPTION_KEY not configured in Infisical")
-            try:
-                # Fernet expects a URL-safe base64-encoded 32-byte key
-                self._cipher = Fernet(key.encode())
-            except Exception as e:
-                raise ValueError(
-                    f"MCP_ENCRYPTION_KEY is not a valid Fernet key (must be 32 url-safe base64-encoded bytes): {e}"
-                )
-        return self._cipher
-
-    def _encrypt(self, data: str) -> str:
-        """Encrypt sensitive data."""
-        return self._get_cipher().encrypt(data.encode()).decode()
-
-    def _decrypt(self, data: str) -> str:
-        """Decrypt sensitive data."""
-        return self._get_cipher().decrypt(data.encode()).decode()
 
     async def get_credential(self, integration_id: str) -> Optional[MCPCredential]:
         """Get stored credential for integration."""
@@ -76,7 +50,7 @@ class MCPTokenStore:
             and cred.status == MCPCredentialStatus.CONNECTED
             and cred.auth_type == MCPAuthType.BEARER
         ):
-            return self._decrypt(cred.access_token)
+            return cred.access_token
         return None
 
     async def get_oauth_token(self, integration_id: str) -> Optional[str]:
@@ -105,14 +79,14 @@ class MCPTokenStore:
                 log.warning(f"OAuth token expired for {integration_id}")
                 return None
 
-        log.debug(f"[{integration_id}] Returning decrypted OAuth token")
-        return self._decrypt(cred.access_token)
+        log.debug(f"[{integration_id}] Returning OAuth token")
+        return cred.access_token
 
     async def get_refresh_token(self, integration_id: str) -> Optional[str]:
         """Get decrypted refresh token."""
         cred = await self.get_credential(integration_id)
         if cred and cred.refresh_token:
-            return self._decrypt(cred.refresh_token)
+            return cred.refresh_token
         return None
 
     async def is_token_expiring_soon(
@@ -153,8 +127,7 @@ class MCPTokenStore:
         return False
 
     async def store_bearer_token(self, integration_id: str, token: str) -> None:
-        """Store encrypted bearer token."""
-        encrypted = self._encrypt(token)
+        """Store bearer token (encrypted at rest via EncryptedText column type)."""
         # Use naive UTC datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE column
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -169,7 +142,7 @@ class MCPTokenStore:
             cred: Optional[MCPCredential] = result.scalar_one_or_none()
 
             if cred:
-                cred.access_token = encrypted
+                cred.access_token = token
                 cred.status = MCPCredentialStatus.CONNECTED
                 cred.connected_at = now
                 cred.error_message = None
@@ -179,7 +152,7 @@ class MCPTokenStore:
                     user_id=self.user_id,
                     integration_id=integration_id,
                     auth_type=MCPAuthType.BEARER,
-                    access_token=encrypted,
+                    access_token=token,
                     status=MCPCredentialStatus.CONNECTED,
                     connected_at=now,
                 )
@@ -194,9 +167,7 @@ class MCPTokenStore:
         refresh_token: Optional[str] = None,
         expires_at: Optional[datetime] = None,
     ) -> None:
-        """Store encrypted OAuth tokens."""
-        encrypted_access = self._encrypt(access_token)
-        encrypted_refresh = self._encrypt(refresh_token) if refresh_token else None
+        """Store OAuth tokens (encrypted at rest via EncryptedText column type)."""
         # Use naive UTC datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE column
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         # Also strip timezone from expires_at if provided
@@ -213,8 +184,8 @@ class MCPTokenStore:
             cred: Optional[MCPCredential] = result.scalar_one_or_none()
 
             if cred:
-                cred.access_token = encrypted_access
-                cred.refresh_token = encrypted_refresh
+                cred.access_token = access_token
+                cred.refresh_token = refresh_token
                 cred.token_expires_at = naive_expires_at
                 # Set status to connected so get_oauth_token() can retrieve it
                 cred.status = MCPCredentialStatus.CONNECTED
@@ -225,8 +196,8 @@ class MCPTokenStore:
                     user_id=self.user_id,
                     integration_id=integration_id,
                     auth_type=MCPAuthType.OAUTH,
-                    access_token=encrypted_access,
-                    refresh_token=encrypted_refresh,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
                     token_expires_at=naive_expires_at,
                     status=MCPCredentialStatus.CONNECTED,  # Required for get_oauth_token() to work
                     connected_at=now,

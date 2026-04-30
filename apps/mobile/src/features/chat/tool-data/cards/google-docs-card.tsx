@@ -1,9 +1,12 @@
-import { Button, Card, Chip } from "heroui-native";
 import { useState } from "react";
 import { Image, Linking, View } from "react-native";
-import { SquareArrowUpRight02Icon, ToolsIcon } from "@/components/icons";
-import { AppIcon } from "@/components/icons/app-icon";
+import {
+  AppIcon,
+  SquareArrowUpRight02Icon,
+  ToolsIcon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { ToolCardHeader, ToolCardInner, ToolCardShell } from "../primitives";
 
 const GOOGLE_DOCS_LOGO_URI =
   "https://upload.wikimedia.org/wikipedia/commons/thumb/0/01/Google_Docs_logo_%282020%29.svg/512px-Google_Docs_logo_%282020%29.svg.png";
@@ -62,7 +65,7 @@ function GoogleDocsIcon() {
   return (
     <Image
       source={{ uri: GOOGLE_DOCS_LOGO_URI }}
-      style={{ width: 26, height: 26, resizeMode: "contain" }}
+      style={{ width: 22, height: 22, resizeMode: "contain" }}
       onError={() => setErrored(true)}
     />
   );
@@ -87,65 +90,57 @@ export function GoogleDocsCard({ data }: { data: GoogleDocsData }) {
   };
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Optional message header */}
-        {!!data.message && (
-          <Text className="text-xs text-muted mb-2">{data.message}</Text>
-        )}
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={ToolsIcon}
+        iconColor="#4285F4"
+        title="Google Docs"
+        subtitle={data.message || undefined}
+      />
 
-        {/* Document row */}
+      <ToolCardInner onPress={url ? handleOpen : undefined}>
         <View className="flex-row items-center gap-3">
           {/* Google Docs icon */}
-          <View className="w-10 h-10 rounded-xl bg-white/5 items-center justify-center flex-shrink-0">
+          <View className="w-10 h-10 rounded-xl bg-zinc-800 items-center justify-center flex-shrink-0">
             <GoogleDocsIcon />
           </View>
 
           {/* Document info */}
           <View className="flex-1 min-w-0">
             <Text
-              className="text-sm font-medium text-foreground"
+              className="text-sm font-medium text-zinc-200"
               numberOfLines={2}
             >
               {title}
             </Text>
-            <View className="flex-row items-center gap-2 mt-0.5 flex-wrap">
+            <View className="flex-row items-center gap-2 mt-1 flex-wrap">
               {doc.modified_time && (
-                <Text className="text-[11px] text-muted">
+                <Text className="text-[11px] text-zinc-500">
                   Modified: {formatDate(doc.modified_time)}
                 </Text>
               )}
               {!!actionLabel && (
-                <Chip
-                  size="sm"
-                  variant="primary"
-                  color="accent"
-                  animation="disable-all"
-                >
-                  <Chip.Label>{actionLabel}</Chip.Label>
-                </Chip>
+                <View className="px-2 py-0.5 rounded-full bg-[#00bbff]/10">
+                  <Text className="text-[10px] font-medium text-[#00bbff]">
+                    {actionLabel}
+                  </Text>
+                </View>
               )}
             </View>
           </View>
 
-          {/* Open button */}
+          {/* Open affordance */}
           {!!url && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onPress={handleOpen}
-              className="flex-shrink-0 rounded-xl"
-            >
+            <View className="flex-shrink-0">
               <AppIcon
                 icon={SquareArrowUpRight02Icon}
-                size={14}
+                size={16}
                 color="#00bbff"
               />
-              <Button.Label className="text-[#00bbff]">Open</Button.Label>
-            </Button>
+            </View>
           )}
         </View>
-      </Card.Body>
-    </Card>
+      </ToolCardInner>
+    </ToolCardShell>
   );
 }

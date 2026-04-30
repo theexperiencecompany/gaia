@@ -32,6 +32,10 @@ class VoiceAgentSettings(BaseAppSettings):
     # Deepgram STT (used by livekit-plugins-deepgram)
     DEEPGRAM_API_KEY: Optional[str] = None
 
+    # Shared secret used to fetch agent JWTs from the backend (C7).
+    # Must match AGENT_SECRET in the API settings.
+    AGENT_SECRET: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="ignore",

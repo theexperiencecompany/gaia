@@ -1,49 +1,41 @@
 """Integration tests for MCP token storage and retrieval.
 
 Tests the MCPTokenStore class with mocked PostgreSQL sessions and Redis
-to verify encrypt/decrypt roundtrips, token storage, expiry checks,
-and credential deletion.
+to verify token storage, expiry checks, and credential deletion.
+Encryption is handled transparently by the EncryptedText SQLAlchemy
+TypeDecorator; in tests using mocked sessions, values are plaintext.
 """
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from cryptography.fernet import Fernet
 
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.services.mcp.mcp_token_store import MCPTokenStore
 
 
-def _fernet_key() -> str:
-    """Generate a valid Fernet key for testing."""
-    return Fernet.generate_key().decode()
-
-
 @pytest.fixture
-def fernet_key():
-    return _fernet_key()
-
-
-@pytest.fixture
-def token_store(fernet_key):
-    """Create a MCPTokenStore with a valid Fernet key injected directly."""
-    store = MCPTokenStore("test-user")
-    # Inject cipher directly to bypass settings lookup
-    store._cipher = Fernet(fernet_key.encode())
-    return store
+def token_store():
+    """Create an MCPTokenStore for the test user."""
+    return MCPTokenStore("test-user")
 
 
 def _make_bearer_credential(
     token_store: MCPTokenStore, integration_id: str, plaintext: str
 ) -> MCPCredential:
-    """Build an MCPCredential as store_bearer_token would, using the same cipher."""
+    """Build an MCPCredential simulating what the DB would return after decryption.
+
+    In production, EncryptedText.process_result_value decrypts the stored
+    ciphertext before Python sees the value.  In tests with mocked sessions the
+    TypeDecorator never runs, so we set access_token to the plaintext directly.
+    """
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     return MCPCredential(
         user_id=token_store.user_id,
         integration_id=integration_id,
         auth_type=MCPAuthType.BEARER,
-        access_token=token_store._encrypt(plaintext),
+        access_token=plaintext,
         status=MCPCredentialStatus.CONNECTED,
         connected_at=now,
     )
@@ -59,26 +51,16 @@ def _make_db_session_context(mock_session: AsyncMock) -> AsyncMock:
 
 @pytest.mark.integration
 class TestMCPTokenManagement:
-    """Test token store encrypt/decrypt and credential lifecycle."""
-
-    def test_encrypt_decrypt_roundtrip(self, token_store):
-        """Encrypting then decrypting should return the original plaintext."""
-        original = "my-secret-token-abc123"
-        encrypted = token_store._encrypt(original)
-        assert encrypted != original
-        decrypted = token_store._decrypt(encrypted)
-        assert decrypted == original
-
-    def test_different_encryptions_produce_different_ciphertext(self, token_store):
-        """Fernet produces unique ciphertext on each encryption call."""
-        token = "same-token"
-        enc1 = token_store._encrypt(token)
-        enc2 = token_store._encrypt(token)
-        assert enc1 != enc2  # Fernet uses a timestamp nonce
+    """Test token store credential lifecycle."""
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
     async def test_store_and_get_bearer_token(self, mock_get_session, token_store):
-        """store_bearer_token writes an encrypted credential that is non-plaintext."""
+        """store_bearer_token writes a credential; access_token is plaintext in mock context.
+
+        Encryption happens at the SQLAlchemy TypeDecorator level (EncryptedText).
+        The mocked session never invokes process_bind_param, so the Python-side
+        object retains the original plaintext value.
+        """
         mock_session = AsyncMock()
         mock_result = MagicMock()
         # No existing credential on store path
@@ -95,8 +77,8 @@ class TestMCPTokenManagement:
         added_obj = mock_session.add.call_args[0][0]
         assert added_obj.user_id == "test-user"
         assert added_obj.integration_id == "integration-1"
-        # The stored token should be encrypted (not plaintext)
-        assert added_obj.access_token != "bearer-secret-123"
+        # In mock context the TypeDecorator never runs — value stays plaintext.
+        assert added_obj.access_token == "bearer-secret-123"
 
     # ------------------------------------------------------------------
     # get_bearer_token retrieval tests — the path the old test never called
@@ -106,12 +88,11 @@ class TestMCPTokenManagement:
     async def test_get_bearer_token_returns_stored_value(
         self, mock_get_session, token_store
     ):
-        """get_bearer_token must decrypt and return the same value that was stored.
+        """get_bearer_token returns the plaintext token from the credential.
 
-        This is the retrieval path that the previous test_store_and_get_bearer_token
-        never exercised.  The mock DB returns a CONNECTED BEARER credential whose
-        access_token was encrypted with the same cipher, and the method must
-        return the original plaintext.
+        In production EncryptedText decrypts the DB value before Python sees
+        it.  In tests the mock session skips that step, so the Python-side
+        access_token is already the plaintext we set here.
         """
         plaintext = "bearer-secret-abc"
         stored_cred = _make_bearer_credential(token_store, "int-get-bearer", plaintext)
@@ -125,20 +106,14 @@ class TestMCPTokenManagement:
         result = await token_store.get_bearer_token("int-get-bearer")
 
         assert result == plaintext, (
-            f"get_bearer_token should decrypt to '{plaintext}', got {result!r}"
+            f"get_bearer_token should return '{plaintext}', got {result!r}"
         )
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
     async def test_get_bearer_token_returns_none_for_unknown_key(
         self, mock_get_session, token_store
     ):
-        """get_bearer_token must return None when no credential exists for the key.
-
-        The production code calls get_credential() → None, then the guard
-        `if cred and cred.access_token and ...` short-circuits to return None.
-        This test ensures that branch is reached and produces None rather than
-        raising an exception.
-        """
+        """get_bearer_token must return None when no credential exists for the key."""
         mock_session = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none = MagicMock(return_value=None)
@@ -155,20 +130,10 @@ class TestMCPTokenManagement:
     async def test_token_expiry_bearer_disconnected_returns_none(
         self, mock_get_session, token_store
     ):
-        """Bearer tokens whose credential has a non-CONNECTED status are not returned.
-
-        MCPTokenStore.get_bearer_token() checks ``cred.status ==
-        MCPCredentialStatus.CONNECTED``.  A credential with status ERROR
-        (or any other non-CONNECTED value) must be treated as absent so that
-        a stale / revoked token is never forwarded to an MCP server.
-
-        This models the 'expired-by-status' path: the credential exists in the
-        DB but is no longer valid because the connection errored or the token
-        was explicitly invalidated.
-        """
-        plaintext = "stale-bearer-token"
-        stale_cred = _make_bearer_credential(token_store, "int-stale", plaintext)
-        # Simulate a token that has been revoked / connection failed
+        """Bearer tokens whose credential has a non-CONNECTED status are not returned."""
+        stale_cred = _make_bearer_credential(
+            token_store, "int-stale", "stale-bearer-token"
+        )
         stale_cred.status = MCPCredentialStatus.ERROR
 
         mock_session = AsyncMock()
@@ -186,7 +151,11 @@ class TestMCPTokenManagement:
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
     async def test_store_oauth_tokens(self, mock_get_session, token_store):
-        """store_oauth_tokens should encrypt both access and refresh tokens."""
+        """store_oauth_tokens writes access and refresh tokens.
+
+        In mock context (TypeDecorator never runs) the Python-side objects
+        retain plaintext values; real storage would transparently encrypt them.
+        """
         mock_session = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none = MagicMock(return_value=None)
@@ -204,11 +173,9 @@ class TestMCPTokenManagement:
         )
 
         added_obj = mock_session.add.call_args[0][0]
-        assert added_obj.access_token != "access-abc"
-        assert added_obj.refresh_token != "refresh-xyz"
-        # Decrypt to verify
-        assert token_store._decrypt(added_obj.access_token) == "access-abc"
-        assert token_store._decrypt(added_obj.refresh_token) == "refresh-xyz"
+        # In mock context values are plaintext (TypeDecorator not invoked).
+        assert added_obj.access_token == "access-abc"
+        assert added_obj.refresh_token == "refresh-xyz"
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
     async def test_get_oauth_token_returns_none_when_expired(
@@ -216,7 +183,7 @@ class TestMCPTokenManagement:
     ):
         """get_oauth_token should return None if the token has expired."""
         expired_cred = MagicMock()
-        expired_cred.access_token = token_store._encrypt("expired-token")
+        expired_cred.access_token = "expired-token"
         expired_cred.status = MCPCredentialStatus.CONNECTED
         expired_cred.auth_type = MCPAuthType.OAUTH
         # Set expired time (1 hour ago), naive UTC as stored in DB
@@ -325,9 +292,6 @@ class TestMCPTokenManagement:
     )
     async def test_verify_oauth_state_legacy_format(self, mock_get_delete, token_store):
         """verify_oauth_state should handle legacy plain-string state (no JSON dict)."""
-        # Simulate a cache entry that is a raw string (legacy format before dict
-        # storage was introduced).  json.loads on a bare state string would raise
-        # JSONDecodeError, triggering the backwards-compat fallback path.
         legacy_state = "legacy-state-token-xyz"
         mock_get_delete.return_value = legacy_state
 
@@ -365,9 +329,9 @@ class TestGetBearerToken:
     async def test_returns_decrypted_token_for_active_bearer(
         self, mock_get_session, token_store
     ):
-        """get_bearer_token should decrypt and return the token for a healthy BEARER credential."""
+        """get_bearer_token returns the token value for a healthy BEARER credential."""
         bearer_cred = MagicMock()
-        bearer_cred.access_token = token_store._encrypt("my-bearer-secret")
+        bearer_cred.access_token = "my-bearer-secret"
         bearer_cred.status = MCPCredentialStatus.CONNECTED
         bearer_cred.auth_type = MCPAuthType.BEARER
 
@@ -391,7 +355,7 @@ class TestGetBearerToken:
     ):
         """get_bearer_token should return None when the stored credential is OAuth, not BEARER."""
         oauth_cred = MagicMock()
-        oauth_cred.access_token = token_store._encrypt("oauth-access-token")
+        oauth_cred.access_token = "oauth-access-token"
         oauth_cred.status = MCPCredentialStatus.CONNECTED
         oauth_cred.auth_type = MCPAuthType.OAUTH
 
@@ -415,7 +379,7 @@ class TestGetBearerToken:
     ):
         """get_bearer_token should return None when the credential status is not CONNECTED."""
         inactive_cred = MagicMock()
-        inactive_cred.access_token = token_store._encrypt("my-bearer-secret")
+        inactive_cred.access_token = "my-bearer-secret"
         inactive_cred.status = MCPCredentialStatus.ERROR
         inactive_cred.auth_type = MCPAuthType.BEARER
 

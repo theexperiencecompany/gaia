@@ -2,12 +2,6 @@
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from shared.py.wide_events import log
-from app.models.integration_models import (
-    CreateCustomIntegrationRequest as RequestModel,
-)
-from app.models.integration_models import (
-    UpdateCustomIntegrationRequest as UpdateCustomIntegrationRequestModel,
-)
 from app.schemas.integrations.requests import (
     CreateCustomIntegrationRequest,
     UpdateCustomIntegrationRequest,
@@ -49,16 +43,7 @@ async def create_custom_mcp_integration(
         mcp_client = await get_mcp_client(user_id=user_id)
         integration, conn_result = await create_and_connect_custom_integration(
             user_id,
-            RequestModel(
-                name=request.name,
-                description=request.description,
-                category=request.category,
-                server_url=request.server_url,
-                requires_auth=request.requires_auth,
-                auth_type=request.auth_type,
-                is_public=request.is_public,
-                bearer_token=request.bearer_token,
-            ),
+            request,
             mcp_client,
         )
 
@@ -98,14 +83,7 @@ async def update_custom_mcp_integration(
         updated = await update_custom_integration(
             user_id,
             integration_id,
-            UpdateCustomIntegrationRequestModel(
-                name=request.name,
-                description=request.description,
-                server_url=request.server_url,
-                requires_auth=request.requires_auth,
-                auth_type=request.auth_type,
-                is_public=request.is_public,
-            ),
+            request,
         )
         if not updated:
             raise HTTPException(

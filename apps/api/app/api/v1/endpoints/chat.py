@@ -18,7 +18,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
-from shared.py.wide_events import ChatContext, log
+from app.config.settings import settings
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
@@ -26,6 +26,7 @@ from app.models.message_models import MessageRequestWithHistory
 from app.services.chat_service import run_chat_stream_background
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from shared.py.wide_events import ChatContext, log
 
 # Set to hold references to background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task] = set()
@@ -146,7 +147,7 @@ async def chat_stream_endpoint(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
-            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Origin": settings.FRONTEND_URL,
             "X-Stream-Id": stream_id,  # Send stream ID for cancellation
         },
     )

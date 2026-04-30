@@ -193,10 +193,11 @@ services:
     environment:
       ME_CONFIG_MONGODB_SERVER: mongo
       ME_CONFIG_MONGODB_PORT: 27017
-      ME_CONFIG_BASICAUTH_USERNAME: admin
-      ME_CONFIG_BASICAUTH_PASSWORD: password # pragma: allowlist secret
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USERNAME:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:?MONGO_EXPRESS_PASSWORD is required}
+    # Bind to loopback — mongo-express is a dev UI, never expose publicly.
     ports:
-      - "${MONGO_EXPRESS_HOST_PORT:-8083}:8081"
+      - "127.0.0.1:${MONGO_EXPRESS_HOST_PORT:-8083}:8081"
     depends_on:
       mongo:
         condition: service_healthy

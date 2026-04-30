@@ -1,5 +1,4 @@
-import { Avatar, Card } from "heroui-native";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import {
   AppIcon,
   Call02Icon,
@@ -7,6 +6,11 @@ import {
   Mail01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardInner,
+  ToolCardShell,
+} from "../primitives";
 
 export interface ContactData {
   name?: string;
@@ -24,30 +28,26 @@ function getInitials(name?: string): string {
   return name[0].toUpperCase();
 }
 
-function ContactItem({ contact }: { contact: ContactData }) {
-  const initials = getInitials(contact.name);
-
+function ContactAvatar({ name }: { name?: string }) {
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        padding: 12,
-        gap: 10,
-      }}
+    <View className="h-9 w-9 rounded-full bg-zinc-700 items-center justify-center">
+      <Text className="text-zinc-100 text-xs font-semibold">
+        {getInitials(name)}
+      </Text>
+    </View>
+  );
+}
+
+function ContactRow({ contact }: { contact: ContactData }) {
+  return (
+    <Pressable
+      className="flex-row items-center gap-3 py-2"
+      android_ripple={{ color: "rgba(255,255,255,0.05)" }}
     >
-      <Avatar
-        alt={contact.name ?? initials}
-        size="sm"
-        className="bg-[#00bbff]/20"
-      >
-        <Avatar.Fallback className="text-[#00bbff] text-xs font-semibold">
-          {initials}
-        </Avatar.Fallback>
-      </Avatar>
+      <ContactAvatar name={contact.name} />
       <View className="flex-1 min-w-0">
         <Text
-          style={{ fontSize: 14, color: "#e4e4e7", fontWeight: "500" }}
+          className="text-sm font-medium text-zinc-100"
           numberOfLines={1}
         >
           {contact.name || contact.email || "Unknown"}
@@ -55,9 +55,9 @@ function ContactItem({ contact }: { contact: ContactData }) {
         <View className="flex-row flex-wrap gap-x-3 mt-0.5">
           {contact.email && (
             <View className="flex-row items-center gap-1">
-              <AppIcon icon={Mail01Icon} size={11} color="#8e8e93" />
+              <AppIcon icon={Mail01Icon} size={11} color="#a1a1aa" />
               <Text
-                style={{ fontSize: 12, color: "#8e8e93" }}
+                className="text-xs text-zinc-400"
                 numberOfLines={1}
               >
                 {contact.email}
@@ -66,48 +66,38 @@ function ContactItem({ contact }: { contact: ContactData }) {
           )}
           {contact.phone && (
             <View className="flex-row items-center gap-1">
-              <AppIcon icon={Call02Icon} size={11} color="#8e8e93" />
-              <Text style={{ fontSize: 12, color: "#8e8e93" }}>
+              <AppIcon icon={Call02Icon} size={11} color="#a1a1aa" />
+              <Text className="text-xs text-zinc-400" numberOfLines={1}>
                 {contact.phone}
               </Text>
             </View>
           )}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
 export function ContactListCard({ data }: { data: ContactData[] }) {
+  if (!data || data.length === 0) return null;
+
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        <View className="flex-row items-center gap-2 mb-3">
-          <AppIcon icon={Contact01Icon} size={14} color="#8e8e93" />
-          <Text className="text-xs text-[#8e8e93]">Contacts</Text>
-          <View className="rounded-full bg-white/10 px-2 py-0.5 ml-auto">
-            <Text className="text-[10px] text-[#8e8e93]">
-              {data.length} {data.length === 1 ? "contact" : "contacts"}
-            </Text>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Contact01Icon}
+        title="Contacts"
+        count={data.length}
+      />
+      <ToolCardInner>
+        {data.map((contact, index) => (
+          <View
+            key={contact.email || contact.resource_name || String(index)}
+            className={index > 0 ? "mt-1" : ""}
+          >
+            <ContactRow contact={contact} />
           </View>
-        </View>
-        <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
-          {data.map((contact, index) => (
-            <View key={contact.email || contact.resource_name || String(index)}>
-              {index > 0 && (
-                <View
-                  style={{
-                    height: 1,
-                    backgroundColor: "rgba(255,255,255,0.07)",
-                    marginVertical: 4,
-                  }}
-                />
-              )}
-              <ContactItem contact={contact} />
-            </View>
-          ))}
-        </View>
-      </Card.Body>
-    </Card>
+        ))}
+      </ToolCardInner>
+    </ToolCardShell>
   );
 }

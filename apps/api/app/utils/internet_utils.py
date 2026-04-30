@@ -1,4 +1,5 @@
-import re
+import ipaddress
+import socket
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -8,32 +9,88 @@ from app.db.redis import get_cache, set_cache
 from app.db.utils import serialize_document
 from app.models.search_models import URLResponse
 from bs4 import BeautifulSoup
-from fastapi import HTTPException, status
+from fastapi import HTTPException
+
+# SSRF hardening: reject URLs whose DNS resolution points to these address
+# classes. Without this, an authenticated user can point the metadata fetcher
+# at AWS/GCP metadata endpoints, localhost services, or RFC 1918 networks.
+_BLOCKED_IP_ATTRS = (
+    "is_private",
+    "is_loopback",
+    "is_link_local",
+    "is_multicast",
+    "is_reserved",
+    "is_unspecified",
+)
+
+# Cap scraped body to avoid OOM on a malicious target returning gigabytes.
+_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+# Follow at most this many redirects so we can re-check each hop.
+_MAX_REDIRECTS = 5
+_REQUEST_TIMEOUT_SECONDS = 10.0
+
+
+def _is_public_address(host: str) -> bool:
+    """Return True iff every resolved IP for ``host`` is public."""
+    try:
+        addr_infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+
+    seen = False
+    for info in addr_infos:
+        ip_str = info[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        if any(getattr(ip, attr) for attr in _BLOCKED_IP_ATTRS):
+            return False
+        seen = True
+    return seen
+
+
+def _validate_external_url(url: str) -> None:
+    """Raise HTTPException unless ``url`` is safe to fetch.
+
+    Blocks non-http(s) schemes, IP literals that resolve to private ranges,
+    and hostnames whose DNS points at loopback / link-local / metadata IPs.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid URL") from None
+
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Only http/https URLs allowed")
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail="URL missing host")
+
+    host = parsed.hostname
+    # IP literals (v4, v6, bracketed) — reject anything private/loopback/etc.
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None:
+        if any(getattr(ip, attr) for attr in _BLOCKED_IP_ATTRS):
+            raise HTTPException(status_code=400, detail="URL resolves to a blocked IP")
+        return
+
+    if not _is_public_address(host):
+        raise HTTPException(status_code=400, detail="URL resolves to a blocked host")
 
 
 def is_valid_url(url: str) -> bool:
     """
-    Validate if a URL is well-formed and uses an acceptable protocol.
-
-    Args:
-        url (str): The URL to validate
-
-    Returns:
-        bool: True if URL is valid, False otherwise
+    Validate if a URL is well-formed, uses http(s), and resolves to a public IP.
     """
     try:
-        parsed = urlparse(url)
-        # Check for acceptable protocols
-        if parsed.scheme not in ("http", "https"):
-            return False
-        # Check for presence of netloc (domain)
-        if not parsed.netloc:
-            return False
-        # Reject IP addresses (basic check)
-        if re.match(r"^\d+\.\d+\.\d+\.\d+$", parsed.netloc):
-            log.warning(f"IP address URL rejected: {url}")
-            return False
+        _validate_external_url(url)
         return True
+    except HTTPException as exc:
+        log.warning("URL rejected by SSRF filter", url=url, reason=exc.detail)
+        return False
     except Exception:
         return False
 
@@ -41,11 +98,7 @@ def is_valid_url(url: str) -> bool:
 async def fetch_url_metadata(url: str) -> URLResponse:
     """Fetch metadata for a URL, with caching and database fallback."""
     log.set(url=url, operation="fetch_url_metadata")
-    if not is_valid_url(url):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid URL provided.",
-        )
+    _validate_external_url(url)
 
     cache_key = f"url_metadata:{url}"
     metadata = await get_cache(cache_key) or await search_urls_collection.find_one(
@@ -62,13 +115,37 @@ async def fetch_url_metadata(url: str) -> URLResponse:
     return URLResponse(**metadata)
 
 
+async def _safe_get(url: str) -> httpx.Response:
+    """Fetch ``url`` following redirects manually, re-validating each hop.
+
+    This defeats a redirect from a public host to a private one, and keeps
+    DNS resolution in our hands so `_is_public_address` actually applies.
+    """
+    current = url
+    async with httpx.AsyncClient(
+        timeout=_REQUEST_TIMEOUT_SECONDS, follow_redirects=False
+    ) as client:
+        for _ in range(_MAX_REDIRECTS + 1):
+            _validate_external_url(current)
+            response = await client.get(current)
+            if response.is_redirect:
+                location = response.headers.get("location")
+                if not location:
+                    return response
+                current = urljoin(current, location)
+                continue
+            return response
+    raise HTTPException(status_code=400, detail="Too many redirects")
+
+
 async def scrape_url_metadata(url: str) -> dict:
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(url, follow_redirects=True)
-            response.raise_for_status()
+        response = await _safe_get(url)
+        response.raise_for_status()
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        # Cap the body we parse to avoid OOM from a hostile upstream.
+        raw = response.content[:_MAX_RESPONSE_BYTES]
+        soup = BeautifulSoup(raw, "html.parser")
 
         def to_absolute(relative_url: str) -> str | None:
             if not relative_url:
@@ -139,6 +216,8 @@ async def scrape_url_metadata(url: str) -> dict:
             "url": url,
         }
 
+    except HTTPException:
+        raise
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:
         log.debug(f"Error fetching URL metadata: {exc}")
     except Exception as exc:

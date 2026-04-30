@@ -47,10 +47,11 @@ export interface EmailComposeData {
 }
 
 export interface EmailSentData {
-  to: string[];
-  subject: string;
   message_id?: string;
-  sent_at?: string;
+  message: string;
+  timestamp?: string;
+  recipients?: string[];
+  subject?: string;
 }
 
 export interface WeatherData {

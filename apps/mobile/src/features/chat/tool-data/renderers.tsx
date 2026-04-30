@@ -16,6 +16,8 @@ import {
   CalendarOptionsCard,
   type CodeData,
   CodeExecutionCard,
+  ConnectionStatusCard,
+  type ConnectionStatusData,
   type ContactData,
   ContactListCard,
   DeepResearchCard,
@@ -33,10 +35,14 @@ import {
   type GoogleDocsData,
   IntegrationConnectionCard,
   type IntegrationConnectionData,
+  IntegrationListCard,
+  type IntegrationListCardData,
   NotificationCard,
   type NotificationData,
   PeopleSearchCard,
   type PeopleSearchData,
+  RateLimitCard,
+  type RateLimitData,
   RedditCard,
   type RedditData,
   type SearchResults,
@@ -47,6 +53,10 @@ import {
   type TodoData,
   TodoProgressCard,
   type TodoProgressData,
+  TwitterSearchCard,
+  type TwitterSearchData,
+  TwitterUserCard,
+  type TwitterUserData,
   WeatherCard,
   type WeatherData,
 } from "./tool-cards";
@@ -221,19 +231,49 @@ const TOOL_RENDERERS: Record<
     <CodeExecutionCard key={baseKey} data={data as CodeData} />
   ),
 
-  integration_connection_required: (data, baseKey) => (
-    <IntegrationConnectionCard
-      key={baseKey}
-      data={data as IntegrationConnectionData}
-    />
-  ),
+  integration_connection_required: (data, baseKey) => {
+    // Backend can send a single item or an array (when grouped by stream).
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as IntegrationConnectionData[];
+    // De-duplicate by integration_id so we don't render the same prompt twice.
+    const seen = new Set<string>();
+    const unique = items.filter((item) => {
+      const key = item.integration_id ?? item.integration_name ?? "";
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return (
+      <React.Fragment key={baseKey}>
+        {unique.map((item, idx) => (
+          <IntegrationConnectionCard
+            key={`${baseKey}-${item.integration_id ?? item.integration_name ?? idx}`}
+            data={item}
+          />
+        ))}
+      </React.Fragment>
+    );
+  },
 
-  integration_list_data: (_data, baseKey) => (
-    <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
-      <Card.Body className="py-3 px-4">
-        <Text className="text-foreground text-sm">Available Integrations</Text>
-      </Card.Body>
-    </Card>
+  integration_list_data: (data, baseKey) => {
+    // Merge grouped payloads into a single card, matching web behaviour.
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as IntegrationListCardData[];
+    const seen = new Set<string>();
+    const suggested = items
+      .flatMap((item) => item.suggested ?? [])
+      .filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      });
+    return <IntegrationListCard key={baseKey} data={{ suggested }} />;
+  },
+
+  connection_status_data: (data, baseKey) => (
+    <ConnectionStatusCard key={baseKey} data={data as ConnectionStatusData} />
   ),
 
   reddit_data: (data, baseKey) => {
@@ -266,6 +306,19 @@ const TOOL_RENDERERS: Record<
       isStreaming
     />
   ),
+
+  rate_limit_data: (data, baseKey) => (
+    <RateLimitCard key={baseKey} data={data as RateLimitData} />
+  ),
+
+  twitter_search_data: (data, baseKey) => (
+    <TwitterSearchCard key={baseKey} data={data as TwitterSearchData} />
+  ),
+
+  twitter_user_data: (data, baseKey) => {
+    const users = Array.isArray(data) ? data : [data];
+    return <TwitterUserCard key={baseKey} data={users as TwitterUserData[]} />;
+  },
 };
 
 interface ToolDataRendererProps {

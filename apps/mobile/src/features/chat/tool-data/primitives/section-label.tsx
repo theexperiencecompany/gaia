@@ -1,0 +1,14 @@
+import type { ReactNode } from "react";
+import { Text } from "@/components/ui/text";
+
+interface SectionLabelProps {
+  children: ReactNode;
+}
+
+export function SectionLabel({ children }: SectionLabelProps) {
+  return (
+    <Text className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+      {children}
+    </Text>
+  );
+}

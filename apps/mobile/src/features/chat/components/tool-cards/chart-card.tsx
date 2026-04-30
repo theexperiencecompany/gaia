@@ -1,29 +1,22 @@
-import { Card, Chip } from "heroui-native";
 import { useMemo } from "react";
 import { ScrollView, View } from "react-native";
 import {
+  type AnyIcon,
   AppIcon,
   BarChartIcon,
   ChartLineData01Icon,
+  ChartRingIcon,
   PieChart01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardInner,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 // -- Constants ----------------------------------------------------------------
 
-const COLORS = {
-  accentDefault: "#60a5fa",
-  subText: "#a1a1aa",
-  muted: "#71717a",
-  dimmed: "#52525b",
-  text: "#e4e4e7",
-  barTrack: "#27272a",
-  tableBorder: "#27272a",
-  tableHeaderBg: "#1e1e2e",
-  fallbackBg: "#1e1e2e",
-} as const;
-
-// -- Default palette for unlabeled data points --------------------------------
+const PRIMARY = "#00bbff";
 
 const DEFAULT_COLORS = [
   "#60a5fa", // blue
@@ -66,16 +59,16 @@ interface ChartCardProps {
 // -- Helpers ------------------------------------------------------------------
 
 function formatValue(value: number): string {
-  if (Math.abs(value) >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`;
-  }
-  if (Math.abs(value) >= 1_000) {
-    return `${(value / 1_000).toFixed(1)}K`;
-  }
-  if (!Number.isInteger(value)) {
-    return value.toFixed(2);
-  }
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  if (!Number.isInteger(value)) return value.toFixed(2);
   return String(value);
+}
+
+function resolveChartIcon(type: ChartData["type"]): AnyIcon {
+  if (type === "pie") return PieChart01Icon;
+  if (type === "line") return ChartLineData01Icon;
+  return BarChartIcon;
 }
 
 // -- Bar chart ----------------------------------------------------------------
@@ -89,17 +82,14 @@ function BarChart({ data, xLabel, yLabel }: Omit<ChartData, "type" | "title">) {
   const LABEL_WIDTH = 80;
   const VALUE_WIDTH = 46;
   const BAR_HEIGHT = 16;
-  const ROW_GAP = 10;
 
   return (
     <View style={{ gap: 4 }}>
       {yLabel && (
-        <Text style={{ fontSize: 10, color: COLORS.muted, marginBottom: 2 }}>
-          {yLabel}
-        </Text>
+        <Text className="text-[10px] text-zinc-500 mb-0.5">{yLabel}</Text>
       )}
 
-      <View style={{ gap: ROW_GAP }}>
+      <View style={{ gap: 10 }}>
         {data.map((point, idx) => {
           const fillRatio = Math.abs(point.value) / maxValue;
           const barColor = resolveColor(point.color, idx);
@@ -107,29 +97,22 @@ function BarChart({ data, xLabel, yLabel }: Omit<ChartData, "type" | "title">) {
           return (
             <View
               key={`bar-${idx}`}
-              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              className="flex-row items-center"
+              style={{ gap: 8 }}
             >
-              {/* Label */}
               <Text
-                style={{
-                  width: LABEL_WIDTH,
-                  fontSize: 11,
-                  color: COLORS.subText,
-                  textAlign: "right",
-                }}
+                className="text-[11px] text-zinc-400 text-right"
+                style={{ width: LABEL_WIDTH }}
                 numberOfLines={1}
               >
                 {point.label}
               </Text>
 
-              {/* Bar track */}
               <View
+                className="flex-1 bg-zinc-800 overflow-hidden"
                 style={{
-                  flex: 1,
                   height: BAR_HEIGHT,
-                  backgroundColor: COLORS.barTrack,
                   borderRadius: BAR_HEIGHT / 2,
-                  overflow: "hidden",
                 }}
               >
                 <View
@@ -143,15 +126,9 @@ function BarChart({ data, xLabel, yLabel }: Omit<ChartData, "type" | "title">) {
                 />
               </View>
 
-              {/* Value */}
               <Text
-                style={{
-                  width: VALUE_WIDTH,
-                  fontSize: 11,
-                  color: barColor,
-                  fontWeight: "600",
-                  textAlign: "right",
-                }}
+                className="text-[11px] font-semibold text-right"
+                style={{ color: barColor, width: VALUE_WIDTH }}
               >
                 {formatValue(point.value)}
               </Text>
@@ -161,14 +138,7 @@ function BarChart({ data, xLabel, yLabel }: Omit<ChartData, "type" | "title">) {
       </View>
 
       {xLabel && (
-        <Text
-          style={{
-            fontSize: 10,
-            color: COLORS.muted,
-            textAlign: "center",
-            marginTop: 4,
-          }}
-        >
+        <Text className="text-[10px] text-zinc-500 text-center mt-1">
           {xLabel}
         </Text>
       )}
@@ -176,7 +146,7 @@ function BarChart({ data, xLabel, yLabel }: Omit<ChartData, "type" | "title">) {
   );
 }
 
-// -- Data table (fallback for line/pie) ----------------------------------------
+// -- Data table (fallback for line/pie) ---------------------------------------
 
 function DataTable({
   data,
@@ -192,65 +162,28 @@ function DataTable({
   const showPercent = type === "pie" && total !== 0;
 
   return (
-    <View
-      style={{
-        borderRadius: 8,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: COLORS.tableBorder,
-      }}
-    >
-      {/* Table header */}
-      <View
-        style={{
-          flexDirection: "row",
-          backgroundColor: COLORS.tableHeaderBg,
-          paddingHorizontal: 10,
-          paddingVertical: 6,
-          borderBottomWidth: 1,
-          borderBottomColor: COLORS.tableBorder,
-        }}
-      >
-        <Text
-          style={{
-            flex: 1,
-            fontSize: 10,
-            color: COLORS.muted,
-            fontWeight: "600",
-            textTransform: "uppercase",
-          }}
-        >
+    <View className="rounded-2xl bg-zinc-900 overflow-hidden">
+      {/* Header row */}
+      <View className="flex-row bg-zinc-800/50 px-2.5 py-1.5">
+        <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 flex-1">
           Label
         </Text>
         <Text
-          style={{
-            fontSize: 10,
-            color: COLORS.muted,
-            fontWeight: "600",
-            textTransform: "uppercase",
-            width: 60,
-            textAlign: "right",
-          }}
+          className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 text-right"
+          style={{ width: 60 }}
         >
           Value
         </Text>
         {showPercent && (
           <Text
-            style={{
-              fontSize: 10,
-              color: COLORS.muted,
-              fontWeight: "600",
-              textTransform: "uppercase",
-              width: 46,
-              textAlign: "right",
-            }}
+            className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 text-right"
+            style={{ width: 46 }}
           >
             %
           </Text>
         )}
       </View>
 
-      {/* Rows */}
       {data.map((point, idx) => {
         const rowColor = resolveColor(point.color, idx);
         const pct = showPercent
@@ -260,16 +193,8 @@ function DataTable({
         return (
           <View
             key={`row-${idx}`}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              paddingHorizontal: 10,
-              paddingVertical: 7,
-              borderBottomWidth: idx < data.length - 1 ? 1 : 0,
-              borderBottomColor: COLORS.tableBorder,
-            }}
+            className={`flex-row items-center px-2.5 py-1.5 ${idx % 2 === 1 ? "bg-zinc-800/50" : ""}`}
           >
-            {/* Color swatch */}
             <View
               style={{
                 width: 8,
@@ -280,31 +205,19 @@ function DataTable({
                 flexShrink: 0,
               }}
             />
-            <Text
-              style={{ flex: 1, fontSize: 12, color: COLORS.text }}
-              numberOfLines={1}
-            >
+            <Text className="text-xs text-zinc-200 flex-1" numberOfLines={1}>
               {point.label}
             </Text>
             <Text
-              style={{
-                fontSize: 12,
-                color: rowColor,
-                fontWeight: "600",
-                width: 60,
-                textAlign: "right",
-              }}
+              className="text-xs font-semibold text-right"
+              style={{ color: rowColor, width: 60 }}
             >
               {formatValue(point.value)}
             </Text>
             {showPercent && pct != null && (
               <Text
-                style={{
-                  fontSize: 11,
-                  color: COLORS.muted,
-                  width: 46,
-                  textAlign: "right",
-                }}
+                className="text-[11px] text-zinc-500 text-right"
+                style={{ width: 46 }}
               >
                 {pct}%
               </Text>
@@ -313,47 +226,20 @@ function DataTable({
         );
       })}
 
-      {/* Total row for pie */}
       {showPercent && (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            paddingHorizontal: 10,
-            paddingVertical: 7,
-            backgroundColor: COLORS.tableHeaderBg,
-            borderTopWidth: 1,
-            borderTopColor: COLORS.tableBorder,
-          }}
-        >
-          <Text
-            style={{
-              flex: 1,
-              fontSize: 11,
-              color: COLORS.muted,
-              fontWeight: "600",
-            }}
-          >
+        <View className="flex-row items-center px-2.5 py-1.5 bg-zinc-800/50">
+          <Text className="text-[11px] font-semibold text-zinc-400 flex-1">
             Total
           </Text>
           <Text
-            style={{
-              fontSize: 12,
-              color: COLORS.subText,
-              fontWeight: "700",
-              width: 60,
-              textAlign: "right",
-            }}
+            className="text-xs font-bold text-zinc-200 text-right"
+            style={{ width: 60 }}
           >
             {formatValue(total)}
           </Text>
           <Text
-            style={{
-              fontSize: 11,
-              color: COLORS.dimmed,
-              width: 46,
-              textAlign: "right",
-            }}
+            className="text-[11px] text-zinc-500 text-right"
+            style={{ width: 46 }}
           >
             100%
           </Text>
@@ -373,24 +259,14 @@ function LineChartNote({
   yLabel?: string;
 }) {
   return (
-    <View
-      style={{
-        backgroundColor: COLORS.fallbackBg,
-        borderRadius: 8,
-        padding: 10,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-        marginBottom: 8,
-      }}
-    >
-      <AppIcon icon={ChartLineData01Icon} size={14} color={COLORS.muted} />
-      <Text style={{ fontSize: 11, color: COLORS.muted, flex: 1 }}>
+    <ToolCardInner dense className="flex-row items-center mb-2">
+      <AppIcon icon={ChartLineData01Icon} size={14} color="#71717a" />
+      <Text className="text-[11px] text-zinc-400 flex-1 ml-2">
         Line chart — data shown as table
         {xLabel ? ` · x: ${xLabel}` : ""}
         {yLabel ? ` · y: ${yLabel}` : ""}
       </Text>
-    </View>
+    </ToolCardInner>
   );
 }
 
@@ -400,15 +276,7 @@ function PieLegend({ data }: { data: ChartDataPoint[] }) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
 
   return (
-    <View
-      style={{
-        backgroundColor: COLORS.fallbackBg,
-        borderRadius: 8,
-        padding: 10,
-        marginBottom: 8,
-        gap: 4,
-      }}
-    >
+    <View className="rounded-2xl bg-zinc-900 p-3 mb-2" style={{ gap: 4 }}>
       {data.slice(0, 5).map((point, idx) => {
         const color = resolveColor(point.color, idx);
         const pct = total > 0 ? ((point.value / total) * 100).toFixed(1) : "0";
@@ -417,7 +285,8 @@ function PieLegend({ data }: { data: ChartDataPoint[] }) {
         return (
           <View
             key={`legend-${idx}`}
-            style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+            className="flex-row items-center"
+            style={{ gap: 8 }}
           >
             <View
               style={{
@@ -429,18 +298,17 @@ function PieLegend({ data }: { data: ChartDataPoint[] }) {
               }}
             />
             <Text
-              style={{ fontSize: 11, color: COLORS.subText, width: 80 }}
+              className="text-[11px] text-zinc-400"
+              style={{ width: 80 }}
               numberOfLines={1}
             >
               {point.label}
             </Text>
             <View
+              className="flex-1 bg-zinc-800 overflow-hidden"
               style={{
-                flex: 1,
                 height: 6,
-                backgroundColor: COLORS.barTrack,
                 borderRadius: 3,
-                overflow: "hidden",
               }}
             >
               <View
@@ -454,12 +322,8 @@ function PieLegend({ data }: { data: ChartDataPoint[] }) {
               />
             </View>
             <Text
-              style={{
-                fontSize: 10,
-                color: COLORS.muted,
-                width: 36,
-                textAlign: "right",
-              }}
+              className="text-[10px] text-zinc-500 text-right"
+              style={{ width: 36 }}
             >
               {pct}%
             </Text>
@@ -467,33 +331,11 @@ function PieLegend({ data }: { data: ChartDataPoint[] }) {
         );
       })}
       {data.length > 5 && (
-        <Text style={{ fontSize: 10, color: COLORS.dimmed, marginTop: 2 }}>
+        <Text className="text-[10px] text-zinc-500 mt-0.5">
           +{data.length - 5} more — see table below
         </Text>
       )}
     </View>
-  );
-}
-
-// -- Chart type icon ----------------------------------------------------------
-
-function ChartTypeIcon({ type }: { type: ChartData["type"] }) {
-  if (type === "bar") {
-    return (
-      <AppIcon icon={BarChartIcon} size={14} color={COLORS.accentDefault} />
-    );
-  }
-  if (type === "line") {
-    return (
-      <AppIcon
-        icon={ChartLineData01Icon}
-        size={14}
-        color={COLORS.accentDefault}
-      />
-    );
-  }
-  return (
-    <AppIcon icon={PieChart01Icon} size={14} color={COLORS.accentDefault} />
   );
 }
 
@@ -504,13 +346,16 @@ export function ChartCard({ toolData }: ChartCardProps) {
 
   if (!data || data.length === 0) {
     return (
-      <Card variant="secondary" className="mx-4 my-1 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-3 px-4 items-center">
-          <Text style={{ fontSize: 13, color: COLORS.muted }}>
+      <ToolCardShell>
+        <View className="flex-row items-center gap-2">
+          <View className="w-7 h-7 rounded-xl bg-zinc-700 items-center justify-center">
+            <AppIcon icon={ChartRingIcon} size={14} color={PRIMARY} />
+          </View>
+          <Text className="text-sm font-medium text-zinc-100">
             No chart data available
           </Text>
-        </Card.Body>
-      </Card>
+        </View>
+      </ToolCardShell>
     );
   }
 
@@ -521,60 +366,55 @@ export function ChartCard({ toolData }: ChartCardProps) {
       : type === "line"
         ? "Line Chart"
         : "Pie Chart");
+  const headerIcon = resolveChartIcon(type);
 
   return (
-    <Card variant="secondary" className="mx-4 my-1 rounded-2xl bg-[#171920]">
-      {/* Header */}
-      <Card.Header className="flex-row items-center gap-2 px-4 pt-3 pb-2 border-b border-white/8">
-        <View
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            backgroundColor: "rgba(96,165,250,0.12)",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ChartTypeIcon type={type} />
+    <ToolCardShell>
+      {/* Header — w-7 h-7 rounded-xl bg-zinc-700 */}
+      <View className="flex-row items-center gap-2 mb-3">
+        <View className="w-7 h-7 rounded-xl bg-zinc-700 items-center justify-center">
+          <AppIcon icon={headerIcon} size={14} color={PRIMARY} />
         </View>
-        <Card.Title className="text-sm font-semibold flex-1" numberOfLines={1}>
+        <Text
+          className="text-sm font-medium text-zinc-100 flex-1"
+          numberOfLines={1}
+        >
           {chartTitle}
-        </Card.Title>
-        <Chip variant="soft" color="default" size="sm">
-          <Chip.Label>
+        </Text>
+        <View className="px-2 py-0.5 rounded-full bg-zinc-700">
+          <Text className="text-[11px] font-medium text-zinc-300">
             {data.length} {data.length === 1 ? "item" : "items"}
-          </Chip.Label>
-        </Chip>
-      </Card.Header>
+          </Text>
+        </View>
+      </View>
 
       {/* Body */}
-      <Card.Body className="p-0">
-        <ScrollView
-          style={{ maxHeight: 420 }}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: 14, gap: 10 }}
-        >
-          {type === "bar" && (
+      <ScrollView
+        style={{ maxHeight: 420 }}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ gap: 10 }}
+      >
+        {type === "bar" && (
+          <ToolCardInner>
             <BarChart data={data} xLabel={xLabel} yLabel={yLabel} />
-          )}
+          </ToolCardInner>
+        )}
 
-          {type === "line" && (
-            <>
-              <LineChartNote xLabel={xLabel} yLabel={yLabel} />
-              <DataTable data={data} type="line" />
-            </>
-          )}
+        {type === "line" && (
+          <>
+            <LineChartNote xLabel={xLabel} yLabel={yLabel} />
+            <DataTable data={data} type="line" />
+          </>
+        )}
 
-          {type === "pie" && (
-            <>
-              <PieLegend data={data} />
-              <DataTable data={data} type="pie" />
-            </>
-          )}
-        </ScrollView>
-      </Card.Body>
-    </Card>
+        {type === "pie" && (
+          <>
+            <PieLegend data={data} />
+            <DataTable data={data} type="pie" />
+          </>
+        )}
+      </ScrollView>
+    </ToolCardShell>
   );
 }

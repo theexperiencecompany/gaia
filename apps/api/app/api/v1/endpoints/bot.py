@@ -55,31 +55,28 @@ async def create_link_token(
     else's platform user ID to hijack their account linking.
     """
     await require_bot_api_key(request)
-    log.set(operation="create_link_token", platform=body.platform)
 
-    # Validate body matches the authenticated platform headers to prevent any
-    # API key holder from generating tokens for arbitrary platform users.
+    # Platform identity MUST come from middleware-set headers, never from the
+    # body. Otherwise a leaked GAIA_BOT_API_KEY lets the holder mint a token
+    # binding any platform_user_id to any GAIA user.
     state_platform = getattr(request.state, "bot_platform", None)
     state_user_id = getattr(request.state, "bot_platform_user_id", None)
 
-    if state_platform and state_platform != body.platform:
+    if not state_platform or not state_user_id:
         raise HTTPException(
-            status_code=403,
-            detail="Platform in body does not match X-Bot-Platform header",
+            status_code=400,
+            detail="X-Bot-Platform and X-Bot-Platform-User-Id headers are required",
         )
-    if state_user_id and state_user_id != body.platform_user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="platform_user_id in body does not match X-Bot-Platform-User-Id header",
-        )
+
+    log.set(operation="create_link_token", platform=state_platform)
 
     token = secrets.token_urlsafe(32)
     redis_client = redis_cache.client
     token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{token}"
 
     mapping: dict = {
-        "platform": body.platform,
-        "platform_user_id": body.platform_user_id,
+        "platform": state_platform,
+        "platform_user_id": state_user_id,
     }
     if body.username:
         mapping["username"] = body.username
@@ -89,7 +86,7 @@ async def create_link_token(
     await redis_client.hset(token_key, mapping=mapping)
     await redis_client.expire(token_key, PLATFORM_LINK_TOKEN_TTL)
 
-    auth_url = f"{settings.FRONTEND_URL}/auth/link-platform?platform={body.platform}&token={token}"
+    auth_url = f"{settings.FRONTEND_URL}/auth/link-platform?platform={state_platform}&token={token}"
 
     log.set(outcome="success")
     return CreateLinkTokenResponse(token=token, auth_url=auth_url)

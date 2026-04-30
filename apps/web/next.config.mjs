@@ -137,17 +137,20 @@ const nextConfig = {
     return config;
   },
   images: {
-    dangerouslyAllowSVG: true,
+    // Do not re-enable dangerouslyAllowSVG without a validated proxy — SVGs
+    // are script-capable and the Next image optimizer does not sanitize them.
+    dangerouslyAllowSVG: false,
     minimumCacheTTL: 2_592_000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
+    // Restrict remote hosts — a wildcard (`hostname: "**"`) turns the
+    // Next image optimizer into an SSRF + arbitrary-image relay.
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "**",
-      },
-      {
-        protocol: "http",
-        hostname: "**",
-      },
+      { protocol: "https", hostname: "res.cloudinary.com" },
+      { protocol: "https", hostname: "*.cloudinary.com" },
+      { protocol: "https", hostname: "cdn.heygaia.io" },
+      { protocol: "https", hostname: "*.heygaia.io" },
+      { protocol: "https", hostname: "avatars.githubusercontent.com" },
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
+      { protocol: "https", hostname: "workos-public.s3.amazonaws.com" },
     ],
   },
   env: {
@@ -155,7 +158,27 @@ const nextConfig = {
   },
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
   async headers() {
+    // Standard security header suite. Applied to every response except the
+    // asset routes below, which keep their long-cache `Cache-Control`.
+    const securityHeaders = [
+      {
+        key: "Strict-Transport-Security",
+        value: "max-age=31536000; includeSubDomains",
+      },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      {
+        key: "Permissions-Policy",
+        value: "camera=(), microphone=(self), geolocation=(), interest-cohort=()",
+      },
+    ];
+
     return [
+      {
+        source: "/(.*)",
+        headers: securityHeaders,
+      },
       {
         source: "/_next/static/(.*)",
         headers: [
