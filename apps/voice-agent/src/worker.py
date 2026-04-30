@@ -38,19 +38,41 @@ configure_file_logging("./logs")
 logger = get_contextual_logger("voice")
 
 
-def _extract_meta_data(md: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    """Extract agentToken and conversationId from participant metadata JSON."""
+def _extract_conversation_id(md: Optional[str]) -> Optional[str]:
+    """Extract conversationId from participant metadata JSON."""
     if not md:
-        return None, None
+        return None
     try:
         obj = json.loads(md)
-        token = obj.get("agentToken")
         conv_id = obj.get("conversationId")
-        token = token if isinstance(token, str) and token else None
-        conv_id = conv_id if isinstance(conv_id, str) and conv_id else None
-        return token, conv_id
+        return conv_id if isinstance(conv_id, str) and conv_id else None
     except Exception:
-        return None, None
+        return None
+
+
+async def _fetch_agent_token(
+    base_url: str, agent_secret: str, user_id: str, room_name: str
+) -> Optional[str]:
+    """Fetch a short-lived agent JWT from the backend using the shared secret (C7).
+
+    The JWT is never placed in LiveKit room metadata — fetching it here keeps
+    it out of reach of other room participants.
+    """
+    try:
+        timeout = aiohttp.ClientTimeout(total=10.0)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                f"{base_url}/api/v1/voice/agent-token",
+                json={"user_id": user_id, "room_name": room_name},
+                headers={"X-Agent-Secret": agent_secret},
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("token")
+                logger.warning(f"agent-token endpoint returned {resp.status}")
+    except Exception as e:
+        logger.error(f"Failed to fetch agent token: {e}")
+    return None
 
 
 def _extract_latest_user_text(chat_ctx: ChatContext) -> str:
@@ -289,13 +311,9 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    async def _extract_and_set_participant_credentials(
-        md: Optional[str], origin: str, who: str
-    ):
-        """Extract and set agent token and conversation ID from participant metadata."""
-        token, conv_id = _extract_meta_data(md)
-        if token:
-            custom_llm.set_agent_token(token)
+    async def _apply_participant_metadata(md: Optional[str]) -> None:
+        """Update conversation ID from participant metadata (agentToken no longer in metadata)."""
+        conv_id = _extract_conversation_id(md)
         if conv_id:
             await custom_llm.set_conversation_id(conv_id)
 
@@ -305,29 +323,41 @@ async def entrypoint(ctx: JobContext):
     def _on_participant_connected(p: rtc.RemoteParticipant):
         """Handle new participant connection and process their metadata."""
         task = asyncio.create_task(
-            _extract_and_set_participant_credentials(
-                getattr(p, "metadata", None), "participant_connected", p.identity
-            )
+            _apply_participant_metadata(getattr(p, "metadata", None))
         )
         background_tasks.add(task)
         task.add_done_callback(background_tasks.discard)
 
     @ctx.room.on("participant_metadata_changed")
     def _on_participant_metadata_changed(p: rtc.Participant, old_md: str, new_md: str):
-        task = asyncio.create_task(
-            _extract_and_set_participant_credentials(
-                new_md, "participant_metadata_changed", p.identity
-            )
-        )
+        task = asyncio.create_task(_apply_participant_metadata(new_md))
         background_tasks.add(task)
         task.add_done_callback(background_tasks.discard)
 
     await ctx.connect()
+
+    # Fetch the agent JWT from the backend using the shared secret (C7).
+    # The identity format set by voice_token.py is "user_<user_id>".
+    if settings.AGENT_SECRET:
+        user_id_for_token: Optional[str] = None
+        for p in ctx.room.remote_participants.values():
+            identity = getattr(p, "identity", "")
+            if identity.startswith("user_"):
+                user_id_for_token = identity[5:]
+                break
+        if user_id_for_token:
+            agent_jwt = await _fetch_agent_token(
+                settings.GAIA_BACKEND_URL,
+                settings.AGENT_SECRET,
+                user_id_for_token,
+                ctx.room.name,
+            )
+            if agent_jwt:
+                custom_llm.set_agent_token(agent_jwt)
+
     for p in ctx.room.remote_participants.values():
         logger.info("participant already present, processing metadata")
-        await _extract_and_set_participant_credentials(
-            getattr(p, "metadata", None), "existing_participant", p.identity
-        )
+        await _apply_participant_metadata(getattr(p, "metadata", None))
 
     await session.start(
         agent=Agent(instructions="Avoid markdowns"),

@@ -1,18 +1,25 @@
 import json
+import secrets as _secrets
 import uuid
 from typing import Optional
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
 )
-from shared.py.wide_events import log
 from app.api.v1.middleware.agent_auth import create_agent_token
 from app.config.settings import settings
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from fastapi.exceptions import HTTPException
 from livekit import api
+from pydantic import BaseModel, Field
+from shared.py.wide_events import log
 
 router = APIRouter()
+
+
+class _VoiceAgentTokenRequest(BaseModel):
+    user_id: str = Field(..., description="User ID extracted from participant identity")
+    room_name: str = Field(..., description="LiveKit room name for this session")
 
 
 @router.get("/token")
@@ -34,13 +41,12 @@ def get_token(
 
     identity = f"user_{user_id}"
     display_name = user_email
-    # Bind the agent token to (user_id, room_id) so a captured JWT cannot
-    # be used to impersonate this user in any other LiveKit room (C7).
-    agent_jwt = create_agent_token(user_id, room_id=room_name)
-    metadata = {
+    # agentToken is intentionally omitted from metadata — it was visible to
+    # all room participants (C7).  The voice agent worker fetches its JWT
+    # separately via POST /voice/agent-token using the shared AGENT_SECRET.
+    metadata: dict = {
         "identity": identity,
         "name": display_name,
-        "agentToken": agent_jwt,
         "roomName": room_name,
     }
     if conversationId:
@@ -76,3 +82,22 @@ def get_token(
         "participantName": display_name,
         "conversation_id": conversationId,
     }
+
+
+@router.post("/agent-token")
+def get_voice_agent_token(
+    body: _VoiceAgentTokenRequest,
+    x_agent_secret: str = Header(..., alias="X-Agent-Secret"),
+) -> dict:
+    """Issue a short-lived agent JWT for the voice agent worker (C7).
+
+    The worker calls this endpoint after joining the room, authenticating with
+    the shared AGENT_SECRET.  The JWT is never placed in LiveKit room metadata
+    where other participants could read it.
+    """
+    if not settings.AGENT_SECRET or not _secrets.compare_digest(
+        x_agent_secret, settings.AGENT_SECRET
+    ):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    token = create_agent_token(body.user_id, room_id=body.room_name)
+    return {"token": token}
