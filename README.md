@@ -9,9 +9,7 @@
 
 <br />
 
-<a href="https://heygaia.io">
-  <img src="apps/web/public/videos/landing-scroll.gif" alt="GAIA — personal AI assistant" width="960" />
-</a>
+<video src="https://github.com/theexperiencecompany/gaia/releases/download/readme-assets/landing_recording.mp4" autoplay loop muted playsinline width="960" alt="GAIA — personal AI assistant"></video>
 
 </div>
 
