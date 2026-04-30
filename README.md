@@ -22,7 +22,6 @@
 <a href="https://heygaia.io">
   <img src="apps/web/public/images/readme/cta-try-gaia-free.png" alt="Try GAIA Free" height="48" />
 </a>
-&nbsp;&nbsp;
 <a href="https://docs.heygaia.io/self-hosting/overview">
   <img src="apps/web/public/images/readme/cta-self-host.png" alt="Self-host" height="48" />
 </a>
