@@ -9,7 +9,7 @@
 
 <br />
 
-<video src="https://github.com/theexperiencecompany/gaia/releases/download/readme-assets/landing_recording.mp4" autoplay loop muted playsinline width="960" alt="GAIA — personal AI assistant"></video>
+https://github.com/user-attachments/assets/19928409-9f05-413f-9ada-d501bc99bc67
 
 </div>
 
@@ -18,10 +18,11 @@
 <div align="center">
 
 <a href="https://heygaia.io">
-  <img src="apps/web/public/images/readme/cta-try-gaia-free.png" alt="Try GAIA Free" height="48" />
+<img src="apps/web/public/images/readme/cta-try-gaia-free.png" alt="Try GAIA Free" height="48" />
 </a>
+
 <a href="https://docs.heygaia.io/self-hosting/overview">
-  <img src="apps/web/public/images/readme/cta-self-host.png" alt="Self-host" height="48" />
+<img src="apps/web/public/images/readme/cta-self-host.png" alt="Self-host" height="48" />
 </a>
 
 </div>
