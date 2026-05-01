@@ -143,7 +143,9 @@ export default function WorkflowDescriptionField({
         )}
       />
       <div className="flex items-center gap-2 pt-1">
-        <span className="shrink-0 text-xs text-zinc-500">Use integrations:</span>
+        <span className="shrink-0 text-xs text-zinc-500">
+          Use integrations:
+        </span>
         <IntegrationChipsSelector
           selectedSlugs={selectedIntegrationSlugs}
           onChange={onIntegrationSlugsChange}

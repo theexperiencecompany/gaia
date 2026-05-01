@@ -319,20 +319,14 @@ export default function WorkflowModal({
     if (mode === "create") {
       setCreationPhase("creating");
 
-      // Log the request for debugging
-      console.log("Creating workflow with data:", data);
-
       // Validate the trigger config before sending
       try {
         const validationResult = workflowFormSchema.safeParse(data);
         if (!validationResult.success) {
-          console.error("Form validation failed:", validationResult.error);
           setCreationPhase("error");
           return;
         }
-        console.log("Form validation passed");
-      } catch (validationError) {
-        console.error("Form validation error:", validationError);
+      } catch {
         setCreationPhase("error");
         return;
       }
@@ -610,9 +604,6 @@ export default function WorkflowModal({
       // Small delay ensures modal close animation begins and component cleanup doesn't interfere
       setTimeout(() => {
         selectWorkflow(existingWorkflow, { autoSend: true });
-        console.log(
-          "Workflow selected for manual execution in chat with auto-send",
-        );
       }, 50);
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
