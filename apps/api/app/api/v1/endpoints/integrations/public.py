@@ -6,7 +6,9 @@ from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
+    workflows_collection,
 )
+from app.models.workflow_models import PublicWorkflowsResponse
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     AddIntegrationResponse,
@@ -267,3 +269,142 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
     except Exception as e:
         log.error(f"Error searching integrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to search integrations")
+
+
+@router.get(
+    "/public/{identifier}/workflows",
+    response_model=PublicWorkflowsResponse,
+)
+async def get_related_workflows(
+    identifier: str,
+    limit: int = 10,
+    offset: int = 0,
+) -> PublicWorkflowsResponse:
+    """Get public community workflows related to an integration by identifier (slug or native ID)."""
+    try:
+        log.set(operation="get_related_workflows", integration_id=identifier)
+
+        # Normalize limit/offset
+        limit = max(1, min(limit, 50))
+        offset = max(0, offset)
+
+        pipeline: list = [
+            {
+                "$match": {
+                    "is_public": True,
+                    "steps": {
+                        "$elemMatch": {
+                            "category": {
+                                "$regex": identifier,
+                                "$options": "i",
+                            }
+                        }
+                    },
+                }
+            },
+            {"$sort": {"total_executions": -1, "created_at": -1}},
+            {"$skip": offset},
+            {"$limit": limit},
+            {
+                "$lookup": {
+                    "from": "users",
+                    "let": {"creator_id": "$created_by"},
+                    "pipeline": [
+                        {
+                            "$match": {
+                                "$expr": {
+                                    "$eq": [
+                                        "$_id",
+                                        {"$toObjectId": "$$creator_id"},
+                                    ]
+                                }
+                            }
+                        },
+                        {"$project": {"name": 1, "picture": 1, "_id": 0}},
+                    ],
+                    "as": "creator_info",
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "description": 1,
+                    "slug": 1,
+                    "prompt": 1,
+                    "steps": {
+                        "$map": {
+                            "input": "$steps",
+                            "as": "step",
+                            "in": {
+                                "id": "$$step.id",
+                                "title": "$$step.title",
+                                "category": "$$step.category",
+                                "description": "$$step.description",
+                            },
+                        }
+                    },
+                    "total_executions": 1,
+                    "created_at": 1,
+                    "created_by": 1,
+                    "creator_info": 1,
+                }
+            },
+        ]
+
+        workflows = await workflows_collection.aggregate(pipeline).to_list(length=limit)
+
+        count_query: dict[str, object] = {
+            "is_public": True,
+            "steps": {
+                "$elemMatch": {"category": {"$regex": identifier, "$options": "i"}}
+            },
+        }
+        total = await workflows_collection.count_documents(count_query)
+
+        formatted_workflows = []
+        for workflow in workflows:
+            creator_info = (
+                workflow.get("creator_info", [{}])[0]
+                if workflow.get("creator_info")
+                else {}
+            )
+
+            raw_steps = workflow.get("steps", [])
+            normalized_steps = []
+            for step in raw_steps:
+                normalized_steps.append(
+                    {
+                        "id": step.get("id", ""),
+                        "title": step.get("title", ""),
+                        "description": step.get("description", ""),
+                        "category": step.get("category")
+                        or step.get("tool_category", "general"),
+                    }
+                )
+
+            formatted_workflows.append(
+                {
+                    "id": workflow["_id"],
+                    "title": workflow["title"],
+                    "description": workflow.get("description"),
+                    "slug": workflow.get("slug"),
+                    "prompt": workflow.get("prompt"),
+                    "steps": normalized_steps,
+                    "total_executions": workflow.get("total_executions", 0),
+                    "created_at": workflow["created_at"],
+                    "creator": {
+                        "id": workflow.get("created_by"),
+                        "name": creator_info.get("name", "Unknown"),
+                        "avatar": creator_info.get("picture"),
+                    },
+                }
+            )
+
+        log.set(result_count=len(formatted_workflows))
+        log.set(outcome="success")
+        return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
+
+    except Exception as e:
+        log.error(f"Error fetching related workflows for {identifier}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch related workflows")

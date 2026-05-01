@@ -23,6 +23,7 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
+import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import type { Integration } from "@/features/integrations/types";
 import { toast } from "@/lib/toast";
 import { useUserStore } from "@/stores/userStore";
@@ -505,6 +506,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               ))}
             </div>
           )}
+
+          <IntegrationRelatedWorkflows integrationId={integration.id} />
         </div>
       </SidebarContent>
 
