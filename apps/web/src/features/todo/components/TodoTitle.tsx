@@ -3,8 +3,8 @@
 import { memo } from "react";
 import { TodoLinkPreview } from "./TodoLinkPreview";
 
-// Matches http:// and https:// URLs
-const URL_REGEX = /https?:\/\/[^\s<>"']+/g;
+// Matches http:// and https:// URLs, excluding trailing sentence punctuation
+const URL_REGEX = /https?:\/\/[^\s<>"']+(?<![.,!?;:])/g;
 
 interface TitleSegment {
   type: "text" | "url";
@@ -56,11 +56,11 @@ export const TodoTitle = memo(function TodoTitle({
 
   return (
     <span className={className}>
-      {segments.map((segment) => {
+      {segments.map((segment, index) => {
         if (segment.type === "url") {
-          return <TodoLinkPreview key={segment.value} href={segment.value} />;
+          return <TodoLinkPreview key={index} href={segment.value} />;
         }
-        return <span key={segment.value}>{segment.value}</span>;
+        return <span key={index}>{segment.value}</span>;
       })}
     </span>
   );

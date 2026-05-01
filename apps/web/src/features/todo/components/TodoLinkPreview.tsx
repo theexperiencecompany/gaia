@@ -1,5 +1,6 @@
 "use client";
 
+import { Link } from "@heroui/link";
 import Image from "next/image";
 import { memo } from "react";
 
@@ -31,16 +32,11 @@ export const TodoLinkPreview = memo(function TodoLinkPreview({
   const domain = extractDomain(href);
   const faviconUrl = getFaviconUrl(href);
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-  };
-
   return (
-    <a
+    <Link
       href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={handleClick}
+      isExternal
+      onClick={(e) => e.stopPropagation()}
       className="inline-flex items-center gap-1 underline decoration-zinc-500 underline-offset-2 transition-colors hover:text-primary"
     >
       {faviconUrl && (
@@ -53,6 +49,6 @@ export const TodoLinkPreview = memo(function TodoLinkPreview({
         />
       )}
       <span>{domain}</span>
-    </a>
+    </Link>
   );
 });
