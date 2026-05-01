@@ -318,9 +318,6 @@ export default function WorkflowModal({
     if (mode === "create") {
       setCreationPhase("creating");
 
-      // Log the request for debugging
-      console.log("Creating workflow with data:", data);
-
       // Validate the trigger config before sending
       try {
         const validationResult = workflowFormSchema.safeParse(data);
@@ -329,7 +326,6 @@ export default function WorkflowModal({
           setCreationPhase("error");
           return;
         }
-        console.log("Form validation passed");
       } catch (validationError) {
         console.error("Form validation error:", validationError);
         setCreationPhase("error");
@@ -450,6 +446,11 @@ export default function WorkflowModal({
 
   const handleDelete = async () => {
     if (mode === "edit" && existingWorkflow) {
+      const confirmed = window.confirm(
+        `Are you sure you want to delete "${existingWorkflow.title}"? This action cannot be undone.`,
+      );
+      if (!confirmed) return;
+
       try {
         trackEvent(ANALYTICS_EVENTS.WORKFLOWS_DELETED, {
           workflow_id: existingWorkflow.id,
@@ -613,9 +614,6 @@ export default function WorkflowModal({
       // Small delay ensures modal close animation begins and component cleanup doesn't interfere
       setTimeout(() => {
         selectWorkflow(existingWorkflow, { autoSend: true });
-        console.log(
-          "Workflow selected for manual execution in chat with auto-send",
-        );
       }, 50);
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
@@ -641,7 +639,6 @@ export default function WorkflowModal({
         onOpenChange(open);
       }}
       // isDismissable={false}
-      hideCloseButton
       size={mode === "create" ? "3xl" : "4xl"}
       className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
       backdrop="blur"

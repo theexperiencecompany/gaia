@@ -73,7 +73,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Combine emails, events, and tasks into a clean three-section digest.",
             },
         ],
-        "use_case_categories": ["productivity", "email"],
+        "use_case_categories": ["featured", "productivity", "email"],
     },
     {
         "title": "Smart Meeting Prep",
@@ -116,7 +116,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Deliver a concise meeting prep note with attendee context and agenda.",
             },
         ],
-        "use_case_categories": ["productivity", "calendar"],
+        "use_case_categories": ["featured", "productivity", "calendar"],
     },
     {
         "title": "Invoice and Receipt Tracker",
@@ -160,7 +160,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Summarise how many invoices were logged in this run.",
             },
         ],
-        "use_case_categories": ["finance", "email"],
+        "use_case_categories": ["featured", "finance", "email"],
     },
     {
         "title": "Competitive Intelligence Weekly",
@@ -205,7 +205,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Send the competitive intelligence digest as a chat message.",
             },
         ],
-        "use_case_categories": ["research", "productivity"],
+        "use_case_categories": ["featured", "research", "productivity"],
     },
     {
         "title": "GitHub PR Review Assistant",
@@ -250,7 +250,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Present the bucketed list with actionable next steps per group.",
             },
         ],
-        "use_case_categories": ["developer", "productivity"],
+        "use_case_categories": ["featured", "developer", "productivity"],
     },
     {
         "title": "Travel Expense Logger",
@@ -295,7 +295,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Send a message listing all records added in this run.",
             },
         ],
-        "use_case_categories": ["finance", "travel"],
+        "use_case_categories": ["featured", "finance", "travel"],
     },
     {
         "title": "Content Calendar Planner",
@@ -335,7 +335,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Present a seven-day table with day, format, title, and description.",
             },
         ],
-        "use_case_categories": ["marketing", "creativity"],
+        "use_case_categories": ["featured", "marketing", "creativity"],
     },
     {
         "title": "Customer Feedback Aggregator",
@@ -381,7 +381,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Send a weekly summary with theme breakdown, top quotes, and urgent items.",
             },
         ],
-        "use_case_categories": ["productivity", "research"],
+        "use_case_categories": ["featured", "productivity", "research"],
     },
     {
         "title": "Unsubscribe From Marketing Emails",
@@ -425,7 +425,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Follow unsubscribe links for senders confirmed by the user.",
             },
         ],
-        "use_case_categories": ["email", "productivity"],
+        "use_case_categories": ["featured", "email", "productivity"],
     },
     {
         "title": "Task Overdue Alert",
@@ -465,7 +465,7 @@ COMMUNITY_WORKFLOWS: list[dict[str, Any]] = [
                 "description": "Deliver the bucketed overdue task list or a positive confirmation if clear.",
             },
         ],
-        "use_case_categories": ["productivity", "todos"],
+        "use_case_categories": ["featured", "productivity", "todos"],
     },
 ]
 

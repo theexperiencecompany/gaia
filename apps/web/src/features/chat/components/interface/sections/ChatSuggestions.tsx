@@ -2,7 +2,7 @@ import { Button } from "@heroui/button";
 import { UndoIcon } from "@icons";
 import * as m from "motion/react-m";
 import type React from "react";
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import WorkflowModal from "@/features/workflows/components/WorkflowModal";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
@@ -18,11 +18,45 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   return shuffled;
 };
 
-interface ChatSuggestionsProps {
-  onSubmitSuggestion?: () => void;
+interface SuggestionCardProps {
+  workflow: CommunityWorkflow;
+  index: number;
+  onCardClick: (workflow: CommunityWorkflow) => void;
 }
 
-export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
+const SuggestionCard = memo(function SuggestionCard({
+  workflow,
+  index,
+  onCardClick,
+}: SuggestionCardProps) {
+  const handleClick = useCallback(() => {
+    onCardClick(workflow);
+  }, [onCardClick, workflow]);
+
+  return (
+    <m.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: 0.3,
+        delay: index * 0.05,
+        ease: "easeOut",
+      }}
+    >
+      <UnifiedWorkflowCard
+        communityWorkflow={workflow}
+        variant="suggestion"
+        showExecutions={true}
+        showDescriptionAsTooltip={true}
+        actionButtonLabel="Try"
+        onCardClick={handleClick}
+        primaryAction="none"
+      />
+    </m.div>
+  );
+});
+
+export const ChatSuggestions: React.FC = () => {
   const { workflows: allWorkflows } = useExploreWorkflows();
   const [currentSuggestions, setCurrentSuggestions] = useState<
     CommunityWorkflow[]
@@ -88,7 +122,13 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
     <div className="w-full max-w-4xl mt-10">
       <div className="mb-2 flex w-full items-end justify-between px-1 text-zinc-400">
         <span className="text-sm font-light">Suggestions</span>
-        <Button isIconOnly size="sm" variant="light" onPress={handleShuffle}>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          aria-label="Shuffle suggestions"
+          onPress={handleShuffle}
+        >
           <UndoIcon width={16} height={16} className="text-zinc-400" />
         </Button>
       </div>
@@ -107,26 +147,12 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
         {currentSuggestions.map((workflow, index) => (
-          <m.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              duration: 0.3,
-              delay: index * 0.05,
-              ease: "easeOut",
-            }}
+          <SuggestionCard
             key={workflow.id}
-          >
-            <UnifiedWorkflowCard
-              communityWorkflow={workflow}
-              variant="suggestion"
-              showExecutions={true}
-              showDescriptionAsTooltip={true}
-              actionButtonLabel="Try"
-              onCardClick={() => handleSuggestionClick(workflow)}
-              primaryAction="none"
-            />
-          </m.div>
+            workflow={workflow}
+            index={index}
+            onCardClick={handleSuggestionClick}
+          />
         ))}
       </m.div>
 
