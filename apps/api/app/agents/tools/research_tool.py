@@ -93,7 +93,6 @@ async def deep_research(
 
         # ── Phase 2: Parallel searches ────────────────────────────────────────
         writer({"progress": f"Running {len(sub_queries)} parallel searches..."})
-        writer({"research_queries": sub_queries})
 
         async def _resilient_search(q: str) -> dict:
             return await search_with_duckduckgo(q, count=5)
