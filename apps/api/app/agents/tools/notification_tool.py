@@ -4,17 +4,23 @@ from shared.py.wide_events import log
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
+    GET_NOTIFICATION_PREFERENCES,
     GET_NOTIFICATIONS,
     MARK_NOTIFICATIONS_READ,
     SEARCH_NOTIFICATIONS,
+    SEND_NOTIFICATION,
 )
 from app.models.notification.notification_models import (
     BulkActions,
+    ChannelConfig,
+    NotificationContent,
+    NotificationRequest,
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
 )
 from app.services.notification_service import notification_service
+from app.utils.notification.channel_preferences import fetch_channel_preferences
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
@@ -190,10 +196,114 @@ async def mark_notifications_read(
         return {"error": str(e), "success": False}
 
 
+@tool
+@with_rate_limiting("notification_operations")
+@with_doc(SEND_NOTIFICATION)
+async def send_notification(
+    config: RunnableConfig,
+    message: Annotated[str, "Notification body text — keep it concise and actionable"],
+    title: Annotated[
+        Optional[str], "Short notification title (defaults to 'GAIA')"
+    ] = None,
+    channels: Annotated[
+        Optional[List[str]],
+        "Channel names to target ('whatsapp', 'telegram', 'inapp'). Omit to use all user-enabled channels.",
+    ] = None,
+    notification_type: Annotated[
+        Optional[NotificationType],
+        "Notification type: 'info', 'success', 'warning', or 'error'",
+    ] = NotificationType.INFO,
+) -> Dict[str, Any]:
+    """Send a notification to the user on their connected channels."""
+    try:
+        log.set(tool={"name": "send_notification", "action": "send"})
+        user_id = get_user_id_from_config(config)
+        if not user_id:
+            return {"error": "User authentication required", "success": False}
+
+        if not message.strip():
+            return {"error": "Notification message cannot be empty", "success": False}
+
+        resolved_title = title or "GAIA"
+        resolved_type = notification_type or NotificationType.INFO
+
+        # Build channel configs when specific channels are requested
+        channel_configs: List[ChannelConfig] = []
+        if channels:
+            channel_configs = [ChannelConfig(channel_type=ch) for ch in channels]
+        # Empty list triggers auto-injection of all user-enabled channels in the orchestrator
+
+        request = NotificationRequest(
+            user_id=user_id,
+            source=NotificationSourceEnum.AI_AGENT,
+            type=resolved_type,
+            channels=channel_configs,
+            content=NotificationContent(title=resolved_title, body=message),
+        )
+
+        record = await notification_service.create_notification(request)
+        if not record:
+            return {"error": "Failed to create notification", "success": False}
+
+        delivered_channels = [
+            ch.channel_type
+            for ch in record.channels
+            if ch.status == NotificationStatus.DELIVERED and not ch.skipped
+        ]
+
+        log.set(
+            tool={
+                "name": "send_notification",
+                "notification_id": record.id,
+                "status": record.status.value,
+                "delivered_channels": delivered_channels,
+            }
+        )
+
+        return {
+            "success": True,
+            "notification_id": record.id,
+            "status": record.status.value,
+            "delivered_channels": delivered_channels,
+        }
+
+    except Exception as e:
+        log.error(f"Error sending notification: {str(e)}")
+        return {"error": str(e), "success": False}
+
+
+@tool
+@with_rate_limiting("notification_operations")
+@with_doc(GET_NOTIFICATION_PREFERENCES)
+async def get_notification_preferences(
+    config: RunnableConfig,
+) -> Dict[str, Any]:
+    """Get the user's notification channel preferences."""
+    try:
+        log.set(tool={"name": "get_notification_preferences", "action": "get"})
+        user_id = get_user_id_from_config(config)
+        if not user_id:
+            return {"error": "User authentication required", "preferences": {}}
+
+        preferences = await fetch_channel_preferences(user_id)
+
+        return {
+            "preferences": preferences,
+            "available_channels": list(preferences.keys()),
+            "enabled_channels": [ch for ch, enabled in preferences.items() if enabled],
+        }
+
+    except Exception as e:
+        log.error(f"Error fetching notification preferences: {str(e)}")
+        return {"error": str(e), "preferences": {}}
+
+
 # Export tools for registration
 tools = [
     get_notifications,
     search_notifications,
     get_notification_count,
     mark_notifications_read,
+    send_notification,
+    get_notification_preferences,
 ]

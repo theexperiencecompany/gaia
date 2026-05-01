@@ -27,6 +27,7 @@ class NotificationSourceEnum(str, Enum):
     AI_TODO_SUGGESTION = "ai_todo_suggestion"
     AI_REMINDER = "ai_reminder"
     AI_TODO_ADDED = "ai_todo_added"
+    AI_AGENT = "ai_agent"
     EMAIL_TRIGGER = "email_trigger"
     BACKGROUND_JOB = "background_job"
     WORKFLOW_COMPLETED = "workflow_completed"
