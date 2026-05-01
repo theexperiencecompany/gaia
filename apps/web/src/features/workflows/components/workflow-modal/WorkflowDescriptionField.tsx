@@ -117,6 +117,11 @@ export default function WorkflowDescriptionField({
               isRequired
               isInvalid={!!errors.prompt}
               errorMessage={errors.prompt?.message}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  handleGenerate(field.onChange);
+                }
+              }}
             />
             <div className="absolute top-1 right-0 z-10">
               <Tooltip content={tooltipText} placement="top">
@@ -127,6 +132,7 @@ export default function WorkflowDescriptionField({
                   isDisabled={isGenerating}
                   isLoading={isGenerating}
                   onPress={() => handleGenerate(field.onChange)}
+                  aria-label={tooltipText}
                   className="text-foreground-400 hover:text-primary"
                 >
                   {!isGenerating && <SparklesIcon className="h-4 w-4" />}

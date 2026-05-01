@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Spinner } from "@heroui/spinner";
-import { Add01Icon, Cancel01Icon } from "@icons";
+import { Add01Icon, Cancel01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -68,14 +68,16 @@ export default function IntegrationChipsSelector({
             </span>
           }
           endContent={
-            <button
-              type="button"
-              onClick={() => removeIntegration(integration.slug)}
-              className="ml-0.5 flex items-center rounded-full p-0.5 hover:bg-primary/20"
+            <Button
+              isIconOnly
+              size="sm"
+              variant="light"
+              onPress={() => removeIntegration(integration.slug)}
+              className="ml-0.5 h-5 min-w-5 rounded-full p-0 hover:bg-primary/20"
               aria-label={`Remove ${integration.name}`}
             >
-              <Cancel01Icon className="h-2.5 w-2.5" />
-            </button>
+              <Cancel01Icon className="h-3 w-3" />
+            </Button>
           }
           className="pl-1 pr-1"
         >
@@ -95,7 +97,7 @@ export default function IntegrationChipsSelector({
             variant="flat"
             isIconOnly
             startContent={<Add01Icon className="h-3 w-3" />}
-            aria-label="Add integration hint"
+            aria-label="Select integrations for this workflow"
             className="h-6 min-w-6 rounded-full text-zinc-400 hover:text-primary"
           />
         </PopoverTrigger>
@@ -109,26 +111,30 @@ export default function IntegrationChipsSelector({
                 <Spinner size="sm" />
               </div>
             ) : (
-              <div className="max-h-52 overflow-y-auto space-y-0.5">
+              <div className="max-h-52 space-y-0.5 overflow-y-auto">
                 {connectedIntegrations.map((integration) => {
                   const isSelected = selectedSlugs.includes(integration.slug);
                   return (
-                    <button
+                    <Button
                       key={integration.slug}
-                      type="button"
-                      onClick={() => toggleIntegration(integration.slug)}
-                      className={`flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm transition-colors ${
+                      variant="light"
+                      onPress={() => toggleIntegration(integration.slug)}
+                      aria-pressed={isSelected}
+                      aria-label={`${isSelected ? "Remove" : "Add"} ${integration.name}`}
+                      className={`flex w-full justify-start gap-2 rounded-xl px-2 py-1.5 text-sm ${
                         isSelected
                           ? "bg-primary/15 text-primary"
-                          : "hover:bg-zinc-800 text-zinc-300"
+                          : "text-zinc-300"
                       }`}
                     >
                       <IntegrationIcon integration={integration} />
-                      <span className="flex-1 truncate">{integration.name}</span>
+                      <span className="flex-1 truncate">
+                        {integration.name}
+                      </span>
                       {isSelected && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                        <Tick02Icon className="h-3.5 w-3.5 shrink-0" />
                       )}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
