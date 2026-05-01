@@ -114,7 +114,11 @@ class WorkflowGenerationService:
 
     @staticmethod
     async def generate_steps_with_llm(
-        prompt: str, title: str, trigger_config=None, description: str | None = None
+        prompt: str,
+        title: str,
+        trigger_config=None,
+        description: str | None = None,
+        selected_integrations: List[str] | None = None,
     ) -> list:
         """Generate workflow steps using LLM with structured output.
 
@@ -193,6 +197,14 @@ class WorkflowGenerationService:
                 f"{prompt}\n\n"
                 f"Short display summary for additional context: {description}"
             )
+        if selected_integrations:
+            integration_hint = (
+                "User has selected these integrations as preferred tools for this workflow: "
+                + ", ".join(selected_integrations)
+                + ". Prioritise steps that use these integrations where appropriate."
+            )
+            prompt_context = f"{prompt_context}\n\n{integration_hint}"
+
         formatted_prompt = WORKFLOW_GENERATION_TEMPLATE.format(
             description=prompt_context,
             title=title,

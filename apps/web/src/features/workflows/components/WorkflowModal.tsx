@@ -4,6 +4,7 @@ import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+
 import { useHotkeys } from "react-hotkeys-hook";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
@@ -87,6 +88,11 @@ export default function WorkflowModal({
 
   // Single source of truth for workflow data
   const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(null);
+
+  // Selected integration slugs for hinting step generation
+  const [selectedIntegrationSlugs, setSelectedIntegrationSlugs] = useState<
+    string[]
+  >([]);
 
   // Fetch trigger schemas for slug normalization
   const { data: triggerSchemas } = useTriggerSchemas();
@@ -302,6 +308,7 @@ export default function WorkflowModal({
 
   const handleFormReset = () => {
     resetFormValues(getDefaultFormValues());
+    setSelectedIntegrationSlugs([]);
     resetToForm();
     clearCreationError();
   };
@@ -337,6 +344,10 @@ export default function WorkflowModal({
         prompt: data.prompt,
         trigger_config: data.trigger_config,
         generate_immediately: true, // Generate steps immediately
+        selected_integrations:
+          selectedIntegrationSlugs.length > 0
+            ? selectedIntegrationSlugs
+            : undefined,
       };
 
       const result = await createWorkflow(createRequest);
@@ -668,6 +679,8 @@ export default function WorkflowModal({
                         errors={errors}
                         setValue={setValue}
                         mode={mode}
+                        selectedIntegrationSlugs={selectedIntegrationSlugs}
+                        onIntegrationSlugsChange={setSelectedIntegrationSlugs}
                       />
                     </div>
                   </div>

@@ -274,7 +274,11 @@ class WorkflowService:
             if not request.steps:
                 # Generate steps
                 if request.generate_immediately:
-                    await WorkflowService._generate_workflow_steps(workflow.id, user_id)
+                    await WorkflowService._generate_workflow_steps(
+                        workflow.id,
+                        user_id,
+                        selected_integrations=request.selected_integrations,
+                    )
                     # Fetch the updated workflow with generated steps
                     updated_workflow = await WorkflowService.get_workflow(
                         workflow.id, user_id
@@ -1104,7 +1108,11 @@ class WorkflowService:
             raise
 
     @staticmethod
-    async def _generate_workflow_steps(workflow_id: str, user_id: str) -> None:
+    async def _generate_workflow_steps(
+        workflow_id: str,
+        user_id: str,
+        selected_integrations: Optional[List[str]] = None,
+    ) -> None:
         """Generate workflow steps using LLM with structured output."""
         try:
             await workflows_collection.find_one_and_update(
@@ -1123,6 +1131,7 @@ class WorkflowService:
                 workflow.title,
                 workflow.trigger_config,
                 description=workflow.description,
+                selected_integrations=selected_integrations,
             )
 
             await workflows_collection.find_one_and_update(

@@ -354,6 +354,10 @@ class CreateWorkflowRequest(BaseModel):
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
     )
+    selected_integrations: Optional[List[str]] = Field(
+        default=None,
+        description="Integration slugs selected by the user to hint step generation.",
+    )
 
     # System workflow fields — set by provisioner, not by regular API users
     is_system_workflow: bool = Field(

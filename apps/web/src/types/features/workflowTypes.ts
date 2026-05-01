@@ -178,6 +178,8 @@ export interface CreateWorkflowRequest {
   execution_config?: ExecutionConfig;
   metadata?: Partial<WorkflowMetadata>;
   generate_immediately?: boolean;
+  /** Integration slugs selected by the user to hint step generation */
+  selected_integrations?: string[];
 }
 
 export interface WorkflowExecutionRequest {

@@ -14,12 +14,15 @@ import { toast } from "@/lib/toast";
 import { workflowApi } from "../../api/workflowApi";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { getBrowserTimezone } from "../../utils/browserTimezone";
+import IntegrationChipsSelector from "./IntegrationChipsSelector";
 
 interface WorkflowDescriptionFieldProps {
   control: Control<WorkflowFormData>;
   errors: FieldErrors<WorkflowFormData>;
   setValue?: UseFormSetValue<WorkflowFormData>;
   mode?: "create" | "edit";
+  selectedIntegrationSlugs: string[];
+  onIntegrationSlugsChange: (slugs: string[]) => void;
 }
 
 export default function WorkflowDescriptionField({
@@ -27,6 +30,8 @@ export default function WorkflowDescriptionField({
   errors,
   setValue,
   mode = "create",
+  selectedIntegrationSlugs,
+  onIntegrationSlugsChange,
 }: WorkflowDescriptionFieldProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -92,43 +97,52 @@ export default function WorkflowDescriptionField({
   };
 
   return (
-    <Controller
-      name="prompt"
-      control={control}
-      render={({ field }) => (
-        <div className="relative group">
-          <Textarea
-            {...field}
-            label="Instructions"
-            placeholder={
-              mode === "edit"
-                ? "Detailed instructions for what this workflow should do"
-                : "Describe in detail what this workflow should do when triggered"
-            }
-            minRows={5}
-            variant="underlined"
-            className="text-sm"
-            isRequired
-            isInvalid={!!errors.prompt}
-            errorMessage={errors.prompt?.message}
-          />
-          <div className="absolute top-1 right-0 z-10">
-            <Tooltip content={tooltipText} placement="top">
-              <Button
-                size="sm"
-                variant="light"
-                isIconOnly
-                isDisabled={isGenerating}
-                isLoading={isGenerating}
-                onPress={() => handleGenerate(field.onChange)}
-                className="text-foreground-400 hover:text-primary"
-              >
-                {!isGenerating && <SparklesIcon className="h-4 w-4" />}
-              </Button>
-            </Tooltip>
+    <div className="space-y-2">
+      <Controller
+        name="prompt"
+        control={control}
+        render={({ field }) => (
+          <div className="relative group">
+            <Textarea
+              {...field}
+              label="Instructions"
+              placeholder={
+                mode === "edit"
+                  ? "Detailed instructions for what this workflow should do"
+                  : "Describe in detail what this workflow should do when triggered"
+              }
+              minRows={5}
+              variant="underlined"
+              className="text-sm"
+              isRequired
+              isInvalid={!!errors.prompt}
+              errorMessage={errors.prompt?.message}
+            />
+            <div className="absolute top-1 right-0 z-10">
+              <Tooltip content={tooltipText} placement="top">
+                <Button
+                  size="sm"
+                  variant="light"
+                  isIconOnly
+                  isDisabled={isGenerating}
+                  isLoading={isGenerating}
+                  onPress={() => handleGenerate(field.onChange)}
+                  className="text-foreground-400 hover:text-primary"
+                >
+                  {!isGenerating && <SparklesIcon className="h-4 w-4" />}
+                </Button>
+              </Tooltip>
+            </div>
           </div>
-        </div>
-      )}
-    />
+        )}
+      />
+      <div className="flex items-center gap-2 pt-1">
+        <span className="shrink-0 text-xs text-zinc-500">Use integrations:</span>
+        <IntegrationChipsSelector
+          selectedSlugs={selectedIntegrationSlugs}
+          onChange={onIntegrationSlugsChange}
+        />
+      </div>
+    </div>
   );
 }
