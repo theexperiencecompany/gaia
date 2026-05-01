@@ -93,7 +93,7 @@ completed — especially when they are away from the app or the event is time-se
 
 —CHANNEL SELECTION—
 - Omit `channels` to send on ALL user-enabled channels automatically (recommended default)
-- Pass specific channel names ("whatsapp", "telegram", "inapp") to target specific channels
+- Pass specific channel names ("whatsapp", "telegram", "discord", "inapp") to target specific channels
 - Use get_notification_preferences first if you need to know what channels are available
 
 —NOTIFICATION TYPE—

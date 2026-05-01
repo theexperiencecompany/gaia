@@ -19,6 +19,7 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
 )
+from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from langchain_core.runnables import RunnableConfig
@@ -287,10 +288,15 @@ async def get_notification_preferences(
 
         preferences = await fetch_channel_preferences(user_id)
 
+        # inapp is always available regardless of per-channel preferences
+        all_preferences = {CHANNEL_TYPE_INAPP: True, **preferences}
+
         return {
-            "preferences": preferences,
-            "available_channels": list(preferences.keys()),
-            "enabled_channels": [ch for ch, enabled in preferences.items() if enabled],
+            "preferences": all_preferences,
+            "available_channels": list(all_preferences.keys()),
+            "enabled_channels": [
+                ch for ch, enabled in all_preferences.items() if enabled
+            ],
         }
 
     except Exception as e:
