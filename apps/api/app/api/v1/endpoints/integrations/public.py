@@ -1,5 +1,7 @@
 """Public integration routes (no auth required for SEO/sharing)."""
 
+import re
+
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from shared.py.wide_events import log
 from app.db.chroma.public_integrations_store import search_public_integrations
@@ -288,6 +290,10 @@ async def get_related_workflows(
         limit = max(1, min(limit, 50))
         offset = max(0, offset)
 
+        # Escape the identifier so it is treated as a literal string in the
+        # MongoDB regex, preventing ReDoS and regex-injection attacks.
+        escaped_identifier = re.escape(identifier)
+
         pipeline: list = [
             {
                 "$match": {
@@ -295,7 +301,7 @@ async def get_related_workflows(
                     "steps": {
                         "$elemMatch": {
                             "category": {
-                                "$regex": identifier,
+                                "$regex": escaped_identifier,
                                 "$options": "i",
                             }
                         }
@@ -313,9 +319,24 @@ async def get_related_workflows(
                         {
                             "$match": {
                                 "$expr": {
-                                    "$eq": [
-                                        "$_id",
-                                        {"$toObjectId": "$$creator_id"},
+                                    "$and": [
+                                        # Only attempt $toObjectId when creator_id
+                                        # is a 24-hex-character string to avoid a
+                                        # ConversionError for UUIDs or other IDs.
+                                        {
+                                            "$regexMatch": {
+                                                "input": {
+                                                    "$ifNull": ["$$creator_id", ""]
+                                                },
+                                                "regex": "^[0-9a-fA-F]{24}$",
+                                            }
+                                        },
+                                        {
+                                            "$eq": [
+                                                "$_id",
+                                                {"$toObjectId": "$$creator_id"},
+                                            ]
+                                        },
                                     ]
                                 }
                             }
@@ -357,7 +378,9 @@ async def get_related_workflows(
         count_query: dict[str, object] = {
             "is_public": True,
             "steps": {
-                "$elemMatch": {"category": {"$regex": identifier, "$options": "i"}}
+                "$elemMatch": {
+                    "category": {"$regex": escaped_identifier, "$options": "i"}
+                }
             },
         }
         total = await workflows_collection.count_documents(count_query)
