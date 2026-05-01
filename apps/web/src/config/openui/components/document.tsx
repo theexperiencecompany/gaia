@@ -65,17 +65,15 @@ function htmlToMarkdown(html: string): string {
         return `${inner}\n`;
       case "ol": {
         let index = 0;
-        return (
-          Array.from(el.children)
-            .map((child) => {
-              if (child.tagName.toLowerCase() === "li") {
-                index += 1;
-                return `${index}. ${Array.from(child.childNodes).map(nodeToMd).join("")}\n`;
-              }
-              return nodeToMd(child);
-            })
-            .join("") + "\n"
-        );
+        return `${Array.from(el.children)
+          .map((child) => {
+            if (child.tagName.toLowerCase() === "li") {
+              index += 1;
+              return `${index}. ${Array.from(child.childNodes).map(nodeToMd).join("")}\n`;
+            }
+            return nodeToMd(child);
+          })
+          .join("")}\n`;
       }
       case "li":
         return `- ${inner}\n`;
