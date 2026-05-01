@@ -20,6 +20,7 @@ import {
   type TodoUpdate,
 } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
+import { TodoTitle } from "./TodoTitle";
 
 interface TodoItemProps {
   todo: Todo;
@@ -128,7 +129,7 @@ export default memo(function TodoItem({
                 todo.completed ? "text-zinc-500 line-through" : ""
               }`}
             >
-              {todo.title}
+              <TodoTitle title={todo.title} />
             </h4>
             {todo.description && (
               <p className="mt-1 text-xs text-zinc-500 line-clamp-1">
