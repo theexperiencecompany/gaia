@@ -10,6 +10,7 @@ import {
   UserCircle02Icon,
 } from "@icons";
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { formatRunCount } from "@/utils/formatters";
 
@@ -118,22 +119,29 @@ export function TriggerDisplay({
   nextRunText,
   className = "",
 }: TriggerDisplayProps) {
-  if (triggerLabel !== "Manual Trigger")
+  if (triggerLabel === "Manual Trigger" || !triggerLabel) {
     return (
-      <div className={`flex items-center gap-1 text-xs text-zinc-500 ${className}`}>
-        <div className="w-4">
-          <TriggerIcon
-            triggerType={triggerType}
-            integrationId={integrationId}
-            size={17}
-          />
-        </div>
-        <span>
-          {triggerLabel}
-          {nextRunText ? ` (${nextRunText})` : ""}
-        </span>
-      </div>
+      <Chip size="sm" variant="flat" radius="sm" className="text-xs">
+        Manual
+      </Chip>
     );
+  }
+
+  return (
+    <div className={cn("flex items-center gap-1 text-xs text-zinc-500", className)}>
+      <div className="w-4">
+        <TriggerIcon
+          triggerType={triggerType}
+          integrationId={integrationId}
+          size={16}
+        />
+      </div>
+      <span>
+        {triggerLabel}
+        {nextRunText ? ` (${nextRunText})` : ""}
+      </span>
+    </div>
+  );
 }
 
 // Reusable Run Count Component
@@ -151,9 +159,9 @@ export function RunCountDisplay({
   if (runCount !== "Never run")
     return (
       <div
-        className={`flex items-center gap-1 text-xs text-zinc-500 ${className}`}
+        className={cn("flex items-center gap-1 text-xs text-zinc-500", className)}
       >
-        <PlayIcon width={15} height={15} className="w-4 text-zinc-500" />
+        <PlayIcon size={16} className="w-4 text-zinc-500" />
         <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>
       </div>
     );
