@@ -31,7 +31,7 @@ export function IntegrationRelatedWorkflows({
 
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium text-zinc-400">
+      <h2 className="text-sm font-medium text-zinc-300">
         Workflows that use this Integration
       </h2>
 
@@ -46,6 +46,9 @@ export function IntegrationRelatedWorkflows({
         </div>
       ) : (
         <div
+          role="region"
+          aria-label="Related workflows"
+          tabIndex={0}
           className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
