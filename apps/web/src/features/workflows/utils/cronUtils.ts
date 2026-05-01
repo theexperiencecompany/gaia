@@ -1,5 +1,7 @@
 // Comprehensive cron expression builder and parser
 
+import { getBrowserTimezone } from "./browserTimezone";
+
 export interface CronSchedule {
   type: "daily" | "weekly" | "monthly" | "yearly" | "custom";
   minute?: number;
@@ -160,15 +162,49 @@ export const parseCronExpression = (cron: string): CronSchedule => {
   return { type: "custom", customExpression: cron };
 };
 
-export const getScheduleDescription = (cron: string): string => {
+/**
+ * Convert a UTC hour/minute to the user's local timezone and return a
+ * formatted time string with the short timezone name (e.g., "9:00 AM IST").
+ *
+ * Cron expressions are stored in UTC on the backend, so we create a Date
+ * object at the given UTC hour/minute and format it in the target timezone.
+ */
+function convertUtcTimeToLocalString(
+  utcHour: number,
+  utcMinute: number,
+  timezone: string,
+): string {
+  try {
+    // Build a Date in UTC at the given hour/minute (day is irrelevant)
+    const utcDate = new Date(
+      Date.UTC(2000, 0, 1, utcHour, utcMinute, 0),
+    );
+    return utcDate.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: timezone,
+      timeZoneName: "short",
+    });
+  } catch {
+    // Fallback: format without timezone conversion
+    const ampm = utcHour >= 12 ? "PM" : "AM";
+    const displayHour =
+      utcHour > 12 ? utcHour - 12 : utcHour === 0 ? 12 : utcHour;
+    const displayMinute = utcMinute.toString().padStart(2, "0");
+    return `${displayHour}:${displayMinute} ${ampm}`;
+  }
+}
+
+export const getScheduleDescription = (
+  cron: string,
+  timezone?: string,
+): string => {
+  const tz = timezone ?? getBrowserTimezone();
   const schedule = parseCronExpression(cron);
 
-  const formatTime = (hour: number, minute: number) => {
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    const displayMinute = minute.toString().padStart(2, "0");
-    return `${displayHour}:${displayMinute} ${ampm}`;
-  };
+  const formatTime = (hour: number, minute: number) =>
+    convertUtcTimeToLocalString(hour, minute, tz);
 
   const dayNames = [
     "Sunday",
@@ -217,13 +253,6 @@ export const getScheduleDescription = (cron: string): string => {
       return `Yearly on ${monthNames[schedule.month! - 1]} ${schedule.dayOfMonth} at ${formatTime(schedule.hour!, schedule.minute!)}`;
 
     case "custom":
-      // Try to match common patterns
-      if (schedule.customExpression === "0 9,18 * * *") {
-        return "Twice daily at 9:00 AM and 6:00 PM";
-      }
-      if (schedule.customExpression === "0 9 * * 1-5") {
-        return "Weekdays at 9:00 AM";
-      }
       return `Custom: ${schedule.customExpression}`;
 
     default:
