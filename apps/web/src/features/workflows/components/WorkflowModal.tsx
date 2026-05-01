@@ -41,6 +41,11 @@ interface WorkflowModalProps {
   existingWorkflow?: Workflow | null;
   /** Pre-fill form from AI-generated draft data */
   draftData?: WorkflowDraftData | null;
+  /**
+   * When true, the create button shows "Create and Send" and the workflow is
+   * immediately executed in the chat after creation.
+   */
+  createAndSend?: boolean;
 }
 
 export default function WorkflowModal({
@@ -51,6 +56,7 @@ export default function WorkflowModal({
   mode,
   existingWorkflow,
   draftData,
+  createAndSend = false,
 }: WorkflowModalProps) {
   const {
     isCreating,
@@ -367,7 +373,15 @@ export default function WorkflowModal({
         if (onWorkflowSaved) onWorkflowSaved(result.workflow.id);
         await fetchWorkflows();
 
-        handleClose();
+        // In createAndSend mode, auto-execute the workflow in chat after creation
+        if (createAndSend) {
+          handleClose();
+          setTimeout(() => {
+            selectWorkflow(result.workflow, { autoSend: true });
+          }, 50);
+        } else {
+          handleClose();
+        }
       } else {
         setCreationPhase("error");
       }
@@ -610,6 +624,7 @@ export default function WorkflowModal({
 
   const getButtonText = () => {
     if (mode === "edit") return isCreating ? "Saving..." : "Save Changes";
+    if (createAndSend) return isCreating ? "Creating..." : "Create and Send";
     return isCreating ? "Creating..." : "Create Workflow";
   };
 

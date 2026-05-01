@@ -3,11 +3,10 @@ import { UndoIcon } from "@icons";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useCallback, useMemo, useState } from "react";
-import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
+import WorkflowModal from "@/features/workflows/components/WorkflowModal";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { useComposerTextActions } from "@/stores/composerStore";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 
 const shuffleArray = <T,>(array: T[]): T[] => {
@@ -28,8 +27,9 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
   const [currentSuggestions, setCurrentSuggestions] = useState<
     CommunityWorkflow[]
   >([]);
-  const { clearInputText } = useComposerTextActions();
-  const { setContextualLoading } = useLoadingText();
+  const [selectedWorkflow, setSelectedWorkflow] =
+    useState<CommunityWorkflow | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Filter for only featured workflows
   const featuredWorkflows = useMemo(
@@ -68,6 +68,21 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
       setCurrentSuggestions(newSuggestions);
     }
   }, [currentSuggestions, featuredWorkflows]);
+
+  const handleSuggestionClick = useCallback((workflow: CommunityWorkflow) => {
+    setSelectedWorkflow(workflow);
+    setIsModalOpen(true);
+  }, []);
+
+  const draftData = useMemo(() => {
+    if (!selectedWorkflow) return null;
+    return {
+      suggested_title: selectedWorkflow.title,
+      suggested_description: selectedWorkflow.description,
+      prompt: selectedWorkflow.prompt || selectedWorkflow.description,
+      trigger_type: "manual" as const,
+    };
+  }, [selectedWorkflow]);
 
   return (
     <div className="w-full max-w-4xl mt-10">
@@ -108,14 +123,25 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
               showExecutions={true}
               showDescriptionAsTooltip={true}
               actionButtonLabel="Try"
-              onActionComplete={() => {
-                setContextualLoading(true, workflow.title);
-                clearInputText();
-              }}
+              onCardClick={() => handleSuggestionClick(workflow)}
+              primaryAction="none"
             />
           </m.div>
         ))}
       </m.div>
+
+      {isModalOpen && draftData && (
+        <WorkflowModal
+          isOpen={isModalOpen}
+          onOpenChange={(open) => {
+            setIsModalOpen(open);
+            if (!open) setSelectedWorkflow(null);
+          }}
+          mode="create"
+          draftData={draftData}
+          createAndSend
+        />
+      )}
     </div>
   );
 };
