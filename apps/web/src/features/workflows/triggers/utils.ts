@@ -80,7 +80,11 @@ export function getTriggerDisplayInfo(
   ) {
     const cronExpression = trigger_config.cron_expression;
     if (typeof cronExpression === "string") {
-      const cronDesc = getScheduleDescription(cronExpression);
+      const storedTimezone =
+        typeof trigger_config.timezone === "string"
+          ? trigger_config.timezone
+          : undefined;
+      const cronDesc = getScheduleDescription(cronExpression, storedTimezone);
       if (cronDesc) {
         displayInfo.label = cronDesc;
       }
