@@ -36,6 +36,7 @@ export const TodoLinkPreview = memo(function TodoLinkPreview({
     <Link
       href={href}
       isExternal
+      aria-label={`${domain} (opens in new tab)`}
       onClick={(e) => e.stopPropagation()}
       className="inline-flex items-center gap-1 underline decoration-zinc-500 underline-offset-2 transition-colors hover:text-primary"
     >
@@ -43,9 +44,10 @@ export const TodoLinkPreview = memo(function TodoLinkPreview({
         <Image
           src={faviconUrl}
           alt=""
-          width={14}
-          height={14}
-          className="inline-block h-3.5 w-3.5 shrink-0 rounded-sm"
+          aria-hidden="true"
+          width={16}
+          height={16}
+          className="inline-block size-4 shrink-0 rounded-sm"
         />
       )}
       <span>{domain}</span>

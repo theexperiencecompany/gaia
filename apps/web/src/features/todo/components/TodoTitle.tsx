@@ -3,21 +3,17 @@
 import { memo } from "react";
 import { TodoLinkPreview } from "./TodoLinkPreview";
 
-// Matches http:// and https:// URLs, excluding trailing sentence punctuation
-const URL_REGEX = /https?:\/\/[^\s<>"']+(?<![.,!?;:])/g;
-
 interface TitleSegment {
   type: "text" | "url";
   value: string;
 }
 
 function parseTitle(title: string): TitleSegment[] {
+  // Create a new regex instance each call to avoid shared lastIndex state
+  const URL_REGEX = /https?:\/\/[^\s<>"']+(?<![.,!?;:])/g;
   const segments: TitleSegment[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
-
-  // Reset lastIndex before exec loop
-  URL_REGEX.lastIndex = 0;
 
   while ((match = URL_REGEX.exec(title)) !== null) {
     const matchStart = match.index;
@@ -47,6 +43,10 @@ export const TodoTitle = memo(function TodoTitle({
   title,
   className,
 }: TodoTitleProps) {
+  if (!title) {
+    return <span className={className} />;
+  }
+
   const segments = parseTitle(title);
 
   // If no URLs found, render plain text
