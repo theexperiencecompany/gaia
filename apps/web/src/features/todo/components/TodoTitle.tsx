@@ -9,13 +9,13 @@ interface TitleSegment {
 }
 
 function parseTitle(title: string): TitleSegment[] {
-  // Create a new regex instance each call to avoid shared lastIndex state
+  // New instance each call — avoids shared lastIndex state across concurrent renders
   const URL_REGEX = /https?:\/\/[^\s<>"']+(?<![.,!?;:])/g;
   const segments: TitleSegment[] = [];
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
+  let match = URL_REGEX.exec(title);
 
-  while ((match = URL_REGEX.exec(title)) !== null) {
+  while (match !== null) {
     const matchStart = match.index;
     const matchEnd = matchStart + match[0].length;
 
@@ -25,6 +25,7 @@ function parseTitle(title: string): TitleSegment[] {
 
     segments.push({ type: "url", value: match[0] });
     lastIndex = matchEnd;
+    match = URL_REGEX.exec(title);
   }
 
   if (lastIndex < title.length) {
