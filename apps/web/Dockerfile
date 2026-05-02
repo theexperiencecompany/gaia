@@ -38,8 +38,10 @@ COPY . .
 RUN --mount=type=cache,id=gaia-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --store-dir /pnpm/store
 
-# Build argument for Next.js public env var (baked into static build)
-ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1/
+# Build-time API URL baked into the JS bundle. At container startup,
+# docker-entrypoint.sh replaces this placeholder with the real URL
+# derived from NEXT_PUBLIC_APP_URL, so one image works on any port.
+ARG NEXT_PUBLIC_API_BASE_URL=http://preview.placeholder.buildtime/api/v1/
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
 WORKDIR /app/apps/web
@@ -64,8 +66,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static     ./apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public            ./apps/web/public
 
+COPY --chown=nextjs:nodejs apps/web/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["node", "apps/web/server.js"]
+CMD ["sh", "./docker-entrypoint.sh"]

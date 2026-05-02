@@ -24,16 +24,16 @@ from typing import (
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
-from app.services.composio.composio_service import get_composio_service
 from app.db.chroma.public_integrations_store import search_public_integrations
+from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
 from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore, SearchItem
+from shared.py.wide_events import log
 
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
 

@@ -15,6 +15,7 @@ api/.env
 .DS_Store
 
 venv/
+.venv
 .venv/
 .venv311/
 
@@ -46,6 +47,7 @@ chroma-data/
 sticky-notes.snotes
 
 # dependencies
+node_modules
 node_modules/
 /.pnp
 .pnp.*

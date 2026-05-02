@@ -17,6 +17,7 @@ concurrency:
 
 env:
   DAGGER_VERSION: "0.20.3"
+  NX_NO_CLOUD: "true"
 
 jobs:
   # --- Detect affected projects -------------------------------------------
@@ -92,8 +93,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-        with:
-          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
       - run: pip install --break-system-packages uv
       - name: Sync Python deps
         run: uv sync --frozen --package gaia --group backend --group dev
@@ -119,8 +118,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-        with:
-          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
       - name: Biome lint
         run: npx nx run-many -t lint -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
       - name: TypeScript type-check
@@ -135,8 +132,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-        with:
-          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
       - name: Build
         run: npx nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
@@ -188,8 +183,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-        with:
-          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
       - name: Run TypeScript tests
         run: npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
