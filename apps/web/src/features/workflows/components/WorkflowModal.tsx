@@ -344,36 +344,37 @@ export default function WorkflowModal({
       const result = await createWorkflow(createRequest);
 
       if (result.success && result.workflow) {
+        const createdWorkflow = result.workflow;
         trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
-          workflow_id: result.workflow.id,
-          workflow_title: result.workflow.title,
-          step_count: result.workflow.steps?.length || 0,
+          workflow_id: createdWorkflow.id,
+          workflow_title: createdWorkflow.title,
+          step_count: createdWorkflow.steps?.length || 0,
           trigger_type: data.trigger_config.type,
           has_schedule: data.trigger_config.type === "schedule",
         });
 
         // Update currentWorkflow with the newly created workflow
-        setCurrentWorkflow(result.workflow);
+        setCurrentWorkflow(createdWorkflow);
         setCreationPhase("success");
 
         // Show success toast
         toast.success("Workflow created successfully!", {
-          description: `${result.workflow.steps?.length || 0} steps generated`,
+          description: `${createdWorkflow.steps?.length || 0} steps generated`,
           duration: 3000,
         });
 
         // Optimistic update: add to store immediately for instant UI feedback
-        addToStore(result.workflow);
+        addToStore(createdWorkflow);
 
         // Notify parent callbacks if provided (for backwards compatibility)
-        if (onWorkflowSaved) onWorkflowSaved(result.workflow.id);
+        if (onWorkflowSaved) onWorkflowSaved(createdWorkflow.id);
         await fetchWorkflows();
 
         // In createAndSend mode, auto-execute the workflow in chat after creation
         if (createAndSend) {
           handleClose();
           setTimeout(() => {
-            selectWorkflow(result.workflow, { autoSend: true });
+            selectWorkflow(createdWorkflow, { autoSend: true });
           }, 50);
         } else {
           handleClose();
