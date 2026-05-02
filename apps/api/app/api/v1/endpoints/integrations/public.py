@@ -24,6 +24,7 @@ from app.services.integrations.integration_connection_service import (
 )
 from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.utils.creator import creator_lookup_stage, format_creator
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.helpers.integration_helpers import (
     build_public_integration_pipeline,
@@ -313,33 +314,7 @@ async def get_related_workflows(
             {"$sort": {"total_executions": -1, "created_at": -1}},
             {"$skip": offset},
             {"$limit": limit},
-            {
-                "$lookup": {
-                    "from": "users",
-                    "let": {"creator_id": "$created_by"},
-                    "pipeline": [
-                        {
-                            "$match": {
-                                "$expr": {
-                                    "$eq": [
-                                        "$_id",
-                                        {
-                                            "$convert": {
-                                                "input": "$$creator_id",
-                                                "to": "objectId",
-                                                "onError": None,
-                                                "onNull": None,
-                                            }
-                                        },
-                                    ]
-                                }
-                            }
-                        },
-                        {"$project": {"name": 1, "picture": 1, "_id": 0}},
-                    ],
-                    "as": "creator_info",
-                }
-            },
+            creator_lookup_stage(),
             {
                 "$project": {
                     "_id": 1,
@@ -381,12 +356,6 @@ async def get_related_workflows(
 
         formatted_workflows = []
         for workflow in workflows:
-            creator_info = (
-                workflow.get("creator_info", [{}])[0]
-                if workflow.get("creator_info")
-                else {}
-            )
-
             raw_steps = workflow.get("steps", [])
             normalized_steps = []
             for step in raw_steps:
@@ -410,11 +379,7 @@ async def get_related_workflows(
                     "steps": normalized_steps,
                     "total_executions": workflow.get("total_executions", 0),
                     "created_at": workflow["created_at"],
-                    "creator": {
-                        "id": workflow.get("created_by"),
-                        "name": creator_info.get("name", "Unknown"),
-                        "avatar": creator_info.get("picture"),
-                    },
+                    "creator": format_creator(workflow),
                 }
             )
 
