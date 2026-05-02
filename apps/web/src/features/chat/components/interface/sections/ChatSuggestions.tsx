@@ -1,5 +1,6 @@
 import { Button } from "@heroui/button";
 import { UndoIcon } from "@icons";
+import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { memo, useCallback, useMemo, useState } from "react";
@@ -29,17 +30,19 @@ const SuggestionCard = memo(function SuggestionCard({
   index,
   onCardClick,
 }: SuggestionCardProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   const handleClick = useCallback(() => {
     onCardClick(workflow);
   }, [onCardClick, workflow]);
 
   return (
     <m.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
-        duration: 0.3,
-        delay: index * 0.05,
+        duration: shouldReduceMotion ? 0 : 0.3,
+        delay: shouldReduceMotion ? 0 : index * 0.05,
         ease: "easeOut",
       }}
     >
@@ -57,6 +60,7 @@ const SuggestionCard = memo(function SuggestionCard({
 });
 
 export const ChatSuggestions: React.FC = () => {
+  const shouldReduceMotion = useReducedMotion();
   const { workflows: allWorkflows } = useExploreWorkflows();
   const [currentSuggestions, setCurrentSuggestions] = useState<
     CommunityWorkflow[]
@@ -119,9 +123,12 @@ export const ChatSuggestions: React.FC = () => {
   }, [selectedWorkflow]);
 
   return (
-    <div className="w-full max-w-4xl mt-10">
-      <div className="mb-2 flex w-full items-end justify-between px-1 text-zinc-400">
-        <span className="text-sm font-light">Suggestions</span>
+    <section
+      className="w-full max-w-4xl mt-10"
+      aria-label="Workflow suggestions"
+    >
+      <div className="mb-2 flex w-full items-end justify-between px-1 text-zinc-300">
+        <h2 className="text-sm font-light">Suggestions</h2>
         <Button
           isIconOnly
           size="sm"
@@ -129,22 +136,22 @@ export const ChatSuggestions: React.FC = () => {
           aria-label="Shuffle suggestions"
           onPress={handleShuffle}
         >
-          <UndoIcon width={16} height={16} className="text-zinc-400" />
+          <UndoIcon width={16} height={16} className="text-zinc-300" />
         </Button>
       </div>
 
       {currentSuggestions.length === 0 && (
-        <div className="text-sm text-zinc-400 flex items-center justify-center py-8">
+        <div className="text-sm text-zinc-300 flex items-center justify-center py-8">
           No Suggestions found
         </div>
       )}
 
       <m.div
         className="grid w-full grid-cols-3 gap-4"
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
+        exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -20 }}
+        transition={{ duration: shouldReduceMotion ? 0 : 0.3, ease: "easeOut" }}
       >
         {currentSuggestions.map((workflow, index) => (
           <SuggestionCard
@@ -168,7 +175,7 @@ export const ChatSuggestions: React.FC = () => {
           createAndSend
         />
       )}
-    </div>
+    </section>
   );
 };
 
