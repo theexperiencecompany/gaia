@@ -37,17 +37,17 @@ export function IntegrationRelatedWorkflows({
 
       {isLoading ? (
         <div className="flex gap-3 overflow-hidden">
-          {Array.from({ length: 3 }).map((_, i) => (
+          {["s1", "s2", "s3"].map((key) => (
             <Skeleton
-              key={i}
+              key={key}
               className="h-36 w-60 shrink-0 rounded-3xl bg-zinc-800"
             />
           ))}
         </div>
       ) : (
-        <div
-          role="region"
+        <section
           aria-label="Related workflows"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable region needs keyboard focus to scroll
           tabIndex={0}
           className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={{ WebkitOverflowScrolling: "touch" }}
@@ -62,7 +62,7 @@ export function IntegrationRelatedWorkflows({
               />
             </div>
           ))}
-        </div>
+        </section>
       )}
     </div>
   );
