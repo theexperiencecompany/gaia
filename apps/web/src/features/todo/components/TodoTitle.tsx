@@ -6,6 +6,7 @@ import { TodoLinkPreview } from "./TodoLinkPreview";
 interface TitleSegment {
   type: "text" | "url";
   value: string;
+  start: number;
 }
 
 function parseTitle(title: string): TitleSegment[] {
@@ -20,16 +21,24 @@ function parseTitle(title: string): TitleSegment[] {
     const matchEnd = matchStart + match[0].length;
 
     if (matchStart > lastIndex) {
-      segments.push({ type: "text", value: title.slice(lastIndex, matchStart) });
+      segments.push({
+        type: "text",
+        value: title.slice(lastIndex, matchStart),
+        start: lastIndex,
+      });
     }
 
-    segments.push({ type: "url", value: match[0] });
+    segments.push({ type: "url", value: match[0], start: matchStart });
     lastIndex = matchEnd;
     match = URL_REGEX.exec(title);
   }
 
   if (lastIndex < title.length) {
-    segments.push({ type: "text", value: title.slice(lastIndex) });
+    segments.push({
+      type: "text",
+      value: title.slice(lastIndex),
+      start: lastIndex,
+    });
   }
 
   return segments;
@@ -57,11 +66,12 @@ export const TodoTitle = memo(function TodoTitle({
 
   return (
     <span className={className}>
-      {segments.map((segment, index) => {
+      {segments.map((segment) => {
+        const key = `${segment.type}:${segment.start}`;
         if (segment.type === "url") {
-          return <TodoLinkPreview key={index} href={segment.value} />;
+          return <TodoLinkPreview key={key} href={segment.value} />;
         }
-        return <span key={index}>{segment.value}</span>;
+        return <span key={key}>{segment.value}</span>;
       })}
     </span>
   );
