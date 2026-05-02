@@ -350,12 +350,7 @@ async def get_related_workflows(
         total = await workflows_collection.count_documents(match_stage)
 
         formatted_workflows = []
-        seen_ids: set[str] = set()
         for workflow in workflows:
-            wf_id = workflow["_id"]
-            if wf_id in seen_ids:
-                continue
-            seen_ids.add(wf_id)
             raw_steps = workflow.get("steps", [])
             normalized_steps = []
             for step in raw_steps:
@@ -371,7 +366,7 @@ async def get_related_workflows(
 
             formatted_workflows.append(
                 {
-                    "id": wf_id,
+                    "id": workflow["_id"],
                     "title": workflow["title"],
                     "description": workflow.get("description"),
                     "slug": workflow.get("slug"),

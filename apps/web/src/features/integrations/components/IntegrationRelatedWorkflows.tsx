@@ -22,14 +22,14 @@ interface IntegrationRelatedWorkflowsProps {
   readonly integrationName?: string;
 }
 
-const VIEW_MORE_HREF = "/use-cases#community-section";
+const VIEW_MORE_HREF = "/use-cases";
 
 function ViewMoreCard({ fullWidth = false }: { readonly fullWidth?: boolean }) {
   return (
     <Link
       href={VIEW_MORE_HREF}
       aria-label="View more workflows"
-      className={`group flex ${fullWidth ? "min-h-[180px] w-full" : "w-72 shrink-0"} flex-col items-center justify-center gap-2 rounded-3xl border border-dashed border-zinc-700/60 bg-transparent text-zinc-400 transition-colors hover:border-transparent hover:bg-zinc-800 hover:text-zinc-100`}
+      className={`group flex ${fullWidth ? "min-h-[180px] w-full" : "w-72 shrink-0"} flex-col items-center justify-center gap-2 rounded-3xl border-3 border-dashed border-zinc-700/60 bg-transparent text-zinc-400 transition-colors hover:border-transparent hover:bg-zinc-800 hover:text-zinc-100`}
     >
       <CircleArrowUpRightIcon
         width={28}
