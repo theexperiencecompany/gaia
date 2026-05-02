@@ -1,6 +1,7 @@
 import bundleAnalyzer from "@next/bundle-analyzer";
 import createMDX from "@next/mdx";
 import { withSentryConfig } from "@sentry/nextjs";
+import fs from "fs";
 import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -9,6 +10,21 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// When this checkout is a worktrunk worktree, `apps/web/node_modules` is a
+// symlink to the primary worktree's directory (sibling of this repo). The
+// default Turbopack root (`../..`, the repo root) considers that an out-of-root
+// symlink and refuses to dev. Bump the root one level up — to the parent of
+// the repo — so the symlink target stays inside it. Non-worktree checkouts
+// (CI, fresh clones, anyone not using `wt`) have a real `node_modules`
+// directory, so this codepath never triggers and behavior is unchanged.
+const webNodeModules = path.join(__dirname, "node_modules");
+const isWorktreeWithSharedDeps =
+  fs.existsSync(webNodeModules) &&
+  fs.lstatSync(webNodeModules).isSymbolicLink();
+const turbopackRoot = isWorktreeWithSharedDeps
+  ? path.join(__dirname, "../../..")
+  : path.join(__dirname, "../..");
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -28,9 +44,10 @@ const nextConfig = {
   // Enable standalone output for Electron desktop app bundling
   // This creates a minimal production server with all dependencies
   output: "standalone",
-  // Explicitly set turbopack workspace root to silence inference warning
+  // Explicitly set turbopack workspace root to silence inference warning.
+  // Resolved above as `turbopackRoot` to handle worktrunk worktrees correctly.
   turbopack: {
-    root: path.join(__dirname, "../.."),
+    root: turbopackRoot,
     // Change the value here to swap the entire icon variant across the app
     // node:* aliases rewrite Node built-in specifiers to their bare form so
     // Turbopack does not emit chunks named `[externals]_node:foo_*.js` — the
