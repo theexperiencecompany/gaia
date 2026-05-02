@@ -323,10 +323,10 @@ describe("WhatsAppAdapter - createWaTarget", () => {
     const target = priv.createWaTarget("15551234567");
     const richMsg = { title: "GAIA Help", sections: [] };
 
-    vi.mocked(richMessageToMarkdown).mockReturnValue(
+    vi.mocked(richMessageToMarkdown).mockReturnValueOnce(
       "*GAIA Help*\n**Name:** Aryan",
     );
-    vi.mocked(convertToWhatsAppMarkdown).mockReturnValue(
+    vi.mocked(convertToWhatsAppMarkdown).mockReturnValueOnce(
       "*GAIA Help*\n*Name:* Aryan",
     );
 

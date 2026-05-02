@@ -147,7 +147,11 @@ class WorkflowSubagentRunner:
             additional_kwargs={"visible_to": {"workflow_agent"}},
         )
 
-        initial_state = {"messages": [system_message, context_message, human_message]}
+        initial_state = {
+            "messages": [system_message, context_message, human_message],
+            "intent": task,
+            "integration_usernames": {},
+        }
 
         log.info(f"[WorkflowSubagent] Executing with task: {task[:100]}...")
 

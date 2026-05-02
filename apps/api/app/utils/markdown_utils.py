@@ -8,40 +8,6 @@ import markdown2
 from shared.py.wide_events import log
 
 
-def is_markdown_content(text: str) -> bool:
-    """
-    Detect if text contains markdown syntax.
-
-    Args:
-        text: The text to check
-
-    Returns:
-        bool: True if markdown syntax is detected
-    """
-    if not text or not isinstance(text, str):
-        return False
-
-    markdown_patterns = [
-        r"^#{1,6}\s",  # Headers
-        r"\*\*[^*]+\*\*",  # Bold with **
-        r"__[^_]+__",  # Bold with __
-        r"\*[^*]+\*",  # Italic with *
-        r"_[^_]+_",  # Italic with _
-        r"\[.+?\]\(.+?\)",  # Links [text](url)
-        r"^[-*+]\s",  # Unordered lists
-        r"^\d+\.\s",  # Ordered lists
-        r"`[^`]+`",  # Inline code
-        r"```[\s\S]*?```",  # Code blocks
-        r"^>\s",  # Blockquotes
-    ]
-
-    for pattern in markdown_patterns:
-        if re.search(pattern, text, re.MULTILINE):
-            return True
-
-    return False
-
-
 def convert_markdown_to_html(markdown_text: str) -> str:
     """
     Convert markdown text to HTML.
@@ -69,6 +35,41 @@ def convert_markdown_to_html(markdown_text: str) -> str:
     except Exception as e:
         log.error(f"Error converting markdown to HTML: {e}")
         return markdown_text
+
+
+_HTML_TAG_RE = re.compile(
+    r"<\s*(p|div|html|body|br|h[1-6]|ul|ol|li|table|span|a|strong|em)\b",
+    re.IGNORECASE,
+)
+
+
+def looks_like_html(text: str) -> bool:
+    """Return True if ``text`` appears to already be HTML.
+
+    Used at the email boundary to decide whether to run the body through the
+    markdown→HTML converter. We look for common block/inline HTML tags rather
+    than any ``<…>`` so strings like ``"x < 5"`` don't false-positive.
+    """
+    if not text:
+        return False
+    return bool(_HTML_TAG_RE.search(text))
+
+
+def normalize_email_body_to_html(body: str) -> str:
+    """Always return HTML for an email body.
+
+    The agent produces Markdown, users/forms sometimes paste Markdown, and the
+    REST layer historically had an ``is_html`` flag that was unreliable.
+    Normalising at the send boundary means Gmail always receives HTML and
+    renders consistently — ``**bold**`` never leaks into the recipient's
+    inbox as literal asterisks. markdown2 wraps plain-text bodies in ``<p>``
+    tags, so this is safe for both Markdown and plain-text inputs.
+    """
+    if not body:
+        return body
+    if looks_like_html(body):
+        return body
+    return convert_markdown_to_html(body)
 
 
 def convert_markdown_to_plain_text(markdown_text: str) -> str:

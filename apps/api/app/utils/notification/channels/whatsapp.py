@@ -17,9 +17,11 @@ from app.constants.notifications import (
 )
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
+    NotificationRequest,
 )
 from app.utils.notification.channels.base import SendFn
 from app.utils.notification.channels.external import ExternalPlatformAdapter
+from app.utils.platform_markdown import convert_to_whatsapp_markdown
 
 
 class WhatsAppChannelAdapter(ExternalPlatformAdapter):
@@ -39,6 +41,32 @@ class WhatsAppChannelAdapter(ExternalPlatformAdapter):
     def bold_marker(self) -> str:
         # WhatsApp uses *bold* (single asterisk)
         return "*"
+
+    async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
+        """Build the notification payload and convert any CommonMark Markdown in
+        the body/messages to WhatsApp's native formatting so ``**bold**`` and
+        ``### headings`` don't render as literal characters in the chat bubble.
+
+        Order matters: we convert here (in ``transform``) rather than inside
+        ``_deliver_content``. The base class's splitter
+        (``_split_text`` → ``MAX_MESSAGE_LENGTH``) runs on the transformed
+        text during delivery, so chunk boundaries reflect the final WhatsApp
+        payload and link expansion (``[x](url)`` → ``x (url)``) won't push a
+        boundary past 4096 characters unexpectedly.
+        """
+        payload = await super().transform(notification)
+        if payload.get("type") == "workflow_messages":
+            if header := payload.get("header"):
+                payload["header"] = convert_to_whatsapp_markdown(header)
+            payload["messages"] = [
+                convert_to_whatsapp_markdown(m) for m in payload.get("messages", [])
+            ]
+            if footer := payload.get("footer"):
+                payload["footer"] = convert_to_whatsapp_markdown(footer)
+            return payload
+        if text := payload.get("text"):
+            payload["text"] = convert_to_whatsapp_markdown(text)
+        return payload
 
     def _get_bot_token(self) -> str | None:
         # For WhatsApp via Kapso, authentication is the API key, not a bot token.

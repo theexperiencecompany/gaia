@@ -181,6 +181,7 @@ class ToolRegistry:
             context_tool,
             document_tool,
             file_tools,
+            finish_task_tool,
             flowchart_tool,
             goal_tool,
             image_tool,
@@ -244,6 +245,7 @@ class ToolRegistry:
 
         # General tools - directly accessible by executor
         self._add_category("workflows", tools=workflow_tool.tools)
+        self._add_category("control", tools=[finish_task_tool.finish_task])
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)
         self._add_category("filesystem", tools=vfs_tools.tools)

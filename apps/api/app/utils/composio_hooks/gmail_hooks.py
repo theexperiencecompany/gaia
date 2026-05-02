@@ -19,6 +19,7 @@ from app.agents.templates.mail_templates import (
     process_list_drafts_response,
     process_list_messages_response,
 )
+from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
 from .registry import (
@@ -26,6 +27,15 @@ from .registry import (
     register_before_hook,
     register_schema_modifier,
 )
+
+_GMAIL_COMPOSE_TOOLS = (
+    "GMAIL_SEND_EMAIL",
+    "GMAIL_CREATE_EMAIL_DRAFT",
+    "GMAIL_REPLY_TO_THREAD",
+    "GMAIL_FORWARD_MESSAGE",
+)
+# Gmail's ``body`` field is named differently across compose tools.
+_GMAIL_BODY_KEYS = ("body", "message_body", "message")
 
 GMAIL_FULL_FETCH_HARD_LIMIT = 30
 
@@ -49,6 +59,29 @@ def gmail_send_email_schema_modifier(tool: str, toolkit: str, schema: Tool) -> T
         "use GMAIL_SEND_DRAFT with the draft_id instead of this tool."
     )
     schema.description += draft_guidance
+    return schema
+
+
+@register_schema_modifier(tools=list(_GMAIL_COMPOSE_TOOLS))
+def gmail_compose_hide_is_html_schema_modifier(
+    tool: str, toolkit: str, schema: Tool
+) -> Tool:
+    """Hide the ``is_html`` parameter from the agent-facing schema.
+
+    The before-hook always converts the body to HTML and sets the flag, so
+    exposing it to the agent just invites bad choices (agent picks False,
+    writes Markdown, Gmail renders ``**bold**`` as literal asterisks). The
+    agent writes Markdown — everything else is our problem.
+    """
+    input_params = schema.input_parameters
+    if not isinstance(input_params, dict):
+        return schema
+    props = input_params.get("properties")
+    if isinstance(props, dict):
+        props.pop("is_html", None)
+    required = input_params.get("required")
+    if isinstance(required, list) and "is_html" in required:
+        required.remove("is_html")
     return schema
 
 
@@ -158,6 +191,17 @@ def gmail_compose_before_hook(
     log.set(gmail_tool=tool, toolkit=toolkit)
     try:
         arguments = params.get("arguments", {})
+
+        # Always normalise the body to HTML before it reaches Gmail. The agent
+        # writes Markdown; Gmail renders Markdown literally as plain text. The
+        # normaliser is idempotent on already-HTML bodies so callers that hand
+        # us HTML are unaffected.
+        for body_key in _GMAIL_BODY_KEYS:
+            raw_body = arguments.get(body_key)
+            if isinstance(raw_body, str) and raw_body:
+                arguments[body_key] = normalize_email_body_to_html(raw_body)
+        arguments["is_html"] = True
+        params["arguments"] = arguments
 
         if tool in ["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"]:
             # Auto-convert 'to' to 'recipient_email' if needed
