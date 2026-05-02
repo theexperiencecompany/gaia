@@ -989,11 +989,13 @@
 }
 
 /* Bold feature name at start of li */
-.whats-new-content li strong,
-.whats-new-content strong {
+/* biome-ignore lint/style/noDescendingSpecificity: scoped to .whats-new-content, unrelated to .chat_bubble selectors above */
+.whats-new-content strong,
+.whats-new-content li strong {
   font-weight: 600;
   color: rgb(228 228 231); /* zinc-200 */
 }
+/* biome-ignore lint/style/noDescendingSpecificity: scoped to .whats-new-content, unrelated to .chat_bubble selectors above */
 .whats-new-content em {
   font-style: italic;
   color: rgb(212 212 216); /* zinc-300 */
@@ -1011,6 +1013,7 @@
   text-underline-offset: 3px;
   transition: text-decoration-color 0.15s;
 }
+/* biome-ignore lint/style/noDescendingSpecificity: hover for non-h2 links, intentionally less specific than .whats-new-content h2 a:hover above */
 .whats-new-content a:hover {
   text-decoration-color: var(--color-primary, #3b82f6);
 }

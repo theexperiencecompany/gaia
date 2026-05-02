@@ -29,7 +29,6 @@ from app.api.v1.endpoints import (
     search,
     skills,
     support,
-    team,
     todos,
     tools,
     triggers,
@@ -65,7 +64,6 @@ router.include_router(onboarding.router, prefix="/onboarding", tags=["Onboarding
 router.include_router(user.router, prefix="/user", tags=["User"])
 router.include_router(mail.router, tags=["Mail"])
 router.include_router(blog.router, tags=["Blog"])
-router.include_router(team.router, tags=["Team"])
 router.include_router(file.router, tags=["File"])
 router.include_router(notification.router, tags=["Notification"])
 router.include_router(websocket.router, tags=["WebSocket"])
