@@ -17,7 +17,6 @@ from app.agents.prompts.memory_prompts import (
     CLICKUP_MEMORY_PROMPT,
     CONTEXT7_MEMORY_PROMPT,
     DEEPWIKI_MEMORY_PROMPT,
-    GAIA_MEMORY_PROMPT,
     GITHUB_MEMORY_PROMPT,
     GMAIL_MEMORY_PROMPT,
     GOALS_MEMORY_PROMPT,
@@ -1994,7 +1993,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_direct_tools=True,
             disable_retrieve_tools=True,
             auto_bind_tools=["fetch_webpages"],
-            memory_prompt=GAIA_MEMORY_PROMPT,
         ),
     ),
 ]
