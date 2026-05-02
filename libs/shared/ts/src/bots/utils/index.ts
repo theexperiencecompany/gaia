@@ -256,8 +256,8 @@ export function chunkResponse(
 
   while (remaining.length > limit) {
     const cutAt = pickCutBoundary(remaining, cutLimit);
-    let chunk = remaining.slice(0, cutAt).trimEnd();
-    let next = remaining.slice(cutAt).trimStart();
+    let chunk = remaining.slice(0, cutAt);
+    let next = remaining.slice(cutAt);
 
     // Belt-and-suspenders: balance unbalanced ``**`` markers across the cut
     // in narrative text. We ignore ``**`` that appears inside fenced code
@@ -298,9 +298,17 @@ export function chunkResponse(
     // ``` it ends inside an open fence — close it here and reopen on the next
     // chunk so each bubble renders as valid markdown.
     const fenceCount = chunk.match(/```/g)?.length ?? 0;
-    if (fenceCount % 2 === 1) {
+    const insideFence = fenceCount % 2 === 1;
+    if (insideFence) {
       chunk = `${chunk}\n\`\`\``;
       next = `\`\`\`\n${next}`;
+    } else {
+      // Cosmetic whitespace trim for narrative cuts only. We never trim when
+      // the cut lands inside a fenced block, because leading whitespace there
+      // is significant code indentation (Python, YAML) and trimming it would
+      // produce broken code in the next bubble.
+      chunk = chunk.trimEnd();
+      next = next.trimStart();
     }
 
     chunks.push(chunk);

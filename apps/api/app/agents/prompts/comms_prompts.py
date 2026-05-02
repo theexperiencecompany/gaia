@@ -345,15 +345,30 @@ def _strip_openui_section(prompt: str) -> str:
     """Remove the embedded OpenUI component-instructions block from ``prompt``.
 
     The block is delimited by ``_OPENUI_SECTION_START_MARKER`` and
-    ``_OPENUI_SECTION_END_MARKER``. Returns ``prompt`` unchanged if either
-    marker is missing (defensive — keeps the build safe if the prompt is
-    edited and the markers move).
+    ``_OPENUI_SECTION_END_MARKER``. If either marker is missing we log a
+    loud warning and return ``prompt`` unchanged — silently re-introducing
+    the bug (plain prompt still telling the model to emit ``:::openui``)
+    would be far worse than logging a noisy startup warning that someone
+    edited the prompt and forgot to keep the markers in sync.
     """
+    from shared.py.wide_events import log
+
     start = prompt.find(_OPENUI_SECTION_START_MARKER)
     if start == -1:
+        log.warning(
+            "comms_prompts: OpenUI section start marker not found in "
+            "COMMS_AGENT_PROMPT — plain (whatsapp/telegram/discord/slack) "
+            "variant will still contain OpenUI instructions. Update "
+            "_OPENUI_SECTION_START_MARKER to match the prompt."
+        )
         return prompt
     end_marker_idx = prompt.find(_OPENUI_SECTION_END_MARKER, start)
     if end_marker_idx == -1:
+        log.warning(
+            "comms_prompts: OpenUI section end marker not found after the "
+            "start marker — plain variant strip aborted. Update "
+            "_OPENUI_SECTION_END_MARKER to match the prompt."
+        )
         return prompt
     end_of_line = prompt.find("\n", end_marker_idx + len(_OPENUI_SECTION_END_MARKER))
     end = end_of_line + 1 if end_of_line != -1 else len(prompt)
