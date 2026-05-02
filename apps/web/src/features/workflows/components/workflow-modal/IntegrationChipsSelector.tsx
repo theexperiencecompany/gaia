@@ -9,10 +9,11 @@ import { useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
+import { cn } from "@/lib/utils";
 
 interface IntegrationChipsSelectorProps {
-  selectedSlugs: string[];
-  onChange: (slugs: string[]) => void;
+  readonly selectedSlugs: string[];
+  readonly onChange: (slugs: string[]) => void;
 }
 
 function IntegrationIcon({ integration }: { integration: Integration }) {
@@ -121,11 +122,12 @@ export default function IntegrationChipsSelector({
                       onPress={() => toggleIntegration(integration.slug)}
                       aria-pressed={isSelected}
                       aria-label={`${isSelected ? "Remove" : "Add"} ${integration.name}`}
-                      className={`flex w-full justify-start gap-2 rounded-xl px-2 py-1.5 text-sm ${
+                      className={cn(
+                        "flex w-full justify-start gap-2 rounded-xl px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                         isSelected
                           ? "bg-primary/15 text-primary"
-                          : "text-zinc-300"
-                      }`}
+                          : "text-foreground/70",
+                      )}
                     >
                       <IntegrationIcon integration={integration} />
                       <span className="flex-1 truncate">

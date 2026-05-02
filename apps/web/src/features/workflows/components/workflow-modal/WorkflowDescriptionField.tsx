@@ -118,7 +118,12 @@ export default function WorkflowDescriptionField({
               isInvalid={!!errors.prompt}
               errorMessage={errors.prompt?.message}
               onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                if (
+                  (e.metaKey || e.ctrlKey) &&
+                  e.shiftKey &&
+                  e.key === "Enter"
+                ) {
+                  e.preventDefault();
                   handleGenerate(field.onChange);
                 }
               }}
