@@ -20,6 +20,10 @@
  */
 import type { Analytics } from "../../analytics";
 import { BOT_EVENTS } from "../../analytics/events/bots";
+import {
+  NEW_MESSAGE_BREAK_TOKEN,
+  NEW_MESSAGE_BREAK_TOKEN_LENGTH,
+} from "../../utils/messageBreakUtils";
 import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
 import { formatBotError } from "./formatters";
@@ -96,7 +100,7 @@ async function _handleStream(
 
   const updateDisplay = async (text: string) => {
     // Strip any unprocessed break tags before displaying
-    const cleaned = text.replaceAll("<NEW_MESSAGE_BREAK>", "").trim();
+    const cleaned = text.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim();
     if (!cleaned) return;
     const truncated = truncateResponse(cleaned, platform);
     if (truncated === sentText) return;
@@ -111,10 +115,12 @@ async function _handleStream(
   const handleNewMessageBreak = async () => {
     if (!sendNewMessage) return;
 
-    while (fullText.includes("<NEW_MESSAGE_BREAK>")) {
-      const breakIndex = fullText.indexOf("<NEW_MESSAGE_BREAK>");
+    while (fullText.includes(NEW_MESSAGE_BREAK_TOKEN)) {
+      const breakIndex = fullText.indexOf(NEW_MESSAGE_BREAK_TOKEN);
       const beforeBreak = fullText.slice(0, breakIndex).trim();
-      const afterBreak = fullText.slice(breakIndex + 19);
+      const afterBreak = fullText.slice(
+        breakIndex + NEW_MESSAGE_BREAK_TOKEN_LENGTH,
+      );
 
       if (beforeBreak && beforeBreak !== sentText) {
         await updateDisplay(beforeBreak);
@@ -128,11 +134,11 @@ async function _handleStream(
       }
 
       currentEditor = await sendNewMessage(
-        afterTrimmed.replaceAll("<NEW_MESSAGE_BREAK>", "").trim() || "...",
+        afterTrimmed.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim() || "...",
       );
       fullText = afterTrimmed;
       sentText =
-        afterTrimmed.replaceAll("<NEW_MESSAGE_BREAK>", "").trim() || "...";
+        afterTrimmed.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim() || "...";
     }
   };
 
@@ -149,7 +155,7 @@ async function _handleStream(
    */
   const finalizeDelivery = async (text: string): Promise<void> => {
     const segments = text
-      .split("<NEW_MESSAGE_BREAK>")
+      .split(NEW_MESSAGE_BREAK_TOKEN)
       .map((s) => s.trim())
       .filter(Boolean);
     if (segments.length === 0) return;
@@ -196,7 +202,7 @@ async function _handleStream(
 
         const now = Date.now();
         if (
-          fullText.includes("<NEW_MESSAGE_BREAK>") ||
+          fullText.includes(NEW_MESSAGE_BREAK_TOKEN) ||
           now - lastEditTime >= editIntervalMs
         ) {
           lastEditTime = now;

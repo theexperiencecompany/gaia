@@ -94,13 +94,88 @@ export function truncateResponse(
 }
 
 /**
- * Splits a long response into platform-sized chunks for delivery as multiple
- * messages instead of a single truncated bubble. Used by non-streaming bot
- * adapters (WhatsApp, Discord) so the user receives the full content.
+ * Returns true if cutting ``text`` at index ``idx`` would land inside an
+ * incomplete markdown link of the form ``[label](url)``. Used by
+ * {@link chunkResponse} to walk the cut boundary back to before the link so
+ * we never deliver a half-rendered link to the user.
+ */
+function cutsInsideMarkdownLink(text: string, idx: number): boolean {
+  const lastOpenBracket = text.lastIndexOf("[", idx - 1);
+  if (lastOpenBracket === -1) return false;
+  // If a `]` appears between `[` and idx the bracket is already closed.
+  if (text.lastIndexOf("]", idx - 1) > lastOpenBracket) {
+    // Bracket closed — but if `(` follows immediately, the URL portion may
+    // still be open at idx. Check for an unclosed `(` to the left of idx.
+    const lastOpenParen = text.lastIndexOf("(", idx - 1);
+    const lastCloseParen = text.lastIndexOf(")", idx - 1);
+    if (lastOpenParen > lastCloseParen) {
+      const closeAfter = text.indexOf(")", idx);
+      return closeAfter !== -1;
+    }
+    return false;
+  }
+  // Bracket is still open at idx — definitely inside a link.
+  const closeParen = text.indexOf(")", lastOpenBracket);
+  return closeParen !== -1;
+}
+
+/**
+ * Picks the best cut index ≤ ``limit`` for a chunk of ``text``. Prefers
+ * paragraph (`\n\n`), then sentence enders, then word boundary, then a hard
+ * cut at ``limit`` as a last resort. Boundaries that would split a markdown
+ * link are skipped.
  *
- * Splits prefer paragraph (`\n\n`) boundaries, then sentence enders
- * (`. `, `! `, `? `, `\n`), then the last word boundary, then a hard cut as a
- * last resort. Each returned chunk is guaranteed to be ≤ the platform limit.
+ * The 50 %-of-limit floor avoids producing tiny fragments — if no decent
+ * boundary exists in the second half of the window, we accept the hard cut
+ * rather than emit a 200-char chunk on a 4000-char limit.
+ */
+function pickCutBoundary(text: string, limit: number): number {
+  const window = text.slice(0, limit);
+  const floor = limit * 0.5;
+
+  // 1. Paragraph break
+  const paragraph = window.lastIndexOf("\n\n");
+  if (paragraph >= floor && !cutsInsideMarkdownLink(text, paragraph)) {
+    return paragraph;
+  }
+
+  // 2. Sentence end (in priority order: ". ", "! ", "? ", "\n")
+  let bestSentence = -1;
+  for (const sep of [". ", "! ", "? ", "\n"]) {
+    const idx = window.lastIndexOf(sep);
+    if (idx < floor) continue;
+    const cut = idx + sep.length;
+    if (cut > bestSentence && !cutsInsideMarkdownLink(text, cut)) {
+      bestSentence = cut;
+    }
+  }
+  if (bestSentence > 0) return bestSentence;
+
+  // 3. Word boundary
+  let space = window.lastIndexOf(" ");
+  while (space >= floor) {
+    if (!cutsInsideMarkdownLink(text, space + 1)) return space + 1;
+    space = window.lastIndexOf(" ", space - 1);
+  }
+
+  // 4. Hard cut as last resort
+  return limit;
+}
+
+/**
+ * Splits a long response into platform-sized chunks for delivery as multiple
+ * messages instead of a single truncated bubble. Used by bot adapters so the
+ * user receives the full content across as many bubbles as needed.
+ *
+ * The boundary search prefers paragraph breaks, then sentence enders, then
+ * word boundaries, then a hard cut. Boundaries that would land inside a
+ * markdown link `[text](url)` are skipped. If a chunk would end with an
+ * unclosed code fence (```), the chunk is closed and the next chunk reopens
+ * with the same fence so the markdown stays valid across bubbles.
+ *
+ * Each returned chunk is guaranteed to be ≤ the platform character limit
+ * (after fence-balancing, the closing/reopening adds a small fixed overhead;
+ * we leave headroom by reserving 8 chars for the fence pair).
  *
  * @param text - The full message text.
  * @param platform - The target platform (discord, slack, telegram, whatsapp).
@@ -114,37 +189,30 @@ export function chunkResponse(
   const limit = PLATFORM_LIMITS[platform];
   if (text.length <= limit) return [text];
 
+  // Reserve space for code-fence balancing markers ("\n```" + "```\n") so a
+  // chunk that closes/reopens a fence still fits inside the platform limit.
+  const FENCE_HEADROOM = 8;
+  const cutLimit = limit - FENCE_HEADROOM;
+
   const chunks: string[] = [];
   let remaining = text;
 
   while (remaining.length > limit) {
-    let cutAt = -1;
-    const window = remaining.slice(0, limit);
+    const cutAt = pickCutBoundary(remaining, cutLimit);
+    let chunk = remaining.slice(0, cutAt).trimEnd();
+    let next = remaining.slice(cutAt).trimStart();
 
-    // Prefer paragraph break
-    cutAt = window.lastIndexOf("\n\n");
-    if (cutAt < limit * 0.5) cutAt = -1;
-
-    // Fall back to sentence end
-    if (cutAt === -1) {
-      const candidates = [". ", "! ", "? ", "\n"];
-      for (const sep of candidates) {
-        const idx = window.lastIndexOf(sep);
-        if (idx > limit * 0.5 && idx > cutAt) cutAt = idx + sep.length;
-      }
+    // Balance code fences across the cut: if the chunk has an odd number of
+    // ``` it ends inside an open fence — close it here and reopen on the next
+    // chunk so each bubble renders as valid markdown.
+    const fenceCount = chunk.match(/```/g)?.length ?? 0;
+    if (fenceCount % 2 === 1) {
+      chunk = `${chunk}\n\`\`\``;
+      next = `\`\`\`\n${next}`;
     }
 
-    // Fall back to last word boundary
-    if (cutAt === -1) {
-      const space = window.lastIndexOf(" ");
-      if (space > limit * 0.5) cutAt = space + 1;
-    }
-
-    // Hard cut as last resort
-    if (cutAt === -1) cutAt = limit;
-
-    chunks.push(remaining.slice(0, cutAt).trimEnd());
-    remaining = remaining.slice(cutAt).trimStart();
+    chunks.push(chunk);
+    remaining = next;
   }
 
   if (remaining.length > 0) chunks.push(remaining);
