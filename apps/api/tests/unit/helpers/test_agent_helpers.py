@@ -14,6 +14,34 @@ from app.helpers.agent_helpers import (
     get_custom_integration_metadata,
     get_handoff_metadata,
 )
+from app.models.mcp_config import SubAgentConfig
+from app.models.subagent_models import Subagent
+
+
+def _make_subagent(
+    subagent_id: str = "github",
+    short_name: str | None = "gh",
+    name: str = "GitHub",
+) -> Subagent:
+    """Build a real Subagent for handoff metadata tests."""
+    config = SubAgentConfig(
+        has_subagent=True,
+        agent_name=f"{subagent_id}_agent",
+        tool_space=f"{subagent_id}_space",
+        handoff_tool_name=f"call_{subagent_id}",
+        domain=subagent_id,
+        capabilities=f"{subagent_id} stuff",
+        use_cases=f"{subagent_id} use",
+        system_prompt=f"You are the {subagent_id} agent.",
+    )
+    return Subagent(
+        id=subagent_id,
+        name=name,
+        provider=subagent_id,
+        managed_by="composio",
+        config=config,
+        short_name=short_name,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -211,80 +239,48 @@ class TestGetCustomIntegrationMetadata:
 @pytest.mark.asyncio
 class TestGetHandoffMetadata:
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.OAUTH_INTEGRATIONS", [])
-    async def test_cache_hit_returns_cached(self, mock_get_cache):
+    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
+    async def test_cache_hit_returns_cached(self, mock_lookup, mock_get_cache):
+        """Cache check happens AFTER the registry lookup; lookup must miss
+        first so the code path falls through to the Redis cache."""
         mock_get_cache.return_value = {"integration_id": "github", "icon_url": None}
 
         result = await get_handoff_metadata("github")
         assert result["integration_id"] == "github"
 
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.OAUTH_INTEGRATIONS", [])
-    async def test_cache_hit_empty_returns_empty(self, mock_get_cache):
+    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
+    async def test_cache_hit_empty_returns_empty(self, mock_lookup, mock_get_cache):
         """Cached empty dict means negative cache hit."""
         mock_get_cache.return_value = {}
 
         result = await get_handoff_metadata("nonexistent")
         assert result == {}
 
-    @patch("app.helpers.agent_helpers.OAUTH_INTEGRATIONS")
-    async def test_platform_integration_match_by_id(self, mock_integrations):
-        integ = MagicMock()
-        integ.id = "github"
-        integ.short_name = "gh"
-        integ.name = "GitHub"
-        integ.subagent_config = MagicMock()
-        integ.subagent_config.has_subagent = True
-        mock_integrations.__iter__ = MagicMock(return_value=iter([integ]))
+    @patch("app.helpers.agent_helpers.get_subagent_by_id")
+    async def test_platform_integration_match_by_id(self, mock_lookup):
+        mock_lookup.return_value = _make_subagent("github", "gh", "GitHub")
 
         result = await get_handoff_metadata("github")
         assert result["integration_id"] == "github"
         assert result["integration_name"] == "GitHub"
         assert result["icon_url"] is None
 
-    @patch("app.helpers.agent_helpers.OAUTH_INTEGRATIONS")
-    async def test_platform_integration_match_by_short_name(self, mock_integrations):
-        integ = MagicMock()
-        integ.id = "github"
-        integ.short_name = "gh"
-        integ.name = "GitHub"
-        integ.subagent_config = MagicMock()
-        integ.subagent_config.has_subagent = True
-        mock_integrations.__iter__ = MagicMock(return_value=iter([integ]))
+    @patch("app.helpers.agent_helpers.get_subagent_by_id")
+    async def test_platform_integration_match_by_short_name(self, mock_lookup):
+        # The registry's get_subagent_by_id resolves short_name itself —
+        # the mock just returns the same Subagent regardless of input.
+        mock_lookup.return_value = _make_subagent("github", "gh", "GitHub")
 
         result = await get_handoff_metadata("gh")
         assert result["integration_name"] == "GitHub"
 
-    @patch("app.helpers.agent_helpers.OAUTH_INTEGRATIONS")
-    async def test_platform_integration_no_subagent(self, mock_integrations):
-        """Platform integration without subagent config falls through."""
-        integ = MagicMock()
-        integ.id = "slack"
-        integ.short_name = None
-        integ.name = "Slack"
-        integ.subagent_config = MagicMock()
-        integ.subagent_config.has_subagent = False
-        mock_integrations.__iter__ = MagicMock(return_value=iter([integ]))
-
-        with (
-            patch(
-                "app.helpers.agent_helpers.get_cache",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock),
-            patch("app.helpers.agent_helpers.integrations_collection") as mock_col,
-        ):
-            mock_col.find_one = AsyncMock(return_value=None)
-            result = await get_handoff_metadata("slack")
-        assert result == {}
-
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.integrations_collection")
-    @patch("app.helpers.agent_helpers.OAUTH_INTEGRATIONS", [])
+    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
     async def test_custom_integration_found_in_db(
-        self, mock_col, mock_get_cache, mock_set_cache
+        self, mock_lookup, mock_col, mock_get_cache, mock_set_cache
     ):
         mock_get_cache.return_value = None
         mock_col.find_one = AsyncMock(
@@ -302,9 +298,9 @@ class TestGetHandoffMetadata:
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.integrations_collection")
-    @patch("app.helpers.agent_helpers.OAUTH_INTEGRATIONS", [])
+    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
     async def test_custom_integration_db_error_returns_empty(
-        self, mock_col, mock_get_cache, mock_set_cache
+        self, mock_lookup, mock_col, mock_get_cache, mock_set_cache
     ):
         mock_get_cache.return_value = None
         mock_col.find_one = AsyncMock(side_effect=Exception("DB failure"))
@@ -315,11 +311,12 @@ class TestGetHandoffMetadata:
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.integrations_collection")
-    @patch("app.helpers.agent_helpers.OAUTH_INTEGRATIONS", [])
+    @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
     async def test_handoff_with_subagent_prefix(
-        self, mock_col, mock_get_cache, mock_set_cache
+        self, mock_lookup, mock_col, mock_get_cache, mock_set_cache
     ):
-        """Subagent IDs may have 'subagent:' prefix."""
+        """Subagent IDs may have 'subagent:' prefix — parse_subagent_id strips it
+        before the registry lookup, so the mock should see 'custom_abc'."""
         mock_get_cache.return_value = None
         mock_col.find_one = AsyncMock(
             return_value={
@@ -331,6 +328,8 @@ class TestGetHandoffMetadata:
 
         result = await get_handoff_metadata("subagent:custom_abc")
         assert result["integration_name"] == "Custom"
+        # parse_subagent_id strips "subagent:" → registry sees "custom_abc"
+        mock_lookup.assert_called_once_with("custom_abc")
 
 
 # ---------------------------------------------------------------------------

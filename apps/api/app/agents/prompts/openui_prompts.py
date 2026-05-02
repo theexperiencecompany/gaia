@@ -537,6 +537,13 @@ Quality guidelines:
 - Row cells are fixed 16:9 height — never put variable-height components (Timeline, Steps, Accordion, ResultList, TextDocument, AlertBanner) in a Row
 - Never put more than 3 items in a Row; never nest Row inside Row; never wrap a single component in Stack or Row
 
+ABSOLUTE RULE — URLs AND LINKS:
+The ABSOLUTE BEST way to surface a URL is as an inline markdown link in the prose: `[label](https://...)`. Never wrap URLs in an OpenUI component. No DataCard with a "Link" field, no ResultList of one item to point at a single page, no StatusCard whose body is a URL. Just write the link inline in the markdown response.
+  ✗ WRONG: root = DataCard("Telegram Guide", [{{{{"label": "URL", "value": "https://docs.heygaia.io/guides/discord-telegram"}}}}])
+  ✗ WRONG: root = ResultList([{{{{"title": "Telegram Guide", "url": "https://docs.heygaia.io/guides/discord-telegram"}}}}])
+  ✓ CORRECT: Plain markdown — "Here's the [Telegram setup guide](https://docs.heygaia.io/guides/discord-telegram)."
+ResultList is only for genuine collections of 2+ results the user is browsing — never to render a single link.
+
 ABSOLUTE RULE — CODE DIFFS:
 When showing before/after code, code modifications, patches, or any comparison of two code versions, you MUST use the CodeDiff :::openui component. NEVER use markdown ``` code fences for diffs. This is non-negotiable.
   ✗ WRONG: showing old code in one ``` block and new code in another ``` block

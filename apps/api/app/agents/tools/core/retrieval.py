@@ -21,6 +21,7 @@ from typing import (
     Union,
 )
 
+from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
@@ -237,11 +238,7 @@ async def _get_user_context(
     # Only compute subagent data when subagents are included
     if include_subagents:
         internal_subagents = {
-            integration.id
-            for integration in OAUTH_INTEGRATIONS
-            if integration.managed_by == "internal"
-            and integration.subagent_config
-            and integration.subagent_config.has_subagent
+            sa.id for sa in all_subagents() if sa.managed_by == "internal"
         }
 
     if not user_id:
@@ -258,13 +255,9 @@ async def _get_user_context(
                 integration_id
                 for integration_id in raw_connected
                 if (
-                    # Platform integrations with subagent config
-                    (
-                        (integ := get_integration_by_id(integration_id))
-                        and integ.subagent_config
-                        and integ.subagent_config.has_subagent
-                    )
-                    # Custom/public integrations (not in platform config)
+                    # Platform/builtin subagents (resolved via registry)
+                    get_subagent_by_id(integration_id) is not None
+                    # Custom/public MCP integrations (not in OAuth config either)
                     or get_integration_by_id(integration_id) is None
                 )
             }
@@ -490,8 +483,8 @@ def _inject_available_subagents(
     # Add internal subagents (always available)
     for integration_id in internal_subagents:
         # Get display name for LLM readability
-        integ = get_integration_by_id(integration_id)
-        name = integ.name if integ else None
+        sa = get_subagent_by_id(integration_id)
+        name = sa.name if sa else None
         subagent_key = (
             f"subagent:{integration_id} ({name})"
             if name
@@ -504,8 +497,8 @@ def _inject_available_subagents(
     # Add connected integration subagents
     for integration_id in connected_integrations:
         # Get display name for LLM readability
-        integ = get_integration_by_id(integration_id)
-        name = integ.name if integ else None
+        sa = get_subagent_by_id(integration_id)
+        name = sa.name if sa else None
         subagent_key = (
             f"subagent:{integration_id} ({name})"
             if name

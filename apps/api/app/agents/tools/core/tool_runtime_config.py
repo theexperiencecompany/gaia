@@ -46,13 +46,16 @@ def build_provider_parent_tool_runtime_config(
     auto_bind_tool_names: list[str] | None,
     use_direct_tools: bool,
     disable_retrieve_tools: bool,
+    include_finish_task: bool = True,
 ) -> ToolRuntimeConfig:
     """Build parent provider-agent tool runtime config."""
+    finish = ["finish_task"] if include_finish_task else []
     if use_direct_tools:
         initial = [
             *provider_tool_names,
+            *(auto_bind_tool_names or []),
             *todo_tool_names,
-            "finish_task",
+            *finish,
             "vfs_read",
             "vfs_cmd",
         ]
@@ -61,7 +64,7 @@ def build_provider_parent_tool_runtime_config(
             "search_memory",
             "vfs_read",
             "vfs_cmd",
-            "finish_task",
+            *finish,
             *todo_tool_names,
         ]
         if auto_bind_tool_names and not disable_retrieve_tools:

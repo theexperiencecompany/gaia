@@ -55,7 +55,6 @@ from app.agents.prompts.subagent_prompts import (
     CLICKUP_AGENT_SYSTEM_PROMPT,
     CONTEXT7_AGENT_SYSTEM_PROMPT,
     DEEPWIKI_AGENT_SYSTEM_PROMPT,
-    GAIA_AGENT_SYSTEM_PROMPT,
     GITHUB_AGENT_SYSTEM_PROMPT,
     GMAIL_AGENT_SYSTEM_PROMPT,
     GOALS_AGENT_SYSTEM_PROMPT,
@@ -1969,32 +1968,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ),
         content=POSTHOG_CONTENT,
     ),
-    # GAIA Self-Knowledge Agent (no OAuth required — uses public documentation)
-    OAuthIntegration(
-        id="gaia",
-        name="GAIA",
-        description="Answer questions about GAIA's own capabilities, integrations, and features",
-        category="productivity",
-        provider="gaia",
-        scopes=[],
-        available=True,
-        is_featured=False,
-        short_name="gaia",
-        managed_by="internal",
-        subagent_config=SubAgentConfig(
-            has_subagent=True,
-            agent_name="gaia_agent",
-            tool_space="gaia",
-            handoff_tool_name="call_gaia_agent",
-            domain="GAIA product knowledge, capabilities, and integrations",
-            capabilities="answering questions about GAIA features, supported integrations, how GAIA works, and what GAIA can do for users",
-            use_cases="answering 'what can you do?', 'what integrations do you support?', 'how does GAIA work?', 'tell me about GAIA', or any question about GAIA as a product",
-            system_prompt=GAIA_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
-            auto_bind_tools=["fetch_webpages"],
-        ),
-    ),
 ]
 
 
@@ -2040,20 +2013,6 @@ def get_integration_by_config(auth_config_id: str) -> Optional[OAuthIntegration]
         ),
         None,
     )
-
-
-@cache
-def get_subagent_integrations() -> List[OAuthIntegration]:
-    """Get all platform integrations that have subagent configurations.
-
-    Returns:
-        List of OAuthIntegration objects with has_subagent=True
-    """
-    return [
-        integration
-        for integration in OAUTH_INTEGRATIONS
-        if integration.subagent_config and integration.subagent_config.has_subagent
-    ]
 
 
 def get_memory_extraction_prompt(integration_id: str) -> Optional[str]:
