@@ -1,0 +1,3 @@
+node_modules
+.venv
+ add these exact lines to develop git ignore bcz of the symlimnks shit and commit and push and in all my worktrees pull origin develp
