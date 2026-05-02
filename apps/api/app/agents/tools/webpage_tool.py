@@ -15,6 +15,10 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
+_NO_URLS_RETRIEVED_MSG = (
+    "Search failed — no URLs were retrieved. Do NOT fabricate any URLs or results."
+)
+
 
 @tool
 @with_rate_limiting("webpage_fetch")
@@ -155,7 +159,7 @@ async def web_search_tool(
             "formatted_text": "\n\nConnection timed out during web search. Please try again later.",
             "error": str(e),
             "real_urls_from_search": [],
-            "integrity_note": "Search failed — no URLs were retrieved. Do NOT fabricate any URLs or results.",
+            "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except ValueError as e:
         log.error(f"Value error in web search: {e}", exc_info=True)
@@ -163,7 +167,7 @@ async def web_search_tool(
             "formatted_text": "\n\nInvalid search parameters. Please try a different query.",
             "error": str(e),
             "real_urls_from_search": [],
-            "integrity_note": "Search failed — no URLs were retrieved. Do NOT fabricate any URLs or results.",
+            "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except Exception as e:
         log.error(f"Unexpected error in web search: {e}", exc_info=True)
@@ -171,7 +175,7 @@ async def web_search_tool(
             "formatted_text": "\n\nError performing web search. Please try again later.",
             "error": str(e),
             "real_urls_from_search": [],
-            "integrity_note": "Search failed — no URLs were retrieved. Do NOT fabricate any URLs or results.",
+            "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
 
 
