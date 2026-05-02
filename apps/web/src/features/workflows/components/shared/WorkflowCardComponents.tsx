@@ -21,16 +21,21 @@ import type { Workflow } from "../../api/workflowApi";
  */
 function getRelativeTime(nextRun: Date, now: Date): string {
   const diffMs = nextRun.getTime() - now.getTime();
-  const diffMinutes = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffHours / 24);
+  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+  const totalHours = Math.floor(totalMinutes / 60);
+  const totalDays = Math.floor(totalHours / 24);
 
-  if (diffDays > 0) {
-    return `in ${diffDays}d`;
-  } else if (diffHours > 0) {
-    return `in ${diffHours}h`;
-  } else if (diffMinutes > 0) {
-    return `in ${diffMinutes}m`;
+  const remHours = totalHours % 24;
+  const remMinutes = totalMinutes % 60;
+
+  if (totalDays > 0) {
+    return remHours > 0 ? `in ${totalDays}d ${remHours}h` : `in ${totalDays}d`;
+  } else if (totalHours > 0) {
+    return remMinutes > 0
+      ? `in ${totalHours}h ${remMinutes}m`
+      : `in ${totalHours}h`;
+  } else if (totalMinutes > 0) {
+    return `in ${totalMinutes}m`;
   } else {
     return "soon";
   }
