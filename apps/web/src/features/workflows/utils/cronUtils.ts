@@ -187,8 +187,14 @@ function convertUtcTimeToLocalString(
   } catch {
     // Fallback: format without timezone conversion
     const ampm = utcHour >= 12 ? "PM" : "AM";
-    const displayHour =
-      utcHour > 12 ? utcHour - 12 : utcHour === 0 ? 12 : utcHour;
+    let displayHour: number;
+    if (utcHour === 0) {
+      displayHour = 12;
+    } else if (utcHour > 12) {
+      displayHour = utcHour - 12;
+    } else {
+      displayHour = utcHour;
+    }
     const displayMinute = utcMinute.toString().padStart(2, "0");
     return `${displayHour}:${displayMinute} ${ampm}`;
   }
