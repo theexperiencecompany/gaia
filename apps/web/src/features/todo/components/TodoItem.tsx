@@ -125,6 +125,12 @@ export default memo(function TodoItem({
         <div className="min-w-0 flex-1">
           <div>
             <h4
+              style={{
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical",
+                WebkitLineClamp: 2,
+                overflow: "hidden",
+              }}
               className={`text-base font-normal ${
                 todo.completed ? "text-zinc-500 line-through" : ""
               }`}

@@ -1,26 +1,18 @@
 "use client";
 
-import { Link } from "@heroui/link";
 import Image from "next/image";
 import { memo, useState } from "react";
+
+import { useUrlMetadata } from "@/features/chat/hooks/useUrlMetadata";
 
 interface TodoLinkPreviewProps {
   href: string;
 }
 
-function extractDomain(url: string): string {
+function getFallbackFaviconUrl(url: string): string {
   try {
     const parsed = new URL(url);
-    return parsed.hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
-}
-
-function getFaviconUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=16`;
+    return `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=64`;
   } catch {
     return "";
   }
@@ -29,30 +21,38 @@ function getFaviconUrl(url: string): string {
 export const TodoLinkPreview = memo(function TodoLinkPreview({
   href,
 }: TodoLinkPreviewProps) {
-  const domain = extractDomain(href);
-  const faviconUrl = getFaviconUrl(href);
+  const { data, isLoading } = useUrlMetadata(href);
   const [faviconFailed, setFaviconFailed] = useState(false);
 
+  const label = data?.title?.trim() || href;
+  const faviconUrl = data?.favicon || getFallbackFaviconUrl(href);
+
+  // Plain <a> (not HeroUI Link) so the link is a normal inline element and
+  // its text wraps as part of the surrounding paragraph. The parent h4's
+  // line-clamp-2 then handles overall truncation at line two.
   return (
-    <Link
+    <a
       href={href}
-      isExternal
-      aria-label={`${domain} (opens in new tab)`}
+      target="_blank"
+      rel="noreferrer noopener"
+      aria-label={`${label} (opens in new tab)`}
       onClick={(e) => e.stopPropagation()}
-      className="inline-flex items-center gap-1 underline decoration-zinc-500 underline-offset-2 transition-colors hover:text-primary"
+      className={`underline decoration-zinc-500 underline-offset-2 transition-colors hover:text-primary text-white px-0.5 ${isLoading ? "opacity-70" : ""}`}
     >
       {faviconUrl && !faviconFailed && (
         <Image
           src={faviconUrl}
           alt=""
           aria-hidden="true"
-          width={16}
-          height={16}
-          className="inline-block size-4 shrink-0 rounded-sm"
+          width={20}
+          height={20}
+          style={{ verticalAlign: "-0.25em" }}
+          className="mr-1 inline-block size-4 rounded-full"
           onError={() => setFaviconFailed(true)}
+          unoptimized
         />
       )}
-      <span>{domain}</span>
-    </Link>
+      {label}
+    </a>
   );
 });
