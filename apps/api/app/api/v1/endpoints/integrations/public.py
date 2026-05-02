@@ -321,23 +321,15 @@ async def get_related_workflows(
                         {
                             "$match": {
                                 "$expr": {
-                                    "$and": [
-                                        # Only attempt $toObjectId when creator_id
-                                        # is a 24-hex-character string to avoid a
-                                        # ConversionError for UUIDs or other IDs.
+                                    "$eq": [
+                                        "$_id",
                                         {
-                                            "$regexMatch": {
-                                                "input": {
-                                                    "$ifNull": ["$$creator_id", ""]
-                                                },
-                                                "regex": "^[0-9a-fA-F]{24}$",
+                                            "$convert": {
+                                                "input": "$$creator_id",
+                                                "to": "objectId",
+                                                "onError": None,
+                                                "onNull": None,
                                             }
-                                        },
-                                        {
-                                            "$eq": [
-                                                "$_id",
-                                                {"$toObjectId": "$$creator_id"},
-                                            ]
                                         },
                                     ]
                                 }

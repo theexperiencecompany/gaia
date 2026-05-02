@@ -410,6 +410,8 @@ export function IntegrationDetailClient({
           {/* Related community workflows */}
           <IntegrationRelatedWorkflows
             integrationId={integration.integrationId}
+            integrationName={integration.name}
+            variant="section"
           />
 
           {/* Rich content sections for SEO and user education */}

@@ -926,7 +926,17 @@ class WorkflowService:
                             {
                                 "$match": {
                                     "$expr": {
-                                        "$eq": ["$_id", {"$toObjectId": "$$creator_id"}]
+                                        "$eq": [
+                                            "$_id",
+                                            {
+                                                "$convert": {
+                                                    "input": "$$creator_id",
+                                                    "to": "objectId",
+                                                    "onError": None,
+                                                    "onNull": None,
+                                                }
+                                            },
+                                        ]
                                     }
                                 }
                             },
