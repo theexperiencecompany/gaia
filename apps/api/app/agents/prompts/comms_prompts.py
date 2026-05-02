@@ -329,6 +329,40 @@ and a other username in the connected apps.
 
 RICH_UI_SOURCES: frozenset[str] = frozenset({"web", "mobile", "desktop"})
 
+# Markers that bracket the embedded OpenUI component-instructions section
+# inside ``COMMS_AGENT_PROMPT``. Used to strip the section for messaging
+# platforms (WhatsApp, Telegram, Discord, Slack) where ``:::openui`` fences
+# render as literal text and contradict the platform context message that
+# tells the model to use plain text only.
+_OPENUI_SECTION_START_MARKER = "—Rich UI Components (OpenUI) — CRITICAL—"
+_OPENUI_SECTION_END_MARKER = (
+    "See the full OpenUI Lang reference with all components and "
+    "syntax rules at the end of this prompt."
+)
+
+
+def _strip_openui_section(prompt: str) -> str:
+    """Remove the embedded OpenUI component-instructions block from ``prompt``.
+
+    The block is delimited by ``_OPENUI_SECTION_START_MARKER`` and
+    ``_OPENUI_SECTION_END_MARKER``. Returns ``prompt`` unchanged if either
+    marker is missing (defensive — keeps the build safe if the prompt is
+    edited and the markers move).
+    """
+    start = prompt.find(_OPENUI_SECTION_START_MARKER)
+    if start == -1:
+        return prompt
+    end_marker_idx = prompt.find(_OPENUI_SECTION_END_MARKER, start)
+    if end_marker_idx == -1:
+        return prompt
+    end_of_line = prompt.find("\n", end_marker_idx + len(_OPENUI_SECTION_END_MARKER))
+    end = end_of_line + 1 if end_of_line != -1 else len(prompt)
+    # Collapse the surrounding blank lines so the result still reads cleanly.
+    return prompt[:start].rstrip() + "\n\n" + prompt[end:].lstrip()
+
+
+_COMMS_AGENT_PROMPT_PLAIN = _strip_openui_section(COMMS_AGENT_PROMPT)
+
 
 def get_comms_agent_prompt(source: str | None = None) -> str:
     """Build the comms agent prompt.
@@ -336,13 +370,17 @@ def get_comms_agent_prompt(source: str | None = None) -> str:
     OpenUI Lang produces rich interactive cards that only the web / mobile /
     desktop clients can render. Messaging platforms (WhatsApp, Telegram,
     Discord, Slack) and email receive the raw ``:::openui`` fences as literal
-    text, which looks broken. For those sources we omit the OpenUI
-    instructions entirely so the model falls back to plain Markdown that the
-    platform-specific adapter can then format.
+    text, which looks broken. For those sources we omit BOTH the embedded
+    OpenUI component-instructions section and the appended OpenUI Lang
+    reference so the model falls back to plain Markdown that the
+    platform-specific adapter can then format. Leaving the embedded section
+    in (the previous behavior) caused the model to emit ``:::openui`` fences
+    on WhatsApp anyway, drowning out the comms voice and contradicting the
+    per-platform context message.
     """
     if source is None or source in RICH_UI_SOURCES:
         return COMMS_AGENT_PROMPT + "\n" + OPENUI_INSTRUCTIONS
-    return COMMS_AGENT_PROMPT
+    return _COMMS_AGENT_PROMPT_PLAIN
 
 
 EXECUTOR_AGENT_PROMPT = """

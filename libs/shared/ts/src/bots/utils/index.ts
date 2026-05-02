@@ -92,3 +92,61 @@ export function truncateResponse(
 
   return truncated + suffix;
 }
+
+/**
+ * Splits a long response into platform-sized chunks for delivery as multiple
+ * messages instead of a single truncated bubble. Used by non-streaming bot
+ * adapters (WhatsApp, Discord) so the user receives the full content.
+ *
+ * Splits prefer paragraph (`\n\n`) boundaries, then sentence enders
+ * (`. `, `! `, `? `, `\n`), then the last word boundary, then a hard cut as a
+ * last resort. Each returned chunk is guaranteed to be ≤ the platform limit.
+ *
+ * @param text - The full message text.
+ * @param platform - The target platform (discord, slack, telegram, whatsapp).
+ * @returns An array of chunks, in order, each ≤ the platform character limit.
+ *   Returns ``[text]`` when ``text`` already fits.
+ */
+export function chunkResponse(
+  text: string,
+  platform: "discord" | "slack" | "telegram" | "whatsapp",
+): string[] {
+  const limit = PLATFORM_LIMITS[platform];
+  if (text.length <= limit) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > limit) {
+    let cutAt = -1;
+    const window = remaining.slice(0, limit);
+
+    // Prefer paragraph break
+    cutAt = window.lastIndexOf("\n\n");
+    if (cutAt < limit * 0.5) cutAt = -1;
+
+    // Fall back to sentence end
+    if (cutAt === -1) {
+      const candidates = [". ", "! ", "? ", "\n"];
+      for (const sep of candidates) {
+        const idx = window.lastIndexOf(sep);
+        if (idx > limit * 0.5 && idx > cutAt) cutAt = idx + sep.length;
+      }
+    }
+
+    // Fall back to last word boundary
+    if (cutAt === -1) {
+      const space = window.lastIndexOf(" ");
+      if (space > limit * 0.5) cutAt = space + 1;
+    }
+
+    // Hard cut as last resort
+    if (cutAt === -1) cutAt = limit;
+
+    chunks.push(remaining.slice(0, cutAt).trimEnd());
+    remaining = remaining.slice(cutAt).trimStart();
+  }
+
+  if (remaining.length > 0) chunks.push(remaining);
+  return chunks.filter((c) => c.length > 0);
+}
