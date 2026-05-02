@@ -47,13 +47,6 @@ const TodoShowcaseSection = dynamic(
   () => import("@/features/landing/components/sections/TodoShowcaseSection"),
   { loading: SectionLoader },
 );
-const ProductivityOSShowcaseSection = dynamic(
-  () =>
-    import(
-      "@/features/landing/components/sections/ProductivityOSShowcaseSection"
-    ),
-  { loading: SectionLoader },
-);
 const BotsShowcaseSection = dynamic(
   () => import("@/features/landing/components/sections/BotsShowcaseSection"),
   { loading: SectionLoader },
@@ -158,7 +151,6 @@ export default function LandingPageClient({
           <UseCasesSectionLanding />
           <BotsShowcaseSection />
           <TodoShowcaseSection />
-          {/* <ProductivityOSShowcaseSection /> */}
           <OpenSource />
           <FAQAccordion />
           <LandingDownloadSection />
