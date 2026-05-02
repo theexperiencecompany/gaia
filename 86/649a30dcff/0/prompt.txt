@@ -1,3 +1,5 @@
-node_modules
-.venv
- add these exact lines to develop git ignore bcz of the symlimnks shit and commit and push and in all my worktrees pull origin develp
+then please resolve them bro smartly. what are the conflicts tell me
+
+---
+
+u can delete the file if develop deleted team.py
