@@ -275,7 +275,9 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
 
 @router.get(
     "/public/{identifier}/workflows",
-    response_model=PublicWorkflowsResponse,
+    responses={
+        500: {"description": "Failed to fetch related workflows"},
+    },
 )
 async def get_related_workflows(
     identifier: str,

@@ -8,15 +8,15 @@ import { integrationsApi } from "../api/integrationsApi";
 
 interface IntegrationRelatedWorkflowsProps {
   /** The integration slug or native integration ID */
-  integrationId: string;
+  readonly integrationId: string;
   /** Max number of workflows to fetch */
-  limit?: number;
+  readonly limit?: number;
 }
 
 export function IntegrationRelatedWorkflows({
   integrationId,
   limit = 10,
-}: IntegrationRelatedWorkflowsProps) {
+}: Readonly<IntegrationRelatedWorkflowsProps>) {
   const { data, isLoading } = useQuery({
     queryKey: ["integration-workflows", integrationId, limit],
     queryFn: () => integrationsApi.getRelatedWorkflows(integrationId, limit),
@@ -26,12 +26,21 @@ export function IntegrationRelatedWorkflows({
   const workflows = (data?.workflows ?? []) as CommunityWorkflow[];
 
   if (!isLoading && workflows.length === 0) {
-    return null;
+    return (
+      <div className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium text-zinc-100">
+          Workflows that use this Integration
+        </h2>
+        <p className="text-sm text-zinc-500">
+          No workflows found for this integration.
+        </p>
+      </div>
+    );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-sm font-medium text-zinc-300">
+      <h2 className="text-sm font-medium text-zinc-100">
         Workflows that use this Integration
       </h2>
 
@@ -46,9 +55,7 @@ export function IntegrationRelatedWorkflows({
         </div>
       ) : (
         <section
-          aria-label="Related workflows"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable region needs keyboard focus to scroll
-          tabIndex={0}
+          aria-label="Workflows that use this integration"
           className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
