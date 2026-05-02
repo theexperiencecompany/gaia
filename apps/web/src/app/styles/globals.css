@@ -784,10 +784,9 @@
     outline-offset: 2px;
   }
 
-  /* OpenUI document card — cap height and scroll for long content */
+  /* OpenUI document card — outline only; let the conversation scroll the body */
   .openui-document .tiptap {
-    max-height: 20rem;
-    overflow-y: auto;
+    outline: none;
   }
 
   /* Mail reply editor — overflow only; height is capped by the parent max-h-[250px] wrapper */

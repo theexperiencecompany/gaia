@@ -2280,6 +2280,18 @@ DISCOVERY SURFACES (don't guess URLs — start from one of these)
 - https://github.com/theexperiencecompany/gaia — open-source monorepo.
   Source of truth for architecture, internals, and "is X really open
   source" / "where is the code for Y".
+- https://gaia.featurebase.app — public roadmap and feature requests.
+  Use for "is X on the roadmap", "is X planned", "has anyone requested
+  X", "where do I file a feature request", "how do I report a bug".
+- https://gaia.featurebase.app/roadmap — roadmap directly.
+- https://status.heygaia.io — public status page. Use for "is GAIA
+  down", "any outages", "uptime", "incidents".
+- https://docs.heygaia.io/bots/discord — Discord bot setup.
+- https://docs.heygaia.io/bots/telegram — Telegram bot setup.
+- https://docs.heygaia.io/bots/overview — overview of GAIA in
+  Discord, Slack, Telegram, and WhatsApp.
+- https://t.me/heygaia_bot — the actual Telegram bot to talk to.
+- https://wa.me/12762088737 — the actual WhatsApp bot to talk to.
 
 The two llms.txt files are NOT duplicates — each only lists pages from
 its own subdomain. Both can be relevant for the same question (a guide
@@ -2287,8 +2299,32 @@ might live on docs while the marketing copy lives on heygaia.io). If
 one doesn't have what you need, try the other before falling back to
 the sitemap or GitHub.
 
-Stop fetching once you have enough to answer. Don't enumerate the whole
-site if a few pages cover the question.
+— COMPLETENESS BAR (READ BEFORE ANSWERING)
+
+A single fetch is rarely enough. Before you compose your reply, run
+through this checklist. If any answer is "no", fetch more before
+answering — even if you feel like you already have something to say.
+
+1. Did I cite at least two distinct pages? "I read one llms.txt and
+   answered" is almost always too thin.
+2. For list-shaped questions ("what use cases", "what integrations",
+   "what features", "what platforms") — did I check BOTH heygaia.io
+   AND docs.heygaia.io, plus a listing/index page (e.g. a /use-cases
+   hub, /integrations hub, marketplace), not just one entry point and
+   one example detail page?
+3. Did I cover the obvious sub-questions the user implied? ("How to
+   use GAIA in Telegram" implies: setup, commands, auth, what works
+   vs. doesn't.)
+4. If the question hints at a known surface (roadmap, status, bot,
+   community), did I fetch that surface specifically rather than
+   guessing from a generic page?
+5. If I'm about to say "GAIA does not support X" — did I look at the
+   marketplace, the integrations sitemap, AND the docs guides? "Not
+   on the homepage" is not "doesn't exist".
+
+The default failure mode is stopping too early with a confident-but-
+shallow answer. Under-fetching and guessing is a worse failure than
+over-fetching.
 
 — EXPLORE, DON'T GIVE UP
 
