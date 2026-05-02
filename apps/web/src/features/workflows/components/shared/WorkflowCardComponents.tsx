@@ -10,8 +10,8 @@ import {
   UserCircle02Icon,
 } from "@icons";
 import Image from "next/image";
-import { cn } from "@/lib/utils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { cn } from "@/lib/utils";
 import { formatRunCount } from "@/utils/formatters";
 
 import type { Workflow } from "../../api/workflowApi";
@@ -128,7 +128,9 @@ export function TriggerDisplay({
   }
 
   return (
-    <div className={cn("flex items-center gap-1 text-xs text-zinc-500", className)}>
+    <div
+      className={cn("flex items-center gap-1 text-xs text-zinc-500", className)}
+    >
       <div className="w-4">
         <TriggerIcon
           triggerType={triggerType}
@@ -159,7 +161,10 @@ export function RunCountDisplay({
   if (runCount !== "Never run")
     return (
       <div
-        className={cn("flex items-center gap-1 text-xs text-zinc-500", className)}
+        className={cn(
+          "flex items-center gap-1 text-xs text-zinc-500",
+          className,
+        )}
       >
         <PlayIcon size={16} className="w-4 text-zinc-500" />
         <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>

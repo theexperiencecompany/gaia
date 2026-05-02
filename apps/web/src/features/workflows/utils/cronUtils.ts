@@ -176,9 +176,7 @@ function convertUtcTimeToLocalString(
 ): string {
   try {
     // Build a Date in UTC at the given hour/minute (day is irrelevant)
-    const utcDate = new Date(
-      Date.UTC(2000, 0, 1, utcHour, utcMinute, 0),
-    );
+    const utcDate = new Date(Date.UTC(2000, 0, 1, utcHour, utcMinute, 0));
     return utcDate.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
