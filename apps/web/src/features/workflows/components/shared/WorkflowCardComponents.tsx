@@ -11,6 +11,10 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import {
+  resolveCreatorAvatar,
+  resolveCreatorName,
+} from "@/features/workflows/utils/creator";
 import { cn } from "@/lib/utils";
 import { formatRunCount } from "@/utils/formatters";
 
@@ -241,13 +245,16 @@ export function CreatorAvatar({
   size = 27,
   showTooltip = true,
 }: CreatorAvatarProps) {
+  const avatarSrc = resolveCreatorAvatar(creator);
+  const displayName = resolveCreatorName(creator);
+
   const avatar = (
     <div className="flex items-center gap-2">
       <div className="flex h-7 w-7 items-center justify-center rounded-full">
-        {creator.avatar || creator.id === "system" ? (
+        {avatarSrc ? (
           <Image
-            src={creator.avatar || "/images/logos/experience_black_bg.png"}
-            alt={creator.name}
+            src={avatarSrc}
+            alt={displayName}
             width={size}
             height={size}
             className="rounded-full h-7 w-7"
@@ -263,7 +270,7 @@ export function CreatorAvatar({
 
   return (
     <Tooltip
-      content={`Created by ${creator.name}`}
+      content={`Created by ${displayName}`}
       showArrow
       closeDelay={0}
       delay={0}

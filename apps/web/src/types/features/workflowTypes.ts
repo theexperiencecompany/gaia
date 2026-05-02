@@ -74,7 +74,7 @@ export type { ExecutionConfig, WorkflowMetadata };
  */
 export interface CommunityWorkflow {
   id: string;
-  slug?: string; // human-readable URL slug
+  slug: string; // human-readable URL slug — always present for public workflows
   title: string;
   description: string;
   prompt?: string;
