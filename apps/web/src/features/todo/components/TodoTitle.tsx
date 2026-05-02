@@ -54,7 +54,7 @@ export const TodoTitle = memo(function TodoTitle({
   className,
 }: TodoTitleProps) {
   if (!title) {
-    return <span className={className} />;
+    return <span className={className}>Untitled</span>;
   }
 
   const segments = parseTitle(title);

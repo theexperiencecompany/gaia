@@ -2,7 +2,7 @@
 
 import { Link } from "@heroui/link";
 import Image from "next/image";
-import { memo } from "react";
+import { memo, useState } from "react";
 
 interface TodoLinkPreviewProps {
   href: string;
@@ -31,6 +31,7 @@ export const TodoLinkPreview = memo(function TodoLinkPreview({
 }: TodoLinkPreviewProps) {
   const domain = extractDomain(href);
   const faviconUrl = getFaviconUrl(href);
+  const [faviconFailed, setFaviconFailed] = useState(false);
 
   return (
     <Link
@@ -40,7 +41,7 @@ export const TodoLinkPreview = memo(function TodoLinkPreview({
       onClick={(e) => e.stopPropagation()}
       className="inline-flex items-center gap-1 underline decoration-zinc-500 underline-offset-2 transition-colors hover:text-primary"
     >
-      {faviconUrl && (
+      {faviconUrl && !faviconFailed && (
         <Image
           src={faviconUrl}
           alt=""
@@ -48,6 +49,7 @@ export const TodoLinkPreview = memo(function TodoLinkPreview({
           width={16}
           height={16}
           className="inline-block size-4 shrink-0 rounded-sm"
+          onError={() => setFaviconFailed(true)}
         />
       )}
       <span>{domain}</span>
