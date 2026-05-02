@@ -179,8 +179,9 @@ export function convertToWhatsAppMarkdown(text: string): string {
         .replaceAll(/\*\*([^*]+)\*\*/g, "*$1*") // **bold** → *bold*
         .replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
         .replaceAll(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
-        .replaceAll(/^>\s*/gm, "") // > quote → strip prefix
-        .replaceAll(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
+        .replaceAll(/^[-_]{3,}$/gm, "") // --- / ___ → remove (BEFORE bullets)
+        .replaceAll(/^(\s*)[*\-+]\s+/gm, "$1• ") // - / * / + bullet → •
+        .replaceAll(/^>\s*/gm, ""), // > quote → strip prefix
   );
 }
 

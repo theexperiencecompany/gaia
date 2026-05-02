@@ -120,6 +120,63 @@ function cutsInsideMarkdownLink(text: string, idx: number): boolean {
 }
 
 /**
+ * Returns true if cutting ``text`` at index ``idx`` would land inside an
+ * unclosed markdown emphasis span. We only check the two markers that bite us
+ * in practice: ``**bold**`` (model emits markdown bold even when output goes
+ * to WhatsApp) and `` `inline code` ``. Single ``*``, ``_``, ``~`` are skipped
+ * because they appear in code identifiers, URLs, and plain prose — the false
+ * positive rate is too high to be worth the rare valid catch.
+ *
+ * The check is symmetric: an odd number of ``**`` in the prefix AND a closing
+ * ``**`` somewhere in the suffix means the cut would orphan one half of the
+ * pair. Same logic for backticks (excluding triple-backticks, which are
+ * handled separately by the fence-balancing step in {@link chunkResponse}).
+ */
+function cutsInsideEmphasisSpan(text: string, idx: number): boolean {
+  const prefix = text.slice(0, idx);
+  const suffix = text.slice(idx);
+
+  // Strip fenced code blocks (``` ... ```) before counting markers — code can
+  // legitimately contain ``**`` (e.g. Python ``**kwargs``) and stray
+  // backticks (e.g. shell quoting), and those bytes must not poison the
+  // emphasis parity check that's deciding cut positions in narrative text.
+  const stripFences = (s: string): string => {
+    let out = "";
+    let inFence = false;
+    let i = 0;
+    while (i < s.length) {
+      if (s.startsWith("```", i)) {
+        inFence = !inFence;
+        i += 3;
+        continue;
+      }
+      if (!inFence) out += s[i];
+      i++;
+    }
+    return out;
+  };
+  const prefixNarrative = stripFences(prefix);
+  const suffixNarrative = stripFences(suffix);
+
+  const doubleAsteriskOpens = (prefixNarrative.match(/\*\*/g) ?? []).length;
+  if (doubleAsteriskOpens % 2 === 1 && suffixNarrative.includes("**"))
+    return true;
+
+  const inlineTickOpens = (prefixNarrative.match(/`/g) ?? []).length;
+  if (inlineTickOpens % 2 === 1 && suffixNarrative.includes("`")) return true;
+
+  return false;
+}
+
+/**
+ * Aggregate predicate — true when the cut at ``idx`` would split any markdown
+ * span (link or emphasis). Keeps {@link pickCutBoundary} short.
+ */
+function cutsInsideMarkdown(text: string, idx: number): boolean {
+  return cutsInsideMarkdownLink(text, idx) || cutsInsideEmphasisSpan(text, idx);
+}
+
+/**
  * Picks the best cut index ≤ ``limit`` for a chunk of ``text``. Prefers
  * paragraph (`\n\n`), then sentence enders, then word boundary, then a hard
  * cut at ``limit`` as a last resort. Boundaries that would split a markdown
@@ -135,7 +192,7 @@ function pickCutBoundary(text: string, limit: number): number {
 
   // 1. Paragraph break
   const paragraph = window.lastIndexOf("\n\n");
-  if (paragraph >= floor && !cutsInsideMarkdownLink(text, paragraph)) {
+  if (paragraph >= floor && !cutsInsideMarkdown(text, paragraph)) {
     return paragraph;
   }
 
@@ -145,7 +202,7 @@ function pickCutBoundary(text: string, limit: number): number {
     const idx = window.lastIndexOf(sep);
     if (idx < floor) continue;
     const cut = idx + sep.length;
-    if (cut > bestSentence && !cutsInsideMarkdownLink(text, cut)) {
+    if (cut > bestSentence && !cutsInsideMarkdown(text, cut)) {
       bestSentence = cut;
     }
   }
@@ -154,7 +211,7 @@ function pickCutBoundary(text: string, limit: number): number {
   // 3. Word boundary
   let space = window.lastIndexOf(" ");
   while (space >= floor) {
-    if (!cutsInsideMarkdownLink(text, space + 1)) return space + 1;
+    if (!cutsInsideMarkdown(text, space + 1)) return space + 1;
     space = window.lastIndexOf(" ", space - 1);
   }
 
@@ -201,6 +258,41 @@ export function chunkResponse(
     const cutAt = pickCutBoundary(remaining, cutLimit);
     let chunk = remaining.slice(0, cutAt).trimEnd();
     let next = remaining.slice(cutAt).trimStart();
+
+    // Belt-and-suspenders: balance unbalanced ``**`` markers across the cut
+    // in narrative text. We ignore ``**`` that appears inside fenced code
+    // blocks (Python ``**kwargs`` etc.) so legitimate code doesn't flip the
+    // parity and mask a real orphan in prose.
+    const stripFences = (s: string): string => {
+      let out = "";
+      let inFence = false;
+      let i = 0;
+      while (i < s.length) {
+        if (s.startsWith("```", i)) {
+          inFence = !inFence;
+          i += 3;
+          continue;
+        }
+        if (!inFence) out += s[i];
+        i++;
+      }
+      return out;
+    };
+    const chunkOpens = (stripFences(chunk).match(/\*\*/g) ?? []).length;
+    if (chunkOpens % 2 === 1) {
+      // Strip the orphan ``**`` from the chunk's narrative tail and the
+      // matching opener from the next chunk's narrative head so
+      // convertToWhatsAppMarkdown's pair regex does not greedily merge them
+      // with unrelated ``**`` pairs and emit stray asterisks.
+      const lastIdx = chunk.lastIndexOf("**");
+      if (lastIdx !== -1) {
+        chunk = chunk.slice(0, lastIdx) + chunk.slice(lastIdx + 2);
+      }
+      const firstIdx = next.indexOf("**");
+      if (firstIdx !== -1) {
+        next = next.slice(0, firstIdx) + next.slice(firstIdx + 2);
+      }
+    }
 
     // Balance code fences across the cut: if the chunk has an odd number of
     // ``` it ends inside an open fence — close it here and reopen on the next

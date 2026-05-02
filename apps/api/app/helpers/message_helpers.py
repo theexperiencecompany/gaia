@@ -169,7 +169,9 @@ async def get_memory_message(
 
         # Combine all sections
         content = "\n".join(context_parts) + memories_section + gaia_knowledge_section
-        return SystemMessage(content=content, memory_message=True)
+        return SystemMessage(
+            content=content, additional_kwargs={"memory_message": True}
+        )
 
     except Exception as e:
         log.error(f"Error creating memory message: {e}")
@@ -178,7 +180,8 @@ async def get_memory_message(
             "%A, %B %d, %Y, %H:%M:%S UTC"
         )
         return SystemMessage(
-            content=f"Current UTC Time: {utc_time_str}", memory_message=True
+            content=f"Current UTC Time: {utc_time_str}",
+            additional_kwargs={"memory_message": True},
         )
 
 
@@ -242,7 +245,12 @@ WHAT TO DO INSTEAD:
 - For content that would be an artifact, include it directly in your message as text
 - Keep messages concise — messaging platforms work best with shorter, focused messages"""
 
-    return SystemMessage(content=content)
+    # Mark as memory-style so manage_system_prompts_node preserves it alongside
+    # the COMMS_AGENT_PROMPT instead of treating this auxiliary platform context
+    # as the "latest non-memory system prompt" and silently dropping the real
+    # agent prompt. Platform context is persistent contextual metadata, not the
+    # agent's voice prompt — it should always travel with the conversation.
+    return SystemMessage(content=content, additional_kwargs={"memory_message": True})
 
 
 def format_tool_selection_message(
