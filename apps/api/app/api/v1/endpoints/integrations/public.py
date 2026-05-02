@@ -297,20 +297,23 @@ async def get_related_workflows(
         # MongoDB regex, preventing ReDoS and regex-injection attacks.
         escaped_identifier = re.escape(identifier)
 
-        pipeline: list = [
-            {
-                "$match": {
-                    "is_public": True,
-                    "steps": {
-                        "$elemMatch": {
-                            "category": {
-                                "$regex": escaped_identifier,
-                                "$options": "i",
-                            }
-                        }
-                    },
+        # Mix featured (is_explore) and community (is_public) workflows that
+        # use this integration, sorted by total runs so the most popular ones
+        # surface first regardless of source.
+        match_stage: dict[str, object] = {
+            "$or": [{"is_public": True}, {"is_explore": True}],
+            "steps": {
+                "$elemMatch": {
+                    "category": {
+                        "$regex": escaped_identifier,
+                        "$options": "i",
+                    }
                 }
             },
+        }
+
+        pipeline: list = [
+            {"$match": match_stage},
             {"$sort": {"total_executions": -1, "created_at": -1}},
             {"$skip": offset},
             {"$limit": limit},
@@ -344,18 +347,15 @@ async def get_related_workflows(
 
         workflows = await workflows_collection.aggregate(pipeline).to_list(length=limit)
 
-        count_query: dict[str, object] = {
-            "is_public": True,
-            "steps": {
-                "$elemMatch": {
-                    "category": {"$regex": escaped_identifier, "$options": "i"}
-                }
-            },
-        }
-        total = await workflows_collection.count_documents(count_query)
+        total = await workflows_collection.count_documents(match_stage)
 
         formatted_workflows = []
+        seen_ids: set[str] = set()
         for workflow in workflows:
+            wf_id = workflow["_id"]
+            if wf_id in seen_ids:
+                continue
+            seen_ids.add(wf_id)
             raw_steps = workflow.get("steps", [])
             normalized_steps = []
             for step in raw_steps:
@@ -371,7 +371,7 @@ async def get_related_workflows(
 
             formatted_workflows.append(
                 {
-                    "id": workflow["_id"],
+                    "id": wf_id,
                     "title": workflow["title"],
                     "description": workflow.get("description"),
                     "slug": workflow.get("slug"),
