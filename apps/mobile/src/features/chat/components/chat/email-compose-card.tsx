@@ -1,41 +1,9 @@
 import { Button, Chip } from "heroui-native";
 import { Pressable, ScrollView, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
 import { AppIcon, PencilEdit01Icon } from "@/components/icons";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
-
-function GmailIcon({
-  width = 18,
-  height = 18,
-}: {
-  width?: number;
-  height?: number;
-}) {
-  return (
-    <Svg width={width} height={height} viewBox="0 0 256 193">
-      <Path
-        d="M58.182 192.05V93.14L27.507 65.077L0 49.504v125.091c0 9.658 7.825 17.455 17.455 17.455z"
-        fill="#4285f4"
-      />
-      <Path
-        d="M197.818 192.05h40.727c9.659 0 17.455-7.826 17.455-17.455V49.505l-31.156 17.837l-27.026 25.798z"
-        fill="#34a853"
-      />
-      <Path
-        d="m58.182 93.14l-4.174-38.647l4.174-36.989L128 69.868l69.818-52.364l4.669 34.992l-4.669 40.644L128 145.504z"
-        fill="#ea4335"
-      />
-      <Path
-        d="M197.818 17.504V93.14L256 49.504V26.231c0-21.585-24.64-33.89-41.89-20.945z"
-        fill="#fbbc04"
-      />
-      <Path
-        d="m0 49.504l26.759 20.07L58.182 93.14V17.504L41.89 5.286C24.61-7.66 0 4.646 0 26.23z"
-        fill="#c5221f"
-      />
-    </Svg>
-  );
-}
+import { GmailIcon } from "@/features/chat/tool-data/cards/gmail-icon";
 
 export interface EmailComposeData {
   to: string[];
@@ -66,6 +34,12 @@ export const SAMPLE_EMAIL_COMPOSE: EmailComposeData = {
   is_html: false,
 };
 
+// ---------------------------------------------------------------------------
+// HTML → plain text fallback. Web uses DOMPurify to render sanitized HTML
+// inline; on mobile we render through MarkdownRenderer, which expects plain
+// text/markdown — so we strip tags first when `is_html` is true.
+// ---------------------------------------------------------------------------
+
 const HTML_ENTITIES: Record<string, string> = {
   "&amp;": "&",
   "&lt;": "<",
@@ -94,17 +68,28 @@ function stripHtml(input: string): string {
     .trim();
 }
 
+// ---------------------------------------------------------------------------
+// Inline pieces ported 1:1 from EmailComposeCard.tsx
+// ---------------------------------------------------------------------------
+
 function Separator() {
-  return <View className="h-px bg-zinc-700/50 my-1.5" />;
+  return <View className="h-px bg-zinc-700 my-1.5" />;
 }
 
-function EditButton({ onPress }: { onPress?: () => void }) {
+function EditIconButton({ onPress }: { onPress?: () => void }) {
   return (
     <Pressable onPress={onPress} hitSlop={8} className="p-1">
-      <AppIcon icon={PencilEdit01Icon} size={18} color="#71717a" />
+      <AppIcon icon={PencilEdit01Icon} size={20} color="#71717a" />
     </Pressable>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Main card — mirrors apps/web EmailComposeCard layout:
+// rounded-3xl bg-zinc-800 → header (Gmail icon + label + optional Reply chip)
+// → To row → separator → Subject row → separator → Body (scrollable, max-h-46
+// = 184px, edit button absolute top-right) → footer (rounded-full Send CTA).
+// ---------------------------------------------------------------------------
 
 export function EmailComposeCard({
   data = SAMPLE_EMAIL_COMPOSE,
@@ -120,34 +105,36 @@ export function EmailComposeCard({
   const bodyText = data.is_html ? stripHtml(data.body) : data.body;
 
   return (
-    <View className="mx-4 my-1 overflow-hidden rounded-2xl bg-zinc-800">
+    <View className="mx-4 my-1 overflow-hidden rounded-3xl bg-zinc-800">
       {/* Header */}
-      <View className="px-6 pt-4 pb-2 flex-row items-center gap-2">
-        <GmailIcon width={18} height={18} />
-        <Text className="text-zinc-100 text-sm font-medium">
-          {isDraft ? "Email Draft" : "Compose Email"}
-        </Text>
-        {isReply && (
-          <Chip size="sm" variant="soft" color="accent">
-            <Chip.Label>Reply</Chip.Label>
-          </Chip>
-        )}
+      <View className="px-6 py-1">
+        <View className="flex-row items-center gap-2 pt-3 pb-2">
+          <GmailIcon width={18} height={18} />
+          <Text className="text-zinc-100 text-sm font-medium">
+            {isDraft ? "Email Draft" : "Compose Email"}
+          </Text>
+          {isReply && (
+            <Chip size="sm" variant="soft" color="accent">
+              <Chip.Label>Reply</Chip.Label>
+            </Chip>
+          )}
+        </View>
       </View>
 
       {/* Body rows */}
-      <View className="px-6">
+      <View className="px-6 gap-1">
         {/* To row */}
         <View className="flex-row items-center gap-2 min-h-9">
-          <Text className="text-zinc-400 text-sm">To:</Text>
+          <Text className="text-sm text-zinc-400">To:</Text>
           {hasRecipients ? (
             <>
               <Text
-                className="flex-1 text-zinc-100 text-sm font-medium"
+                className="flex-1 text-sm font-medium text-zinc-200"
                 numberOfLines={1}
               >
                 {toDisplay}
               </Text>
-              <EditButton onPress={onEditRecipients} />
+              <EditIconButton onPress={onEditRecipients} />
             </>
           ) : (
             <View className="flex-1 flex-row">
@@ -162,46 +149,47 @@ export function EmailComposeCard({
 
         {/* Subject row */}
         <View className="flex-row items-center gap-2 min-h-9">
-          <Text className="text-zinc-400 text-sm">Subject:</Text>
+          <Text className="text-sm text-zinc-400">Subject:</Text>
           <Text
-            className="flex-1 text-zinc-100 text-sm font-medium"
+            className="flex-1 text-sm font-medium text-zinc-200"
             numberOfLines={1}
           >
             {data.subject}
           </Text>
-          <EditButton onPress={onEditSubject} />
+          <EditIconButton onPress={onEditSubject} />
         </View>
 
         <Separator />
 
-        {/* Body */}
+        {/* Body — scrollable with edit button overlaid top-right */}
         <View className="relative">
           <View className="absolute top-0 right-0 z-10">
-            <EditButton onPress={onEditBody} />
+            <EditIconButton onPress={onEditBody} />
           </View>
           <ScrollView
             style={{ maxHeight: 184 }}
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
-            contentContainerStyle={{ paddingTop: 4, paddingBottom: 8 }}
+            contentContainerStyle={{ paddingBottom: 20 }}
           >
-            <Text className="text-zinc-200 text-sm leading-relaxed pr-8">
-              {bodyText}
-            </Text>
+            <View className="pr-8">
+              <MarkdownRenderer content={bodyText} />
+            </View>
           </ScrollView>
         </View>
       </View>
 
       {/* Footer */}
-      <View className="flex-row justify-end px-6 pb-5 pt-2">
+      <View className="flex-row justify-end px-6 pb-5">
         <Button
           variant="primary"
-          size="sm"
           className="rounded-full px-5"
           onPress={onSend}
           isDisabled={!hasRecipients}
         >
-          <Button.Label>{isDraft ? "Send Draft" : "Send"}</Button.Label>
+          <Button.Label className="font-medium">
+            {isDraft ? "Send Draft" : "Send"}
+          </Button.Label>
         </Button>
       </View>
     </View>
