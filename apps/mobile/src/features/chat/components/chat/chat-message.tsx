@@ -330,107 +330,121 @@ export function ChatMessage({
           </View>
         ) : null}
 
-        {/* Main message content with avatar */}
-        <View
-          style={{
-            width: "100%",
-            flexDirection: "row",
-            alignItems: "flex-end",
-          }}
-        >
-          {/* GAIA avatar — 30×30, aligned to bottom of bubble */}
-          <Image
-            source={GaiaLogo}
+        {/* Main message content with avatar — skip when only tool data renders */}
+        {message.imageData ||
+        isGeneratingImage ||
+        showToolProgress ||
+        showThinkingCard ||
+        showLoadingState ||
+        messageParts.length > 0 ? (
+          <View
             style={{
-              width: 30,
-              height: 30,
-              marginRight: spacing.sm,
-              flexShrink: 0,
+              width: "100%",
+              flexDirection: "row",
+              alignItems: "flex-end",
             }}
-            contentFit="contain"
-          />
-          <View style={{ flex: 1 }}>
-            {message.imageData || isGeneratingImage ? (
-              <View style={{ paddingHorizontal: spacing.md }}>
-                <ImageBubble
-                  imageData={message.imageData ?? { url: "", prompt: "" }}
-                  isGenerating={isGeneratingImage}
-                  caption={
-                    messageParts.length > 0 ? messageParts.join(" ") : undefined
-                  }
-                />
-              </View>
-            ) : showToolProgress ? (
-              <View style={{ paddingHorizontal: spacing.md }}>
-                <ToolProgressCard
-                  toolName={progressToolName}
-                  progressMessage={progressMessage}
-                />
-              </View>
-            ) : showThinkingCard ? (
-              <View style={{ paddingHorizontal: spacing.md }}>
-                <ThinkingCard
-                  message={
+          >
+            {/* GAIA avatar — 30×30, aligned to bottom of bubble */}
+            <Image
+              source={GaiaLogo}
+              style={{
+                width: 30,
+                height: 30,
+                marginRight: spacing.sm,
+                flexShrink: 0,
+              }}
+              contentFit="contain"
+            />
+            <View style={{ flex: 1 }}>
+              {message.imageData || isGeneratingImage ? (
+                <View style={{ paddingHorizontal: spacing.md }}>
+                  <ImageBubble
+                    imageData={message.imageData ?? { url: "", prompt: "" }}
+                    isGenerating={isGeneratingImage}
+                    caption={
+                      messageParts.length > 0
+                        ? messageParts.join(" ")
+                        : undefined
+                    }
+                  />
+                </View>
+              ) : showToolProgress ? (
+                <View style={{ paddingHorizontal: spacing.md }}>
+                  <ToolProgressCard
+                    toolName={progressToolName}
+                    progressMessage={progressMessage}
+                  />
+                </View>
+              ) : showThinkingCard ? (
+                <View style={{ paddingHorizontal: spacing.md }}>
+                  <ThinkingCard
+                    message={
+                      loadingMessage !== "Thinking..."
+                        ? loadingMessage
+                        : undefined
+                    }
+                  />
+                </View>
+              ) : showLoadingState ? (
+                <LoadingIndicator
+                  progress={
                     loadingMessage !== "Thinking..."
                       ? loadingMessage
                       : undefined
                   }
                 />
-              </View>
-            ) : showLoadingState ? (
-              <LoadingIndicator
-                progress={
-                  loadingMessage !== "Thinking..." ? loadingMessage : undefined
-                }
-              />
-            ) : (
-              messageParts.map((part, partIndex) => {
-                const segments = parseOpenUISegments(part, !!isLoading);
-                const grouped =
-                  messageParts.length === 1
-                    ? "none"
-                    : partIndex === 0
-                      ? "first"
-                      : partIndex === messageParts.length - 1
-                        ? "last"
-                        : "middle";
+              ) : (
+                messageParts.map((part, partIndex) => {
+                  const segments = parseOpenUISegments(part, !!isLoading);
+                  const grouped =
+                    messageParts.length === 1
+                      ? "none"
+                      : partIndex === 0
+                        ? "first"
+                        : partIndex === messageParts.length - 1
+                          ? "last"
+                          : "middle";
 
-                const totalSegments = segments.length;
-                return segments.map((segment, segIndex) => {
-                  const key = `${message.id}-${partIndex}-${segIndex}`;
-                  const isLastSegmentOfLastPart =
-                    partIndex === messageParts.length - 1 &&
-                    segIndex === totalSegments - 1;
-                  const showCursor =
-                    isLoading && isLastMessage && isLastSegmentOfLastPart;
+                  const totalSegments = segments.length;
+                  return segments.map((segment, segIndex) => {
+                    const key = `${message.id}-${partIndex}-${segIndex}`;
+                    const isLastSegmentOfLastPart =
+                      partIndex === messageParts.length - 1 &&
+                      segIndex === totalSegments - 1;
+                    const showCursor =
+                      isLoading && isLastMessage && isLastSegmentOfLastPart;
 
-                  if (segment.type === "openui") {
+                    if (segment.type === "openui") {
+                      return (
+                        <View
+                          key={key}
+                          style={{
+                            paddingHorizontal: spacing.md,
+                            width: "100%",
+                          }}
+                        >
+                          <OpenUIRenderer
+                            code={segment.content}
+                            isStreaming={!segment.isComplete}
+                          />
+                        </View>
+                      );
+                    }
                     return (
-                      <View
+                      <MessageBubble
                         key={key}
-                        style={{ paddingHorizontal: spacing.md, width: "100%" }}
-                      >
-                        <OpenUIRenderer
-                          code={segment.content}
-                          isStreaming={!segment.isComplete}
-                        />
-                      </View>
+                        message={segment.content}
+                        variant="received"
+                        grouped={grouped}
+                        isStreaming={showCursor}
+                      />
                     );
-                  }
-                  return (
-                    <MessageBubble
-                      key={key}
-                      message={segment.content}
-                      variant="received"
-                      grouped={grouped}
-                      isStreaming={showCursor}
-                    />
-                  );
-                });
-              })
-            )}
+                  });
+                })
+              )}
+            </View>
           </View>
-        </View>
+        ) : null}
 
         {/* Link preview – shown below message content for AI messages */}
         {!isUser &&

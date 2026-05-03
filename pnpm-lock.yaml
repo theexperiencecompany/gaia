@@ -238,9 +238,6 @@ importers:
       '@expo-google-fonts/inter':
         specifier: ^0.4.2
         version: 0.4.2
-      '@expo-google-fonts/roboto-mono':
-        specifier: ^0.4.1
-        version: 0.4.1
       '@expo/vector-icons':
         specifier: ^15.0.3
         version: 15.1.1(expo-font@55.0.6)(react-native@0.83.2(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
@@ -3272,9 +3269,6 @@ packages:
 
   '@expo-google-fonts/material-symbols@0.4.28':
     resolution: {integrity: sha512-59qFO6w4W/wUZ6VuYfN1wtgyk4zFJspbKOdHYISMeDa2H4apZKY0Ab7K5ouee+C+s3/VfAp6tLK7ov+PsENhKw==}
-
-  '@expo-google-fonts/roboto-mono@0.4.1':
-    resolution: {integrity: sha512-vVTGi93KBS/ypBvZaM6wxhgV2CWOiZjow6X7F6wMBPdtR1WasLELGrtiptgCTPipPkR5o5xpl2+3teTV1ffJGg==}
 
   '@expo/cli@55.0.21':
     resolution: {integrity: sha512-lBHSTRXXzIJwaEevZ+AAaTxhdlYpmjnb5T1Q/L1lVSmz/wzfQyh45OlxkPOePWrKuIMETxoK/aR05WmBAYL0Aw==}
@@ -21396,8 +21390,6 @@ snapshots:
   '@expo-google-fonts/inter@0.4.2': {}
 
   '@expo-google-fonts/material-symbols@0.4.28': {}
-
-  '@expo-google-fonts/roboto-mono@0.4.1': {}
 
   '@expo/cli@55.0.21(@expo/dom-webview@55.0.5)(@expo/metro-runtime@55.0.9)(expo-constants@55.0.11)(expo-font@55.0.6)(expo-router@55.0.10)(expo@55.0.11)(react-dom@19.1.0(react@19.1.0))(react-native@0.83.2(@babel/core@7.29.0)(@react-native-community/cli@20.1.3(typescript@5.9.3))(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)':
     dependencies:
