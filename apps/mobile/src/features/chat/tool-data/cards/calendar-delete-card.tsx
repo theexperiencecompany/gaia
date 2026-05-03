@@ -1,11 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
-import { AppIcon, Calendar03Icon, Tick02Icon } from "@/components/icons";
+import { AppIcon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  ToolCardHeader,
-  ToolCardShell,
-} from "@/features/chat/tool-data/primitives";
 
 // -- Types --------------------------------------------------------------------
 
@@ -30,7 +26,7 @@ interface CalendarDeleteCardProps {
   onDeleteAll?: (events: CalendarDeleteOption[]) => Promise<void>;
 }
 
-// -- Helpers ------------------------------------------------------------------
+// -- Date / time helpers ------------------------------------------------------
 
 function formatTimeString(date: Date): string {
   const hours = date.getHours();
@@ -76,6 +72,12 @@ function getEventTimeDisplay(event: CalendarDeleteOption): string {
   return "All day";
 }
 
+function bucketDate(input: string): string {
+  const t = new Date(input);
+  if (Number.isNaN(t.getTime())) return new Date().toISOString().slice(0, 10);
+  return t.toISOString().slice(0, 10);
+}
+
 function groupByDate(
   events: CalendarDeleteOption[],
 ): Record<string, CalendarDeleteOption[]> {
@@ -83,14 +85,14 @@ function groupByDate(
   for (const event of events) {
     const raw =
       event.start?.dateTime || event.start?.date || new Date().toISOString();
-    const dateKey = new Date(raw).toISOString().slice(0, 10);
+    const dateKey = bucketDate(raw);
     if (!groups[dateKey]) groups[dateKey] = [];
     groups[dateKey].push(event);
   }
   return groups;
 }
 
-// -- Event card ---------------------------------------------------------------
+// -- Event card (action variant) ---------------------------------------------
 
 interface EventCardProps {
   event: CalendarDeleteOption;
@@ -106,7 +108,7 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
 
   return (
     <View
-      className="relative flex-row items-end rounded-lg py-3 pr-2 pl-5"
+      className="relative flex-row items-end gap-2 rounded-lg p-3 pr-2 pl-5"
       style={{
         backgroundColor: `${eventColor}20`,
         opacity: isCompleted ? 0.5 : 1,
@@ -122,10 +124,7 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
 
       {/* Content */}
       <View className="flex-1 min-w-0">
-        <Text
-          className="text-base leading-tight text-zinc-100"
-          numberOfLines={2}
-        >
+        <Text className="text-base leading-tight text-white" numberOfLines={2}>
           {event.summary}
         </Text>
         {event.description ? (
@@ -138,15 +137,14 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
         </View>
       </View>
 
-      {/* Action button */}
+      {/* Action button — HeroUI `color="danger" size="sm"` equivalent */}
       <Pressable
         onPress={isCompleted || isLoading ? undefined : onDelete}
-        className="flex-shrink-0 rounded-lg px-3 py-1.5 items-center justify-center flex-row gap-1"
+        disabled={isCompleted || isLoading}
+        className="flex-shrink-0 rounded-xl px-3 py-1.5 items-center justify-center flex-row gap-1"
         style={{
-          backgroundColor: isCompleted
-            ? "rgba(63,63,70,0.6)"
-            : "rgba(239,68,68,0.15)",
-          opacity: isCompleted || isLoading ? 0.7 : 1,
+          backgroundColor: isCompleted ? "#3f3f46" : "#ef4444",
+          opacity: isCompleted ? 0.6 : 1,
         }}
       >
         {isLoading ? (
@@ -154,10 +152,10 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
         ) : isCompleted ? (
           <>
             <AppIcon icon={Tick02Icon} size={14} color="#a1a1aa" />
-            <Text className="text-xs font-medium text-zinc-400">Deleted</Text>
+            <Text className="text-xs font-semibold text-zinc-300">Deleted</Text>
           </>
         ) : (
-          <Text className="text-xs font-semibold text-red-400">Confirm</Text>
+          <Text className="text-xs font-semibold text-white">Confirm</Text>
         )}
       </Pressable>
     </View>
@@ -165,6 +163,8 @@ function EventCard({ event, status, onDelete }: EventCardProps) {
 }
 
 // -- Calendar delete card -----------------------------------------------------
+
+const MAX_VISIBLE_HEIGHT = 400;
 
 export function CalendarDeleteCard({
   data,
@@ -235,32 +235,22 @@ export function CalendarDeleteCard({
   const eventsByDate = groupByDate(data);
 
   return (
-    <ToolCardShell>
-      <ToolCardHeader
-        icon={Calendar03Icon}
-        title="Delete Events"
-        iconColor="#ef4444"
-      />
-
+    <View className="mx-4 my-1 w-full max-w-md rounded-3xl bg-zinc-800 p-4">
       <ScrollView
-        style={{ maxHeight: 400 }}
+        style={{ maxHeight: MAX_VISIBLE_HEIGHT }}
         nestedScrollEnabled
         showsVerticalScrollIndicator={false}
       >
         <View className="gap-3">
-          {Object.entries(eventsByDate).map(([dateKey, events], groupIdx) => (
-            <View
-              key={dateKey}
-              className="gap-3"
-              style={{ marginTop: groupIdx === 0 ? 0 : 4 }}
-            >
+          {Object.entries(eventsByDate).map(([dateKey, events]) => (
+            <View key={dateKey} className="gap-3">
               {/* Date rail */}
               <View className="flex-row items-center">
-                <View className="flex-1 h-px bg-zinc-700/50" />
+                <View className="flex-1 h-px bg-zinc-700" />
                 <Text className="px-3 text-xs text-zinc-500">
                   {formatDateWithRelative(dateKey)}
                 </Text>
-                <View className="flex-1 h-px bg-zinc-700/50" />
+                <View className="flex-1 h-px bg-zinc-700" />
               </View>
 
               {/* Events */}
@@ -284,6 +274,7 @@ export function CalendarDeleteCard({
         </View>
       </ScrollView>
 
+      {/* Bulk delete footer — full-width solid danger button */}
       {data.length > 1 ? (
         <Pressable
           onPress={
@@ -291,30 +282,29 @@ export function CalendarDeleteCard({
               ? undefined
               : () => void handleDeleteAll()
           }
+          disabled={allCompleted || isConfirmingAll}
           className="mt-3 w-full rounded-xl py-2.5 items-center justify-center flex-row gap-2"
           style={{
-            backgroundColor: allCompleted
-              ? "rgba(63,63,70,0.6)"
-              : "rgba(239,68,68,0.18)",
-            opacity: allCompleted || isConfirmingAll ? 0.7 : 1,
+            backgroundColor: allCompleted ? "#3f3f46" : "#ef4444",
+            opacity: allCompleted ? 0.6 : 1,
           }}
         >
           {isConfirmingAll ? (
             <ActivityIndicator size="small" color="#ffffff" />
           ) : allCompleted ? (
             <>
-              <AppIcon icon={Tick02Icon} size={16} color="#a1a1aa" />
-              <Text className="text-sm font-semibold text-zinc-400">
+              <AppIcon icon={Tick02Icon} size={18} color="#a1a1aa" />
+              <Text className="text-sm font-semibold text-zinc-300">
                 All Deleted
               </Text>
             </>
           ) : (
-            <Text className="text-sm font-semibold text-red-400">
+            <Text className="text-sm font-semibold text-white">
               {someCompleted ? "Delete Remaining" : "Delete All Events"}
             </Text>
           )}
         </Pressable>
       ) : null}
-    </ToolCardShell>
+    </View>
   );
 }

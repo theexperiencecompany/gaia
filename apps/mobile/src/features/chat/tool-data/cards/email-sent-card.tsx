@@ -1,4 +1,5 @@
 import type { EmailSentData } from "@gaia/shared";
+import { Chip } from "heroui-native";
 import { View } from "react-native";
 import { AppIcon, CheckmarkCircle02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -6,6 +7,7 @@ import { GmailIcon } from "./gmail-icon";
 
 export type { EmailSentData };
 
+// Ported 1:1 from apps/web/src/features/mail/components/EmailSentCard.tsx
 function formatTime(timestamp?: string): string {
   if (!timestamp) return "Just now";
 
@@ -25,6 +27,9 @@ function formatTime(timestamp?: string): string {
 }
 
 export function EmailSentCard({ data }: { data: EmailSentData }) {
+  // Web reads only `timestamp`; backend sometimes sends `sent_at`. Same for
+  // recipients (`recipients` vs `to`) and the human summary (`message` vs
+  // `body`). Fall through gracefully so backend variants render correctly.
   const timestamp = data.timestamp ?? data.sent_at;
   const recipients = data.recipients ?? data.to ?? [];
   const summary = data.message ?? data.body;
@@ -38,13 +43,9 @@ export function EmailSentCard({ data }: { data: EmailSentData }) {
           <AppIcon icon={CheckmarkCircle02Icon} size={20} color="#4ade80" />
           <Text className="text-sm font-medium text-green-400">Email Sent</Text>
         </View>
-        {!!timestamp && (
-          <View className="px-2 py-0.5 rounded-full bg-green-400/10">
-            <Text className="text-xs text-green-400">
-              {formatTime(timestamp)}
-            </Text>
-          </View>
-        )}
+        <Chip size="sm" variant="soft" color="success" animation="disable-all">
+          <Chip.Label>{formatTime(timestamp)}</Chip.Label>
+        </Chip>
       </View>
 
       {/* Email Details */}
