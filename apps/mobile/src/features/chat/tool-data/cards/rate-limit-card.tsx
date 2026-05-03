@@ -1,5 +1,6 @@
 import type { RateLimitData } from "@gaia/shared";
-import { Pressable, View } from "react-native";
+import { Button, Chip } from "heroui-native";
+import { View } from "react-native";
 import {
   Alert01Icon,
   AppIcon,
@@ -8,7 +9,9 @@ import {
   UploadCircle01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { ToolCardShell } from "@/features/chat/tool-data/primitives";
+
+// Ported 1:1 from
+// apps/web/src/features/chat/components/bubbles/bot/RateLimitCard.tsx
 
 // -- Helpers -----------------------------------------------------------------
 
@@ -69,9 +72,9 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
   const planName = plan_required?.toUpperCase() ?? "PRO";
 
   return (
-    <ToolCardShell>
-      {/* Header */}
-      <View className="flex-row items-start justify-between gap-3 mb-4">
+    <View className="mx-4 my-1 overflow-hidden rounded-2xl bg-zinc-800">
+      {/* Header — mirrors web `flex items-start justify-between gap-3 p-4 pb-3` */}
+      <View className="flex-row items-start justify-between gap-3 px-4 pt-4 pb-3">
         <View className="flex-row items-center gap-3 flex-1 min-w-0">
           <View
             className={`w-10 h-10 rounded-xl items-center justify-center shrink-0 ${
@@ -81,7 +84,7 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
             <AppIcon
               icon={isUpgradeRequired ? UploadCircle01Icon : Clock01Icon}
               size={20}
-              color={isUpgradeRequired ? "#f59e0b" : "#f87171"}
+              color={isUpgradeRequired ? "#f5a524" : "#f87171"}
             />
           </View>
           <View className="flex-1 min-w-0">
@@ -96,109 +99,110 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
           </View>
         </View>
 
-        {/* Badge */}
-        <View
-          className={`px-2.5 py-1 rounded-full shrink-0 ${
-            isUpgradeRequired ? "bg-amber-500/15" : "bg-red-500/15"
-          }`}
+        <Chip
+          size="sm"
+          variant="soft"
+          color={isUpgradeRequired ? "warning" : "danger"}
+          animation="disable-all"
+          className="shrink-0"
         >
-          <Text
-            className="text-xs font-semibold"
-            style={{ color: isUpgradeRequired ? "#f59e0b" : "#f87171" }}
-          >
+          <Chip.Label className="text-xs font-semibold">
             {isUpgradeRequired ? planName : "Limit Hit"}
-          </Text>
-        </View>
+          </Chip.Label>
+        </Chip>
+      </View>
+
+      {/* Divider — web `Divider className="bg-zinc-700/50"` */}
+      <View className="h-px bg-zinc-700/50" />
+
+      {/* Body — mirrors web `flex flex-col gap-3 p-4` */}
+      <View className="p-4 gap-3">
+        {isUpgradeRequired ? (
+          <>
+            {/* Explanation */}
+            <Text className="text-xs leading-relaxed text-zinc-400">
+              <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
+              is a{" "}
+              <Text className="font-medium text-amber-400">{planName}</Text>{" "}
+              feature and isn{"'"}t included in your current plan. Upgrade to
+              unlock it and get significantly higher limits across every
+              feature.
+            </Text>
+
+            {/* Benefits */}
+            <View className="gap-1.5">
+              {PRO_BENEFITS.map((benefit) => (
+                <View key={benefit} className="flex-row items-start gap-2">
+                  <View className="mt-0.5">
+                    <AppIcon
+                      icon={CheckmarkCircle02Icon}
+                      size={14}
+                      color="#00bbff"
+                    />
+                  </View>
+                  <Text className="text-xs text-zinc-400 flex-1">
+                    {benefit}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : (
+          <>
+            {/* What happened */}
+            <Text className="text-xs leading-relaxed text-zinc-400">
+              You{"'"}ve used all your{" "}
+              <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
+              calls for today. Your limit will automatically reset, no action
+              needed.
+            </Text>
+
+            {/* Reset time block — web `bg-zinc-700` */}
+            {resetInfo && (
+              <View className="flex-row items-center gap-3 rounded-xl bg-zinc-700 px-3 py-2.5">
+                <AppIcon icon={Clock01Icon} size={16} color="#a1a1aa" />
+                <View className="gap-0.5">
+                  <Text className="text-xs font-medium text-zinc-200">
+                    {resetInfo.label}
+                  </Text>
+                  <Text className="text-[11px] text-zinc-400">
+                    {resetInfo.detail}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Upgrade nudge */}
+            <View className="flex-row items-start gap-2 px-3">
+              <View className="mt-0.5">
+                <AppIcon icon={Alert01Icon} size={14} color="#a1a1aa" />
+              </View>
+              <Text className="text-xs text-zinc-400 flex-1">
+                Need more? Upgrade to{" "}
+                <Text className="font-medium text-zinc-300">PRO</Text> for 10x
+                higher daily limits on {featureName} and all other features.
+              </Text>
+            </View>
+          </>
+        )}
       </View>
 
       {/* Divider */}
-      <View className="h-px bg-zinc-700/50 mb-4" />
+      <View className="h-px bg-zinc-700/50" />
 
-      {/* Body */}
-      {isUpgradeRequired ? (
-        <View className="gap-3 mb-4">
-          {/* Explanation */}
-          <Text className="text-xs leading-relaxed text-zinc-400">
-            <Text className="font-medium text-zinc-200">{featureName}</Text> is
-            a <Text className="font-medium text-amber-400">{planName}</Text>{" "}
-            feature and isn{"'"}t included in your current plan. Upgrade to
-            unlock it and get significantly higher limits across every feature.
-          </Text>
-
-          {/* Benefits */}
-          <View className="gap-1.5">
-            {PRO_BENEFITS.map((benefit) => (
-              <View key={benefit} className="flex-row items-start gap-2">
-                <View className="mt-0.5">
-                  <AppIcon
-                    icon={CheckmarkCircle02Icon}
-                    size={14}
-                    color="#00bbff"
-                  />
-                </View>
-                <Text className="text-xs text-zinc-400 flex-1">{benefit}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      ) : (
-        <View className="gap-3 mb-4">
-          {/* What happened */}
-          <Text className="text-xs leading-relaxed text-zinc-400">
-            You{"'"}ve used all your{" "}
-            <Text className="font-medium text-zinc-200">{featureName}</Text>{" "}
-            calls for today. Your limit will automatically reset — no action
-            needed.
-          </Text>
-
-          {/* Reset time block */}
-          {resetInfo && (
-            <View className="flex-row items-center gap-3 rounded-xl bg-zinc-800 px-3 py-2.5">
-              <AppIcon icon={Clock01Icon} size={16} color="#a1a1aa" />
-              <View className="gap-0.5">
-                <Text className="text-xs font-medium text-zinc-200">
-                  {resetInfo.label}
-                </Text>
-                <Text className="text-xs text-zinc-400">
-                  {resetInfo.detail}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Upgrade nudge */}
-          <View className="flex-row items-start gap-2 px-3">
-            <View className="mt-0.5">
-              <AppIcon icon={Alert01Icon} size={14} color="#a1a1aa" />
-            </View>
-            <Text className="text-xs text-zinc-400 flex-1">
-              Need more? Upgrade to{" "}
-              <Text className="font-medium text-zinc-200">PRO</Text> for 10x
-              higher daily limits on {featureName} and all other features.
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Divider */}
-      <View className="h-px bg-zinc-700/50 mb-3" />
-
-      {/* Footer CTA */}
-      <Pressable
-        onPress={onUpgrade}
-        android_ripple={{ color: "rgba(255,255,255,0.1)" }}
-        className={`rounded-xl py-2.5 items-center ${
-          isUpgradeRequired ? "bg-[#00bbff]" : "bg-[#00bbff]/15"
-        }`}
-      >
-        <Text
-          className={`text-sm font-medium ${
-            isUpgradeRequired ? "text-black" : "text-[#00bbff]"
-          }`}
+      {/* Footer CTA — mirrors web `Button size="sm" color="primary" variant={solid|flat} className="w-full rounded-xl"` */}
+      <View className="p-3">
+        <Button
+          size="sm"
+          variant={isUpgradeRequired ? "primary" : "secondary"}
+          onPress={onUpgrade}
+          className="w-full rounded-xl"
         >
-          {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
-        </Text>
-      </Pressable>
-    </ToolCardShell>
+          <Button.Label>
+            {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
+          </Button.Label>
+        </Button>
+      </View>
+    </View>
   );
 }

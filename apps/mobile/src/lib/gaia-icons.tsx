@@ -123,6 +123,7 @@ export const CreditCardIcon = createIcon("CreditCardIcon");
 export const CustomerSupportIcon = createIcon("CustomerSupportIcon");
 export const Delete01Icon = createIcon("Delete01Icon");
 export const Delete02Icon = createIcon("Delete02Icon");
+export const DashedLineCircleIcon = createIcon("DashedLineCircleIcon");
 export const DiscordIcon = createIcon("DiscordIcon");
 export const DocumentAttachmentIcon = createIcon("DocumentAttachmentIcon");
 export const Download01Icon = createIcon("Download01Icon");

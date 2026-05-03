@@ -1,295 +1,310 @@
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { Button, Chip } from "heroui-native";
 import { useState } from "react";
-import { Pressable, ScrollView, TextInput, View } from "react-native";
+import { ActivityIndicator, ScrollView, TextInput, View } from "react-native";
 import {
   AppIcon,
-  Cancel01Icon,
   Comment01Icon,
   HelpCircleIcon,
   PencilEdit01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  ToolCardInner,
-  ToolCardShell,
-} from "@/features/chat/tool-data/primitives";
+import { apiService } from "@/lib/api";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
+
+// ---------------------------------------------------------------------------
+// Types — mirror apps/web/src/types/features/supportTypes.ts
+// ---------------------------------------------------------------------------
 
 export type SupportTicketType = "support" | "feature";
 
 export interface SupportTicketData {
-  type?: SupportTicketType;
-  title?: string;
-  description?: string;
-  status?: string;
-  priority?: "high" | "medium" | "low" | "critical";
+  type: SupportTicketType;
+  title: string;
+  description: string;
   user_name?: string;
   user_email?: string;
 }
 
-// -- Priority config -----------------------------------------------------------
+interface SupportResponse {
+  success: boolean;
+  message: string;
+  ticket_id?: string;
+}
 
-const PRIORITY_CONFIG: Record<
-  string,
-  { bg: string; text: string; label: string }
-> = {
-  critical: {
-    bg: "bg-red-500/15",
-    text: "text-red-400",
-    label: "Critical Priority",
-  },
-  high: { bg: "bg-red-500/15", text: "text-red-400", label: "High Priority" },
-  medium: {
-    bg: "bg-amber-400/10",
-    text: "text-amber-400",
-    label: "Medium Priority",
-  },
-  low: { bg: "bg-primary/10", text: "text-primary", label: "Low Priority" },
-};
-
-// -- Status config -------------------------------------------------------------
-
-const STATUS_CONFIG: Record<
-  string,
-  { bg: string; text: string; label: string }
-> = {
-  open: { bg: "bg-emerald-400/10", text: "text-emerald-400", label: "Open" },
-  closed: { bg: "bg-zinc-700/50", text: "text-zinc-400", label: "Closed" },
-  pending: {
-    bg: "bg-amber-400/10",
-    text: "text-amber-400",
-    label: "Pending",
-  },
-  resolved: {
-    bg: "bg-primary/10",
-    text: "text-primary",
-    label: "Resolved",
-  },
-};
-
-// -- Divider ------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Divider — mirrors web's <Separator className="my-1.5 bg-zinc-700" />
+// ---------------------------------------------------------------------------
 
 function Divider() {
-  return <View className="h-px bg-zinc-700/50 my-1.5" />;
+  return <View className="h-px bg-zinc-700 my-1.5" />;
 }
 
-// -- Pill badge ---------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// EditTicketSheet — bottom-sheet equivalent of web's EditTicketModal
+// ---------------------------------------------------------------------------
 
-function Pill({
-  bg,
-  text,
-  label,
-}: {
-  bg: string;
-  text: string;
-  label: string;
-}) {
-  return (
-    <View className={`self-start rounded-full px-2.5 py-0.5 ${bg}`}>
-      <Text className={`text-xs font-medium ${text}`}>{label}</Text>
-    </View>
-  );
+interface EditTicketSheetProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  editData: SupportTicketData;
+  onSave: (next: SupportTicketData) => void;
 }
 
-// -- Edit sheet (inline, no modal dependency) ---------------------------------
-
-function EditSheet({
+function EditTicketSheet({
+  isOpen,
+  onOpenChange,
   editData,
   onSave,
-  onClose,
-}: {
-  editData: SupportTicketData;
-  onSave: (updated: SupportTicketData) => void;
-  onClose: () => void;
-}) {
+}: EditTicketSheetProps) {
   const [draft, setDraft] = useState<SupportTicketData>(editData);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Reset draft each time the sheet opens so cancelled edits don't persist.
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      setDraft(editData);
+      setErrors({});
+    }
+    onOpenChange(open);
+  };
+
+  const validate = (): boolean => {
+    const next: Record<string, string> = {};
+    if (!draft.title || draft.title.trim().length === 0) {
+      next.title = "Title is required";
+    } else if (draft.title.length > 200) {
+      next.title = "Title must be under 200 characters";
+    }
+    if (!draft.description || draft.description.trim().length < 10) {
+      next.description = "Description must be at least 10 characters";
+    } else if (draft.description.length > 5000) {
+      next.description = "Description must be under 5,000 characters";
+    }
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validate()) return;
+    onSave(draft);
+    onOpenChange(false);
+  };
 
   return (
-    <ToolCardShell className="mt-2">
-      {/* Sheet header */}
-      <View className="flex-row items-center justify-between mb-3">
-        <Text className="text-zinc-100 text-sm font-semibold">Edit Ticket</Text>
-        <Pressable onPress={onClose} hitSlop={8} className="p-1">
-          <AppIcon icon={Cancel01Icon} size={16} color="#71717a" />
-        </Pressable>
-      </View>
+    <BottomSheet isOpen={isOpen} onOpenChange={handleOpenChange}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={["75%", "95%"]}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#27272a" }}
+          handleIndicatorStyle={{ backgroundColor: "#52525b", width: 40 }}
+        >
+          <View className="px-4 pt-1 pb-3">
+            <Text className="text-zinc-100 text-base font-semibold">
+              Edit Support Ticket
+            </Text>
+          </View>
 
-      {/* Type toggle */}
-      <Text className="text-zinc-400 text-xs mb-1.5">Type</Text>
-      <View className="flex-row gap-2 mb-3">
-        {(["support", "feature"] as SupportTicketType[]).map((t) => (
-          <Pressable
-            key={t}
-            onPress={() => setDraft({ ...draft, type: t })}
-            className={`flex-1 rounded-xl py-2 items-center ${
-              draft.type === t ? "bg-primary" : "bg-zinc-800"
-            }`}
+          <BottomSheetScrollView
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+            showsVerticalScrollIndicator={false}
           >
-            <Text
-              className={`text-xs font-semibold ${
-                draft.type === t ? "text-black" : "text-zinc-200"
+            {/* Type selection */}
+            <Text className="text-zinc-200 text-sm font-medium mb-2">Type</Text>
+            <View className="flex-row gap-2 mb-4">
+              <Chip
+                size="md"
+                variant={draft.type === "support" ? "primary" : "tertiary"}
+                color={draft.type === "support" ? "default" : "default"}
+                onPress={() => setDraft({ ...draft, type: "support" })}
+                animation="disable-all"
+              >
+                <Chip.Label>Support</Chip.Label>
+              </Chip>
+              <Chip
+                size="md"
+                variant={draft.type === "feature" ? "primary" : "tertiary"}
+                color={draft.type === "feature" ? "default" : "default"}
+                onPress={() => setDraft({ ...draft, type: "feature" })}
+                animation="disable-all"
+              >
+                <Chip.Label>Feature Request</Chip.Label>
+              </Chip>
+            </View>
+
+            {/* Title */}
+            <Text className="text-zinc-200 text-sm font-medium mb-2">
+              Title
+            </Text>
+            <View
+              className={`rounded-xl bg-zinc-900 px-3 py-3 mb-1 ${
+                errors.title ? "border border-red-500/60" : ""
               }`}
             >
-              {t === "feature" ? "Feature Request" : "Support"}
+              <TextInput
+                value={draft.title ?? ""}
+                onChangeText={(v) => setDraft({ ...draft, title: v })}
+                placeholder="Brief description of your issue or request"
+                placeholderTextColor="#71717a"
+                style={{ color: "#f4f4f5", fontSize: 14, paddingVertical: 0 }}
+              />
+            </View>
+            {errors.title ? (
+              <Text className="text-red-400 text-xs mb-3">{errors.title}</Text>
+            ) : (
+              <View className="mb-3" />
+            )}
+
+            {/* Description */}
+            <Text className="text-zinc-200 text-sm font-medium mb-2">
+              Description
             </Text>
-          </Pressable>
-        ))}
-      </View>
+            <View
+              className={`rounded-xl bg-zinc-900 px-3 py-3 mb-1 ${
+                errors.description ? "border border-red-500/60" : ""
+              }`}
+            >
+              <TextInput
+                value={draft.description ?? ""}
+                onChangeText={(v) => setDraft({ ...draft, description: v })}
+                placeholder="Please provide detailed information about your issue or feature request"
+                placeholderTextColor="#71717a"
+                multiline
+                numberOfLines={6}
+                textAlignVertical="top"
+                style={{
+                  color: "#f4f4f5",
+                  fontSize: 14,
+                  paddingVertical: 0,
+                  minHeight: 120,
+                }}
+              />
+            </View>
+            {errors.description ? (
+              <Text className="text-red-400 text-xs mb-4">
+                {errors.description}
+              </Text>
+            ) : (
+              <View className="mb-4" />
+            )}
 
-      {/* Title input */}
-      <Text className="text-zinc-400 text-xs mb-1.5">Title</Text>
-      <View className="rounded-xl bg-zinc-800 px-3 py-2 mb-3">
-        <TextInput
-          value={draft.title ?? ""}
-          onChangeText={(v) => setDraft({ ...draft, title: v })}
-          placeholder="Brief description of your issue"
-          placeholderTextColor="#71717a"
-          style={{
-            color: "#f4f4f5",
-            fontSize: 14,
-            paddingVertical: 0,
-          }}
-        />
-      </View>
-
-      {/* Description input */}
-      <Text className="text-zinc-400 text-xs mb-1.5">Description</Text>
-      <View className="rounded-xl bg-zinc-800 px-3 py-2 mb-4">
-        <TextInput
-          value={draft.description ?? ""}
-          onChangeText={(v) => setDraft({ ...draft, description: v })}
-          placeholder="Detailed information about your issue or request"
-          placeholderTextColor="#71717a"
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-          style={{
-            color: "#f4f4f5",
-            fontSize: 14,
-            paddingVertical: 0,
-            minHeight: 80,
-          }}
-        />
-      </View>
-
-      {/* Action buttons */}
-      <View className="flex-row justify-end gap-2">
-        <Pressable
-          onPress={onClose}
-          className="rounded-full bg-zinc-800 px-4 py-2"
-        >
-          <Text className="text-zinc-200 text-sm font-medium">Cancel</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => onSave(draft)}
-          className="rounded-full bg-primary px-4 py-2"
-          android_ripple={{ color: "rgba(0,0,0,0.1)" }}
-        >
-          <Text className="text-black text-sm font-medium">Save</Text>
-        </Pressable>
-      </View>
-    </ToolCardShell>
+            {/* Footer actions */}
+            <View className="flex-row justify-end gap-2">
+              <Button
+                size="md"
+                variant="tertiary"
+                onPress={() => onOpenChange(false)}
+              >
+                <Button.Label>Cancel</Button.Label>
+              </Button>
+              <Button size="md" variant="primary" onPress={handleSave}>
+                <Button.Label>Save Changes</Button.Label>
+              </Button>
+            </View>
+          </BottomSheetScrollView>
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
+    </BottomSheet>
   );
 }
 
-// -- Card ---------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// SupportTicketCard — port of apps/web/src/features/support/components/SupportTicketCard.tsx
+// ---------------------------------------------------------------------------
 
-export function SupportTicketCard({ data }: { data: SupportTicketData }) {
+interface SupportTicketCardProps {
+  data: SupportTicketData;
+  onSubmitted?: () => void;
+}
+
+export function SupportTicketCard({
+  data,
+  onSubmitted,
+}: SupportTicketCardProps) {
   const [editData, setEditData] = useState<SupportTicketData>(data);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isFeature = editData.type === "feature";
   const typeLabel = isFeature ? "Feature Request" : "Support Ticket";
 
-  const priorityInfo =
-    editData.priority && PRIORITY_CONFIG[editData.priority]
-      ? PRIORITY_CONFIG[editData.priority]
-      : null;
-
-  const statusKey = (editData.status ?? "open").toLowerCase();
-  const statusInfo = STATUS_CONFIG[statusKey] ?? STATUS_CONFIG.open;
-
-  const handleSave = (updated: SupportTicketData) => {
-    setEditData(updated);
-    setIsEditing(false);
+  const handleSave = (next: SupportTicketData) => {
+    setEditData(next);
   };
 
   const handleSubmit = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      // Submit logic is handled by the parent or API layer
-      // Kept as a no-op placeholder consistent with web's supportApi call
+      await apiService.post<SupportResponse>("/support/requests", {
+        type: editData.type,
+        title: editData.title,
+        description: editData.description,
+      });
+      onSubmitted?.();
+    } catch (error) {
+      console.error("Failed to submit support ticket:", error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const showFromRow = !!(editData.user_name || editData.user_email);
+
   return (
     <>
-      {/* Outer uses rounded-3xl to match web's rounded-3xl bg-zinc-800 */}
+      {/* Outer card — matches web's `rounded-3xl bg-zinc-800 overflow-hidden`.
+          Mobile uses mx-4/my-1 for the chat bubble gutter. */}
       <View className="rounded-3xl bg-zinc-800 mx-4 my-1 overflow-hidden">
-        {/* Header row — type icon + chip + status */}
-        <View className="flex-row items-center gap-2 px-4 pt-4 pb-2">
-          <View
-            className={`rounded-full p-1 ${isFeature ? "bg-emerald-400/10" : "bg-primary/10"}`}
-          >
+        {/* Header — type icon + chip */}
+        <View className="flex-row items-center justify-between px-6 py-1">
+          <View className="flex-row items-center gap-2 pt-3 pb-2">
             <AppIcon
               icon={isFeature ? Comment01Icon : HelpCircleIcon}
-              size={14}
+              size={18}
               color={isFeature ? "#34d399" : "#00bbff"}
             />
-          </View>
-          <Pill
-            bg={isFeature ? "bg-emerald-400/10" : "bg-primary/10"}
-            text={isFeature ? "text-emerald-400" : "text-primary"}
-            label={typeLabel}
-          />
-          <View className="ml-auto">
-            <Pill
-              bg={statusInfo.bg}
-              text={statusInfo.text}
-              label={statusInfo.label}
-            />
+            <Chip
+              size="sm"
+              variant="soft"
+              color={isFeature ? "success" : "default"}
+              animation="disable-all"
+            >
+              <Chip.Label>{typeLabel}</Chip.Label>
+            </Chip>
           </View>
         </View>
 
-        <View className="px-4 pb-4 flex-col gap-1">
-          {/* Title row with edit button */}
-          <View className="flex-row items-center justify-between mb-1">
-            <Text className="text-zinc-100 text-lg font-semibold flex-1 mr-2">
-              {editData.title ?? "Untitled Ticket"}
+        <View className="px-6 flex-col gap-1">
+          {/* Title row + edit button */}
+          <View className="flex-row items-center justify-between">
+            <Text className="text-zinc-100 text-lg font-semibold flex-1">
+              {editData.title}
             </Text>
-            <Pressable
-              hitSlop={8}
-              className="p-1"
-              onPress={() => setIsEditing(true)}
+            <Button
+              size="sm"
+              variant="tertiary"
+              isIconOnly
+              onPress={() => setIsEditOpen(true)}
             >
               <AppIcon icon={PencilEdit01Icon} size={16} color="#71717a" />
-            </Pressable>
+            </Button>
           </View>
 
           <Divider />
 
-          {/* Priority pill — shown inline below title, above user info */}
-          {priorityInfo ? (
-            <View className="mt-1 mb-2">
-              <Pill
-                bg={priorityInfo.bg}
-                text={priorityInfo.text}
-                label={priorityInfo.label}
-              />
-            </View>
-          ) : null}
-
-          {/* User info */}
-          {editData.user_name || editData.user_email ? (
+          {/* From row — only when user info is present */}
+          {showFromRow ? (
             <>
-              <View className="flex-row items-center gap-1.5 mb-2">
-                <Text className="text-zinc-400 text-sm">From:</Text>
-                <Text className="text-zinc-200 text-sm font-medium">
+              <View className="flex-row items-center gap-2">
+                <Text className="text-sm text-zinc-400">From:</Text>
+                <Text className="text-sm font-medium text-zinc-200">
                   {editData.user_name ?? editData.user_email}
                   {editData.user_name && editData.user_email ? (
-                    <Text className="text-zinc-500 text-sm font-normal">
+                    <Text className="text-sm font-normal text-zinc-400">
                       {" "}
                       ({editData.user_email})
                     </Text>
@@ -300,45 +315,45 @@ export function SupportTicketCard({ data }: { data: SupportTicketData }) {
             </>
           ) : null}
 
-          {/* Description — scrollable, matches web's ScrollShadow */}
-          {editData.description ? (
-            <ScrollView
-              className="mt-1 mb-3 max-h-40"
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-            >
-              <ToolCardInner dense>
-                <Text className="text-zinc-200 text-sm leading-relaxed">
-                  {editData.description}
-                </Text>
-              </ToolCardInner>
-            </ScrollView>
-          ) : null}
+          {/* Description — scrollable, mirrors web's ScrollShadow */}
+          <ScrollView
+            className="pb-5"
+            style={{ maxHeight: 240 }}
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled
+          >
+            <Text className="text-sm leading-relaxed text-zinc-200">
+              {editData.description}
+            </Text>
+          </ScrollView>
+        </View>
 
-          {/* Submit button — right-aligned, rounded-full, matches web */}
-          <View className="flex-row justify-end">
-            <Pressable
-              className={`rounded-full px-4 py-2 ${isSubmitting ? "bg-primary/50" : "bg-primary"}`}
-              onPress={handleSubmit}
-              android_ripple={{ color: "rgba(0,0,0,0.1)" }}
-              disabled={isSubmitting}
-            >
-              <Text className="text-black text-sm font-medium">
-                {isSubmitting ? "Submitting…" : "Submit Ticket"}
-              </Text>
-            </Pressable>
-          </View>
+        {/* Submit button — right-aligned, rounded-full primary */}
+        <View className="flex-row justify-end px-6 pb-5">
+          <Button
+            size="md"
+            variant="primary"
+            onPress={() => void handleSubmit()}
+            isDisabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <View className="flex-row items-center gap-2">
+                <ActivityIndicator size="small" color="#000" />
+                <Button.Label>Submitting...</Button.Label>
+              </View>
+            ) : (
+              <Button.Label>Submit Ticket</Button.Label>
+            )}
+          </Button>
         </View>
       </View>
 
-      {/* Inline edit form — shown below the card when editing */}
-      {isEditing ? (
-        <EditSheet
-          editData={editData}
-          onSave={handleSave}
-          onClose={() => setIsEditing(false)}
-        />
-      ) : null}
+      <EditTicketSheet
+        isOpen={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        editData={editData}
+        onSave={handleSave}
+      />
     </>
   );
 }

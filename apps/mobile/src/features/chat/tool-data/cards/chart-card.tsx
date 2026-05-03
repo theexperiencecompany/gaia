@@ -495,7 +495,7 @@ function DataTable({ data }: { data: ChartData }) {
 
 type ChartViewMode = "chart" | "table";
 
-function ChartItem({ item }: { item: ChartDisplayData }) {
+export function ChartItem({ item }: { item: ChartDisplayData }) {
   const [viewMode, setViewMode] = useState<ChartViewMode>("chart");
   const cd = item.chart_data;
 

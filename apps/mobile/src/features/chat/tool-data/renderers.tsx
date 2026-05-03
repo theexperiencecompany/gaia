@@ -37,6 +37,8 @@ import {
   type CalendarOption,
   CalendarOptionsCard,
   CodeExecutionCard,
+  ConnectionStatusCard,
+  type ConnectionStatusData,
   type ContactData,
   ContactListCard,
   DeepResearchCard,
@@ -288,6 +290,10 @@ const TOOL_RENDERERS: Record<
 
   workflow_created: (data, baseKey) => (
     <WorkflowCreatedCard key={baseKey} data={data as WorkflowCreatedData} />
+  ),
+
+  connection_status_data: (data, baseKey) => (
+    <ConnectionStatusCard key={baseKey} data={data as ConnectionStatusData} />
   ),
 
   rate_limit_data: (data, baseKey) => (
