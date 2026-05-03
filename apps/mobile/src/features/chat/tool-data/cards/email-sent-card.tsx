@@ -2,7 +2,7 @@ import type { EmailSentData } from "@gaia/shared";
 import { View } from "react-native";
 import { AppIcon, CheckmarkCircle02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { GmailIcon } from "./email-fetch-card";
+import { GmailIcon } from "./gmail-icon";
 
 export type { EmailSentData };
 

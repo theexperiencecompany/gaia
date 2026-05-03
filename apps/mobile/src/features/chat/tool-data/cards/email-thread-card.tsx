@@ -1,46 +1,44 @@
-import { ScrollView, View } from "react-native";
+import { Card, Chip, PressableFeedback } from "heroui-native";
+import { useState } from "react";
+import { View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import { AppIcon, ArrowDown01Icon, Mail01Icon } from "@/components/icons";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
-import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
-import { GmailIcon } from "./email-fetch-card";
+
+// ---------------------------------------------------------------------------
+// Types — mirror the web `EmailThreadData` shape from
+// apps/web/src/types/features/mailTypes.ts. Fields are optional to tolerate
+// loose tool output during streaming.
+// ---------------------------------------------------------------------------
 
 export interface EmailThreadMessage {
   id?: string;
   from?: string;
+  /** Optional pre-parsed name (older tool output) */
   from_name?: string;
   subject?: string;
   time?: string;
+  /** Older tool output exposes `date` instead of `time` */
+  date?: string;
   snippet?: string;
   body?: string;
-  date?: string;
-  content?: { text: string; html: string };
+  content?: { text?: string; html?: string };
 }
 
 export interface EmailThreadData {
   thread_id?: string;
   subject?: string;
   messages?: EmailThreadMessage[];
-  messages_count?: number;
 }
 
-function formatTime(time?: string | null): string {
-  if (!time) return "Yesterday";
-  const date = new Date(time);
-  if (Number.isNaN(date.getTime())) return "";
-  const now = new Date();
-  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-  if (diffInHours < 24) {
-    return date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-  }
-  if (diffInHours < 48) return "Yesterday";
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
+// ---------------------------------------------------------------------------
+// Helpers — port of web's parseEmail + formatTime
+// ---------------------------------------------------------------------------
 
 function parseEmail(from?: string): { name: string; email: string } {
   if (!from) return { name: "", email: "" };
@@ -54,119 +52,127 @@ function parseEmail(from?: string): { name: string; email: string } {
   return { name: "", email: from };
 }
 
-function resolveSender(message: EmailThreadMessage): {
-  name: string;
-  email: string;
-} {
-  const parsed = parseEmail(message.from);
-  const name = parsed.name || message.from_name || "";
-  const email = parsed.email || (!parsed.name ? (message.from ?? "") : "");
-  return { name, email };
+function formatTime(time?: string | null): string {
+  if (!time) return "";
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) return time;
+  const now = new Date();
+  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+
+  if (diffInHours < 24) {
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+  if (diffInHours < 48) return "Yesterday";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-const HTML_ENTITIES: Record<string, string> = {
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&quot;": '"',
-  "&#39;": "'",
-  "&apos;": "'",
-  "&nbsp;": " ",
-};
-
-function stripHtml(input: string): string {
-  if (!input) return "";
-  return input
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
+/**
+ * Strip HTML tags as a fallback when no plain text body is available. The web
+ * card mounts the sanitized HTML inside a Shadow DOM iframe, which has no
+ * mobile equivalent — so we render the text version through MarkdownRenderer
+ * instead.
+ */
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
     .replace(/<\/p>/gi, "\n\n")
     .replace(/<[^>]+>/g, "")
-    .replace(
-      /&(amp|lt|gt|quot|apos|nbsp|#39);/g,
-      (match) => HTML_ENTITIES[match] ?? match,
-    )
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-    .replace(/[ \t]+/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
-function looksLikeHtml(input?: string): boolean {
-  if (!input) return false;
-  return /<\/?[a-z][\s\S]*?>/i.test(input);
-}
-
-function getBodyText(message: EmailThreadMessage): string {
-  const htmlSource =
-    message.content?.html ?? (looksLikeHtml(message.body) ? message.body : "");
-  if (htmlSource) {
-    const stripped = stripHtml(htmlSource);
-    if (stripped) return stripped;
+function getMessageText(message: EmailThreadMessage): string {
+  if (message.content?.text?.trim()) return message.content.text.trim();
+  if (message.body?.trim()) {
+    // Heuristic: if the body looks like HTML, strip it.
+    if (/<\/?[a-z][\s\S]*>/i.test(message.body)) {
+      return htmlToPlainText(message.body);
+    }
+    return message.body.trim();
   }
-  return (
-    message.content?.text ??
-    message.body ??
-    message.snippet ??
-    ""
-  ).trim();
+  if (message.content?.html?.trim())
+    return htmlToPlainText(message.content.html);
+  if (message.snippet?.trim()) return message.snippet.trim();
+  return "";
 }
 
-/** Pill label matching web's <Chip variant="flat" size="sm" radius="sm"> */
-function PillLabel({ children }: { children: string }) {
-  return (
-    <View className="px-2 py-0.5 rounded-md bg-zinc-700/60">
-      <Text className="text-zinc-400 text-xs font-medium">{children}</Text>
-    </View>
-  );
-}
+// ---------------------------------------------------------------------------
+// Message item — From / Subject chip layout matches the web card
+// ---------------------------------------------------------------------------
 
-function MessageItem({
-  message,
-  isLast,
-}: {
+interface MessageItemProps {
   message: EmailThreadMessage;
   isLast: boolean;
-}) {
-  const { name: senderName, email: senderEmail } = resolveSender(message);
-  const time = formatTime(message.time ?? message.date);
-  const bodyText = getBodyText(message);
+}
+
+function MessageItem({ message, isLast }: MessageItemProps) {
+  const parsed = parseEmail(message.from);
+  const senderName =
+    message.from_name || parsed.name || parsed.email || "Unknown";
+  const senderEmail = parsed.email;
+  const timeLabel = formatTime(message.time ?? message.date);
+  const bodyText = getMessageText(message);
 
   return (
-    <View className={`gap-1.5${isLast ? "" : " mb-3 pb-3"}`}>
-      {/* From row */}
-      <View className="flex-row items-center justify-between gap-2">
+    <View className={`px-4 py-3 ${isLast ? "" : "border-b border-white/8"}`}>
+      {/* From row + time */}
+      <View className="flex-row items-center justify-between mb-1.5">
         <View className="flex-row items-center gap-2 flex-1 min-w-0">
           <View style={{ width: 60 }}>
-            <PillLabel>From</PillLabel>
+            <Chip
+              size="sm"
+              variant="secondary"
+              color="default"
+              className="bg-white/10"
+            >
+              <Chip.Label>From</Chip.Label>
+            </Chip>
           </View>
-          {!!senderName && (
-            <Text className="text-zinc-400 text-sm shrink" numberOfLines={1}>
+          <View className="flex-row items-center gap-2 flex-1 min-w-0">
+            <Text className="text-sm text-foreground/90" numberOfLines={1}>
               {senderName}
             </Text>
-          )}
-          {!!senderEmail && (
-            <Text
-              className="text-zinc-500 text-xs font-normal shrink"
-              numberOfLines={1}
-            >
-              {senderEmail}
-            </Text>
-          )}
+            {!!senderEmail && senderEmail !== senderName && (
+              <Text className="text-xs text-[#8e8e93] flex-1" numberOfLines={1}>
+                {senderEmail}
+              </Text>
+            )}
+          </View>
         </View>
-        {!!time && (
-          <Text className="text-zinc-500 text-xs flex-shrink-0">{time}</Text>
+        {!!timeLabel && (
+          <Text className="text-xs text-[#8e8e93] shrink-0 ml-2">
+            {timeLabel}
+          </Text>
         )}
       </View>
 
       {/* Subject row */}
       {!!message.subject && (
-        <View className="flex-row items-center gap-2">
+        <View className="flex-row items-center gap-2 mb-2">
           <View style={{ width: 60 }}>
-            <PillLabel>Subject</PillLabel>
+            <Chip
+              size="sm"
+              variant="secondary"
+              color="default"
+              className="bg-white/10"
+            >
+              <Chip.Label>Subject</Chip.Label>
+            </Chip>
           </View>
           <Text
-            className="text-zinc-400 text-sm font-medium flex-1"
+            className="text-sm font-medium text-foreground/90 flex-1"
             numberOfLines={2}
           >
             {message.subject}
@@ -174,47 +180,111 @@ function MessageItem({
         </View>
       )}
 
-      {/* Body */}
+      {/* Body — rendered through MarkdownRenderer for parity with web */}
       {!!bodyText && (
-        <View className="mt-2 rounded-2xl bg-zinc-900 p-3">
-          <Text className="text-zinc-200 text-sm leading-relaxed">
-            {bodyText}
-          </Text>
+        <View className="mt-1 rounded-xl bg-white/5 border border-white/8 px-3 py-2.5">
+          <MarkdownRenderer content={bodyText} />
         </View>
       )}
-
-      {/* Separator between messages */}
-      {!isLast && <View className="mt-3 h-px bg-zinc-700/50" />}
     </View>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Main card — collapsible thread (default expanded), mirrors web Accordion
+// ---------------------------------------------------------------------------
+
 export function EmailThreadCard({ data }: { data: EmailThreadData }) {
+  const [expanded, setExpanded] = useState(true);
   const messages = data.messages ?? [];
+  const messageCount = messages.length;
+
+  const rotation = useSharedValue(expanded ? 180 : 0);
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    rotation.value = withTiming(next ? 180 : 0, { duration: 180 });
+  };
 
   return (
-    <CollapsibleCard
-      customIcon={<GmailIcon width={22} height={22} />}
-      title="Fetched Email Thread"
-      radius="2xl"
+    <Card
+      variant="secondary"
+      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
     >
-      {messages.length === 0 ? (
-        <Text className="text-zinc-500 text-sm">No messages in thread</Text>
-      ) : (
-        <ScrollView
-          style={{ maxHeight: 400 }}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled
-        >
-          {messages.map((message, index) => (
-            <MessageItem
-              key={message.id ?? `${message.from ?? "msg"}-${index}`}
-              message={message}
-              isLast={index === messages.length - 1}
-            />
-          ))}
-        </ScrollView>
-      )}
-    </CollapsibleCard>
+      <Card.Body className="py-0 px-0">
+        {/* Header — Mail01Icon + label + msg count + chevron */}
+        <PressableFeedback onPress={toggle}>
+          <View className="flex-row items-center gap-3 px-4 py-3">
+            <View className="w-6 h-6 rounded-md bg-white/8 items-center justify-center">
+              <AppIcon icon={Mail01Icon} size={14} color="#e4e4e7" />
+            </View>
+            <View className="flex-1 min-w-0">
+              <Text
+                className="text-sm font-medium text-foreground"
+                numberOfLines={1}
+              >
+                Fetched Email Thread
+              </Text>
+              {!!data.subject && (
+                <Text
+                  className="text-xs text-[#8e8e93] mt-0.5"
+                  numberOfLines={1}
+                >
+                  {data.subject}
+                </Text>
+              )}
+            </View>
+            {messageCount > 0 && (
+              <Chip
+                size="sm"
+                variant="secondary"
+                color="default"
+                className="bg-white/10"
+              >
+                <Chip.Label>
+                  {messageCount} msg{messageCount !== 1 ? "s" : ""}
+                </Chip.Label>
+              </Chip>
+            )}
+            <Animated.View style={chevronStyle}>
+              <AppIcon
+                icon={ArrowDown01Icon}
+                size={14}
+                color="#8e8e93"
+                strokeWidth={2}
+              />
+            </Animated.View>
+          </View>
+        </PressableFeedback>
+
+        {/* Messages — visible when expanded */}
+        {expanded && (
+          <View className="border-t border-white/8">
+            {messageCount > 0 ? (
+              messages.map((message, index) => (
+                <MessageItem
+                  key={
+                    message.id ||
+                    `msg-${message.from || index}-${message.time || index}`
+                  }
+                  message={message}
+                  isLast={index === messageCount - 1}
+                />
+              ))
+            ) : (
+              <View className="px-4 py-3">
+                <Text className="text-sm text-[#8e8e93]">
+                  No messages in thread
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      </Card.Body>
+    </Card>
   );
 }
