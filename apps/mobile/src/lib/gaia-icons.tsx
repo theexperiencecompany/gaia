@@ -119,6 +119,7 @@ export const Delete01Icon = createIcon("Delete01Icon");
 export const Delete02Icon = createIcon("Delete02Icon");
 export const DiscordIcon = createIcon("DiscordIcon");
 export const DocumentAttachmentIcon = createIcon("DocumentAttachmentIcon");
+export const Download01Icon = createIcon("Download01Icon");
 export const Download02Icon = createIcon("Download02Icon");
 export const Download04Icon = createIcon("Download04Icon");
 export const DropletIcon = createIcon("DropletIcon");
