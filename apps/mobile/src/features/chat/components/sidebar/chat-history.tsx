@@ -626,34 +626,36 @@ function Section({
 function ChatHistorySkeleton() {
   const { spacing } = useResponsive();
   return (
-    <SkeletonGroup isLoading className="gap-0">
-      {[1, 2, 3, 4, 5, 6].map((i) => (
-        <View
-          key={i}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.sm + 2,
-            gap: spacing.sm,
-            marginHorizontal: spacing.xs,
-          }}
-        >
-          <SkeletonGroup.Item
-            className="rounded-full"
-            style={{ width: 8, height: 8 }}
-          />
-          <SkeletonGroup.Item
-            className="rounded-md flex-1"
-            style={{ height: 14 }}
-          />
-          <SkeletonGroup.Item
-            className="rounded-md"
-            style={{ width: 28, height: 10 }}
-          />
-        </View>
-      ))}
-    </SkeletonGroup>
+    <View style={{ flex: 1 }}>
+      <SkeletonGroup isLoading className="gap-0">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <View
+            key={i}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm + 2,
+              gap: spacing.sm,
+              marginHorizontal: spacing.xs,
+            }}
+          >
+            <SkeletonGroup.Item
+              className="rounded-full"
+              style={{ width: 8, height: 8 }}
+            />
+            <SkeletonGroup.Item
+              className="rounded-md flex-1"
+              style={{ height: 14 }}
+            />
+            <SkeletonGroup.Item
+              className="rounded-md"
+              style={{ width: 28, height: 10 }}
+            />
+          </View>
+        ))}
+      </SkeletonGroup>
+    </View>
   );
 }
 
@@ -930,7 +932,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
   // When searching: show flat list with highlighted matches
   if (isSearching) {
     return (
-      <>
+      <View style={{ flex: 1 }}>
         <RenameModal
           visible={renameModal.visible}
           currentTitle={renameModal.currentTitle}
@@ -960,11 +962,12 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           data={filteredConversations}
           keyExtractor={keyExtractor}
           renderItem={renderSearchItem}
+          style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: spacing.md }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         />
-      </>
+      </View>
     );
   }
 
