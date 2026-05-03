@@ -16,7 +16,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Cancel01Icon, Search01Icon, Wrench01Icon } from "@/components/icons";
+import {
+  AppIcon,
+  Cancel01Icon,
+  Search01Icon,
+  Wrench01Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
   connectIntegration,
@@ -276,27 +281,26 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
               snapPoints={snapPoints}
               enableDynamicSizing={false}
               enablePanDownToClose
-              backgroundStyle={{ backgroundColor: "#141414" }}
-              handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
             >
               {/* Header */}
               <View className="flex-row items-center justify-between px-4 pb-3">
-                <Text className="text-lg font-semibold">Connect Tools</Text>
+                <Text className="text-base font-semibold">Connect Tools</Text>
                 <Pressable
                   onPress={() => setIsOpen(false)}
-                  className="w-8 h-8 rounded-full bg-muted/10 items-center justify-center active:opacity-60"
+                  hitSlop={6}
+                  className="w-7 h-7 rounded-full bg-zinc-800 items-center justify-center active:opacity-60"
                 >
-                  <Cancel01Icon size={18} color="#71717a" />
+                  <Cancel01Icon size={16} color="#a1a1aa" />
                 </Pressable>
               </View>
 
               <View className="px-4 pb-2">
-                <View className="flex-row items-center rounded-xl px-3 py-2 bg-muted/10">
-                  <Search01Icon size={18} color="#71717a" />
+                <View className="flex-row items-center rounded-xl px-3 py-2 bg-zinc-800">
+                  <Search01Icon size={16} color="#71717a" />
                   <TextInput
                     className="flex-1 ml-2 text-foreground text-sm"
                     placeholder="Search tools..."
-                    placeholderTextColor="#6b6b6b"
+                    placeholderTextColor="#71717a"
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                   />
@@ -307,7 +311,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                className="px-4 pb-5"
+                className="px-4 pb-3"
                 contentContainerStyle={{ gap: 8 }}
               >
                 {FILTER_OPTIONS.map((filter) => (
@@ -360,16 +364,16 @@ export function ConnectDrawerTrigger({ onOpen }: ConnectDrawerTriggerProps) {
     <>
       <Pressable
         onPress={handleOpen}
+        hitSlop={6}
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 20,
+          width: 32,
+          height: 32,
           alignItems: "center",
           justifyContent: "center",
         }}
-        android_ripple={{ color: "rgba(255,255,255,0.08)", radius: 20 }}
+        android_ripple={{ color: "rgba(255,255,255,0.08)", radius: 16 }}
       >
-        <Wrench01Icon size={18} color="#71717a" />
+        <AppIcon icon={Wrench01Icon} size={20} color="#a1a1aa" />
       </Pressable>
 
       <ConnectDrawer ref={drawerRef} onOpen={onOpen} />

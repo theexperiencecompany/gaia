@@ -7,6 +7,7 @@ import {
   PencilEdit02Icon,
   Search01Icon,
 } from "@/components/icons";
+import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
 const GaiaLogo = require("@shared/assets/logo/logo.svg");
@@ -26,7 +27,7 @@ export function SidebarHeader({
 
   return (
     <View>
-      {/* Top bar: wordmark + new chat */}
+      {/* Top bar: wordmark + new chat (ghost) */}
       <View
         style={{
           flexDirection: "row",
@@ -37,22 +38,35 @@ export function SidebarHeader({
           paddingBottom: spacing.sm,
         }}
       >
-        <Image
-          source={GaiaLogo}
-          style={{ width: 28, height: 28, borderRadius: 6 }}
-          contentFit="contain"
-        />
-        {/* Min 44dp tap target: 12px padding + 16px icon = 40dp core, hitSlop adds remaining */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Image
+            source={GaiaLogo}
+            style={{ width: 24, height: 24 }}
+            contentFit="contain"
+          />
+          <Text
+            style={{
+              fontSize: fontSize.md,
+              fontWeight: "600",
+              color: "#e4e4e7",
+              letterSpacing: 0.2,
+            }}
+          >
+            GAIA
+          </Text>
+        </View>
         <PressableFeedback
           onPress={onNewChat}
-          hitSlop={12}
+          hitSlop={10}
           style={{
-            padding: 10,
+            width: 32,
+            height: 32,
             borderRadius: 8,
-            backgroundColor: "rgba(0,187,255,0.1)",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#00bbff" />
+          <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#a1a1aa" />
         </PressableFeedback>
       </View>
 
