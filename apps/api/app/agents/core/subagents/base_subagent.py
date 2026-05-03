@@ -31,6 +31,7 @@ from app.agents.tools.core.tool_runtime_config import (
 )
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.finish_task_tool import finish_task
+from app.constants.general import FINISH_TASK_NAME
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.vfs_tools import vfs_cmd, vfs_read
 from shared.py.wide_events import log
@@ -109,8 +110,8 @@ class SubAgentFactory:
         scoped_tool_dict[fetch_webpages.name] = fetch_webpages
         scoped_tool_dict[deep_research.name] = deep_research
 
-        scoped_tool_dict["finish_task"] = finish_task
-        initial_tool_ids.append("finish_task")
+        scoped_tool_dict[FINISH_TASK_NAME] = finish_task
+        initial_tool_ids.append(FINISH_TASK_NAME)
 
         # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
         # all parent tools, not just the provider's scoped tools.

@@ -25,6 +25,7 @@ from app.agents.core.subagents.subagent_helpers import (
 )
 from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.general import FINISH_TASK_NAME
 from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import build_agent_config
@@ -255,6 +256,7 @@ async def execute_subagent_stream(
     """
     log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
     complete_message = ""
+    finish_task_result: str | None = None
     emitted_tool_calls: set[str] = set()
 
     async for event in ctx.subagent_graph.astream(
@@ -298,17 +300,23 @@ async def execute_subagent_stream(
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
-                output = (
-                    chunk.content[:3000]
+                content_str = (
+                    chunk.content
                     if isinstance(chunk.content, str)
-                    else str(chunk.content)[:3000]
+                    else str(chunk.content)
                 )
+                # finish_task is the explicit "this is my final answer" tool —
+                # its content IS the message returned to the parent. The
+                # AIMessage that issued the call typically has empty content
+                # (tool-call-only response), so we capture the result here.
+                if chunk.name == FINISH_TASK_NAME:
+                    finish_task_result = content_str
                 if stream_writer:
                     stream_writer(
                         {
                             "tool_output": {
                                 "tool_call_id": chunk.tool_call_id,
-                                "output": output,
+                                "output": content_str[:3000],
                             }
                         }
                     )
@@ -318,7 +326,13 @@ async def execute_subagent_stream(
             if stream_writer:
                 stream_writer(payload)
 
-    final_message = complete_message if complete_message else "Task completed"
+    final_message = (
+        finish_task_result
+        if finish_task_result is not None
+        else complete_message
+        if complete_message
+        else "Task completed"
+    )
     log.set(
         subagent={
             "name": ctx.agent_name,
@@ -526,6 +540,7 @@ async def call_subagent(
     )
 
     complete_message = ""
+    finish_task_result: str | None = None
     emitted_tool_calls: set[str] = set()
 
     async for event in ctx.subagent_graph.astream(
@@ -567,19 +582,29 @@ async def call_subagent(
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
-                output = (
-                    chunk.content[:3000]
+                content_str = (
+                    chunk.content
                     if isinstance(chunk.content, str)
-                    else str(chunk.content)[:3000]
+                    else str(chunk.content)
                 )
-                yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': output}})}\n\n"
+                # finish_task content is the subagent's final response —
+                # capture it for the parent and surface it as a streamed
+                # response chunk so the user sees the same text the parent
+                # will receive.
+                if chunk.name == FINISH_TASK_NAME:
+                    finish_task_result = content_str
+                    yield f"data: {json.dumps({'response': content_str})}\n\n"
+                yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': content_str[:3000]}})}\n\n"
             continue
 
         if stream_mode == "custom":
             yield f"data: {json.dumps(payload)}\n\n"
 
+    final_message = (
+        finish_task_result if finish_task_result is not None else complete_message
+    )
     # Final message for DB storage
-    yield f"nostream: {json.dumps({'complete_message': complete_message})}"
+    yield f"nostream: {json.dumps({'complete_message': final_message})}"
     yield "data: [DONE]\n\n"
 
     log.set(

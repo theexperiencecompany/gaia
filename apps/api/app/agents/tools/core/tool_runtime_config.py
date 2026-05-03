@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
+from app.constants.general import FINISH_TASK_NAME
 
 
 @dataclass(slots=True)
@@ -52,7 +53,7 @@ def build_provider_parent_tool_runtime_config(
         initial = [
             *provider_tool_names,
             *todo_tool_names,
-            "finish_task",
+            FINISH_TASK_NAME,
             "vfs_read",
             "vfs_cmd",
         ]
@@ -61,7 +62,7 @@ def build_provider_parent_tool_runtime_config(
             "search_memory",
             "vfs_read",
             "vfs_cmd",
-            "finish_task",
+            FINISH_TASK_NAME,
             *todo_tool_names,
         ]
         if auto_bind_tool_names and not disable_retrieve_tools:
@@ -88,7 +89,7 @@ def build_child_tool_runtime_config(
             include_subagents_in_retrieve=False,
         )
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read", "vfs_cmd", "finish_task"],
+        initial_tool_names=["vfs_read", "vfs_cmd", FINISH_TASK_NAME],
         enable_retrieve_tools=not disable_retrieve_tools,
         include_subagents_in_retrieve=False,
     )
@@ -97,7 +98,7 @@ def build_child_tool_runtime_config(
 def build_executor_child_tool_runtime_config() -> ToolRuntimeConfig:
     """Build child tool runtime config for executor-spawned subagents."""
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read", "vfs_cmd", "finish_task"],
+        initial_tool_names=["vfs_read", "vfs_cmd", FINISH_TASK_NAME],
         enable_retrieve_tools=True,
         include_subagents_in_retrieve=False,
     )
