@@ -20,6 +20,7 @@ import {
   PlusSignIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { ConnectDrawerTrigger } from "@/features/integrations/components/connect-drawer";
 import { useResponsive } from "@/lib/responsive";
 import type { AttachmentFile } from "./attachment-preview";
 import { AttachmentPreview } from "./attachment-preview";
@@ -432,68 +433,84 @@ export function Composer({
           />
         )}
 
-        {/* Single-row composer: plus | input | send (ChatGPT/Claude/Grok pattern) */}
+        {/* Two-row composer: input on top, toolbar below — reserves space for
+            tools / voice / future affordances. Web-style density. */}
+        <TextInput
+          ref={inputRef}
+          style={{
+            paddingHorizontal: 14,
+            paddingTop: 10,
+            paddingBottom: 4,
+            fontSize: fontSize.base,
+            lineHeight: Math.round(fontSize.base * 1.35),
+            color: "#ffffff",
+            minHeight: 32,
+            maxHeight: maxInputHeight,
+            ...(inputHeight > 0 && {
+              height: Math.min(inputHeight, maxInputHeight),
+            }),
+          }}
+          placeholder={placeholder}
+          placeholderTextColor="#71717a"
+          value={message}
+          onChangeText={handleTextChange}
+          onContentSizeChange={handleContentSizeChange}
+          multiline
+          maxLength={4000}
+          textAlignVertical="top"
+        />
+
         <View
           style={{
             flexDirection: "row",
-            alignItems: "flex-end",
+            alignItems: "center",
+            justifyContent: "space-between",
             paddingHorizontal: 6,
-            paddingVertical: 6,
+            paddingBottom: 6,
+            paddingTop: 2,
             gap: 4,
           }}
         >
-          <Animated.View style={plusAnimatedStyle}>
-            <Pressable
-              onPress={handlePlusPress}
-              hitSlop={6}
-              onPressIn={() => {
-                plusScale.value = withSpring(0.92, {
-                  damping: 15,
-                  stiffness: 400,
-                });
-              }}
-              onPressOut={() => {
-                plusScale.value = withSpring(1, {
-                  damping: 15,
-                  stiffness: 400,
-                });
-              }}
-              style={{
-                width: 32,
-                height: 32,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <AppIcon icon={PlusSignIcon} size={iconSize.md} color="#a1a1aa" />
-            </Pressable>
-          </Animated.View>
-
-          <TextInput
-            ref={inputRef}
+          <View
             style={{
-              flex: 1,
-              paddingHorizontal: 4,
-              paddingTop: 6,
-              paddingBottom: 6,
-              fontSize: fontSize.base,
-              lineHeight: Math.round(fontSize.base * 1.35),
-              color: "#ffffff",
-              minHeight: 32,
-              maxHeight: maxInputHeight,
-              ...(inputHeight > 0 && {
-                height: Math.min(inputHeight, maxInputHeight),
-              }),
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 2,
             }}
-            placeholder={placeholder}
-            placeholderTextColor="#71717a"
-            value={message}
-            onChangeText={handleTextChange}
-            onContentSizeChange={handleContentSizeChange}
-            multiline
-            maxLength={4000}
-            textAlignVertical="center"
-          />
+          >
+            <Animated.View style={plusAnimatedStyle}>
+              <Pressable
+                onPress={handlePlusPress}
+                hitSlop={6}
+                onPressIn={() => {
+                  plusScale.value = withSpring(0.92, {
+                    damping: 15,
+                    stiffness: 400,
+                  });
+                }}
+                onPressOut={() => {
+                  plusScale.value = withSpring(1, {
+                    damping: 15,
+                    stiffness: 400,
+                  });
+                }}
+                style={{
+                  width: 32,
+                  height: 32,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <AppIcon
+                  icon={PlusSignIcon}
+                  size={iconSize.md}
+                  color="#a1a1aa"
+                />
+              </Pressable>
+            </Animated.View>
+
+            <ConnectDrawerTrigger onOpen={dismissKeyboard} />
+          </View>
 
           <Animated.View style={sendAnimatedStyle}>
             <Pressable
