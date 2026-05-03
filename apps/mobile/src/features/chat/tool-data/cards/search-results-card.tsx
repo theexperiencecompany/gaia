@@ -4,8 +4,9 @@ import type {
   SearchResults,
   WebResult,
 } from "@gaia/shared";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useEffect, useState } from "react";
-import { Image, Linking, Pressable, View } from "react-native";
+import { Image, Linking, Pressable, ScrollView, View } from "react-native";
 import Animated, {
   FadeInRight,
   useAnimatedStyle,
@@ -16,7 +17,6 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   AppIcon,
-  ArrowRight01Icon,
   Globe02Icon,
   News01Icon,
   Search01Icon,
@@ -27,6 +27,7 @@ import {
   ToolCardInner,
   ToolCardShell,
 } from "@/features/chat/tool-data/primitives";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -43,6 +44,9 @@ function getHostname(url?: string): string {
 
 // ---------------------------------------------------------------------------
 // Favicon image with globe fallback
+// Mirrors web's `next/image` favicon with onError → display:none. We render a
+// zinc-700 circle behind the favicon so failed loads still match the web
+// stacked-circle look.
 // ---------------------------------------------------------------------------
 
 function FaviconImage({ url, size = 14 }: { url?: string; size?: number }) {
@@ -52,13 +56,13 @@ function FaviconImage({ url, size = 14 }: { url?: string; size?: number }) {
   if (!hostname || errored) {
     return (
       <View
-        className="rounded-full bg-zinc-800 items-center justify-center"
+        className="rounded-full bg-zinc-700 items-center justify-center"
         style={{ width: size, height: size }}
       >
         <AppIcon
           icon={Globe02Icon}
-          size={Math.round(size * 0.7)}
-          color="#71717a"
+          size={Math.round(size * 0.65)}
+          color="#a1a1aa"
         />
       </View>
     );
@@ -76,87 +80,113 @@ function FaviconImage({ url, size = 14 }: { url?: string; size?: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Sources pill — stacked favicons + "Search Results" label
-// Mirrors web's SourcesButton: flat rounded-full button with overlapping
-// favicon circles, toggles an inline web results list on press.
+// SourcesPill — stacked favicons + "Search Results" label
+// Mirrors web's SourcesButton: HeroUI Button variant="flat" radius="full"
+// size="sm", 4 stacked favicons (-space-x-3, h-5 w-5 rounded-full border-2
+// border-zinc-900). Tapping opens the WebResultsSheet bottom-sheet.
 // ---------------------------------------------------------------------------
+
+const FAVICON_OUTER_SIZE = 20; // h-5 w-5
+const FAVICON_INNER_SIZE = 14; // sits inside the 2px border
 
 function SourcesPill({
   web,
-  expanded,
-  onToggle,
+  onPress,
 }: {
   web: WebResult[];
-  expanded: boolean;
-  onToggle: () => void;
+  onPress: () => void;
 }) {
   const previewFavicons = web.slice(0, 4);
 
   return (
-    <Pressable
-      onPress={onToggle}
-      className="self-start flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 active:bg-zinc-700"
-      android_ripple={{ color: "rgba(255,255,255,0.08)", borderless: false }}
-    >
-      {/* Overlapping favicon circles — mirrors web's -space-x-3 */}
-      <View className="flex-row">
-        {previewFavicons.map((result, index) => (
-          <View
-            key={(result.url ?? "") + (result.title ?? index)}
-            style={{
-              marginLeft: index === 0 ? 0 : -8,
-              width: 20,
-              height: 20,
-              borderRadius: 10,
-              backgroundColor: "#3f3f46",
-              borderWidth: 2,
-              borderColor: "#27272a",
-              alignItems: "center",
-              justifyContent: "center",
-              overflow: "hidden",
-            }}
-          >
-            <FaviconImage url={result.url} size={16} />
-          </View>
-        ))}
-      </View>
-      <Text className="text-zinc-200 text-xs font-medium">
-        {expanded ? "Hide sources" : "Search Results"}
-      </Text>
-    </Pressable>
+    <View className="flex-row">
+      <Pressable
+        onPress={onPress}
+        android_ripple={{ color: "rgba(255,255,255,0.08)", borderless: false }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 6,
+          borderRadius: 9999,
+          backgroundColor: "#27272a", // zinc-800 (HeroUI flat)
+          alignSelf: "flex-start",
+        }}
+      >
+        {/* Overlapping favicon circles — mirrors web's -space-x-3 (12px) */}
+        <View className="flex-row">
+          {previewFavicons.map((result, index) => (
+            <View
+              key={(result.url ?? "") + (result.title ?? index)}
+              style={{
+                marginLeft: index === 0 ? 0 : -12,
+                width: FAVICON_OUTER_SIZE,
+                height: FAVICON_OUTER_SIZE,
+                borderRadius: FAVICON_OUTER_SIZE / 2,
+                backgroundColor: "#3f3f46", // zinc-700
+                borderWidth: 2,
+                borderColor: "#18181b", // zinc-900
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                zIndex: previewFavicons.length - index,
+              }}
+            >
+              <FaviconImage url={result.url} size={FAVICON_INNER_SIZE} />
+            </View>
+          ))}
+        </View>
+        <Text className="text-zinc-300 text-sm font-medium">
+          Search Results
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Web result row — title, snippet (2 lines), favicon + hostname
-// Mirrors web's WebResults list item exactly.
+// WebResultRow — used inside the bottom-sheet web list
+// Mirrors web's WebResults list item: title (sm font-medium, 1 line),
+// snippet (xs foreground-500, 2 lines), favicon + hostname row (xs primary).
+// Bottom border per row (zinc-700 / 15% white in dark).
 // ---------------------------------------------------------------------------
 
-function WebResultRow({ result }: { result: WebResult }) {
+function WebResultRow({
+  result,
+  isLast,
+}: {
+  result: WebResult;
+  isLast: boolean;
+}) {
   const hostname = getHostname(result.url);
   const description = result.content || result.snippet;
 
   return (
-    <ToolCardInner
-      dense
+    <Pressable
       onPress={() => result.url && Linking.openURL(result.url)}
+      android_ripple={{ color: "rgba(255,255,255,0.05)", borderless: false }}
+      style={{
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 12,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: "rgba(228,228,231,0.15)",
+      }}
     >
       <View className="gap-1">
-        {/* Title — truncated single line, zinc-100 */}
         <Text className="text-zinc-100 text-sm font-medium" numberOfLines={1}>
           {result.title || hostname || "Untitled"}
         </Text>
 
-        {/* Snippet — 2 line clamp, zinc-500 */}
         {!!description && (
-          <Text className="text-zinc-500 text-xs" numberOfLines={2}>
+          <Text className="text-zinc-400 text-xs" numberOfLines={2}>
             {description}
           </Text>
         )}
 
-        {/* Favicon + hostname row — primary blue */}
         {!!hostname && (
-          <View className="flex-row items-center gap-1.5 mt-0.5">
+          <View className="flex-row items-center gap-2 mt-1">
             <FaviconImage url={result.url} size={14} />
             <Text className="text-[#00bbff] text-xs" numberOfLines={1}>
               {hostname}
@@ -164,75 +194,123 @@ function WebResultRow({ result }: { result: WebResult }) {
           </View>
         )}
       </View>
-    </ToolCardInner>
+    </Pressable>
   );
 }
 
 // ---------------------------------------------------------------------------
-// News result row — news icon + title (large), content snippet, score
-// Mirrors web's NewsResults: icon + text-lg title, 2-line content, score.
+// WebResultsSheet — bottom-sheet popover equivalent
+// Mirrors web's PopoverContent → WebResults: rounded-2xl bg-zinc-800,
+// scrollable list of WebResultRow. Bottom-sheet handles the "popover" UX.
 // ---------------------------------------------------------------------------
 
-function NewsResultRow({ article }: { article: NewsResult }) {
+function WebResultsSheet({
+  web,
+  isOpen,
+  onOpenChange,
+}: {
+  web: WebResult[];
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   return (
-    <ToolCardInner onPress={() => article.url && Linking.openURL(article.url)}>
-      {/* Header row: news icon + title */}
+    <BottomSheet isOpen={isOpen} onOpenChange={onOpenChange}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={["60%", "85%"]}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#27272a" }}
+          handleIndicatorStyle={{ backgroundColor: "#52525b", width: 40 }}
+        >
+          <View className="px-4 pt-1 pb-3">
+            <Text className="text-zinc-100 text-base font-semibold">
+              Sources
+            </Text>
+            <Text className="text-zinc-500 text-xs mt-0.5">
+              {web.length} {web.length === 1 ? "result" : "results"}
+            </Text>
+          </View>
+          <BottomSheetScrollView
+            contentContainerStyle={{ paddingBottom: 24 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {web.map((result, index) => (
+              <WebResultRow
+                key={(result.url ?? "") + (result.title ?? "")}
+                result={result}
+                isLast={index === web.length - 1}
+              />
+            ))}
+          </BottomSheetScrollView>
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
+    </BottomSheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NewsResultCard — full-bleed bg-zinc-800 cards stacked vertically
+// Mirrors web's NewsResults: rounded-lg bg-zinc-800 p-4, news icon + title
+// (text-lg font-medium, truncated 1 line, primary color), 2-line content
+// snippet (sm foreground-700), score line.
+// ---------------------------------------------------------------------------
+
+function NewsResultCard({ article }: { article: NewsResult }) {
+  return (
+    <Pressable
+      onPress={() => article.url && Linking.openURL(article.url)}
+      android_ripple={{ color: "rgba(255,255,255,0.05)", borderless: false }}
+      style={{
+        backgroundColor: "#27272a", // zinc-800
+        borderRadius: 8,
+        padding: 16,
+      }}
+    >
       <View className="flex-row items-center gap-2 mb-1">
-        <AppIcon icon={News01Icon} size={18} color="#00bbff" />
+        <AppIcon icon={News01Icon} size={20} color="#00bbff" />
         <Text
-          className="text-[#00bbff] text-base font-medium flex-1"
+          className="text-[#00bbff] text-lg font-medium flex-1"
           numberOfLines={1}
         >
           {article.title || "Untitled"}
         </Text>
       </View>
 
-      {/* Content snippet — 2 line clamp, zinc-400 */}
       {!!article.content && (
-        <Text className="text-zinc-400 text-sm mb-1" numberOfLines={2}>
+        <Text className="text-zinc-300 text-sm mb-1" numberOfLines={2}>
           {article.content}
         </Text>
       )}
 
-      {/* Relevance score */}
       {typeof article.score === "number" && (
         <Text className="text-zinc-500 text-xs">
           Score: {article.score.toFixed(2)}
         </Text>
       )}
-    </ToolCardInner>
+    </Pressable>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Image carousel — rotated overlapping tiles with +N cycle button
-// Mirrors web's ImageResults exactly: alternating ±8deg rotation, -space-x-14
-// overlap, cycle button with arrow icon.
+// ImageResults — horizontal scroll of 128×128 rounded tiles with alternating
+// ±8deg rotation. Web uses overlapping (-space-x-14) tiles with the same
+// rotation, but the overlap doesn't translate cleanly to RN, so we use a
+// horizontal ScrollView (tap-to-open) per port spec.
 // ---------------------------------------------------------------------------
 
-const IMAGE_TILE_SIZE = 112;
-const IMAGE_OVERLAP = -40;
-const MAX_VISIBLE_IMAGES = 5;
+const IMAGE_TILE_SIZE = 128;
 
-function ImageTile({
-  imageUrl,
-  index,
-  totalVisible,
-}: {
-  imageUrl: string;
-  index: number;
-  totalVisible: number;
-}) {
-  const rotation =
-    totalVisible > 1 ? (index % 2 === 0 ? "8deg" : "-8deg") : "0deg";
+function ImageTile({ imageUrl, index }: { imageUrl: string; index: number }) {
+  const rotation = index % 2 === 0 ? "8deg" : "-8deg";
 
   return (
     <Animated.View
-      entering={FadeInRight.delay(index * 70).duration(150)}
+      entering={FadeInRight.delay(index * 60).duration(180)}
       style={{
         transform: [{ rotate: rotation }],
-        zIndex: index,
-        marginLeft: index === 0 ? 0 : IMAGE_OVERLAP,
+        marginRight: 16,
       }}
     >
       <Pressable onPress={() => Linking.openURL(imageUrl)}>
@@ -255,67 +333,30 @@ function ImageResults({ images }: { images: ImageResult[] }) {
   const validImages = images.filter(
     (url): url is string => typeof url === "string" && url.length > 0,
   );
-  const [startIndex, setStartIndex] = useState(0);
 
   if (validImages.length === 0) return null;
 
-  const displayImages = validImages.slice(
-    startIndex,
-    startIndex + MAX_VISIBLE_IMAGES,
-  );
-  const remaining = validImages.length - (startIndex + MAX_VISIBLE_IMAGES);
-  const nextBatchCount =
-    remaining > 0
-      ? remaining
-      : Math.min(MAX_VISIBLE_IMAGES, validImages.length - MAX_VISIBLE_IMAGES);
-
-  const cycleNext = () => {
-    const nextStart = startIndex + MAX_VISIBLE_IMAGES;
-    setStartIndex(nextStart >= validImages.length ? 0 : nextStart);
-  };
-
-  const showCycleButton = validImages.length > MAX_VISIBLE_IMAGES;
-
   return (
-    <View className="flex-row items-center py-2">
-      {displayImages.map((imageUrl, index) => (
-        <ImageTile
-          key={`${imageUrl}-${startIndex}`}
-          imageUrl={imageUrl}
-          index={index}
-          totalVisible={displayImages.length}
-        />
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+      }}
+    >
+      {validImages.map((imageUrl, index) => (
+        <ImageTile key={imageUrl} imageUrl={imageUrl} index={index} />
       ))}
-      {showCycleButton && (
-        <Pressable
-          onPress={cycleNext}
-          style={{
-            marginLeft: IMAGE_OVERLAP,
-            zIndex: displayImages.length,
-            width: IMAGE_TILE_SIZE,
-            height: IMAGE_TILE_SIZE,
-            borderRadius: 16,
-            backgroundColor: "rgba(39,39,42,0.85)",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            transform: [
-              { rotate: displayImages.length % 2 === 0 ? "8deg" : "-8deg" },
-            ],
-          }}
-        >
-          <Text className="text-zinc-100 text-base font-semibold">
-            +{nextBatchCount}
-          </Text>
-          <AppIcon icon={ArrowRight01Icon} size={16} color="#a1a1aa" />
-        </Pressable>
-      )}
-    </View>
+    </ScrollView>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Running / streaming state
+// Running / streaming state — kept from previous mobile implementation since
+// web doesn't have an explicit running view in SearchResultsTabs (it just
+// renders nothing until the data arrives). We keep a minimal running card so
+// the chat bubble shows progress instead of disappearing mid-stream.
 // ---------------------------------------------------------------------------
 
 function PulsingDot() {
@@ -369,9 +410,10 @@ function SearchRunningCard({ data }: { data: SearchResults }) {
 }
 
 // ---------------------------------------------------------------------------
-// Complete state — sources pill + expandable web list + images + news
-// Mirrors web's SearchResultsTabs layout: sources pill (web), images, news,
-// each section separated by gap-6 to match web's space-y-6.
+// SearchCompleteCard — flat stacked sections (no outer card chrome)
+// Mirrors web's SearchResultsTabs: <div className="space-y-6"> with three
+// optional sections (SourcesButton → ImageResults → NewsResults). No
+// ToolCardShell wrapping — the web version renders flat in the bubble area.
 // ---------------------------------------------------------------------------
 
 function SearchCompleteCard({ data }: { data: SearchResults }) {
@@ -383,42 +425,28 @@ function SearchCompleteCard({ data }: { data: SearchResults }) {
   const hasImages = imageResults.length > 0;
   const hasNews = newsResults.length > 0;
 
-  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   if (!hasWeb && !hasImages && !hasNews) return null;
 
   return (
-    <ToolCardShell>
-      <View className="gap-6">
-        {/* Web sources — pill toggle + expandable list */}
+    <View style={{ marginHorizontal: 16, marginVertical: 4 }}>
+      {/* space-y-6 = 24px gap between sections */}
+      <View style={{ gap: 24 }}>
         {hasWeb && (
-          <View className="gap-2">
-            <SourcesPill
-              web={webResults}
-              expanded={sourcesExpanded}
-              onToggle={() => setSourcesExpanded((prev) => !prev)}
-            />
-            {sourcesExpanded && (
-              <View className="gap-1.5">
-                {webResults.map((result, index) => (
-                  <WebResultRow
-                    key={result.url || result.title || String(index)}
-                    result={result}
-                  />
-                ))}
-              </View>
-            )}
+          <SourcesPill web={webResults} onPress={() => setSourcesOpen(true)} />
+        )}
+
+        {hasImages && (
+          <View style={{ marginHorizontal: -16 }}>
+            <ImageResults images={imageResults} />
           </View>
         )}
 
-        {/* Image carousel */}
-        {hasImages && <ImageResults images={imageResults} />}
-
-        {/* News articles */}
         {hasNews && (
-          <View className="gap-2">
+          <View style={{ gap: 8 }}>
             {newsResults.map((article, index) => (
-              <NewsResultRow
+              <NewsResultCard
                 key={article.url || article.title || String(index)}
                 article={article}
               />
@@ -426,7 +454,15 @@ function SearchCompleteCard({ data }: { data: SearchResults }) {
           </View>
         )}
       </View>
-    </ToolCardShell>
+
+      {hasWeb && (
+        <WebResultsSheet
+          web={webResults}
+          isOpen={sourcesOpen}
+          onOpenChange={setSourcesOpen}
+        />
+      )}
+    </View>
   );
 }
 
