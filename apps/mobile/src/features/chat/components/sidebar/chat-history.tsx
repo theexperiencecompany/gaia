@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { Button, PressableFeedback, SkeletonGroup } from "heroui-native";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from "react-native-gesture-handler/ReanimatedSwipeable";
@@ -295,15 +296,15 @@ function ChatItem({
   const swipeableRef = useRef<SwipeableMethods>(null);
   const [showSheet, setShowSheet] = useState(false);
 
-  const handleLongPress = () => {
+  const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowSheet(true);
-  };
+  }, []);
 
-  const handlePress = () => {
+  const handlePress = useCallback(() => {
     Haptics.selectionAsync();
     onPress();
-  };
+  }, [onPress]);
 
   const handleSwipeDelete = () => {
     swipeableRef.current?.close();
@@ -315,6 +316,39 @@ function ChatItem({
     dragX: SharedValue<number>,
   ) => <DeleteSwipeAction dragX={dragX} onDelete={handleSwipeDelete} />;
 
+  // RNGH-aware tap + long-press composition. Plain RN Pressable inside
+  // ReanimatedSwipeable + DrawerLayout has its onPress swallowed when the
+  // parent pan gesture is still resolving — gesture-handler's tap gesture
+  // routes through the same arbitration system and fires reliably.
+  const tapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(400)
+        .onEnd((_e, success) => {
+          if (success) {
+            handlePress();
+          }
+        })
+        .runOnJS(true),
+    [handlePress],
+  );
+
+  const longPressGesture = useMemo(
+    () =>
+      Gesture.LongPress()
+        .minDuration(450)
+        .onStart(() => {
+          handleLongPress();
+        })
+        .runOnJS(true),
+    [handleLongPress],
+  );
+
+  const composedGesture = useMemo(
+    () => Gesture.Exclusive(longPressGesture, tapGesture),
+    [longPressGesture, tapGesture],
+  );
+
   return (
     <ReanimatedSwipeable
       ref={swipeableRef}
@@ -322,7 +356,7 @@ function ChatItem({
       rightThreshold={40}
       overshootRight={false}
     >
-      <PressableFeedback onPress={handlePress} onLongPress={handleLongPress}>
+      <GestureDetector gesture={composedGesture}>
         <View
           style={{
             flexDirection: "row",
@@ -381,7 +415,7 @@ function ChatItem({
             numberOfLines={1}
           />
         </View>
-      </PressableFeedback>
+      </GestureDetector>
 
       {/* Custom action sheet */}
       <Modal
