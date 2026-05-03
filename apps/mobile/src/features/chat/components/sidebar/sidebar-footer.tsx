@@ -6,7 +6,7 @@ import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
 import { Divider } from "@/shared/components/ui/divider";
 
-const MUTED_COLOR = "#52525b";
+const MUTED_COLOR = "#71717a";
 const AVATAR_BG = "#27272a";
 const AVATAR_ACCENT = "#00bbff";
 
@@ -29,7 +29,7 @@ export function SidebarFooter() {
   if (isLoading) {
     return (
       <>
-        <Divider className="bg-zinc-700/30" />
+        <Divider className="bg-zinc-700/50" />
         <View
           style={{
             paddingVertical: spacing.lg,
@@ -45,7 +45,7 @@ export function SidebarFooter() {
 
   return (
     <>
-      <Divider className="bg-zinc-700/30" />
+      <Divider className="bg-zinc-700/50" />
       <Pressable
         onPress={() => router.push("/(app)/settings")}
         style={({ pressed }) => ({
@@ -59,9 +59,9 @@ export function SidebarFooter() {
       >
         <View
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 16,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
             backgroundColor: AVATAR_BG,
             alignItems: "center",
             justifyContent: "center",
@@ -71,7 +71,7 @@ export function SidebarFooter() {
           {profilePicture ? (
             <Image
               source={{ uri: profilePicture }}
-              style={{ width: 32, height: 32 }}
+              style={{ width: 36, height: 36 }}
             />
           ) : (
             <Text

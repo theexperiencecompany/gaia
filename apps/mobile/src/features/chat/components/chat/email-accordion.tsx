@@ -64,10 +64,10 @@ function EmailItem({ email }: { email: EmailAccordionItem }) {
           {email.sender}
         </Text>
       </View>
-      <Text className="flex-1 text-sm text-[#8e8e93] mx-3" numberOfLines={1}>
+      <Text className="flex-1 text-sm text-[#71717a] mx-3" numberOfLines={1}>
         {email.subject}
       </Text>
-      <Text className="text-xs text-[#8e8e93]">{email.time}</Text>
+      <Text className="text-xs text-[#71717a]">{email.time}</Text>
     </View>
   );
 }
@@ -85,15 +85,15 @@ export function EmailAccordion({
       <Accordion.Item value="emails">
         <Accordion.Trigger className="flex-row items-center px-4 py-2.5">
           <View className="flex-row items-center flex-1 gap-2">
-            <AppIcon icon={Mail01Icon} size={16} color="#8e8e93" />
-            <Text className="text-sm text-[#8e8e93]">{displayTitle}</Text>
+            <AppIcon icon={Mail01Icon} size={16} color="#71717a" />
+            <Text className="text-sm text-[#71717a]">{displayTitle}</Text>
           </View>
-          <AppIcon icon={ArrowDown01Icon} size={14} color="#8e8e93" />
+          <AppIcon icon={ArrowDown01Icon} size={14} color="#71717a" />
         </Accordion.Trigger>
         <Accordion.Content>
           <Card
             variant="secondary"
-            className="rounded-2xl mx-4 mt-1 mb-2 bg-[#171920] overflow-hidden"
+            className="rounded-2xl mx-4 mt-1 mb-2 bg-zinc-900 overflow-hidden"
           >
             <Card.Body className="py-0 px-4">
               {emails.map((email, index) => (

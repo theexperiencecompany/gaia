@@ -118,7 +118,7 @@ function SidebarNav() {
           // tracking-wider equivalent: ~0.8px on 10px base
           letterSpacing: 0.8,
           textTransform: "uppercase",
-          color: "#52525b",
+          color: "#71717a",
           paddingHorizontal: spacing.sm + 4,
           paddingTop: spacing.md,
           paddingBottom: spacing.xs,

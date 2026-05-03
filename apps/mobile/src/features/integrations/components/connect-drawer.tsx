@@ -352,20 +352,25 @@ export function ConnectDrawerTrigger({ onOpen }: ConnectDrawerTriggerProps) {
   const drawerRef = useRef<ConnectDrawerRef>(null);
 
   const handleOpen = () => {
+    haptics.light();
     drawerRef.current?.open();
   };
 
   return (
     <>
-      <Button
-        variant="tertiary"
-        isIconOnly
-        size="sm"
-        className="rounded-full"
+      <Pressable
         onPress={handleOpen}
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+        android_ripple={{ color: "rgba(255,255,255,0.08)", radius: 20 }}
       >
         <Wrench01Icon size={18} color="#71717a" />
-      </Button>
+      </Pressable>
 
       <ConnectDrawer ref={drawerRef} onOpen={onOpen} />
     </>

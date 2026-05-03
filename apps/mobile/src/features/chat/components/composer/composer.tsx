@@ -228,6 +228,7 @@ export function Composer({
   ]);
 
   const handlePlusPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     dismissKeyboard();
     attachmentSheetRef.current?.open();
   }, [dismissKeyboard]);
@@ -292,7 +293,7 @@ export function Composer({
             marginHorizontal: spacing.xs,
             marginBottom: spacing.xs,
             borderRadius: moderateScale(12, 0.5),
-            backgroundColor: "rgba(22,22,24,0.96)",
+            backgroundColor: "#1a1a1a",
             overflow: "hidden",
           }}
         >
@@ -385,14 +386,14 @@ export function Composer({
                   borderRadius: 12,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: "rgba(142,142,147,0.15)",
+                  backgroundColor: "rgba(161,161,170,0.15)",
                   marginLeft: spacing.xs,
                 }}
               >
                 <AppIcon
                   icon={Cancel01Icon}
                   size={iconSize.sm - 2}
-                  color="#8e8e93"
+                  color="#a1a1aa"
                 />
               </PressableFeedback>
             )}
@@ -445,8 +446,9 @@ export function Composer({
           style={{
             paddingHorizontal: spacing.md,
             paddingTop: hasIndicators ? spacing.xs : spacing.md,
-            paddingBottom: spacing.xs,
+            paddingBottom: spacing.sm,
             fontSize: fontSize.base,
+            lineHeight: Math.round(fontSize.base * 1.5),
             color: "#ffffff",
             minHeight: moderateScale(44, 0.5),
             maxHeight: maxInputHeight + spacing.lg,
@@ -499,7 +501,6 @@ export function Composer({
                   width: 40,
                   height: 40,
                   borderRadius: moderateScale(20, 0.5),
-                  backgroundColor: "rgba(39,39,42,0.8)",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
@@ -507,7 +508,7 @@ export function Composer({
                 <AppIcon
                   icon={PlusSignIcon}
                   size={iconSize.md - 2}
-                  color="#8e8e93"
+                  color="#a1a1aa"
                 />
               </Pressable>
             </Animated.View>
@@ -528,7 +529,7 @@ export function Composer({
                   ? "rgba(239,68,68,0.9)"
                   : hasContent
                     ? "#00bbff"
-                    : "rgba(39,39,42,0.8)",
+                    : "rgba(63,63,70,0.6)",
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -547,7 +548,7 @@ export function Composer({
                   icon={ArrowUp02Icon}
                   size={iconSize.sm}
                   strokeWidth={2.5}
-                  color={hasContent ? "#000000" : "#52525b"}
+                  color={hasContent ? "#000000" : "#71717a"}
                 />
               )}
             </Pressable>

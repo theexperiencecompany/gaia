@@ -25,14 +25,14 @@ export function EmptyChatState() {
         alignItems: "center",
         justifyContent: "center",
         paddingHorizontal: spacing.lg,
-        // Nudge the visual centre up slightly to compensate for the
-        // header (≈52px) sitting above and the composer (≈60px + safe area)
-        // below — without this, content reads as too low on the screen.
-        paddingBottom: spacing.xl,
+        // Slight upward nudge: the composer (~100px) occupies more vertical
+        // space than the header (~52px), so true center reads as low.
+        // paddingBottom shifts the optical centre toward the screen midpoint.
+        paddingBottom: spacing.lg,
       }}
     >
       <Animated.View
-        entering={FadeIn.duration(400)}
+        entering={FadeIn.duration(200)}
         style={{ alignItems: "center" }}
       >
         <Image
@@ -40,19 +40,19 @@ export function EmptyChatState() {
           style={{
             width: 56,
             height: 56,
-            marginBottom: spacing.md,
+            marginBottom: spacing.sm + 4,
           }}
           contentFit="contain"
         />
 
         <Text
           style={{
-            fontSize: 28,
+            fontSize: fontSize["3xl"],
             fontWeight: "600",
             color: "#ffffff",
             textAlign: "center",
             letterSpacing: -0.4,
-            lineHeight: 36,
+            lineHeight: Math.round(fontSize["3xl"] * 1.25),
           }}
         >
           {greeting}
@@ -60,10 +60,12 @@ export function EmptyChatState() {
 
         <Text
           style={{
-            fontSize: fontSize.sm,
-            color: "#71717a",
+            fontSize: fontSize.md,
+            fontWeight: "400",
+            color: "#a1a1aa",
             textAlign: "center",
-            marginTop: spacing.xs,
+            marginTop: spacing.sm,
+            lineHeight: Math.round(fontSize.md * 1.5),
           }}
         >
           What can I help with?

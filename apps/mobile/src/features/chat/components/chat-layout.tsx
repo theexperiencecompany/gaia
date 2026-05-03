@@ -56,7 +56,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
         drawerWidth={sidebarWidth}
         drawerPosition={DrawerPosition.LEFT}
         drawerType={DrawerType.FRONT}
-        overlayColor="rgba(0, 0, 0, 0.7)"
+        overlayColor="rgba(0, 0, 0, 0.5)"
         renderNavigationView={renderDrawerContent}
         onDrawerStateChanged={(state) => {
           if (state !== DrawerState.IDLE) Keyboard.dismiss();

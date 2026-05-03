@@ -29,8 +29,6 @@ export function ReplyPreviewBar({ replyTo, onDismiss }: ReplyPreviewBarProps) {
         alignItems: "center",
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.sm,
-        borderTopWidth: 1,
-        borderTopColor: "#3f3f46",
         backgroundColor: "rgba(63,63,70,0.4)",
       }}
     >
@@ -68,7 +66,7 @@ export function ReplyPreviewBar({ replyTo, onDismiss }: ReplyPreviewBarProps) {
         hitSlop={8}
         style={{ marginLeft: spacing.sm }}
       >
-        <AppIcon icon={Cancel01Icon} size={iconSize.sm - 2} color="#8e8e93" />
+        <AppIcon icon={Cancel01Icon} size={iconSize.sm - 2} color="#71717a" />
       </Pressable>
     </Animated.View>
   );

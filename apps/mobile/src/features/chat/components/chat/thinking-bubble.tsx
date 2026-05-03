@@ -3,8 +3,13 @@ import {
   getRelevantThinkingMessage,
 } from "@gaia/shared/utils";
 import { PressableFeedback } from "heroui-native";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, LayoutAnimation, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { AppIcon, ArrowDown02Icon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -17,29 +22,22 @@ interface ThinkingBubbleProps {
 }
 
 function PulsingBrain({ size }: { size: number }) {
-  const opacity = useRef(new Animated.Value(0.5)).current;
+  const opacity = useSharedValue(0.6);
 
   useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.5,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
+    opacity.value = withTiming(1, { duration: 350 });
+    const interval = setInterval(() => {
+      opacity.value = withTiming(opacity.value > 0.8 ? 0.6 : 1, {
+        duration: 350,
+      });
+    }, 350);
+    return () => clearInterval(interval);
   }, [opacity]);
 
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
   return (
-    <Animated.View style={{ opacity }}>
+    <Animated.View style={animatedStyle}>
       <AppIcon icon={Brain02Icon} size={size} color="#a1a1aa" />
     </Animated.View>
   );
@@ -96,23 +94,22 @@ export function ThinkingBubble({
   durationSeconds,
 }: ThinkingBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const chevronRotation = useRef(new Animated.Value(0)).current;
+  const chevronRotation = useSharedValue(0);
   const { spacing, fontSize, moderateScale } = useResponsive();
 
   const toggleExpanded = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsExpanded((prev) => !prev);
-    Animated.timing(chevronRotation, {
-      toValue: isExpanded ? 0 : 1,
-      duration: 250,
-      useNativeDriver: true,
-    }).start();
+    const next = !isExpanded;
+    setIsExpanded(next);
+    chevronRotation.value = withTiming(next ? 1 : 0, { duration: 250 });
   }, [chevronRotation, isExpanded]);
 
-  const chevronRotate = chevronRotation.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "180deg"],
-  });
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        rotate: `${chevronRotation.value * 180}deg`,
+      },
+    ],
+  }));
 
   if (!thinkingContent && !isStreaming) return null;
 
@@ -162,7 +159,7 @@ export function ThinkingBubble({
         >
           {isExpanded ? "Hide thinking" : collapsedLabel}
         </Text>
-        <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+        <Animated.View style={chevronStyle}>
           <AppIcon
             icon={ArrowDown02Icon}
             size={moderateScale(14, 0.5)}

@@ -136,7 +136,7 @@ function RenameModal({
               fontSize: fontSize.sm,
               marginBottom: spacing.md,
             }}
-            placeholderTextColor="#52525b"
+            placeholderTextColor="#71717a"
             placeholder="Conversation name"
             onSubmitEditing={handleConfirm}
             returnKeyType="done"
@@ -167,7 +167,7 @@ interface DeleteSwipeActionProps {
 }
 
 function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
-  const { iconSize } = useResponsive();
+  const { iconSize, fontSize } = useResponsive();
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, Math.abs(dragX.value) / 60),
   }));
@@ -193,9 +193,7 @@ function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
         className="flex-1 w-full rounded-lg items-center justify-center"
       >
         <AppIcon icon={Delete02Icon} size={iconSize.sm} color="#ffffff" />
-        <Text
-          style={{ color: "#ffffff", fontSize: iconSize.sm - 4, marginTop: 2 }}
-        >
+        <Text style={{ color: "#ffffff", fontSize: fontSize.xs, marginTop: 2 }}>
           Delete
         </Text>
       </Button>
@@ -393,7 +391,7 @@ function ChatItem({
                 ? "#ffffff"
                 : item.is_unread
                   ? "#ffffff"
-                  : "#a1a1aa",
+                  : "#d4d4d8",
               fontWeight: item.is_unread ? "600" : "400",
               flex: 1,
             }}
@@ -401,9 +399,8 @@ function ChatItem({
           />
           <Text
             style={{
-              // xs is ~10px — use 11px minimum for timestamps
-              fontSize: Math.max(fontSize.xs, 11),
-              color: "#52525b",
+              fontSize: fontSize.xs,
+              color: "#71717a",
               flexShrink: 0,
             }}
           >
@@ -565,7 +562,7 @@ function Section({
   isExpanded,
   onToggle,
 }: SectionProps) {
-  const { spacing, fontSize } = useResponsive();
+  const { spacing, fontSize, iconSize } = useResponsive();
   const rotation = useSharedValue(isExpanded ? 0 : -90);
 
   const chevronStyle = useAnimatedStyle(() => ({
@@ -597,7 +594,7 @@ function Section({
           style={{
             flex: 1,
             fontSize: fontSize.xs,
-            color: "#52525b",
+            color: "#71717a",
             fontWeight: "500",
             textTransform: "uppercase",
             letterSpacing: 0.8,
@@ -606,7 +603,7 @@ function Section({
           {title}
         </Text>
         <Reanimated.View style={chevronStyle}>
-          <AppIcon icon={ArrowDown01Icon} size={14} color="#52525b" />
+          <AppIcon icon={ArrowDown01Icon} size={iconSize.sm} color="#71717a" />
         </Reanimated.View>
       </PressableFeedback>
       {isExpanded &&

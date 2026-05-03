@@ -147,11 +147,17 @@ function MessageBubble({
           borderRadius,
           borderTopRightRadius,
           borderBottomRightRadius,
-          paddingHorizontal: 20,
-          paddingVertical: 8,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
         }}
       >
-        <Text style={{ color: "#000000", fontSize: fontSize.base }}>
+        <Text
+          style={{
+            color: "#000000",
+            fontSize: fontSize.base,
+            lineHeight: Math.round(fontSize.base * 1.5),
+          }}
+        >
           {children ?? message}
         </Text>
       </View>
@@ -191,8 +197,8 @@ function MessageBubble({
           borderRadius: recvBorderRadius,
           borderTopLeftRadius: recvBorderTopLeftRadius,
           borderBottomLeftRadius: recvBorderBottomLeftRadius,
-          paddingHorizontal: 20,
-          paddingVertical: 8,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
           alignSelf: "flex-start",
         }}
       >

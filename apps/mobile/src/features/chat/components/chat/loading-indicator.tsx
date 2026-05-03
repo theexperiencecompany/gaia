@@ -1,6 +1,11 @@
 import { Spinner } from "heroui-native";
-import { useEffect, useRef } from "react";
-import { Animated, View } from "react-native";
+import { useEffect } from "react";
+import { View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -11,26 +16,20 @@ interface LoadingIndicatorProps {
 export function LoadingIndicator({ progress }: LoadingIndicatorProps) {
   const { spacing, fontSize } = useResponsive();
 
-  // Slide-up text animation on progress change
-  const textTranslateY = useRef(new Animated.Value(8)).current;
-  const textOpacity = useRef(new Animated.Value(0)).current;
+  const translateY = useSharedValue(8);
+  const opacity = useSharedValue(0);
 
   useEffect(() => {
-    textTranslateY.setValue(8);
-    textOpacity.setValue(0);
-    Animated.parallel([
-      Animated.timing(textTranslateY, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(textOpacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [progress]);
+    translateY.value = 8;
+    opacity.value = 0;
+    translateY.value = withTiming(0, { duration: 200 });
+    opacity.value = withTiming(1, { duration: 200 });
+  }, [progress, translateY, opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    opacity: opacity.value,
+  }));
 
   return (
     <View
@@ -43,12 +42,7 @@ export function LoadingIndicator({ progress }: LoadingIndicatorProps) {
       }}
     >
       <Spinner size="sm" color="default" />
-      <Animated.View
-        style={{
-          transform: [{ translateY: textTranslateY }],
-          opacity: textOpacity,
-        }}
-      >
+      <Animated.View style={animatedStyle}>
         <Text
           style={{
             fontSize: fontSize.sm,

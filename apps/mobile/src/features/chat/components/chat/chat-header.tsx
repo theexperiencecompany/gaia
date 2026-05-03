@@ -133,11 +133,16 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
       {isEditing ? (
         <Pressable onPress={cancelEditing}>
           <View style={{ padding: moderateScale(4, 0.5) }}>
-            <Cancel01Icon size={iconSize.md} color="#8e8e93" />
+            <Cancel01Icon size={iconSize.md} color="#a1a1aa" />
           </View>
         </Pressable>
       ) : (
-        <Pressable onPress={onMenuPress}>
+        <Pressable
+          onPress={() => {
+            impactHaptic("light");
+            onMenuPress();
+          }}
+        >
           <View style={{ padding: moderateScale(4, 0.5) }}>
             <Menu01Icon size={iconSize.md} color="#ffffff" />
           </View>
@@ -198,17 +203,23 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
         {isEditing ? (
           <Pressable onPress={commitRename}>
             <View style={{ padding: moderateScale(4, 0.5) }}>
-              <Tick01Icon size={iconSize.md} color="#16c1ff" />
+              <Tick01Icon size={iconSize.md} color="#00bbff" />
             </View>
           </Pressable>
         ) : (
           <>
             <Pressable
-              onPress={() => router.push("/(app)/notifications")}
+              onPress={() => {
+                impactHaptic("light");
+                router.push("/(app)/notifications");
+              }}
               hitSlop={8}
             >
               <View style={{ padding: moderateScale(4, 0.5) }}>
-                <Notification01Icon size={iconSize.md} color="#bbbbbb" />
+                <Notification01Icon
+                  size={iconSize.md}
+                  color={hasUnread ? "#ffffff" : "#a1a1aa"}
+                />
                 {hasUnread ? (
                   <Animated.View
                     entering={ZoomIn.springify().damping(14).stiffness(300)}
@@ -227,9 +238,14 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
                 ) : null}
               </View>
             </Pressable>
-            <Pressable onPress={onNewChatPress}>
+            <Pressable
+              onPress={() => {
+                impactHaptic("light");
+                onNewChatPress();
+              }}
+            >
               <View style={{ padding: moderateScale(4, 0.5) }}>
-                <PencilEdit02Icon size={iconSize.md} color="#bbbbbb" />
+                <PencilEdit02Icon size={iconSize.md} color="#a1a1aa" />
               </View>
             </Pressable>
           </>

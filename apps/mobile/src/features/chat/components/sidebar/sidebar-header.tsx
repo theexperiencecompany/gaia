@@ -22,7 +22,7 @@ export function SidebarHeader({
   searchQuery,
   onSearchChange,
 }: SidebarHeaderProps) {
-  const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
+  const { spacing, fontSize, iconSize } = useResponsive();
 
   return (
     <View>
@@ -66,28 +66,25 @@ export function SidebarHeader({
         <View style={{ position: "relative" }}>
           <TextInput
             placeholder="Search conversations..."
-            placeholderTextColor="#52525b"
+            placeholderTextColor="#71717a"
             value={searchQuery}
             onChangeText={onSearchChange}
             style={{
-              fontSize: fontSize.sm,
+              fontSize: fontSize.md,
               color: "#e4e4e7",
-              backgroundColor: "#18181b",
+              backgroundColor: "#27272a",
               borderRadius: 8,
-              // 12px vertical padding + ~14px font = ~38dp, close enough on sidebar
-              paddingHorizontal: moderateScale(12, 0.5),
-              paddingVertical: 12,
-              paddingLeft: moderateScale(36, 0.5),
-              paddingRight:
-                searchQuery.length > 0
-                  ? moderateScale(36, 0.5)
-                  : moderateScale(12, 0.5),
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm,
+              paddingLeft: spacing.xl,
+              paddingRight: searchQuery.length > 0 ? spacing.xl : spacing.md,
+              lineHeight: Math.round(fontSize.md * 1.5),
             }}
           />
           <View
             style={{
               position: "absolute",
-              left: moderateScale(11, 0.5),
+              left: spacing.sm + 4,
               top: 0,
               bottom: 0,
               justifyContent: "center",
@@ -97,7 +94,7 @@ export function SidebarHeader({
             <AppIcon
               icon={Search01Icon}
               size={iconSize.sm - 1}
-              color={searchQuery.length > 0 ? "#71717a" : "#52525b"}
+              color="#71717a"
             />
           </View>
           {searchQuery.length > 0 && (
@@ -109,7 +106,7 @@ export function SidebarHeader({
                 right: 0,
                 top: 0,
                 bottom: 0,
-                width: moderateScale(36, 0.5),
+                width: spacing.xl,
                 justifyContent: "center",
                 alignItems: "center",
               }}

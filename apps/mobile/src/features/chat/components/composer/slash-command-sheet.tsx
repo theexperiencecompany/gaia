@@ -280,12 +280,12 @@ export const SlashCommandSheet = forwardRef<
                 width: 32,
                 height: 32,
                 borderRadius: 16,
-                backgroundColor: "rgba(142,142,147,0.1)",
+                backgroundColor: "rgba(161,161,170,0.1)",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
+              <AppIcon icon={Cancel01Icon} size={18} color="#71717a" />
             </Pressable>
           </View>
 
@@ -303,10 +303,10 @@ export const SlashCommandSheet = forwardRef<
                 borderRadius: 12,
                 paddingHorizontal: spacing.sm + 2,
                 paddingVertical: spacing.sm,
-                backgroundColor: "rgba(142,142,147,0.1)",
+                backgroundColor: "rgba(161,161,170,0.1)",
               }}
             >
-              <AppIcon icon={Search01Icon} size={18} color="#8e8e93" />
+              <AppIcon icon={Search01Icon} size={18} color="#71717a" />
               <BottomSheetTextInput
                 style={{
                   flex: 1,

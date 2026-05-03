@@ -6,6 +6,7 @@ import {
   CodeBlock,
   InlineCode,
 } from "@/features/chat/components/code-block/CodeBlock";
+import { useResponsive } from "@/lib/responsive";
 
 // -- Theme constants ----------------------------------------------------------
 
@@ -229,12 +230,19 @@ function blockKey(block: Block, idx: number): string {
 // -- Rendering components -----------------------------------------------------
 
 function InlineContent({ segments }: { segments: InlineSegment[] }) {
+  const { fontSize } = useResponsive();
   const handleLinkPress = useCallback((url: string) => {
     Linking.openURL(url);
   }, []);
 
   return (
-    <RNText style={{ color: COLORS.text, fontSize: 15, lineHeight: 23 }}>
+    <RNText
+      style={{
+        color: COLORS.text,
+        fontSize: fontSize.base,
+        lineHeight: Math.round(fontSize.base * 1.5),
+      }}
+    >
       {segments.map((seg, idx) => {
         const key = segmentKey(seg, idx);
         switch (seg.type) {
@@ -299,13 +307,16 @@ function HeadingBlock({
   level: number;
   segments: InlineSegment[];
 }) {
+  const { fontSize: responsiveFontSize } = useResponsive();
+
+  // Heading sizes mapped to design-system token scale
   const sizeMap: Record<number, number> = {
-    1: 28,
-    2: 22,
-    3: 19,
-    4: 17,
-    5: 15,
-    6: 13,
+    1: responsiveFontSize["3xl"], // 30px
+    2: responsiveFontSize["2xl"], // 24px
+    3: responsiveFontSize.xl, // 20px
+    4: responsiveFontSize.lg, // 18px
+    5: responsiveFontSize.base, // 16px
+    6: responsiveFontSize.sm, // 12px
   };
   const marginTopMap: Record<number, number> = {
     1: 24,
@@ -319,11 +330,11 @@ function HeadingBlock({
     1: 16,
     2: 12,
     3: 8,
-    4: 6,
+    4: 8,
     5: 4,
     6: 4,
   };
-  const fontSize = sizeMap[level] ?? 15;
+  const fontSize = sizeMap[level] ?? responsiveFontSize.base;
   const marginTop = marginTopMap[level] ?? 8;
   const marginBottom = marginBottomMap[level] ?? 4;
 
@@ -334,7 +345,7 @@ function HeadingBlock({
           color: COLORS.text,
           fontSize,
           fontWeight: "700",
-          lineHeight: fontSize * 1.3,
+          lineHeight: Math.round(fontSize * 1.25),
         }}
       >
         {segments.map((seg, idx) => {
@@ -365,6 +376,7 @@ function HeadingBlock({
 }
 
 function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
+  const { fontSize } = useResponsive();
   const handleLinkPress = useCallback((url: string) => {
     Linking.openURL(url);
   }, []);
@@ -383,8 +395,8 @@ function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
       <RNText
         style={{
           color: COLORS.muted,
-          fontSize: 15,
-          lineHeight: 23,
+          fontSize: fontSize.base,
+          lineHeight: Math.round(fontSize.base * 1.5),
           fontStyle: "italic",
         }}
       >
@@ -454,6 +466,7 @@ function ListBlock({
   ordered: boolean;
   items: InlineSegment[][];
 }) {
+  const { fontSize } = useResponsive();
   return (
     <View style={{ marginVertical: 4, paddingLeft: 16 }}>
       {items.map((item, idx) => (
@@ -465,8 +478,8 @@ function ListBlock({
             <RNText
               style={{
                 color: COLORS.muted,
-                fontSize: 15,
-                lineHeight: 23,
+                fontSize: fontSize.base,
+                lineHeight: Math.round(fontSize.base * 1.5),
                 width: 24,
               }}
             >
