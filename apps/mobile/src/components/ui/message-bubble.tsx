@@ -154,12 +154,14 @@ function MessageBubble({
         }}
       >
         {children ?? (
-          <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
-            <View style={{ flex: 1 }}>
-              <MarkdownRenderer content={message ?? ""} />
-            </View>
-            {isStreaming ? <StreamingCursor /> : null}
-          </View>
+          <>
+            <MarkdownRenderer content={message ?? ""} />
+            {isStreaming ? (
+              <View style={{ flexDirection: "row" }}>
+                <StreamingCursor />
+              </View>
+            ) : null}
+          </>
         )}
       </View>
     </View>
