@@ -8,6 +8,7 @@ import pytest
 
 from app.agents.core.subagents.builtin_subagents import BUILTIN_SUBAGENTS
 from app.agents.prompts.subagent_prompts import GAIA_AGENT_SYSTEM_PROMPT
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.subagent_models import Subagent
 
 
@@ -48,6 +49,28 @@ class TestBuiltinSubagentsTuple:
         providers = [entry.provider for entry in BUILTIN_SUBAGENTS]
         assert len(providers) == len(set(providers)), (
             f"Duplicate providers in BUILTIN_SUBAGENTS: {providers}"
+        )
+
+    def test_providers_do_not_collide_with_oauth(self) -> None:
+        # The registry merges OAuth-derived subagents with builtins and
+        # de-duplicates by provider. A collision would silently shadow an
+        # OAuth integration's subagent with a builtin (or vice versa).
+        builtin_providers = {entry.provider for entry in BUILTIN_SUBAGENTS}
+        oauth_providers = {integ.provider for integ in OAUTH_INTEGRATIONS}
+        overlap = builtin_providers & oauth_providers
+        assert not overlap, (
+            f"Builtin providers collide with OAUTH_INTEGRATIONS providers: "
+            f"{sorted(overlap)}"
+        )
+
+    def test_ids_do_not_collide_with_oauth(self) -> None:
+        # Same rationale as providers — id collisions would let one entry
+        # silently shadow another in `get_subagent_by_id`.
+        builtin_ids = {entry.id for entry in BUILTIN_SUBAGENTS}
+        oauth_ids = {integ.id for integ in OAUTH_INTEGRATIONS}
+        overlap = builtin_ids & oauth_ids
+        assert not overlap, (
+            f"Builtin ids collide with OAUTH_INTEGRATIONS ids: {sorted(overlap)}"
         )
 
 

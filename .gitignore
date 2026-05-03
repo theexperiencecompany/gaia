@@ -14,7 +14,6 @@ api/.env
 .DS_Store
 
 venv/
-.venv
 .venv/
 .venv311/
 
