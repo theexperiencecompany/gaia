@@ -13,7 +13,7 @@ const AVATAR_ACCENT = "#00bbff";
 export function SidebarFooter() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const { spacing, fontSize } = useResponsive();
+  const { spacing, fontSize, iconSize } = useResponsive();
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -78,7 +78,7 @@ export function SidebarFooter() {
               style={{
                 color: AVATAR_ACCENT,
                 fontWeight: "600",
-                fontSize: 12,
+                fontSize: fontSize.sm,
               }}
             >
               {getInitials(user?.name)}
@@ -94,17 +94,18 @@ export function SidebarFooter() {
           </Text>
           <Text
             style={{
-              fontSize: 10,
+              fontSize: fontSize.xs,
               color: MUTED_COLOR,
               textTransform: "uppercase",
-              fontWeight: "400",
-              letterSpacing: 0.3,
+              // medium weight to match design system uppercase label pattern
+              fontWeight: "500",
+              letterSpacing: 0.7,
             }}
           >
             GAIA Free
           </Text>
         </View>
-        <AppIcon icon={ArrowRight01Icon} size={14} color="#71717a" />
+        <AppIcon icon={ArrowRight01Icon} size={iconSize.sm} color="#71717a" />
       </Pressable>
     </>
   );

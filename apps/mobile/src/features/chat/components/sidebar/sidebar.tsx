@@ -67,14 +67,27 @@ function SidebarNav() {
               alignItems: "center",
               gap: spacing.sm,
               paddingHorizontal: spacing.sm + 4,
-              paddingVertical: 11,
+              // 14dp vertical → ~44dp tap target with icon/text height
+              paddingVertical: 14,
               borderRadius: 12,
               backgroundColor: active || pressed ? ACTIVE_BG : "transparent",
             })}
           >
+            {/* Left active indicator — 2dp line matching accent */}
             <View
               style={{
-                width: 18,
+                position: "absolute",
+                left: 0,
+                top: 10,
+                bottom: 10,
+                width: 2,
+                borderRadius: 1,
+                backgroundColor: active ? "#00bbff" : "transparent",
+              }}
+            />
+            <View
+              style={{
+                width: 20,
                 alignItems: "center",
                 justifyContent: "center",
               }}
@@ -82,7 +95,7 @@ function SidebarNav() {
               <AppIcon
                 icon={item.icon}
                 size={iconSize.sm}
-                color={active ? ACTIVE_TEXT : INACTIVE_TEXT}
+                color={active ? "#00bbff" : INACTIVE_TEXT}
               />
             </View>
             <Text
@@ -102,12 +115,13 @@ function SidebarNav() {
         style={{
           fontSize: fontSize.xs,
           fontWeight: "500",
-          letterSpacing: 0.05 * fontSize.xs,
+          // tracking-wider equivalent: ~0.8px on 10px base
+          letterSpacing: 0.8,
           textTransform: "uppercase",
           color: "#52525b",
           paddingHorizontal: spacing.sm + 4,
-          paddingTop: 16,
-          paddingBottom: 4,
+          paddingTop: spacing.md,
+          paddingBottom: spacing.xs,
         }}
       >
         Chats

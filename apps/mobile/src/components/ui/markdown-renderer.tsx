@@ -373,18 +373,18 @@ function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
     <View
       style={{
         borderLeftWidth: 3,
-        borderLeftColor: "#d4d4d8",
+        borderLeftColor: COLORS.blockquoteBorder,
         paddingLeft: 12,
         paddingVertical: 6,
         marginVertical: 6,
-        backgroundColor: "rgba(212,212,216,0.08)",
+        backgroundColor: "rgba(63,63,70,0.35)",
       }}
     >
       <RNText
         style={{
           color: COLORS.muted,
           fontSize: 15,
-          lineHeight: 22,
+          lineHeight: 23,
           fontStyle: "italic",
         }}
       >
@@ -461,16 +461,35 @@ function ListBlock({
           key={`li-${idx}-${item[0]?.text.slice(0, 12)}`}
           style={{ flexDirection: "row", marginBottom: 8, paddingRight: 8 }}
         >
-          <RNText
-            style={{
-              color: COLORS.muted,
-              fontSize: 15,
-              lineHeight: 22,
-              width: ordered ? 24 : 16,
-            }}
-          >
-            {ordered ? `${idx + 1}.` : "\u2022"}
-          </RNText>
+          {ordered ? (
+            <RNText
+              style={{
+                color: COLORS.muted,
+                fontSize: 15,
+                lineHeight: 23,
+                width: 24,
+              }}
+            >
+              {`${idx + 1}.`}
+            </RNText>
+          ) : (
+            <View
+              style={{
+                width: 16,
+                alignItems: "center",
+                paddingTop: 8,
+              }}
+            >
+              <View
+                style={{
+                  width: 4,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: COLORS.muted,
+                }}
+              />
+            </View>
+          )}
           <View style={{ flex: 1 }}>
             <InlineContent segments={item} />
           </View>
@@ -626,7 +645,13 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
         switch (block.type) {
           case "paragraph":
             return (
-              <View key={key} style={{ marginTop: 0, marginBottom: 16 }}>
+              <View
+                key={key}
+                style={{
+                  marginTop: 0,
+                  marginBottom: idx < blocks.length - 1 ? 16 : 0,
+                }}
+              >
                 <InlineContent segments={block.segments} />
               </View>
             );

@@ -63,7 +63,7 @@ export function ScrollToBottomButton({
           width: buttonSize,
           height: buttonSize,
           borderRadius: buttonSize / 2,
-          backgroundColor: "rgba(30, 30, 32, 0.9)",
+          backgroundColor: "rgba(39, 39, 42, 0.95)",
           alignItems: "center",
           justifyContent: "center",
         }}

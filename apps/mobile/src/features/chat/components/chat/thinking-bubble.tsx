@@ -40,7 +40,7 @@ function PulsingBrain({ size }: { size: number }) {
 
   return (
     <Animated.View style={{ opacity }}>
-      <AppIcon icon={Brain02Icon} size={size} color="#a78bfa" />
+      <AppIcon icon={Brain02Icon} size={size} color="#a1a1aa" />
     </Animated.View>
   );
 }
@@ -79,7 +79,7 @@ function ThinkingIndicator({ userMessage }: { userMessage?: string }) {
       <Text
         style={{
           fontSize: fontSize.sm,
-          color: "#a78bfa",
+          color: "#a1a1aa",
           fontWeight: "500",
         }}
       >
@@ -101,16 +101,13 @@ export function ThinkingBubble({
 
   const toggleExpanded = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsExpanded((prev) => {
-      const next = !prev;
-      Animated.timing(chevronRotation, {
-        toValue: next ? 1 : 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-      return next;
-    });
-  }, [chevronRotation]);
+    setIsExpanded((prev) => !prev);
+    Animated.timing(chevronRotation, {
+      toValue: isExpanded ? 0 : 1,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [chevronRotation, isExpanded]);
 
   const chevronRotate = chevronRotation.interpolate({
     inputRange: [0, 1],
@@ -153,12 +150,12 @@ export function ThinkingBubble({
         <AppIcon
           icon={Brain02Icon}
           size={moderateScale(16, 0.5)}
-          color={isStreaming ? "#a78bfa" : "#a1a1aa"}
+          color="#a1a1aa"
         />
         <Text
           style={{
             fontSize: fontSize.sm,
-            color: isStreaming ? "#a78bfa" : "#a1a1aa",
+            color: "#a1a1aa",
             fontWeight: "500",
             flex: 1,
           }}
@@ -177,7 +174,7 @@ export function ThinkingBubble({
       {isExpanded ? (
         <View
           style={{
-            backgroundColor: "rgba(39, 39, 42, 0.8)",
+            backgroundColor: "#27272a",
             borderRadius: moderateScale(10, 0.5),
             paddingHorizontal: spacing.md,
             paddingVertical: spacing.sm + 2,

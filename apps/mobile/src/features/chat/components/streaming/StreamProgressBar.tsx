@@ -67,7 +67,7 @@ export function StreamProgressBar({
             barStyle,
             {
               height: "100%",
-              backgroundColor: "#60a5fa",
+              backgroundColor: "#00bbff",
               borderRadius: 2,
             },
           ]}

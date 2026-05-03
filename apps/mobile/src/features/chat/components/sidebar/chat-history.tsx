@@ -94,7 +94,8 @@ function RenameModal({
         <Pressable
           style={{
             backgroundColor: "#1a1a1a",
-            borderRadius: 12,
+            // rounded-2xl = 16px on containers
+            borderRadius: 16,
             padding: spacing.lg,
             width: "100%",
             maxWidth: 360,
@@ -104,7 +105,7 @@ function RenameModal({
           <Text
             style={{
               fontSize: fontSize.md,
-              color: "#ffffff",
+              color: "#e4e4e7",
               fontWeight: "600",
               marginBottom: spacing.xs,
             }}
@@ -129,8 +130,9 @@ function RenameModal({
               backgroundColor: "#09090b",
               borderRadius: 8,
               paddingHorizontal: spacing.md,
-              paddingVertical: spacing.sm + 2,
-              color: "#ffffff",
+              // 12px vertical padding for comfortable 44dp+ tap height
+              paddingVertical: 12,
+              color: "#e4e4e7",
               fontSize: fontSize.sm,
               marginBottom: spacing.md,
             }}
@@ -191,7 +193,9 @@ function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
         className="flex-1 w-full rounded-lg items-center justify-center"
       >
         <AppIcon icon={Delete02Icon} size={iconSize.sm} color="#ffffff" />
-        <Text style={{ color: "#ffffff", fontSize: 10, marginTop: 2 }}>
+        <Text
+          style={{ color: "#ffffff", fontSize: iconSize.sm - 4, marginTop: 2 }}
+        >
           Delete
         </Text>
       </Button>
@@ -343,12 +347,13 @@ function ChatItem({
             flexDirection: "row",
             alignItems: "center",
             paddingHorizontal: spacing.md,
-            paddingVertical: spacing.sm + 2,
+            // 12dp vertical → ~40dp + text height ≈ 44dp tap target
+            paddingVertical: spacing.sm + 4,
             gap: spacing.sm,
             backgroundColor: isActive
               ? "rgba(255,255,255,0.05)"
               : "transparent",
-            borderRadius: 10,
+            borderRadius: 12,
             marginHorizontal: spacing.xs,
           }}
         >
@@ -396,8 +401,10 @@ function ChatItem({
           />
           <Text
             style={{
-              fontSize: fontSize.xs,
+              // xs is ~10px — use 11px minimum for timestamps
+              fontSize: Math.max(fontSize.xs, 11),
               color: "#52525b",
+              flexShrink: 0,
             }}
           >
             {formatTime(item.updated_at || item.created_at)}
@@ -430,10 +437,10 @@ function ChatItem({
               width: 36,
               height: 5,
               borderRadius: 2.5,
-              backgroundColor: "rgba(255,255,255,0.25)",
+              backgroundColor: "rgba(255,255,255,0.2)",
               alignSelf: "center",
-              marginTop: 10,
-              marginBottom: 14,
+              marginTop: 12,
+              marginBottom: 12,
             }}
           />
           {/* Title */}
@@ -502,6 +509,11 @@ function ChatItem({
             </Text>
           </Pressable>
 
+          {/* Divider before destructive action */}
+          <View
+            style={{ height: 1, backgroundColor: "#27272a", marginTop: 4 }}
+          />
+
           {/* Delete */}
           <Pressable
             onPress={() => {
@@ -568,15 +580,17 @@ function Section({
   if (items.length === 0) return null;
 
   return (
-    <View style={{ marginBottom: 2 }}>
+    <View style={{ marginBottom: 4 }}>
       <Divider className="mx-3 mb-1" />
       <PressableFeedback
         onPress={handleToggle}
+        hitSlop={4}
         style={{
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm,
+          // 10dp vertical → ~40dp + text = ~50dp total, ≥44dp
+          paddingVertical: 10,
         }}
       >
         <Text
@@ -586,13 +600,13 @@ function Section({
             color: "#52525b",
             fontWeight: "500",
             textTransform: "uppercase",
-            letterSpacing: 0.05 * fontSize.xs,
+            letterSpacing: 0.8,
           }}
         >
           {title}
         </Text>
         <Reanimated.View style={chevronStyle}>
-          <AppIcon icon={ArrowDown01Icon} size={12} color="#52525b" />
+          <AppIcon icon={ArrowDown01Icon} size={14} color="#52525b" />
         </Reanimated.View>
       </PressableFeedback>
       {isExpanded &&
@@ -834,10 +848,16 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           flex: 1,
           alignItems: "center",
           justifyContent: "center",
-          padding: 24,
+          padding: spacing.lg,
         }}
       >
-        <Text style={{ color: "#ef4444", fontSize: 13, textAlign: "center" }}>
+        <Text
+          style={{
+            color: "#ef4444",
+            fontSize: fontSize.sm,
+            textAlign: "center",
+          }}
+        >
           {error}
         </Text>
       </View>
@@ -851,10 +871,16 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           flex: 1,
           alignItems: "center",
           justifyContent: "center",
-          padding: 24,
+          padding: spacing.lg,
         }}
       >
-        <Text style={{ color: "#52525b", fontSize: 13, textAlign: "center" }}>
+        <Text
+          style={{
+            color: "#71717a",
+            fontSize: fontSize.sm,
+            textAlign: "center",
+          }}
+        >
           No results for "{searchQuery}"
         </Text>
       </View>
@@ -868,18 +894,19 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           flex: 1,
           alignItems: "center",
           justifyContent: "center",
-          padding: 24,
+          padding: spacing.lg,
         }}
       >
         <View
           style={{
             flexDirection: "column",
             alignItems: "center",
-            gap: 8,
-            paddingVertical: 32,
+            gap: spacing.sm,
+            paddingVertical: spacing.xl,
           }}
         >
-          <AppIcon icon={BubbleChatAddIcon} size={24} color="#52525b" />
+          {/* #71717a (zinc-500) gives better contrast than zinc-600 on #1a1a1a */}
+          <AppIcon icon={BubbleChatAddIcon} size={24} color="#71717a" />
           <Text
             style={{
               fontSize: fontSize.sm,
@@ -892,7 +919,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           <Text
             style={{
               fontSize: fontSize.xs,
-              color: "#52525b",
+              color: "#71717a",
               textAlign: "center",
             }}
           >
@@ -922,10 +949,10 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           <Text
             style={{
               fontSize: fontSize.xs,
-              color: "#52525b",
+              color: "#71717a",
               fontWeight: "500",
               textTransform: "uppercase",
-              letterSpacing: 0.05 * fontSize.xs,
+              letterSpacing: 0.8,
             }}
           >
             {filteredConversations.length}{" "}

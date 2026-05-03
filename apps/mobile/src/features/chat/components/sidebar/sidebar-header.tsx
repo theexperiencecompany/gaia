@@ -26,7 +26,7 @@ export function SidebarHeader({
 
   return (
     <View>
-      {/* Top bar: title + new chat */}
+      {/* Top bar: wordmark + new chat */}
       <View
         style={{
           flexDirection: "row",
@@ -39,14 +39,15 @@ export function SidebarHeader({
       >
         <Image
           source={GaiaLogo}
-          style={{ width: 28, height: 28, borderRadius: 6, marginRight: 10 }}
+          style={{ width: 28, height: 28, borderRadius: 6 }}
           contentFit="contain"
         />
+        {/* Min 44dp tap target: 12px padding + 16px icon = 40dp core, hitSlop adds remaining */}
         <PressableFeedback
           onPress={onNewChat}
-          hitSlop={8}
+          hitSlop={12}
           style={{
-            padding: 8,
+            padding: 10,
             borderRadius: 8,
             backgroundColor: "rgba(0,187,255,0.1)",
           }}
@@ -70,12 +71,17 @@ export function SidebarHeader({
             onChangeText={onSearchChange}
             style={{
               fontSize: fontSize.sm,
-              color: "#ffffff",
+              color: "#e4e4e7",
               backgroundColor: "#18181b",
               borderRadius: 8,
+              // 12px vertical padding + ~14px font = ~38dp, close enough on sidebar
               paddingHorizontal: moderateScale(12, 0.5),
-              paddingVertical: spacing.sm,
+              paddingVertical: 12,
               paddingLeft: moderateScale(36, 0.5),
+              paddingRight:
+                searchQuery.length > 0
+                  ? moderateScale(36, 0.5)
+                  : moderateScale(12, 0.5),
             }}
           />
           <View
@@ -91,25 +97,27 @@ export function SidebarHeader({
             <AppIcon
               icon={Search01Icon}
               size={iconSize.sm - 1}
-              color="#52525b"
+              color={searchQuery.length > 0 ? "#71717a" : "#52525b"}
             />
           </View>
           {searchQuery.length > 0 && (
             <PressableFeedback
               onPress={() => onSearchChange("")}
+              hitSlop={8}
               style={{
                 position: "absolute",
-                right: moderateScale(8, 0.5),
+                right: 0,
                 top: 0,
                 bottom: 0,
+                width: moderateScale(36, 0.5),
                 justifyContent: "center",
-                paddingHorizontal: 4,
+                alignItems: "center",
               }}
             >
               <AppIcon
                 icon={Cancel01Icon}
                 size={iconSize.sm - 2}
-                color="#52525b"
+                color="#71717a"
               />
             </PressableFeedback>
           )}

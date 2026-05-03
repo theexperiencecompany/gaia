@@ -77,7 +77,7 @@ export function ToolProgressCard({
           <AppIcon
             icon={Brain02Icon}
             size={iconSize}
-            color="#a78bfa"
+            color="#a1a1aa"
             strokeWidth={1.5}
           />
         )}

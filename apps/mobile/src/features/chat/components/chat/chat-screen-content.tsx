@@ -540,7 +540,7 @@ export function ChatScreenContent({
           </View>
         ) : showEmptyState ? (
           <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
-            <EmptyChatState onSuggestionPress={handleFollowUpAction} />
+            <EmptyChatState />
           </Pressable>
         ) : (
           <View style={{ flex: 1 }}>

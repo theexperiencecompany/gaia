@@ -1,27 +1,17 @@
 import { getCompleteTimeBasedGreeting } from "@gaia/shared/utils";
 import { Image } from "expo-image";
 import { useMemo } from "react";
-import { Pressable, View } from "react-native";
-import Animated, { FadeInUp } from "react-native-reanimated";
+import { View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
 
 const GaiaLogo = require("@shared/assets/logo/logo.svg");
 
-interface EmptyChatStateProps {
-  onSuggestionPress: (prompt: string) => void;
-}
-
-const STARTER_PROMPTS = [
-  "What can you help me with?",
-  "Plan my day",
-  "Summarize my unread emails",
-];
-
-export function EmptyChatState({ onSuggestionPress }: EmptyChatStateProps) {
+export function EmptyChatState() {
   const { user } = useAuth();
-  const { spacing, fontSize, moderateScale } = useResponsive();
+  const { spacing, fontSize } = useResponsive();
 
   const greeting = useMemo(
     () => getCompleteTimeBasedGreeting(user?.name),
@@ -35,38 +25,34 @@ export function EmptyChatState({ onSuggestionPress }: EmptyChatStateProps) {
         alignItems: "center",
         justifyContent: "center",
         paddingHorizontal: spacing.lg,
+        // Nudge the visual centre up slightly to compensate for the
+        // header (≈52px) sitting above and the composer (≈60px + safe area)
+        // below — without this, content reads as too low on the screen.
         paddingBottom: spacing.xl,
       }}
     >
       <Animated.View
-        entering={FadeInUp.delay(0).springify()}
+        entering={FadeIn.duration(400)}
         style={{ alignItems: "center" }}
       >
-        <View
+        <Image
+          source={GaiaLogo}
           style={{
-            width: moderateScale(72, 0.5),
-            height: moderateScale(72, 0.5),
-            borderRadius: 24,
-            overflow: "hidden",
-            marginBottom: spacing.lg,
+            width: 56,
+            height: 56,
+            marginBottom: spacing.md,
           }}
-        >
-          <Image
-            source={GaiaLogo}
-            style={{ width: "100%", height: "100%" }}
-            contentFit="contain"
-          />
-        </View>
+          contentFit="contain"
+        />
 
         <Text
           style={{
-            fontSize: moderateScale(32, 0.4),
+            fontSize: 28,
             fontWeight: "600",
             color: "#ffffff",
             textAlign: "center",
-            letterSpacing: -0.5,
-            marginBottom: spacing.xs,
-            lineHeight: moderateScale(40, 0.4),
+            letterSpacing: -0.4,
+            lineHeight: 36,
           }}
         >
           {greeting}
@@ -74,47 +60,14 @@ export function EmptyChatState({ onSuggestionPress }: EmptyChatStateProps) {
 
         <Text
           style={{
-            fontSize: fontSize.base,
+            fontSize: fontSize.sm,
             color: "#71717a",
             textAlign: "center",
-            fontWeight: "400",
+            marginTop: spacing.xs,
           }}
         >
-          Ask me anything...
+          What can I help with?
         </Text>
-
-        <View
-          style={{
-            flexDirection: "column",
-            alignSelf: "center",
-            gap: 8,
-            marginTop: spacing.lg,
-          }}
-        >
-          {STARTER_PROMPTS.map((prompt) => (
-            <Pressable
-              key={prompt}
-              onPress={() => onSuggestionPress(prompt)}
-              style={({ pressed }) => ({
-                backgroundColor: "#18181b",
-                borderRadius: 20,
-                paddingVertical: 8,
-                paddingHorizontal: 14,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  color: "#a1a1aa",
-                  textAlign: "center",
-                }}
-              >
-                {prompt}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
       </Animated.View>
     </View>
   );

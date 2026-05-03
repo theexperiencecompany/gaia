@@ -19,6 +19,7 @@ import {
   ThumbsUpIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { chatApi } from "../../api/chat-api";
 
@@ -51,6 +52,7 @@ function ActionRow({
   onPress,
   destructive = false,
 }: ActionRowProps) {
+  const { fontSize } = useResponsive();
   return (
     <Pressable
       onPress={onPress}
@@ -65,7 +67,10 @@ function ActionRow({
     >
       {icon}
       <Text
-        style={{ fontSize: 16, color: destructive ? "#ef4444" : "#e4e4e7" }}
+        style={{
+          fontSize: fontSize.base,
+          color: destructive ? "#ef4444" : "#e4e4e7",
+        }}
       >
         {label}
       </Text>

@@ -16,19 +16,14 @@ export function MessageReplyQuote({
 }: MessageReplyQuoteProps) {
   const { spacing, fontSize, iconSize } = useResponsive();
 
-  const preview =
-    replyToMessage.content.length > 50
-      ? `${replyToMessage.content.slice(0, 50).trim()}...`
-      : replyToMessage.content;
+  const preview = replyToMessage.content;
 
   const label = replyToMessage.role === "user" ? "You" : "GAIA";
 
   return (
     <Surface
       style={{
-        backgroundColor: "#27272a",
-        borderWidth: 2,
-        borderColor: "#3f3f46",
+        backgroundColor: "#3f3f46",
         borderRadius: 16,
         paddingHorizontal: spacing.sm,
         paddingVertical: spacing.xs + 2,
@@ -59,7 +54,7 @@ export function MessageReplyQuote({
         <Text
           style={{
             fontSize: fontSize.xs + 1,
-            color: isUserMessage ? "rgba(255,255,255,0.6)" : "#71717a",
+            color: isUserMessage ? "rgba(255,255,255,0.7)" : "#a1a1aa",
           }}
           numberOfLines={1}
         >

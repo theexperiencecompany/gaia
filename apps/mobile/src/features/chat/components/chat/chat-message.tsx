@@ -4,7 +4,6 @@ import {
   splitByBreaksPreservingFences,
 } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
 import { PressableFeedback } from "heroui-native";
 import { useCallback, useMemo, useRef } from "react";
 import { Pressable, View } from "react-native";
@@ -29,8 +28,6 @@ import { LoadingIndicator } from "./loading-indicator";
 import type { MessageActionConfig } from "./message-action-sheet";
 import { MessageReplyQuote } from "./message-reply-quote";
 import { ThinkingBubble } from "./thinking-bubble";
-
-const GaiaLogo = require("@shared/assets/logo/logo.svg");
 
 const EMOJI_ONLY_REGEX = /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\s]+$/u;
 
@@ -134,7 +131,7 @@ function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
           alignItems: "center",
           alignSelf: "flex-start",
           gap: spacing.xs,
-          backgroundColor: "rgba(99, 102, 241, 0.12)",
+          backgroundColor: "rgba(63, 63, 70, 0.5)",
           borderRadius: moderateScale(12, 0.5),
           paddingHorizontal: spacing.sm + 2,
           paddingVertical: spacing.xs,
@@ -143,12 +140,12 @@ function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
         <AppIcon
           icon={Brain02Icon}
           size={moderateScale(11, 0.5)}
-          color="#818cf8"
+          color="#a1a1aa"
         />
         <Text
           style={{
-            fontSize: fontSize.xs - 1,
-            color: "#818cf8",
+            fontSize: fontSize.xs,
+            color: "#a1a1aa",
             fontWeight: "500",
           }}
         >
@@ -230,7 +227,7 @@ export function ChatMessage({
   // ---- User message --------------------------------------------------------
   if (isUser) {
     return (
-      <Animated.View entering={FadeIn.springify().damping(20).stiffness(300)}>
+      <Animated.View entering={FadeIn.duration(200)}>
         <PressableFeedback
           onLongPress={handleLongPress}
           onPressIn={() =>
@@ -302,7 +299,7 @@ export function ChatMessage({
 
   // ---- AI message ----------------------------------------------------------
   return (
-    <Animated.View entering={FadeIn.springify().damping(20).stiffness(300)}>
+    <Animated.View entering={FadeIn.duration(200)}>
       <PressableFeedback
         onLongPress={handleLongPress}
         onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
@@ -330,120 +327,86 @@ export function ChatMessage({
           </View>
         ) : null}
 
-        {/* Main message content with avatar — skip when only tool data renders */}
-        {message.imageData ||
-        isGeneratingImage ||
-        showToolProgress ||
-        showThinkingCard ||
-        showLoadingState ||
-        messageParts.length > 0 ? (
-          <View
-            style={{
-              width: "100%",
-              flexDirection: "row",
-              alignItems: "flex-end",
-            }}
-          >
-            {/* GAIA avatar — 30×30, aligned to bottom of bubble */}
-            <Image
-              source={GaiaLogo}
-              style={{
-                width: 30,
-                height: 30,
-                marginRight: spacing.sm,
-                flexShrink: 0,
-              }}
-              contentFit="contain"
+        {/* Main message content — full width, no avatar (mobile space constraint) */}
+        {message.imageData || isGeneratingImage ? (
+          <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
+            <ImageBubble
+              imageData={message.imageData ?? { url: "", prompt: "" }}
+              isGenerating={isGeneratingImage}
+              caption={
+                messageParts.length > 0 ? messageParts.join(" ") : undefined
+              }
             />
-            <View style={{ flex: 1 }}>
-              {message.imageData || isGeneratingImage ? (
-                <View style={{ paddingHorizontal: spacing.md }}>
-                  <ImageBubble
-                    imageData={message.imageData ?? { url: "", prompt: "" }}
-                    isGenerating={isGeneratingImage}
-                    caption={
-                      messageParts.length > 0
-                        ? messageParts.join(" ")
-                        : undefined
-                    }
-                  />
-                </View>
-              ) : showToolProgress ? (
-                <View style={{ paddingHorizontal: spacing.md }}>
-                  <ToolProgressCard
-                    toolName={progressToolName}
-                    progressMessage={progressMessage}
-                  />
-                </View>
-              ) : showThinkingCard ? (
-                <View style={{ paddingHorizontal: spacing.md }}>
-                  <ThinkingCard
-                    message={
-                      loadingMessage !== "Thinking..."
-                        ? loadingMessage
-                        : undefined
-                    }
-                  />
-                </View>
-              ) : showLoadingState ? (
-                <LoadingIndicator
-                  progress={
-                    loadingMessage !== "Thinking..."
-                      ? loadingMessage
-                      : undefined
-                  }
-                />
-              ) : (
-                messageParts.map((part, partIndex) => {
-                  const segments = parseOpenUISegments(part, !!isLoading);
-                  const grouped =
-                    messageParts.length === 1
-                      ? "none"
-                      : partIndex === 0
-                        ? "first"
-                        : partIndex === messageParts.length - 1
-                          ? "last"
-                          : "middle";
-
-                  const totalSegments = segments.length;
-                  return segments.map((segment, segIndex) => {
-                    const key = `${message.id}-${partIndex}-${segIndex}`;
-                    const isLastSegmentOfLastPart =
-                      partIndex === messageParts.length - 1 &&
-                      segIndex === totalSegments - 1;
-                    const showCursor =
-                      isLoading && isLastMessage && isLastSegmentOfLastPart;
-
-                    if (segment.type === "openui") {
-                      return (
-                        <View
-                          key={key}
-                          style={{
-                            paddingHorizontal: spacing.md,
-                            width: "100%",
-                          }}
-                        >
-                          <OpenUIRenderer
-                            code={segment.content}
-                            isStreaming={!segment.isComplete}
-                          />
-                        </View>
-                      );
-                    }
-                    return (
-                      <MessageBubble
-                        key={key}
-                        message={segment.content}
-                        variant="received"
-                        grouped={grouped}
-                        isStreaming={showCursor}
-                      />
-                    );
-                  });
-                })
-              )}
-            </View>
           </View>
+        ) : showToolProgress ? (
+          <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
+            <ToolProgressCard
+              toolName={progressToolName}
+              progressMessage={progressMessage}
+            />
+          </View>
+        ) : showThinkingCard ? (
+          <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
+            <ThinkingCard
+              message={
+                loadingMessage !== "Thinking..." ? loadingMessage : undefined
+              }
+            />
+          </View>
+        ) : showLoadingState ? (
+          <LoadingIndicator
+            progress={
+              loadingMessage !== "Thinking..." ? loadingMessage : undefined
+            }
+          />
+        ) : messageParts.length > 0 ? (
+          messageParts.map((part, partIndex) => {
+            const segments = parseOpenUISegments(part, !!isLoading);
+            const grouped =
+              messageParts.length === 1
+                ? "none"
+                : partIndex === 0
+                  ? "first"
+                  : partIndex === messageParts.length - 1
+                    ? "last"
+                    : "middle";
+
+            const totalSegments = segments.length;
+            return segments.map((segment, segIndex) => {
+              const key = `${message.id}-${partIndex}-${segIndex}`;
+              const isLastSegmentOfLastPart =
+                partIndex === messageParts.length - 1 &&
+                segIndex === totalSegments - 1;
+              const showCursor =
+                isLoading && isLastMessage && isLastSegmentOfLastPart;
+
+              if (segment.type === "openui") {
+                return (
+                  <View
+                    key={key}
+                    style={{
+                      paddingHorizontal: spacing.md,
+                      width: "100%",
+                    }}
+                  >
+                    <OpenUIRenderer
+                      code={segment.content}
+                      isStreaming={!segment.isComplete}
+                    />
+                  </View>
+                );
+              }
+              return (
+                <MessageBubble
+                  key={key}
+                  message={segment.content}
+                  variant="received"
+                  grouped={grouped}
+                  isStreaming={showCursor}
+                />
+              );
+            });
+          })
         ) : null}
 
         {/* Link preview – shown below message content for AI messages */}
