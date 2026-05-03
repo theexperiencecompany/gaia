@@ -110,16 +110,27 @@ function PostStats({
   score,
   upvoteRatio,
   numComments,
+  /** Web uses larger icons + text in the post detail footer (h-4 w-4 / text-sm)
+   *  versus the more compact search-row footer (h-3.5 w-3.5 / text-xs). */
+  size = "compact",
 }: {
   score?: number;
   upvoteRatio?: number;
   numComments?: number;
+  size?: "compact" | "regular";
 }) {
+  const isRegular = size === "regular";
+  // ArrowUp02 — web ships width/height 18 in every reddit card variant
+  const commentIconSize = isRegular ? 16 : 14;
+  const commentTextClass = isRegular
+    ? "text-sm text-zinc-400"
+    : "text-xs text-zinc-400";
+
   return (
     <View className="flex-row items-center gap-4">
       {score !== undefined && (
-        <View className="flex-row items-center gap-1">
-          <AppIcon icon={ArrowUp02Icon} size={15} color={REDDIT_ORANGE} />
+        <View className="flex-row items-center gap-1.5">
+          <AppIcon icon={ArrowUp02Icon} size={18} color={REDDIT_ORANGE} />
           <Text
             className="text-sm font-medium"
             style={{ color: REDDIT_ORANGE }}
@@ -134,11 +145,13 @@ function PostStats({
         </View>
       )}
       {numComments !== undefined && (
-        <View className="flex-row items-center gap-1">
-          <AppIcon icon={BubbleChatIcon} size={13} color="#71717a" />
-          <Text className="text-xs text-zinc-400">
-            {formatNumber(numComments)}
-          </Text>
+        <View className="flex-row items-center gap-1.5">
+          <AppIcon
+            icon={BubbleChatIcon}
+            size={commentIconSize}
+            color="#a1a1aa"
+          />
+          <Text className={commentTextClass}>{formatNumber(numComments)}</Text>
         </View>
       )}
     </View>
@@ -294,19 +307,22 @@ function PostView({ post }: { post: RedditPostData }) {
 
       <InnerDivider />
 
-      {/* Footer: stats + view link */}
+      {/* Footer: stats + view link.
+         Web uses the larger footer here (text-sm + h-4 icons) compared to the
+         compact search-row footer. Match by passing size="regular". */}
       <View className="flex-row items-center justify-between">
         <PostStats
           score={post.score}
           upvoteRatio={post.upvote_ratio}
           numComments={post.num_comments}
+          size="regular"
         />
         <Pressable
           onPress={() => openRedditLink(post.permalink, post.url)}
           className="flex-row items-center gap-1 active:opacity-70"
         >
           <Text className="text-xs text-zinc-400">View on Reddit</Text>
-          <AppIcon icon={ArrowRight01Icon} size={12} color="#71717a" />
+          <AppIcon icon={ArrowRight01Icon} size={12} color="#a1a1aa" />
         </Pressable>
       </View>
     </ToolCardInner>
@@ -329,10 +345,13 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
       <View className="gap-1.5">
         {preview.map((comment, index) => (
           <ToolCardInner key={comment.id ?? String(index)} dense>
-            {/* Author & meta row */}
+            {/* Author & meta row.
+               Web: UserCircle02 h-3.5 w-3.5 (14), u/author text-xs font-medium
+               (blue-400 if OP / gray-300 otherwise), OP badge bg-blue-900/40
+               text-blue-400 px-1.5 py-0.5 text-[10px], time text-gray-500. */}
             <View className="flex-row items-center justify-between mb-2">
               <View className="flex-row items-center gap-1.5 flex-1 min-w-0">
-                <AppIcon icon={UserCircle02Icon} size={13} color="#71717a" />
+                <AppIcon icon={UserCircle02Icon} size={14} color="#a1a1aa" />
                 <Text
                   className="text-xs font-medium"
                   style={{
@@ -361,12 +380,12 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
                   </>
                 )}
               </View>
-              {/* Score — right-aligned with upvote icon, orange like web */}
+              {/* Score — web ships ArrowUp02 width/height 18 with text-xs */}
               {comment.score !== undefined && (
                 <View className="flex-row items-center gap-1 ml-2">
                   <AppIcon
                     icon={ArrowUp02Icon}
-                    size={14}
+                    size={18}
                     color={REDDIT_ORANGE}
                   />
                   <Text
