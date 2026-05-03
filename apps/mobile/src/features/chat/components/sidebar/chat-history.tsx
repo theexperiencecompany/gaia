@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { Button, PressableFeedback, SkeletonGroup } from "heroui-native";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -20,6 +20,8 @@ import Reanimated, {
   type SharedValue,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
+  withSequence,
   withTiming,
 } from "react-native-reanimated";
 import {
@@ -282,6 +284,46 @@ interface ChatItemProps {
   searchQuery?: string;
 }
 
+function StreamingDot() {
+  const opacity = useSharedValue(1);
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.4, { duration: 700 }),
+        withTiming(1, { duration: 700 }),
+      ),
+      -1,
+      false,
+    );
+    scale.value = withRepeat(
+      withSequence(
+        withTiming(1.3, { duration: 700 }),
+        withTiming(1, { duration: 700 }),
+      ),
+      -1,
+      false,
+    );
+  }, [opacity, scale]);
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }],
+  }));
+  return (
+    <Reanimated.View
+      style={[
+        style,
+        {
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: "#00bbff",
+        },
+      ]}
+    />
+  );
+}
+
 function ChatItem({
   item,
   isActive,
@@ -371,16 +413,7 @@ function ChatItem({
             marginHorizontal: spacing.xs,
           }}
         >
-          {isStreaming && (
-            <View
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: "#00bbff",
-              }}
-            />
-          )}
+          {isStreaming && <StreamingDot />}
           {!isStreaming && item.is_unread && (
             <View
               style={{
