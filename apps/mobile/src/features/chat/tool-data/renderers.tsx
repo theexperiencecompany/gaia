@@ -362,14 +362,62 @@ interface ToolDataRendererProps {
   toolData?: ToolDataEntry[];
 }
 
+/**
+ * Backend streams `tool_calls_data` as one entry per call, but the UI
+ * should render a single consolidated "Used N tools" section per message
+ * (mirrors apps/web/src/features/chat/components/interface/ChatRenderer.tsx
+ * which dedupes by tool_call_id and merges into one entry). Without this,
+ * multiple "Used 1 tool" headers stack on top of each other.
+ */
+function consolidateToolData(toolData: ToolDataEntry[]): ToolDataEntry[] {
+  const result: ToolDataEntry[] = [];
+  let toolCallsBuffer: unknown[] = [];
+  let firstToolCallsTimestamp: ToolDataEntry["timestamp"] | undefined;
+  const seenToolCallIds = new Set<string>();
+
+  const flush = () => {
+    if (toolCallsBuffer.length > 0) {
+      result.push({
+        tool_name: "tool_calls_data",
+        data: toolCallsBuffer,
+        timestamp: firstToolCallsTimestamp,
+      });
+      toolCallsBuffer = [];
+      firstToolCallsTimestamp = undefined;
+    }
+  };
+
+  for (const entry of toolData) {
+    if (entry.tool_name === "tool_calls_data") {
+      const calls = Array.isArray(entry.data) ? entry.data : [entry.data];
+      for (const call of calls) {
+        const id = (call as { tool_call_id?: string })?.tool_call_id;
+        if (id && seenToolCallIds.has(id)) continue;
+        if (id) seenToolCallIds.add(id);
+        toolCallsBuffer.push(call);
+      }
+      if (firstToolCallsTimestamp === undefined) {
+        firstToolCallsTimestamp = entry.timestamp;
+      }
+    } else {
+      flush();
+      result.push(entry);
+    }
+  }
+  flush();
+  return result;
+}
+
 export function ToolDataRenderer({ toolData }: ToolDataRendererProps) {
   if (!toolData || toolData.length === 0) {
     return null;
   }
 
+  const consolidated = consolidateToolData(toolData);
+
   return (
     <View className="flex-col">
-      {toolData.map((entry, index) => {
+      {consolidated.map((entry, index) => {
         const toolName = entry.tool_name;
         const renderer = TOOL_RENDERERS[toolName];
         const baseKey = `tool-${toolName}-${entry.timestamp || index}`;
