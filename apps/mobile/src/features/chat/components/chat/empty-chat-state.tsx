@@ -33,42 +33,28 @@ export function EmptyChatState() {
     >
       <Animated.View
         entering={FadeIn.duration(200)}
-        style={{ alignItems: "center" }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm + 4,
+        }}
       >
         <Image
           source={GaiaLogo}
-          style={{
-            width: 56,
-            height: 56,
-            marginBottom: spacing.sm + 4,
-          }}
+          style={{ width: 40, height: 40 }}
           contentFit="contain"
         />
-
         <Text
           style={{
-            fontSize: fontSize["3xl"],
-            fontWeight: "600",
+            fontSize: fontSize["2xl"],
+            fontWeight: "500",
             color: "#ffffff",
-            textAlign: "center",
-            letterSpacing: -0.4,
-            lineHeight: Math.round(fontSize["3xl"] * 1.25),
+            letterSpacing: -0.3,
+            lineHeight: Math.round(fontSize["2xl"] * 1.2),
+            flexShrink: 1,
           }}
         >
           {greeting}
-        </Text>
-
-        <Text
-          style={{
-            fontSize: fontSize.md,
-            fontWeight: "400",
-            color: "#a1a1aa",
-            textAlign: "center",
-            marginTop: spacing.sm,
-            lineHeight: Math.round(fontSize.md * 1.5),
-          }}
-        >
-          What can I help with?
         </Text>
       </Animated.View>
     </View>

@@ -408,7 +408,7 @@ function ChatItem({
                 : isActive
                   ? "#d4d4d8"
                   : "#a1a1aa",
-              fontWeight: item.is_unread ? "500" : "400",
+              fontWeight: item.is_unread ? "400" : "300",
               flex: 1,
             }}
             numberOfLines={1}

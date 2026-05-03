@@ -115,24 +115,53 @@ function MessageBubble({
     );
   }
 
-  // Received: assistant message renders as plain prose (web parity).
-  // No bubble background, no inline copy button — long-press surfaces
-  // the action sheet with all options including copy.
+  // Received: assistant message in iMessage-style zinc-800 bubble (web parity
+  // with `imessage-bubble imessage-from-them`). Long-press opens the action
+  // sheet for copy/reply/etc. — no inline icons.
   const trimmed = (message ?? "").trim();
   if (!children && trimmed.length === 0 && !isStreaming) {
     return null;
   }
 
+  const recvBorderRadius = moderateScale(20, 0.5);
+  const recvBr = moderateScale(5, 0.5);
+  let recvBorderTopLeftRadius = recvBorderRadius;
+  let recvBorderBottomLeftRadius = recvBorderRadius;
+  if (grouped === "first") recvBorderBottomLeftRadius = recvBr;
+  else if (grouped === "middle") {
+    recvBorderTopLeftRadius = recvBr;
+    recvBorderBottomLeftRadius = recvBr;
+  } else if (grouped === "last") recvBorderTopLeftRadius = recvBr;
+
   return (
-    <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
-      {children ?? (
-        <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
-          <View style={{ flex: 1 }}>
-            <MarkdownRenderer content={message ?? ""} />
+    <View
+      style={{
+        paddingHorizontal: spacing.md,
+        width: "100%",
+        marginVertical: 1,
+      }}
+    >
+      <View
+        style={{
+          alignSelf: "flex-start",
+          maxWidth: "85%",
+          backgroundColor: "#27272a",
+          borderRadius: recvBorderRadius,
+          borderTopLeftRadius: recvBorderTopLeftRadius,
+          borderBottomLeftRadius: recvBorderBottomLeftRadius,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm + 2,
+        }}
+      >
+        {children ?? (
+          <View style={{ flexDirection: "row", alignItems: "flex-end" }}>
+            <View style={{ flex: 1 }}>
+              <MarkdownRenderer content={message ?? ""} />
+            </View>
+            {isStreaming ? <StreamingCursor /> : null}
           </View>
-          {isStreaming ? <StreamingCursor /> : null}
-        </View>
-      )}
+        )}
+      </View>
     </View>
   );
 }
