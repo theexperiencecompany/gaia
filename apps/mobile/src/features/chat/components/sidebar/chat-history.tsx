@@ -31,7 +31,6 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-import { Divider } from "@/shared/components/ui/divider";
 import { useChatStore } from "@/stores/chat-store";
 import {
   deleteConversation,
@@ -296,22 +295,6 @@ function ChatItem({
   const swipeableRef = useRef<SwipeableMethods>(null);
   const [showSheet, setShowSheet] = useState(false);
 
-  const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-
-    if (diffMins < 1) return "now";
-    if (diffMins < 60) return `${diffMins}m`;
-    if (diffHours < 24) return `${diffHours}h`;
-    return date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-  };
-
   const handleLongPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setShowSheet(true);
@@ -387,25 +370,16 @@ function ChatItem({
             query={searchQuery}
             baseStyle={{
               fontSize: fontSize.sm,
-              color: isActive
+              color: item.is_unread
                 ? "#ffffff"
-                : item.is_unread
-                  ? "#ffffff"
-                  : "#d4d4d8",
-              fontWeight: item.is_unread ? "600" : "400",
+                : isActive
+                  ? "#d4d4d8"
+                  : "#a1a1aa",
+              fontWeight: item.is_unread ? "400" : "300",
               flex: 1,
             }}
             numberOfLines={1}
           />
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#71717a",
-              flexShrink: 0,
-            }}
-          >
-            {formatTime(item.updated_at || item.created_at)}
-          </Text>
         </View>
       </PressableFeedback>
 
@@ -578,32 +552,29 @@ function Section({
 
   return (
     <View style={{ marginBottom: 4 }}>
-      <Divider className="mx-3 mb-1" />
       <PressableFeedback
         onPress={handleToggle}
         hitSlop={4}
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: spacing.md,
-          // 10dp vertical → ~40dp + text = ~50dp total, ≥44dp
-          paddingVertical: 10,
+          paddingHorizontal: spacing.sm + 4,
+          paddingTop: 4,
+          paddingBottom: 2,
         }}
       >
         <Text
           style={{
             flex: 1,
-            fontSize: fontSize.xs,
-            color: "#71717a",
-            fontWeight: "500",
-            textTransform: "uppercase",
-            letterSpacing: 0.8,
+            fontSize: fontSize.sm,
+            color: "#52525b",
+            fontWeight: "400",
           }}
         >
           {title}
         </Text>
         <Reanimated.View style={chevronStyle}>
-          <AppIcon icon={ArrowDown01Icon} size={iconSize.sm} color="#71717a" />
+          <AppIcon icon={ArrowDown01Icon} size={iconSize.sm} color="#52525b" />
         </Reanimated.View>
       </PressableFeedback>
       {isExpanded &&
@@ -947,11 +918,9 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
         >
           <Text
             style={{
-              fontSize: fontSize.xs,
-              color: "#71717a",
-              fontWeight: "500",
-              textTransform: "uppercase",
-              letterSpacing: 0.8,
+              fontSize: fontSize.sm,
+              color: "#52525b",
+              fontWeight: "400",
             }}
           >
             {filteredConversations.length}{" "}

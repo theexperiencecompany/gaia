@@ -1,25 +1,18 @@
 import { Image } from "expo-image";
 import { PressableFeedback } from "heroui-native";
 import { TextInput, View } from "react-native";
-import {
-  AppIcon,
-  Cancel01Icon,
-  PencilEdit02Icon,
-  Search01Icon,
-} from "@/components/icons";
+import { AppIcon, Cancel01Icon, Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
 const GaiaLogo = require("@shared/assets/logo/logo.svg");
 
 interface SidebarHeaderProps {
-  onNewChat: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
 }
 
 export function SidebarHeader({
-  onNewChat,
   searchQuery,
   onSearchChange,
 }: SidebarHeaderProps) {
@@ -27,47 +20,32 @@ export function SidebarHeader({
 
   return (
     <View>
-      {/* Top bar: wordmark + new chat (ghost) */}
+      {/* Top bar: wordmark only (web parity) */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          justifyContent: "space-between",
           paddingHorizontal: spacing.md,
           paddingTop: spacing.md,
           paddingBottom: spacing.sm,
+          gap: 8,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Image
-            source={GaiaLogo}
-            style={{ width: 24, height: 24 }}
-            contentFit="contain"
-          />
-          <Text
-            style={{
-              fontSize: fontSize.md,
-              fontWeight: "600",
-              color: "#e4e4e7",
-              letterSpacing: 0.2,
-            }}
-          >
-            GAIA
-          </Text>
-        </View>
-        <PressableFeedback
-          onPress={onNewChat}
-          hitSlop={10}
+        <Image
+          source={GaiaLogo}
+          style={{ width: 24, height: 24 }}
+          contentFit="contain"
+        />
+        <Text
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            alignItems: "center",
-            justifyContent: "center",
+            fontSize: fontSize.md,
+            fontWeight: "600",
+            color: "#e4e4e7",
+            letterSpacing: 0.2,
           }}
         >
-          <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#a1a1aa" />
-        </PressableFeedback>
+          GAIA
+        </Text>
       </View>
 
       {/* Search input */}

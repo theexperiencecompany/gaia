@@ -4,6 +4,7 @@ import { Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   AppIcon,
+  BubbleChatAddIcon,
   CheckListIcon,
   ConnectIcon,
   ZapIcon,
@@ -110,22 +111,49 @@ function SidebarNav() {
           </Pressable>
         );
       })}
+    </View>
+  );
+}
 
-      <Text
-        style={{
-          fontSize: fontSize.xs,
-          fontWeight: "500",
-          // tracking-wider equivalent: ~0.8px on 10px base
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
-          color: "#71717a",
+interface NewChatButtonProps {
+  onPress: () => void;
+}
+
+function NewChatButton({ onPress }: NewChatButtonProps) {
+  const { spacing, fontSize, iconSize } = useResponsive();
+  return (
+    <View
+      style={{
+        paddingHorizontal: spacing.sm,
+        paddingTop: spacing.sm,
+        paddingBottom: spacing.xs,
+      }}
+    >
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm,
           paddingHorizontal: spacing.sm + 4,
-          paddingTop: spacing.md,
-          paddingBottom: spacing.xs,
-        }}
+          paddingVertical: 8,
+          borderRadius: 12,
+          backgroundColor: pressed
+            ? "rgba(0,187,255,0.18)"
+            : "rgba(0,187,255,0.1)",
+        })}
       >
-        Chats
-      </Text>
+        <AppIcon icon={BubbleChatAddIcon} size={iconSize.sm} color="#00bbff" />
+        <Text
+          style={{
+            fontSize: fontSize.sm,
+            color: "#00bbff",
+            fontWeight: "500",
+          }}
+        >
+          New Chat
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -140,11 +168,11 @@ export function SidebarContent({ onSelectChat, onNewChat }: SidebarProps) {
     >
       <View style={{ flex: 1 }}>
         <SidebarHeader
-          onNewChat={onNewChat}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         />
         <SidebarNav />
+        <NewChatButton onPress={onNewChat} />
         <ChatHistory onSelectChat={onSelectChat} searchQuery={searchQuery} />
         <SidebarFooter />
       </View>
