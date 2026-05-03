@@ -611,9 +611,9 @@ async def call_subagent(
         subagent={
             "name": ctx.agent_name,
             "provider": ctx.integration_id,
-            "response_length": len(complete_message),
+            "response_length": len(final_message),
         }
     )
     log.info(
-        f"[DIRECT] Subagent '{ctx.agent_name}' completed. Response: {len(complete_message)} chars"
+        f"[DIRECT] Subagent '{ctx.agent_name}' completed. Response: {len(final_message)} chars"
     )
