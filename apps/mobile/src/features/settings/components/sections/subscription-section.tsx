@@ -12,7 +12,7 @@ const C = {
   primary: "#00bbff",
   danger: "#ef4444",
   text: "#e4e4e7",
-  textMuted: "#8e8e93",
+  textMuted: "#71717a",
   textSubtle: "#5a5a5e",
 };
 
@@ -142,8 +142,8 @@ export function SubscriptionSection() {
       }}
     >
       {/* Plan card */}
-      <Card variant="secondary" className="rounded-3xl bg-surface">
-        <Card.Body className="gap-3 px-5 py-5">
+      <Card variant="secondary" className="rounded-2xl bg-surface">
+        <Card.Body className="gap-3 px-4 py-4">
           <View
             style={{
               flexDirection: "row",
@@ -192,8 +192,8 @@ export function SubscriptionSection() {
 
       {/* Usage meter */}
       {dayPeriod ? (
-        <Card variant="secondary" className="rounded-3xl bg-surface">
-          <Card.Body className="gap-4 px-5 py-5">
+        <Card variant="secondary" className="rounded-2xl bg-surface">
+          <Card.Body className="gap-4 px-4 py-4">
             <Text
               style={{
                 fontSize: fontSize.xs,

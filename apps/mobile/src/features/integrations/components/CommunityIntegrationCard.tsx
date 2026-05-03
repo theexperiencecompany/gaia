@@ -67,7 +67,7 @@ export function CommunityIntegrationCard({
               </Card.Title>
               {integration.category ? (
                 <Chip variant="secondary" size="sm">
-                  <Chip.Label className="text-muted text-[10px]">
+                  <Chip.Label className="text-muted text-xs">
                     {integration.category}
                   </Chip.Label>
                 </Chip>
@@ -80,15 +80,15 @@ export function CommunityIntegrationCard({
 
             <Card.Footer className="p-0 flex-row items-center gap-3 mt-1.5">
               <Wrench01Icon size={11} color="#6b6b6b" />
-              <Text className="text-muted text-[11px]">
+              <Text className="text-muted text-xs">
                 {integration.toolCount} tools
               </Text>
               <UserIcon size={11} color="#6b6b6b" />
-              <Text className="text-muted text-[11px]">
+              <Text className="text-muted text-xs">
                 {integration.cloneCount} added
               </Text>
               {integration.creator?.name ? (
-                <Text className="text-muted text-[11px]" numberOfLines={1}>
+                <Text className="text-muted text-xs" numberOfLines={1}>
                   by {integration.creator.name}
                 </Text>
               ) : null}
@@ -106,7 +106,7 @@ export function CommunityIntegrationCard({
           }
         >
           {isPending ? (
-            <ActivityIndicator size="small" color="#8e8e93" />
+            <ActivityIndicator size="small" color="#71717a" />
           ) : (
             <Button.Label
               className={added ? "text-success text-xs" : "text-muted text-xs"}

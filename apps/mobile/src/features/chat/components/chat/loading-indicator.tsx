@@ -21,26 +21,6 @@ export function LoadingIndicator({
   const { spacing, fontSize, moderateScale } = useResponsive();
   const avatarSize = moderateScale(24, 0.5);
 
-  // Spinning GAIA logo animation
-  const spinAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const spin = Animated.loop(
-      Animated.timing(spinAnim, {
-        toValue: 1,
-        duration: 2000,
-        useNativeDriver: true,
-      }),
-    );
-    spin.start();
-    return () => spin.stop();
-  }, [spinAnim]);
-
-  const spinInterpolate = spinAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
-
   // Slide-up text animation
   const textTranslateY = useRef(new Animated.Value(8)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
@@ -80,25 +60,26 @@ export function LoadingIndicator({
         paddingVertical: spacing.sm,
       }}
     >
-      <Animated.View style={{ transform: [{ rotate: spinInterpolate }] }}>
-        <Avatar
-          alt="Gaia"
-          size="sm"
-          color="default"
-          style={{ width: avatarSize, height: avatarSize }}
-        >
-          <Avatar.Image source={GaiaLogo} />
-          <Avatar.Fallback>G</Avatar.Fallback>
-        </Avatar>
-      </Animated.View>
+      <Avatar
+        alt="Gaia"
+        size="sm"
+        color="default"
+        style={{ width: avatarSize, height: avatarSize }}
+      >
+        <Avatar.Image source={GaiaLogo} />
+        <Avatar.Fallback>G</Avatar.Fallback>
+      </Avatar>
 
       <View
         style={{
-          flexDirection: "column",
+          flexDirection: "row",
+          alignItems: "center",
           gap: spacing.xs,
           paddingTop: 2,
         }}
       >
+        <Spinner size="sm" color="default" />
+
         {progress ? (
           <Animated.View
             style={{
@@ -119,11 +100,7 @@ export function LoadingIndicator({
           </Animated.View>
         ) : null}
 
-        {toolIconElement ? (
-          toolIconElement
-        ) : (
-          <Spinner size="sm" color="default" />
-        )}
+        {toolIconElement ? toolIconElement : null}
       </View>
     </View>
   );

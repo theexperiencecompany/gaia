@@ -1,9 +1,9 @@
-import { Divider } from "heroui-native";
-import { View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { Divider } from "@/shared/components/ui/divider";
 
-interface DateDividerProps {
+interface DateSeparatorProps {
   date: string;
 }
 
@@ -23,12 +23,13 @@ function formatDateLabel(dateStr: string): string {
   return date.toLocaleDateString("en-US", { month: "long", day: "numeric" });
 }
 
-export function DateDivider({ date }: DateDividerProps) {
+export function DateSeparator({ date }: DateSeparatorProps) {
   const { spacing, fontSize } = useResponsive();
   const label = formatDateLabel(date);
 
   return (
-    <View
+    <Animated.View
+      entering={FadeIn.duration(200)}
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -41,13 +42,15 @@ export function DateDivider({ date }: DateDividerProps) {
         style={{
           fontSize: fontSize.xs,
           fontWeight: "500",
-          color: "rgba(255,255,255,0.4)",
+          color: "rgba(255,255,255,0.3)",
           marginHorizontal: spacing.sm,
+          textTransform: "uppercase",
+          letterSpacing: 0.8,
         }}
       >
         {label}
       </Text>
       <Divider style={{ flex: 1 }} />
-    </View>
+    </Animated.View>
   );
 }

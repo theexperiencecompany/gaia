@@ -2,6 +2,7 @@ import { Accordion, Card } from "heroui-native";
 import { View } from "react-native";
 import { AppIcon, ArrowDown01Icon, Mail01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { Divider } from "@/shared/components/ui/divider";
 
 export interface EmailAccordionItem {
   id: string;
@@ -57,7 +58,7 @@ export const SAMPLE_EMAILS: EmailAccordionItem[] = [
 
 function EmailItem({ email }: { email: EmailAccordionItem }) {
   return (
-    <View className="flex-row items-center py-3 border-b border-white/8">
+    <View className="flex-row items-center py-3">
       <View className="w-28 flex-shrink-0">
         <Text className="text-sm font-medium text-foreground" numberOfLines={1}>
           {email.sender}
@@ -96,11 +97,11 @@ export function EmailAccordion({
           >
             <Card.Body className="py-0 px-4">
               {emails.map((email, index) => (
-                <View
-                  key={email.id}
-                  className={index === emails.length - 1 ? "border-b-0" : ""}
-                >
+                <View key={email.id}>
                   <EmailItem email={email} />
+                  {index < emails.length - 1 ? (
+                    <Divider className="bg-zinc-700/50" />
+                  ) : null}
                 </View>
               ))}
             </Card.Body>

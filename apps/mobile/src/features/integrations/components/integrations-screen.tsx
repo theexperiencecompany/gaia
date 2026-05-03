@@ -389,7 +389,7 @@ function SectionHeader({ title, count }: SectionHeaderProps) {
       <Text
         style={{
           fontSize: fontSize.xs,
-          color: "#8e8e93",
+          color: "#71717a",
         }}
       >
         {count}

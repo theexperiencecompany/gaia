@@ -78,7 +78,7 @@ function ToggleRow({
         onValueChange={onToggle}
         disabled={disabled}
         trackColor={{ false: "#3a3a3c", true: "rgba(0,187,255,0.6)" }}
-        thumbColor={value ? "#00bbff" : "#8e8e93"}
+        thumbColor={value ? "#00bbff" : "#71717a"}
       />
     </View>
   );
@@ -124,7 +124,7 @@ function CategorySection({
           fontWeight: "600",
           letterSpacing: 0.6,
           textTransform: "uppercase",
-          color: "#8e8e93",
+          color: "#71717a",
           marginBottom: spacing.xs,
         }}
       >
@@ -271,7 +271,7 @@ export const NotificationPreferencesSheet =
                     marginBottom: spacing.sm,
                   }}
                 >
-                  <AppIcon icon={Settings01Icon} size={18} color="#8e8e93" />
+                  <AppIcon icon={Settings01Icon} size={18} color="#71717a" />
                   <Text
                     style={{
                       fontSize: fontSize.base,
@@ -340,7 +340,7 @@ export const NotificationPreferencesSheet =
                       paddingVertical: spacing.xl,
                     }}
                   >
-                    <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
+                    <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
                       No preferences available.
                     </Text>
                   </View>
@@ -354,7 +354,7 @@ export const NotificationPreferencesSheet =
                   }}
                   onPress={() => setIsOpen(false)}
                 >
-                  <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
+                  <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
                     Close
                   </Text>
                 </Pressable>

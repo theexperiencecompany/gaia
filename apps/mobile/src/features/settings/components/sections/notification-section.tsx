@@ -83,7 +83,7 @@ export function NotificationSection() {
       <Text
         style={{
           fontSize: fontSize.xs,
-          color: "#8e8e93",
+          color: "#71717a",
           lineHeight: fontSize.xs * 1.5,
         }}
       >
@@ -136,10 +136,8 @@ export function NotificationSection() {
           alignItems: "flex-start",
           gap: spacing.xs,
           backgroundColor: "rgba(22,193,255,0.06)",
-          borderRadius: 10,
+          borderRadius: 12,
           padding: spacing.md,
-          borderWidth: 1,
-          borderColor: "rgba(22,193,255,0.12)",
         }}
       >
         <AppIcon icon={Notification01Icon} size={14} color="#16c1ff" />

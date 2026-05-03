@@ -4,10 +4,13 @@ import { useCallback, useRef, useState } from "react";
 import { Keyboard, Pressable, TextInput, View } from "react-native";
 import Animated, {
   FadeIn,
-  FadeOut,
+  FadeInDown,
+  FadeOutUp,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import {
   AppIcon,
@@ -145,6 +148,12 @@ export function Composer({
     transform: [{ scale: sendScale.value }],
   }));
 
+  // Plus button animated scale
+  const plusScale = useSharedValue(1);
+  const plusAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: plusScale.value }],
+  }));
+
   const dismissKeyboard = useCallback(() => {
     inputRef.current?.blur();
     Keyboard.dismiss();
@@ -194,10 +203,10 @@ export function Composer({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     // Animate send button press
-    sendScale.value = withSpring(0.85, { damping: 15, stiffness: 400 });
-    setTimeout(() => {
-      sendScale.value = withSpring(1, { damping: 15, stiffness: 400 });
-    }, 100);
+    sendScale.value = withSequence(
+      withTiming(0.92, { duration: 80 }),
+      withSpring(1, { damping: 20, stiffness: 400 }),
+    );
 
     const pendingAttachments = attachments;
     onSend?.(message, pendingAttachments);
@@ -277,14 +286,13 @@ export function Composer({
     <View style={{ width: "100%" }}>
       {/* Built-in slash commands overlay — rendered above the composer box */}
       {isCommandMode && matchingCommands.length > 0 && (
-        <View
+        <Animated.View
+          entering={FadeIn.duration(150)}
           style={{
             marginHorizontal: spacing.xs,
             marginBottom: spacing.xs,
             borderRadius: moderateScale(12, 0.5),
-            backgroundColor: "#0e0f11",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            backgroundColor: "rgba(22,22,24,0.96)",
             overflow: "hidden",
           }}
         >
@@ -305,22 +313,20 @@ export function Composer({
               </Text>
             </PressableFeedback>
           ))}
-        </View>
+        </Animated.View>
       )}
 
       <View
         style={{
-          backgroundColor: "rgba(23,25,32,0.95)",
+          backgroundColor: "#27272a",
           borderRadius: moderateScale(20, 0.5),
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.1)",
         }}
       >
         {/* Reply-to indicator */}
         {replyTo && (
           <Animated.View
-            entering={FadeIn.duration(200)}
-            exiting={FadeOut.duration(150)}
+            entering={FadeInDown.duration(200)}
+            exiting={FadeOutUp.duration(150)}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -330,10 +336,7 @@ export function Composer({
               paddingHorizontal: spacing.sm + 2,
               paddingVertical: spacing.sm,
               borderRadius: moderateScale(12, 0.5),
-              backgroundColor: "rgba(63,63,70,0.4)",
-              borderWidth: 1,
-              borderStyle: "dashed",
-              borderColor: "rgba(161,161,170,0.4)",
+              backgroundColor: "rgba(63,63,70,0.6)",
             }}
           >
             <View
@@ -450,7 +453,7 @@ export function Composer({
             ...(inputHeight > 0 && { height: inputHeight + spacing.lg }),
           }}
           placeholder={placeholder}
-          placeholderTextColor="#8e8e93"
+          placeholderTextColor="#71717a"
           value={message}
           onChangeText={handleTextChange}
           onContentSizeChange={handleContentSizeChange}
@@ -477,23 +480,37 @@ export function Composer({
               gap: spacing.sm,
             }}
           >
-            <Pressable
-              onPress={handlePlusPress}
-              style={{
-                width: moderateScale(32, 0.5),
-                height: moderateScale(32, 0.5),
-                borderRadius: moderateScale(16, 0.5),
-                backgroundColor: "rgba(39,39,42,0.8)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <AppIcon
-                icon={PlusSignIcon}
-                size={iconSize.md - 2}
-                color="#8e8e93"
-              />
-            </Pressable>
+            <Animated.View style={plusAnimatedStyle}>
+              <Pressable
+                onPress={handlePlusPress}
+                onPressIn={() => {
+                  plusScale.value = withSpring(0.92, {
+                    damping: 15,
+                    stiffness: 400,
+                  });
+                }}
+                onPressOut={() => {
+                  plusScale.value = withSpring(1, {
+                    damping: 15,
+                    stiffness: 400,
+                  });
+                }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: moderateScale(20, 0.5),
+                  backgroundColor: "rgba(39,39,42,0.8)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <AppIcon
+                  icon={PlusSignIcon}
+                  size={iconSize.md - 2}
+                  color="#8e8e93"
+                />
+              </Pressable>
+            </Animated.View>
 
             <ConnectDrawerTrigger onOpen={dismissKeyboard} />
           </View>
@@ -504,9 +521,9 @@ export function Composer({
               onPress={handleSend}
               disabled={!isStreaming && !hasContent}
               style={{
-                width: moderateScale(32, 0.5),
-                height: moderateScale(32, 0.5),
-                borderRadius: moderateScale(16, 0.5),
+                width: 40,
+                height: 40,
+                borderRadius: moderateScale(20, 0.5),
                 backgroundColor: isStreaming
                   ? "rgba(239,68,68,0.9)"
                   : hasContent

@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 
-const MONO_FONT = "RobotoMono_400Regular";
+const MONO_FONT = "AnonymousPro_400Regular";
 
 import {
   ArrowDown02Icon,
@@ -108,9 +108,9 @@ function StatusChip({
 }) {
   if (status === "executing") {
     return (
-      <View className="flex-row items-center gap-1.5 px-2 py-1 rounded-full bg-zinc-700">
+      <View className="flex-row items-center gap-1.5 px-2 py-1 rounded-full bg-zinc-700/50">
         <View className="w-1.5 h-1.5 rounded-full bg-[#00bbff]" />
-        <Text className="text-[10px] font-semibold uppercase text-zinc-300">
+        <Text className="text-xs font-semibold uppercase text-zinc-200">
           Running
         </Text>
       </View>
@@ -120,7 +120,7 @@ function StatusChip({
     return (
       <View className="flex-row items-center gap-1 px-2 py-1 rounded-full bg-red-500/15">
         <AppIcon icon={Cancel01Icon} size={11} color="#ff453a" />
-        <Text className="text-[10px] font-semibold uppercase text-red-400">
+        <Text className="text-xs font-semibold uppercase text-red-400">
           Failed
         </Text>
       </View>
@@ -130,7 +130,7 @@ function StatusChip({
     return (
       <View className="flex-row items-center gap-1 px-2 py-1 rounded-full bg-green-500/15">
         <AppIcon icon={CheckmarkCircle02Icon} size={11} color="#34c759" />
-        <Text className="text-[10px] font-semibold uppercase text-green-400">
+        <Text className="text-xs font-semibold uppercase text-green-400">
           Success
         </Text>
       </View>
@@ -210,7 +210,7 @@ function OutputSection({
     <View className="gap-2">
       {hasStdout && (
         <View>
-          <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+          <Text className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
             stdout
           </Text>
           <View
@@ -242,7 +242,7 @@ function OutputSection({
 
       {hasResults && (
         <View>
-          <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+          <Text className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
             results
           </Text>
           <View
@@ -280,7 +280,7 @@ function OutputSection({
 
       {hasStderr && (
         <View>
-          <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+          <Text className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
             stderr
           </Text>
           <View
@@ -312,7 +312,7 @@ function OutputSection({
 
       {hasError && (
         <View>
-          <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+          <Text className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
             error
           </Text>
           <View
@@ -340,13 +340,13 @@ function OutputSection({
 
       {/* Status footer row — mirrors web CodeExecutionOutput */}
       <View className="flex-row items-center justify-between pt-1">
-        <Text className="text-[10px] text-zinc-500">
+        <Text className="text-xs text-zinc-500">
           Status: {status ?? "unknown"}
         </Text>
         {!hasError && !hasStderr ? (
-          <Text className="text-[10px] text-green-400">Success</Text>
+          <Text className="text-xs text-green-400">Success</Text>
         ) : (
-          <Text className="text-[10px] text-red-400">Failed</Text>
+          <Text className="text-xs text-red-400">Failed</Text>
         )}
       </View>
     </View>
@@ -450,7 +450,7 @@ export function CodeExecutionCard({ data }: { data: CodeData }) {
 
         {data.error && !data.output && (
           <ToolCardInner dense>
-            <Text className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
+            <Text className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1">
               Error
             </Text>
             <Text

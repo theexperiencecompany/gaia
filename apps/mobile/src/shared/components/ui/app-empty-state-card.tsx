@@ -43,7 +43,7 @@ export function AppEmptyStateCard({
       {...cardProps}
       variant={variant}
       animation={animation}
-      className={cn("rounded-3xl", className)}
+      className={cn("rounded-2xl", className)}
     >
       <Card.Body
         className={cn(

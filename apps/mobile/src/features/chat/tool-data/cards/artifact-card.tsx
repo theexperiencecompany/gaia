@@ -48,7 +48,7 @@ const FILE_TYPE_CONFIG: Record<string, FileTypeConfig> = {
   txt: {
     label: "Text",
     color: "text-zinc-400",
-    bg: "bg-zinc-700",
+    bg: "bg-zinc-700/50",
     icon: "file",
   },
   json: {
@@ -125,8 +125,8 @@ const FILE_TYPE_CONFIG: Record<string, FileTypeConfig> = {
   },
   sh: {
     label: "Shell",
-    color: "text-zinc-300",
-    bg: "bg-zinc-700",
+    color: "text-zinc-200",
+    bg: "bg-zinc-700/50",
     icon: "code",
   },
   pdf: {
@@ -199,7 +199,7 @@ function getFileConfig(filename: string, contentType?: string): FileTypeConfig {
   return {
     label: ext.toUpperCase() || "File",
     color: "text-zinc-400",
-    bg: "bg-zinc-700",
+    bg: "bg-zinc-700/50",
     icon: "file",
   };
 }
@@ -237,7 +237,7 @@ function FileRow({ file }: { file: ArtifactData }) {
     <ToolCardInner dense onPress={onPress}>
       <View className="flex-row items-center gap-3">
         {/* File type icon — square container, matches web shrink-0 pattern */}
-        <View className="w-8 h-8 rounded-lg bg-zinc-700 items-center justify-center shrink-0">
+        <View className="w-8 h-8 rounded-lg bg-zinc-800 items-center justify-center shrink-0">
           <AppIcon icon={icon} size={16} color="#00bbff" />
         </View>
 
@@ -245,7 +245,7 @@ function FileRow({ file }: { file: ArtifactData }) {
           {/* File type chip + filename row (mirrors web layout) */}
           <View className="flex-row items-center gap-2 mb-0.5 flex-wrap">
             <View className={`rounded-full px-2 py-0.5 ${config.bg}`}>
-              <Text className={`text-[10px] font-medium ${config.color}`}>
+              <Text className={`text-xs font-medium ${config.color}`}>
                 {config.label}
               </Text>
             </View>

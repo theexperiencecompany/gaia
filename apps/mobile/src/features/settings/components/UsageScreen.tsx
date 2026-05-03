@@ -27,7 +27,7 @@ const C = {
   sectionBg: "#171920",
   divider: "rgba(255,255,255,0.06)",
   text: "#ffffff",
-  textMuted: "#8e8e93",
+  textMuted: "#71717a",
   textSubtle: "#5a5a5e",
   primary: "#00bbff",
   primaryBg: "rgba(0,187,255,0.15)",

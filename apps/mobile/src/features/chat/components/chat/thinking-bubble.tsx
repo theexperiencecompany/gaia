@@ -24,12 +24,12 @@ function PulsingBrain({ size }: { size: number }) {
       Animated.sequence([
         Animated.timing(opacity, {
           toValue: 1,
-          duration: 600,
+          duration: 350,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
           toValue: 0.5,
-          duration: 600,
+          duration: 350,
           useNativeDriver: true,
         }),
       ]),
@@ -105,7 +105,7 @@ export function ThinkingBubble({
       const next = !prev;
       Animated.timing(chevronRotation, {
         toValue: next ? 1 : 0,
-        duration: 200,
+        duration: 300,
         useNativeDriver: true,
       }).start();
       return next;
@@ -146,6 +146,8 @@ export function ThinkingBubble({
           flexDirection: "row",
           alignItems: "center",
           gap: spacing.sm,
+          paddingVertical: spacing.xs + 2,
+          paddingHorizontal: spacing.xs,
         }}
       >
         <AppIcon
@@ -183,10 +185,9 @@ export function ThinkingBubble({
         >
           <Text
             style={{
-              fontFamily: "RobotoMono_400Regular",
               fontSize: fontSize.xs,
               color: "#a1a1aa",
-              lineHeight: 18,
+              lineHeight: 20,
             }}
           >
             {thinkingContent}

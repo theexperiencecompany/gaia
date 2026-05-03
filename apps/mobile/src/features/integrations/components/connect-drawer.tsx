@@ -186,7 +186,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
               alt={integration.name}
               size="sm"
               color="default"
-              className="w-9 h-9 rounded-lg mr-3"
+              className="w-9 h-9 rounded-xl mr-3"
             >
               <Avatar.Image
                 source={{ uri: integration.logo }}
@@ -218,7 +218,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
               }
             >
               {isConnecting ? (
-                <ActivityIndicator size="small" color="#8e8e93" />
+                <ActivityIndicator size="small" color="#71717a" />
               ) : (
                 <Button.Label
                   className={
@@ -254,7 +254,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
       () =>
         isLoading ? (
           <View className="items-center justify-center py-8">
-            <ActivityIndicator size="large" color="#8e8e93" />
+            <ActivityIndicator size="large" color="#71717a" />
             <Text className="text-muted text-sm mt-2">
               Loading integrations...
             </Text>
@@ -286,13 +286,13 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
                   onPress={() => setIsOpen(false)}
                   className="w-8 h-8 rounded-full bg-muted/10 items-center justify-center active:opacity-60"
                 >
-                  <Cancel01Icon size={18} color="#8e8e93" />
+                  <Cancel01Icon size={18} color="#71717a" />
                 </Pressable>
               </View>
 
               <View className="px-4 pb-2">
                 <View className="flex-row items-center rounded-xl px-3 py-2 bg-muted/10">
-                  <Search01Icon size={18} color="#8e8e93" />
+                  <Search01Icon size={18} color="#71717a" />
                   <TextInput
                     className="flex-1 ml-2 text-foreground text-sm"
                     placeholder="Search tools..."
@@ -364,7 +364,7 @@ export function ConnectDrawerTrigger({ onOpen }: ConnectDrawerTriggerProps) {
         className="rounded-full"
         onPress={handleOpen}
       >
-        <Wrench01Icon size={18} color="#8e8e93" />
+        <Wrench01Icon size={18} color="#71717a" />
       </Button>
 
       <ConnectDrawer ref={drawerRef} onOpen={onOpen} />

@@ -123,13 +123,13 @@ export function CalendarFetchCard({
             <View key={dateKey} className="gap-2">
               {/* Date rail — line / text / line (mirrors web) */}
               <View className="flex-row items-center">
-                <View className="flex-1 h-px bg-zinc-700" />
+                <View className="flex-1 h-px bg-zinc-700/50" />
                 <Text className="text-zinc-500 text-xs px-3">
                   {dateKey === "Unscheduled"
                     ? "Unscheduled"
                     : formatDateWithRelative(dateKey)}
                 </Text>
-                <View className="flex-1 h-px bg-zinc-700" />
+                <View className="flex-1 h-px bg-zinc-700/50" />
               </View>
 
               {/* Events */}

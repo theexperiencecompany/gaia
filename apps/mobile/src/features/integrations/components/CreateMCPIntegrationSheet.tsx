@@ -281,7 +281,7 @@ export const CreateMCPIntegrationSheet = forwardRef<
 
   const fieldLabelStyle = {
     fontSize: fontSize.xs,
-    color: "#8e8e93",
+    color: "#71717a",
     fontWeight: "500" as const,
   };
 
@@ -326,7 +326,7 @@ export const CreateMCPIntegrationSheet = forwardRef<
               >
                 New MCP Integration
               </Text>
-              <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
+              <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
                 Connect an MCP server to extend GAIA&apos;s capabilities
               </Text>
             </View>
@@ -343,7 +343,7 @@ export const CreateMCPIntegrationSheet = forwardRef<
                 opacity: isFormBusy ? 0.4 : 1,
               }}
             >
-              <AppIcon icon={Cancel01Icon} size={16} color="#8e8e93" />
+              <AppIcon icon={Cancel01Icon} size={16} color="#71717a" />
             </Pressable>
           </View>
 
@@ -443,7 +443,7 @@ export const CreateMCPIntegrationSheet = forwardRef<
                         style={{
                           fontSize: fontSize.sm,
                           fontWeight: isSelected ? "600" : "400",
-                          color: isSelected ? "#00bbff" : "#8e8e93",
+                          color: isSelected ? "#00bbff" : "#71717a",
                         }}
                       >
                         {type === "none" ? "None" : "Bearer Token"}
@@ -512,19 +512,19 @@ export const CreateMCPIntegrationSheet = forwardRef<
                 })}
               >
                 {isTesting ? (
-                  <ActivityIndicator size="small" color="#8e8e93" />
+                  <ActivityIndicator size="small" color="#71717a" />
                 ) : (
                   <AppIcon
                     icon={FlashIcon}
                     size={15}
-                    color={form.serverUrl.trim() ? "#8e8e93" : "#4a4a4e"}
+                    color={form.serverUrl.trim() ? "#71717a" : "#4a4a4e"}
                   />
                 )}
                 <Text
                   style={{
                     fontSize: fontSize.sm,
                     fontWeight: "500",
-                    color: form.serverUrl.trim() ? "#8e8e93" : "#4a4a4e",
+                    color: form.serverUrl.trim() ? "#71717a" : "#4a4a4e",
                   }}
                 >
                   Test

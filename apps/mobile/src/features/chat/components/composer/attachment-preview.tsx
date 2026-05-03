@@ -5,7 +5,12 @@ import Animated, {
   FadeOut,
   LinearTransition,
 } from "react-native-reanimated";
-import { AppIcon, File01Icon, Image01Icon } from "@/components/icons";
+import {
+  AppIcon,
+  Cancel01Icon,
+  File01Icon,
+  Image01Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -48,7 +53,7 @@ function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          backgroundColor: "#3f3f46",
+          backgroundColor: "rgba(63,63,70,0.9)",
           borderRadius: 10,
           paddingLeft: spacing.sm,
           paddingRight: spacing.xs,
@@ -112,7 +117,7 @@ function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
         </View>
 
         <Pressable onPress={() => onRemove(attachment.localId)} hitSlop={8}>
-          <AppIcon icon={File01Icon} size={12} color="#a1a1aa" />
+          <AppIcon icon={Cancel01Icon} size={12} color="#a1a1aa" />
         </Pressable>
       </Surface>
     </Animated.View>

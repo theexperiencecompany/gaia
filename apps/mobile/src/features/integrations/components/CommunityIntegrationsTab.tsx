@@ -90,8 +90,8 @@ export function CommunityIntegrationsTab({
               <View key={index} className="flex-row items-center gap-3">
                 <Skeleton className="h-12 w-12 rounded-xl" />
                 <View className="flex-1 gap-2">
-                  <Skeleton className="h-4 w-32 rounded-lg" />
-                  <Skeleton className="h-3 w-48 rounded-lg" />
+                  <Skeleton className="h-4 w-32 rounded-xl" />
+                  <Skeleton className="h-3 w-48 rounded-xl" />
                 </View>
               </View>
             ))}

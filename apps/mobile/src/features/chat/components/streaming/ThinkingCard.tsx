@@ -41,7 +41,7 @@ function AnimatedDot({ delayMs, size }: { delayMs: number; size: number }) {
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: "#a78bfa",
+          backgroundColor: "#a1a1aa",
         },
       ]}
     />
@@ -83,13 +83,13 @@ export function ThinkingCard({ message }: ThinkingCardProps) {
         <AppIcon
           icon={Brain02Icon}
           size={moderateScale(16, 0.5)}
-          color="#a78bfa"
+          color="#a1a1aa"
         />
       </Animated.View>
       <Text
         style={{
           fontSize: fontSize.sm,
-          color: "#a78bfa",
+          color: "#71717a",
           fontWeight: "500",
         }}
       >

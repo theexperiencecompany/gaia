@@ -45,7 +45,7 @@ function IntegrationRow({ item }: { item: IntegrationListItem }) {
             resizeMode="contain"
           />
         ) : (
-          <View className="w-8 h-8 rounded-lg bg-zinc-700 items-center justify-center">
+          <View className="w-8 h-8 rounded-lg bg-zinc-800 items-center justify-center">
             <AppIcon icon={PlusSignIcon} size={16} color="#00bbff" />
           </View>
         )}
@@ -70,7 +70,7 @@ function IntegrationRow({ item }: { item: IntegrationListItem }) {
             <Text className="text-black text-xs font-semibold">Connect</Text>
           </View>
         ) : (
-          <View className="rounded-full bg-zinc-700 px-3 py-1">
+          <View className="rounded-full bg-zinc-700/50 px-3 py-1">
             <Text className="text-zinc-400 text-xs font-medium">
               {item.authType ?? "OAuth"}
             </Text>
@@ -97,7 +97,7 @@ export function IntegrationListCard({ data }: { data: IntegrationListData }) {
       />
 
       {data.message ? (
-        <Text className="text-zinc-300 text-sm mb-3">{data.message}</Text>
+        <Text className="text-zinc-200 text-sm mb-3">{data.message}</Text>
       ) : null}
 
       {hasItems ? (

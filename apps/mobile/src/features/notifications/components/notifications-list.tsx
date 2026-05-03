@@ -221,13 +221,11 @@ export function NotificationsList({
             height: 64,
             borderRadius: 32,
             backgroundColor: "rgba(255,255,255,0.04)",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.07)",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <AppIcon icon={Notification01Icon} size={28} color="#48484a" />
+          <AppIcon icon={Notification01Icon} size={28} color="#71717a" />
         </View>
         <View style={{ alignItems: "center", gap: 4 }}>
           <Text
@@ -241,7 +239,7 @@ export function NotificationsList({
           </Text>
           <Text
             style={{
-              color: "#8e8e93",
+              color: "#71717a",
               fontSize: fontSize.sm,
               textAlign: "center",
             }}
@@ -279,7 +277,7 @@ export function NotificationsList({
                 fontWeight: "600",
                 letterSpacing: 0.8,
                 textTransform: "uppercase",
-                color: "#8e8e93",
+                color: "#71717a",
                 paddingVertical: spacing.sm,
                 paddingHorizontal: 2,
                 marginTop: spacing.sm,

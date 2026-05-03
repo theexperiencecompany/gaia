@@ -22,7 +22,7 @@ interface SidebarProps {
 
 export const SIDEBAR_WIDTH = 300;
 
-const ACTIVE_BG = "rgba(255,255,255,0.08)";
+const ACTIVE_BG = "rgba(255,255,255,0.05)";
 const ACTIVE_TEXT = "#e4e4e7";
 const INACTIVE_TEXT = "#71717a";
 
@@ -55,7 +55,7 @@ function SidebarNav() {
   const isActive = (matchPrefix: string) => pathname.includes(matchPrefix);
 
   return (
-    <View style={{ paddingHorizontal: spacing.xs, paddingBottom: 4 }}>
+    <View style={{ paddingHorizontal: spacing.xs }}>
       {NAV_ITEMS.map((item) => {
         const active = isActive(item.matchPrefix);
         return (
@@ -68,7 +68,7 @@ function SidebarNav() {
               gap: spacing.sm,
               paddingHorizontal: spacing.sm + 4,
               paddingVertical: 11,
-              borderRadius: 8,
+              borderRadius: 12,
               backgroundColor: active || pressed ? ACTIVE_BG : "transparent",
             })}
           >
@@ -100,13 +100,13 @@ function SidebarNav() {
 
       <Text
         style={{
-          fontSize: 10,
+          fontSize: fontSize.xs,
           fontWeight: "500",
-          letterSpacing: 0.6,
+          letterSpacing: 0.05 * fontSize.xs,
           textTransform: "uppercase",
-          color: "#3a3a3c",
+          color: "#52525b",
           paddingHorizontal: spacing.sm + 4,
-          paddingTop: 12,
+          paddingTop: 16,
           paddingBottom: 4,
         }}
       >
@@ -121,7 +121,7 @@ export function SidebarContent({ onSelectChat, onNewChat }: SidebarProps) {
 
   return (
     <SafeAreaView
-      style={{ flex: 1, backgroundColor: "#0f1011" }}
+      style={{ flex: 1, backgroundColor: "#1a1a1a" }}
       edges={["top", "bottom"]}
     >
       <View style={{ flex: 1 }}>

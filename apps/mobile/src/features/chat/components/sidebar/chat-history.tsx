@@ -1,11 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import {
-  Button,
-  Divider,
-  PressableFeedback,
-  SkeletonGroup,
-} from "heroui-native";
+import { Button, PressableFeedback, SkeletonGroup } from "heroui-native";
 import { useCallback, useRef, useState } from "react";
 import {
   Alert,
@@ -23,15 +18,20 @@ import ReanimatedSwipeable, {
 import Reanimated, {
   type SharedValue,
   useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 import {
   AppIcon,
+  ArrowDown01Icon,
+  BubbleChatAddIcon,
   Delete02Icon,
   FavouriteIcon,
   PencilEdit02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { Divider } from "@/shared/components/ui/divider";
 import { useChatStore } from "@/stores/chat-store";
 import {
   deleteConversation,
@@ -93,13 +93,11 @@ function RenameModal({
       >
         <Pressable
           style={{
-            backgroundColor: "#18181b",
+            backgroundColor: "#1a1a1a",
             borderRadius: 12,
             padding: spacing.lg,
             width: "100%",
             maxWidth: 360,
-            borderWidth: 1,
-            borderColor: "#27272a",
           }}
           onPress={() => {}}
         >
@@ -129,8 +127,6 @@ function RenameModal({
             selectTextOnFocus
             style={{
               backgroundColor: "#09090b",
-              borderWidth: 1,
-              borderColor: "#27272a",
               borderRadius: 8,
               paddingHorizontal: spacing.md,
               paddingVertical: spacing.sm + 2,
@@ -181,7 +177,7 @@ function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
           justifyContent: "center",
           alignItems: "center",
           width: 72,
-          borderRadius: 8,
+          borderRadius: 12,
           marginVertical: 1,
           marginRight: 4,
           overflow: "hidden",
@@ -350,9 +346,9 @@ function ChatItem({
             paddingVertical: spacing.sm + 2,
             gap: spacing.sm,
             backgroundColor: isActive
-              ? "rgba(255,255,255,0.08)"
+              ? "rgba(255,255,255,0.05)"
               : "transparent",
-            borderRadius: 8,
+            borderRadius: 10,
             marginHorizontal: spacing.xs,
           }}
         >
@@ -400,7 +396,7 @@ function ChatItem({
           />
           <Text
             style={{
-              fontSize: fontSize.xs - 1,
+              fontSize: fontSize.xs,
               color: "#52525b",
             }}
           >
@@ -432,9 +428,9 @@ function ChatItem({
           <View
             style={{
               width: 36,
-              height: 4,
-              borderRadius: 2,
-              backgroundColor: "#3f3f46",
+              height: 5,
+              borderRadius: 2.5,
+              backgroundColor: "rgba(255,255,255,0.25)",
               alignSelf: "center",
               marginTop: 10,
               marginBottom: 14,
@@ -474,7 +470,7 @@ function ChatItem({
             })}
           >
             <AppIcon icon={FavouriteIcon} size={iconSize.sm} color="#a1a1aa" />
-            <Text style={{ fontSize: fontSize.base, color: "#ffffff" }}>
+            <Text style={{ fontSize: fontSize.md, color: "#ffffff" }}>
               {item.is_starred ? "Unstar" : "Star"}
             </Text>
           </Pressable>
@@ -501,7 +497,7 @@ function ChatItem({
               size={iconSize.sm}
               color="#a1a1aa"
             />
-            <Text style={{ fontSize: fontSize.base, color: "#ffffff" }}>
+            <Text style={{ fontSize: fontSize.md, color: "#ffffff" }}>
               Rename
             </Text>
           </Pressable>
@@ -522,7 +518,7 @@ function ChatItem({
             })}
           >
             <AppIcon icon={Delete02Icon} size={iconSize.sm} color="#ef4444" />
-            <Text style={{ fontSize: fontSize.base, color: "#ef4444" }}>
+            <Text style={{ fontSize: fontSize.md, color: "#ef4444" }}>
               Delete
             </Text>
           </Pressable>
@@ -558,6 +554,16 @@ function Section({
   onToggle,
 }: SectionProps) {
   const { spacing, fontSize } = useResponsive();
+  const rotation = useSharedValue(isExpanded ? 0 : -90);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  const handleToggle = () => {
+    rotation.value = withTiming(isExpanded ? -90 : 0, { duration: 200 });
+    onToggle();
+  };
 
   if (items.length === 0) return null;
 
@@ -565,7 +571,7 @@ function Section({
     <View style={{ marginBottom: 2 }}>
       <Divider className="mx-3 mb-1" />
       <PressableFeedback
-        onPress={onToggle}
+        onPress={handleToggle}
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -575,15 +581,19 @@ function Section({
       >
         <Text
           style={{
+            flex: 1,
             fontSize: fontSize.xs,
             color: "#52525b",
             fontWeight: "500",
             textTransform: "uppercase",
-            letterSpacing: 0.5,
+            letterSpacing: 0.05 * fontSize.xs,
           }}
         >
           {title}
         </Text>
+        <Reanimated.View style={chevronStyle}>
+          <AppIcon icon={ArrowDown01Icon} size={12} color="#52525b" />
+        </Reanimated.View>
       </PressableFeedback>
       {isExpanded &&
         items.map((item) => (
@@ -861,19 +871,34 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           padding: 24,
         }}
       >
-        <Text style={{ color: "#52525b", fontSize: 13, textAlign: "center" }}>
-          No conversations yet
-        </Text>
-        <Text
+        <View
           style={{
-            color: "#3f3f46",
-            fontSize: 12,
-            textAlign: "center",
-            marginTop: 4,
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+            paddingVertical: 32,
           }}
         >
-          Start a new chat to begin
-        </Text>
+          <AppIcon icon={BubbleChatAddIcon} size={24} color="#52525b" />
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              color: "#a1a1aa",
+              textAlign: "center",
+            }}
+          >
+            No conversations yet
+          </Text>
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              color: "#52525b",
+              textAlign: "center",
+            }}
+          >
+            Start a new chat to begin
+          </Text>
+        </View>
       </View>
     );
   }
@@ -900,7 +925,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
               color: "#52525b",
               fontWeight: "500",
               textTransform: "uppercase",
-              letterSpacing: 0.5,
+              letterSpacing: 0.05 * fontSize.xs,
             }}
           >
             {filteredConversations.length}{" "}

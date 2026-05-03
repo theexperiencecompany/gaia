@@ -86,7 +86,7 @@ function TwitterAvatar({
   }
   return (
     <View
-      className="items-center justify-center bg-zinc-700"
+      className="items-center justify-center bg-zinc-800"
       style={{ width: size, height: size, borderRadius: size / 2 }}
     >
       <Text

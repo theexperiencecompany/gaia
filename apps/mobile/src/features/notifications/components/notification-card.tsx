@@ -446,7 +446,7 @@ export function NotificationCard({
                     marginTop: 1,
                   }}
                 >
-                  <AppIcon icon={Tick02Icon} size={15} color="#8e8e93" />
+                  <AppIcon icon={Tick02Icon} size={15} color="#71717a" />
                 </Pressable>
               )}
             </View>

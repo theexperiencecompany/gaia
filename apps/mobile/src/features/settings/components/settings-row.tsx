@@ -19,7 +19,7 @@ export function SettingsGroup({ label, children }: SettingsGroupProps) {
         <Text
           style={{
             fontSize: fontSize.xs,
-            color: "#8e8e93",
+            color: "#71717a",
             textTransform: "uppercase",
             letterSpacing: 0.8,
             marginBottom: spacing.xs,
@@ -31,11 +31,9 @@ export function SettingsGroup({ label, children }: SettingsGroupProps) {
       ) : null}
       <View
         style={{
-          backgroundColor: "#1c1c1e",
-          borderRadius: 14,
+          backgroundColor: "#18181b",
+          borderRadius: 16,
           overflow: "hidden",
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.06)",
         }}
       >
         {children}
@@ -60,7 +58,7 @@ interface SettingsRowProps {
 export function SettingsRow({
   icon,
   iconColor = "#ffffff",
-  iconBg = "rgba(255,255,255,0.1)",
+  iconBg = "rgba(255,255,255,0.06)",
   title,
   subtitle,
   rightElement,
@@ -119,7 +117,7 @@ export function SettingsRow({
             <Text
               style={{
                 fontSize: fontSize.xs,
-                color: "#8e8e93",
+                color: "#71717a",
                 marginTop: 1,
               }}
               numberOfLines={2}
@@ -181,7 +179,7 @@ interface SettingsSwitchRowProps {
 export function SettingsSwitchRow({
   icon,
   iconColor = "#ffffff",
-  iconBg = "rgba(255,255,255,0.1)",
+  iconBg = "rgba(255,255,255,0.06)",
   title,
   subtitle,
   value,
@@ -203,7 +201,7 @@ export function SettingsSwitchRow({
           onValueChange={onValueChange}
           disabled={disabled}
           trackColor={{ false: "#3a3a3c", true: "rgba(22,193,255,0.6)" }}
-          thumbColor={value ? "#16c1ff" : "#8e8e93"}
+          thumbColor={value ? "#16c1ff" : "#71717a"}
         />
       }
     />

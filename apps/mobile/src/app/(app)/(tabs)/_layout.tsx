@@ -5,8 +5,9 @@ export default function TabsLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: "#060a14" },
-        animation: "none",
+        contentStyle: { backgroundColor: "#111111" },
+        animation: "fade",
+        animationDuration: 150,
       }}
     />
   );

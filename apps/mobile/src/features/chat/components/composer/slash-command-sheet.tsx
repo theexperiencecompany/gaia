@@ -2,6 +2,7 @@ import {
   BottomSheetFlatList,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { Spinner } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -10,7 +11,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import {
   AppIcon,
   Cancel01Icon,
@@ -166,7 +167,7 @@ export const SlashCommandSheet = forwardRef<
               style={{
                 width: 32,
                 height: 32,
-                borderRadius: 8,
+                borderRadius: 12,
                 backgroundColor: "#27272a",
                 alignItems: "center",
                 justifyContent: "center",
@@ -204,7 +205,7 @@ export const SlashCommandSheet = forwardRef<
               style={{
                 fontSize: fontSize.sm,
                 color: "#e4e4e7",
-                fontWeight: "400",
+                fontWeight: "500",
               }}
               numberOfLines={1}
             >
@@ -214,12 +215,10 @@ export const SlashCommandSheet = forwardRef<
 
           <View
             style={{
-              backgroundColor: "#27272a",
+              backgroundColor: "rgba(39,39,42,0.9)",
               paddingHorizontal: spacing.sm,
               paddingVertical: 2,
               borderRadius: 10,
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.06)",
             }}
           >
             <Text
@@ -249,7 +248,10 @@ export const SlashCommandSheet = forwardRef<
           enableDynamicSizing={false}
           enablePanDownToClose
           backgroundStyle={{ backgroundColor: "#141414" }}
-          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
+          handleIndicatorStyle={{
+            backgroundColor: "rgba(255,255,255,0.25)",
+            width: 36,
+          }}
           keyboardBehavior="interactive"
           keyboardBlurBehavior="restore"
         >
@@ -314,7 +316,7 @@ export const SlashCommandSheet = forwardRef<
                   padding: 0,
                 }}
                 placeholder="Search tools..."
-                placeholderTextColor="#6b6b6b"
+                placeholderTextColor="#71717a"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
@@ -340,9 +342,9 @@ export const SlashCommandSheet = forwardRef<
                   style={{
                     paddingHorizontal: spacing.sm + 2,
                     paddingVertical: spacing.xs + 2,
-                    borderRadius: 12,
+                    borderRadius: 8,
                     backgroundColor: isActive
-                      ? "rgba(63,63,70,0.5)"
+                      ? "rgba(255,255,255,0.1)"
                       : "transparent",
                   }}
                 >
@@ -371,10 +373,10 @@ export const SlashCommandSheet = forwardRef<
                 paddingVertical: 32,
               }}
             >
-              <ActivityIndicator size="large" color="#8e8e93" />
+              <Spinner size="lg" color="default" />
               <Text
                 style={{
-                  color: "#6b6b6b",
+                  color: "#71717a",
                   fontSize: fontSize.sm,
                   marginTop: spacing.sm,
                 }}

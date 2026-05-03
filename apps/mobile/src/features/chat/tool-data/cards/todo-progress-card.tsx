@@ -68,8 +68,8 @@ function TaskRow({
       <Text
         className={`text-xs flex-1 leading-relaxed ${
           todo.status === "cancelled"
-            ? "text-zinc-600 line-through"
-            : "text-zinc-300"
+            ? "text-zinc-500 line-through"
+            : "text-zinc-200"
         }`}
       >
         {todo.content}

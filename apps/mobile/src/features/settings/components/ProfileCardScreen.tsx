@@ -28,12 +28,12 @@ import { useResponsive } from "@/lib/responsive";
 
 // ─── Color tokens ─────────────────────────────────────────────────────────────
 const C = {
-  bg: "#0b0c0f",
+  bg: "#111111",
   cardBg: "#131416",
   surface: "#1a1c21",
   divider: "rgba(255,255,255,0.06)",
   text: "#ffffff",
-  textMuted: "#8e8e93",
+  textMuted: "#71717a",
   textSubtle: "#5a5a5e",
   primary: "#00bbff",
   primaryBg: "rgba(0,187,255,0.15)",

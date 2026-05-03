@@ -3,16 +3,17 @@ import "react-native-gesture-handler";
 if (__DEV__) require("../lib/reactotron");
 
 import {
+  AnonymousPro_400Regular,
+  AnonymousPro_400Regular_Italic,
+  AnonymousPro_700Bold,
+} from "@expo-google-fonts/anonymous-pro";
+import {
   Inter_400Regular,
   Inter_500Medium,
   Inter_600SemiBold,
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import {
-  RobotoMono_400Regular,
-  RobotoMono_500Medium,
-} from "@expo-google-fonts/roboto-mono";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import * as Linking from "expo-linking";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -39,7 +40,7 @@ SplashScreen.preventAutoHideAsync();
 function CrashRecoveryFallback() {
   return (
     <View
-      style={{ flex: 1, backgroundColor: "#060a14" }}
+      style={{ flex: 1, backgroundColor: "#111111" }}
       className="items-center justify-center p-8"
     >
       <Text className="text-white text-2xl font-bold mb-3 text-center">
@@ -115,8 +116,9 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    RobotoMono_400Regular,
-    RobotoMono_500Medium,
+    AnonymousPro_400Regular,
+    AnonymousPro_400Regular_Italic,
+    AnonymousPro_700Bold,
   });
   useEffect(() => {
     if (fontsLoaded) {
@@ -135,7 +137,7 @@ export default function RootLayout() {
           <ChatProvider>
             <ThemeProvider>
               <GestureHandlerRootView
-                style={{ flex: 1, backgroundColor: "#060a14" }}
+                style={{ flex: 1, backgroundColor: "#111111" }}
               >
                 <ScreenTracker />
                 <DeepLinkHandler />

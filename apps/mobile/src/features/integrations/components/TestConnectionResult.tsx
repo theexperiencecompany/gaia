@@ -61,7 +61,7 @@ export function TestConnectionResult({
       <Card variant="secondary" animation="disable-all" className="rounded-xl">
         <Card.Body className="flex-row items-center gap-2 py-3">
           <ActivityIndicator size="small" color="#00bbff" />
-          <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
+          <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
             Testing connection...
           </Text>
         </Card.Body>
@@ -115,8 +115,8 @@ export function TestConnectionResult({
             gap: spacing.xs,
           }}
         >
-          <AppIcon icon={Wrench01Icon} size={13} color="#8e8e93" />
-          <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
+          <AppIcon icon={Wrench01Icon} size={13} color="#71717a" />
+          <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
             {toolCount === 0
               ? "No tools discovered"
               : `${toolCount} tool${toolCount !== 1 ? "s" : ""} discovered`}

@@ -52,7 +52,7 @@ function FaviconImage({ url, size = 14 }: { url?: string; size?: number }) {
   if (!hostname || errored) {
     return (
       <View
-        className="rounded-full bg-zinc-700 items-center justify-center"
+        className="rounded-full bg-zinc-800 items-center justify-center"
         style={{ width: size, height: size }}
       >
         <AppIcon
@@ -95,7 +95,7 @@ function SourcesPill({
   return (
     <Pressable
       onPress={onToggle}
-      className="self-start flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-700 active:bg-zinc-600"
+      className="self-start flex-row items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-800 active:bg-zinc-700"
       android_ripple={{ color: "rgba(255,255,255,0.08)", borderless: false }}
     >
       {/* Overlapping favicon circles — mirrors web's -space-x-3 */}
@@ -120,7 +120,7 @@ function SourcesPill({
           </View>
         ))}
       </View>
-      <Text className="text-zinc-300 text-xs font-medium">
+      <Text className="text-zinc-200 text-xs font-medium">
         {expanded ? "Hide sources" : "Search Results"}
       </Text>
     </Pressable>

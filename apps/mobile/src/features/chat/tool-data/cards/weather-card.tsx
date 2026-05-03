@@ -195,7 +195,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
               >
                 {displayTemp}
               </Text>
-              <Text className="text-zinc-400 text-2xl font-light ml-1">
+              <Text className="text-zinc-400 text-2xl font-normal ml-1">
                 °{useFahrenheit ? "F" : (data.unit ?? "C")}
               </Text>
             </View>
@@ -216,7 +216,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
           {hasRichData && (
             <PressableFeedback
               onPress={() => setUseFahrenheit((p) => !p)}
-              className="rounded-full bg-zinc-700 px-3 py-1"
+              className="rounded-full bg-zinc-800 px-3 py-1"
             >
               <Text className="text-zinc-100 text-xs font-medium">
                 °{useFahrenheit ? "C" : "F"}

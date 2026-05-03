@@ -256,11 +256,11 @@ export function CalendarDeleteCard({
             >
               {/* Date rail */}
               <View className="flex-row items-center">
-                <View className="flex-1 h-px bg-zinc-700" />
+                <View className="flex-1 h-px bg-zinc-700/50" />
                 <Text className="px-3 text-xs text-zinc-500">
                   {formatDateWithRelative(dateKey)}
                 </Text>
-                <View className="flex-1 h-px bg-zinc-700" />
+                <View className="flex-1 h-px bg-zinc-700/50" />
               </View>
 
               {/* Events */}

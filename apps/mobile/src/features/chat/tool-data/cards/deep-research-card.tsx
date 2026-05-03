@@ -54,7 +54,7 @@ function FaviconImage({ url }: { url?: string }) {
 
   if (!hostname || errored) {
     return (
-      <View className="w-4 h-4 rounded-full bg-zinc-700 items-center justify-center">
+      <View className="w-4 h-4 rounded-full bg-zinc-800 items-center justify-center">
         <AppIcon icon={Globe02Icon} size={10} color="#71717a" />
       </View>
     );
@@ -153,8 +153,8 @@ function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
               key={`step-${index}-${step.slice(0, 10)}`}
               className="flex-row items-center gap-1.5"
             >
-              <View className="w-1 h-1 rounded-full bg-zinc-600" />
-              <Text className="text-zinc-500 text-[11px]" numberOfLines={1}>
+              <View className="w-1 h-1 rounded-full bg-zinc-500" />
+              <Text className="text-zinc-500 text-xs" numberOfLines={1}>
                 {step}
               </Text>
             </View>
@@ -165,7 +165,7 @@ function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
       {/* Recent sources being visited */}
       {recentSources.length > 0 && (
         <View>
-          <Text className="text-zinc-400 text-[11px] mb-1.5">
+          <Text className="text-zinc-400 text-xs mb-1.5">
             {totalSources > 0
               ? `Visiting sources (${totalSources} found)`
               : "Visiting sources"}

@@ -95,7 +95,7 @@ function stripHtml(input: string): string {
 }
 
 function Separator() {
-  return <View className="h-px bg-zinc-700 my-1.5" />;
+  return <View className="h-px bg-zinc-700/50 my-1.5" />;
 }
 
 function EditButton({ onPress }: { onPress?: () => void }) {
@@ -120,7 +120,7 @@ export function EmailComposeCard({
   const bodyText = data.is_html ? stripHtml(data.body) : data.body;
 
   return (
-    <View className="mx-4 my-1 overflow-hidden rounded-3xl bg-zinc-800">
+    <View className="mx-4 my-1 overflow-hidden rounded-2xl bg-zinc-800">
       {/* Header */}
       <View className="px-6 pt-4 pb-2 flex-row items-center gap-2">
         <GmailIcon width={18} height={18} />

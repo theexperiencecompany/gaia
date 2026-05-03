@@ -70,7 +70,7 @@ function NotificationRow({ item }: { item: NotificationItem }) {
           </View>
           {!!body && (
             <Text
-              className="text-sm font-light text-zinc-400 mt-1 leading-snug"
+              className="text-sm font-normal text-zinc-400 mt-1 leading-snug"
               numberOfLines={2}
             >
               {body}
@@ -80,8 +80,8 @@ function NotificationRow({ item }: { item: NotificationItem }) {
             {!!relativeTime && (
               <Text className="text-xs text-zinc-500">{relativeTime}</Text>
             )}
-            <View className="px-1.5 py-0.5 rounded-full bg-zinc-700">
-              <Text className="text-[10px] text-zinc-400 capitalize">
+            <View className="px-1.5 py-0.5 rounded-full bg-zinc-800">
+              <Text className="text-xs text-zinc-400 capitalize">
                 {categoryLabel}
               </Text>
             </View>
@@ -117,7 +117,7 @@ export function NotificationCard({ data }: { data: NotificationData }) {
         {/* Empty state — matches web: large icon + messages */}
         <View className="py-8 items-center">
           <AppIcon icon={Notification01Icon} size={40} color="#3f3f46" />
-          <Text className="text-sm font-medium text-zinc-300 mt-4">
+          <Text className="text-sm font-medium text-zinc-200 mt-4">
             No notifications found
           </Text>
           <Text className="text-xs text-zinc-400 mt-1 text-center">
@@ -138,8 +138,8 @@ export function NotificationCard({ data }: { data: NotificationData }) {
         </Text>
         <View className="flex-row items-center gap-1.5">
           {/* Total count badge */}
-          <View className="px-2 py-0.5 rounded-full bg-zinc-700">
-            <Text className="text-zinc-300 text-xs font-medium">{count}</Text>
+          <View className="px-2 py-0.5 rounded-full bg-zinc-800">
+            <Text className="text-zinc-200 text-xs font-medium">{count}</Text>
           </View>
           {/* Unread badge */}
           {unreadCount > 0 && (
@@ -169,7 +169,8 @@ export function NotificationCard({ data }: { data: NotificationData }) {
 
       {/* Footer: unread summary — matches web */}
       {unreadCount > 0 && (
-        <View className="border-t border-zinc-700 mt-3 pt-3">
+        <View className="mt-3 pt-3">
+          <View className="h-px bg-zinc-700/50 mb-3" />
           <Text className="text-sm text-zinc-400">
             {unreadCount} unread notification{unreadCount !== 1 ? "s" : ""}
           </Text>

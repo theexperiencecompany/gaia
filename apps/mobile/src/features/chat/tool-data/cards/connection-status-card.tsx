@@ -40,7 +40,7 @@ const STATUS_CONFIG: Record<
   disconnected: {
     label: "Disconnected",
     color: "#71717a",
-    bgClass: "bg-zinc-700",
+    bgClass: "bg-zinc-700/50",
     textClass: "text-zinc-400",
   },
   error: {
@@ -76,7 +76,7 @@ export function ConnectionStatusCard({ data }: { data: ConnectionStatusData }) {
       <View
         className={`flex-row items-start gap-3 ${data.message || data.error_detail ? "mb-3" : "mb-3"}`}
       >
-        <View className="w-9 h-9 rounded-xl bg-zinc-700 items-center justify-center shrink-0">
+        <View className="w-9 h-9 rounded-xl bg-zinc-800 items-center justify-center shrink-0">
           {icon ?? <AppIcon icon={ConnectIcon} size={18} color="#a1a1aa" />}
         </View>
 
@@ -104,9 +104,7 @@ export function ConnectionStatusCard({ data }: { data: ConnectionStatusData }) {
               ) : (
                 <View className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
               )}
-              <Text
-                className={`text-[11px] font-medium ${statusConfig.textClass}`}
-              >
+              <Text className={`text-xs font-medium ${statusConfig.textClass}`}>
                 {statusConfig.label}
               </Text>
             </View>
@@ -131,10 +129,10 @@ export function ConnectionStatusCard({ data }: { data: ConnectionStatusData }) {
       {/* Manage button */}
       <Pressable
         onPress={handleManage}
-        className="rounded-xl bg-zinc-700 items-center justify-center py-2.5"
+        className="rounded-xl bg-zinc-800 items-center justify-center py-2.5"
         android_ripple={{ color: "rgba(255,255,255,0.05)" }}
       >
-        <Text className="text-zinc-300 text-sm font-medium">
+        <Text className="text-zinc-200 text-sm font-medium">
           Manage Integrations
         </Text>
       </Pressable>

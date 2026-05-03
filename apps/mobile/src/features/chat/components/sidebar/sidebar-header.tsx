@@ -1,3 +1,4 @@
+import { Image } from "expo-image";
 import { PressableFeedback } from "heroui-native";
 import { TextInput, View } from "react-native";
 import {
@@ -6,8 +7,9 @@ import {
   PencilEdit02Icon,
   Search01Icon,
 } from "@/components/icons";
-import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+
+const GaiaLogo = require("@shared/assets/logo/logo.svg");
 
 interface SidebarHeaderProps {
   onNewChat: () => void;
@@ -35,26 +37,21 @@ export function SidebarHeader({
           paddingBottom: spacing.sm,
         }}
       >
-        <Text
-          style={{
-            fontSize: fontSize.lg,
-            fontWeight: "700",
-            color: "#ffffff",
-            letterSpacing: -0.3,
-          }}
-        >
-          GAIA
-        </Text>
+        <Image
+          source={GaiaLogo}
+          style={{ width: 28, height: 28, borderRadius: 6, marginRight: 10 }}
+          contentFit="contain"
+        />
         <PressableFeedback
           onPress={onNewChat}
           hitSlop={8}
           style={{
             padding: 8,
             borderRadius: 8,
-            backgroundColor: "rgba(255,255,255,0.06)",
+            backgroundColor: "rgba(0,187,255,0.1)",
           }}
         >
-          <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#a1a1aa" />
+          <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#00bbff" />
         </PressableFeedback>
       </View>
 
@@ -74,8 +71,8 @@ export function SidebarHeader({
             style={{
               fontSize: fontSize.sm,
               color: "#ffffff",
-              backgroundColor: "#1c1c1e",
-              borderRadius: moderateScale(10, 0.5),
+              backgroundColor: "#18181b",
+              borderRadius: 8,
               paddingHorizontal: moderateScale(12, 0.5),
               paddingVertical: spacing.sm,
               paddingLeft: moderateScale(36, 0.5),

@@ -79,8 +79,8 @@ function StreamingCursor() {
   useEffect(() => {
     opacity.value = withRepeat(
       withSequence(
-        withTiming(0, { duration: 300 }),
-        withTiming(1, { duration: 300 }),
+        withTiming(0, { duration: 450 }),
+        withTiming(1, { duration: 450 }),
       ),
       -1,
       false,
@@ -98,7 +98,7 @@ function StreamingCursor() {
         {
           width: 2,
           height: 16,
-          backgroundColor: "#ffffff",
+          backgroundColor: "rgba(255,255,255,0.75)",
           borderRadius: 1,
           marginLeft: 2,
           alignSelf: "flex-end",
@@ -127,7 +127,7 @@ function MessageBubble({
 }: MessageBubbleProps) {
   const { spacing, fontSize, moderateScale } = useResponsive();
 
-  // Sent: dark pill, right-aligned
+  // Sent: brand cyan pill, right-aligned
   if (variant === "sent") {
     const borderRadius = moderateScale(20, 0.5);
     const br = moderateScale(5, 0.5);
@@ -143,15 +143,15 @@ function MessageBubble({
       <View
         style={{
           alignSelf: "flex-end",
-          backgroundColor: "rgba(28,28,32,0.95)",
+          backgroundColor: "#00bbff",
           borderRadius,
           borderTopRightRadius,
           borderBottomRightRadius,
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm + 2,
+          paddingHorizontal: 20,
+          paddingVertical: 8,
         }}
       >
-        <Text style={{ color: "#ffffff", fontSize: fontSize.base }}>
+        <Text style={{ color: "#000000", fontSize: fontSize.base }}>
           {children ?? message}
         </Text>
       </View>
@@ -169,16 +169,31 @@ function MessageBubble({
     );
   }
 
-  // Received: no background, plain text with action row
+  // Received: zinc-800 bubble, plain text with action row
   const showActions =
     (grouped === "last" || grouped === "none") && !isStreaming;
+
+  const recvBorderRadius = moderateScale(20, 0.5);
+  const recvBr = moderateScale(5, 0.5);
+  let recvBorderTopLeftRadius = recvBorderRadius;
+  let recvBorderBottomLeftRadius = recvBorderRadius;
+  if (grouped === "first") recvBorderBottomLeftRadius = recvBr;
+  else if (grouped === "middle") {
+    recvBorderTopLeftRadius = recvBr;
+    recvBorderBottomLeftRadius = recvBr;
+  } else if (grouped === "last") recvBorderTopLeftRadius = recvBr;
 
   return (
     <View style={{ alignSelf: "flex-start", width: "100%" }}>
       <View
         style={{
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.xs + 2,
+          backgroundColor: "#27272a",
+          borderRadius: recvBorderRadius,
+          borderTopLeftRadius: recvBorderTopLeftRadius,
+          borderBottomLeftRadius: recvBorderBottomLeftRadius,
+          paddingHorizontal: 20,
+          paddingVertical: 8,
+          alignSelf: "flex-start",
         }}
       >
         {children ?? (

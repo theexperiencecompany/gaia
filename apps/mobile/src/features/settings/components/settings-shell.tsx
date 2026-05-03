@@ -159,12 +159,10 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
           alignItems: "center",
           gap: spacing.md,
           backgroundColor: pressed
-            ? "rgba(255,255,255,0.04)"
+            ? "rgba(255,255,255,0.05)"
             : "rgba(255,255,255,0.03)",
           borderRadius: 16,
           padding: spacing.md,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.07)",
         })}
       >
         <View
@@ -230,9 +228,7 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
               style={{
                 fontSize: 10,
                 color: "#00bbff",
-                fontWeight: "600",
-                letterSpacing: 0.4,
-                textTransform: "uppercase",
+                fontWeight: "400",
               }}
             >
               GAIA Free
@@ -256,7 +252,7 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
         <SettingsRow
           icon={Settings01Icon}
           iconBg="rgba(255,255,255,0.07)"
-          iconColor="#8e8e93"
+          iconColor="#71717a"
           title="Preferences"
           subtitle="Theme, language, and display options"
           showChevron
@@ -265,7 +261,7 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
         <SettingsRow
           icon={Notification01Icon}
           iconBg="rgba(255,255,255,0.07)"
-          iconColor="#8e8e93"
+          iconColor="#71717a"
           title="Notifications"
           subtitle="Alerts, sounds, and delivery settings"
           showChevron
@@ -279,7 +275,7 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
         <SettingsRow
           icon={BrainIcon}
           iconBg="rgba(255,255,255,0.07)"
-          iconColor="#8e8e93"
+          iconColor="#71717a"
           title="Memory"
           subtitle="What GAIA remembers about you"
           showChevron
@@ -307,7 +303,7 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
         <SettingsRow
           icon={Analytics01Icon}
           iconBg="rgba(255,255,255,0.07)"
-          iconColor="#8e8e93"
+          iconColor="#71717a"
           title="Usage"
           subtitle="Messages and API usage this month"
           showChevron
@@ -316,7 +312,7 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
         <SettingsRow
           icon={CreditCardIcon}
           iconBg="rgba(255,255,255,0.07)"
-          iconColor="#8e8e93"
+          iconColor="#71717a"
           title="Subscription"
           subtitle="Manage your plan and billing"
           showChevron
@@ -351,7 +347,7 @@ export function SettingsShell() {
     const SectionComponent = SECTION_COMPONENTS[activeSection];
     return (
       <SafeAreaView
-        style={{ flex: 1, backgroundColor: "#0b0c0f" }}
+        style={{ flex: 1, backgroundColor: "#111111" }}
         edges={["bottom"]}
       >
         <SettingsHeader
@@ -365,7 +361,7 @@ export function SettingsShell() {
 
   return (
     <SafeAreaView
-      style={{ flex: 1, backgroundColor: "#0b0c0f" }}
+      style={{ flex: 1, backgroundColor: "#111111" }}
       edges={["bottom"]}
     >
       <SettingsHeader title="Settings" onBack={() => router.back()} />

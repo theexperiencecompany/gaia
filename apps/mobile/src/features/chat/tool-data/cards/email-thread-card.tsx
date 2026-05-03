@@ -116,7 +116,7 @@ function getBodyText(message: EmailThreadMessage): string {
 function PillLabel({ children }: { children: string }) {
   return (
     <View className="px-2 py-0.5 rounded-md bg-zinc-700/60">
-      <Text className="text-zinc-400 text-[11px] font-medium">{children}</Text>
+      <Text className="text-zinc-400 text-xs font-medium">{children}</Text>
     </View>
   );
 }
@@ -147,7 +147,7 @@ function MessageItem({
           )}
           {!!senderEmail && (
             <Text
-              className="text-zinc-500 text-xs font-light shrink"
+              className="text-zinc-500 text-xs font-normal shrink"
               numberOfLines={1}
             >
               {senderEmail}

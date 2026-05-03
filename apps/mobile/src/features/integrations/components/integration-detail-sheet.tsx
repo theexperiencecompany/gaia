@@ -306,7 +306,7 @@ function TestResultBanner({ isLoading, result, error }: TestResultBannerProps) {
         }}
       >
         <ActivityIndicator size="small" color="#00bbff" />
-        <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
+        <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
           Testing connection...
         </Text>
       </View>
@@ -572,7 +572,7 @@ export const IntegrationDetailSheet = forwardRef<
           snapPoints={snapPoints}
           enableDynamicSizing={false}
           enablePanDownToClose
-          backgroundStyle={{ backgroundColor: "#0b0c0f" }}
+          backgroundStyle={{ backgroundColor: "#111111" }}
           handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
         >
           {integration ? (
@@ -752,7 +752,7 @@ export const IntegrationDetailSheet = forwardRef<
                             padding: spacing.md,
                             color: "#fff",
                             fontSize: fontSize.sm,
-                            backgroundColor: "#1c1c1e",
+                            backgroundColor: "#18181b",
                           }}
                         />
                       </View>

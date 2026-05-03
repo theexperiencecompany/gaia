@@ -80,7 +80,13 @@ export default function AppLayout() {
               name="(tabs)"
               options={{ animation: "none", animationDuration: 0 }}
             />
-            <Stack.Screen name="c/[id]" options={{ animation: "none" }} />
+            <Stack.Screen
+              name="c/[id]"
+              options={{
+                animation: "slide_from_right",
+                animationDuration: 280,
+              }}
+            />
             <Stack.Screen
               name="workflows/[id]"
               options={{ animation: "slide_from_right" }}

@@ -256,11 +256,11 @@ export function CalendarOptionsCard({
             <View key={dateKey} className="gap-3">
               {/* Date rail */}
               <View className="flex-row items-center">
-                <View className="flex-1 h-px bg-zinc-700" />
+                <View className="flex-1 h-px bg-zinc-700/50" />
                 <Text className="text-zinc-500 text-xs px-3">
                   {formatDateWithRelative(dateKey)}
                 </Text>
-                <View className="flex-1 h-px bg-zinc-700" />
+                <View className="flex-1 h-px bg-zinc-700/50" />
               </View>
 
               {/* Events */}

@@ -108,7 +108,7 @@ function EmailRow({
       {/* Sender name — fixed width so subjects align */}
       <View className="w-28 flex-shrink-0">
         <Text
-          className={`text-sm ${email.is_unread ? "font-semibold text-zinc-100" : "font-medium text-zinc-300"}`}
+          className={`text-sm ${email.is_unread ? "font-semibold text-zinc-100" : "font-medium text-zinc-200"}`}
           numberOfLines={1}
         >
           {senderName}

@@ -64,7 +64,7 @@ export function LinkedAccountsSection() {
           <Card
             key={platform.id}
             variant="secondary"
-            className="rounded-3xl bg-surface"
+            className="rounded-2xl bg-surface"
           >
             <Card.Body className="flex-row items-center gap-4 px-4 py-4">
               <Image

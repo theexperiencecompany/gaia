@@ -59,7 +59,7 @@ function getActionLabel(action?: string): string {
 function ActionBadge({ label }: { label: string }) {
   return (
     <View className="px-2 py-0.5 rounded-full bg-[#00bbff]/10">
-      <Text className="text-[11px] font-medium text-[#00bbff] capitalize">
+      <Text className="text-xs font-medium text-[#00bbff] capitalize">
         {label}
       </Text>
     </View>
@@ -124,7 +124,7 @@ export function GoogleDocsCard({ data }: { data: GoogleDocsData }) {
             </Text>
             <View className="flex-row items-center gap-2 mt-1 flex-wrap">
               {!!doc.modified_time && (
-                <Text className="text-[11px] text-zinc-500">
+                <Text className="text-xs text-zinc-500">
                   Modified {formatDate(doc.modified_time)}
                 </Text>
               )}
@@ -134,7 +134,7 @@ export function GoogleDocsCard({ data }: { data: GoogleDocsData }) {
 
           {/* Open link indicator */}
           {!!url && (
-            <View className="flex-shrink-0 flex-row items-center gap-1.5 bg-zinc-700 rounded-xl px-3 py-2">
+            <View className="flex-shrink-0 flex-row items-center gap-1.5 bg-zinc-800 rounded-xl px-3 py-2">
               <AppIcon
                 icon={SquareArrowUpRight02Icon}
                 size={14}

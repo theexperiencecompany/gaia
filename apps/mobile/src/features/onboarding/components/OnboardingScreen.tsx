@@ -24,15 +24,15 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const C = {
   bg: "#060a14",
-  cardBg: "#0d1117",
+  cardBg: "#111111",
   border: "rgba(255,255,255,0.08)",
   text: "#ffffff",
-  textMuted: "#8e8e93",
+  textMuted: "#71717a",
   primary: "#00bbff",
   primaryBg: "rgba(0,187,255,0.12)",
   primaryBorder: "rgba(0,187,255,0.3)",
   success: "#30d158",
-  successBg: "rgba(48,209,88,0.12)",
+  successBg: "rgba(52,211,153,0.1)",
   dotInactive: "rgba(255,255,255,0.2)",
 };
 
@@ -236,9 +236,9 @@ function ConnectIntegrationStep({
               disabled={isConnecting || isConnected}
               style={{
                 width: (SCREEN_WIDTH - 72) / 3,
-                backgroundColor: isConnected ? C.successBg : C.cardBg,
-                borderWidth: 1,
-                borderColor: isConnected ? C.success : C.primaryBorder,
+                backgroundColor: isConnected
+                  ? C.successBg
+                  : "rgba(255,255,255,0.04)",
                 borderRadius: 16,
                 padding: 16,
                 alignItems: "center",
@@ -324,9 +324,7 @@ function CreateWorkflowStep({
           <View
             key={workflow.id}
             style={{
-              backgroundColor: C.cardBg,
-              borderWidth: 1,
-              borderColor: C.border,
+              backgroundColor: "rgba(255,255,255,0.04)",
               borderRadius: 16,
               padding: 16,
               flexDirection: "row",

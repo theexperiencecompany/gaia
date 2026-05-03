@@ -38,7 +38,7 @@ function PersonRow({ person }: { person: PeopleSearchData }) {
     >
       {/* Name column — fixed width matches web's w-40 */}
       <View className="w-40 shrink-0">
-        <Text className="text-sm font-medium text-zinc-300" numberOfLines={1}>
+        <Text className="text-sm font-medium text-zinc-200" numberOfLines={1}>
           {person.name}
         </Text>
       </View>
@@ -93,7 +93,7 @@ export function PeopleSearchCard({ data }: { data: PeopleSearchData[] }) {
                 }
               >
                 {/* Divider between rows — matches web's divide-y divide-zinc-700 */}
-                {index > 0 && <View className="h-px bg-zinc-700 mx-3" />}
+                {index > 0 && <View className="h-px bg-zinc-700/50 mx-3" />}
                 <PersonRow person={person} />
               </View>
             ))}

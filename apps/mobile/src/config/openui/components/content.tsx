@@ -299,7 +299,7 @@ function GalleryLightbox({
                 style={{ width, height: height * 0.75 }}
               />
               {item.caption ? (
-                <Text className="text-sm text-zinc-300 mt-3 px-6 text-center">
+                <Text className="text-sm text-zinc-200 mt-3 px-6 text-center">
                   {item.caption}
                 </Text>
               ) : null}
@@ -317,7 +317,7 @@ function GalleryLightbox({
             justifyContent: "center",
           }}
         >
-          <Text className="text-sm text-zinc-300 tabular-nums">
+          <Text className="text-sm text-zinc-200 tabular-nums">
             {activeIndex + 1} / {images.length}
           </Text>
           <Pressable
@@ -736,7 +736,7 @@ export function CalendarMiniView(props: z.infer<typeof calendarMiniSchema>) {
                   <Text
                     className={
                       cell.inMonth
-                        ? "text-xs text-zinc-300 text-center"
+                        ? "text-xs text-zinc-200 text-center"
                         : "text-xs text-zinc-700 text-center"
                     }
                   >
@@ -778,7 +778,7 @@ export function CalendarMiniView(props: z.infer<typeof calendarMiniSchema>) {
                     CALENDAR_DOT_COLOR.default,
                 }}
               />
-              <Text className="text-xs text-zinc-300 flex-1">{d.label}</Text>
+              <Text className="text-xs text-zinc-200 flex-1">{d.label}</Text>
               <Text className="text-xs text-zinc-500">{d.date}</Text>
             </View>
           ))}
@@ -923,10 +923,10 @@ function CarouselSlide({
               <Pressable
                 key={action.value}
                 onPress={() => onAction(action.value)}
-                className="rounded-full bg-zinc-700/60 active:bg-zinc-700"
+                className="rounded-full bg-zinc-800 active:bg-zinc-700"
                 style={{ paddingHorizontal: 12, paddingVertical: 6 }}
               >
-                <Text className="text-xs font-medium text-zinc-300">
+                <Text className="text-xs font-medium text-zinc-200">
                   {action.label}
                 </Text>
               </Pressable>
@@ -1072,7 +1072,7 @@ function TreeNodeItem({ node, depth }: { node: TreeNode; depth: number }) {
           <Text
             className={
               hasChildren
-                ? "text-sm font-medium text-zinc-300"
+                ? "text-sm font-medium text-zinc-200"
                 : "text-sm text-zinc-400"
             }
           >

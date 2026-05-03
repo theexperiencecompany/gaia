@@ -52,7 +52,7 @@ const STATUS_CONFIG: Record<
   { bg: string; text: string; label: string }
 > = {
   open: { bg: "bg-emerald-400/10", text: "text-emerald-400", label: "Open" },
-  closed: { bg: "bg-zinc-700", text: "text-zinc-400", label: "Closed" },
+  closed: { bg: "bg-zinc-700/50", text: "text-zinc-400", label: "Closed" },
   pending: {
     bg: "bg-amber-400/10",
     text: "text-amber-400",
@@ -68,7 +68,7 @@ const STATUS_CONFIG: Record<
 // -- Divider ------------------------------------------------------------------
 
 function Divider() {
-  return <View className="h-px bg-zinc-700 my-1.5" />;
+  return <View className="h-px bg-zinc-700/50 my-1.5" />;
 }
 
 // -- Pill badge ---------------------------------------------------------------
@@ -84,7 +84,7 @@ function Pill({
 }) {
   return (
     <View className={`self-start rounded-full px-2.5 py-0.5 ${bg}`}>
-      <Text className={`text-[11px] font-medium ${text}`}>{label}</Text>
+      <Text className={`text-xs font-medium ${text}`}>{label}</Text>
     </View>
   );
 }
@@ -120,12 +120,12 @@ function EditSheet({
             key={t}
             onPress={() => setDraft({ ...draft, type: t })}
             className={`flex-1 rounded-xl py-2 items-center ${
-              draft.type === t ? "bg-primary" : "bg-zinc-700"
+              draft.type === t ? "bg-primary" : "bg-zinc-800"
             }`}
           >
             <Text
               className={`text-xs font-semibold ${
-                draft.type === t ? "text-black" : "text-zinc-300"
+                draft.type === t ? "text-black" : "text-zinc-200"
               }`}
             >
               {t === "feature" ? "Feature Request" : "Support"}
@@ -136,7 +136,7 @@ function EditSheet({
 
       {/* Title input */}
       <Text className="text-zinc-400 text-xs mb-1.5">Title</Text>
-      <View className="rounded-xl bg-zinc-700 px-3 py-2 mb-3">
+      <View className="rounded-xl bg-zinc-800 px-3 py-2 mb-3">
         <TextInput
           value={draft.title ?? ""}
           onChangeText={(v) => setDraft({ ...draft, title: v })}
@@ -152,7 +152,7 @@ function EditSheet({
 
       {/* Description input */}
       <Text className="text-zinc-400 text-xs mb-1.5">Description</Text>
-      <View className="rounded-xl bg-zinc-700 px-3 py-2 mb-4">
+      <View className="rounded-xl bg-zinc-800 px-3 py-2 mb-4">
         <TextInput
           value={draft.description ?? ""}
           onChangeText={(v) => setDraft({ ...draft, description: v })}
@@ -174,9 +174,9 @@ function EditSheet({
       <View className="flex-row justify-end gap-2">
         <Pressable
           onPress={onClose}
-          className="rounded-full bg-zinc-700 px-4 py-2"
+          className="rounded-full bg-zinc-800 px-4 py-2"
         >
-          <Text className="text-zinc-300 text-sm font-medium">Cancel</Text>
+          <Text className="text-zinc-200 text-sm font-medium">Cancel</Text>
         </Pressable>
         <Pressable
           onPress={() => onSave(draft)}

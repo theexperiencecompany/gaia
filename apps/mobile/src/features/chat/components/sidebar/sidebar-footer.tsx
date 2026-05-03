@@ -4,10 +4,10 @@ import { AppIcon, ArrowRight01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
+import { Divider } from "@/shared/components/ui/divider";
 
-const DIVIDER_COLOR = "#27272a";
 const MUTED_COLOR = "#52525b";
-const AVATAR_BG = "#18181b";
+const AVATAR_BG = "#27272a";
 const AVATAR_ACCENT = "#00bbff";
 
 export function SidebarFooter() {
@@ -29,7 +29,7 @@ export function SidebarFooter() {
   if (isLoading) {
     return (
       <>
-        <View style={{ height: 1, backgroundColor: DIVIDER_COLOR }} />
+        <Divider className="bg-zinc-700/30" />
         <View
           style={{
             paddingVertical: spacing.lg,
@@ -45,14 +45,14 @@ export function SidebarFooter() {
 
   return (
     <>
-      <View style={{ height: 1, backgroundColor: DIVIDER_COLOR }} />
+      <Divider className="bg-zinc-700/30" />
       <Pressable
         onPress={() => router.push("/(app)/settings")}
         style={({ pressed }) => ({
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm + 4,
+          paddingVertical: spacing.md,
           gap: spacing.sm + 2,
           opacity: pressed ? 0.7 : 1,
         })}
@@ -97,14 +97,14 @@ export function SidebarFooter() {
               fontSize: 10,
               color: MUTED_COLOR,
               textTransform: "uppercase",
-              fontWeight: "600",
-              letterSpacing: 0.8,
+              fontWeight: "400",
+              letterSpacing: 0.3,
             }}
           >
             GAIA Free
           </Text>
         </View>
-        <AppIcon icon={ArrowRight01Icon} size={14} color="#3a3a3c" />
+        <AppIcon icon={ArrowRight01Icon} size={14} color="#71717a" />
       </Pressable>
     </>
   );

@@ -234,7 +234,7 @@ function InlineContent({ segments }: { segments: InlineSegment[] }) {
   }, []);
 
   return (
-    <RNText style={{ color: COLORS.text, fontSize: 16, lineHeight: 23 }}>
+    <RNText style={{ color: COLORS.text, fontSize: 15, lineHeight: 23 }}>
       {segments.map((seg, idx) => {
         const key = segmentKey(seg, idx);
         switch (seg.type) {
@@ -300,17 +300,35 @@ function HeadingBlock({
   segments: InlineSegment[];
 }) {
   const sizeMap: Record<number, number> = {
-    1: 24,
-    2: 21,
-    3: 18,
-    4: 16,
+    1: 28,
+    2: 22,
+    3: 19,
+    4: 17,
     5: 15,
-    6: 14,
+    6: 13,
+  };
+  const marginTopMap: Record<number, number> = {
+    1: 24,
+    2: 20,
+    3: 16,
+    4: 12,
+    5: 8,
+    6: 8,
+  };
+  const marginBottomMap: Record<number, number> = {
+    1: 16,
+    2: 12,
+    3: 8,
+    4: 6,
+    5: 4,
+    6: 4,
   };
   const fontSize = sizeMap[level] ?? 15;
+  const marginTop = marginTopMap[level] ?? 8;
+  const marginBottom = marginBottomMap[level] ?? 4;
 
   return (
-    <View style={{ marginTop: level <= 2 ? 12 : 8, marginBottom: 4 }}>
+    <View style={{ marginTop, marginBottom }}>
       <RNText
         style={{
           color: COLORS.text,
@@ -347,14 +365,19 @@ function HeadingBlock({
 }
 
 function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
+  const handleLinkPress = useCallback((url: string) => {
+    Linking.openURL(url);
+  }, []);
+
   return (
     <View
       style={{
         borderLeftWidth: 3,
-        borderLeftColor: COLORS.blockquoteBorder,
+        borderLeftColor: "#d4d4d8",
         paddingLeft: 12,
-        paddingVertical: 4,
+        paddingVertical: 6,
         marginVertical: 6,
+        backgroundColor: "rgba(212,212,216,0.08)",
       }}
     >
       <RNText
@@ -367,16 +390,57 @@ function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
       >
         {segments.map((seg, idx) => {
           const key = segmentKey(seg, idx);
-          if (seg.type === "text") return <RNText key={key}>{seg.text}</RNText>;
-          if (seg.type === "bold")
-            return (
-              <RNText key={key} style={{ fontWeight: "700" }}>
-                {seg.text}
-              </RNText>
-            );
-          if (seg.type === "code")
-            return <InlineCode key={key}>{seg.text}</InlineCode>;
-          return <RNText key={key}>{seg.text}</RNText>;
+          switch (seg.type) {
+            case "text":
+              return <RNText key={key}>{seg.text}</RNText>;
+            case "bold":
+              return (
+                <RNText key={key} style={{ fontWeight: "700" }}>
+                  {seg.text}
+                </RNText>
+              );
+            case "italic":
+              return (
+                <RNText key={key} style={{ fontStyle: "italic" }}>
+                  {seg.text}
+                </RNText>
+              );
+            case "boldItalic":
+              return (
+                <RNText
+                  key={key}
+                  style={{ fontWeight: "700", fontStyle: "italic" }}
+                >
+                  {seg.text}
+                </RNText>
+              );
+            case "strikethrough":
+              return (
+                <RNText
+                  key={key}
+                  style={{ textDecorationLine: "line-through" }}
+                >
+                  {seg.text}
+                </RNText>
+              );
+            case "code":
+              return <InlineCode key={key}>{seg.text}</InlineCode>;
+            case "link":
+              return (
+                <RNText
+                  key={key}
+                  style={{
+                    color: COLORS.linkColor,
+                    textDecorationLine: "underline",
+                  }}
+                  onPress={() => handleLinkPress(seg.url)}
+                >
+                  {seg.text}
+                </RNText>
+              );
+            default:
+              return <RNText key={key}>{seg.text}</RNText>;
+          }
         })}
       </RNText>
     </View>
@@ -391,11 +455,11 @@ function ListBlock({
   items: InlineSegment[][];
 }) {
   return (
-    <View style={{ marginVertical: 4, paddingLeft: 8 }}>
+    <View style={{ marginVertical: 4, paddingLeft: 16 }}>
       {items.map((item, idx) => (
         <View
           key={`li-${idx}-${item[0]?.text.slice(0, 12)}`}
-          style={{ flexDirection: "row", marginBottom: 3, paddingRight: 8 }}
+          style={{ flexDirection: "row", marginBottom: 8, paddingRight: 8 }}
         >
           <RNText
             style={{
@@ -422,7 +486,7 @@ function HorizontalRule() {
       style={{
         height: 1,
         backgroundColor: COLORS.hrColor,
-        marginVertical: 12,
+        marginVertical: 28,
       }}
     />
   );
@@ -562,7 +626,7 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
         switch (block.type) {
           case "paragraph":
             return (
-              <View key={key} style={{ marginVertical: 2 }}>
+              <View key={key} style={{ marginTop: 0, marginBottom: 16 }}>
                 <InlineContent segments={block.segments} />
               </View>
             );

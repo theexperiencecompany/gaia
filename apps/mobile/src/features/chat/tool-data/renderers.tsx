@@ -14,11 +14,12 @@ import type {
 import { Card, PressableFeedback } from "heroui-native";
 import React, { useCallback, useRef, useState } from "react";
 import { Animated, LayoutAnimation, View } from "react-native";
-import { AppIcon, ArrowDown02Icon } from "@/components/icons";
+import { AppIcon, ArrowDown02Icon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
 import { EmailComposeCard } from "../components/chat/email-compose-card";
+import { ToolCardHeader, ToolCardShell } from "./primitives";
 import type { EmailComposeData, ToolDataEntry } from "./registry";
 import {
   ArtifactCard,
@@ -52,6 +53,7 @@ import {
   type IntegrationConnectionData,
   IntegrationListCard,
   type IntegrationListData,
+  MCPAppCard,
   NotificationCard,
   type NotificationData,
   PeopleSearchCard,
@@ -383,14 +385,27 @@ const TOOL_RENDERERS: Record<
     );
   },
 
-  memory_data: (_data, baseKey) => (
-    <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
-      <Card.Body className="py-3 px-4">
-        <Text className="text-xs text-muted mb-1">Memory</Text>
-        <Text className="text-foreground text-sm">Memory updated</Text>
-      </Card.Body>
-    </Card>
-  ),
+  memory_data: (data, baseKey) => {
+    const mem = data as Record<string, unknown> | null;
+    const count =
+      mem && typeof mem.count === "number" && mem.count > 0
+        ? mem.count
+        : undefined;
+    return (
+      <ToolCardShell key={baseKey}>
+        <ToolCardHeader
+          icon={Brain02Icon}
+          iconColor="#a78bfa"
+          title="Memory updated"
+          count={count}
+        />
+      </ToolCardShell>
+    );
+  },
+
+  // mcp_app: rendered via MCPAppCard — shows a notice that interactive
+  // rendering is web-only while keeping the result in conversation context.
+  mcp_app: (data, baseKey) => <MCPAppCard key={baseKey} data={data} />,
 
   todo_progress: (data, baseKey) => (
     <TodoProgressCard

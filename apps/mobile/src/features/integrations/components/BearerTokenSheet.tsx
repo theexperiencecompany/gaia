@@ -237,7 +237,7 @@ export const BearerTokenSheet = forwardRef<
                 >
                   Connect {config?.integrationName ?? "Integration"}
                 </Text>
-                <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
+                <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
                   API key / Bearer token required
                 </Text>
               </View>
@@ -256,7 +256,7 @@ export const BearerTokenSheet = forwardRef<
                 opacity: isLoading ? 0.4 : 1,
               }}
             >
-              <AppIcon icon={Cancel01Icon} size={16} color="#8e8e93" />
+              <AppIcon icon={Cancel01Icon} size={16} color="#71717a" />
             </Pressable>
           </View>
 
@@ -359,7 +359,7 @@ export const BearerTokenSheet = forwardRef<
                 <Text
                   style={{
                     fontSize: fontSize.xs,
-                    color: "#8e8e93",
+                    color: "#71717a",
                     fontWeight: "500",
                   }}
                 >

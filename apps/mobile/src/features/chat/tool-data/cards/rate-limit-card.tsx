@@ -153,13 +153,13 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
 
           {/* Reset time block */}
           {resetInfo && (
-            <View className="flex-row items-center gap-3 rounded-xl bg-zinc-700 px-3 py-2.5">
+            <View className="flex-row items-center gap-3 rounded-xl bg-zinc-800 px-3 py-2.5">
               <AppIcon icon={Clock01Icon} size={16} color="#a1a1aa" />
               <View className="gap-0.5">
                 <Text className="text-xs font-medium text-zinc-200">
                   {resetInfo.label}
                 </Text>
-                <Text className="text-[11px] text-zinc-400">
+                <Text className="text-xs text-zinc-400">
                   {resetInfo.detail}
                 </Text>
               </View>
@@ -173,7 +173,7 @@ export function RateLimitCard({ data, onUpgrade }: RateLimitCardProps) {
             </View>
             <Text className="text-xs text-zinc-400 flex-1">
               Need more? Upgrade to{" "}
-              <Text className="font-medium text-zinc-300">PRO</Text> for 10x
+              <Text className="font-medium text-zinc-200">PRO</Text> for 10x
               higher daily limits on {featureName} and all other features.
             </Text>
           </View>

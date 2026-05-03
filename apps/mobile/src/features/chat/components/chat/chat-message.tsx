@@ -4,10 +4,11 @@ import {
   splitByBreaksPreservingFences,
 } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import { PressableFeedback } from "heroui-native";
 import { useCallback, useMemo, useRef } from "react";
 import { Pressable, View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { AppIcon, Brain02Icon } from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
@@ -29,6 +30,8 @@ import type { MessageActionConfig } from "./message-action-sheet";
 import { MessageReplyQuote } from "./message-reply-quote";
 import { ThinkingBubble } from "./thinking-bubble";
 
+const GaiaLogo = require("@shared/assets/logo/logo.svg");
+
 const EMOJI_ONLY_REGEX = /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\s]+$/u;
 
 function getEmojiInfo(text: string): { isEmojiOnly: boolean; count: number } {
@@ -49,7 +52,10 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
   if (!actions.length) return null;
 
   return (
-    <View className="flex-row flex-wrap gap-2 mt-2 px-4">
+    <View
+      className="flex-row flex-wrap gap-2 mt-2"
+      style={{ paddingLeft: 46, paddingRight: 16 }}
+    >
       {actions.map((action, i) => (
         <Animated.View
           key={action}
@@ -132,8 +138,6 @@ function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
           borderRadius: moderateScale(12, 0.5),
           paddingHorizontal: spacing.sm + 2,
           paddingVertical: spacing.xs,
-          borderWidth: 1,
-          borderColor: "rgba(99, 102, 241, 0.2)",
         }}
       >
         <AppIcon
@@ -226,217 +230,252 @@ export function ChatMessage({
   // ---- User message --------------------------------------------------------
   if (isUser) {
     return (
-      <PressableFeedback
-        onLongPress={handleLongPress}
-        delayLongPress={350}
-        style={{
-          flexDirection: "row",
-          paddingVertical: spacing.sm,
-          alignItems: "flex-end",
-          justifyContent: "flex-end",
-          paddingHorizontal: spacing.md,
-        }}
-      >
-        <View
+      <Animated.View entering={FadeIn.springify().damping(20).stiffness(300)}>
+        <PressableFeedback
+          onLongPress={handleLongPress}
+          onPressIn={() =>
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+          }
+          delayLongPress={350}
           style={{
-            flexDirection: "column",
-            gap: spacing.xs,
-            maxWidth: "85%",
+            flexDirection: "row",
+            paddingVertical: spacing.md,
+            alignItems: "flex-end",
+            justifyContent: "flex-end",
+            paddingHorizontal: spacing.md,
           }}
         >
-          {message.replyToMessage && (
-            <MessageReplyQuote
-              replyToMessage={message.replyToMessage}
-              isUserMessage={true}
-            />
-          )}
-          {messageParts.map((part, index) => {
-            const { isEmojiOnly, count } = getEmojiInfo(part);
-            if (isEmojiOnly && messageParts.length === 1) {
-              const emojiSize =
-                count === 1 ? 52 : count === 2 ? 40 : count === 3 ? 32 : null;
-              if (emojiSize) {
-                return (
-                  <Text
-                    key={`${message.id}-${index}`}
-                    style={{
-                      fontSize: emojiSize,
-                      lineHeight: emojiSize + 8,
-                    }}
-                  >
-                    {part}
-                  </Text>
-                );
-              }
-            }
-            return (
-              <MessageBubble
-                key={`${message.id}-${index}`}
-                message={part}
-                variant="sent"
-                grouped={
-                  messageParts.length === 1
-                    ? "none"
-                    : index === 0
-                      ? "first"
-                      : index === messageParts.length - 1
-                        ? "last"
-                        : "middle"
-                }
+          <View
+            style={{
+              flexDirection: "column",
+              gap: spacing.xs,
+              maxWidth: "80%",
+            }}
+          >
+            {message.replyToMessage && (
+              <MessageReplyQuote
+                replyToMessage={message.replyToMessage}
+                isUserMessage={true}
               />
-            );
-          })}
-        </View>
-      </PressableFeedback>
+            )}
+            {messageParts.map((part, index) => {
+              const { isEmojiOnly, count } = getEmojiInfo(part);
+              if (isEmojiOnly && messageParts.length === 1) {
+                const emojiSize =
+                  count === 1 ? 52 : count === 2 ? 40 : count === 3 ? 32 : null;
+                if (emojiSize) {
+                  return (
+                    <Text
+                      key={`${message.id}-${index}`}
+                      style={{
+                        fontSize: emojiSize,
+                        lineHeight: emojiSize + 8,
+                      }}
+                    >
+                      {part}
+                    </Text>
+                  );
+                }
+              }
+              return (
+                <MessageBubble
+                  key={`${message.id}-${index}`}
+                  message={part}
+                  variant="sent"
+                  grouped={
+                    messageParts.length === 1
+                      ? "none"
+                      : index === 0
+                        ? "first"
+                        : index === messageParts.length - 1
+                          ? "last"
+                          : "middle"
+                  }
+                />
+              );
+            })}
+          </View>
+        </PressableFeedback>
+      </Animated.View>
     );
   }
 
   // ---- AI message ----------------------------------------------------------
   return (
-    <PressableFeedback
-      onLongPress={handleLongPress}
-      delayLongPress={350}
-      style={{
-        flexDirection: "column",
-        paddingVertical: spacing.sm,
-        alignItems: "flex-start",
-        width: "100%",
-      }}
-    >
-      {/* Tool data cards — full width, rendered before message text */}
-      {message.toolData?.length ? (
-        <View style={{ width: "100%", marginBottom: spacing.xs }}>
-          <ToolDataRenderer toolData={message.toolData} />
-        </View>
-      ) : null}
+    <Animated.View entering={FadeIn.springify().damping(20).stiffness(300)}>
+      <PressableFeedback
+        onLongPress={handleLongPress}
+        onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+        delayLongPress={350}
+        style={{
+          flexDirection: "column",
+          paddingVertical: spacing.sm,
+          alignItems: "flex-start",
+          width: "100%",
+        }}
+      >
+        {/* Tool data cards — full width, rendered before message text */}
+        {message.toolData?.length ? (
+          <View style={{ width: "100%", marginBottom: spacing.xs }}>
+            <ToolDataRenderer toolData={message.toolData} />
+          </View>
+        ) : null}
 
-      {/* Thinking / reasoning bubble (collapsible) */}
-      {parsedContent.thinking ? (
+        {/* Thinking / reasoning bubble (collapsible) */}
+        {parsedContent.thinking ? (
+          <View
+            style={{ paddingHorizontal: spacing.md, marginBottom: spacing.xs }}
+          >
+            <ThinkingBubble thinkingContent={parsedContent.thinking} />
+          </View>
+        ) : null}
+
+        {/* Main message content with avatar */}
         <View
-          style={{ paddingHorizontal: spacing.md, marginBottom: spacing.xs }}
+          style={{
+            width: "100%",
+            flexDirection: "row",
+            alignItems: "flex-end",
+          }}
         >
-          <ThinkingBubble thinkingContent={parsedContent.thinking} />
-        </View>
-      ) : null}
-
-      {/* Main message content */}
-      <View style={{ width: "100%" }}>
-        {message.imageData || isGeneratingImage ? (
-          <View style={{ paddingHorizontal: spacing.md }}>
-            <ImageBubble
-              imageData={message.imageData ?? { url: "", prompt: "" }}
-              isGenerating={isGeneratingImage}
-              caption={
-                messageParts.length > 0 ? messageParts.join(" ") : undefined
-              }
-            />
-          </View>
-        ) : showToolProgress ? (
-          <View style={{ paddingHorizontal: spacing.md }}>
-            <ToolProgressCard
-              toolName={progressToolName}
-              progressMessage={progressMessage}
-            />
-          </View>
-        ) : showThinkingCard ? (
-          <View style={{ paddingHorizontal: spacing.md }}>
-            <ThinkingCard
-              message={
-                loadingMessage !== "Thinking..." ? loadingMessage : undefined
-              }
-            />
-          </View>
-        ) : showLoadingState ? (
-          <LoadingIndicator
-            progress={
-              loadingMessage !== "Thinking..." ? loadingMessage : undefined
-            }
+          {/* GAIA avatar — 30×30, aligned to bottom of bubble */}
+          <Image
+            source={GaiaLogo}
+            style={{
+              width: 30,
+              height: 30,
+              marginRight: spacing.sm,
+              flexShrink: 0,
+            }}
+            contentFit="contain"
           />
-        ) : (
-          messageParts.map((part, partIndex) => {
-            const segments = parseOpenUISegments(part, !!isLoading);
-            const grouped =
-              messageParts.length === 1
-                ? "none"
-                : partIndex === 0
-                  ? "first"
-                  : partIndex === messageParts.length - 1
-                    ? "last"
-                    : "middle";
-
-            const totalSegments = segments.length;
-            return segments.map((segment, segIndex) => {
-              const key = `${message.id}-${partIndex}-${segIndex}`;
-              const isLastSegmentOfLastPart =
-                partIndex === messageParts.length - 1 &&
-                segIndex === totalSegments - 1;
-              const showCursor =
-                isLoading && isLastMessage && isLastSegmentOfLastPart;
-
-              if (segment.type === "openui") {
-                return (
-                  <View
-                    key={key}
-                    style={{ paddingHorizontal: spacing.md, width: "100%" }}
-                  >
-                    <OpenUIRenderer
-                      code={segment.content}
-                      isStreaming={!segment.isComplete}
-                    />
-                  </View>
-                );
-              }
-              return (
-                <MessageBubble
-                  key={key}
-                  message={segment.content}
-                  variant="received"
-                  grouped={grouped}
-                  isStreaming={showCursor}
+          <View style={{ flex: 1 }}>
+            {message.imageData || isGeneratingImage ? (
+              <View style={{ paddingHorizontal: spacing.md }}>
+                <ImageBubble
+                  imageData={message.imageData ?? { url: "", prompt: "" }}
+                  isGenerating={isGeneratingImage}
+                  caption={
+                    messageParts.length > 0 ? messageParts.join(" ") : undefined
+                  }
                 />
-              );
-            });
-          })
-        )}
-      </View>
+              </View>
+            ) : showToolProgress ? (
+              <View style={{ paddingHorizontal: spacing.md }}>
+                <ToolProgressCard
+                  toolName={progressToolName}
+                  progressMessage={progressMessage}
+                />
+              </View>
+            ) : showThinkingCard ? (
+              <View style={{ paddingHorizontal: spacing.md }}>
+                <ThinkingCard
+                  message={
+                    loadingMessage !== "Thinking..."
+                      ? loadingMessage
+                      : undefined
+                  }
+                />
+              </View>
+            ) : showLoadingState ? (
+              <LoadingIndicator
+                progress={
+                  loadingMessage !== "Thinking..." ? loadingMessage : undefined
+                }
+              />
+            ) : (
+              messageParts.map((part, partIndex) => {
+                const segments = parseOpenUISegments(part, !!isLoading);
+                const grouped =
+                  messageParts.length === 1
+                    ? "none"
+                    : partIndex === 0
+                      ? "first"
+                      : partIndex === messageParts.length - 1
+                        ? "last"
+                        : "middle";
 
-      {/* Link preview – shown below message content for AI messages */}
-      {!isUser &&
-      !isLoading &&
-      linkPreviewUrls.length > 0 &&
-      linkPreviewData?.length ? (
-        <View style={{ paddingHorizontal: spacing.md, marginTop: spacing.xs }}>
-          <LinkPreviewCard
-            url={linkPreviewData[0].url}
-            title={linkPreviewData[0].title}
-            description={linkPreviewData[0].description}
-            imageUrl={linkPreviewData[0].imageUrl}
-            favicon={linkPreviewData[0].favicon}
-            domain={linkPreviewData[0].domain}
-          />
+                const totalSegments = segments.length;
+                return segments.map((segment, segIndex) => {
+                  const key = `${message.id}-${partIndex}-${segIndex}`;
+                  const isLastSegmentOfLastPart =
+                    partIndex === messageParts.length - 1 &&
+                    segIndex === totalSegments - 1;
+                  const showCursor =
+                    isLoading && isLastMessage && isLastSegmentOfLastPart;
+
+                  if (segment.type === "openui") {
+                    return (
+                      <View
+                        key={key}
+                        style={{ paddingHorizontal: spacing.md, width: "100%" }}
+                      >
+                        <OpenUIRenderer
+                          code={segment.content}
+                          isStreaming={!segment.isComplete}
+                        />
+                      </View>
+                    );
+                  }
+                  return (
+                    <MessageBubble
+                      key={key}
+                      message={segment.content}
+                      variant="received"
+                      grouped={grouped}
+                      isStreaming={showCursor}
+                    />
+                  );
+                });
+              })
+            )}
+          </View>
         </View>
-      ) : null}
 
-      {/* Memory indicator pill */}
-      {message.memoryData ? (
-        <PressableFeedback
-          onPress={() =>
-            memorySheetRef.current?.open(message.memoryData as MemoryDataShape)
-          }
-        >
-          <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
-        </PressableFeedback>
-      ) : null}
+        {/* Link preview – shown below message content for AI messages */}
+        {!isUser &&
+        !isLoading &&
+        linkPreviewUrls.length > 0 &&
+        linkPreviewData?.length ? (
+          <View
+            style={{ paddingHorizontal: spacing.md, marginTop: spacing.xs }}
+          >
+            <LinkPreviewCard
+              url={linkPreviewData[0].url}
+              title={linkPreviewData[0].title}
+              description={linkPreviewData[0].description}
+              imageUrl={linkPreviewData[0].imageUrl}
+              favicon={linkPreviewData[0].favicon}
+              domain={linkPreviewData[0].domain}
+            />
+          </View>
+        ) : null}
 
-      {/* Follow-up action chips */}
-      {message.followUpActions?.length ? (
-        <FollowUpActions
-          actions={message.followUpActions}
-          onActionPress={onFollowUpAction}
-        />
-      ) : null}
+        {/* Memory indicator pill */}
+        {message.memoryData ? (
+          <PressableFeedback
+            onPress={() =>
+              memorySheetRef.current?.open(
+                message.memoryData as MemoryDataShape,
+              )
+            }
+          >
+            <MemoryIndicator
+              memoryData={message.memoryData as MemoryDataShape}
+            />
+          </PressableFeedback>
+        ) : null}
 
-      <MemoryBottomSheet ref={memorySheetRef} />
-    </PressableFeedback>
+        {/* Follow-up action chips */}
+        {message.followUpActions?.length ? (
+          <FollowUpActions
+            actions={message.followUpActions}
+            onActionPress={onFollowUpAction}
+          />
+        ) : null}
+
+        <MemoryBottomSheet ref={memorySheetRef} />
+      </PressableFeedback>
+    </Animated.View>
   );
 }

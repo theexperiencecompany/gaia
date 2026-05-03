@@ -5,7 +5,6 @@ import { useRouter } from "expo-router";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Animated,
   Keyboard,
   KeyboardAvoidingView,
   LayoutAnimation,
@@ -15,6 +14,14 @@ import {
   UIManager,
   View,
 } from "react-native";
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/lib/responsive";
 import type { Message } from "../../api/chat-api";
@@ -42,37 +49,64 @@ import { ScrollToBottomButton } from "./scroll-to-bottom";
 // Loading skeleton shown while fetching an existing conversation
 // ---------------------------------------------------------------------------
 
-function MessageSkeleton() {
-  const { spacing, moderateScale } = useResponsive();
-  const opacity = useRef(new Animated.Value(0.3)).current;
+function SkeletonBar({
+  width,
+  mt,
+  delayMs,
+  barHeight,
+  borderRadius,
+}: {
+  width: number | `${number}%`;
+  mt: number;
+  delayMs: number;
+  barHeight: number;
+  borderRadius: number;
+}) {
+  const opacity = useSharedValue(0.3);
 
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 0.7,
-          duration: 700,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.3,
-          duration: 700,
-          useNativeDriver: true,
-        }),
-      ]),
-    ).start();
-  }, [opacity]);
+    opacity.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(0.7, { duration: 700 }),
+          withTiming(0.3, { duration: 700 }),
+        ),
+        -1,
+      ),
+    );
+  }, [opacity, delayMs]);
 
-  const bar = (width: number | `${number}%`, mt = 0) => (
-    <Animated.View
-      style={{
-        height: moderateScale(12, 0.5),
-        width,
-        borderRadius: moderateScale(6, 0.5),
-        backgroundColor: "rgba(255,255,255,0.12)",
-        marginTop: mt,
-        opacity,
-      }}
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <Reanimated.View
+      style={[
+        {
+          height: barHeight,
+          width,
+          borderRadius,
+          backgroundColor: "rgba(255,255,255,0.12)",
+          marginTop: mt,
+        },
+        animatedStyle,
+      ]}
+    />
+  );
+}
+
+function MessageSkeleton() {
+  const { spacing, moderateScale } = useResponsive();
+  const barH = moderateScale(12, 0.5);
+  const br = moderateScale(6, 0.5);
+
+  const bar = (width: number | `${number}%`, mt: number, delayMs: number) => (
+    <SkeletonBar
+      width={width}
+      mt={mt}
+      delayMs={delayMs}
+      barHeight={barH}
+      borderRadius={br}
     />
   );
 
@@ -81,9 +115,9 @@ function MessageSkeleton() {
       style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}
     >
       <View style={{ maxWidth: "80%", marginBottom: spacing.md }}>
-        {bar("90%")}
-        {bar("75%", spacing.xs)}
-        {bar("60%", spacing.xs)}
+        {bar("90%", 0, 0)}
+        {bar("75%", spacing.xs, 100)}
+        {bar("60%", spacing.xs, 200)}
       </View>
       <View
         style={{
@@ -92,12 +126,12 @@ function MessageSkeleton() {
           marginBottom: spacing.md,
         }}
       >
-        {bar("100%")}
-        {bar("80%", spacing.xs)}
+        {bar("100%", 0, 300)}
+        {bar("80%", spacing.xs, 400)}
       </View>
       <View style={{ maxWidth: "85%" }}>
-        {bar("85%")}
-        {bar("70%", spacing.xs)}
+        {bar("85%", 0, 500)}
+        {bar("70%", spacing.xs, 600)}
       </View>
     </View>
   );
@@ -492,7 +526,7 @@ export function ChatScreenContent({
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={0}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
     >
       <View
         style={{

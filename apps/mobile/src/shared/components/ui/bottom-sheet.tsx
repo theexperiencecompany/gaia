@@ -1,5 +1,8 @@
 import type { BottomSheetBackdropProps } from "@gorhom/bottom-sheet";
-import GorhomBottomSheet, { BottomSheetBackdrop } from "@gorhom/bottom-sheet";
+import GorhomBottomSheet, {
+  BottomSheetBackdrop,
+  useBottomSheetSpringConfigs,
+} from "@gorhom/bottom-sheet";
 import {
   createContext,
   type ReactNode,
@@ -113,6 +116,12 @@ function Content({
   const { sheetRef: sheetRefCtx, onOpenChange } = useBottomSheetContext();
   const sheetRef = sheetRefCtx as React.RefObject<GorhomBottomSheet>;
 
+  const animationConfigs = useBottomSheetSpringConfigs({
+    damping: 20,
+    stiffness: 200,
+    mass: 1,
+  });
+
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
@@ -142,10 +151,11 @@ function Content({
       enableDynamicSizing={enableDynamicSizing}
       enablePanDownToClose={enablePanDownToClose}
       backdropComponent={renderBackdrop}
+      animationConfigs={animationConfigs}
       backgroundStyle={
         backgroundStyle
           ? (backgroundStyle as StyleProp<ViewStyle>)
-          : { backgroundColor: "#1c1c1e" }
+          : { backgroundColor: "#18181b" }
       }
       handleIndicatorStyle={
         handleIndicatorStyle

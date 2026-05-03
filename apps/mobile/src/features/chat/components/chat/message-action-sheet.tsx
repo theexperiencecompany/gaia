@@ -59,7 +59,7 @@ function ActionRow({
         alignItems: "center",
         gap: 12,
         padding: 14,
-        borderRadius: 10,
+        borderRadius: 12,
         backgroundColor: pressed ? "rgba(255,255,255,0.05)" : "transparent",
       })}
     >
@@ -164,7 +164,7 @@ export const MessageActionSheet = forwardRef<
           snapPoints={snapPoints}
           enableDynamicSizing={false}
           enablePanDownToClose
-          backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+          backgroundStyle={{ backgroundColor: "#1a1a1a" }}
           handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
         >
           <BottomSheetScrollView
@@ -200,11 +200,6 @@ export const MessageActionSheet = forwardRef<
                           : pressed
                             ? "rgba(255,255,255,0.08)"
                             : "rgba(255,255,255,0.05)",
-                      borderWidth: 1,
-                      borderColor:
-                        selectedReaction === "thumbsUp"
-                          ? "rgba(34, 197, 94, 0.5)"
-                          : "rgba(255,255,255,0.1)",
                     })}
                   >
                     <AppIcon
@@ -230,11 +225,6 @@ export const MessageActionSheet = forwardRef<
                           : pressed
                             ? "rgba(255,255,255,0.08)"
                             : "rgba(255,255,255,0.05)",
-                      borderWidth: 1,
-                      borderColor:
-                        selectedReaction === "thumbsDown"
-                          ? "rgba(239, 68, 68, 0.5)"
-                          : "rgba(255,255,255,0.1)",
                     })}
                   >
                     <AppIcon

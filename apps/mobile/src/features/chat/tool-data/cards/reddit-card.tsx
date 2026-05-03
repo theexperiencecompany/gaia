@@ -260,7 +260,7 @@ function PostView({ post }: { post: RedditPostData }) {
       {hasBody && (
         <>
           <Text
-            className="text-sm text-zinc-300 mt-2 leading-relaxed"
+            className="text-sm text-zinc-400 mt-2 leading-relaxed"
             numberOfLines={expanded ? undefined : 3}
           >
             {post.selftext}
@@ -461,13 +461,13 @@ function CreatedView({
 
       {/* Message body */}
       {itemData.message && (
-        <Text className="text-sm text-zinc-300 mb-2">{itemData.message}</Text>
+        <Text className="text-sm text-zinc-400 mb-2">{itemData.message}</Text>
       )}
 
       {/* ID */}
       {itemData.id && (
         <Text className="text-xs text-zinc-500 mb-2">
-          ID: <Text className="font-mono text-zinc-300">{itemData.id}</Text>
+          ID: <Text className="font-mono text-zinc-200">{itemData.id}</Text>
         </Text>
       )}
 

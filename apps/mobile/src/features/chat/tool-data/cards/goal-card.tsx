@@ -156,7 +156,7 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
         )}
 
         {goal.created_at && (
-          <View className="flex-row items-center gap-1 rounded-full bg-zinc-700 px-3 py-1">
+          <View className="flex-row items-center gap-1 rounded-full bg-zinc-800 px-3 py-1">
             <AppIcon icon={Calendar03Icon} size={12} color="#71717a" />
             <Text className="text-xs font-medium text-zinc-400">
               {formatDate(goal.created_at)}
@@ -165,7 +165,7 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
         )}
 
         {goal.todo_project_id && (
-          <View className="flex-row items-center gap-1 rounded-full bg-zinc-700 px-3 py-1">
+          <View className="flex-row items-center gap-1 rounded-full bg-zinc-800 px-3 py-1">
             <AppIcon icon={Target02Icon} size={12} color="#71717a" />
             <Text className="text-xs font-medium text-zinc-400">
               Linked to Todos
@@ -176,7 +176,8 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
 
       {/* Expanded: description + roadmap tasks */}
       {isExpanded && (
-        <View className="border-t border-zinc-700 pt-4 mb-3 gap-4">
+        <View className="pt-4 mb-3 gap-4">
+          <View className="h-px bg-zinc-700/50 -mt-4 mb-0" />
           {goal.description && (
             <Text className="text-sm leading-relaxed text-zinc-400">
               {goal.description}
@@ -184,7 +185,7 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
           )}
           {hasRoadmap && (
             <View>
-              <Text className="text-sm font-medium text-zinc-300 mb-3">
+              <Text className="text-sm font-medium text-zinc-200 mb-3">
                 Roadmap Tasks
               </Text>
               <View className="gap-2">
@@ -205,7 +206,7 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
                       )}
                     </View>
                     <Text
-                      className={`text-sm ${node.data.isComplete ? "text-zinc-500 line-through" : "text-zinc-300"}`}
+                      className={`text-sm ${node.data.isComplete ? "text-zinc-500 line-through" : "text-zinc-200"}`}
                     >
                       {node.data.title || node.data.label || "Untitled Task"}
                     </Text>
@@ -406,7 +407,7 @@ export function GoalCard({ data }: { data: GoalData }) {
       <ToolCardShell>
         <View className="flex-row items-center gap-2 mb-3">
           <AppIcon icon={UserGroupIcon} size={16} color="#00bbff" />
-          <Text className="text-sm text-zinc-300 flex-1">{data.message}</Text>
+          <Text className="text-sm text-zinc-200 flex-1">{data.message}</Text>
         </View>
         <View
           className="w-full rounded-xl py-2.5 items-center justify-center"
@@ -468,7 +469,7 @@ export function GoalCard({ data }: { data: GoalData }) {
       <ToolCardShell>
         <View className="items-center py-4">
           <AppIcon icon={Target02Icon} size={32} color="#52525b" />
-          <Text className="mt-2 text-sm text-zinc-300">No goals found</Text>
+          <Text className="mt-2 text-sm text-zinc-200">No goals found</Text>
           {data.message && (
             <Text className="text-xs text-zinc-500 mt-1">{data.message}</Text>
           )}
