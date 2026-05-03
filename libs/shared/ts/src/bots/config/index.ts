@@ -56,7 +56,19 @@ export async function loadConfig(): Promise<BotConfig> {
   if (missing.length > 0) {
     throw new Error(
       `Missing required config: ${missing.join(", ")}. ` +
-        "Set them in apps/bots/.env or configure Infisical.",
+        "Set them in apps/bots/.env or configure Infisical. " +
+        "Generate BOT_LOG_HASH_SECRET with: openssl rand -hex 32",
+    );
+  }
+
+  // BOT_LOG_HASH_SECRET is the HMAC-SHA256 key used to hash PII (phone numbers,
+  // platform user IDs) in logs. RFC 2104 recommends a key of at least the hash
+  // output size (32 bytes / 64 hex chars for SHA-256) to prevent brute-force
+  // recovery of hashed identifiers.
+  if (botLogHashSecret!.length < 32) {
+    throw new Error(
+      "BOT_LOG_HASH_SECRET must be at least 32 characters (256 bits of entropy). " +
+        "Generate one with: openssl rand -hex 32",
     );
   }
 

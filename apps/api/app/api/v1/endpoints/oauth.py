@@ -20,7 +20,7 @@ from app.helpers.mcp_helpers import get_api_base_url
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
 from app.services.oauth.oauth_state_service import (
-    _is_safe_redirect_path,
+    is_safe_redirect_path,
     validate_and_consume_oauth_state,
 )
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -355,7 +355,7 @@ async def workos_callback(
         log.set(user_id=str(user_id), is_new_user=is_new_user)
 
         # Redirect to return_url if provided and safe, otherwise default /redirect
-        if return_url and _is_safe_redirect_path(return_url):
+        if return_url and is_safe_redirect_path(return_url):
             destination = f"{settings.FRONTEND_URL}{return_url}"
         else:
             destination = f"{settings.FRONTEND_URL}/redirect"

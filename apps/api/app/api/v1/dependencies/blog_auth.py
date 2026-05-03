@@ -15,6 +15,12 @@ security = HTTPBearer()
 async def verify_blog_token(
     credentials: HTTPAuthorizationCredentials = Security(security),
 ) -> str:
+    """
+    Verify the bearer token for blog management operations.
+
+    Uses constant-time comparison to prevent timing attacks against the
+    configured BLOG_BEARER_TOKEN.
+    """
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Invalid authorization code"

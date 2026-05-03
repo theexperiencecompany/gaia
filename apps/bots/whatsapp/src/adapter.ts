@@ -32,6 +32,7 @@ import {
   sanitizeErrorForLog,
 } from "@gaia/shared";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
+import { REPLAY_WINDOW_MS } from "./constants";
 import {
   extractTextBody,
   extractWaId,
@@ -39,8 +40,6 @@ import {
   type KapsoMessageEvent,
   verifyKapsoSignature,
 } from "./webhook";
-
-const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 
 // ─── WhatsApp-specific config ─────────────────────────────────────────────────
 
