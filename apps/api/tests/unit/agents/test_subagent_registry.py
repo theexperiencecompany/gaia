@@ -77,7 +77,7 @@ def _make_integration(
     has_subagent: bool = True,
     agent_name: str = "github_agent",
     provider: str = "github",
-):
+) -> MagicMock:
     """Build a mock OAuthIntegration that the registry's _from_oauth can adapt."""
 
     if has_subagent:
@@ -105,7 +105,7 @@ def _make_integration(
     return integration
 
 
-def _make_integration_no_subagent(integration_id: str = "stripe"):
+def _make_integration_no_subagent(integration_id: str = "stripe") -> MagicMock:
     return _make_integration(
         integration_id=integration_id,
         short_name=None,  # type: ignore[arg-type]

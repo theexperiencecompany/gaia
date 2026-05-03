@@ -789,6 +789,13 @@
     outline: none;
   }
 
+  /* Restore the keyboard focus ring inside OpenUI document cards so keyboard
+     users keep a visible focus indicator. */
+  .openui-document .tiptap:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
   /* Mail reply editor — overflow only; height is capped by the parent max-h-[250px] wrapper */
   .mail-editor .tiptap {
     overflow: auto;

@@ -14,7 +14,7 @@ Both are stored in separate mem0 namespaces and don't interfere.
 """
 
 import asyncio
-from typing import cast
+from typing import Any, cast
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes import (
@@ -54,7 +54,7 @@ class SubAgentFactory:
         disable_retrieve_tools: bool = False,
         auto_bind_tools: list[str] | None = None,
         include_finish_task: bool = True,
-    ):
+    ) -> Any:
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
 

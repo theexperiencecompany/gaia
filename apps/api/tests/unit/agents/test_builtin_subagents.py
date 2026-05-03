@@ -89,3 +89,10 @@ class TestGaiaBuiltin:
         assert gaia.config.system_prompt is GAIA_AGENT_SYSTEM_PROMPT
         assert isinstance(gaia.config.system_prompt, str)
         assert gaia.config.system_prompt.strip() != ""
+
+    def test_gaia_system_prompt_references_llms_txt(self, gaia: Subagent) -> None:
+        # GAIA's grounding strategy depends on heygaia.io/llms.txt and
+        # docs.heygaia.io/llms.txt as discovery surfaces. If these references
+        # are removed from the prompt, GAIA loses its primary entry points.
+        prompt = gaia.config.system_prompt or ""
+        assert "llms.txt" in prompt

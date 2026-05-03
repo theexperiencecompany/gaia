@@ -18,6 +18,8 @@ from app.db.chroma.chroma_tools_store import (
     delete_tools_by_namespace,
     index_tools_to_store,
 )
+from app.models.mcp_config import SubAgentConfig
+from app.models.subagent_models import Subagent
 
 
 # ---------------------------------------------------------------------------
@@ -65,9 +67,6 @@ class TestComputeToolHash:
 @pytest.mark.asyncio
 class TestGetSubagentTools:
     async def test_returns_subagent_tools(self):
-        from app.models.mcp_config import SubAgentConfig
-        from app.models.subagent_models import Subagent
-
         cfg = SubAgentConfig(
             has_subagent=True,
             agent_name="gmail_agent",

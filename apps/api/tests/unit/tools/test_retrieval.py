@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
-def _make_subagent_mock(id: str, managed_by: str = "internal", name: str | None = None):
+def _make_subagent_mock(
+    id: str, managed_by: str = "internal", name: str | None = None
+) -> MagicMock:
     """Build a Subagent-shaped MagicMock for retrieval tests."""
     sa = MagicMock()
     sa.id = id

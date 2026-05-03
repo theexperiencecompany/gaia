@@ -250,17 +250,23 @@ async def _get_user_context(
         if include_subagents:
             raw_connected = user_namespaces - {"general", "subagents"}
 
-            # Filter to only integrations with subagent configurations
-            connected_integrations = {
-                integration_id
-                for integration_id in raw_connected
-                if (
-                    # Platform/builtin subagents (resolved via registry)
-                    get_subagent_by_id(integration_id) is not None
-                    # Custom/public MCP integrations (not in OAuth config either)
-                    or get_integration_by_id(integration_id) is None
-                )
+            # raw_connected contains tool namespaces (e.g. "github_delegated"),
+            # not subagent ids. Map each namespace back to its subagent via
+            # config.tool_space, falling back to treating it as a custom/public
+            # MCP integration when no OAuth integration matches.
+            tool_space_to_subagent_id = {
+                sa.config.tool_space: sa.id for sa in all_subagents()
             }
+
+            connected_integrations = set()
+            for namespace in raw_connected:
+                subagent_id = tool_space_to_subagent_id.get(namespace)
+                if subagent_id:
+                    connected_integrations.add(subagent_id)
+                elif get_integration_by_id(namespace) is None:
+                    # Custom/public MCP integration — not in OAuth config and
+                    # no subagent claims this namespace; surface it directly.
+                    connected_integrations.add(namespace)
 
             log.info(f"User {user_id} connected subagents: {connected_integrations}")
 
@@ -477,36 +483,38 @@ def _inject_available_subagents(
     if not include_subagents:
         return discovered_tools
 
-    seen = set(discovered_tools)
     result = list(discovered_tools)
+
+    # Dedupe by canonical integration id rather than rendered subagent_key
+    # ("subagent:gmail" vs "subagent:gmail (Gmail)" must collapse). Seed
+    # seen_ids with ids parsed out of any pre-existing entries.
+    seen_ids: Set[str] = set()
+    for entry in discovered_tools:
+        if entry.startswith("subagent:"):
+            tail = entry[len("subagent:") :]
+            canonical_id = tail.split(" ", 1)[0]
+            seen_ids.add(canonical_id)
+
+    def _add_subagent(integration_id: str) -> None:
+        if integration_id in seen_ids:
+            return
+        sa = get_subagent_by_id(integration_id)
+        name = sa.name if sa else None
+        subagent_key = (
+            f"subagent:{integration_id} ({name})"
+            if name
+            else f"subagent:{integration_id}"
+        )
+        result.append(subagent_key)
+        seen_ids.add(integration_id)
 
     # Add internal subagents (always available)
     for integration_id in internal_subagents:
-        # Get display name for LLM readability
-        sa = get_subagent_by_id(integration_id)
-        name = sa.name if sa else None
-        subagent_key = (
-            f"subagent:{integration_id} ({name})"
-            if name
-            else f"subagent:{integration_id}"
-        )
-        if subagent_key not in seen:
-            result.append(subagent_key)
-            seen.add(subagent_key)
+        _add_subagent(integration_id)
 
     # Add connected integration subagents
     for integration_id in connected_integrations:
-        # Get display name for LLM readability
-        sa = get_subagent_by_id(integration_id)
-        name = sa.name if sa else None
-        subagent_key = (
-            f"subagent:{integration_id} ({name})"
-            if name
-            else f"subagent:{integration_id}"
-        )
-        if subagent_key not in seen:
-            result.append(subagent_key)
-            seen.add(subagent_key)
+        _add_subagent(integration_id)
 
     return result
 

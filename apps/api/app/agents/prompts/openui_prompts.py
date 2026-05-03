@@ -186,6 +186,8 @@ OPENUI_INSTRUCTIONS = f"""
 The following tool outputs are rendered automatically by the frontend — do NOT emit :::openui for them:
 {_suppression_list}
 
+**TextDocument is ONLY for copyable content — drafts, articles, blog posts, email drafts, anything the user will pull out of the chat and paste somewhere else.** Do NOT use TextDocument for inline answers the user just wants to read in the chat (e.g. "how to self-host", "what does X do", documentation answers). For those, render the response as normal markdown — it shows up cleanly in the chat bubble and the user can still copy snippets if they want. Reserve TextDocument for the case where the WHOLE block is content meant for export.
+
 For ALL other tool outputs (MCP tools, integrations, anything not in the list above), render data
 using :::openui fences with the components below.
 
@@ -538,11 +540,14 @@ Quality guidelines:
 - Never put more than 3 items in a Row; never nest Row inside Row; never wrap a single component in Stack or Row
 
 ABSOLUTE RULE — URLs AND LINKS:
-The ABSOLUTE BEST way to surface a URL is as an inline markdown link in the prose: `[label](https://...)`. Never wrap URLs in an OpenUI component. No DataCard with a "Link" field, no ResultList of one item to point at a single page, no StatusCard whose body is a URL. Just write the link inline in the markdown response.
+For a SINGLE link, ALWAYS use an inline markdown link in the prose: `Here's the [label](https://...)`. Never wrap a single URL in an OpenUI component — no DataCard with a "URL"/"Link" field, no StatusCard whose body is a URL, no single-item ResultList pointing at one page. The OpenUI components DataCard and StatusCard must NOT contain URL fields at all; surface those URLs inline in the markdown instead.
+
+ResultList.url is permitted ONLY when ResultList contains 2+ genuine results the user is browsing (search results, articles, items to compare). For a single link, do not use ResultList — use inline markdown.
+
   ✗ WRONG: root = DataCard("Telegram Guide", [{{{{"label": "URL", "value": "https://docs.heygaia.io/guides/discord-telegram"}}}}])
-  ✗ WRONG: root = ResultList([{{{{"title": "Telegram Guide", "url": "https://docs.heygaia.io/guides/discord-telegram"}}}}])
+  ✗ WRONG: root = ResultList([{{{{"title": "Telegram Guide", "url": "https://docs.heygaia.io/guides/discord-telegram"}}}}])  ← single item with a url
   ✓ CORRECT: Plain markdown — "Here's the [Telegram setup guide](https://docs.heygaia.io/guides/discord-telegram)."
-ResultList is only for genuine collections of 2+ results the user is browsing — never to render a single link.
+  ✓ CORRECT (2+ results): root = ResultList([{{{{"title": "Guide A", "url": "https://..."}}}}, {{{{"title": "Guide B", "url": "https://..."}}}}], "Search Results")
 
 ABSOLUTE RULE — CODE DIFFS:
 When showing before/after code, code modifications, patches, or any comparison of two code versions, you MUST use the CodeDiff :::openui component. NEVER use markdown ``` code fences for diffs. This is non-negotiable.

@@ -217,8 +217,23 @@ class SubagentEvaluator:
         # Use system prompt from config (already synced to Opik) or fallback to subagent
         if not self.system_prompt:
             subagent = get_subagent_by_id(self.config.integration_id)
-            if subagent:
+            if subagent and subagent.config.system_prompt:
                 self.system_prompt = subagent.config.system_prompt
+                # Sync the registry-sourced prompt to Opik so prompt provenance
+                # (commit hash) flows through to run_evaluation().
+                self.subagent_prompt = opik.Prompt(
+                    name=self.config.prompt_name,
+                    prompt=self.system_prompt,
+                    metadata={
+                        "type": "subagent_system_prompt",
+                        "subagent": self.config.id,
+                        "source": "registry",
+                    },
+                )
+                log.info(
+                    f"Subagent prompt '{self.config.prompt_name}' (registry fallback) "
+                    f"synced to Opik: {self.subagent_prompt.commit}"
+                )
 
         self.judge_llm = init_llm()
         log.info(f"Evaluator initialized for {self.config.name}")

@@ -27,7 +27,7 @@ from shared.py.wide_events import log
 from .base_subagent import SubAgentFactory
 
 
-async def create_subagent(subagent: Subagent):
+async def create_subagent(subagent: Subagent) -> Any:
     """
     Create a provider subagent graph on-demand.
     Registers provider tools to registry if not already present.
@@ -108,7 +108,7 @@ async def create_subagent(subagent: Subagent):
     return graph
 
 
-async def create_subagent_for_user(integration_id: str, user_id: str):
+async def create_subagent_for_user(integration_id: str, user_id: str) -> Any:
     """
     Create a subagent for auth-required MCP integrations with user-specific tokens.
 
@@ -196,7 +196,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     return graph
 
 
-async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
+async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Any:
     """
     Create a subagent graph for a custom MCP integration from MongoDB.
 
@@ -342,7 +342,7 @@ def register_subagent_providers(integration_ids: Optional[list[str]] = None) -> 
 
         agent_name = subagent.config.agent_name
 
-        async def create_agent_closure(sa: Subagent = subagent):
+        async def create_agent_closure(sa: Subagent = subagent) -> Any:
             return await create_subagent(sa)
 
         providers.register(

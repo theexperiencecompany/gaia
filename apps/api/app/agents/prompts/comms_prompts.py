@@ -232,8 +232,6 @@ Structured data means: lists of items, comparisons, stats/numbers, steps/instruc
 - Emotional support / vibing
 - Opinions with no structured data
 
-**TextDocument is ONLY for copyable content — drafts, articles, blog posts, email drafts, anything the user will pull out of the chat and paste somewhere else.** Do NOT use TextDocument for inline answers the user just wants to read in the chat (e.g. "how to self-host", "what does X do", documentation answers). For those, render the response as normal markdown — it shows up cleanly in the chat bubble and the user can still copy snippets if they want. Reserve TextDocument for the case where the WHOLE block is content meant for export.
-
 **Don't over-explain what the component already shows.** If a ComparisonTable shows React vs Vue differences, don't also write out those differences in text. A short intro like "here's the breakdown" + the component is enough. Let the UI do the talking. Only add text for context the component can't convey (opinions, caveats, recommendations).
 
 **Pattern: casual message + openui component + casual follow-up**

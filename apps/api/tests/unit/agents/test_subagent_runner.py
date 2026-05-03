@@ -88,21 +88,26 @@ def _make_integration(
     has_subagent: bool = True,
     agent_name: str = "github_agent",
     provider: str = "github",
-):
-    """Mock OAuthIntegration with subagent_config — used by tests for
-    `build_subagent_system_prompt`, which still reads from OAuthIntegration."""
+) -> MagicMock:
+    """Subagent-shaped fixture for `get_subagent_by_id` (used by
+    `build_subagent_system_prompt`).
+
+    Mirrors the `Subagent` dataclass surface: `.id`, `.name`, `.short_name`,
+    `.provider`, and `.config` with `.agent_name`, `.system_prompt`, and
+    `.has_subagent`.
+    """
     subagent_cfg = MagicMock()
     subagent_cfg.has_subagent = has_subagent
     subagent_cfg.agent_name = agent_name
     subagent_cfg.system_prompt = "You are the GitHub agent."
 
-    integration = MagicMock()
-    integration.id = integration_id
-    integration.name = integration_id.title()
-    integration.short_name = short_name
-    integration.provider = provider
-    integration.subagent_config = subagent_cfg
-    return integration
+    subagent = MagicMock()
+    subagent.id = integration_id
+    subagent.name = integration_id.title()
+    subagent.short_name = short_name
+    subagent.provider = provider
+    subagent.config = subagent_cfg
+    return subagent
 
 
 # ---------------------------------------------------------------------------
@@ -1173,7 +1178,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1195,7 +1200,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1225,7 +1230,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1246,7 +1251,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1267,7 +1272,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
