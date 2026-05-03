@@ -1,6 +1,6 @@
 import { Button, Card, Chip } from "heroui-native";
 import { useMemo, useState } from "react";
-import { Linking, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import {
   Alert01Icon,
   AppIcon,
@@ -11,14 +11,9 @@ import {
   CodeIcon,
   CpuIcon,
   DocumentAttachmentIcon,
-  FavouriteIcon,
   FlashIcon,
   FlowIcon,
-  MessageMultiple01Icon,
-  RepeatIcon,
   Settings01Icon,
-  Share08Icon,
-  TwitterIcon,
   UploadCircle01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -67,41 +62,6 @@ interface WorkflowCreatedData {
     type?: string;
     cron_expression?: string;
     trigger_name?: string;
-  };
-}
-
-interface TwitterAuthor {
-  username?: string;
-  name?: string;
-  verified?: boolean;
-  profile_image_url?: string;
-}
-
-interface TwitterTweetData {
-  id?: string;
-  text?: string;
-  created_at?: string;
-  author?: TwitterAuthor;
-  public_metrics?: {
-    like_count?: number;
-    reply_count?: number;
-    retweet_count?: number;
-  };
-}
-
-interface TwitterUserData {
-  id?: string;
-  username?: string;
-  name?: string;
-  description?: string;
-  verified?: boolean;
-  location?: string;
-  url?: string;
-  created_at?: string;
-  public_metrics?: {
-    followers_count?: number;
-    following_count?: number;
-    tweet_count?: number;
   };
 }
 
@@ -156,44 +116,13 @@ const getExtLabel = (filename?: string, contentType?: string): string => {
   return "FILE";
 };
 
-const formatNumber = (num?: number): string => {
-  if (!num) return "0";
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
-  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
-  return num.toString();
-};
-
-const formatTweetDate = (dateStr?: string): string => {
-  if (!dateStr) return "";
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return dateStr;
-  }
-};
-
-const formatJoinDate = (dateStr?: string): string => {
-  if (!dateStr) return "";
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  } catch {
-    return dateStr;
-  }
-};
-
 const getTriggerInfo = (
   triggerType?: string,
   triggerLabel?: string,
 ): { label: string; color: string; bg: string } => {
   switch (triggerType) {
     case "manual":
-      return { label: "Manual", color: "text-zinc-500", bg: "bg-white/10" };
+      return { label: "Manual", color: "text-[#8e8e93]", bg: "bg-white/10" };
     case "scheduled":
       return {
         label: triggerLabel || "Scheduled",
@@ -207,7 +136,7 @@ const getTriggerInfo = (
         bg: "bg-purple-500/15",
       };
     default:
-      return { label: "Unknown", color: "text-zinc-500", bg: "bg-white/10" };
+      return { label: "Unknown", color: "text-[#8e8e93]", bg: "bg-white/10" };
   }
 };
 
@@ -242,7 +171,7 @@ export function ToolCallsCard({ data }: { data: unknown }) {
   };
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-zinc-800">
+    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
       <Card.Body className="py-3 px-4">
         {/* Header */}
         <View className="flex-row items-center justify-between mb-3">
@@ -251,15 +180,15 @@ export function ToolCallsCard({ data }: { data: unknown }) {
               <AppIcon
                 icon={CpuIcon}
                 size={12}
-                color="#71717a"
+                color="#8e8e93"
                 strokeWidth={2}
               />
             </View>
-            <Text className="text-xs font-medium text-zinc-500">
+            <Text className="text-xs font-medium text-[#8e8e93]">
               Tool execution
             </Text>
           </View>
-          <Text className="text-xs text-zinc-500">
+          <Text className="text-xs text-[#8e8e93]">
             {calls.length} call{calls.length !== 1 ? "s" : ""} ·{" "}
             {uniqueToolsCount} tool{uniqueToolsCount !== 1 ? "s" : ""}
           </Text>
@@ -289,7 +218,7 @@ export function ToolCallsCard({ data }: { data: unknown }) {
                   <AppIcon
                     icon={Settings01Icon}
                     size={11}
-                    color="#71717a"
+                    color="#8e8e93"
                     strokeWidth={2}
                   />
                 </View>
@@ -309,7 +238,7 @@ export function ToolCallsCard({ data }: { data: unknown }) {
                     <AppIcon
                       icon={ArrowDown01Icon}
                       size={14}
-                      color="#71717a"
+                      color="#8e8e93"
                       strokeWidth={2}
                       style={{
                         transform: [{ rotate: isOpen ? "180deg" : "0deg" }],
@@ -319,7 +248,7 @@ export function ToolCallsCard({ data }: { data: unknown }) {
                 </Pressable>
 
                 {!!categoryLabel && call.show_category !== false && (
-                  <Text className="text-xs text-zinc-500 mt-0.5">
+                  <Text className="text-[11px] text-[#8e8e93] mt-0.5">
                     {categoryLabel}
                   </Text>
                 )}
@@ -328,7 +257,7 @@ export function ToolCallsCard({ data }: { data: unknown }) {
                   <View className="mt-2 rounded-xl bg-black/30 p-3 gap-2">
                     {hasInputs && (
                       <View>
-                        <Text className="text-xs text-zinc-500 font-medium mb-1">
+                        <Text className="text-[10px] text-[#8e8e93] font-medium mb-1">
                           INPUT
                         </Text>
                         <Text
@@ -341,7 +270,7 @@ export function ToolCallsCard({ data }: { data: unknown }) {
                     )}
                     {hasOutput && (
                       <View>
-                        <Text className="text-xs text-zinc-500 font-medium mb-1">
+                        <Text className="text-[10px] text-[#8e8e93] font-medium mb-1">
                           OUTPUT
                         </Text>
                         <Text
@@ -358,315 +287,6 @@ export function ToolCallsCard({ data }: { data: unknown }) {
             </View>
           );
         })}
-      </Card.Body>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// TwitterSearchCard
-// ---------------------------------------------------------------------------
-
-function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
-  const author = tweet.author;
-  const metrics = tweet.public_metrics;
-  const avatarLetter =
-    author?.name?.[0]?.toUpperCase() ||
-    author?.username?.[0]?.toUpperCase() ||
-    "?";
-
-  const handlePress = () => {
-    if (tweet.id && author?.username) {
-      Linking.openURL(
-        `https://twitter.com/${author.username}/status/${tweet.id}`,
-      );
-    }
-  };
-
-  return (
-    <Pressable
-      onPress={handlePress}
-      className="rounded-xl bg-zinc-900 p-3 mb-2"
-    >
-      {/* Author row */}
-      <View className="flex-row items-center gap-2 mb-2">
-        <View className="w-8 h-8 rounded-full bg-primary/20 items-center justify-center shrink-0">
-          <Text className="text-sm font-semibold text-primary">
-            {avatarLetter}
-          </Text>
-        </View>
-        <View className="flex-1 min-w-0">
-          <View className="flex-row items-center gap-1">
-            <Text
-              className="text-sm font-semibold text-foreground"
-              numberOfLines={1}
-            >
-              {author?.name || author?.username || "Unknown"}
-            </Text>
-            {author?.verified && (
-              <AppIcon
-                icon={CheckmarkCircle02Icon}
-                size={13}
-                color="#1d9bf0"
-                strokeWidth={2}
-              />
-            )}
-          </View>
-          <View className="flex-row items-center gap-1">
-            {!!author?.username && (
-              <Text className="text-xs text-zinc-500">@{author.username}</Text>
-            )}
-            {!!tweet.created_at && (
-              <>
-                <Text className="text-xs text-zinc-500">·</Text>
-                <Text className="text-xs text-zinc-500">
-                  {formatTweetDate(tweet.created_at)}
-                </Text>
-              </>
-            )}
-          </View>
-        </View>
-      </View>
-
-      {/* Tweet text */}
-      <Text
-        className="text-sm text-foreground leading-relaxed"
-        numberOfLines={4}
-      >
-        {tweet.text}
-      </Text>
-
-      {/* Metrics */}
-      {metrics && (
-        <View className="flex-row items-center gap-5 mt-2.5 pt-2 border-t border-zinc-700/50">
-          <View className="flex-row items-center gap-1">
-            <AppIcon
-              icon={FavouriteIcon}
-              size={13}
-              color="#71717a"
-              strokeWidth={2}
-            />
-            <Text className="text-xs text-zinc-500">
-              {formatNumber(metrics.like_count)}
-            </Text>
-          </View>
-          <View className="flex-row items-center gap-1">
-            <AppIcon
-              icon={MessageMultiple01Icon}
-              size={13}
-              color="#71717a"
-              strokeWidth={2}
-            />
-            <Text className="text-xs text-zinc-500">
-              {formatNumber(metrics.reply_count)}
-            </Text>
-          </View>
-          <View className="flex-row items-center gap-1">
-            <AppIcon
-              icon={RepeatIcon}
-              size={13}
-              color="#71717a"
-              strokeWidth={2}
-            />
-            <Text className="text-xs text-zinc-500">
-              {formatNumber(metrics.retweet_count)}
-            </Text>
-          </View>
-          <View className="flex-row items-center gap-1">
-            <AppIcon
-              icon={Share08Icon}
-              size={13}
-              color="#71717a"
-              strokeWidth={2}
-            />
-          </View>
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-export function TwitterSearchCard({ data }: { data: unknown }) {
-  const payload = data as Record<string, unknown>;
-  const tweets = Array.isArray(payload.tweets)
-    ? (payload.tweets as TwitterTweetData[])
-    : [];
-  const resultCount =
-    typeof payload.result_count === "number" ? payload.result_count : null;
-
-  return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-zinc-800">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center gap-2">
-            <View className="w-5 h-5 rounded-md bg-[#1d9bf0]/15 items-center justify-center">
-              <AppIcon
-                icon={TwitterIcon}
-                size={12}
-                color="#1d9bf0"
-                strokeWidth={2}
-              />
-            </View>
-            <Text className="text-xs font-medium text-zinc-500">
-              Twitter search
-            </Text>
-          </View>
-          {resultCount !== null && (
-            <Text className="text-xs text-zinc-500">
-              {resultCount} result{resultCount !== 1 ? "s" : ""}
-            </Text>
-          )}
-        </View>
-
-        {tweets.length === 0 ? (
-          <View className="rounded-xl bg-white/5 p-4 items-center">
-            <Text className="text-sm text-zinc-500">No tweets found</Text>
-          </View>
-        ) : (
-          tweets.map((tweet, idx) => (
-            <TweetRow key={tweet.id || String(idx)} tweet={tweet} />
-          ))
-        )}
-      </Card.Body>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// TwitterUsersCard
-// ---------------------------------------------------------------------------
-
-function TwitterUserRow({ user }: { user: TwitterUserData }) {
-  const metrics = user.public_metrics;
-  const avatarLetter =
-    user.name?.[0]?.toUpperCase() || user.username?.[0]?.toUpperCase() || "?";
-
-  const handlePress = () => {
-    if (user.username) {
-      Linking.openURL(`https://twitter.com/${user.username}`);
-    }
-  };
-
-  return (
-    <Pressable
-      onPress={handlePress}
-      className="rounded-xl bg-zinc-900 p-3 mb-2"
-    >
-      {/* Header */}
-      <View className="flex-row items-start gap-3">
-        <View className="w-10 h-10 rounded-full bg-primary/20 items-center justify-center shrink-0">
-          <Text className="text-base font-bold text-primary">
-            {avatarLetter}
-          </Text>
-        </View>
-        <View className="flex-1 min-w-0">
-          <View className="flex-row items-center gap-1">
-            <Text
-              className="text-sm font-bold text-foreground"
-              numberOfLines={1}
-            >
-              {user.name || user.username || "Unknown"}
-            </Text>
-            {user.verified && (
-              <AppIcon
-                icon={CheckmarkCircle02Icon}
-                size={13}
-                color="#1d9bf0"
-                strokeWidth={2}
-              />
-            )}
-          </View>
-          {!!user.username && (
-            <Text className="text-xs text-zinc-500">@{user.username}</Text>
-          )}
-        </View>
-      </View>
-
-      {/* Bio */}
-      {!!user.description && (
-        <Text
-          className="text-xs text-foreground leading-relaxed mt-2"
-          numberOfLines={3}
-        >
-          {user.description}
-        </Text>
-      )}
-
-      {/* Meta row */}
-      {(!!user.location || !!user.created_at) && (
-        <View className="flex-row flex-wrap gap-3 mt-2">
-          {!!user.location && (
-            <Text className="text-xs text-zinc-500">{user.location}</Text>
-          )}
-          {!!user.created_at && (
-            <Text className="text-xs text-zinc-500">
-              Joined {formatJoinDate(user.created_at)}
-            </Text>
-          )}
-        </View>
-      )}
-
-      {/* Stats */}
-      {metrics && (
-        <View className="flex-row items-center gap-4 mt-2 pt-2 border-t border-zinc-700/50">
-          {typeof metrics.following_count === "number" && (
-            <View className="flex-row items-center gap-1">
-              <Text className="text-xs font-bold text-foreground">
-                {formatNumber(metrics.following_count)}
-              </Text>
-              <Text className="text-xs text-zinc-500">Following</Text>
-            </View>
-          )}
-          {typeof metrics.followers_count === "number" && (
-            <View className="flex-row items-center gap-1">
-              <Text className="text-xs font-bold text-foreground">
-                {formatNumber(metrics.followers_count)}
-              </Text>
-              <Text className="text-xs text-zinc-500">Followers</Text>
-            </View>
-          )}
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-export function TwitterUsersCard({ data }: { data: unknown }) {
-  const users = (Array.isArray(data) ? data : [data]) as TwitterUserData[];
-
-  return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-zinc-800">
-      <Card.Body className="py-3 px-4">
-        <View className="flex-row items-center gap-2 mb-3">
-          <View className="w-5 h-5 rounded-md bg-[#1d9bf0]/15 items-center justify-center">
-            <AppIcon
-              icon={TwitterIcon}
-              size={12}
-              color="#1d9bf0"
-              strokeWidth={2}
-            />
-          </View>
-          <Text className="text-xs font-medium text-zinc-500">
-            Twitter users
-          </Text>
-          <Text className="text-xs text-zinc-500 ml-auto">
-            {users.length} user{users.length !== 1 ? "s" : ""}
-          </Text>
-        </View>
-
-        {users.length === 0 ? (
-          <View className="rounded-xl bg-white/5 p-4 items-center">
-            <Text className="text-sm text-zinc-500">No users found</Text>
-          </View>
-        ) : (
-          users.map((user, idx) => (
-            <TwitterUserRow
-              key={user.id || user.username || String(idx)}
-              user={user}
-            />
-          ))
-        )}
       </Card.Body>
     </Card>
   );
@@ -702,7 +322,7 @@ export function WorkflowDraftCard({ data }: { data: unknown }) {
   return (
     <Card
       variant="secondary"
-      className="mx-4 my-2 rounded-2xl bg-zinc-800 border border-dashed border-yellow-500/40"
+      className="mx-4 my-2 rounded-2xl bg-[#171920] border border-dashed border-yellow-500/40"
     >
       <Card.Body className="py-3 px-4">
         {/* Draft badge */}
@@ -729,7 +349,7 @@ export function WorkflowDraftCard({ data }: { data: unknown }) {
                   ? "#00bbff"
                   : draft.trigger_type === "integration"
                     ? "#c084fc"
-                    : "#71717a"
+                    : "#8e8e93"
               }
               strokeWidth={2}
             />
@@ -763,7 +383,7 @@ export function WorkflowDraftCard({ data }: { data: unknown }) {
         {/* Description */}
         {!!draft.suggested_description && (
           <Text
-            className="text-xs text-zinc-500 leading-relaxed mb-3"
+            className="text-xs text-[#8e8e93] leading-relaxed mb-3"
             numberOfLines={3}
           >
             {draft.suggested_description}
@@ -771,13 +391,13 @@ export function WorkflowDraftCard({ data }: { data: unknown }) {
         )}
 
         {draft.trigger_type === "integration" && (
-          <Text className="text-xs text-zinc-500 mb-3">
+          <Text className="text-xs text-[#8e8e93] mb-3">
             Configure trigger settings to complete setup
           </Text>
         )}
 
         <View className="rounded-xl bg-white/5 px-3 py-2">
-          <Text className="text-xs text-zinc-500 text-center">
+          <Text className="text-xs text-[#8e8e93] text-center">
             Review & create this workflow on web
           </Text>
         </View>
@@ -815,7 +435,7 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
         : FlashIcon;
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-zinc-800">
+    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
       <Card.Body className="py-3 px-4">
         {/* Header */}
         <View className="flex-row items-start justify-between gap-3 mb-2">
@@ -835,7 +455,7 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
               >
                 {workflow.title || "Workflow"}
               </Text>
-              <Text className="text-xs text-zinc-500 mt-0.5">
+              <Text className="text-xs text-[#8e8e93] mt-0.5">
                 Workflow Created
               </Text>
             </View>
@@ -856,7 +476,7 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
         {/* Description */}
         {!!workflow.description && (
           <Text
-            className="text-xs text-zinc-500 leading-relaxed mb-3"
+            className="text-xs text-[#8e8e93] leading-relaxed mb-3"
             numberOfLines={3}
           >
             {workflow.description}
@@ -885,7 +505,7 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
                   ? "#00bbff"
                   : triggerConfig.type === "integration"
                     ? "#c084fc"
-                    : "#71717a"
+                    : "#8e8e93"
               }
               strokeWidth={2}
             />
@@ -896,9 +516,9 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
         {/* Activated status */}
         <View className="flex-row items-center gap-2 rounded-xl bg-white/5 px-3 py-2">
           <View
-            className={`w-2 h-2 rounded-full ${workflow.activated ? "bg-green-500" : "bg-zinc-500"}`}
+            className={`w-2 h-2 rounded-full ${workflow.activated ? "bg-green-500" : "bg-[#8e8e93]"}`}
           />
-          <Text className="text-xs text-zinc-500">
+          <Text className="text-xs text-[#8e8e93]">
             {workflow.activated ? "Active" : "Not active"} · View & edit on web
           </Text>
         </View>
@@ -923,14 +543,14 @@ export function MCPAppCard({ data }: { data: unknown }) {
     .join(" ");
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-zinc-800">
+    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
       <Card.Body className="py-3 px-4">
         {/* Header */}
         <View className="flex-row items-center gap-2 mb-3">
           <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
             <AppIcon icon={CpuIcon} size={12} color="#00bbff" strokeWidth={2} />
           </View>
-          <Text className="text-xs font-medium text-zinc-500">
+          <Text className="text-xs font-medium text-[#8e8e93]">
             Interactive app
           </Text>
         </View>
@@ -953,7 +573,10 @@ export function MCPAppCard({ data }: { data: unknown }) {
               {displayName}
             </Text>
             {!!serverUrl && (
-              <Text className="text-xs text-zinc-500 mt-0.5" numberOfLines={1}>
+              <Text
+                className="text-[11px] text-[#8e8e93] mt-0.5"
+                numberOfLines={1}
+              >
                 {serverUrl.replace(/^https?:\/\//, "")}
               </Text>
             )}
@@ -961,16 +584,16 @@ export function MCPAppCard({ data }: { data: unknown }) {
         </View>
 
         {/* Notice */}
-        <View className="rounded-xl bg-zinc-900 px-3 py-2.5">
+        <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2.5">
           <View className="flex-row items-start gap-2">
             <AppIcon
               icon={Alert01Icon}
               size={14}
-              color="#71717a"
+              color="#8e8e93"
               strokeWidth={2}
               style={{ marginTop: 1 }}
             />
-            <Text className="text-xs text-zinc-500 flex-1 leading-relaxed">
+            <Text className="text-xs text-[#8e8e93] flex-1 leading-relaxed">
               Interactive rendering is available on web. The result is still
               included in the conversation.
             </Text>
@@ -999,7 +622,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
   const planName = item.plan_required?.toUpperCase() ?? "PRO";
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-zinc-800">
+    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
       <Card.Body className="p-0">
         {/* Header */}
         <View className="flex-row items-start justify-between gap-3 px-4 pt-3 pb-3">
@@ -1018,7 +641,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
               <Text className="text-sm font-semibold text-foreground leading-tight">
                 {featureName}
               </Text>
-              <Text className="text-xs text-zinc-500 mt-0.5">
+              <Text className="text-xs text-[#8e8e93] mt-0.5">
                 {isUpgradeRequired
                   ? `Requires ${planName} plan`
                   : "Daily limit reached"}
@@ -1045,7 +668,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
         <View className="px-4 py-3 gap-3">
           {isUpgradeRequired ? (
             <>
-              <Text className="text-xs text-zinc-500 leading-relaxed">
+              <Text className="text-xs text-[#8e8e93] leading-relaxed">
                 <Text className="text-white font-medium">{featureName} </Text>
                 is a{" "}
                 <Text className="text-yellow-400 font-medium">{planName} </Text>
@@ -1063,7 +686,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
                       strokeWidth={2}
                       style={{ marginTop: 1 }}
                     />
-                    <Text className="text-xs text-zinc-500 flex-1">
+                    <Text className="text-xs text-[#8e8e93] flex-1">
                       {benefit}
                     </Text>
                   </View>
@@ -1072,7 +695,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
             </>
           ) : (
             <>
-              <Text className="text-xs text-zinc-500 leading-relaxed">
+              <Text className="text-xs text-[#8e8e93] leading-relaxed">
                 You've used all your{" "}
                 <Text className="text-white font-medium">{featureName} </Text>
                 calls for today. Your limit will automatically reset — no action
@@ -1084,7 +707,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
                   <AppIcon
                     icon={Clock01Icon}
                     size={16}
-                    color="#71717a"
+                    color="#8e8e93"
                     strokeWidth={2}
                   />
                   <View className="flex-1">
@@ -1092,7 +715,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
                       {resetLabel}
                     </Text>
                     {!!resetDetail && (
-                      <Text className="text-xs text-zinc-500 mt-0.5">
+                      <Text className="text-[11px] text-[#8e8e93] mt-0.5">
                         {resetDetail}
                       </Text>
                     )}
@@ -1104,11 +727,11 @@ export function RateLimitCard({ data }: { data: unknown }) {
                 <AppIcon
                   icon={Alert01Icon}
                   size={13}
-                  color="#71717a"
+                  color="#8e8e93"
                   strokeWidth={2}
                   style={{ marginTop: 1 }}
                 />
-                <Text className="text-xs text-zinc-500 flex-1">
+                <Text className="text-xs text-[#8e8e93] flex-1">
                   Need more? Upgrade to{" "}
                   <Text className="text-white font-medium">PRO</Text> for 10×
                   higher daily limits on {featureName} and all other features.
@@ -1158,7 +781,7 @@ export function ArtifactCard({ data }: { data: unknown }) {
   const artifacts = (Array.isArray(data) ? data : [data]) as ArtifactItem[];
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-zinc-800">
+    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
       <Card.Body className="py-3 px-4">
         {/* Header */}
         <View className="flex-row items-center gap-2 mb-3">
@@ -1166,14 +789,14 @@ export function ArtifactCard({ data }: { data: unknown }) {
             <AppIcon
               icon={DocumentAttachmentIcon}
               size={12}
-              color="#71717a"
+              color="#8e8e93"
               strokeWidth={2}
             />
           </View>
-          <Text className="text-xs font-medium text-zinc-500">
+          <Text className="text-xs font-medium text-[#8e8e93]">
             Generated artifacts
           </Text>
-          <Text className="text-xs text-zinc-500 ml-auto">
+          <Text className="text-xs text-[#8e8e93] ml-auto">
             {artifacts.length} file{artifacts.length !== 1 ? "s" : ""}
           </Text>
         </View>
@@ -1188,7 +811,7 @@ export function ArtifactCard({ data }: { data: unknown }) {
           return (
             <View
               key={`${artifact.path || artifact.filename || "artifact"}-${artifact.size_bytes || 0}-${index}`}
-              className={`rounded-xl bg-zinc-900 px-3 py-3 ${index > 0 ? "mt-2" : ""}`}
+              className={`rounded-xl bg-white/5 border border-white/8 px-3 py-3 ${index > 0 ? "mt-2" : ""}`}
             >
               <View className="flex-row items-center gap-3">
                 <View className="w-9 h-9 rounded-lg bg-primary/10 items-center justify-center shrink-0">
@@ -1221,7 +844,7 @@ export function ArtifactCard({ data }: { data: unknown }) {
                     </Chip>
                   </View>
                   <Text
-                    className="text-xs text-zinc-500 mt-0.5"
+                    className="text-[11px] text-[#8e8e93] mt-0.5"
                     numberOfLines={1}
                   >
                     {formatBytes(artifact.size_bytes)}
@@ -1231,7 +854,7 @@ export function ArtifactCard({ data }: { data: unknown }) {
               </View>
               {!!artifact.path && artifact.path !== artifact.filename && (
                 <Text
-                  className="text-xs text-zinc-500 mt-2 pl-12"
+                  className="text-[10px] text-[#8e8e93] mt-2 pl-12"
                   numberOfLines={1}
                 >
                   {artifact.path}

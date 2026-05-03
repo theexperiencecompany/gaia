@@ -28,10 +28,6 @@ export interface IconProps {
 type IconName = keyof typeof iconPathData;
 export type GaiaIconComponent = React.ComponentType<IconProps>;
 
-function isClosedPath(d: string): boolean {
-  return /[zZ]/.test(d);
-}
-
 function createIcon(name: IconName) {
   const { viewBox, paths } = iconPathData[name];
   return function GaiaIcon({
@@ -39,7 +35,6 @@ function createIcon(name: IconName) {
     width,
     height,
     color = "#ffffff",
-    strokeWidth = 1.5,
     style,
   }: IconProps) {
     return (
@@ -49,21 +44,10 @@ function createIcon(name: IconName) {
         viewBox={viewBox}
         style={style}
       >
-        {paths.map((d, i) => {
-          const closed = isClosedPath(d);
-          return (
-            <Path
-              // biome-ignore lint/suspicious/noArrayIndexKey: stable path list per icon
-              key={i}
-              d={d}
-              fill={closed ? color : "none"}
-              stroke={closed ? undefined : color}
-              strokeWidth={closed ? undefined : strokeWidth}
-              strokeLinecap={closed ? undefined : "round"}
-              strokeLinejoin={closed ? undefined : "round"}
-            />
-          );
-        })}
+        {paths.map((d, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable path list per icon
+          <Path key={i} d={d} fill={color} />
+        ))}
       </Svg>
     );
   };
@@ -101,6 +85,7 @@ export const Brain02Icon = createIcon("Brain02Icon");
 export const BrainIcon = createIcon("BrainIcon");
 export const BubbleChatAddIcon = createIcon("BubbleChatAddIcon");
 export const BubbleChatIcon = createIcon("BubbleChatIcon");
+export const Calendar01Icon = createIcon("Calendar01Icon");
 export const Calendar03Icon = createIcon("Calendar03Icon");
 export const Call02Icon = createIcon("Call02Icon");
 export const Camera01Icon = createIcon("Camera01Icon");
@@ -109,6 +94,7 @@ export const ChartLineData01Icon = createIcon("ChartLineData01Icon");
 export const ChartLineData02Icon = createIcon("ChartLineData02Icon");
 export const ChartRingIcon = createIcon("ChartRingIcon");
 export const CheckListIcon = createIcon("CheckListIcon");
+export const CheckmarkBadge02Icon = createIcon("CheckmarkBadge02Icon");
 export const CheckmarkCircle01Icon = createIcon("CheckmarkCircle01Icon");
 export const CheckmarkCircle02Icon = createIcon("CheckmarkCircle02Icon");
 export const CheckmarkSquare03Icon = createIcon("CheckmarkSquare03Icon");
@@ -157,7 +143,9 @@ export const Image02Icon = createIcon("Image02Icon");
 export const InformationCircleIcon = createIcon("InformationCircleIcon");
 export const KeyboardIcon = createIcon("KeyboardIcon");
 export const LayoutGridIcon = createIcon("LayoutGridIcon");
+export const Link01Icon = createIcon("Link01Icon");
 export const LinkBackwardIcon = createIcon("LinkBackwardIcon");
+export const LinkIcon = createIcon("LinkIcon");
 export const LinkSquare01Icon = createIcon("LinkSquare01Icon");
 export const LinkSquare02Icon = createIcon("LinkSquare02Icon");
 export const Loading03Icon = createIcon("Loading03Icon");
@@ -167,11 +155,13 @@ export const MagicWand01Icon = createIcon("MagicWand01Icon");
 export const Mail01Icon = createIcon("Mail01Icon");
 export const MailOpen01Icon = createIcon("MailOpen01Icon");
 export const MailSend01Icon = createIcon("MailSend01Icon");
+export const MapsIcon = createIcon("MapsIcon");
 export const Menu01Icon = createIcon("Menu01Icon");
+export const Moon02Icon = createIcon("Moon02Icon");
 export const MoreVerticalIcon = createIcon("MoreVerticalIcon");
 export const Message01Icon = createIcon("Message01Icon");
+export const MessageIcon = createIcon("MessageIcon");
 export const MessageMultiple01Icon = createIcon("MessageMultiple01Icon");
-export const Moon02Icon = createIcon("Moon02Icon");
 export const News01Icon = createIcon("News01Icon");
 export const Notification01Icon = createIcon("Notification01Icon");
 export const Notification02Icon = createIcon("Notification02Icon");
@@ -191,6 +181,7 @@ export const Settings01Icon = createIcon("Settings01Icon");
 export const Settings02Icon = createIcon("Settings02Icon");
 export const Share01Icon = createIcon("Share01Icon");
 export const Share08Icon = createIcon("Share08Icon");
+export const ShareIcon = createIcon("ShareIcon");
 export const ShieldUserIcon = createIcon("ShieldUserIcon");
 export const SourceCodeCircleIcon = createIcon("SourceCodeCircleIcon");
 export const SquareArrowUpRight02Icon = createIcon("SquareArrowUpRight02Icon");
