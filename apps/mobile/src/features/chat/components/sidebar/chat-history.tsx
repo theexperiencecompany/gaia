@@ -989,7 +989,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           onToggle={() => toggleSection("yesterday")}
         />
         <Section
-          title="Previous 7 Days"
+          title="Previous 7 days"
           items={groupedChats.lastWeek}
           activeChatId={activeChatId}
           streamingConversationId={streamingConversationId}
@@ -1001,7 +1001,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           onToggle={() => toggleSection("lastWeek")}
         />
         <Section
-          title="Previous 30 Days"
+          title="Previous 30 days"
           items={groupedChats.last30Days}
           activeChatId={activeChatId}
           streamingConversationId={streamingConversationId}

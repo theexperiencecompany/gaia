@@ -90,10 +90,15 @@ export function useWorkflowDetail(
     }
   }, [state.isLoadingExecutions, state.hasMoreExecutions, fetchExecutions]);
 
+  const refetchExecutions = useCallback(
+    () => fetchExecutions(true),
+    [fetchExecutions],
+  );
+
   return {
     ...state,
     refetch: fetchWorkflow,
-    refetchExecutions: () => fetchExecutions(true),
+    refetchExecutions,
     loadMoreExecutions,
   };
 }
