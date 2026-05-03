@@ -44,6 +44,7 @@ import type { WeatherData } from "@/types/features/weatherTypes";
 export interface MCPAppData {
   tool_call_id: string;
   tool_name: string;
+  integration_id: string;
   server_url: string;
   resource_uri: string;
   html_content: string;

@@ -1,12 +1,14 @@
 """User integration management functions."""
 
+import asyncio
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional
 
 import httpx
 
 from app.agents.tools.core.registry import get_tool_registry
 from shared.py.wide_events import log
+from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.cache import ONE_DAY_TTL
 from app.db.mongodb.collections import user_integrations_collection
@@ -20,24 +22,103 @@ from app.models.integration_models import (
 )
 from app.services.integrations.marketplace import get_integration_details
 
-# Provider-specific OAuth token revocation endpoints. Keyed by the canonical
-# integration_id so we can POST the refresh/access token on disconnect; a
+# Provider-specific OAuth token revocation strategies. Each provider has its
+# own request shape — Google/Notion accept ``token`` as form data, Slack
+# requires a Bearer header, GitHub takes a DELETE with HTTP Basic auth. A
 # local row deletion without upstream revoke leaves live tokens loose on the
-# provider side (H7). Absent entries mean "we don't know the endpoint —
-# proceed with local-only delete but log a warning".
-_OAUTH_REVOKE_ENDPOINTS: dict[str, str] = {
-    "google": "https://oauth2.googleapis.com/revoke",
-    "google_calendar": "https://oauth2.googleapis.com/revoke",
-    "gmail": "https://oauth2.googleapis.com/revoke",
-    "google_docs": "https://oauth2.googleapis.com/revoke",
-    "google_drive": "https://oauth2.googleapis.com/revoke",
-    "youtube": "https://oauth2.googleapis.com/revoke",
-    "slack": "https://slack.com/api/auth.revoke",
-    "github": "https://api.github.com/applications/{client_id}/grant",
-    "notion": "https://api.notion.com/v1/oauth/revoke",
-}
+# provider side (H7). Providers not listed here proceed with local-only
+# delete and a single warning log.
+
+_GOOGLE_REVOKE = "https://oauth2.googleapis.com/revoke"
 
 _REVOKE_TIMEOUT_SECONDS = 5.0
+# Transient-failure retry budget. Total worst-case wall time is
+# ``sum(_REVOKE_RETRY_DELAYS_SECONDS) + (len + 1) * _REVOKE_TIMEOUT_SECONDS``,
+# bounded so a slow provider can't hold the disconnect handler indefinitely.
+_REVOKE_RETRY_DELAYS_SECONDS = (0.5, 2.0)
+
+
+async def _revoke_with_retry(
+    do_request: Callable[[], Awaitable[Optional[httpx.Response]]],
+) -> Optional[httpx.Response]:
+    """Invoke ``do_request`` with retry on transient errors.
+
+    Retries on:
+      - ``httpx.TransportError`` / ``httpx.TimeoutException`` (network blip)
+      - 5xx responses (provider blip)
+    A 4xx is treated as terminal — those are auth/format errors that won't
+    self-resolve and shouldn't be retried.
+    """
+    last_response: Optional[httpx.Response] = None
+    for attempt, delay in enumerate((0.0, *_REVOKE_RETRY_DELAYS_SECONDS)):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            response = await do_request()
+        except (httpx.TransportError, httpx.TimeoutException):
+            if attempt == len(_REVOKE_RETRY_DELAYS_SECONDS):
+                raise
+            continue
+        if response is None or response.status_code < 500:
+            return response
+        last_response = response
+    return last_response
+
+
+async def _revoke_form_token(
+    client: httpx.AsyncClient, endpoint: str, token_value: str
+) -> httpx.Response:
+    """Form-body revoke (Google, Notion)."""
+    return await client.post(
+        endpoint,
+        data={"token": token_value},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+
+async def _revoke_slack(
+    client: httpx.AsyncClient, token_value: str
+) -> httpx.Response:
+    """Slack expects the access token as a Bearer header."""
+    return await client.post(
+        "https://slack.com/api/auth.revoke",
+        headers={"Authorization": f"Bearer {token_value}"},
+    )
+
+
+async def _revoke_github(
+    client: httpx.AsyncClient, token_value: str
+) -> Optional[httpx.Response]:
+    """GitHub revokes with DELETE + Basic auth + JSON body.
+
+    Returns ``None`` when the GitHub OAuth client credentials aren't
+    configured; the caller treats that as a logged skip rather than an
+    error.
+    """
+    # GitHub OAuth client creds may not be configured for every deploy
+    # (this revoke is best-effort, integrations are mediated by Composio
+    # in production). Fall back gracefully when they're absent.
+    client_id = getattr(settings, "GITHUB_CLIENT_ID", None)
+    client_secret = getattr(settings, "GITHUB_CLIENT_SECRET", None)
+    if not client_id or not client_secret:
+        return None
+    return await client.request(
+        "DELETE",
+        f"https://api.github.com/applications/{client_id}/grant",
+        auth=(client_id, client_secret),
+        json={"access_token": token_value},
+        headers={"Accept": "application/vnd.github+json"},
+    )
+
+
+_GOOGLE_PROVIDERS = {
+    "google",
+    "google_calendar",
+    "gmail",
+    "google_docs",
+    "google_drive",
+    "youtube",
+}
 
 
 async def _revoke_upstream(user_id: str, integration_id: str) -> None:
@@ -48,10 +129,6 @@ async def _revoke_upstream(user_id: str, integration_id: str) -> None:
     the token that has already leaked from our DB remains live until the
     user revokes at the provider — this at least kills the happy-path copy.
     """
-    endpoint = _OAUTH_REVOKE_ENDPOINTS.get(integration_id)
-    if not endpoint:
-        return
-
     try:
         token = await token_repository.get_token(
             user_id=user_id, provider=integration_id, renew_if_expired=False
@@ -70,16 +147,48 @@ async def _revoke_upstream(user_id: str, integration_id: str) -> None:
     if not access_token and not refresh_token:
         return
 
+    # Prefer refresh_token (revokes the whole grant for Google/Notion);
+    # fall back to access_token if that's all we have. Slack/GitHub only
+    # accept access tokens, so use that for them.
+    grant_value = refresh_token or access_token
+    bearer_value = access_token or refresh_token
+
+    response: Optional[httpx.Response] = None
     try:
         async with httpx.AsyncClient(timeout=_REVOKE_TIMEOUT_SECONDS) as client:
-            # Prefer refresh_token (revokes the whole grant for Google/Notion);
-            # fall back to access_token if that's all we have.
-            revoke_value = refresh_token or access_token
-            response = await client.post(
-                endpoint,
-                data={"token": revoke_value},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            if integration_id in _GOOGLE_PROVIDERS:
+                response = await _revoke_with_retry(
+                    lambda: _revoke_form_token(
+                        client, _GOOGLE_REVOKE, grant_value
+                    )
+                )
+            elif integration_id == "notion":
+                response = await _revoke_with_retry(
+                    lambda: _revoke_form_token(
+                        client,
+                        "https://api.notion.com/v1/oauth/revoke",
+                        grant_value,
+                    )
+                )
+            elif integration_id == "slack":
+                response = await _revoke_with_retry(
+                    lambda: _revoke_slack(client, bearer_value)
+                )
+            elif integration_id == "github":
+                response = await _revoke_with_retry(
+                    lambda: _revoke_github(client, bearer_value)
+                )
+            else:
+                # Unknown provider — caller wanted upstream revoke but we
+                # don't know the endpoint shape. Fall through to log+skip.
+                return
+        if response is None:
+            log.info(
+                "oauth_revoke_skipped_no_credentials",
+                user_id=user_id,
+                integration_id=integration_id,
             )
+            return
         if response.status_code >= 400:
             log.warning(
                 "oauth_revoke_upstream_error",

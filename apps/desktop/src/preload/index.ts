@@ -66,6 +66,19 @@ const api = {
   openExternal: (url: string): void => ipcRenderer.send("open-external", url),
 
   /**
+   * Prepare a PKCE challenge for the desktop OAuth flow (H11).
+   *
+   * The verifier stays in the main process — only the SHA-256
+   * base64url-encoded challenge is returned. The matching verifier is
+   * presented automatically by the deep-link handler when the
+   * one-time code comes back.
+   *
+   * @returns The base64url-encoded code_challenge.
+   */
+  prepareDesktopLogin: (): Promise<string> =>
+    ipcRenderer.invoke("prepare-desktop-login"),
+
+  /**
    * Subscribe to auth-callback events from the main process.
    *
    * The main process fires `auth-callback` after successfully

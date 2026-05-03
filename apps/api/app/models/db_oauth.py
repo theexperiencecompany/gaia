@@ -49,6 +49,12 @@ class OAuthToken(Base):
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     access_token: Mapped[str] = mapped_column(EncryptedText, nullable=False)
+    # HMAC-SHA256 of the plaintext access_token, kept in a non-encrypted
+    # column so reverse lookups by token value still work — Fernet's random
+    # IV means equality on the encrypted column never matches.
+    access_token_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     refresh_token: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     token_data: Mapped[str] = mapped_column(
         EncryptedText,

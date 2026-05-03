@@ -9,6 +9,7 @@
  */
 
 import { app, ipcMain, shell } from "electron";
+import { preparePkce } from "./deep-link";
 
 /**
  * Register all main-process IPC handlers.
@@ -24,6 +25,9 @@ import { app, ipcMain, shell } from "electron";
 export function registerIpcHandlers(onWindowReady: () => void): void {
   ipcMain.handle("get-platform", () => process.platform);
   ipcMain.handle("get-version", () => app.getVersion());
+  // PKCE prep for the desktop OAuth flow (H11). The verifier is held
+  // in main; the renderer only ever sees the challenge.
+  ipcMain.handle("prepare-desktop-login", () => preparePkce());
 
   ipcMain.on("window-ready", () => {
     console.log("[Main] Renderer signaled ready");

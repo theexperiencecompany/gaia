@@ -43,12 +43,21 @@ class IntegrationResolver:
     """
 
     @staticmethod
-    async def resolve(integration_id: str) -> Optional[ResolvedIntegration]:
+    async def resolve(
+        integration_id: str, user_id: Optional[str] = None
+    ) -> Optional[ResolvedIntegration]:
         """
         Resolve an integration from either platform config or MongoDB.
 
         Args:
-            integration_id: The integration ID to look up
+            integration_id: The integration ID to look up.
+            user_id: When set, restricts custom-integration lookups to
+                ones the caller created. Platform integrations (in-code
+                definitions like Gmail, Slack, etc.) are always shared
+                and never filtered. Pass this from any caller-facing
+                endpoint that takes a client-controlled integration_id —
+                without it, an attacker can enumerate other tenants'
+                custom integrations by id (C4 follow-up).
 
         Returns:
             ResolvedIntegration if found, None otherwise
@@ -88,10 +97,14 @@ class IntegrationResolver:
                 custom_doc=None,
             )
 
-        # Try custom integration from MongoDB
-        custom_doc = await integrations_collection.find_one(
-            {"integration_id": integration_id}
-        )
+        # Try custom integration from MongoDB. Custom integrations are
+        # user-scoped, so when the caller can be identified we restrict
+        # the lookup to their own — otherwise (background tasks, internal
+        # callers without user context) we fall back to the global lookup.
+        custom_query: dict = {"integration_id": integration_id}
+        if user_id is not None:
+            custom_query["user_id"] = user_id
+        custom_doc = await integrations_collection.find_one(custom_query)
 
         if custom_doc:
             mcp_config = None

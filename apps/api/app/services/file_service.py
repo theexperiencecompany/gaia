@@ -24,7 +24,21 @@ from app.utils.file_utils import generate_file_summary
 from fastapi import HTTPException, UploadFile
 from langchain_core.documents import Document
 
-_UNSAFE_FILENAME_CHARS = re.compile(r"[\x00-\x1f\x7f/\\]")
+# Path separators, null + ASCII control chars, and Unicode bidi-control
+# codepoints. RTL-override characters (U+202E, U+2066-U+2069, etc.) can
+# disguise filenames in UI listings — e.g. "innocent‮gpj.exe" renders
+# as ``innocentexe.jpg`` while still executing as .exe.
+_BIDI_CONTROL = "‪-‮⁦-⁩"
+_UNSAFE_FILENAME_CHARS = re.compile(rf"[\x00-\x1f\x7f/\\{_BIDI_CONTROL}]")
+_UNSAFE_TEXT_CHARS = re.compile(
+    rf"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f{_BIDI_CONTROL}]"
+)
+# Fields the client is permitted to update via the file-update endpoint.
+# Anything else (user_id, file_id, _id, page_wise_summary, etc.) must be
+# server-controlled — preventing tenant takeover via $set with a stray key.
+_FILE_UPDATE_ALLOWED_FIELDS = frozenset(
+    {"filename", "description", "type", "conversation_id"}
+)
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -39,6 +53,18 @@ def _sanitize_filename(filename: str) -> str:
     if not cleaned or set(cleaned) == {"."}:
         return "file"
     return cleaned[:255]
+
+
+def _sanitize_text_field(value: Optional[str], *, max_len: int = 4000) -> str:
+    """Strip control bytes/null and cap length for free-text user fields.
+
+    Used for ``description`` on file update (and any future free-text
+    metadata) so log/UI consumers don't have to defend against control
+    characters smuggled in by the client.
+    """
+    if value is None:
+        return ""
+    return _UNSAFE_TEXT_CHARS.sub("", value)[:max_len]
 
 
 @CacheInvalidator(
@@ -348,71 +374,49 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
         # Track files to include in the response
         included_files = []
 
-        # Get explicit file IDs and file data from context
-        explicit_file_ids = context.get("fileIds", [])
-        file_data_list: List[FileData] = context.get("fileData", [])
-
-        # Create a mapping of file IDs to their complete metadata from fileData
-        file_data_map = {
-            file_data.fileId: file_data.model_dump() for file_data in file_data_list
-        }
+        # Collect every file_id the client claims is in scope, both from
+        # the bare ``fileIds`` list and from the richer ``fileData`` shape.
+        # We deliberately ignore the URL/filename/description fields the
+        # client sends inside ``fileData`` — those are user-controlled and
+        # were a known IDOR vector (H1): an attacker could send another
+        # user's file_id with a stolen URL and bypass the DB lookup.
+        # Always resolve metadata server-side, scoped to the caller.
+        explicit_file_ids: List[str] = list(context.get("fileIds", []) or [])
+        file_data_list: List[FileData] = context.get("fileData", []) or []
+        for file_data in file_data_list:
+            if file_data.fileId and file_data.fileId not in explicit_file_ids:
+                explicit_file_ids.append(file_data.fileId)
 
         if explicit_file_ids:
             log.info(f"Fetching {len(explicit_file_ids)} files by ID")
+            db_files = await files_collection.find(
+                {"file_id": {"$in": explicit_file_ids}, "user_id": user_id}
+            ).to_list(length=None)
 
-            # Find which IDs aren't in the file_data_map
-            missing_ids = [
-                file_id for file_id in explicit_file_ids if file_id not in file_data_map
-            ]
+            for file_data in db_files:
+                # Convert ObjectId to string for serialization
+                if "_id" in file_data:
+                    file_data["_id"] = str(file_data["_id"])
 
-            # Process files from file_data_map
-            for file_id in explicit_file_ids:
-                if file_id in file_data_map:
-                    file_data = file_data_map[file_id]
-                    included_files.append(
-                        {
-                            "file_id": file_data["fileId"],
-                            "url": file_data["url"],
-                            "filename": file_data["filename"],
-                            "description": file_data.get("description", ""),
-                            "content_type": file_data.get("type", ""),
-                            "_id": file_data[
-                                "fileId"
-                            ],  # Use fileId as _id for consistency
-                        }
-                    )
+                # Convert date fields to ISO format
+                for date_field in ["created_at", "updated_at"]:
+                    if date_field in file_data and hasattr(
+                        file_data[date_field], "isoformat"
+                    ):
+                        file_data[date_field] = file_data[date_field].isoformat()
 
-            # Batch lookup missing files from database. Filter by user_id to
-            # prevent cross-user file metadata leaking into the chat context.
-            if missing_ids:
-                db_files = await files_collection.find(
-                    {"file_id": {"$in": missing_ids}, "user_id": user_id}
-                ).to_list(length=None)
-
-                for file_data in db_files:
-                    # Convert ObjectId to string for serialization
-                    if "_id" in file_data:
-                        file_data["_id"] = str(file_data["_id"])
-
-                    # Convert date fields to ISO format
-                    for date_field in ["created_at", "updated_at"]:
-                        if date_field in file_data and hasattr(
-                            file_data[date_field], "isoformat"
-                        ):
-                            file_data[date_field] = file_data[date_field].isoformat()
-
-                    included_files.append(
-                        {
-                            "file_id": file_data["file_id"],
-                            "url": file_data["url"],
-                            "filename": file_data["filename"],
-                            "description": file_data.get("description", ""),
-                            "content_type": file_data.get("content_type", ""),
-                            "_id": file_data[
-                                "file_id"
-                            ],  # Use file_id as _id for consistency
-                        }
-                    )
+                included_files.append(
+                    {
+                        "file_id": file_data["file_id"],
+                        "url": file_data["url"],
+                        "filename": file_data["filename"],
+                        "description": file_data.get("description", ""),
+                        "content_type": file_data.get("content_type", ""),
+                        "_id": file_data[
+                            "file_id"
+                        ],  # Use file_id as _id for consistency
+                    }
+                )
 
         # 2. Perform vector search for relevant files based on the query
         # Only perform the search if there's a meaningful query
@@ -634,6 +638,19 @@ async def update_file_service(
     if not file_data:
         log.error(f"File with id {file_id} not found for user {user_id}")
         raise HTTPException(status_code=404, detail="File not found")
+
+    # Allowlist + sanitize client-supplied fields (H3). The endpoint
+    # accepts ``update_data: dict`` so without this an attacker could
+    # ``$set`` arbitrary fields like ``user_id`` to steal the row, or
+    # smuggle control bytes into ``filename``/``description`` (which
+    # flow back into Cloudinary, ChromaDB, and the response body).
+    update_data = {
+        k: v for k, v in update_data.items() if k in _FILE_UPDATE_ALLOWED_FIELDS
+    }
+    if "filename" in update_data and isinstance(update_data["filename"], str):
+        update_data["filename"] = _sanitize_filename(update_data["filename"])
+    if "description" in update_data and isinstance(update_data["description"], str):
+        update_data["description"] = _sanitize_text_field(update_data["description"])
 
     # Store original conversation ID if not provided in update
     if not conversation_id:

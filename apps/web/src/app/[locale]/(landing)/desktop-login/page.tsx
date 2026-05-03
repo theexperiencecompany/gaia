@@ -21,7 +21,7 @@ import { useElectron } from "@/hooks/useElectron";
  * Located in (landing) to avoid sidebar layout.
  */
 export default function DesktopLoginPage() {
-  const { isElectron, openExternal } = useElectron();
+  const { isElectron, openExternal, prepareDesktopLogin } = useElectron();
   const router = useRouter();
   const [timeOfDay] = useState<TimeOfDay>(() => getTimeOfDay());
   const [status, setStatus] = useState<
@@ -50,12 +50,18 @@ export default function DesktopLoginPage() {
     return cleanup;
   }, []);
 
-  const handleOpenLogin = () => {
+  const handleOpenLogin = async () => {
     const apiBaseUrl =
       process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.heygaia.io/api/v1/";
-    const loginUrl = `${apiBaseUrl}oauth/login/workos/desktop`;
 
     try {
+      // PKCE (H11): main process holds the verifier; we only ever pass
+      // the SHA-256 challenge over the URL.
+      const challenge = await prepareDesktopLogin();
+      const loginUrl = challenge
+        ? `${apiBaseUrl}oauth/login/workos/desktop?code_challenge=${encodeURIComponent(challenge)}`
+        : `${apiBaseUrl}oauth/login/workos/desktop`;
+
       openExternal(loginUrl);
       setStatus("opened");
 

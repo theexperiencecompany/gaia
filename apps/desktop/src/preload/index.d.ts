@@ -13,6 +13,7 @@ declare global {
       isElectron: boolean;
       signalReady: () => void;
       openExternal: (url: string) => void;
+      prepareDesktopLogin: () => Promise<string>;
       onAuthCallback: (
         callback: (data: AuthCallbackData) => void,
       ) => () => void;

@@ -1,5 +1,8 @@
 """VFS (Virtual Filesystem) HTTP API endpoints."""
 
+import re
+import unicodedata
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -9,14 +12,22 @@ from app.services.vfs import VFSAccessError, get_vfs
 
 router = APIRouter()
 
+# Reject path components containing Unicode look-alike traversal characters
+# (e.g. ``․․`` U+2024 ONE DOT LEADER, ``‥`` U+2025 TWO DOT LEADER) and
+# bidi-control codepoints used for filename spoofing. NFKC normalize the
+# whole path first so the canonical comparison sees ASCII dots.
+_VFS_BIDI_CONTROL_RE = re.compile(r"[‪-‮⁦-⁩]")
 
-def _validate_vfs_path(path: str) -> str:
+
+def _validate_vfs_path(path: str, user_id: str) -> str:
     """Defence-in-depth path normalization at the endpoint layer.
 
     Rejects obvious path-traversal attempts (``..`` segments, null bytes,
-    backslash separators) and absolute OS-style paths before handing the
-    string to the VFS service. The service is expected to confine access
-    to the caller's namespace, but we refuse to rely on that alone.
+    backslash separators, Unicode bidi-controls, NFKC-equivalent dot
+    look-alikes) before handing the string to the VFS service. Also
+    enforces that the path lives under the caller's own namespace
+    (``/users/{user_id}/...``) or the read-only ``/system/...`` tree.
+    The service still does its own confinement; this is belt-and-braces.
     """
     if not path:
         raise HTTPException(status_code=400, detail="path is required")
@@ -24,14 +35,26 @@ def _validate_vfs_path(path: str) -> str:
         raise HTTPException(status_code=400, detail="null byte in path")
     if "\\" in path:
         raise HTTPException(status_code=400, detail="backslash not allowed in path")
-    if path.startswith("/"):
-        # VFS paths are relative; a leading slash may mean "escape to filesystem
-        # root" in the underlying implementation. Always reject.
-        raise HTTPException(status_code=400, detail="absolute paths not allowed")
+    if _VFS_BIDI_CONTROL_RE.search(path):
+        raise HTTPException(
+            status_code=400, detail="bidi control characters not allowed"
+        )
+    # NFKC compatibility decomposition collapses dot look-alikes (U+2024,
+    # U+2025, fullwidth dot, etc.) onto ASCII dots, so the ``..`` segment
+    # check below catches them too.
+    path = unicodedata.normalize("NFKC", path)
     # Block ".." as a path segment. Allow dots inside filenames (e.g. "foo.txt").
     segments = path.split("/")
     if any(seg == ".." for seg in segments):
         raise HTTPException(status_code=400, detail="'..' segments not allowed")
+    # VFS paths are namespaced under ``/users/{user_id}/`` per
+    # ``vfs/path_resolver.py``. Anything else is either an attempt to read
+    # another user's tree or a malformed request — reject before the
+    # service does, so we don't leak existence via differing error shapes.
+    allowed_prefix = f"/users/{user_id}/"
+    system_prefix = "/system/"
+    if not (path.startswith(allowed_prefix) or path.startswith(system_prefix)):
+        raise HTTPException(status_code=400, detail="invalid path namespace")
     return path
 
 
@@ -51,8 +74,8 @@ async def read_vfs_file(
     user: dict = Depends(get_current_user),
 ) -> VFSReadResponse:
     """Read file content from VFS for the authenticated user."""
-    path = _validate_vfs_path(path)
     user_id = str(user["user_id"])
+    path = _validate_vfs_path(path, user_id)
     vfs = await get_vfs()
 
     try:
@@ -82,8 +105,8 @@ async def get_vfs_info(
     user: dict = Depends(get_current_user),
 ) -> VFSNodeResponse:
     """Get metadata for a VFS file or folder."""
-    path = _validate_vfs_path(path)
     user_id = str(user["user_id"])
+    path = _validate_vfs_path(path, user_id)
     vfs = await get_vfs()
 
     try:
@@ -102,8 +125,8 @@ async def list_vfs_dir(
     user: dict = Depends(get_current_user),
 ) -> VFSListResponse:
     """List contents of a VFS directory."""
-    path = _validate_vfs_path(path)
     user_id = str(user["user_id"])
+    path = _validate_vfs_path(path, user_id)
     vfs = await get_vfs()
 
     try:

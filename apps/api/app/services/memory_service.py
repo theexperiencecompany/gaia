@@ -96,7 +96,10 @@ class MemoryService:
             return None
 
     def _parse_memory_list(
-        self, memories: List[Dict[str, Any]], user_id: str
+        self,
+        memories: List[Dict[str, Any]],
+        user_id: str,
+        owner_field: str = "user_id",
     ) -> List[MemoryEntry]:
         """
         Parse a list of memory results.
@@ -114,10 +117,13 @@ class MemoryService:
             try:
                 # Defence-in-depth (H12): Mem0 is supposed to scope results
                 # by the filters we passed, but if a misconfiguration or
-                # bug causes another user's memory to come back, we drop
-                # it locally instead of surfacing it to the wrong user.
-                raw_user_id = memory_data.get("user_id")
-                if raw_user_id and str(raw_user_id) != str(user_id):
+                # bug causes another tenant's memory to come back, we drop
+                # it locally instead of surfacing it to the wrong caller.
+                # Fail-closed: a missing owner field on the record is
+                # treated as a non-match — we'd rather lose a record than
+                # leak across tenants.
+                raw_owner = memory_data.get(owner_field)
+                if not raw_owner or str(raw_owner) != str(user_id):
                     dropped_cross_tenant += 1
                     continue
                 if memory_entry := self._parse_memory_result(memory_data):
@@ -674,8 +680,12 @@ class MemoryService:
                 )
                 return MemorySearchResult()
 
-            # Parse memories and relationships
-            memories = self._parse_memory_list(memories_list, agent_id)
+            # Parse memories and relationships. Mem0 records for
+            # agent-scoped searches carry ``agent_id``, not ``user_id`` —
+            # point the cross-tenant filter at the right field.
+            memories = self._parse_memory_list(
+                memories_list, agent_id, owner_field="agent_id"
+            )
             relations = self._parse_relationships(relations_list)
 
             self.logger.debug(
@@ -760,6 +770,27 @@ class MemoryService:
 
         try:
             client = await self._get_client()
+
+            # Defence-in-depth (H12): refuse to delete a memory the caller
+            # doesn't own. Mem0 should scope by auth, but a single
+            # misconfiguration on their side would otherwise let any
+            # caller drop another tenant's memory by id.
+            try:
+                record = await client.get(memory_id=memory_id)
+            except Exception as fetch_exc:  # noqa: BLE001
+                self.logger.warning(
+                    f"Could not verify ownership of memory {memory_id} "
+                    f"before delete: {fetch_exc}"
+                )
+                return False
+            owner = (record or {}).get("user_id") if isinstance(record, dict) else None
+            if not owner or str(owner) != str(user_id):
+                log.warning(
+                    "mem0_delete_cross_tenant_blocked",
+                    user_id=user_id,
+                    memory_id=memory_id,
+                )
+                return False
 
             # v2 API delete by memory_id
             result = await client.delete(memory_id=memory_id)

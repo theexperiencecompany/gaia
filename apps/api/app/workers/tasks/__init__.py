@@ -7,6 +7,7 @@ from .memory_email_tasks import process_gmail_emails_to_memory
 from .memory_tasks import store_memories_batch
 from .onboarding_tasks import process_personalization_task
 from .reminder_tasks import cleanup_expired_reminders, process_reminder
+from .token_reencryption_tasks import reencrypt_legacy_tokens
 from .user_tasks import check_inactive_users
 from .workflow_tasks import (
     execute_workflow_as_chat,
@@ -22,6 +23,7 @@ __all__ = [
     "store_memories_batch",
     "process_reminder",
     "cleanup_expired_reminders",
+    "reencrypt_legacy_tokens",
     "check_inactive_users",
     "process_workflow_generation_task",
     "execute_workflow_by_id",

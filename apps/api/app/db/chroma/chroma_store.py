@@ -12,8 +12,11 @@ MAC verification are dropped without being unpickled.
 """
 
 import asyncio
+import base64
+import binascii
 import hashlib
 import hmac
+import os
 import pickle  # nosec B403 - MAC-authenticated internal serialization only
 from collections.abc import Iterable
 from datetime import datetime, timezone
@@ -22,17 +25,24 @@ from typing import Any
 from app.config.settings import settings
 
 
-_MAC_PREFIX = "mac1:"
+# Envelope versions:
+#   ``mac1:`` — original. ``mac1:<hex_tag>:<latin1_pickle>``. Latin-1
+#       round-trips bytes through Chroma's string column but is fragile if
+#       Chroma ever normalizes UTF-8.
+#   ``mac2:`` — current. ``mac2:<hex_tag>:<base64_pickle>``. Base64 is
+#       transport-safe end-to-end; cost is ~33% larger documents.
+# Reads accept either; writes always emit ``mac2:``.
+_MAC_PREFIX_V1 = "mac1:"
+_MAC_PREFIX_V2 = "mac2:"
 _MAC_SEP = ":"
 
 
 def _mac_key() -> bytes:
     """Return the MAC key derived from the app's secret configuration.
 
-    Fall back to ``WORKOS_COOKIE_PASSWORD`` (always set in prod) so operators
-    don't need to provision an additional secret for the pickle MAC; the
-    threat model is "Chroma-level compromise cannot execute arbitrary
-    pickle", not "app-secret leak must not authenticate MACs".
+    Falls back to ``WORKOS_COOKIE_PASSWORD`` so operators don't need to
+    provision an additional secret. ``assert_chroma_mac_key_configured``
+    is the prod-time guard against neither being set.
     """
     raw = (
         getattr(settings, "CHROMA_STATE_MAC_KEY", None)
@@ -42,27 +52,63 @@ def _mac_key() -> bytes:
     return raw.encode("utf-8") if isinstance(raw, str) else raw
 
 
+def assert_chroma_mac_key_configured() -> None:
+    """Fail loud at boot if production has no key for the Chroma pickle MAC.
+
+    Without a key we silently fall back to the dev-only literal, which
+    would defeat the entire H10 mitigation. Boot should refuse to start
+    in that state.
+    """
+    env = os.getenv("ENV", "development").lower()
+    if env != "production":
+        return
+    if not (
+        getattr(settings, "CHROMA_STATE_MAC_KEY", None)
+        or getattr(settings, "WORKOS_COOKIE_PASSWORD", None)
+    ):
+        raise RuntimeError(
+            "Neither CHROMA_STATE_MAC_KEY nor WORKOS_COOKIE_PASSWORD is "
+            "configured (H10) — refusing to start with the dev-only "
+            "Chroma pickle MAC fallback."
+        )
+
+
 def _sign_pickle(payload: bytes) -> str:
-    """Return ``mac1:<hex>:<latin1-pickle>`` for storage as a Chroma document."""
+    """Return ``mac2:<hex_tag>:<base64_pickle>`` for storage as a Chroma document."""
     tag = hmac.new(_mac_key(), payload, hashlib.sha256).hexdigest()
-    return f"{_MAC_PREFIX}{tag}{_MAC_SEP}" + payload.decode("latin1")
+    encoded = base64.b64encode(payload).decode("ascii")
+    return f"{_MAC_PREFIX_V2}{tag}{_MAC_SEP}{encoded}"
 
 
 def _verify_and_unpickle(document: str) -> Any:
     """Verify the MAC on a document and return the unpickled value.
 
-    Raises ``ValueError`` if the document is unsigned or has a bad MAC.
-    Legacy unsigned documents are rejected — they can only appear after a
-    database compromise or after this change rolled out on a fresh store.
+    Accepts both ``mac1:`` (latin-1 encoded) and ``mac2:`` (base64) so a
+    rolling deploy doesn't drop pre-migration documents. Unsigned
+    documents are rejected — they can only appear after a database
+    compromise or pre-H10 writes.
     """
-    if not document or not document.startswith(_MAC_PREFIX):
+    if not document:
+        raise ValueError("chroma_store: empty document")
+    if document.startswith(_MAC_PREFIX_V2):
+        remainder = document[len(_MAC_PREFIX_V2) :]
+        encoding = "base64"
+    elif document.startswith(_MAC_PREFIX_V1):
+        remainder = document[len(_MAC_PREFIX_V1) :]
+        encoding = "latin1"
+    else:
         raise ValueError("chroma_store: document is unsigned (legacy or tampered)")
-    remainder = document[len(_MAC_PREFIX) :]
     try:
         tag, payload_str = remainder.split(_MAC_SEP, 1)
     except ValueError as exc:
         raise ValueError("chroma_store: malformed MAC envelope") from exc
-    payload = payload_str.encode("latin1")
+    if encoding == "base64":
+        try:
+            payload = base64.b64decode(payload_str.encode("ascii"), validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError("chroma_store: invalid base64 payload") from exc
+    else:
+        payload = payload_str.encode("latin1")
     expected = hmac.new(_mac_key(), payload, hashlib.sha256).hexdigest()
     if not hmac.compare_digest(tag, expected):
         raise ValueError("chroma_store: MAC verification failed — refusing to unpickle")

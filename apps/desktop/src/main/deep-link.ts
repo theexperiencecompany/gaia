@@ -11,16 +11,58 @@
  * The one-time `code` is exchanged for the sealed session via a POST
  * to `/oauth/exchange-code` so the token never appears in the URL
  * (and therefore never leaks into logs, APM breadcrumbs, or Referer
- * headers).
+ * headers). PKCE (RFC 7636) is layered on top: ``preparePkce`` is
+ * called by the renderer before opening the system browser, the
+ * verifier is held in main-process memory, and the deep-link handler
+ * presents it on the exchange so a malicious app that intercepts the
+ * `gaia://` redirect cannot complete the swap.
  *
  * @module deep-link
  */
 
+import { createHash, randomBytes } from "node:crypto";
 import { type BrowserWindow, session } from "electron";
 import { getServerUrl } from "./server";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.heygaia.io/api/v1";
+
+let pendingCodeVerifier: string | null = null;
+
+function base64UrlEncode(buffer: Buffer): string {
+  return buffer
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/**
+ * Generate a fresh PKCE verifier/challenge pair for a desktop login.
+ *
+ * The verifier is held in main-process memory until the matching
+ * deep-link callback consumes it. Calling this again before that
+ * callback overwrites the prior verifier — a stale browser tab from
+ * a previous attempt will fail the exchange, which is the desired
+ * behaviour.
+ *
+ * @returns The base64url-encoded SHA-256 challenge to put in the
+ *   `?code_challenge=` query parameter on the login URL.
+ */
+export function preparePkce(): string {
+  const verifier = base64UrlEncode(randomBytes(32));
+  const challenge = base64UrlEncode(
+    createHash("sha256").update(verifier).digest(),
+  );
+  pendingCodeVerifier = verifier;
+  return challenge;
+}
+
+function consumePkceVerifier(): string | null {
+  const verifier = pendingCodeVerifier;
+  pendingCodeVerifier = null;
+  return verifier;
+}
 
 /**
  * Derive the API origin from the environment variable.
@@ -96,7 +138,8 @@ export async function handleDeepLink(
 
     if (code) {
       console.log("[Main] Auth code received, exchanging for session token");
-      const token = await exchangeCode(code);
+      const verifier = consumePkceVerifier();
+      const token = await exchangeCode(code, verifier ?? undefined);
       if (!token) {
         console.error("[Main] Failed to exchange code for token");
         if (mainWindow && !mainWindow.isDestroyed()) {

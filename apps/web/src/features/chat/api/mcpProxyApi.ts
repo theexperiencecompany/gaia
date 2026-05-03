@@ -23,24 +23,6 @@ function buildErrorResult(message: string): MCPToolCallResult {
   };
 }
 
-function getServerUrlCandidates(serverUrl: string): string[] {
-  const trimmed = serverUrl.trim();
-  if (!trimmed) return [serverUrl];
-
-  const candidates = new Set<string>([trimmed]);
-  try {
-    const parsed = new URL(trimmed);
-    const noSlash = parsed.toString().replace(/\/$/, "");
-    const withSlash = `${noSlash}/`;
-    candidates.add(noSlash);
-    candidates.add(withSlash);
-  } catch {
-    candidates.add(trimmed.replace(/\/$/, ""));
-    candidates.add(`${trimmed.replace(/\/$/, "")}/`);
-  }
-  return Array.from(candidates);
-}
-
 function extractErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data;
@@ -68,49 +50,43 @@ function normalizeToolArguments(args: unknown): Record<string, unknown> {
   return {};
 }
 
-async function proxyAcrossCandidates<T>(
-  serverUrl: string,
+async function postProxy<T>(
   path: string,
   body: Record<string, unknown>,
 ): Promise<{ result?: T; error?: unknown }> {
-  let lastError: unknown = null;
-  for (const candidateServerUrl of getServerUrlCandidates(serverUrl)) {
-    try {
-      const response = await apiauth.post<T>(path, {
-        ...body,
-        server_url: candidateServerUrl,
-      });
-      return { result: response.data };
-    } catch (error) {
-      lastError = error;
-    }
+  try {
+    const response = await apiauth.post<T>(path, body);
+    return { result: response.data };
+  } catch (error) {
+    return { error };
   }
-  return { error: lastError };
 }
 
 export async function callMCPAppTool(
-  serverUrl: string,
+  integrationId: string,
   toolName: string,
   args: unknown,
 ): Promise<MCPToolCallResult> {
   const safeArgs = normalizeToolArguments(args);
-  const { result, error } = await proxyAcrossCandidates<MCPToolCallResult>(
-    serverUrl,
+  const { result, error } = await postProxy<MCPToolCallResult>(
     "/mcp/proxy/tool-call",
-    { tool_name: toolName, arguments: safeArgs },
+    {
+      integration_id: integrationId,
+      tool_name: toolName,
+      arguments: safeArgs,
+    },
   );
   if (result) return result;
   return buildErrorResult(extractErrorMessage(error));
 }
 
 export async function listMCPResources(
-  serverUrl: string,
+  integrationId: string,
   cursor?: string,
 ): Promise<MCPResourcesListResult> {
-  const body: Record<string, unknown> = {};
+  const body: Record<string, unknown> = { integration_id: integrationId };
   if (cursor !== undefined) body.cursor = cursor;
-  const { result, error } = await proxyAcrossCandidates<MCPResourcesListResult>(
-    serverUrl,
+  const { result, error } = await postProxy<MCPResourcesListResult>(
     "/mcp/proxy/resources/list",
     body,
   );
@@ -119,42 +95,38 @@ export async function listMCPResources(
 }
 
 export async function listMCPResourceTemplates(
-  serverUrl: string,
+  integrationId: string,
   cursor?: string,
 ): Promise<MCPResourceTemplatesListResult> {
-  const body: Record<string, unknown> = {};
+  const body: Record<string, unknown> = { integration_id: integrationId };
   if (cursor !== undefined) body.cursor = cursor;
-  const { result, error } =
-    await proxyAcrossCandidates<MCPResourceTemplatesListResult>(
-      serverUrl,
-      "/mcp/proxy/resources/templates/list",
-      body,
-    );
+  const { result, error } = await postProxy<MCPResourceTemplatesListResult>(
+    "/mcp/proxy/resources/templates/list",
+    body,
+  );
   if (result) return result;
   throw new Error(extractErrorMessage(error));
 }
 
 export async function readMCPResource(
-  serverUrl: string,
+  integrationId: string,
   uri: string,
 ): Promise<MCPResourceReadResult> {
-  const { result, error } = await proxyAcrossCandidates<MCPResourceReadResult>(
-    serverUrl,
+  const { result, error } = await postProxy<MCPResourceReadResult>(
     "/mcp/proxy/resources/read",
-    { uri },
+    { integration_id: integrationId, uri },
   );
   if (result) return result;
   throw new Error(extractErrorMessage(error));
 }
 
 export async function listMCPPrompts(
-  serverUrl: string,
+  integrationId: string,
   cursor?: string,
 ): Promise<MCPPromptsListResult> {
-  const body: Record<string, unknown> = {};
+  const body: Record<string, unknown> = { integration_id: integrationId };
   if (cursor !== undefined) body.cursor = cursor;
-  const { result, error } = await proxyAcrossCandidates<MCPPromptsListResult>(
-    serverUrl,
+  const { result, error } = await postProxy<MCPPromptsListResult>(
     "/mcp/proxy/prompts/list",
     body,
   );

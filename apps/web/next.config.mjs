@@ -144,10 +144,11 @@ const nextConfig = {
     // Restrict remote hosts — a wildcard (`hostname: "**"`) turns the
     // Next image optimizer into an SSRF + arbitrary-image relay.
     remotePatterns: [
+      // Cloudinary delivery is res.cloudinary.com only — wildcards
+      // unnecessarily widen the allowlist. Same for heygaia.io: list the
+      // specific subdomains we actually use.
       { protocol: "https", hostname: "res.cloudinary.com" },
-      { protocol: "https", hostname: "*.cloudinary.com" },
       { protocol: "https", hostname: "cdn.heygaia.io" },
-      { protocol: "https", hostname: "*.heygaia.io" },
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
       { protocol: "https", hostname: "workos-public.s3.amazonaws.com" },
@@ -160,10 +161,42 @@ const nextConfig = {
   async headers() {
     // Standard security header suite. Applied to every response except the
     // asset routes below, which keep their long-cache `Cache-Control`.
+
+    // CSP is shipped in *report-only* mode first (H9) so violations are
+    // collected without breaking inline scripts or third-party widgets.
+    // Once production reports stabilise, swap the header name to
+    // ``Content-Security-Policy`` (enforcing) and remove ``unsafe-inline``
+    // from script-src (likely requires a nonce-based scheme for SSR
+    // hydration + PostHog).
+    const cspDirectives = [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "frame-ancestors 'self'",
+      "object-src 'none'",
+      "form-action 'self'",
+      // PostHog ingest is reverse-proxied through /ingest/*, so 'self'
+      // covers it. WorkOS auth + GAIA API are explicit.
+      "connect-src 'self' https://api.heygaia.io https://api.workos.com wss://*.livekit.cloud https://*.livekit.cloud",
+      "img-src 'self' data: blob: https://res.cloudinary.com https://cdn.heygaia.io https://avatars.githubusercontent.com https://lh3.googleusercontent.com https://workos-public.s3.amazonaws.com",
+      "font-src 'self' data:",
+      "style-src 'self' 'unsafe-inline'",
+      // ``unsafe-inline`` + ``unsafe-eval`` are temporary — required by
+      // Next.js hydration and PostHog. Tracked for replacement with a
+      // nonce-based policy.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "worker-src 'self' blob:",
+      "media-src 'self' blob:",
+      "frame-src 'self' https://*.heygaia.io",
+    ].join("; ");
+
     const securityHeaders = [
       {
+        // ``preload`` requires every (sub)domain to serve HTTPS. Submit
+        // the domain to https://hstspreload.org once this header is live
+        // in production; the directive is a precondition, not the
+        // submission itself.
         key: "Strict-Transport-Security",
-        value: "max-age=31536000; includeSubDomains",
+        value: "max-age=31536000; includeSubDomains; preload",
       },
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "X-Frame-Options", value: "SAMEORIGIN" },
@@ -171,6 +204,10 @@ const nextConfig = {
       {
         key: "Permissions-Policy",
         value: "camera=(), microphone=(self), geolocation=(), interest-cohort=()",
+      },
+      {
+        key: "Content-Security-Policy-Report-Only",
+        value: cspDirectives,
       },
     ];
 

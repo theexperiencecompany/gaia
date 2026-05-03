@@ -18,6 +18,7 @@ interface ElectronAPI {
   isElectron: boolean;
   signalReady: () => void;
   openExternal: (url: string) => void;
+  prepareDesktopLogin: () => Promise<string>;
   onAuthCallback: (callback: (data: AuthCallbackData) => void) => () => void;
   onAuthRedirecting: (callback: () => void) => () => void;
 }
@@ -103,6 +104,18 @@ export function useElectron() {
   }, []);
 
   /**
+   * Ask the main process to mint a fresh PKCE verifier (kept in main)
+   * and return the matching code_challenge to attach to the login URL.
+   * Returns null when not running in Electron.
+   */
+  const prepareDesktopLogin = useCallback(async (): Promise<string | null> => {
+    if (typeof window !== "undefined" && hasElectronAPI(window)) {
+      return window.api.prepareDesktopLogin();
+    }
+    return null;
+  }, []);
+
+  /**
    * Register a callback for auth deep link events
    * Returns a cleanup function to remove the listener
    */
@@ -137,6 +150,7 @@ export function useElectron() {
     getPlatform,
     getVersion,
     openExternal,
+    prepareDesktopLogin,
     onAuthCallback,
     onAuthRedirecting,
   };

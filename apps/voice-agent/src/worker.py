@@ -102,15 +102,27 @@ class CustomLLM(LLM):
         """Initialize CustomLLM with backend URL and optional LiveKit room."""
         super().__init__()
         self.base_url = base_url
-        self.agent_token: Optional[str] = None
+        # Agent JWTs are single-use (C7) — fetch a fresh one per chat-stream
+        # request rather than caching one for the room. The room name +
+        # user id + shared secret are kept here so we can mint per-call.
+        self.agent_secret: Optional[str] = None
+        self.user_id_for_token: Optional[str] = None
+        self.room_name: Optional[str] = None
         self.conversation_id: Optional[str] = None
         self.conversation_description: Optional[str] = None
         self.request_timeout_s = request_timeout_s
         self.room = room
 
-    def set_agent_token(self, token: Optional[str]):
-        """Set the authentication token for backend requests."""
-        self.agent_token = token
+    def set_agent_credentials(
+        self,
+        agent_secret: Optional[str],
+        user_id: Optional[str],
+        room_name: Optional[str],
+    ):
+        """Store credentials used to mint a fresh single-use JWT per call."""
+        self.agent_secret = agent_secret
+        self.user_id_for_token = user_id
+        self.room_name = room_name
 
     async def set_conversation_id(self, conversation_id: Optional[str]):
         """Store and broadcast conversation ID to room participants."""
@@ -146,8 +158,20 @@ class CustomLLM(LLM):
 
             timeout = aiohttp.ClientTimeout(total=self.request_timeout_s)
             headers = {"x-timezone": "UTC"}
-            if self.agent_token:
-                headers["Authorization"] = f"Bearer {self.agent_token}"
+            # Mint a fresh single-use agent JWT per chat-stream call (C7).
+            # The token's jti is consumed atomically by the backend on
+            # verify, so reusing one across calls would fail every call
+            # after the first.
+            if self.agent_secret and self.user_id_for_token and self.room_name:
+                fresh_token = await _fetch_agent_token(
+                    self.base_url,
+                    self.agent_secret,
+                    self.user_id_for_token,
+                    self.room_name,
+                )
+                if fresh_token:
+                    headers["Authorization"] = f"Bearer {fresh_token}"
+                    headers["X-Room-Id"] = self.room_name
 
             payload = {
                 "message": user_message,
@@ -336,8 +360,9 @@ async def entrypoint(ctx: JobContext):
 
     await ctx.connect()
 
-    # Fetch the agent JWT from the backend using the shared secret (C7).
-    # The identity format set by voice_token.py is "user_<user_id>".
+    # Stash credentials on the LLM so each chat-stream call mints its own
+    # fresh single-use agent JWT (C7). The identity format set by
+    # voice_token.py is "user_<user_id>".
     if settings.AGENT_SECRET:
         user_id_for_token: Optional[str] = None
         for p in ctx.room.remote_participants.values():
@@ -346,14 +371,9 @@ async def entrypoint(ctx: JobContext):
                 user_id_for_token = identity[5:]
                 break
         if user_id_for_token:
-            agent_jwt = await _fetch_agent_token(
-                settings.GAIA_BACKEND_URL,
-                settings.AGENT_SECRET,
-                user_id_for_token,
-                ctx.room.name,
+            custom_llm.set_agent_credentials(
+                settings.AGENT_SECRET, user_id_for_token, ctx.room.name
             )
-            if agent_jwt:
-                custom_llm.set_agent_token(agent_jwt)
 
     for p in ctx.room.remote_participants.values():
         logger.info("participant already present, processing metadata")

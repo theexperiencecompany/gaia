@@ -206,40 +206,67 @@ async def get_public_holo_card(request: Request, card_id: str):
     try:
         log.set(operation="get_public_holo_card", card_id=card_id)
 
-        # Uniform 404 responses. Returning distinct errors for "malformed id",
-        # "not found", and "found but not onboarded" turns this endpoint into
-        # a user-enumeration oracle.
-        if not ObjectId.is_valid(card_id):
-            raise HTTPException(status_code=404, detail="Card not found")
+        # H4 — defeat the user-enumeration timing oracle. Every code path
+        # below performs the same shape of Mongo work (one ``find_one``
+        # plus one ``count_documents``) so an attacker cannot distinguish
+        # malformed-id / not-found / not-onboarded / valid by latency.
+        # Response shape is also uniform (404 with the same body for any
+        # miss reason).
+        oid: Optional[ObjectId] = None
+        if ObjectId.is_valid(card_id):
+            oid = ObjectId(card_id)
 
-        user_doc = await users_collection.find_one({"_id": ObjectId(card_id)})
+        # Issue the find_one regardless. With a sentinel ObjectId on the
+        # malformed path, Mongo still answers in roughly the same time as
+        # a genuine miss.
+        lookup_id = oid if oid is not None else ObjectId()
+        user_doc = await users_collection.find_one({"_id": lookup_id})
 
-        if not user_doc:
+        # Always run the historical-count query too; on the success path
+        # we use it to compute account_number for legacy users, on miss
+        # paths we discard it. Parallel with find_one would drop latency
+        # but introduce a different shape — sequential keeps every path
+        # identical.
+        created_at_for_count = (
+            (user_doc or {}).get("created_at") if user_doc else datetime.now(timezone.utc)
+        )
+        legacy_count = await users_collection.count_documents(
+            {"created_at": {"$lt": created_at_for_count}}
+        )
+
+        if oid is None or not user_doc:
             raise HTTPException(status_code=404, detail="Card not found")
 
         onboarding = user_doc.get("onboarding", {})
-
-        # Check if user has completed onboarding
         if not onboarding.get("house"):
             raise HTTPException(status_code=404, detail="Card not found")
 
-        # Get stored metadata or calculate if not stored (for older users)
+        # Get stored metadata or calculate if not stored (for older users).
         account_number = onboarding.get("account_number")
         member_since = onboarding.get("member_since")
 
         if not account_number or not member_since:
             created_at = user_doc.get("created_at")
-            if created_at:
-                count = await users_collection.count_documents(
-                    {"created_at": {"$lt": created_at}}
-                )
-                account_number = count + 1
-            else:
-                account_number = 1
-
+            account_number = (legacy_count + 1) if created_at else 1
             member_since = (
                 created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
             )
+            # Backfill so subsequent reads take the fast path. Best-effort —
+            # if this write fails we still serve the response.
+            try:
+                await users_collection.update_one(
+                    {"_id": oid},
+                    {
+                        "$set": {
+                            "onboarding.account_number": account_number,
+                            "onboarding.member_since": member_since,
+                        }
+                    },
+                )
+            except Exception as backfill_err:
+                log.warning(
+                    f"holo_card_backfill_failed: {backfill_err}",
+                )
 
         log.set(outcome="success")
         return {

@@ -17,6 +17,7 @@ from shared.py.wide_events import log
 from app.config.settings import settings
 from app.db.postgresql import get_db_session
 from app.models.db_oauth import OAuthToken
+from app.utils.crypto.token_encryption import hash_token_for_lookup
 from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
@@ -121,6 +122,8 @@ class TokenRepository:
             # Store all token data as JSON for future reference/debugging
             token_json = json.dumps(token_data)
 
+            access_token_hash_value = hash_token_for_lookup(access_token_value)
+
             if existing_token:
                 # Update existing token
                 await session.execute(
@@ -128,6 +131,7 @@ class TokenRepository:
                     .where(OAuthToken.id == existing_token.id)
                     .values(
                         access_token=access_token_value,
+                        access_token_hash=access_token_hash_value,
                         refresh_token=refresh_token_value,
                         token_data=token_json,
                         expires_at=expires_at,
@@ -141,6 +145,7 @@ class TokenRepository:
                     user_id=user_id,
                     provider=provider,
                     access_token=access_token_value,
+                    access_token_hash=access_token_hash_value,
                     refresh_token=refresh_token_value,
                     token_data=token_json,
                     expires_at=expires_at,
@@ -411,7 +416,15 @@ class TokenRepository:
             OAuth2Token if found, None otherwise
         """
         async with get_db_session() as session:
-            stmt = select(OAuthToken).where(OAuthToken.access_token == access_token)
+            # Look up by deterministic hash, not the encrypted column —
+            # Fernet's random IV makes ``access_token == value`` never match
+            # for newly-encrypted rows. ``access_token_hash`` is populated on
+            # store/refresh; legacy rows written before the hash column was
+            # added will be NULL and naturally miss until they refresh.
+            lookup_hash = hash_token_for_lookup(access_token)
+            stmt = select(OAuthToken).where(
+                OAuthToken.access_token_hash == lookup_hash
+            )
             result = await session.execute(stmt)
             token_record = result.scalar_one_or_none()
 

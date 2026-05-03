@@ -7,6 +7,7 @@ from typing import Optional
 import httpx
 from pydantic import BaseModel
 from shared.py.wide_events import log
+from app.api.v1.middleware.rate_limiter import limiter
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
 from app.constants.auth import (
@@ -23,7 +24,7 @@ from app.helpers.mcp_helpers import get_api_base_url
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
 from app.services.oauth.oauth_state_service import validate_and_consume_oauth_state
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from workos import WorkOSClient
 
@@ -67,15 +68,17 @@ async def _consume_oauth_exchange_code(
 ) -> Optional[str]:
     """Atomically consume an exchange code and return the stored token.
 
+    Uses Redis ``GETDEL`` so the read+delete is atomic — a plain GET then
+    DELETE leaves a window where two concurrent requests can both see the
+    same code and the second one would otherwise succeed.
+
     When the code was stored with a PKCE challenge, ``code_verifier`` must
     hash to that challenge or the exchange is rejected.
     """
     key = f"{_OAUTH_CODE_EXCHANGE_PREFIX}:{code}"
-    packed = await redis_cache.client.get(key)
+    packed = await redis_cache.client.getdel(key)
     if not packed:
         return None
-    # One-time use — delete after read.
-    await redis_cache.client.delete(key)
     token, _, stored_challenge = packed.partition("|")
     if stored_challenge:
         if not code_verifier:
@@ -112,10 +115,11 @@ async def _consume_oauth_state(state: str, expected_flow: str) -> bool:
     if not state:
         return False
     key = f"{_OAUTH_STATE_PREFIX}:{state}"
-    stored = await redis_cache.client.get(key)
+    # Atomic read-and-delete to prevent two concurrent callbacks from both
+    # consuming the same state.
+    stored = await redis_cache.client.getdel(key)
     if not stored:
         return False
-    await redis_cache.client.delete(key)
     flow_part, _, challenge_part = stored.partition("|")
     if flow_part != expected_flow:
         return False
@@ -439,7 +443,10 @@ class ExchangeCodeRequest(BaseModel):
 
 
 @router.post("/oauth/exchange-code")
-async def exchange_oauth_code(body: ExchangeCodeRequest) -> JSONResponse:
+@limiter.limit("30/minute")
+async def exchange_oauth_code(
+    request: Request, body: ExchangeCodeRequest
+) -> JSONResponse:
     """Exchange a short-lived one-time ``code`` for the sealed WorkOS session.
 
     Replaces the old pattern of handing the sealed session back in the deep

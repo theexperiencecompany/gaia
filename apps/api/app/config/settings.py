@@ -217,6 +217,12 @@ class ProductionSettings(CommonSettings):
     LIVEKIT_API_KEY: str
     LIVEKIT_API_SECRET: str
     AGENT_SECRET: str
+    # Agent JWT signing keys (C7). When both are set, agent tokens are
+    # signed with RS256 and a leak of ``AGENT_SECRET`` (which still gates
+    # voice-agent → API auth) does not let an attacker forge JWTs.
+    # PEM-encoded; the public key is also accepted for verification only.
+    AGENT_JWT_PRIVATE_KEY: Optional[str] = None
+    AGENT_JWT_PUBLIC_KEY: Optional[str] = None
     DEEPGRAM_API_KEY: str
     ELEVENLABS_API_KEY: str
     ELEVENLABS_TTS_MODEL: str
@@ -262,7 +268,10 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     # MCP OAuth Credentials
     # ----------------------------------------------
-    MCP_ENCRYPTION_KEY: str
+    # Token encryption is handled by ``TOKEN_ENCRYPTION_KEY`` via the
+    # SQLAlchemy ``EncryptedText`` decorator (C2). The previous
+    # ``MCP_ENCRYPTION_KEY`` was used by an inlined cipher in
+    # ``MCPTokenStore`` that has been removed.
     VERCEL_MCP_CLIENT_ID: str
     NOTION_MCP_CLIENT_ID: str
     NOTION_MCP_CLIENT_SECRET: str
@@ -379,6 +388,8 @@ class DevelopmentSettings(CommonSettings):
     LIVEKIT_API_KEY: Optional[str] = None
     LIVEKIT_API_SECRET: Optional[str] = None
     AGENT_SECRET: Optional[str] = None
+    AGENT_JWT_PRIVATE_KEY: Optional[str] = None
+    AGENT_JWT_PUBLIC_KEY: Optional[str] = None
     DEEPGRAM_API_KEY: Optional[str] = None
     ELEVENLABS_API_KEY: Optional[str] = None
     ELEVENLABS_TTS_MODEL: Optional[str] = None
@@ -420,7 +431,6 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     # MCP OAuth Credentials
     # ----------------------------------------------
-    MCP_ENCRYPTION_KEY: Optional[str] = None
     VERCEL_MCP_CLIENT_ID: Optional[str] = None
     NOTION_MCP_CLIENT_ID: Optional[str] = None
     NOTION_MCP_CLIENT_SECRET: Optional[str] = None

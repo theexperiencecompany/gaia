@@ -975,35 +975,6 @@ class TestMCPClientPoolSize:
 
 
 @pytest.mark.unit
-class TestMCPTokenStoreCipher:
-    def test_get_cipher_missing_key_raises(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_token_store.settings") as mock_settings:
-            mock_settings.MCP_ENCRYPTION_KEY = None
-            with pytest.raises(ValueError, match="MCP_ENCRYPTION_KEY not configured"):
-                store._get_cipher()
-
-    def test_get_cipher_invalid_key_raises(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_token_store.settings") as mock_settings:
-            mock_settings.MCP_ENCRYPTION_KEY = "not_a_valid_fernet_key"
-            with pytest.raises(ValueError, match="not a valid Fernet key"):
-                store._get_cipher()
-
-    def test_encrypt_decrypt_round_trip(self):
-        from cryptography.fernet import Fernet
-
-        key = Fernet.generate_key().decode()
-        store = MCPTokenStore(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_token_store.settings") as mock_settings:
-            mock_settings.MCP_ENCRYPTION_KEY = key
-            encrypted = store._encrypt("secret_data")
-            assert encrypted != "secret_data"
-            decrypted = store._decrypt(encrypted)
-            assert decrypted == "secret_data"
-
-
-@pytest.mark.unit
 class TestMCPTokenStoreGetCredential:
     async def test_returns_credential(self):
         store = MCPTokenStore(user_id=USER_ID)

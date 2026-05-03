@@ -30,10 +30,6 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("WORKOS_API_KEY", "sk_test_fake")
 os.environ.setdefault("WORKOS_CLIENT_ID", "client_fake")
 os.environ.setdefault("WORKOS_COOKIE_PASSWORD", "a" * 32)
-os.environ.setdefault(
-    "MCP_ENCRYPTION_KEY",
-    "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
-)
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy

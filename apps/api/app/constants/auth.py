@@ -4,8 +4,11 @@ Auth Constants.
 Constants for authentication and JWT operations.
 """
 
-# JWT algorithm
+# Default JWT algorithm. The agent-token path now prefers RS256 when an
+# asymmetric keypair is configured (C7) and falls back to HS256 only if
+# the keys are absent — see ``app.api.v1.middleware.agent_auth``.
 JWT_ALGORITHM = "HS256"
+AGENT_JWT_ALGORITHM_ASYMMETRIC = "RS256"
 
 # Token expiration defaults (minutes)
 AGENT_TOKEN_EXPIRY_MINUTES = 20

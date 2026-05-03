@@ -175,6 +175,16 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     Raises:
         RuntimeError: If any critical service fails to initialize
     """
+    # Production preconditions — fail loud rather than silently degrade
+    # the at-rest crypto guarantees the security audit relies on.
+    from app.db.chroma.chroma_store import assert_chroma_mac_key_configured
+    from app.utils.crypto.token_encryption import (
+        assert_encryption_key_present_in_production,
+    )
+
+    assert_encryption_key_present_in_production()
+    assert_chroma_mac_key_configured()
+
     log.info(f"Starting {context} with unified provider system...")
 
     # Register lazy providers (dormant until first access).

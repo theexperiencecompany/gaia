@@ -88,7 +88,7 @@ export function MCPAppRenderer({ data }: Props) {
     b.oncalltool = async (params) => {
       try {
         const result = await callMCPAppTool(
-          dataRef.current.server_url,
+          dataRef.current.integration_id,
           params.name,
           params.arguments ?? {},
         );
@@ -137,7 +137,7 @@ export function MCPAppRenderer({ data }: Props) {
     b.onlistresources = async (params) => {
       try {
         const r = await listMCPResources(
-          dataRef.current.server_url,
+          dataRef.current.integration_id,
           params?.cursor as string | undefined,
         );
         return { resources: r.resources, nextCursor: r.next_cursor };
@@ -151,7 +151,7 @@ export function MCPAppRenderer({ data }: Props) {
     b.onlistresourcetemplates = async (params) => {
       try {
         const r = await listMCPResourceTemplates(
-          dataRef.current.server_url,
+          dataRef.current.integration_id,
           params?.cursor as string | undefined,
         );
         return {
@@ -169,7 +169,10 @@ export function MCPAppRenderer({ data }: Props) {
 
     b.onreadresource = async (params, _extra) => {
       try {
-        const r = await readMCPResource(dataRef.current.server_url, params.uri);
+        const r = await readMCPResource(
+          dataRef.current.integration_id,
+          params.uri,
+        );
         const contents = r.contents.flatMap(
           (
             item,
@@ -194,7 +197,7 @@ export function MCPAppRenderer({ data }: Props) {
     b.onlistprompts = async (params) => {
       try {
         const r = await listMCPPrompts(
-          dataRef.current.server_url,
+          dataRef.current.integration_id,
           params?.cursor as string | undefined,
         );
         return { prompts: r.prompts, nextCursor: r.next_cursor };

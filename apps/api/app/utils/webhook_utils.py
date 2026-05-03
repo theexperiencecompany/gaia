@@ -52,10 +52,17 @@ async def verify_composio_webhook_signature(request: Request):
     if not webhook_id:
         raise HTTPException(status_code=400, detail="Missing webhook-id header")
 
-    # Extract the signature (format: "v1,signature")
-    if "," in signature_header:
-        _, signature = signature_header.split(",", 1)
-    else:
+    # Standard Webhooks supports multiple space-separated signatures so
+    # senders can rotate keys without downtime. We split on whitespace,
+    # then strip the algorithm prefix from each entry (e.g. ``v1,sig``).
+    candidate_sigs: list[str] = []
+    for entry in signature_header.split():
+        if "," not in entry:
+            continue
+        _, sig = entry.split(",", 1)
+        if sig:
+            candidate_sigs.append(sig)
+    if not candidate_sigs:
         raise HTTPException(status_code=401, detail="Invalid signature format")
 
     # Create the signed content (webhook_id.timestamp.body) as bytes
@@ -68,12 +75,16 @@ async def verify_composio_webhook_signature(request: Request):
         signed_content,
         hashlib.sha256,
     ).digest()
-
-    # Encode to base64
     expected_signature_b64 = base64.b64encode(expected_signature).decode()
 
-    # Compare signatures
-    if not hmac.compare_digest(signature, expected_signature_b64):
+    # Constant-time compare for every candidate; accept on any match. We
+    # walk the full list rather than short-circuiting so timing leaks are
+    # bounded by the (small, fixed) candidate count.
+    matched = False
+    for candidate in candidate_sigs:
+        if hmac.compare_digest(candidate, expected_signature_b64):
+            matched = True
+    if not matched:
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     return body, webhook_id

@@ -10,6 +10,10 @@ from typing import AsyncGenerator
 from app.config.settings import settings
 from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.utils.crypto.token_encryption import (
+    assert_encryption_key_present_in_production,
+)
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -32,6 +36,11 @@ async def init_postgresql_engine() -> AsyncEngine:
     """
     log.debug("Initializing PostgreSQL async engine")
 
+    # Boot must abort in production if the at-rest encryption key isn't
+    # configured (C2) — silent fall-through would degrade newly stored
+    # OAuth tokens to plaintext.
+    assert_encryption_key_present_in_production()
+
     postgres_url: str = settings.POSTGRES_URL  # type: ignore
     url = postgres_url.replace("postgresql://", "postgresql+asyncpg://")
 
@@ -45,6 +54,21 @@ async def init_postgresql_engine() -> AsyncEngine:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # ``create_all`` does not add columns to existing tables. Ensure the
+        # access_token_hash column + its index exist on already-deployed
+        # databases so the C2 lookup path works after upgrade.
+        await conn.execute(
+            text(
+                "ALTER TABLE oauth_tokens "
+                "ADD COLUMN IF NOT EXISTS access_token_hash VARCHAR(64)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_oauth_tokens_access_token_hash "
+                "ON oauth_tokens(access_token_hash)"
+            )
+        )
 
     log.set(db={"connection_status": "connected", "backend": "postgresql"})
     log.info("PostgreSQL engine initialized for database")

@@ -661,6 +661,9 @@ async def execute_graph_streaming(
                                             "tool_category": tool_entry.get(
                                                 "tool_category", ""
                                             ),
+                                            "integration_id": tool_entry.get(
+                                                "tool_category", ""
+                                            ),
                                             "tool_name": tool_entry["data"].get(
                                                 "tool_name", ""
                                             ),
@@ -753,6 +756,9 @@ async def execute_graph_streaming(
                                         "data": {
                                             "tool_call_id": chunk.tool_call_id,
                                             "tool_name": app_meta["tool_name"],
+                                            "integration_id": app_meta.get(
+                                                "integration_id", ""
+                                            ),
                                             "server_url": app_meta["server_url"],
                                             "resource_uri": app_meta["mcp_ui"][
                                                 "resource_uri"
@@ -797,6 +803,7 @@ async def execute_graph_streaming(
                     if tc_id_for_app:
                         pending_mcp_apps[tc_id_for_app] = {
                             "tool_category": sub_entry.get("tool_category", ""),
+                            "integration_id": sub_entry.get("tool_category", ""),
                             "tool_name": sub_entry.get("data", {}).get("tool_name", ""),
                             "server_url": sub_entry.get("mcp_server_url", ""),
                             "mcp_ui": sub_entry["mcp_ui"],
@@ -842,6 +849,9 @@ async def execute_graph_streaming(
                                         "data": {
                                             "tool_call_id": tc_id,
                                             "tool_name": app_meta["tool_name"],
+                                            "integration_id": app_meta.get(
+                                                "integration_id", ""
+                                            ),
                                             "server_url": app_meta["server_url"],
                                             "resource_uri": app_meta["mcp_ui"][
                                                 "resource_uri"

@@ -13,6 +13,7 @@ from app.workers.tasks import (
     process_personalization_task,
     process_reminder,
     process_workflow_generation_task,
+    reencrypt_legacy_tokens,
     store_memories_batch,
     regenerate_workflow_steps,
 )
@@ -31,6 +32,7 @@ _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory
 _process_personalization_task = instrument_task(process_personalization_task)
 _store_memories_batch = instrument_task(store_memories_batch)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
+_reencrypt_legacy_tokens = instrument_task(reencrypt_legacy_tokens)
 
 WorkerSettings.functions = [
     _process_reminder,
@@ -44,6 +46,7 @@ WorkerSettings.functions = [
     _process_personalization_task,
     _store_memories_batch,
     _cleanup_stuck_personalization,
+    _reencrypt_legacy_tokens,
 ]
 
 WorkerSettings.cron_jobs = [

@@ -1,6 +1,6 @@
 import ipaddress
 import socket
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 from shared.py.wide_events import log
@@ -32,22 +32,33 @@ _REQUEST_TIMEOUT_SECONDS = 10.0
 
 def _is_public_address(host: str) -> bool:
     """Return True iff every resolved IP for ``host`` is public."""
+    return _resolve_public_ip(host) is not None
+
+
+def _resolve_public_ip(host: str) -> str | None:
+    """Resolve ``host`` and return one public IP, or None if any IP is blocked.
+
+    The returned IP is what callers should connect to so that an attacker
+    using a rebinding-friendly TTL=0 record cannot swap the address
+    between our validation lookup and httpx's connect-time lookup.
+    """
     try:
         addr_infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
-        return False
+        return None
 
-    seen = False
+    chosen: str | None = None
     for info in addr_infos:
-        ip_str = info[4][0]
+        ip_str = str(info[4][0])
         try:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
-            return False
+            return None
         if any(getattr(ip, attr) for attr in _BLOCKED_IP_ATTRS):
-            return False
-        seen = True
-    return seen
+            return None
+        if chosen is None:
+            chosen = ip_str
+    return chosen
 
 
 def _validate_external_url(url: str) -> None:
@@ -118,8 +129,23 @@ async def fetch_url_metadata(url: str) -> URLResponse:
 async def _safe_get(url: str) -> httpx.Response:
     """Fetch ``url`` following redirects manually, re-validating each hop.
 
-    This defeats a redirect from a public host to a private one, and keeps
-    DNS resolution in our hands so `_is_public_address` actually applies.
+    Each hop:
+      1. Validates the URL against the SSRF allowlist.
+      2. For ``http://`` URLs, pins the connection to a previously
+         resolved public IP and forwards the original Host header. This
+         defeats DNS rebinding (TTL=0 attacker returning a public IP
+         for validation and ``127.0.0.1`` for connect).
+      3. For ``https://`` URLs we deliberately do *not* rewrite the
+         connection to an IP literal — httpx ties TLS SNI to the URL
+         hostname, so an IP-literal URL would send SNI=``1.2.3.4`` and
+         break cert validation against the attacker's legitimate-host
+         cert. HTTPS rebinding is closed by TLS instead: if the rebound
+         IP belongs to an internal service that lacks a CA-trusted cert
+         for the attacker's hostname, the TLS handshake fails. The
+         residual case (attacker holds a CA-trusted cert for the
+         internal hostname) is outside our threat model.
+      4. Streams the response and stops at ``_MAX_RESPONSE_BYTES`` so a
+         hostile upstream cannot OOM us by sending gigabytes.
     """
     current = url
     async with httpx.AsyncClient(
@@ -127,14 +153,47 @@ async def _safe_get(url: str) -> httpx.Response:
     ) as client:
         for _ in range(_MAX_REDIRECTS + 1):
             _validate_external_url(current)
-            response = await client.get(current)
-            if response.is_redirect:
-                location = response.headers.get("location")
-                if not location:
-                    return response
-                current = urljoin(current, location)
-                continue
-            return response
+            request_url = current
+            request_headers: dict[str, str] = {}
+            parsed = urlparse(current)
+            host = parsed.hostname or ""
+            try:
+                ipaddress.ip_address(host)
+                is_ip_literal = True
+            except ValueError:
+                is_ip_literal = False
+            if parsed.scheme == "http" and not is_ip_literal:
+                pinned_ip = _resolve_public_ip(host)
+                if pinned_ip is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="URL resolves to a blocked host",
+                    )
+                ip_netloc = (
+                    f"[{pinned_ip}]" if ":" in pinned_ip else pinned_ip
+                )
+                if parsed.port:
+                    ip_netloc = f"{ip_netloc}:{parsed.port}"
+                request_url = urlunparse(parsed._replace(netloc=ip_netloc))
+                request_headers["Host"] = parsed.netloc
+            async with client.stream(
+                "GET", request_url, headers=request_headers
+            ) as response:
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location:
+                        await response.aread()
+                        return response
+                    current = urljoin(current, location)
+                    continue
+                buffer = bytearray()
+                async for chunk in response.aiter_bytes():
+                    buffer.extend(chunk)
+                    if len(buffer) >= _MAX_RESPONSE_BYTES:
+                        del buffer[_MAX_RESPONSE_BYTES:]
+                        break
+                response._content = bytes(buffer)  # noqa: SLF001
+                return response
     raise HTTPException(status_code=400, detail="Too many redirects")
 
 
@@ -143,9 +202,9 @@ async def scrape_url_metadata(url: str) -> dict:
         response = await _safe_get(url)
         response.raise_for_status()
 
-        # Cap the body we parse to avoid OOM from a hostile upstream.
-        raw = response.content[:_MAX_RESPONSE_BYTES]
-        soup = BeautifulSoup(raw, "html.parser")
+        # Body is already capped by ``_safe_get`` while streaming; we
+        # cannot rely on Content-Length here since hostile upstreams lie.
+        soup = BeautifulSoup(response.content, "html.parser")
 
         def to_absolute(relative_url: str) -> str | None:
             if not relative_url:

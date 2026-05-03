@@ -1,4 +1,5 @@
 import asyncio
+import re
 from datetime import datetime, timezone as dt_timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -11,12 +12,18 @@ from app.db.mongodb.collections import users_collection
 
 _TIMEZONE_BACKFILL_TASKS: set[asyncio.Task[Any]] = set()
 
+# Accept both ``±HH:MM`` and ``±HHMM`` offsets — JS's ``getTimezoneOffset``
+# formats without the colon, and the previous length-6 check rejected those.
+# The shortcut also actually validated digits this time; the prior code
+# accepted ``+ab:cd`` and only failed later inside ``ZoneInfo``.
+_TZ_OFFSET_RE = re.compile(r"^[+-]\d{2}:?\d{2}$")
+
 
 def _is_valid_iana_or_offset(tz: str) -> bool:
-    """Cheap validation: accept IANA names or ±HH:MM offsets; reject garbage."""
+    """Cheap validation: accept IANA names or ±HH(:)?MM offsets; reject garbage."""
     if not tz:
         return False
-    if tz.startswith(("+", "-")) and len(tz) == 6 and tz[3] == ":":
+    if _TZ_OFFSET_RE.match(tz):
         return True
     try:
         ZoneInfo(tz)

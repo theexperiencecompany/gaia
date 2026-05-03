@@ -16,6 +16,10 @@ class ImageData(BaseModel):
 class MCPAppData(BaseModel):
     tool_call_id: str
     tool_name: str
+    # integration_id is the canonical identifier the web client uses to call
+    # the MCP proxy — server_url is resolved server-side from this id, never
+    # accepted from the client (C4).
+    integration_id: str
     server_url: str
     resource_uri: str
     html_content: str

@@ -26,14 +26,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 router = APIRouter()
 
 
-async def _resolve_server_url(integration_id: str) -> str:
+async def _resolve_server_url(integration_id: str, user_id: str) -> str:
     """Resolve an integration_id to its MCP server URL, server-side only.
 
     Never honour a client-supplied ``server_url`` — that would let any
     authenticated user point the proxy at internal services, metadata
-    endpoints, or RFC 1918 addresses (SSRF).
+    endpoints, or RFC 1918 addresses (SSRF). The lookup is also scoped
+    to the caller's ``user_id`` so custom integrations belonging to
+    another tenant cannot be reached by guessing their integration_id.
     """
-    resolved = await IntegrationResolver.resolve(integration_id)
+    resolved = await IntegrationResolver.resolve(integration_id, user_id=user_id)
     if not resolved or not resolved.mcp_config or not resolved.mcp_config.server_url:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -67,7 +69,7 @@ async def proxy_mcp_tool_call(
         integration_id=request.integration_id,
     )
 
-    server_url = await _resolve_server_url(request.integration_id)
+    server_url = await _resolve_server_url(request.integration_id, str(user_id))
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -116,7 +118,7 @@ async def proxy_mcp_resources_list(
         integration_id=request.integration_id,
     )
 
-    server_url = await _resolve_server_url(request.integration_id)
+    server_url = await _resolve_server_url(request.integration_id, str(user_id))
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -163,7 +165,7 @@ async def proxy_mcp_resource_templates_list(
         integration_id=request.integration_id,
     )
 
-    server_url = await _resolve_server_url(request.integration_id)
+    server_url = await _resolve_server_url(request.integration_id, str(user_id))
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -220,7 +222,7 @@ async def proxy_mcp_resource_read(
         integration_id=request.integration_id,
     )
 
-    server_url = await _resolve_server_url(request.integration_id)
+    server_url = await _resolve_server_url(request.integration_id, str(user_id))
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -266,7 +268,7 @@ async def proxy_mcp_prompts_list(
         integration_id=request.integration_id,
     )
 
-    server_url = await _resolve_server_url(request.integration_id)
+    server_url = await _resolve_server_url(request.integration_id, str(user_id))
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
