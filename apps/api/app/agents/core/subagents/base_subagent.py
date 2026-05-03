@@ -14,7 +14,7 @@ Both are stored in separate mem0 namespaces and don't interfere.
 """
 
 import asyncio
-from typing import Any, cast
+from typing import cast
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes import (
@@ -39,6 +39,7 @@ from app.override.langgraph_bigtool.hooks import HookType
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph.state import CompiledStateGraph
 
 
 class SubAgentFactory:
@@ -54,7 +55,7 @@ class SubAgentFactory:
         disable_retrieve_tools: bool = False,
         auto_bind_tools: list[str] | None = None,
         include_finish_task: bool = True,
-    ) -> Any:
+    ) -> CompiledStateGraph:
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
 

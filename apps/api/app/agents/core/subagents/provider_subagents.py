@@ -11,7 +11,7 @@ Tools are registered on-demand when subagent is first created.
 """
 
 import asyncio
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.llm.client import init_llm
@@ -22,12 +22,13 @@ from app.db.mongodb.collections import integrations_collection
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.subagent_models import Subagent
 from app.services.mcp.mcp_client import get_mcp_client
+from langgraph.graph.state import CompiledStateGraph
 from shared.py.wide_events import log
 
 from .base_subagent import SubAgentFactory
 
 
-async def create_subagent(subagent: Subagent) -> Any:
+async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
     """
     Create a provider subagent graph on-demand.
     Registers provider tools to registry if not already present.
@@ -108,7 +109,9 @@ async def create_subagent(subagent: Subagent) -> Any:
     return graph
 
 
-async def create_subagent_for_user(integration_id: str, user_id: str) -> Any:
+async def create_subagent_for_user(
+    integration_id: str, user_id: str
+) -> CompiledStateGraph | None:
     """
     Create a subagent for auth-required MCP integrations with user-specific tokens.
 
@@ -196,7 +199,9 @@ async def create_subagent_for_user(integration_id: str, user_id: str) -> Any:
     return graph
 
 
-async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Any:
+async def _create_custom_mcp_subagent(
+    integration_id: str, user_id: str
+) -> CompiledStateGraph | None:
     """
     Create a subagent graph for a custom MCP integration from MongoDB.
 
@@ -305,6 +310,17 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Any:
     return graph
 
 
+def _make_subagent_loader(
+    subagent: Subagent,
+) -> Callable[[], Awaitable[CompiledStateGraph]]:
+    """Bind the subagent into a zero-arg async loader for `providers.register`."""
+
+    async def _loader() -> CompiledStateGraph:
+        return await create_subagent(subagent)
+
+    return _loader
+
+
 def register_subagent_providers(integration_ids: Optional[list[str]] = None) -> int:
     """
     Register lazy providers for all subagents (OAuth-derived + builtins).
@@ -342,12 +358,12 @@ def register_subagent_providers(integration_ids: Optional[list[str]] = None) -> 
 
         agent_name = subagent.config.agent_name
 
-        async def create_agent_closure(sa: Subagent = subagent) -> Any:
-            return await create_subagent(sa)
-
+        # mypy can't solve TypeVar T on the Union loader signature
+        # against a concrete async function; cast keeps the loader's
+        # actual return type while satisfying the registry overload.
         providers.register(
             name=agent_name,
-            loader_func=create_agent_closure,
+            loader_func=_make_subagent_loader(subagent),  # type: ignore[arg-type]
             required_keys=[],
         )
         registered_count += 1

@@ -16,7 +16,7 @@ from app.agents.core.subagents.registry import (
     all_subagents,
     get_subagent_by_id,
 )
-from app.models.mcp_config import MCPConfig, SubAgentConfig
+from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
 
@@ -64,6 +64,10 @@ def _make_real_oauth_integration(
         scopes=[],
         short_name=short_name,
         managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id=f"auth_{integration_id}",
+            toolkit=integration_id,
+        ),
         subagent_config=(
             _make_subagent_config(integration_id, agent_name) if has_subagent else None
         ),

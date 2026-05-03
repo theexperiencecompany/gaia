@@ -39,6 +39,20 @@ from langchain_core.messages import (
 )
 
 
+def _capture_finish_task_content(chunk: ToolMessage, current_message: str) -> str:
+    """Return the finish_task chunk's textual content if applicable.
+
+    `finish_task` (when used by a subagent) carries the final answer in its
+    return value. Capture it as the complete message so the parent handoff
+    returns the actual content rather than the literal "Task completed"
+    fallback. Subagents with include_finish_task=False terminate via a
+    normal AIMessage and never enter this branch.
+    """
+    if chunk.name == "finish_task" and isinstance(chunk.content, str):
+        return chunk.content
+    return current_message
+
+
 class SubagentExecutionContext:
     """Container for all data needed to execute a subagent."""
 
@@ -281,14 +295,7 @@ async def execute_subagent_stream(
                     if isinstance(chunk.content, str)
                     else str(chunk.content)[:3000]
                 )
-                # `finish_task` (when used by a subagent) carries the final
-                # answer in its return value. Capture it as complete_message
-                # so the parent handoff returns the actual content rather
-                # than the literal "Task completed" fallback below.
-                # Subagents with include_finish_task=False terminate via a
-                # normal AIMessage and never enter this branch.
-                if chunk.name == "finish_task" and isinstance(chunk.content, str):
-                    complete_message = chunk.content
+                complete_message = _capture_finish_task_content(chunk, complete_message)
                 if stream_writer:
                     stream_writer(
                         {
@@ -557,10 +564,7 @@ async def call_subagent(
                     if isinstance(chunk.content, str)
                     else str(chunk.content)[:3000]
                 )
-                # `finish_task` carries the final answer in its return value
-                # (see execute_subagent_stream for the full rationale).
-                if chunk.name == "finish_task" and isinstance(chunk.content, str):
-                    complete_message = chunk.content
+                complete_message = _capture_finish_task_content(chunk, complete_message)
                 yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': output}})}\n\n"
             continue
 

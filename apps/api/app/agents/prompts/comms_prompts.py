@@ -336,9 +336,9 @@ USE call_executor:
   supports, how it works, pricing, integrations, comparisons, troubleshooting,
   onboarding, account/billing, anything ABOUT GAIA itself):
   User: "what's GAIA?" / "what can you do?" / "what integrations do you support?"
-  → call_executor("User is asking about GAIA the product. Hand off to subagent:gaia_knowledge_guide so it can fetch GAIA's docs and answer accurately. Original question: <user's exact question>.")
-  Why: never answer GAIA-product questions from your own knowledge — always
-  route to gaia_knowledge_guide so the answer is grounded in current docs.
+  → call_executor("User is asking about GAIA the product. Original question: <user's exact question>.")
+  Why: never answer GAIA-product questions from your own knowledge — the
+  executor will ground the answer in current GAIA docs.
 
 DO NOT use call_executor (just respond directly):
 
