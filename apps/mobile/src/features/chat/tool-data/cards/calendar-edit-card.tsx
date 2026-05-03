@@ -1,11 +1,8 @@
+import { Button } from "heroui-native";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
-import { AppIcon, Calendar03Icon, Tick02Icon } from "@/components/icons";
+import { ScrollView, View } from "react-native";
+import { AppIcon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  ToolCardHeader,
-  ToolCardShell,
-} from "@/features/chat/tool-data/primitives";
 
 // -- Types --------------------------------------------------------------------
 
@@ -37,45 +34,70 @@ interface CalendarEditCardProps {
   onEditAll?: (events: CalendarEditOption[]) => Promise<void>;
 }
 
-// -- Helpers ------------------------------------------------------------------
+// -- Date helpers (mirrors web utils/date/calendarDateUtils.ts) --------------
 
 function formatTimeString(date: Date): string {
   const hours = date.getHours();
   const minutes = date.getMinutes();
   const ampm = hours >= 12 ? "PM" : "AM";
   const hour12 = hours % 12 || 12;
+  const minuteStr = minutes.toString().padStart(2, "0");
   if (minutes === 0) return `${hour12} ${ampm}`;
-  return `${hour12}:${minutes.toString().padStart(2, "0")} ${ampm}`;
+  return `${hour12}:${minuteStr} ${ampm}`;
 }
 
-function formatTimeRange(startISO?: string, endISO?: string): string {
-  if (!startISO) return "All day";
-  const start = new Date(startISO);
-  if (Number.isNaN(start.getTime())) return "All day";
-  if (!endISO) return formatTimeString(start);
-  const end = new Date(endISO);
-  if (Number.isNaN(end.getTime())) return formatTimeString(start);
-  return `${formatTimeString(start)} – ${formatTimeString(end)}`;
+function formatTimeRange(startTime: string, endTime: string): string {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return startTime;
+  }
+
+  const startStr = formatTimeString(start);
+  const endStr = formatTimeString(end);
+
+  if (start.getHours() < 12 && end.getHours() >= 12) {
+    return `${startStr} – ${endStr}`;
+  }
+  if (start.getHours() >= 12 && end.getHours() >= 12) {
+    return `${startStr.replace(" PM", "")} – ${endStr}`;
+  }
+  if (start.getHours() < 12 && end.getHours() < 12) {
+    return `${startStr.replace(" AM", "")} – ${endStr}`;
+  }
+  return `${startStr} – ${endStr}`;
 }
 
-function formatDateWithRelative(dateKey: string): string {
-  const date = new Date(`${dateKey}T12:00:00`);
+function formatDateWithRelative(dateString: string): string {
+  const date = new Date(dateString);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-  const dayMs = 86_400_000;
-  const diff = target.getTime() - today.getTime();
-  const base = date.toLocaleDateString("en-US", {
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  const compareDate = new Date(date);
+  compareDate.setHours(0, 0, 0, 0);
+
+  const fullDate = date.toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
   });
-  if (diff === 0) return `${base} (Today)`;
-  if (diff === dayMs) return `${base} (Tomorrow)`;
-  if (diff === -dayMs) return `${base} (Yesterday)`;
-  return base;
+
+  if (compareDate.getTime() === today.getTime()) return `${fullDate} (Today)`;
+  if (compareDate.getTime() === tomorrow.getTime())
+    return `${fullDate} (Tomorrow)`;
+  if (compareDate.getTime() === yesterday.getTime())
+    return `${fullDate} (Yesterday)`;
+  return fullDate;
 }
+
+// -- Edit-event helpers (mirrors web utils/calendar/eventHelpers.ts) ----------
 
 function hasEventChanges(event: CalendarEditOption): boolean {
   return !!(
@@ -150,57 +172,54 @@ function EventRow({ event, status, onEdit }: EventRowProps) {
 
   return (
     <View className="gap-2">
-      {/* Current event (dimmed, dashed border) — only when there are changes and not yet completed */}
+      {/* Current event (dimmed, dashed border) — only when changes exist and not yet completed */}
       {showChanges && !isCompleted ? (
         <View
-          className="relative flex-row items-start rounded-lg py-3 pr-2 pl-5 border-2 border-dashed"
+          className="relative flex-row items-start gap-2 rounded-lg p-3 pl-5 pr-2 border-2 border-dashed"
           style={{
             backgroundColor: `${eventColor}10`,
             borderColor: `${eventColor}80`,
             opacity: 0.6,
           }}
         >
-          {/* Vertical bar */}
-          <View className="absolute left-1 top-0 bottom-0 items-center justify-center">
+          <View className="absolute top-0 bottom-0 left-1 items-center justify-center">
             <View
               className="w-1 rounded-full"
-              style={{ backgroundColor: eventColor, height: "80%" }}
+              style={{ height: "80%", backgroundColor: eventColor }}
             />
           </View>
 
           <View className="flex-1 min-w-0">
-            <Text className="mb-1 text-xs font-medium text-primary">
+            <Text className="mb-1 text-xs font-medium text-[#00bbff]">
               Current Event
             </Text>
-            <Text
-              className="text-base leading-tight text-zinc-100"
-              numberOfLines={2}
-            >
+            <Text className="text-base text-foreground" numberOfLines={2}>
               {event.original_summary}
             </Text>
             {event.original_description ? (
-              <Text className="mt-1 text-xs text-zinc-400" numberOfLines={2}>
+              <Text className="mt-1 text-xs text-muted" numberOfLines={2}>
                 {event.original_description}
               </Text>
             ) : null}
-            <Text className="mt-1 text-xs text-zinc-400">{originalTime}</Text>
+            <View className="mt-1 flex-row items-center gap-2">
+              <Text className="text-xs text-muted">{originalTime}</Text>
+            </View>
           </View>
         </View>
       ) : null}
 
       {/* Updated event (action row) */}
       <View
-        className="relative flex-row items-end rounded-lg py-3 pr-2 pl-5"
+        className="relative flex-row items-end gap-2 rounded-lg p-3 pl-5 pr-2"
         style={{
           backgroundColor: `${eventColor}20`,
           opacity: isCompleted ? 0.5 : 1,
         }}
       >
-        {/* Vertical bar */}
-        <View className="absolute left-1 top-0 bottom-0 items-center justify-center">
+        <View className="absolute top-0 bottom-0 left-1 items-center justify-center">
           <View
             className="w-1 rounded-full"
-            style={{ backgroundColor: eventColor, height: "80%" }}
+            style={{ height: "80%", backgroundColor: eventColor }}
           />
         </View>
 
@@ -210,47 +229,43 @@ function EventRow({ event, status, onEdit }: EventRowProps) {
               Updated Event
             </Text>
           ) : null}
-          <Text
-            className="text-base leading-tight text-zinc-100"
-            numberOfLines={2}
-          >
+          <Text className="text-base text-foreground" numberOfLines={2}>
             {updatedSummary}
           </Text>
           {updatedDescription ? (
-            <Text className="mt-1 text-xs text-zinc-400" numberOfLines={2}>
+            <Text className="mt-1 text-xs text-muted" numberOfLines={2}>
               {updatedDescription}
             </Text>
           ) : null}
-          <Text className="mt-1 text-xs text-zinc-400">{updatedTime}</Text>
+          <View className="mt-1 flex-row items-center gap-2">
+            <Text className="text-xs text-muted">{updatedTime}</Text>
+          </View>
         </View>
 
-        <Pressable
-          onPress={isCompleted || isLoading ? undefined : onEdit}
-          className="flex-shrink-0 rounded-lg px-3 py-1.5 items-center justify-center flex-row gap-1"
-          style={{
-            backgroundColor: isCompleted
-              ? "rgba(63,63,70,0.6)"
-              : "rgba(0,187,255,0.15)",
-            opacity: isCompleted || isLoading ? 0.7 : 1,
-          }}
+        <Button
+          size="sm"
+          variant={isCompleted ? "secondary" : "primary"}
+          isDisabled={isCompleted || isLoading}
+          onPress={onEdit}
+          className="flex-shrink-0 rounded-xl"
         >
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : isCompleted ? (
+          {isCompleted ? (
             <>
-              <AppIcon icon={Tick02Icon} size={14} color="#a1a1aa" />
-              <Text className="text-xs font-medium text-zinc-400">Updated</Text>
+              <AppIcon icon={Tick02Icon} size={14} color="#22c55e" />
+              <Button.Label>Updated</Button.Label>
             </>
           ) : (
-            <Text className="text-xs font-semibold text-primary">Confirm</Text>
+            <Button.Label>{isLoading ? "Updating…" : "Confirm"}</Button.Label>
           )}
-        </Pressable>
+        </Button>
       </View>
     </View>
   );
 }
 
 // -- Calendar edit card -------------------------------------------------------
+
+const MAX_VISIBLE_HEIGHT = 400;
 
 export function CalendarEditCard({
   data,
@@ -321,28 +336,22 @@ export function CalendarEditCard({
   const eventsByDate = groupByDate(data);
 
   return (
-    <ToolCardShell>
-      <ToolCardHeader icon={Calendar03Icon} title="Edit Events" />
-
+    <View className="mx-4 my-2 w-full max-w-md rounded-3xl bg-zinc-800 p-4">
       <ScrollView
-        style={{ maxHeight: 400 }}
+        style={{ maxHeight: MAX_VISIBLE_HEIGHT }}
         nestedScrollEnabled
         showsVerticalScrollIndicator={false}
       >
         <View className="gap-3">
-          {Object.entries(eventsByDate).map(([dateKey, events], groupIdx) => (
-            <View
-              key={dateKey}
-              className="gap-3"
-              style={{ marginTop: groupIdx === 0 ? 0 : 4 }}
-            >
-              {/* Date rail */}
+          {Object.entries(eventsByDate).map(([dateKey, events]) => (
+            <View key={dateKey} className="gap-3">
+              {/* Date divider */}
               <View className="flex-row items-center">
-                <View className="flex-1 h-px bg-zinc-700/50" />
+                <View className="flex-1 h-px bg-zinc-700" />
                 <Text className="px-3 text-xs text-zinc-500">
                   {formatDateWithRelative(dateKey)}
                 </Text>
-                <View className="flex-1 h-px bg-zinc-700/50" />
+                <View className="flex-1 h-px bg-zinc-700" />
               </View>
 
               {/* Events */}
@@ -366,37 +375,26 @@ export function CalendarEditCard({
         </View>
       </ScrollView>
 
+      {/* Bulk update footer */}
       {data.length > 1 ? (
-        <Pressable
-          onPress={
-            allCompleted || isUpdatingAll
-              ? undefined
-              : () => void handleEditAll()
-          }
-          className="mt-3 w-full rounded-xl py-2.5 items-center justify-center flex-row gap-2"
-          style={{
-            backgroundColor: allCompleted
-              ? "rgba(63,63,70,0.6)"
-              : "rgba(0,187,255,0.18)",
-            opacity: allCompleted || isUpdatingAll ? 0.7 : 1,
-          }}
+        <Button
+          variant={allCompleted ? "secondary" : "primary"}
+          isDisabled={allCompleted || isUpdatingAll}
+          onPress={() => void handleEditAll()}
+          className="mt-3 w-full rounded-xl"
         >
-          {isUpdatingAll ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : allCompleted ? (
+          {allCompleted ? (
             <>
-              <AppIcon icon={Tick02Icon} size={16} color="#a1a1aa" />
-              <Text className="text-sm font-semibold text-zinc-400">
-                All Updated
-              </Text>
+              <AppIcon icon={Tick02Icon} size={16} color="#22c55e" />
+              <Button.Label>All Updated</Button.Label>
             </>
           ) : (
-            <Text className="text-sm font-semibold text-primary">
+            <Button.Label>
               {someCompleted ? "Update Remaining" : "Update All Events"}
-            </Text>
+            </Button.Label>
           )}
-        </Pressable>
+        </Button>
       ) : null}
-    </ToolCardShell>
+    </View>
   );
 }
