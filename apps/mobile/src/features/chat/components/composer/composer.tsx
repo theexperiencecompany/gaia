@@ -445,14 +445,14 @@ export function Composer({
           ref={inputRef}
           style={{
             paddingHorizontal: spacing.md,
-            paddingTop: hasIndicators ? spacing.xs : spacing.md,
-            paddingBottom: spacing.sm,
+            paddingTop: hasIndicators ? spacing.xs : spacing.sm,
+            paddingBottom: spacing.xs,
             fontSize: fontSize.base,
-            lineHeight: Math.round(fontSize.base * 1.5),
+            lineHeight: Math.round(fontSize.base * 1.4),
             color: "#ffffff",
-            minHeight: moderateScale(44, 0.5),
-            maxHeight: maxInputHeight + spacing.lg,
-            ...(inputHeight > 0 && { height: inputHeight + spacing.lg }),
+            minHeight: moderateScale(28, 0.5),
+            maxHeight: maxInputHeight + spacing.md,
+            ...(inputHeight > 0 && { height: inputHeight + spacing.sm }),
           }}
           placeholder={placeholder}
           placeholderTextColor="#71717a"
@@ -470,8 +470,8 @@ export function Composer({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            paddingHorizontal: spacing.sm + 2,
-            paddingBottom: spacing.sm,
+            paddingHorizontal: spacing.sm,
+            paddingBottom: spacing.xs,
           }}
         >
           {/* Left side buttons */}

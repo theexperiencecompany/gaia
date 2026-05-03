@@ -590,8 +590,8 @@ export function ChatScreenContent({
         <View
           style={{
             paddingHorizontal: spacing.sm,
-            paddingTop: spacing.sm,
-            paddingBottom: insets.bottom + spacing.xs,
+            paddingTop: spacing.xs,
+            paddingBottom: insets.bottom,
           }}
         >
           <Composer
