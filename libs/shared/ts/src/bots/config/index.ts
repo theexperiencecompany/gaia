@@ -63,11 +63,13 @@ export async function loadConfig(): Promise<BotConfig> {
 
   // BOT_LOG_HASH_SECRET is the HMAC-SHA256 key used to hash PII (phone numbers,
   // platform user IDs) in logs. RFC 2104 recommends a key of at least the hash
-  // output size (32 bytes / 64 hex chars for SHA-256) to prevent brute-force
-  // recovery of hashed identifiers.
-  if (botLogHashSecret!.length < 32) {
+  // output size (32 bytes / 256 bits) to prevent brute-force recovery of hashed
+  // identifiers. We document hex-encoded keys, so enforce 64 characters
+  // (= 32 bytes when hex-decoded). A 32-char hex value would only be 16 bytes
+  // and falls below the RFC 2104 floor.
+  if (botLogHashSecret!.length < 64) {
     throw new Error(
-      "BOT_LOG_HASH_SECRET must be at least 32 characters (256 bits of entropy). " +
+      "BOT_LOG_HASH_SECRET must be at least 64 characters (32 bytes / 256 bits). " +
         "Generate one with: openssl rand -hex 32",
     );
   }
