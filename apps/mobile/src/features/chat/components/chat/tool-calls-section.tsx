@@ -1,7 +1,6 @@
 import { normalizeCategoryName } from "@gaia/shared/icons";
-import { Accordion, Card } from "heroui-native";
-import { useEffect } from "react";
-import { View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Pressable, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -11,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   AppIcon,
+  ArrowDown01Icon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
   ToolsIcon,
@@ -43,6 +43,20 @@ function formatToolName(toolName: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase())
     .replace(/\s+tool$/i, "")
     .trim();
+}
+
+function formatInputValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0
+      ? "[]"
+      : `${value.length} item${value.length === 1 ? "" : "s"}`;
+  }
+  return JSON.stringify(value);
 }
 
 function PulsingDot({ color }: { color: string }) {
@@ -95,7 +109,7 @@ function StatusIndicator({
 function ToolIcon({
   category,
   iconUrl,
-  size = 20,
+  size = 21,
 }: {
   category: string;
   iconUrl?: string;
@@ -103,24 +117,27 @@ function ToolIcon({
 }) {
   const icon = getToolCategoryIcon(
     category,
-    { size, showBackground: true },
+    { size, showBackground: false },
     iconUrl,
   );
   if (icon) return icon;
   return (
     <View
       style={{
-        padding: 4,
-        backgroundColor: "#27272a",
+        width: size + 8,
+        height: size + 8,
         borderRadius: 8,
+        backgroundColor: "rgba(63,63,70,0.6)",
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
-      <AppIcon icon={ToolsIcon} size={size} color="#a1a1aa" />
+      <AppIcon icon={ToolsIcon} size={size - 4} color="#a1a1aa" />
     </View>
   );
 }
 
-const MAX_STACKED_ICONS = 10;
+const MAX_STACKED_ICONS = 6;
 
 function StackedToolIcons({ calls }: { calls: ToolCallEntry[] }) {
   const seenCategories = new Set<string>();
@@ -150,16 +167,7 @@ function StackedToolIcons({ calls }: { calls: ToolCallEntry[] }) {
           style={{
             marginLeft: index === 0 ? 0 : -6,
             zIndex: index,
-            transform: [
-              {
-                rotate:
-                  displayIcons.length > 1
-                    ? index % 2 === 0
-                      ? "8deg"
-                      : "-8deg"
-                    : "0deg",
-              },
-            ],
+            transform: [{ rotate: index % 2 === 0 ? "8deg" : "-8deg" }],
           }}
         >
           <ToolIcon
@@ -173,17 +181,17 @@ function StackedToolIcons({ calls }: { calls: ToolCallEntry[] }) {
         <View
           style={{
             marginLeft: -6,
-            width: 26,
-            height: 26,
-            borderRadius: 6,
-            backgroundColor: "#3f3f46",
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            backgroundColor: "rgba(63,63,70,0.6)",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
           <Text
             style={{
-              fontSize: 9,
+              fontSize: 10,
               color: "#a1a1aa",
               fontWeight: "600",
             }}
@@ -199,16 +207,20 @@ function StackedToolIcons({ calls }: { calls: ToolCallEntry[] }) {
 function ToolCallItem({
   call,
   isLast,
+  isExpanded,
+  onToggle,
 }: {
   call: ToolCallEntry;
   isLast: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
 }) {
   const hasInputs =
     call.inputs &&
     typeof call.inputs === "object" &&
     Object.keys(call.inputs).length > 0;
   const hasOutput = call.output && call.output.trim().length > 0;
-  const hasDetails = hasInputs || hasOutput;
+  const hasDetails = !!(hasInputs || hasOutput);
 
   const hasCategoryText =
     call.show_category !== false &&
@@ -230,7 +242,123 @@ function ToolCallItem({
           .join(" ")
       : null;
 
-  const itemValue = call.tool_call_id || `${call.tool_name || "tool"}`;
+  const rotation = useSharedValue(isExpanded ? 0 : -90);
+  useEffect(() => {
+    rotation.value = withTiming(isExpanded ? 0 : -90, { duration: 200 });
+  }, [isExpanded, rotation]);
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  const headerRow = (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 12,
+          color: "#a1a1aa",
+          fontWeight: "500",
+          flex: 1,
+        }}
+        numberOfLines={2}
+      >
+        {displayName}
+      </Text>
+      <StatusIndicator status={call.status} />
+      {hasDetails && (
+        <Animated.View style={chevronStyle}>
+          <AppIcon icon={ArrowDown01Icon} size={14} color="#71717a" />
+        </Animated.View>
+      )}
+    </View>
+  );
+
+  const content = (
+    <View style={{ flex: 1, minWidth: 0, paddingTop: 6 }}>
+      {headerRow}
+      {hasCategoryText && categoryLabel && (
+        <Text
+          style={{
+            fontSize: 11,
+            color: "#71717a",
+            marginTop: 2,
+          }}
+        >
+          {categoryLabel}
+        </Text>
+      )}
+      {hasDetails && isExpanded && (
+        <View
+          style={{
+            marginTop: 8,
+            backgroundColor: "rgba(39,39,42,0.5)",
+            borderRadius: 12,
+            padding: 12,
+            gap: 10,
+          }}
+        >
+          {hasInputs && (
+            <View style={{ gap: 4 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: "#71717a",
+                  fontWeight: "500",
+                }}
+              >
+                Input
+              </Text>
+              <View style={{ gap: 2 }}>
+                {Object.entries(call.inputs ?? {}).map(([key, value]) => (
+                  <View key={key} style={{ flexDirection: "row", gap: 6 }}>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: "#71717a",
+                        minWidth: 80,
+                      }}
+                    >
+                      {key}
+                    </Text>
+                    <Text
+                      style={{ fontSize: 11, color: "#d4d4d8", flex: 1 }}
+                      numberOfLines={3}
+                    >
+                      {formatInputValue(value)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+          {hasOutput && (
+            <View style={{ gap: 4 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: "#71717a",
+                  fontWeight: "500",
+                }}
+              >
+                Output
+              </Text>
+              <Text
+                style={{ fontSize: 11, color: "#d4d4d8" }}
+                numberOfLines={10}
+              >
+                {call.output}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
 
   const iconColumn = (
     <View style={{ alignItems: "center", alignSelf: "stretch" }}>
@@ -246,7 +374,7 @@ function ToolCallItem({
         <ToolIcon
           category={call.tool_category || "general"}
           iconUrl={call.icon_url}
-          size={18}
+          size={20}
         />
       </View>
       {!isLast && (
@@ -255,7 +383,7 @@ function ToolCallItem({
             width: 1,
             flex: 1,
             minHeight: 8,
-            backgroundColor: "#3f3f46",
+            backgroundColor: "rgba(228,228,231,0.15)",
             marginTop: 2,
           }}
         />
@@ -274,154 +402,52 @@ function ToolCallItem({
         }}
       >
         {iconColumn}
-        <View style={{ flex: 1, minWidth: 0, paddingTop: 6 }}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#a1a1aa",
-                fontWeight: "500",
-                flex: 1,
-              }}
-              numberOfLines={2}
-            >
-              {displayName}
-            </Text>
-            <StatusIndicator status={call.status} />
-          </View>
-          {hasCategoryText && categoryLabel && (
-            <Text
-              style={{
-                fontSize: 10,
-                color: "#71717a",
-                marginTop: 2,
-              }}
-            >
-              {categoryLabel}
-            </Text>
-          )}
-        </View>
+        {content}
       </View>
     );
   }
 
   return (
-    <View
-      style={{
+    <Pressable
+      onPress={onToggle}
+      style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "stretch",
         gap: 8,
         paddingVertical: 4,
-      }}
+        opacity: pressed ? 0.7 : 1,
+      })}
     >
       {iconColumn}
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Accordion selectionMode="single">
-          <Accordion.Item value={itemValue}>
-            <Accordion.Trigger className="flex-row items-center gap-2 px-0 py-1.5">
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      color: "#a1a1aa",
-                      fontWeight: "500",
-                      flex: 1,
-                    }}
-                    numberOfLines={2}
-                  >
-                    {displayName}
-                  </Text>
-                  <StatusIndicator status={call.status} />
-                  <Accordion.Indicator
-                    iconProps={{ size: 12, color: "#71717a" }}
-                  />
-                </View>
-                {hasCategoryText && categoryLabel && (
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      color: "#71717a",
-                      marginTop: 2,
-                    }}
-                  >
-                    {categoryLabel}
-                  </Text>
-                )}
-              </View>
-            </Accordion.Trigger>
-            <Accordion.Content>
-              <View
-                style={{
-                  backgroundColor: "rgba(39, 39, 42, 0.5)",
-                  borderRadius: 10,
-                  padding: 10,
-                  gap: 8,
-                  marginBottom: 4,
-                }}
-              >
-                {hasInputs && (
-                  <View>
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        color: "#71717a",
-                        fontWeight: "500",
-                        marginBottom: 3,
-                      }}
-                    >
-                      Input
-                    </Text>
-                    <Text
-                      style={{ fontSize: 11, color: "#d4d4d8" }}
-                      numberOfLines={6}
-                    >
-                      {JSON.stringify(call.inputs, null, 2)}
-                    </Text>
-                  </View>
-                )}
-                {hasOutput && (
-                  <View>
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        color: "#71717a",
-                        fontWeight: "500",
-                        marginBottom: 3,
-                      }}
-                    >
-                      Output
-                    </Text>
-                    <Text
-                      style={{ fontSize: 11, color: "#d4d4d8" }}
-                      numberOfLines={10}
-                    >
-                      {call.output}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </Accordion.Content>
-          </Accordion.Item>
-        </Accordion>
-      </View>
-    </View>
+      {content}
+    </Pressable>
   );
 }
 
 export function ToolCallsSection({ tool_calls_data }: ToolCallsSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedCalls, setExpandedCalls] = useState<Set<number>>(new Set());
+
+  const headerRotation = useSharedValue(-90);
+  useEffect(() => {
+    headerRotation.value = withTiming(isExpanded ? 0 : -90, { duration: 200 });
+  }, [isExpanded, headerRotation]);
+  const headerChevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${headerRotation.value}deg` }],
+  }));
+
+  const toggleCall = useCallback((index: number) => {
+    setExpandedCalls((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }, []);
+
   if (!tool_calls_data || tool_calls_data.length === 0) return null;
 
   const hasRunning = tool_calls_data.some(
@@ -429,44 +455,48 @@ export function ToolCallsSection({ tool_calls_data }: ToolCallsSectionProps) {
   );
 
   return (
-    <Accordion selectionMode="single">
-      <Accordion.Item value="tool-calls">
-        <Accordion.Trigger className="flex-row items-center gap-1.5 py-1">
-          <StackedToolIcons calls={tool_calls_data} />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            {hasRunning && <PulsingDot color="#60a5fa" />}
-            <Text
-              style={{
-                fontSize: 12,
-                color: "#71717a",
-                fontWeight: "500",
-              }}
-            >
-              Used {tool_calls_data.length} tool
-              {tool_calls_data.length > 1 ? "s" : ""}
-            </Text>
-          </View>
-          <Accordion.Indicator iconProps={{ size: 16, color: "#71717a" }} />
-        </Accordion.Trigger>
-        <Accordion.Content>
-          <Card
-            variant="secondary"
-            className="rounded-2xl mt-1 overflow-hidden"
+    <View style={{ width: "100%", maxWidth: 560 }}>
+      <Pressable
+        onPress={() => setIsExpanded((v) => !v)}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          paddingVertical: 4,
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <StackedToolIcons calls={tool_calls_data} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {hasRunning && <PulsingDot color="#60a5fa" />}
+          <Text
+            style={{
+              fontSize: 12,
+              color: "#71717a",
+              fontWeight: "500",
+            }}
           >
-            <Card.Body className="py-2 px-3">
-              {tool_calls_data.map((call, index) => (
-                <ToolCallItem
-                  key={
-                    call.tool_call_id || `${call.tool_name || "tool"}-${index}`
-                  }
-                  call={call}
-                  isLast={index === tool_calls_data.length - 1}
-                />
-              ))}
-            </Card.Body>
-          </Card>
-        </Accordion.Content>
-      </Accordion.Item>
-    </Accordion>
+            Used {tool_calls_data.length} tool
+            {tool_calls_data.length > 1 ? "s" : ""}
+          </Text>
+        </View>
+        <Animated.View style={[headerChevronStyle, { marginLeft: 2 }]}>
+          <AppIcon icon={ArrowDown01Icon} size={16} color="#71717a" />
+        </Animated.View>
+      </Pressable>
+      {isExpanded && (
+        <View style={{ paddingTop: 8 }}>
+          {tool_calls_data.map((call, index) => (
+            <ToolCallItem
+              key={call.tool_call_id || `${call.tool_name || "tool"}-${index}`}
+              call={call}
+              isLast={index === tool_calls_data.length - 1}
+              isExpanded={expandedCalls.has(index)}
+              onToggle={() => toggleCall(index)}
+            />
+          ))}
+        </View>
+      )}
+    </View>
   );
 }

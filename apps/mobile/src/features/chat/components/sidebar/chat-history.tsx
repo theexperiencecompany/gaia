@@ -362,8 +362,7 @@ function ChatItem({
             flexDirection: "row",
             alignItems: "center",
             paddingHorizontal: spacing.md,
-            // 8dp vertical — web density parity (web uses size="sm" ~32px buttons)
-            paddingVertical: spacing.sm,
+            paddingVertical: spacing.sm + 2,
             gap: spacing.sm,
             backgroundColor: isActive
               ? "rgba(255,255,255,0.05)"
@@ -403,13 +402,13 @@ function ChatItem({
             text={item.title}
             query={searchQuery}
             baseStyle={{
-              fontSize: fontSize.sm,
+              fontSize: fontSize.md,
               color: item.is_unread
                 ? "#ffffff"
                 : isActive
                   ? "#d4d4d8"
                   : "#a1a1aa",
-              fontWeight: item.is_unread ? "400" : "300",
+              fontWeight: item.is_unread ? "500" : "400",
               flex: 1,
             }}
             numberOfLines={1}
@@ -593,22 +592,22 @@ function Section({
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: spacing.sm + 4,
-          paddingTop: 4,
-          paddingBottom: 2,
+          paddingTop: 8,
+          paddingBottom: 4,
         }}
       >
         <Text
           style={{
             flex: 1,
-            fontSize: fontSize.sm,
-            color: "#52525b",
+            fontSize: fontSize.md,
+            color: "#71717a",
             fontWeight: "400",
           }}
         >
           {title}
         </Text>
         <Reanimated.View style={chevronStyle}>
-          <AppIcon icon={ArrowDown01Icon} size={iconSize.sm} color="#52525b" />
+          <AppIcon icon={ArrowDown01Icon} size={iconSize.sm} color="#71717a" />
         </Reanimated.View>
       </PressableFeedback>
       {isExpanded &&

@@ -45,19 +45,19 @@ export function SidebarFooter() {
         flexDirection: "row",
         alignItems: "center",
         paddingHorizontal: spacing.sm + 4,
-        paddingVertical: spacing.sm,
-        gap: spacing.sm,
+        paddingVertical: spacing.sm + 2,
+        gap: spacing.sm + 2,
         borderRadius: 12,
         marginHorizontal: spacing.xs,
-        marginBottom: 4,
+        marginBottom: 6,
         backgroundColor: pressed ? "#27272a" : "transparent",
       })}
     >
       <View
         style={{
-          width: 28,
-          height: 28,
-          borderRadius: 14,
+          width: 32,
+          height: 32,
+          borderRadius: 16,
           backgroundColor: AVATAR_BG,
           alignItems: "center",
           justifyContent: "center",
@@ -67,14 +67,14 @@ export function SidebarFooter() {
         {profilePicture ? (
           <Image
             source={{ uri: profilePicture }}
-            style={{ width: 28, height: 28 }}
+            style={{ width: 32, height: 32 }}
           />
         ) : (
           <Text
             style={{
               color: AVATAR_ACCENT,
               fontWeight: "600",
-              fontSize: fontSize.xs,
+              fontSize: fontSize.sm,
             }}
           >
             {getInitials(user?.name)}
@@ -84,7 +84,7 @@ export function SidebarFooter() {
       <View style={{ flex: 1 }}>
         <Text
           style={{
-            fontSize: fontSize.sm,
+            fontSize: fontSize.md,
             fontWeight: "500",
             color: "#e4e4e7",
           }}
@@ -92,9 +92,11 @@ export function SidebarFooter() {
         >
           {user?.name || "User"}
         </Text>
-        <Text style={{ fontSize: 11, color: "#71717a" }}>GAIA Free</Text>
+        <Text style={{ fontSize: 12, color: "#71717a", marginTop: 1 }}>
+          GAIA Free
+        </Text>
       </View>
-      <AppIcon icon={ArrowRight01Icon} size={iconSize.sm} color="#71717a" />
+      <AppIcon icon={ArrowRight01Icon} size={iconSize.md} color="#71717a" />
     </Pressable>
   );
 }

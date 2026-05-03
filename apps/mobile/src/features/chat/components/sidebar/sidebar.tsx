@@ -66,21 +66,19 @@ function SidebarNav() {
             style={({ pressed }) => ({
               flexDirection: "row",
               alignItems: "center",
-              gap: spacing.sm,
+              gap: spacing.sm + 2,
               paddingHorizontal: spacing.sm + 4,
-              // 8dp vertical → tighter, web-like density (~40dp tap target with icon height)
-              paddingVertical: 8,
+              paddingVertical: 11,
               borderRadius: 12,
               backgroundColor: active || pressed ? ACTIVE_BG : "transparent",
             })}
           >
-            {/* Left active indicator — 2dp line matching accent */}
             <View
               style={{
                 position: "absolute",
                 left: 0,
-                top: 10,
-                bottom: 10,
+                top: 12,
+                bottom: 12,
                 width: 2,
                 borderRadius: 1,
                 backgroundColor: active ? "#00bbff" : "transparent",
@@ -88,20 +86,20 @@ function SidebarNav() {
             />
             <View
               style={{
-                width: 20,
+                width: 22,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <AppIcon
                 icon={item.icon}
-                size={iconSize.sm}
+                size={iconSize.md}
                 color={active ? "#00bbff" : INACTIVE_TEXT}
               />
             </View>
             <Text
               style={{
-                fontSize: fontSize.sm,
+                fontSize: fontSize.md,
                 color: active ? ACTIVE_TEXT : INACTIVE_TEXT,
                 fontWeight: active ? "500" : "400",
               }}
@@ -134,19 +132,19 @@ function NewChatButton({ onPress }: NewChatButtonProps) {
         style={({ pressed }) => ({
           flexDirection: "row",
           alignItems: "center",
-          gap: spacing.sm,
+          gap: spacing.sm + 2,
           paddingHorizontal: spacing.sm + 4,
-          paddingVertical: 8,
+          paddingVertical: 11,
           borderRadius: 12,
           backgroundColor: pressed
             ? "rgba(0,187,255,0.18)"
             : "rgba(0,187,255,0.1)",
         })}
       >
-        <AppIcon icon={BubbleChatAddIcon} size={iconSize.sm} color="#00bbff" />
+        <AppIcon icon={BubbleChatAddIcon} size={iconSize.md} color="#00bbff" />
         <Text
           style={{
-            fontSize: fontSize.sm,
+            fontSize: fontSize.md,
             color: "#00bbff",
             fontWeight: "500",
           }}

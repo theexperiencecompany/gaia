@@ -33,12 +33,12 @@ export function SidebarHeader({
       >
         <Image
           source={GaiaLogo}
-          style={{ width: 24, height: 24 }}
+          style={{ width: 28, height: 28 }}
           contentFit="contain"
         />
         <Text
           style={{
-            fontSize: fontSize.md,
+            fontSize: fontSize.lg,
             fontWeight: "600",
             color: "#e4e4e7",
             letterSpacing: 0.2,
