@@ -67,8 +67,8 @@ function SidebarNav() {
               alignItems: "center",
               gap: spacing.sm,
               paddingHorizontal: spacing.sm + 4,
-              // 14dp vertical → ~44dp tap target with icon/text height
-              paddingVertical: 14,
+              // 8dp vertical → tighter, web-like density (~40dp tap target with icon height)
+              paddingVertical: 8,
               borderRadius: 12,
               backgroundColor: active || pressed ? ACTIVE_BG : "transparent",
             })}

@@ -471,7 +471,7 @@ export function Composer({
             alignItems: "center",
             justifyContent: "space-between",
             paddingHorizontal: spacing.sm + 2,
-            paddingBottom: spacing.sm + 2,
+            paddingBottom: spacing.sm,
           }}
         >
           {/* Left side buttons */}
@@ -522,11 +522,11 @@ export function Composer({
               onPress={handleSend}
               disabled={!isStreaming && !hasContent}
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: moderateScale(20, 0.5),
+                width: 36,
+                height: 36,
+                borderRadius: moderateScale(18, 0.5),
                 backgroundColor: isStreaming
-                  ? "rgba(239,68,68,0.9)"
+                  ? "rgba(63,63,70,0.8)"
                   : hasContent
                     ? "#00bbff"
                     : "rgba(63,63,70,0.6)",
@@ -537,10 +537,10 @@ export function Composer({
               {isStreaming ? (
                 <View
                   style={{
-                    width: iconSize.sm - 4,
-                    height: iconSize.sm - 4,
+                    width: 12,
+                    height: 12,
                     borderRadius: 2,
-                    backgroundColor: "#ffffff",
+                    backgroundColor: "#e4e4e7",
                   }}
                 />
               ) : (

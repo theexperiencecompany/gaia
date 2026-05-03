@@ -345,8 +345,8 @@ function ChatItem({
             flexDirection: "row",
             alignItems: "center",
             paddingHorizontal: spacing.md,
-            // 12dp vertical → ~40dp + text height ≈ 44dp tap target
-            paddingVertical: spacing.sm + 4,
+            // 8dp vertical — web density parity (web uses size="sm" ~32px buttons)
+            paddingVertical: spacing.sm,
             gap: spacing.sm,
             backgroundColor: isActive
               ? "rgba(255,255,255,0.05)"

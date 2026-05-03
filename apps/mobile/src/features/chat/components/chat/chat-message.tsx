@@ -5,7 +5,7 @@ import {
 } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { AppIcon, Brain02Icon } from "@/components/icons";
@@ -17,10 +17,6 @@ import { useResponsive } from "@/lib/responsive";
 import { extractUrls, useLinkPreview } from "../../hooks/use-link-preview";
 import { ToolDataRenderer } from "../../tool-data/renderers";
 import type { Message } from "../../types";
-import {
-  MemoryBottomSheet,
-  type MemoryBottomSheetRef,
-} from "../memory/memory-bottom-sheet";
 import { OpenUIRenderer } from "../openui/OpenUIRenderer";
 import { ImageBubble } from "./image-bubble";
 import { LinkPreviewCard } from "./link-preview-card";
@@ -183,7 +179,6 @@ export function ChatMessage({
 }: ChatMessageProps) {
   const isUser = message.isUser;
   const { spacing } = useResponsive();
-  const memorySheetRef = useRef<MemoryBottomSheetRef>(null);
 
   // Strip <thinking> tags from raw text so they are never rendered in the bubble.
   const parsedContent = useMemo(
@@ -298,6 +293,20 @@ export function ChatMessage({
   }
 
   // ---- AI message ----------------------------------------------------------
+  // Don't render an empty wrapper — only render if there's actual content to show
+  const hasAnyContent =
+    messageParts.length > 0 ||
+    isGeneratingImage ||
+    showToolProgress ||
+    showThinkingCard ||
+    showLoadingState ||
+    !!parsedContent.thinking ||
+    !!message.toolData?.length ||
+    !!message.memoryData ||
+    !!message.followUpActions?.length;
+
+  if (!hasAnyContent) return null;
+
   return (
     <Animated.View entering={FadeIn.duration(200)}>
       <PressableFeedback
@@ -430,17 +439,7 @@ export function ChatMessage({
 
         {/* Memory indicator pill */}
         {message.memoryData ? (
-          <PressableFeedback
-            onPress={() =>
-              memorySheetRef.current?.open(
-                message.memoryData as MemoryDataShape,
-              )
-            }
-          >
-            <MemoryIndicator
-              memoryData={message.memoryData as MemoryDataShape}
-            />
-          </PressableFeedback>
+          <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
         ) : null}
 
         {/* Follow-up action chips */}
@@ -450,8 +449,6 @@ export function ChatMessage({
             onActionPress={onFollowUpAction}
           />
         ) : null}
-
-        <MemoryBottomSheet ref={memorySheetRef} />
       </PressableFeedback>
     </Animated.View>
   );

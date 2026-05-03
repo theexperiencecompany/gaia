@@ -125,8 +125,8 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingHorizontal: spacing.lg,
-        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.sm,
         backgroundColor: "transparent",
       }}
     >
@@ -198,7 +198,7 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
       </View>
 
       <View
-        style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+        style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}
       >
         {isEditing ? (
           <Pressable onPress={commitRename}>
