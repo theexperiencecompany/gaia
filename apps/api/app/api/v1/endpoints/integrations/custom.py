@@ -5,6 +5,7 @@ from shared.py.wide_events import log
 from app.schemas.integrations.requests import (
     CreateCustomIntegrationRequest,
     UpdateCustomIntegrationRequest,
+    validate_mcp_server_url_dns,
 )
 from app.schemas.integrations.responses import (
     CreateCustomIntegrationResponse,
@@ -40,6 +41,7 @@ async def create_custom_mcp_integration(
             integration_name=request.name,
             user={"id": user_id},
         )
+        await validate_mcp_server_url_dns(request.server_url)
         mcp_client = await get_mcp_client(user_id=user_id)
         integration, conn_result = await create_and_connect_custom_integration(
             user_id,
@@ -80,6 +82,8 @@ async def update_custom_mcp_integration(
             user={"id": user_id},
             integration={"id": integration_id},
         )
+        if request.server_url is not None:
+            await validate_mcp_server_url_dns(request.server_url)
         updated = await update_custom_integration(
             user_id,
             integration_id,
@@ -97,6 +101,8 @@ async def update_custom_mcp_integration(
         )
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         log.error(f"Error updating integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update integration")

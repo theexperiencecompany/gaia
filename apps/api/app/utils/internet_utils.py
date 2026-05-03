@@ -1,3 +1,4 @@
+import asyncio
 import ipaddress
 import socket
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -30,20 +31,20 @@ _MAX_REDIRECTS = 5
 _REQUEST_TIMEOUT_SECONDS = 10.0
 
 
-def _is_public_address(host: str) -> bool:
-    """Return True iff every resolved IP for ``host`` is public."""
-    return _resolve_public_ip(host) is not None
-
-
-def _resolve_public_ip(host: str) -> str | None:
+async def _resolve_public_ip(host: str) -> str | None:
     """Resolve ``host`` and return one public IP, or None if any IP is blocked.
 
     The returned IP is what callers should connect to so that an attacker
     using a rebinding-friendly TTL=0 record cannot swap the address
     between our validation lookup and httpx's connect-time lookup.
+
+    Uses the asyncio loop's resolver so we don't block the event loop on a
+    slow nameserver (a hostile or sluggish DNS upstream is otherwise a
+    cheap way to stall every other request on the worker).
     """
+    loop = asyncio.get_running_loop()
     try:
-        addr_infos = socket.getaddrinfo(host, None)
+        addr_infos = await loop.getaddrinfo(host, None)
     except socket.gaierror:
         return None
 
@@ -61,7 +62,7 @@ def _resolve_public_ip(host: str) -> str | None:
     return chosen
 
 
-def _validate_external_url(url: str) -> None:
+async def _validate_external_url(url: str) -> None:
     """Raise HTTPException unless ``url`` is safe to fetch.
 
     Blocks non-http(s) schemes, IP literals that resolve to private ranges,
@@ -88,16 +89,16 @@ def _validate_external_url(url: str) -> None:
             raise HTTPException(status_code=400, detail="URL resolves to a blocked IP")
         return
 
-    if not _is_public_address(host):
+    if await _resolve_public_ip(host) is None:
         raise HTTPException(status_code=400, detail="URL resolves to a blocked host")
 
 
-def is_valid_url(url: str) -> bool:
+async def is_valid_url(url: str) -> bool:
     """
     Validate if a URL is well-formed, uses http(s), and resolves to a public IP.
     """
     try:
-        _validate_external_url(url)
+        await _validate_external_url(url)
         return True
     except HTTPException as exc:
         log.warning("URL rejected by SSRF filter", url=url, reason=exc.detail)
@@ -109,7 +110,7 @@ def is_valid_url(url: str) -> bool:
 async def fetch_url_metadata(url: str) -> URLResponse:
     """Fetch metadata for a URL, with caching and database fallback."""
     log.set(url=url, operation="fetch_url_metadata")
-    _validate_external_url(url)
+    await _validate_external_url(url)
 
     cache_key = f"url_metadata:{url}"
     metadata = await get_cache(cache_key) or await search_urls_collection.find_one(
@@ -152,7 +153,7 @@ async def _safe_get(url: str) -> httpx.Response:
         timeout=_REQUEST_TIMEOUT_SECONDS, follow_redirects=False
     ) as client:
         for _ in range(_MAX_REDIRECTS + 1):
-            _validate_external_url(current)
+            await _validate_external_url(current)
             request_url = current
             request_headers: dict[str, str] = {}
             parsed = urlparse(current)
@@ -163,7 +164,7 @@ async def _safe_get(url: str) -> httpx.Response:
             except ValueError:
                 is_ip_literal = False
             if parsed.scheme == "http" and not is_ip_literal:
-                pinned_ip = _resolve_public_ip(host)
+                pinned_ip = await _resolve_public_ip(host)
                 if pinned_ip is None:
                     raise HTTPException(
                         status_code=400,
@@ -175,7 +176,14 @@ async def _safe_get(url: str) -> httpx.Response:
                 if parsed.port:
                     ip_netloc = f"{ip_netloc}:{parsed.port}"
                 request_url = urlunparse(parsed._replace(netloc=ip_netloc))
-                request_headers["Host"] = parsed.netloc
+                # Forward the Host header so vhost routing on the upstream
+                # still works. Build it from hostname[:port] — never from
+                # parsed.netloc, which would also forward any embedded
+                # ``user:pass@`` userinfo to the IP-pinned target.
+                host_header = host
+                if parsed.port:
+                    host_header = f"{host_header}:{parsed.port}"
+                request_headers["Host"] = host_header
             async with client.stream(
                 "GET", request_url, headers=request_headers
             ) as response:

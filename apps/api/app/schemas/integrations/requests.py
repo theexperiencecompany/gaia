@@ -5,6 +5,7 @@ These models define the expected input for integration API endpoints.
 Re-exported from the original location for backwards compatibility.
 """
 
+import asyncio
 import ipaddress
 import socket
 from typing import Literal, Optional
@@ -12,12 +13,24 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+_BLOCKED_IP_ATTRS = (
+    "is_private",
+    "is_loopback",
+    "is_link_local",
+    "is_multicast",
+    "is_reserved",
+    "is_unspecified",
+)
+
 
 def _validate_mcp_server_url(url: str) -> str:
-    """Raise ValueError if ``url`` is not a safe public https/http MCP server URL.
+    """Sync structural checks for an MCP server URL.
 
-    Mirrors the SSRF hardening in internet_utils._validate_external_url but raises
-    ValueError so it works inside Pydantic field validators.
+    Validates the scheme/host/IP-literal aspects of the URL — anything that
+    can be decided without DNS. The matching DNS-resolution check (which
+    rejects hostnames whose A/AAAA records point at private/loopback IPs)
+    lives in ``validate_mcp_server_url_dns`` and is invoked from the async
+    route handler so we don't block the event loop on a slow nameserver.
     """
     try:
         parsed = urlparse(url)
@@ -35,22 +48,34 @@ def _validate_mcp_server_url(url: str) -> str:
     except ValueError:
         ip = None
 
-    _blocked = (
-        "is_private",
-        "is_loopback",
-        "is_link_local",
-        "is_multicast",
-        "is_reserved",
-        "is_unspecified",
-    )
+    if ip is not None and any(getattr(ip, attr) for attr in _BLOCKED_IP_ATTRS):
+        raise ValueError("server_url resolves to a blocked IP address")
 
-    if ip is not None:
-        if any(getattr(ip, attr) for attr in _blocked):
-            raise ValueError("server_url resolves to a blocked IP address")
-        return url
+    return url
 
+
+async def validate_mcp_server_url_dns(url: str) -> None:
+    """Async DNS check: every A/AAAA record for the host must be public.
+
+    Called from route handlers after the sync field validator has accepted
+    the URL's structure. Uses the asyncio loop's resolver so a slow
+    nameserver can't stall the worker event loop.
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        return
+
+    # IP literals are already covered by the sync field validator.
     try:
-        addr_infos = socket.getaddrinfo(host, None)
+        ipaddress.ip_address(host)
+        return
+    except ValueError:
+        pass
+
+    loop = asyncio.get_running_loop()
+    try:
+        addr_infos = await loop.getaddrinfo(host, None)
     except socket.gaierror:
         raise ValueError(f"server_url host '{host}' could not be resolved")
 
@@ -60,10 +85,8 @@ def _validate_mcp_server_url(url: str) -> str:
             resolved = ipaddress.ip_address(ip_str)
         except ValueError:
             raise ValueError("server_url resolved to an unparseable IP address")
-        if any(getattr(resolved, attr) for attr in _blocked):
+        if any(getattr(resolved, attr) for attr in _BLOCKED_IP_ATTRS):
             raise ValueError("server_url resolves to a blocked IP address")
-
-    return url
 
 
 class AddUserIntegrationRequest(BaseModel):

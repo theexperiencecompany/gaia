@@ -22,7 +22,29 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 
+from chromadb.api import AsyncClientAPI
+from chromadb.api.models.AsyncCollection import AsyncCollection
+from chromadb.api.types import EmbeddingFunction
+from langchain_core.embeddings import Embeddings
+from langgraph.store.base import (
+    BaseStore,
+    GetOp,
+    IndexConfig,
+    Item,
+    ListNamespacesOp,
+    MatchCondition,
+    Op,
+    PutOp,
+    Result,
+    SearchItem,
+    SearchOp,
+    ensure_embeddings,
+    get_text_at_path,
+    tokenize_path,
+)
+
 from app.config.settings import settings
+from shared.py.wide_events import log
 
 
 # Envelope versions:
@@ -115,29 +137,6 @@ def _verify_and_unpickle(document: str) -> Any:
     # Only reached after MAC verification — payload is known to have been
     # produced by this app.
     return pickle.loads(payload)  # nosec B301 - MAC-verified above
-
-
-from chromadb.api import AsyncClientAPI
-from shared.py.wide_events import log
-from chromadb.api.models.AsyncCollection import AsyncCollection
-from chromadb.api.types import EmbeddingFunction
-from langchain_core.embeddings import Embeddings
-from langgraph.store.base import (
-    BaseStore,
-    GetOp,
-    IndexConfig,
-    Item,
-    ListNamespacesOp,
-    MatchCondition,
-    Op,
-    PutOp,
-    Result,
-    SearchItem,
-    SearchOp,
-    ensure_embeddings,
-    get_text_at_path,
-    tokenize_path,
-)
 
 
 class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]

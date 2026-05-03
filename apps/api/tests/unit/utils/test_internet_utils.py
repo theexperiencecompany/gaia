@@ -37,9 +37,9 @@ class TestIsValidUrl:
             "url_with_file_extension",
         ],
     )
-    def test_valid_urls(self, url: str) -> None:
+    async def test_valid_urls(self, url: str) -> None:
         """Valid HTTP/HTTPS URLs with proper netloc return True."""
-        assert is_valid_url(url) is True
+        assert await is_valid_url(url) is True
 
     @pytest.mark.parametrize(
         "url,reason",
@@ -64,29 +64,22 @@ class TestIsValidUrl:
             "broadcast_ip",
         ],
     )
-    def test_invalid_urls(self, url: str, reason: str) -> None:
+    async def test_invalid_urls(self, url: str, reason: str) -> None:
         """URLs with wrong scheme, missing netloc, or IP addresses return False."""
-        assert is_valid_url(url) is False
+        assert await is_valid_url(url) is False
 
-    def test_none_input(self) -> None:
+    async def test_none_input(self) -> None:
         """None input returns False (caught by the except branch)."""
         # urlparse(None) raises TypeError in some Python versions
-        assert is_valid_url(None) is False  # type: ignore[arg-type]
+        assert await is_valid_url(None) is False  # type: ignore[arg-type]
 
-    def test_malformed_url(self) -> None:
+    async def test_malformed_url(self) -> None:
         """Malformed input that lacks scheme returns False."""
-        assert is_valid_url("ht!tp://bad url with spaces") is False
+        assert await is_valid_url("ht!tp://bad url with spaces") is False
 
-    def test_ip_with_port_rejected(self) -> None:
-        """IP address with a port — the netloc includes the port so the regex
-        won't match the bare IP pattern.  This is an edge case in the current
-        implementation (IP:port is NOT rejected).  Documenting actual behavior."""
-        # netloc = "192.168.1.1:8080" — the regex r"^\d+\.\d+\.\d+\.\d+$"
-        # does not match because of the :8080, so this passes.
-        result = is_valid_url("https://192.168.1.1:8080")
-        # The current implementation allows this because the regex only matches
-        # bare IP addresses.  We test the actual behavior, not the ideal.
-        assert result is True
+    async def test_ip_with_port_rejected(self) -> None:
+        """Private IP literals with a port are rejected by SSRF hardening."""
+        assert await is_valid_url("https://192.168.1.1:8080") is False
 
 
 # ---------------------------------------------------------------------------

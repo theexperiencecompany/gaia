@@ -207,32 +207,19 @@ async def get_public_holo_card(request: Request, card_id: str):
         log.set(operation="get_public_holo_card", card_id=card_id)
 
         # H4 — defeat the user-enumeration timing oracle. Every code path
-        # below performs the same shape of Mongo work (one ``find_one``
-        # plus one ``count_documents``) so an attacker cannot distinguish
-        # malformed-id / not-found / not-onboarded / valid by latency.
-        # Response shape is also uniform (404 with the same body for any
-        # miss reason).
+        # below performs exactly one ``find_one`` against the ``_id`` index;
+        # malformed input is replaced with a sentinel ObjectId so Mongo
+        # still does the same indexed lookup. ``count_documents`` is *not*
+        # run on the fast path: its index-scan cost depends on the matched
+        # range, which would leak hit/miss (and the looked-up user's
+        # position) via latency. Account-number backfill runs only on the
+        # rare slow path for legacy users whose number wasn't pre-stored.
         oid: Optional[ObjectId] = None
         if ObjectId.is_valid(card_id):
             oid = ObjectId(card_id)
 
-        # Issue the find_one regardless. With a sentinel ObjectId on the
-        # malformed path, Mongo still answers in roughly the same time as
-        # a genuine miss.
         lookup_id = oid if oid is not None else ObjectId()
         user_doc = await users_collection.find_one({"_id": lookup_id})
-
-        # Always run the historical-count query too; on the success path
-        # we use it to compute account_number for legacy users, on miss
-        # paths we discard it. Parallel with find_one would drop latency
-        # but introduce a different shape — sequential keeps every path
-        # identical.
-        created_at_for_count = (
-            (user_doc or {}).get("created_at") if user_doc else datetime.now(timezone.utc)
-        )
-        legacy_count = await users_collection.count_documents(
-            {"created_at": {"$lt": created_at_for_count}}
-        )
 
         if oid is None or not user_doc:
             raise HTTPException(status_code=404, detail="Card not found")
@@ -247,7 +234,17 @@ async def get_public_holo_card(request: Request, card_id: str):
 
         if not account_number or not member_since:
             created_at = user_doc.get("created_at")
-            account_number = (legacy_count + 1) if created_at else 1
+            if created_at:
+                # Slow-path count for legacy rows that were never
+                # backfilled. The backfill below ensures this only fires
+                # once per such user, so the per-user latency leak is
+                # bounded to first read after deploy.
+                legacy_count = await users_collection.count_documents(
+                    {"created_at": {"$lt": created_at}}
+                )
+                account_number = legacy_count + 1
+            else:
+                account_number = 1
             member_since = (
                 created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
             )
