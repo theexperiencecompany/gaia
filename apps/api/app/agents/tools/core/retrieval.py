@@ -50,7 +50,8 @@ def _is_platform_tool_space(tool_space: str) -> bool:
     so one user cannot search another user's MCP tools.
     """
     return any(
-        integration.subagent_config is not None
+        integration.available is True
+        and integration.subagent_config is not None
         and integration.subagent_config.tool_space == tool_space
         for integration in OAUTH_INTEGRATIONS
     )
@@ -549,7 +550,12 @@ def get_retrieve_tools_function(
             unknown_tool_names: list[str] = []
             for tool_name in exact_tool_names:
                 if tool_name.startswith("subagent:"):
-                    # Only pass through subagent keys when subagents are enabled
+                    # Subagents are invoked via the `handoff` tool, not bound
+                    # here — the docstring tells the LLM this and select_tools
+                    # filters subagent:* out before binding. We accept the
+                    # key when subagents are enabled so it appears in the
+                    # response (purely informational); membership validation
+                    # happens at handoff time where it actually matters.
                     if include_subagents:
                         validated_tool_names.append(tool_name)
                     else:
