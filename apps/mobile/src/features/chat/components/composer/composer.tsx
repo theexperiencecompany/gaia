@@ -20,7 +20,6 @@ import {
   PlusSignIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { ConnectDrawerTrigger } from "@/features/integrations/components/connect-drawer";
 import { useResponsive } from "@/lib/responsive";
 import type { AttachmentFile } from "./attachment-preview";
 import { AttachmentPreview } from "./attachment-preview";
@@ -276,13 +275,6 @@ export function Composer({
     setAttachments((prev) => prev.filter((a) => a.localId !== localId));
   }, []);
 
-  const hasIndicators =
-    !!selectedTool ||
-    !!selectedWorkflow ||
-    !!selectedCalendarEvent ||
-    !!replyTo ||
-    attachments.length > 0;
-
   return (
     <View style={{ width: "100%" }}>
       {/* Built-in slash commands overlay — rendered above the composer box */}
@@ -440,91 +432,78 @@ export function Composer({
           />
         )}
 
-        {/* Text input area */}
-        <TextInput
-          ref={inputRef}
-          style={{
-            paddingHorizontal: spacing.md,
-            paddingTop: hasIndicators ? spacing.xs : spacing.sm,
-            paddingBottom: spacing.xs,
-            fontSize: fontSize.base,
-            lineHeight: Math.round(fontSize.base * 1.4),
-            color: "#ffffff",
-            minHeight: moderateScale(28, 0.5),
-            maxHeight: maxInputHeight + spacing.md,
-            ...(inputHeight > 0 && { height: inputHeight + spacing.sm }),
-          }}
-          placeholder={placeholder}
-          placeholderTextColor="#71717a"
-          value={message}
-          onChangeText={handleTextChange}
-          onContentSizeChange={handleContentSizeChange}
-          multiline
-          maxLength={4000}
-          textAlignVertical="top"
-        />
-
-        {/* Toolbar row */}
+        {/* Single-row composer: plus | input | send (ChatGPT/Claude/Grok pattern) */}
         <View
           style={{
             flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            paddingHorizontal: spacing.sm,
-            paddingBottom: spacing.xs,
+            alignItems: "flex-end",
+            paddingHorizontal: 6,
+            paddingVertical: 6,
+            gap: 4,
           }}
         >
-          {/* Left side buttons */}
-          <View
+          <Animated.View style={plusAnimatedStyle}>
+            <Pressable
+              onPress={handlePlusPress}
+              hitSlop={6}
+              onPressIn={() => {
+                plusScale.value = withSpring(0.92, {
+                  damping: 15,
+                  stiffness: 400,
+                });
+              }}
+              onPressOut={() => {
+                plusScale.value = withSpring(1, {
+                  damping: 15,
+                  stiffness: 400,
+                });
+              }}
+              style={{
+                width: 32,
+                height: 32,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <AppIcon icon={PlusSignIcon} size={iconSize.md} color="#a1a1aa" />
+            </Pressable>
+          </Animated.View>
+
+          <TextInput
+            ref={inputRef}
             style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
+              flex: 1,
+              paddingHorizontal: 4,
+              paddingTop: 6,
+              paddingBottom: 6,
+              fontSize: fontSize.base,
+              lineHeight: Math.round(fontSize.base * 1.35),
+              color: "#ffffff",
+              minHeight: 32,
+              maxHeight: maxInputHeight,
+              ...(inputHeight > 0 && {
+                height: Math.min(inputHeight, maxInputHeight),
+              }),
             }}
-          >
-            <Animated.View style={plusAnimatedStyle}>
-              <Pressable
-                onPress={handlePlusPress}
-                onPressIn={() => {
-                  plusScale.value = withSpring(0.92, {
-                    damping: 15,
-                    stiffness: 400,
-                  });
-                }}
-                onPressOut={() => {
-                  plusScale.value = withSpring(1, {
-                    damping: 15,
-                    stiffness: 400,
-                  });
-                }}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: moderateScale(20, 0.5),
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <AppIcon
-                  icon={PlusSignIcon}
-                  size={iconSize.md - 2}
-                  color="#a1a1aa"
-                />
-              </Pressable>
-            </Animated.View>
+            placeholder={placeholder}
+            placeholderTextColor="#71717a"
+            value={message}
+            onChangeText={handleTextChange}
+            onContentSizeChange={handleContentSizeChange}
+            multiline
+            maxLength={4000}
+            textAlignVertical="center"
+          />
 
-            <ConnectDrawerTrigger onOpen={dismissKeyboard} />
-          </View>
-
-          {/* Right side: send / stop button */}
           <Animated.View style={sendAnimatedStyle}>
             <Pressable
               onPress={handleSend}
+              hitSlop={6}
               disabled={!isStreaming && !hasContent}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: moderateScale(18, 0.5),
+                width: 32,
+                height: 32,
+                borderRadius: 16,
                 backgroundColor: isStreaming
                   ? "rgba(63,63,70,0.8)"
                   : hasContent
@@ -537,8 +516,8 @@ export function Composer({
               {isStreaming ? (
                 <View
                   style={{
-                    width: 12,
-                    height: 12,
+                    width: 10,
+                    height: 10,
                     borderRadius: 2,
                     backgroundColor: "#e4e4e7",
                   }}
