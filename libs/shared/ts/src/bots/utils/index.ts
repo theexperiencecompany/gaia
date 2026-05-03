@@ -120,46 +120,68 @@ function cutsInsideMarkdownLink(text: string, idx: number): boolean {
 }
 
 /**
+ * Strips fenced code blocks (``` ... ```) so the parity checks only see
+ * narrative text. Code can legitimately contain ``**`` (Python ``**kwargs``),
+ * lone ``*`` (shell globs ``*.txt``), or stray backticks, and those bytes
+ * must not poison emphasis parity for prose.
+ */
+function stripFencedBlocks(s: string): string {
+  let out = "";
+  let inFence = false;
+  let i = 0;
+  while (i < s.length) {
+    if (s.startsWith("```", i)) {
+      inFence = !inFence;
+      i += 3;
+      continue;
+    }
+    if (!inFence) out += s[i];
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Counts single ``*`` markers in ``text``, excluding any ``*`` that is part
+ * of a ``**`` (markdown bold). Used to detect WhatsApp-native ``*bold*``
+ * pairs that the model emits when the platform context tells it to use
+ * single-asterisk bold. Markdown bullets at line start (``^* ``) are also
+ * excluded — they are not paired emphasis markers.
+ */
+function countSingleAsterisks(text: string): number {
+  // Drop ``**`` first so the bold pairs don't double-count toward single-`*`.
+  const noDouble = text.replaceAll("**", "");
+  // Drop bullet-list ``*`` followed by a space at line start.
+  const noBullets = noDouble.replace(/^\*\s/gm, "");
+  return (noBullets.match(/\*/g) ?? []).length;
+}
+
+/**
  * Returns true if cutting ``text`` at index ``idx`` would land inside an
- * unclosed markdown emphasis span. We only check the two markers that bite us
- * in practice: ``**bold**`` (model emits markdown bold even when output goes
- * to WhatsApp) and `` `inline code` ``. Single ``*``, ``_``, ``~`` are skipped
- * because they appear in code identifiers, URLs, and plain prose — the false
- * positive rate is too high to be worth the rare valid catch.
+ * unclosed markdown emphasis span. We check the markers that actually bite us
+ * in WhatsApp output: ``**bold**``, single-asterisk ``*bold*`` (the
+ * WhatsApp-native bold the platform context steers the model toward), and
+ * `` `inline code` ``. ``_`` and ``~`` are skipped because they appear in
+ * identifiers/URLs and the false-positive rate would shrink chunks
+ * pointlessly.
  *
- * The check is symmetric: an odd number of ``**`` in the prefix AND a closing
- * ``**`` somewhere in the suffix means the cut would orphan one half of the
- * pair. Same logic for backticks (excluding triple-backticks, which are
- * handled separately by the fence-balancing step in {@link chunkResponse}).
+ * The check is symmetric: an odd number of a marker in the prefix AND a
+ * closing marker somewhere in the suffix means the cut would orphan one
+ * half of the pair.
  */
 function cutsInsideEmphasisSpan(text: string, idx: number): boolean {
-  const prefix = text.slice(0, idx);
-  const suffix = text.slice(idx);
-
-  // Strip fenced code blocks (``` ... ```) before counting markers — code can
-  // legitimately contain ``**`` (e.g. Python ``**kwargs``) and stray
-  // backticks (e.g. shell quoting), and those bytes must not poison the
-  // emphasis parity check that's deciding cut positions in narrative text.
-  const stripFences = (s: string): string => {
-    let out = "";
-    let inFence = false;
-    let i = 0;
-    while (i < s.length) {
-      if (s.startsWith("```", i)) {
-        inFence = !inFence;
-        i += 3;
-        continue;
-      }
-      if (!inFence) out += s[i];
-      i++;
-    }
-    return out;
-  };
-  const prefixNarrative = stripFences(prefix);
-  const suffixNarrative = stripFences(suffix);
+  const prefixNarrative = stripFencedBlocks(text.slice(0, idx));
+  const suffixNarrative = stripFencedBlocks(text.slice(idx));
 
   const doubleAsteriskOpens = (prefixNarrative.match(/\*\*/g) ?? []).length;
   if (doubleAsteriskOpens % 2 === 1 && suffixNarrative.includes("**"))
+    return true;
+
+  const singleAsteriskOpens = countSingleAsterisks(prefixNarrative);
+  if (
+    singleAsteriskOpens % 2 === 1 &&
+    countSingleAsterisks(suffixNarrative) > 0
+  )
     return true;
 
   const inlineTickOpens = (prefixNarrative.match(/`/g) ?? []).length;
@@ -174,6 +196,39 @@ function cutsInsideEmphasisSpan(text: string, idx: number): boolean {
  */
 function cutsInsideMarkdown(text: string, idx: number): boolean {
   return cutsInsideMarkdownLink(text, idx) || cutsInsideEmphasisSpan(text, idx);
+}
+
+/**
+ * Find the orphan single ``*`` to strip. Skips ``**`` (double-asterisk bold,
+ * already handled separately) and ``* `` at line start (markdown bullet,
+ * not an emphasis marker).
+ *
+ * @param scan - ``"tail"`` walks from the end (last orphan in chunk),
+ *               ``"head"`` walks from the start (first orphan in next chunk).
+ * @returns Index of the orphan ``*`` or -1 if none found.
+ */
+function findOrphanSingleAsterisk(text: string, scan: "tail" | "head"): number {
+  const isBulletStart = (i: number): boolean => {
+    const lineStart = text.lastIndexOf("\n", i - 1) + 1;
+    // Ignore leading whitespace before checking ``*``
+    let j = lineStart;
+    while (j < i && (text[j] === " " || text[j] === "\t")) j++;
+    return j === i && text[i + 1] === " ";
+  };
+
+  const indices: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "*") continue;
+    if (text[i + 1] === "*") {
+      i++; // skip second `*` of `**`
+      continue;
+    }
+    if (text[i - 1] === "*") continue; // tail half of `**` (defensive)
+    if (isBulletStart(i)) continue;
+    indices.push(i);
+  }
+  if (indices.length === 0) return -1;
+  return scan === "tail" ? indices[indices.length - 1] : indices[0];
 }
 
 /**
@@ -259,31 +314,16 @@ export function chunkResponse(
     let chunk = remaining.slice(0, cutAt);
     let next = remaining.slice(cutAt);
 
-    // Belt-and-suspenders: balance unbalanced ``**`` markers across the cut
-    // in narrative text. We ignore ``**`` that appears inside fenced code
-    // blocks (Python ``**kwargs`` etc.) so legitimate code doesn't flip the
-    // parity and mask a real orphan in prose.
-    const stripFences = (s: string): string => {
-      let out = "";
-      let inFence = false;
-      let i = 0;
-      while (i < s.length) {
-        if (s.startsWith("```", i)) {
-          inFence = !inFence;
-          i += 3;
-          continue;
-        }
-        if (!inFence) out += s[i];
-        i++;
-      }
-      return out;
-    };
-    const chunkOpens = (stripFences(chunk).match(/\*\*/g) ?? []).length;
-    if (chunkOpens % 2 === 1) {
-      // Strip the orphan ``**`` from the chunk's narrative tail and the
-      // matching opener from the next chunk's narrative head so
-      // convertToWhatsAppMarkdown's pair regex does not greedily merge them
-      // with unrelated ``**`` pairs and emit stray asterisks.
+    // Belt-and-suspenders: balance unbalanced emphasis markers across the
+    // cut in narrative text. We ignore markers inside fenced code blocks
+    // (Python ``**kwargs``, shell globs ``*.txt``, backtick-quoted strings)
+    // so legitimate code doesn't flip parity and mask a real prose orphan.
+    const chunkNarrative = stripFencedBlocks(chunk);
+    const nextNarrative = stripFencedBlocks(next);
+
+    // 1. Double-asterisk markdown bold (``**X**``).
+    const doubleOpens = (chunkNarrative.match(/\*\*/g) ?? []).length;
+    if (doubleOpens % 2 === 1) {
       const lastIdx = chunk.lastIndexOf("**");
       if (lastIdx !== -1) {
         chunk = chunk.slice(0, lastIdx) + chunk.slice(lastIdx + 2);
@@ -291,6 +331,23 @@ export function chunkResponse(
       const firstIdx = next.indexOf("**");
       if (firstIdx !== -1) {
         next = next.slice(0, firstIdx) + next.slice(firstIdx + 2);
+      }
+    }
+
+    // 2. Single-asterisk WhatsApp-native bold (``*X*``). The platform context
+    //    steers the model toward this style on WhatsApp, so without this
+    //    branch a cut inside ``*Bold Heading*`` leaves stray ``*`` glyphs in
+    //    the rendered bubbles.
+    if (countSingleAsterisks(chunkNarrative) % 2 === 1) {
+      // Strip the orphan single ``*`` from chunk's tail (skipping any ``**``
+      // and bullet-list ``*`` markers) and the matching opener from next.
+      const lastIdx = findOrphanSingleAsterisk(chunk, "tail");
+      if (lastIdx !== -1) {
+        chunk = chunk.slice(0, lastIdx) + chunk.slice(lastIdx + 1);
+      }
+      const firstIdx = findOrphanSingleAsterisk(next, "head");
+      if (firstIdx !== -1) {
+        next = next.slice(0, firstIdx) + next.slice(firstIdx + 1);
       }
     }
 
