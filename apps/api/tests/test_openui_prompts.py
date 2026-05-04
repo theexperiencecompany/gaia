@@ -77,12 +77,10 @@ def test_instructions_contains_all_component_names():
         "RadarChart",
         "GaugeChart",
         # Content
-        "ImageBlock",
         "ImageGallery",
         "VideoBlock",
         "AudioPlayer",
         "MapBlock",
-        "CalendarMini",
         "NumberTicker",
         "Carousel",
         # Timeline

@@ -11,7 +11,6 @@ import {
   BarChartView,
   ButtonsView,
   ButtonView,
-  CalendarMiniView,
   CalloutView,
   CardHeaderView,
   CarouselView,
@@ -20,7 +19,6 @@ import {
   CopyableContentView,
   FileTreeView,
   GaugeChartView,
-  ImageBlockView,
   ImageGalleryView,
   KbdRowView,
   LineChartView,
@@ -53,15 +51,17 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl bg-zinc-900/40 p-4 md:p-5 space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
-        {description && (
-          <p className="text-xs text-zinc-400 mt-1">{description}</p>
-        )}
+    <section className="space-y-3 pt-6 first:pt-0">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
+          {description && (
+            <p className="text-xs text-zinc-500 mt-0.5">{description}</p>
+          )}
+        </div>
       </div>
-      <Divider className="bg-zinc-700" />
-      {children}
+      <Divider className="bg-zinc-800" />
+      <div className="pt-2">{children}</div>
     </section>
   );
 }
@@ -80,12 +80,12 @@ export default function OpenUIDemoPage() {
   }
   return (
     <div className="h-full min-h-0 overflow-y-auto p-4 md:p-6 pb-16">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <header className="rounded-2xl bg-zinc-800 p-5">
+      <div className="mx-auto max-w-5xl">
+        <header className="pb-4">
           <h1 className="text-xl font-semibold text-zinc-100">
             OpenUI Component Library
           </h1>
-          <p className="text-sm text-zinc-400 mt-1">
+          <p className="text-sm text-zinc-500 mt-1">
             Live preview of all components. Compositions at the bottom.
           </p>
         </header>
@@ -211,18 +211,18 @@ export default function OpenUIDemoPage() {
         </Section>
 
         <Section title="Checkbox + Radio">
-          <Row>
-            <div className="space-y-1">
+          <div className="flex flex-wrap gap-10 items-start">
+            <div className="space-y-3">
               <CheckboxView label="Enable notifications" checked />
               <CheckboxView label="Dark mode" />
               <CheckboxView label="Auto-update" checked />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-3">
               <RadioView label="Free tier" value="free" />
               <RadioView label="Pro — $12/mo" value="pro" selected />
               <RadioView label="Enterprise" value="enterprise" />
             </div>
-          </Row>
+          </div>
         </Section>
 
         <Section title="Table">
@@ -269,7 +269,6 @@ export default function OpenUIDemoPage() {
                 },
               ] as Parameters<typeof TableView>[0]["cols"]
             }
-            striped
           />
         </Section>
 
@@ -425,7 +424,7 @@ NEXT_PUBLIC_GAIA_URL=https://api.heygaia.io`}
           title="KbdRow"
           description="Compose shortcut rows inside a Card for a full shortcut reference."
         >
-          <div className="rounded-2xl bg-zinc-900 p-3 w-full max-w-lg space-y-2">
+          <div className="rounded-2xl bg-zinc-800 p-3 w-full max-w-lg space-y-2">
             <p className="text-sm font-semibold text-zinc-100 mb-3">
               Keyboard shortcuts
             </p>
@@ -554,14 +553,6 @@ NEXT_PUBLIC_GAIA_URL=https://api.heygaia.io`}
           </Row>
         </Section>
 
-        <Section title="ImageBlock">
-          <ImageBlockView
-            src="https://images.unsplash.com/photo-1518770660439-4636190af475?w=800"
-            alt="Technology"
-            caption="High-performance server rack"
-          />
-        </Section>
-
         <Section title="Carousel">
           <CarouselView
             items={[
@@ -583,17 +574,6 @@ NEXT_PUBLIC_GAIA_URL=https://api.heygaia.io`}
           />
         </Section>
 
-        <Section title="CalendarMini">
-          <CalendarMiniView
-            markedDates={[
-              { date: "2026-04-15", label: "Sprint end", color: "warning" },
-              { date: "2026-04-22", label: "Release", color: "success" },
-              { date: "2026-04-28", label: "Retro" },
-            ]}
-            title="Upcoming milestones"
-          />
-        </Section>
-
         <Section title="VideoBlock">
           <VideoBlockView
             src="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -609,39 +589,317 @@ NEXT_PUBLIC_GAIA_URL=https://api.heygaia.io`}
           />
         </Section>
 
-        <Section title="ImageGallery">
-          <ImageGalleryView
-            images={[
-              {
-                src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600",
-                alt: "Server rack",
-                caption: "Data center",
-              },
-              {
-                src: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600",
-                alt: "Code on monitor",
-                caption: "Terminal",
-              },
-              {
-                src: "https://images.unsplash.com/photo-1487058792275-0ad4aaf24ca7?w=600",
-                alt: "Abstract code",
-                caption: "Algorithms",
-              },
-              {
-                src: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600",
-                alt: "Glowing UI",
-                caption: "Interfaces",
-              },
-            ]}
-          />
+        <Section
+          title="ImageGallery"
+          description="Default: smart grid (1=1col, 2=2col, 3=3col, 4+=2col). Override with columns."
+        >
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs text-zinc-500 mb-2">1 image</p>
+              <ImageGalleryView
+                images={[
+                  {
+                    src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600",
+                    alt: "Server rack",
+                    caption: "Data center",
+                  },
+                ]}
+              />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 mb-2">2 images</p>
+              <ImageGalleryView
+                images={[
+                  {
+                    src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600",
+                    alt: "Server rack",
+                    caption: "Data center",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600",
+                    alt: "Terminal",
+                    caption: "Terminal",
+                  },
+                ]}
+              />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 mb-2">3 images</p>
+              <ImageGalleryView
+                images={[
+                  {
+                    src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600",
+                    alt: "Server rack",
+                    caption: "Data center",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600",
+                    alt: "Terminal",
+                    caption: "Terminal",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1487058792275-0ad4aaf24ca7?w=600",
+                    alt: "Algorithms",
+                    caption: "Algorithms",
+                  },
+                ]}
+              />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 mb-2">
+                4 images (2x2 default)
+              </p>
+              <ImageGalleryView
+                images={[
+                  {
+                    src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600",
+                    alt: "Server rack",
+                    caption: "Data center",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600",
+                    alt: "Terminal",
+                    caption: "Terminal",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1487058792275-0ad4aaf24ca7?w=600",
+                    alt: "Algorithms",
+                    caption: "Algorithms",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600",
+                    alt: "Interfaces",
+                    caption: "Interfaces",
+                  },
+                ]}
+              />
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500 mb-2">
+                6 images, columns=3 override
+              </p>
+              <ImageGalleryView
+                columns={3}
+                images={[
+                  {
+                    src: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600",
+                    alt: "Server rack",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600",
+                    alt: "Terminal",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1487058792275-0ad4aaf24ca7?w=600",
+                    alt: "Algorithms",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600",
+                    alt: "Interfaces",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1531297484001-80022131f5a1?w=600",
+                    alt: "Laptop",
+                  },
+                  {
+                    src: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600",
+                    alt: "Code editor",
+                  },
+                ]}
+              />
+            </div>
+          </div>
         </Section>
 
-        <Section title="MapBlock">
+        <Section
+          title="MapBlock — single point"
+          description="Default marker at the given lat/lng with a label."
+        >
           <MapBlockView
             lat={40.7128}
             lng={-74.006}
             label="New York City"
             zoom={12}
+          />
+        </Section>
+
+        <Section
+          title="MapBlock — multiple markers with labels"
+          description="Markers auto-fit when no explicit zoom is required."
+        >
+          <MapBlockView
+            lat={37.7749}
+            lng={-122.4194}
+            label="Bay Area offices"
+            zoom={9}
+            markers={[
+              { lat: 37.7749, lng: -122.4194, label: "SF HQ" },
+              { lat: 37.8044, lng: -122.2712, label: "Oakland" },
+              { lat: 37.3382, lng: -121.8863, label: "San Jose" },
+            ]}
+          />
+        </Section>
+
+        <Section
+          title="MapBlock — markers with tooltip and popup"
+          description="Hover for tooltip, click for popup."
+        >
+          <MapBlockView
+            lat={51.5074}
+            lng={-0.1278}
+            label="London landmarks"
+            zoom={12}
+            markers={[
+              {
+                lat: 51.5007,
+                lng: -0.1246,
+                label: "Big Ben",
+                tooltip: "Westminster",
+              },
+              {
+                lat: 51.5081,
+                lng: -0.0759,
+                label: "Tower of London",
+                popup: "Historic castle on the River Thames.",
+              },
+              {
+                lat: 51.5194,
+                lng: -0.127,
+                label: "British Museum",
+                tooltip: "Bloomsbury",
+              },
+            ]}
+          />
+        </Section>
+
+        <Section
+          title="MapBlock — route between points"
+          description="LineString rendered with custom color and width."
+        >
+          <MapBlockView
+            lat={48.8566}
+            lng={2.3522}
+            label="Paris walking route"
+            zoom={13}
+            markers={[
+              { lat: 48.8584, lng: 2.2945, label: "Eiffel Tower" },
+              { lat: 48.8606, lng: 2.3376, label: "Louvre" },
+              { lat: 48.853, lng: 2.3499, label: "Notre-Dame" },
+            ]}
+            routes={[
+              {
+                points: [
+                  { lat: 48.8584, lng: 2.2945 },
+                  { lat: 48.8606, lng: 2.3376 },
+                  { lat: 48.853, lng: 2.3499 },
+                ],
+                color: "#00bbff",
+                width: 4,
+                opacity: 0.9,
+              },
+            ]}
+          />
+        </Section>
+
+        <Section
+          title="MapBlock — dashed route"
+          description="Use dashArray for planned or alternative paths."
+        >
+          <MapBlockView
+            lat={35.6762}
+            lng={139.6503}
+            label="Tokyo transit plan"
+            zoom={12}
+            markers={[
+              { lat: 35.6586, lng: 139.7454, label: "Tokyo Tower" },
+              { lat: 35.7148, lng: 139.7967, label: "Asakusa" },
+            ]}
+            routes={[
+              {
+                points: [
+                  { lat: 35.6586, lng: 139.7454 },
+                  { lat: 35.6895, lng: 139.6917 },
+                  { lat: 35.7148, lng: 139.7967 },
+                ],
+                color: "#f59e0b",
+                width: 3,
+                dashArray: [2, 2],
+              },
+            ]}
+          />
+        </Section>
+
+        <Section
+          title="MapBlock — arcs between cities"
+          description="Curved connections — useful for flights, network links, or shipments."
+        >
+          <MapBlockView
+            lat={20}
+            lng={0}
+            label="Global network"
+            zoom={1}
+            arcs={[
+              {
+                id: "ny-london",
+                from: { lat: 40.7128, lng: -74.006 },
+                to: { lat: 51.5074, lng: -0.1278 },
+              },
+              {
+                id: "london-tokyo",
+                from: { lat: 51.5074, lng: -0.1278 },
+                to: { lat: 35.6762, lng: 139.6503 },
+              },
+              {
+                id: "tokyo-sydney",
+                from: { lat: 35.6762, lng: 139.6503 },
+                to: { lat: -33.8688, lng: 151.2093 },
+              },
+              {
+                id: "sf-ny",
+                from: { lat: 37.7749, lng: -122.4194 },
+                to: { lat: 40.7128, lng: -74.006 },
+              },
+            ]}
+          />
+        </Section>
+
+        <Section
+          title="MapBlock — markers + route + arcs combined"
+          description="All features layered on a single map."
+        >
+          <MapBlockView
+            lat={40}
+            lng={-95}
+            label="US delivery network"
+            zoom={3}
+            markers={[
+              { lat: 40.7128, lng: -74.006, label: "NYC", tooltip: "Hub" },
+              { lat: 41.8781, lng: -87.6298, label: "Chicago" },
+              { lat: 29.7604, lng: -95.3698, label: "Houston" },
+              { lat: 34.0522, lng: -118.2437, label: "LA" },
+            ]}
+            routes={[
+              {
+                points: [
+                  { lat: 40.7128, lng: -74.006 },
+                  { lat: 41.8781, lng: -87.6298 },
+                ],
+                color: "#22c55e",
+                width: 3,
+              },
+            ]}
+            arcs={[
+              {
+                id: "nyc-la",
+                from: { lat: 40.7128, lng: -74.006 },
+                to: { lat: 34.0522, lng: -118.2437 },
+              },
+              {
+                id: "chi-hou",
+                from: { lat: 41.8781, lng: -87.6298 },
+                to: { lat: 29.7604, lng: -95.3698 },
+              },
+            ]}
           />
         </Section>
 
@@ -657,7 +915,11 @@ NEXT_PUBLIC_GAIA_URL=https://api.heygaia.io`}
                   },
                 },
                 {
-                  props: { label: "Reject", variant: "flat", color: "danger" },
+                  props: {
+                    label: "Reject",
+                    variant: "flat",
+                    color: "danger",
+                  },
                 },
                 { props: { label: "Request more info", variant: "ghost" } },
               ] as Parameters<typeof ButtonsView>[0]["buttons"]

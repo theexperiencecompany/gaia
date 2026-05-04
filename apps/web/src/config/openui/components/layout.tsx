@@ -19,6 +19,7 @@ import {
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
+import { ToolCard } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -116,7 +117,7 @@ function FileTreeNodeRow({
   return (
     <div>
       <div
-        className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg hover:bg-zinc-800/60 transition cursor-pointer select-none"
+        className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg transition cursor-pointer select-none group/file [&_span]:hover:text-zinc-100"
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={isDir && hasChildren ? () => setOpen((o) => !o) : undefined}
       >
@@ -200,25 +201,21 @@ export function CopyableContentView(
 
   if (inline) {
     return (
-      <div className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 px-2.5 py-1.5 max-w-full">
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={copied ? "Copied" : "Copy content"}
+        className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors px-3 py-1.5 cursor-pointer"
+      >
         <span className="font-mono text-xs text-zinc-200 truncate">
           {props.content}
         </span>
-        <Button
-          isIconOnly
-          size="sm"
-          variant="light"
-          onPress={copy}
-          aria-label={copied ? "Copied" : "Copy content"}
-          className={`shrink-0 aspect-square min-w-6 w-6 h-6 p-0 ${copied ? "text-emerald-400" : "text-zinc-500"}`}
-        >
-          {copied ? (
-            <CheckmarkCircle02Icon className="w-3.5 h-3.5" />
-          ) : (
-            <Copy01Icon className="w-3 h-3" />
-          )}
-        </Button>
-      </div>
+        {copied ? (
+          <CheckmarkCircle02Icon className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+        ) : (
+          <Copy01Icon className="w-3 h-3 shrink-0 text-zinc-500" />
+        )}
+      </button>
     );
   }
 
@@ -228,31 +225,29 @@ export function CopyableContentView(
     /^[A-Z_]+=/.test(props.content);
 
   return (
-    <div className="w-full max-w-3xl">
-      <div className="rounded-2xl bg-zinc-900 overflow-hidden">
-        <div className="flex items-start gap-3 p-4">
-          <pre
-            className={`flex-1 text-sm leading-relaxed break-words whitespace-pre-wrap ${isCode ? "font-mono text-zinc-200" : "font-sans text-zinc-300"}`}
-          >
-            {props.content}
-          </pre>
-          <Button
-            isIconOnly
-            size="sm"
-            variant="light"
-            onPress={copy}
-            aria-label={copied ? "Copied" : "Copy content"}
-            className={`shrink-0 aspect-square min-w-7 w-7 h-7 p-0 ${copied ? "text-emerald-400" : "text-zinc-500"}`}
-          >
-            {copied ? (
-              <CheckmarkCircle02Icon className="w-4 h-4" />
-            ) : (
-              <Copy01Icon className="w-3.5 h-3.5" />
-            )}
-          </Button>
-        </div>
+    <ToolCard size="standard" className="p-3">
+      <div className="flex items-start gap-2">
+        <pre
+          className={`flex-1 text-sm leading-relaxed break-words whitespace-pre-wrap ${isCode ? "font-mono text-zinc-200" : "font-sans text-zinc-300"}`}
+        >
+          {props.content}
+        </pre>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          onPress={copy}
+          aria-label={copied ? "Copied" : "Copy content"}
+          className={`shrink-0 aspect-square min-w-7 w-7 h-7 p-0 ${copied ? "text-emerald-400" : "text-zinc-500"}`}
+        >
+          {copied ? (
+            <CheckmarkCircle02Icon className="w-4 h-4" />
+          ) : (
+            <Copy01Icon className="w-3.5 h-3.5" />
+          )}
+        </Button>
       </div>
-    </div>
+    </ToolCard>
   );
 }
 
@@ -260,12 +255,7 @@ export function FileTreeView(props: z.infer<typeof fileTreeSchema>) {
   const generic = props.variant === "generic";
   const tree = buildFileTree(props.items, generic ? "item" : "file");
   return (
-    <div className="rounded-2xl bg-zinc-900 p-3">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
+    <ToolCard size="standard" title={props.title} className="p-2">
       <div>
         {Object.values(tree).map((node) => (
           <FileTreeNodeRow
@@ -276,23 +266,22 @@ export function FileTreeView(props: z.infer<typeof fileTreeSchema>) {
           />
         ))}
       </div>
-    </div>
+    </ToolCard>
   );
 }
 
 export function AccordionView(props: z.infer<typeof accordionSchema>) {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-3 py-0 w-full min-w-fit max-w-lg">
+    <div className="w-full max-w-2xl">
       {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 pt-3 pb-2">
-          {props.title}
-        </p>
+        <p className="text-sm font-semibold text-zinc-100">{props.title}</p>
       )}
       <HeroAccordion variant="light">
         {props.items.map((item) => (
           <AccordionItem
             key={item.label}
             aria-label={item.label}
+            classNames={{ trigger: "!cursor-pointer" }}
             title={
               <span className="text-sm font-medium text-zinc-200">
                 {item.label}

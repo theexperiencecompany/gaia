@@ -76,6 +76,7 @@ All OpenUI components follow a lightweight card-less design - render clean, unbo
 
 | Role                  | Exact Tailwind Classes                          |
 |---|---|
+| Outer container (when needed) | `rounded-2xl bg-zinc-800` — never `rounded-xl`, `rounded-3xl`, or any other radius. Padding is per-component (typical: `p-3` or `p-4`; charts can use `p-2`). |
 | Inner content block   | `rounded-2xl bg-zinc-900 p-3` (only when needed) |
 | Section header        | `text-sm font-semibold text-zinc-100` (no mb margin) |
 | Item title            | `text-sm font-medium text-zinc-200`             |

@@ -1,9 +1,11 @@
 import { Button } from "@heroui/button";
 import { Link } from "@heroui/link";
 import { CheckmarkCircle01Icon } from "@icons";
-import { defineComponent, useTriggerAction } from "@openuidev/react-lang";
+import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
+import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
+import { ToolCard } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -141,15 +143,10 @@ function StepDot({
 // ---------------------------------------------------------------------------
 
 export function TimelineView(props: z.infer<typeof timelineSchema>) {
-  const triggerAction = useTriggerAction();
+  const triggerAction = useSafeTriggerAction();
 
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-lg">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-4">
-          {props.title}
-        </p>
-      )}
+    <ToolCard size="standard" title={props.title}>
       <div className="relative">
         <div className="absolute left-[5px] top-3 bottom-3 w-px bg-zinc-700/50" />
         <div className="space-y-0">
@@ -234,7 +231,7 @@ export function TimelineView(props: z.infer<typeof timelineSchema>) {
           })}
         </div>
       </div>
-    </div>
+    </ToolCard>
   );
 }
 
@@ -243,12 +240,7 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
   const activeIndex = props.items.findIndex((item) => item.status === "active");
 
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-sm">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
+    <ToolCard size="full" title={props.title} className="p-3">
       <div className="space-y-2">
         {props.items.map((item, i) => {
           const status = (item.status ?? "pending") as
@@ -263,9 +255,7 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
             <div
               key={item.title}
               className={`rounded-2xl p-3 flex items-start gap-3 ${
-                isActive
-                  ? "bg-primary/10 border-1 border-primary/50"
-                  : "bg-zinc-900"
+                isActive ? "bg-primary/10" : "bg-white/[0.04]"
               }`}
             >
               <StepDot status={status} index={i} dimmed={isDimmed} />
@@ -293,7 +283,7 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
           );
         })}
       </div>
-    </div>
+    </ToolCard>
   );
 }
 

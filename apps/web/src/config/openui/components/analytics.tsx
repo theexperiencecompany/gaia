@@ -1,4 +1,3 @@
-import { Card, CardBody, CardFooter, CardHeader } from "@heroui/card";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import {
@@ -35,6 +34,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { SquareChart, ToolCard } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -136,6 +136,7 @@ export const gaugeChartSchema = z.object({
   variant: z.enum(["gauge", "text", "stacked"]).optional(),
   secondValue: z.number().optional(),
   secondLabel: z.string().optional(),
+  size: z.enum(["sm", "md", "lg"]).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -154,27 +155,16 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card
-      className="bg-zinc-800 border-none shadow-none w-full max-w-3xl"
-      style={{ width: "100%" }}
+    <ToolCard
+      size="standard"
+      title={title}
+      subtitle={description}
+      footer={
+        footer ? <p className="text-xs text-zinc-500">{footer}</p> : undefined
+      }
     >
-      {(title || description) && (
-        <CardHeader className="pb-0 flex-col items-start">
-          {title && (
-            <p className="text-sm font-semibold text-zinc-100">{title}</p>
-          )}
-          {description && (
-            <p className="text-xs text-zinc-400">{description}</p>
-          )}
-        </CardHeader>
-      )}
-      <CardBody>{children}</CardBody>
-      {footer && (
-        <CardFooter>
-          <p className="text-xs text-zinc-500">{footer}</p>
-        </CardFooter>
-      )}
-    </Card>
+      {children}
+    </ToolCard>
   );
 }
 
@@ -478,9 +468,11 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
       description={props.description}
       footer={props.footer}
     >
-      <ChartContainer
+      <SquareChart
         config={chartConfig}
-        className={`h-50 w-full ${mode === "label" ? "[&_.recharts-pie-label-text]:fill-foreground" : ""}`}
+        className={
+          mode === "label" ? "[&_.recharts-pie-label-text]:fill-foreground" : ""
+        }
       >
         <RechartsPieChart>
           {mode === "donut" ? (
@@ -583,7 +575,7 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
             />
           )}
         </RechartsPieChart>
-      </ChartContainer>
+      </SquareChart>
     </ChartCard>
   );
 }
@@ -654,7 +646,7 @@ export function RadarChartView(props: z.infer<typeof radarChartSchema>) {
       description={props.description}
       footer={props.footer}
     >
-      <ChartContainer config={chartConfig} className="h-55 w-full">
+      <SquareChart config={chartConfig} size={260}>
         <RechartsRadarChart data={props.data}>
           <PolarGrid stroke="#3f3f46" />
           <PolarAngleAxis
@@ -694,10 +686,12 @@ export function RadarChartView(props: z.infer<typeof radarChartSchema>) {
           ))}
           {showLegend && <ChartLegend content={<ChartLegendContent />} />}
         </RechartsRadarChart>
-      </ChartContainer>
+      </SquareChart>
     </ChartCard>
   );
 }
+
+const GAUGE_SCALE: Record<string, number> = { sm: 0.8, md: 1, lg: 1.25 };
 
 export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
   const min = props.min ?? 0;
@@ -712,14 +706,25 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
     pct >= danger ? "#f87171" : pct >= warning ? "#fbbf24" : "#34d399";
 
   const variant = props.variant ?? "gauge";
+  const scale = GAUGE_SCALE[props.size ?? "md"];
+  const wrap = (node: React.ReactNode) =>
+    scale === 1 ? (
+      <>{node}</>
+    ) : (
+      <div
+        style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+      >
+        {node}
+      </div>
+    );
 
   if (variant === "text") {
     const textChartConfig: ChartConfig = {
       value: { label: props.title ?? "Value", color },
     };
     const textData = [{ name: "value", value: pct, fill: color }];
-    return (
-      <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+    return wrap(
+      <ToolCard size="standard" className="p-2 text-center">
         <ChartContainer config={textChartConfig} className="mx-auto">
           <RadialBarChart
             data={textData}
@@ -776,7 +781,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
             </PolarRadiusAxis>
           </RadialBarChart>
         </ChartContainer>
-      </div>
+      </ToolCard>,
     );
   }
 
@@ -792,8 +797,8 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
         color: CHART_COLORS[1],
       },
     };
-    return (
-      <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+    return wrap(
+      <ToolCard size="standard" className="p-2 text-center">
         <ChartContainer config={stackChartConfig} className="mx-auto">
           <RadialBarChart
             data={stackData}
@@ -847,7 +852,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
             </PolarRadiusAxis>
           </RadialBarChart>
         </ChartContainer>
-      </div>
+      </ToolCard>,
     );
   }
 
@@ -859,22 +864,16 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
   };
   const gaugeData = [{ name: "value", value: pct, fill: color }];
 
-  return (
-    <div
-      className="rounded-2xl bg-zinc-800 p-4 text-center"
-      style={{ width: 200 }}
-    >
-      <ChartContainer
-        config={gaugeConfig}
-        className="mx-auto h-[160px] w-[160px]"
-      >
+  return wrap(
+    <ToolCard size="full" className="p-3 text-center w-[200px]">
+      <SquareChart config={gaugeConfig}>
         <RadialBarChart
           data={gaugeData}
           startAngle={90}
           endAngle={-270}
-          outerRadius={70}
-          innerRadius={58}
-          barSize={12}
+          outerRadius="100%"
+          innerRadius="86%"
+          barSize={9}
         >
           <PolarAngleAxis
             type="number"
@@ -925,8 +924,8 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
             />
           </PolarRadiusAxis>
         </RadialBarChart>
-      </ChartContainer>
-    </div>
+      </SquareChart>
+    </ToolCard>,
   );
 }
 

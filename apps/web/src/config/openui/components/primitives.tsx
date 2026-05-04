@@ -15,9 +15,11 @@ import {
   TableRow,
 } from "@heroui/react";
 import { ArrowDown01Icon, ArrowRight01Icon, ArrowUp01Icon } from "@icons";
-import { defineComponent, useTriggerAction } from "@openuidev/react-lang";
+import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
+import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
+import { ToolBanner } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -62,6 +64,8 @@ export const calloutSchema = z.object({
   variant: z.enum(["info", "success", "warning", "error"]),
   title: z.string(),
   description: z.string().optional(),
+  width: z.enum(["sm", "md", "lg", "full"]).optional(),
+  showIcon: z.boolean().optional(),
 });
 
 export const statSchema = z.object({
@@ -70,6 +74,7 @@ export const statSchema = z.object({
   unit: z.string().optional(),
   trend: z.enum(["up", "down", "neutral"]).optional(),
   trendLabel: z.string().optional(),
+  size: z.enum(["sm", "md", "lg"]).optional(),
 });
 
 export const colSchema = z.object({
@@ -97,6 +102,7 @@ export const progressSchema = z.object({
     .optional(),
   label: z.string().optional(),
   showValue: z.boolean().optional(),
+  width: z.enum(["sm", "md", "lg", "full"]).optional(),
 });
 
 export const avatarSchema = z.object({
@@ -137,32 +143,6 @@ const TEXT_VARIANT_CLASSES: Record<string, string> = {
   h2: "text-lg font-semibold text-zinc-100",
   caption: "text-[11px] text-zinc-500",
   muted: "text-sm text-zinc-500",
-};
-
-const CALLOUT_STYLES: Record<
-  string,
-  { inner: string; text: string; accent: string }
-> = {
-  info: {
-    inner: "bg-blue-400/10",
-    text: "text-blue-400",
-    accent: "text-blue-300",
-  },
-  success: {
-    inner: "bg-emerald-400/10",
-    text: "text-emerald-400",
-    accent: "text-emerald-300",
-  },
-  warning: {
-    inner: "bg-amber-400/10",
-    text: "text-amber-400",
-    accent: "text-amber-300",
-  },
-  error: {
-    inner: "bg-red-400/10",
-    text: "text-red-400",
-    accent: "text-red-300",
-  },
 };
 
 const TREND_STYLES: Record<string, { color: string }> = {
@@ -227,35 +207,46 @@ export function TagBlockView(props: z.infer<typeof tagBlockSchema>) {
 }
 
 export function CalloutView(props: z.infer<typeof calloutSchema>) {
-  const style = CALLOUT_STYLES[props.variant] ?? CALLOUT_STYLES.info;
+  const tone = props.variant === "error" ? "danger" : props.variant;
   return (
-    <div className={`rounded-xl ${style.inner} p-3 w-full max-w-lg`}>
-      <p className={`text-sm font-semibold ${style.text}`}>{props.title}</p>
-      {props.description && (
-        <p className={`text-xs mt-1 ${style.accent}`}>{props.description}</p>
-      )}
-    </div>
+    <ToolBanner tone={tone} title={props.title}>
+      {props.description}
+    </ToolBanner>
   );
 }
 
+const STAT_SIZE: Record<
+  string,
+  { container: string; value: string; label: string }
+> = {
+  sm: {
+    container: "p-2 min-h-[64px] min-w-[120px]",
+    value: "text-xl",
+    label: "text-[11px]",
+  },
+  md: {
+    container: "p-3 min-h-[80px] min-w-[160px]",
+    value: "text-2xl",
+    label: "text-xs",
+  },
+  lg: {
+    container: "p-4 min-h-[100px] min-w-[200px]",
+    value: "text-3xl",
+    label: "text-sm",
+  },
+};
+
 export function StatView(props: z.infer<typeof statSchema>) {
   const trendStyle = props.trend ? TREND_STYLES[props.trend] : null;
+  const sz = STAT_SIZE[props.size ?? "md"];
   return (
-    <div className="rounded-xl bg-zinc-900 p-3 flex flex-col justify-between min-h-[80px]">
-      <p className="text-xs text-zinc-500">{props.label}</p>
-      <div className="mt-1">
-        <div className="flex items-end gap-1">
-          <span className="text-2xl font-bold text-zinc-100 leading-none">
-            {typeof props.value === "number"
-              ? props.value.toLocaleString()
-              : props.value}
-          </span>
-          {props.unit && (
-            <span className="text-xs text-zinc-500 mb-0.5">{props.unit}</span>
-          )}
-        </div>
-        {trendStyle && props.trendLabel ? (
-          <div className={`flex items-center gap-1 mt-1 ${trendStyle.color}`}>
+    <div
+      className={`rounded-2xl bg-zinc-800 flex flex-col justify-between ${sz.container}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className={`${sz.label} text-zinc-500`}>{props.label}</p>
+        {trendStyle && props.trendLabel && (
+          <div className={`flex items-center gap-0.5 ${trendStyle.color}`}>
             {props.trend === "up" && <ArrowUp01Icon className="w-3 h-3" />}
             {props.trend === "down" && <ArrowDown01Icon className="w-3 h-3" />}
             {props.trend === "neutral" && (
@@ -263,8 +254,16 @@ export function StatView(props: z.infer<typeof statSchema>) {
             )}
             <span className="text-xs font-medium">{props.trendLabel}</span>
           </div>
-        ) : (
-          <div className="mt-1 h-4" />
+        )}
+      </div>
+      <div className="mt-1 flex items-end gap-1">
+        <span className={`${sz.value} font-bold text-zinc-100 leading-none`}>
+          {typeof props.value === "number"
+            ? props.value.toLocaleString()
+            : props.value}
+        </span>
+        {props.unit && (
+          <span className="text-xs text-zinc-500 mb-0.5">{props.unit}</span>
         )}
       </div>
     </div>
@@ -272,7 +271,7 @@ export function StatView(props: z.infer<typeof statSchema>) {
 }
 
 export function ButtonView(props: z.infer<typeof buttonSchema>) {
-  const triggerAction = useTriggerAction();
+  const triggerAction = useSafeTriggerAction();
   const handlePress = () => {
     if (props.url) {
       triggerAction(props.label, undefined, {
@@ -326,7 +325,7 @@ export function ProgressView(props: z.infer<typeof progressSchema>) {
       <Progress
         value={pct}
         color={props.color ?? "primary"}
-        size="sm"
+        size="md"
         classNames={{ track: "bg-zinc-800" }}
       />
     </div>
@@ -400,7 +399,6 @@ export const colDef = defineComponent({
 const tableSchema = z.object({
   cols: z.array(colDef.ref),
   title: z.string().optional(),
-  striped: z.boolean().optional(),
 });
 
 export function TableView(props: z.infer<typeof tableSchema>) {
@@ -409,21 +407,11 @@ export function TableView(props: z.infer<typeof tableSchema>) {
   const rowCount = Math.max(...props.cols.map((c) => c.props.values.length));
 
   return (
-    <div className="w-full">
+    <div className="w-full max-w-2xl space-y-2">
       {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
+        <p className="text-sm font-semibold text-zinc-100">{props.title}</p>
       )}
-      <Table
-        removeWrapper
-        isStriped={props.striped}
-        classNames={{
-          th: "bg-zinc-900 text-zinc-400 text-xs font-medium",
-          td: "text-sm text-zinc-300 py-2",
-          tr: "border-b border-zinc-800/50",
-        }}
-      >
+      <Table aria-label={props.title ?? "Table"} radius="lg">
         <TableHeader>
           {props.cols.map((col) => (
             <TableColumn
@@ -432,7 +420,6 @@ export function TableView(props: z.infer<typeof tableSchema>) {
                 col.props.align ??
                 (col.props.type === "number" ? "end" : "start")
               }
-              className="text-xs"
             >
               {col.props.header}
             </TableColumn>
@@ -453,23 +440,10 @@ export function TableView(props: z.infer<typeof tableSchema>) {
                     <span className="tabular-nums">{val.toLocaleString()}</span>
                   );
                 } else if (type === "badge") {
-                  cell = (
-                    <Chip
-                      size="sm"
-                      variant="flat"
-                      classNames={{ content: "text-xs" }}
-                    >
-                      {String(val)}
-                    </Chip>
-                  );
+                  cell = <Chip size="sm">{String(val)}</Chip>;
                 } else if (type === "link") {
                   cell = (
-                    <Link
-                      href={String(val)}
-                      isExternal
-                      size="sm"
-                      className="text-blue-400 text-xs"
-                    >
+                    <Link href={String(val)} isExternal size="sm">
                       {String(val)}
                     </Link>
                   );
@@ -477,14 +451,7 @@ export function TableView(props: z.infer<typeof tableSchema>) {
                   cell = String(val);
                 }
 
-                return (
-                  <TableCell
-                    key={col.props.header}
-                    className={col.props.type === "number" ? "text-right" : ""}
-                  >
-                    {cell}
-                  </TableCell>
-                );
+                return <TableCell key={col.props.header}>{cell}</TableCell>;
               })}
             </TableRow>
           ))}

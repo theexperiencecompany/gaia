@@ -47,12 +47,10 @@ const EXPECTED_GROUPS: Record<string, string[]> = {
     "GaugeChart",
   ],
   Content: [
-    "ImageBlock",
     "ImageGallery",
     "VideoBlock",
     "AudioPlayer",
     "MapBlock",
-    "CalendarMini",
     "NumberTicker",
     "Carousel",
     "TreeView",

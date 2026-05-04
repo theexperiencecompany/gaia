@@ -13,9 +13,7 @@ import {
 import { codeDiffDef } from "./components/code";
 import {
   audioPlayerDef,
-  calendarMiniDef,
   carouselDef,
-  imageBlockDef,
   imageGalleryDef,
   mapBlockDef,
   numberTickerDef,
@@ -59,9 +57,7 @@ export {
 export { CodeDiffView } from "./components/code";
 export {
   AudioPlayerView,
-  CalendarMiniView,
   CarouselView,
-  ImageBlockView,
   ImageGalleryView,
   MapBlockView,
   NumberTickerView,
@@ -166,6 +162,7 @@ const stackDef = defineComponent({
     const align = ALIGN_MAP[props.align ?? ""] ?? "";
     const justify = JUSTIFY_MAP[props.justify ?? ""] ?? "";
     const wrap = props.wrap ? "flex-wrap overflow-x-auto" : "";
+    const stretch = isRow ? "" : "w-full [&>*]:max-w-full";
     const cls = [
       "flex",
       isRow ? "flex-row" : "flex-col",
@@ -173,6 +170,7 @@ const stackDef = defineComponent({
       align,
       justify,
       wrap,
+      stretch,
     ]
       .filter(Boolean)
       .join(" ");
@@ -205,7 +203,7 @@ const rowDef = defineComponent({
 
 const CARD_VARIANT_CLS: Record<string, string> = {
   card: "rounded-2xl bg-zinc-800 p-4",
-  sunk: "rounded-2xl bg-zinc-900 p-3",
+  sunk: "rounded-2xl bg-white/[0.04] p-3",
   clear: "rounded-2xl p-3",
 };
 const CARD_GAP_MAP: Record<string, string> = {
@@ -218,7 +216,7 @@ const CARD_GAP_MAP: Record<string, string> = {
 const cardDef = defineComponent({
   name: "Card",
   description:
-    "Container with variant (card=zinc-800, sunk=zinc-900, clear=transparent). Use CardHeader as a child for title/subtitle. Supports direction, gap, and align.",
+    "Container with variant (card=zinc-800, sunk=subtle inset, clear=transparent). Use CardHeader as a child for title/subtitle. Supports direction, gap, and align.",
   props: cardSchema,
   component: ({ props, renderNode }) => {
     const bg =
@@ -349,12 +347,10 @@ export const genericLibrary = createLibrary({
     radarChartDef,
     gaugeChartDef,
     // Content
-    imageBlockDef,
     imageGalleryDef,
     videoBlockDef,
     audioPlayerDef,
     mapBlockDef,
-    calendarMiniDef,
     numberTickerDef,
     carouselDef,
     // Timeline
@@ -406,7 +402,7 @@ export const genericLibrary = createLibrary({
       ],
       notes: [
         "Stack/Card/Grid/Row/Column are composition containers",
-        "Card variant: card=zinc-800, sunk=zinc-900, clear=transparent",
+        "Card variant: card=zinc-800, sunk=subtle inset, clear=transparent",
         "FileTree variant: file (default) or generic (for non-file hierarchies)",
         "KbdRow is a single shortcut row — compose multiple inside a Card for a reference table",
       ],
@@ -431,12 +427,10 @@ export const genericLibrary = createLibrary({
     {
       name: "Content",
       components: [
-        "ImageBlock",
         "ImageGallery",
         "VideoBlock",
         "AudioPlayer",
         "MapBlock",
-        "CalendarMini",
         "NumberTicker",
         "Carousel",
       ],

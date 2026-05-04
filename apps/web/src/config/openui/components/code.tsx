@@ -4,6 +4,7 @@ import type { FileDiffMetadata } from "@pierre/diffs/react";
 import { FileDiff } from "@pierre/diffs/react";
 import React from "react";
 import { z } from "zod";
+import { ToolCard, ToolInset } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -49,28 +50,30 @@ export function CodeDiffView(props: z.infer<typeof codeDiffSchema>) {
   }, [props.filename, props.oldCode, props.newCode, props.lang]);
 
   return (
-    <div className="rounded-xl overflow-hidden w-full min-w-fit max-w-2xl">
+    <ToolCard size="wide" className="p-2">
       {fileDiff ? (
-        <FileDiff
-          fileDiff={fileDiff}
-          options={{
-            diffStyle: props.diffStyle ?? "unified",
-            theme: { dark: "github-dark", light: "github-light" },
-            themeType: "dark",
-            overflow: "scroll",
-            lineDiffType: props.lineDiffType ?? "word",
-            diffIndicators: props.diffIndicators ?? "bars",
-            disableLineNumbers: props.disableLineNumbers ?? false,
-            disableFileHeader: props.disableFileHeader ?? false,
-            expandUnchanged: props.expandUnchanged ?? false,
-          }}
-        />
+        <ToolInset flush>
+          <FileDiff
+            fileDiff={fileDiff}
+            options={{
+              diffStyle: props.diffStyle ?? "unified",
+              theme: { dark: "github-dark", light: "github-light" },
+              themeType: "dark",
+              overflow: "scroll",
+              lineDiffType: props.lineDiffType ?? "word",
+              diffIndicators: props.diffIndicators ?? "bars",
+              disableLineNumbers: props.disableLineNumbers ?? false,
+              disableFileHeader: props.disableFileHeader ?? false,
+              expandUnchanged: props.expandUnchanged ?? false,
+            }}
+          />
+        </ToolInset>
       ) : (
-        <div className="bg-zinc-900 p-3 text-xs text-zinc-500">
-          Loading diff…
-        </div>
+        <ToolInset>
+          <div className="text-xs text-zinc-500">Loading diff…</div>
+        </ToolInset>
       )}
-    </div>
+    </ToolCard>
   );
 }
 

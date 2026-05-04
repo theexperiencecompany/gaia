@@ -86,12 +86,14 @@ Tag(label, color, size)
 TagBlock(labels)  A row of plain-string tags.
   Example: TagBlock(["React", "TypeScript", "v2.1"])
 
-Callout(variant, title, description)
+Callout(variant, title, description?, width?, showIcon?)
+  width: "sm"|"md"|"lg"|"full" (default "lg"). showIcon: boolean (default true).
   variant: "info" | "success" | "warning" | "error"
   Use for important inline notices — operation results, warnings, alerts.
   Example: Callout("warning", "Rate limit approaching", "85% of monthly quota used.")
 
-Stat(label, value, unit, trend, trendLabel)
+Stat(label, value, unit?, trend?, trendLabel?, size?)
+  size: "sm"|"md"|"lg" (default "md").
   trend: "up" | "down" | "neutral"
   Example: Stat("Revenue", 48200, "$", "up", "+12%")
   Wrap 2+ Stat in Row or Grid for dashboards.
@@ -118,7 +120,8 @@ Button(label, action, variant, color, url)
 
 Buttons([Button, Button, ...])  Horizontal row of Button — action groups.
 
-Progress(value, max, color, label, showValue)
+Progress(value, max?, color?, label?, showValue?, width?)
+  width: "sm"|"md"|"lg"|"full" (default "md").
   Example: Progress(72, 100, "primary", "Storage", true)
   For a list, compose multiple Progress inside a Card.
 
@@ -171,45 +174,56 @@ PieChart(data, nameKey, valueKey, title, description, footer, mode)
   mode: "donut" (default, total in center) | "legend" (pie + legend) | "label" (labels on slices)
   Example: PieChart([{"src":"Organic","v":45},{"src":"Direct","v":25}], "src", "v", "Traffic")
 
-ScatterChart(data, xKey, yKey, title, description, footer, labelKey)
+ScatterChart(data, xKey, yKey, title?, description?, footer?, labelKey?)
   Use for correlation between two numeric variables.
 
 RadarChart(data, angleKey, valueKeys, title, description, footer, colors)
   valueKeys is an array: ["alice", "bob"] — one axis per key.
   Keep angleKey values <=15 chars to avoid clipping.
 
-GaugeChart(value, title, min, max, unit, thresholds, variant, secondValue, secondLabel)
+GaugeChart(value, title?, min?, max?, unit?, thresholds?, variant?, secondValue?, secondLabel?, size?)
+  size: "sm"|"md"|"lg" (default "md") — applies to outer container scale.
   variant: "gauge" (default, half-circle + thresholds) | "text" (radial + big number) | "stacked"
   thresholds: {"warning": 70, "danger": 90}
   Example: GaugeChart(73, "CPU", 0, 100, "%", {"warning": 70, "danger": 90})
 
 --- Content ---
 
-ImageBlock(src, alt, caption)
-ImageGallery([{"src":"...","alt":"..."}, ...])        Responsive grid.
+ImageGallery([{"src":"...","alt":"..."}, ...], columns?, gap?, aspectRatio?, maxWidth?)
+  columns: 1-6 (override auto-layout). gap: "xs"|"sm"|"md"|"lg" (default "sm").
+  aspectRatio: CSS string like "3/2" (default), "1/1", "16/9". maxWidth: "sm"|"md"|"lg"|"xl"|"full" (default "lg").
 VideoBlock(src, title, poster)                        YouTube/Vimeo URLs auto-embed.
 AudioPlayer(src, title, description)
-MapBlock(lat, lng, label, zoom)                       OpenStreetMap.
-CalendarMini([{"date":"YYYY-MM-DD","label":"...","color":"success"}], title, mode)
-NumberTicker(value, label, unit, duration)            Animated count-up, single headline stat.
+MapBlock(lat, lng, label?, zoom?, markers?, routes?, arcs?, fitBounds?)
+  Default: MapBlock(lat, lng, label, zoom) — single point with one marker. ALWAYS prefer this.
+  markers, routes, arcs are 100% optional — only pass them when the data genuinely
+  has multiple points, a path, or origin-destination connections. Do not invent extras.
+  markers: [{"lat":..,"lng":..,"label?":"..","popup?":"..","tooltip?":".."}]
+    When markers is provided, the default center marker is replaced — include the primary point as a marker too.
+  routes:  [{"points":[{"lat":..,"lng":..}, ...], "color?":"#hex", "width?":3, "opacity?":0.85}]
+    Use for an A→B path or trip with intermediate waypoints (>=2 points per route).
+  arcs:    [{"from":{"lat":..,"lng":..},"to":{"lat":..,"lng":..},"id?":"..","label?":".."}]
+    Use for origin-destination connections (flights, trade routes, network links).
+  fitBounds: bool — auto-fits to all points when extras are provided. Defaults to true in that case.
+NumberTicker(value, label?, unit?, duration?, size?)  Animated count-up. size: "sm"|"md"|"lg" (default "md").
 Carousel([{"title":"...","body":"...","badge":"...","image":"...","actions":[...]}], autoPlay)
 
 --- Timeline ---
 
-Timeline([items], title)
+Timeline([items], title?)
   items: [{"time": "10:30 AM", "title": "PR merged", "actor": "alice", "status": "success",
            "description": "feat: add auth", "links": [{"label":"View","url":"#"}],
            "actions": [{"label":"Reply","value":"Draft a reply"}]}, ...]
   status: "success" | "error" | "warning" | "neutral"
   Use for activity history, deployment logs, audit trails.
 
-Steps([items], title)
+Steps([items], title?)
   items: [{"title": "Install deps", "description": "...", "status": "complete"|"active"|"pending"}, ...]
   Use for ordered instructions, onboarding, migration guides.
 
 --- Code & Documents ---
 
-CodeDiff(filename, oldCode, newCode, title, diffStyle, lineDiffType, diffIndicators, lang, disableLineNumbers, disableFileHeader, expandUnchanged)
+CodeDiff(filename, oldCode, newCode, title?, diffStyle?, lineDiffType?, diffIndicators?, lang?, disableLineNumbers?, disableFileHeader?, expandUnchanged?)
   diffStyle: "unified" (default, stacked) | "split"
   lineDiffType: "word" (default) | "char" | "none"
   diffIndicators: "bars" (default) | "classic" (+/-) | "none"
