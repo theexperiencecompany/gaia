@@ -34,8 +34,8 @@ def _capture_tools(register_fn: Callable[..., Any]) -> Dict[str, Any]:
     tools: Dict[str, Any] = {}
     composio = MagicMock()
 
-    def custom_tool(**_kwargs):
-        def decorator(fn):
+    def custom_tool(**_kwargs: Any) -> Callable[[Any], Any]:
+        def decorator(fn: Any) -> Any:
             tools[fn.__name__] = fn
             return fn
 

@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
+from app.utils.errors import AppError
 from composio import Composio
 
 MAPS_API_BASE = "https://maps.googleapis.com/maps/api"
@@ -24,7 +25,11 @@ def register_google_maps_custom_tools(composio: Composio) -> List[str]:
         """
         user_id = auth_credentials.get("user_id")
         if not user_id:
-            raise ValueError("Missing user_id in auth_credentials")
+            raise AppError(
+                message="Missing user_id in auth_credentials",
+                why="CUSTOM_GATHER_CONTEXT requires a user-scoped auth context",
+                status_code=500,
+            )
 
         try:
             data = proxy_request_sync(

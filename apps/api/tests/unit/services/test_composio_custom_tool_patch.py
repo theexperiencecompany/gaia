@@ -12,7 +12,10 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from composio.core.models.custom_tools import CustomTool
 from pydantic import BaseModel
+
+from app.utils.errors import AppError
 
 # Importing the patch module triggers the monkey-patch at import time.
 import app.patches.composio_custom_tool_patch  # noqa: F401
@@ -37,8 +40,6 @@ def _make_tool(
 
 
 def _invoke(tool: MagicMock, **kwargs: Any) -> Any:
-    from composio.core.models.custom_tools import CustomTool
-
     return CustomTool.__call__(tool, **kwargs)
 
 
@@ -94,8 +95,6 @@ class TestPatchedCall:
         tool._CustomTool__get_auth_credentials.assert_not_called()
 
     def test_missing_user_id_raises_app_error(self) -> None:
-        from app.utils.errors import AppError
-
         tool = _make_tool(auth_credentials={})
         with pytest.raises(AppError) as exc:
             _invoke(tool, foo="bar")
@@ -104,8 +103,6 @@ class TestPatchedCall:
 
 @pytest.mark.parametrize("user_id", ["", None])
 def test_empty_or_none_user_id_raises_app_error(user_id: str | None) -> None:
-    from app.utils.errors import AppError
-
     tool = _make_tool(auth_credentials={})
     with pytest.raises(AppError):
         _invoke(tool, user_id=user_id, foo="bar")

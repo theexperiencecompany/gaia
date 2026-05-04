@@ -332,7 +332,8 @@ def build_contact_index(
                 continue
             if query_lower and query_lower not in name.lower() and query_lower not in email.lower():
                 continue
-            contact_dict[email] = {"name": name, "email": email}
+            if email not in contact_dict or (name and not contact_dict[email]["name"]):
+                contact_dict[email] = {"name": name, "email": email}
 
     contacts = sorted(
         contact_dict.values(), key=lambda x: x["name"] or x["email"]

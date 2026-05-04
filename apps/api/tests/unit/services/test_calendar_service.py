@@ -5,7 +5,7 @@ After the Composio proxy migration, every Calendar API call routes through
 shape of each request (toolkit + endpoint + method + body + query).
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -44,14 +44,14 @@ PROXY_PATH = "app.services.calendar_service.proxy_request_sync"
 
 
 @pytest.fixture
-def mock_proxy():
+def mock_proxy() -> Iterator[MagicMock]:
     with patch(PROXY_PATH) as proxy:
         proxy.return_value = {}
         yield proxy
 
 
 @pytest.fixture
-def mock_calendars_collection():
+def mock_calendars_collection() -> Iterator[MagicMock]:
     with patch("app.services.calendar_service.calendars_collection") as col:
         yield col
 

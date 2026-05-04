@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 from app.services.composio.proxy_client import proxy_request_sync
+from app.utils.errors import AppError
 from composio import Composio
 
 REDDIT_API_BASE = "https://oauth.reddit.com"
@@ -25,7 +26,11 @@ def register_reddit_custom_tools(composio: Composio) -> List[str]:
         """
         user_id = auth_credentials.get("user_id")
         if not user_id:
-            raise ValueError("Missing user_id in auth_credentials")
+            raise AppError(
+                message="Missing user_id in auth_credentials",
+                why="CUSTOM_GATHER_CONTEXT requires a user-scoped auth context",
+                status_code=500,
+            )
 
         me: Dict[str, Any] = {}
         try:
@@ -37,7 +42,8 @@ def register_reddit_custom_tools(composio: Composio) -> List[str]:
                 headers=_REDDIT_HEADERS,
             ) or {}
         except Exception as e:
-            log.debug(f"Reddit /me fetch failed: {e}")
+            log.set(user_id=user_id, endpoint=f"{REDDIT_API_BASE}/api/v1/me", toolkit=REDDIT_TOOLKIT)
+            log.error("Reddit /me fetch failed", exc=e)
 
         subreddits: List[Dict[str, Any]] = []
         try:
@@ -58,8 +64,9 @@ def register_reddit_custom_tools(composio: Composio) -> List[str]:
                 }
                 for c in children
             ]
-        except Exception:  # nosec B110
-            pass
+        except Exception as e:
+            log.set(user_id=user_id, endpoint=f"{REDDIT_API_BASE}/subreddits/mine/subscriber", toolkit=REDDIT_TOOLKIT)
+            log.error("Reddit subreddits fetch failed", exc=e)
 
         unread_messages: List[Dict[str, Any]] = []
         try:
@@ -81,8 +88,9 @@ def register_reddit_custom_tools(composio: Composio) -> List[str]:
                 }
                 for c in children
             ]
-        except Exception:  # nosec B110
-            pass
+        except Exception as e:
+            log.set(user_id=user_id, endpoint=f"{REDDIT_API_BASE}/message/unread", toolkit=REDDIT_TOOLKIT)
+            log.error("Reddit unread messages fetch failed", exc=e)
 
         return {
             "user": {
