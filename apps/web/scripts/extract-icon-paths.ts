@@ -8,33 +8,11 @@
  */
 
 // Solid-rounded: tool category icons (filled style)
-import {
-  AlarmClockIcon,
-  BodyPartMuscleIcon,
-  Brain02Icon,
-  CheckListIcon,
-  ComputerTerminal01Icon,
-  ConnectIcon,
-  FileEmpty02Icon,
-  FolderFileStorageIcon,
-  Image02Icon,
-  InformationCircleIcon,
-  NotificationIcon,
-  PackageOpenIcon,
-  PuzzleIcon,
-  SourceCodeCircleIcon,
-  SquareArrowUpRight02Icon,
-  Target02Icon,
-  TaskDailyIcon,
-  ToolsIcon,
-  WorkflowCircle06Icon,
-  ZapIcon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
-
 // Stroke-rounded: UI icons (outline style — matches @hugeicons default)
 import {
   Add01Icon,
   AiChipIcon,
+  AlarmClockIcon,
   Alert01Icon,
   AlertCircleIcon,
   Analytics01Icon,
@@ -49,7 +27,9 @@ import {
   ArrowUpRight01Icon,
   Award01Icon,
   BarChartIcon,
+  BodyPartMuscleIcon,
   BookOpen01Icon,
+  Brain02Icon,
   BrainIcon,
   BubbleChatAddIcon,
   BubbleChatIcon,
@@ -64,6 +44,7 @@ import {
   ChartLineData01Icon,
   ChartLineData02Icon,
   ChartRingIcon,
+  CheckListIcon,
   CheckmarkBadge01Icon,
   CheckmarkBadge02Icon,
   CheckmarkCircle01Icon,
@@ -79,6 +60,8 @@ import {
   CloudSnowIcon,
   CodeIcon,
   Comment01Icon,
+  ComputerTerminal01Icon,
+  ConnectIcon,
   Contact01Icon,
   Copy01Icon,
   CpuIcon,
@@ -97,17 +80,21 @@ import {
   FastWindIcon,
   FavouriteIcon,
   File01Icon,
+  FileEmpty02Icon,
   Flag02Icon,
   FlashIcon,
   FlowCircleIcon,
   Flowchart01Icon,
   FlowIcon,
   Folder02Icon,
+  FolderFileStorageIcon,
   FolderIcon,
   Globe02Icon,
   GlobeIcon,
   HelpCircleIcon,
   Image01Icon,
+  Image02Icon,
+  InformationCircleIcon,
   KeyboardIcon,
   LayoutGridIcon,
   Link01Icon,
@@ -132,12 +119,15 @@ import {
   News01Icon,
   Notification01Icon,
   Notification02Icon,
+  NotificationIcon,
+  PackageOpenIcon,
   PencilEdit01Icon,
   PencilEdit02Icon,
   PieChart01Icon,
   Pin02Icon,
   PlayIcon,
   PlusSignIcon,
+  PuzzleIcon,
   RepeatIcon,
   Search01Icon,
   SentIcon,
@@ -147,10 +137,14 @@ import {
   Share08Icon,
   ShareIcon,
   ShieldUserIcon,
+  SourceCodeCircleIcon,
+  SquareArrowUpRight02Icon,
   Sun03Icon,
   SunriseIcon,
   SunsetIcon,
   Tag01Icon,
+  Target02Icon,
+  TaskDailyIcon,
   TelegramIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
@@ -159,6 +153,7 @@ import {
   Timer02Icon,
   ToggleOffIcon,
   ToggleOnIcon,
+  ToolsIcon,
   Tornado02Icon,
   TranslationIcon,
   TwitterIcon,
@@ -170,9 +165,11 @@ import {
   UserSearch01Icon,
   VisionIcon,
   WhatsappIcon,
+  WorkflowCircle06Icon,
   WorkflowSquare10Icon,
   Wrench01Icon,
-} from "@theexperiencecompany/gaia-icons/stroke-rounded";
+  ZapIcon,
+} from "@theexperiencecompany/gaia-icons/solid-rounded";
 
 import * as fs from "fs";
 import * as path from "path";
@@ -408,7 +405,7 @@ for (const [name, component] of Object.entries(solidIcons)) {
 
 console.log("\nExtracting stroke-rounded icons...");
 for (const [name, component] of Object.entries(strokeIcons)) {
-  iconPaths[name] = extractSvgPaths(component, "stroke");
+  iconPaths[name] = extractSvgPaths(component, "solid");
   console.log(`  ${name}: ${iconPaths[name].paths.length} paths`);
 }
 

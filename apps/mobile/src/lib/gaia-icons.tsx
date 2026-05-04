@@ -28,43 +28,13 @@ export interface IconProps {
 type IconName = keyof typeof iconPathData;
 export type GaiaIconComponent = React.ComponentType<IconProps>;
 
-// Icons whose web component comes from `@theexperiencecompany/gaia-icons/solid-rounded`.
-// Their path data describes filled glyphs and must be rendered with `fill`.
-// Everything else is from `stroke-rounded` — the path data is unfilled outlines
-// that need `stroke + fill="none"` or they render invisibly.
-// Source of truth: apps/web/scripts/extract-icon-paths.ts (solidIcons map).
-const SOLID_ICONS = new Set<string>([
-  "AlarmClockIcon",
-  "BodyPartMuscleIcon",
-  "Brain02Icon",
-  "CheckListIcon",
-  "ComputerTerminal01Icon",
-  "ConnectIcon",
-  "FileEmpty02Icon",
-  "FolderFileStorageIcon",
-  "Image02Icon",
-  "InformationCircleIcon",
-  "NotificationIcon",
-  "PackageOpenIcon",
-  "PuzzleIcon",
-  "SourceCodeCircleIcon",
-  "SquareArrowUpRight02Icon",
-  "Target02Icon",
-  "TaskDailyIcon",
-  "ToolsIcon",
-  "WorkflowCircle06Icon",
-  "ZapIcon",
-]);
-
 function createIcon(name: IconName) {
   const { viewBox, paths } = iconPathData[name];
-  const isSolid = SOLID_ICONS.has(name);
   return function GaiaIcon({
     size = 24,
     width,
     height,
     color = "#ffffff",
-    strokeWidth = 1.5,
     style,
   }: IconProps) {
     return (
@@ -75,16 +45,8 @@ function createIcon(name: IconName) {
         style={style}
       >
         {paths.map((d, i) => (
-          <Path
-            // biome-ignore lint/suspicious/noArrayIndexKey: stable path list per icon
-            key={i}
-            d={d}
-            fill={isSolid ? color : "none"}
-            stroke={isSolid ? undefined : color}
-            strokeWidth={isSolid ? undefined : strokeWidth}
-            strokeLinecap={isSolid ? undefined : "round"}
-            strokeLinejoin={isSolid ? undefined : "round"}
-          />
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable path list per icon
+          <Path key={i} d={d} fill={color} />
         ))}
       </Svg>
     );
