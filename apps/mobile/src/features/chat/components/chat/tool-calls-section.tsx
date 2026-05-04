@@ -255,15 +255,16 @@ function ToolCallItem({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 6,
+        gap: 8,
       }}
     >
       <Text
         style={{
-          fontSize: 12,
-          color: "#a1a1aa",
+          fontSize: 14,
+          color: "#d4d4d8",
           fontWeight: "500",
           flex: 1,
+          lineHeight: 18,
         }}
         numberOfLines={2}
       >
@@ -272,7 +273,7 @@ function ToolCallItem({
       <StatusIndicator status={call.status} />
       {hasDetails && (
         <Animated.View style={chevronStyle}>
-          <AppIcon icon={ArrowDown01Icon} size={14} color="#71717a" />
+          <AppIcon icon={ArrowDown01Icon} size={16} color="#71717a" />
         </Animated.View>
       )}
     </View>
@@ -284,7 +285,7 @@ function ToolCallItem({
       {hasCategoryText && categoryLabel && (
         <Text
           style={{
-            fontSize: 11,
+            fontSize: 12,
             color: "#71717a",
             marginTop: 2,
           }}
@@ -295,39 +296,45 @@ function ToolCallItem({
       {hasDetails && isExpanded && (
         <View
           style={{
-            marginTop: 8,
-            backgroundColor: "rgba(39,39,42,0.5)",
+            marginTop: 10,
+            marginBottom: 6,
+            backgroundColor: "rgba(24,24,27,0.6)",
             borderRadius: 12,
-            padding: 12,
-            gap: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            gap: 12,
           }}
         >
           {hasInputs && (
-            <View style={{ gap: 4 }}>
+            <View style={{ gap: 6 }}>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   color: "#71717a",
                   fontWeight: "500",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
                 }}
               >
                 Input
               </Text>
-              <View style={{ gap: 2 }}>
+              <View style={{ gap: 4 }}>
                 {Object.entries(call.inputs ?? {}).map(([key, value]) => (
-                  <View key={key} style={{ flexDirection: "row", gap: 6 }}>
+                  <View key={key} style={{ gap: 2 }}>
                     <Text
                       style={{
-                        fontSize: 11,
+                        fontSize: 12,
                         color: "#71717a",
-                        minWidth: 80,
                       }}
                     >
                       {key}
                     </Text>
                     <Text
-                      style={{ fontSize: 11, color: "#d4d4d8", flex: 1 }}
-                      numberOfLines={3}
+                      style={{
+                        fontSize: 13,
+                        color: "#e4e4e7",
+                        lineHeight: 18,
+                      }}
                     >
                       {formatInputValue(value)}
                     </Text>
@@ -337,19 +344,25 @@ function ToolCallItem({
             </View>
           )}
           {hasOutput && (
-            <View style={{ gap: 4 }}>
+            <View style={{ gap: 6 }}>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   color: "#71717a",
                   fontWeight: "500",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
                 }}
               >
                 Output
               </Text>
               <Text
-                style={{ fontSize: 11, color: "#d4d4d8" }}
-                numberOfLines={10}
+                style={{
+                  fontSize: 13,
+                  color: "#e4e4e7",
+                  lineHeight: 18,
+                }}
+                numberOfLines={12}
               >
                 {call.output}
               </Text>
@@ -397,8 +410,8 @@ function ToolCallItem({
         style={{
           flexDirection: "row",
           alignItems: "stretch",
-          gap: 8,
-          paddingVertical: 4,
+          gap: 10,
+          paddingVertical: 6,
         }}
       >
         {iconColumn}
@@ -413,9 +426,9 @@ function ToolCallItem({
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "stretch",
-        gap: 8,
-        paddingVertical: 4,
-        opacity: pressed ? 0.7 : 1,
+        gap: 10,
+        paddingVertical: 6,
+        opacity: pressed ? 0.6 : 1,
       })}
     >
       {iconColumn}
@@ -454,38 +467,38 @@ export function ToolCallsSection({ tool_calls_data }: ToolCallsSectionProps) {
     (call) => !call.status || call.status === "running",
   );
 
+  const label = hasRunning
+    ? `Using ${tool_calls_data.length} tool${tool_calls_data.length > 1 ? "s" : ""}`
+    : `Used ${tool_calls_data.length} tool${tool_calls_data.length > 1 ? "s" : ""}`;
+
   return (
-    <View style={{ width: "100%", maxWidth: 560 }}>
+    <View style={{ width: "100%", maxWidth: 560, paddingHorizontal: 16 }}>
       <Pressable
         onPress={() => setIsExpanded((v) => !v)}
         style={({ pressed }) => ({
           flexDirection: "row",
           alignItems: "center",
-          gap: 6,
-          paddingVertical: 4,
-          opacity: pressed ? 0.7 : 1,
+          gap: 8,
+          paddingVertical: 8,
+          opacity: pressed ? 0.6 : 1,
         })}
       >
         <StackedToolIcons calls={tool_calls_data} />
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          {hasRunning && <PulsingDot color="#60a5fa" />}
-          <Text
-            style={{
-              fontSize: 12,
-              color: "#71717a",
-              fontWeight: "500",
-            }}
-          >
-            Used {tool_calls_data.length} tool
-            {tool_calls_data.length > 1 ? "s" : ""}
-          </Text>
-        </View>
-        <Animated.View style={[headerChevronStyle, { marginLeft: 2 }]}>
+        <Text
+          style={{
+            fontSize: 14,
+            color: "#a1a1aa",
+            fontWeight: "500",
+          }}
+        >
+          {label}
+        </Text>
+        <Animated.View style={headerChevronStyle}>
           <AppIcon icon={ArrowDown01Icon} size={16} color="#71717a" />
         </Animated.View>
       </Pressable>
       {isExpanded && (
-        <View style={{ paddingTop: 8 }}>
+        <View style={{ paddingTop: 4, paddingBottom: 4 }}>
           {tool_calls_data.map((call, index) => (
             <ToolCallItem
               key={call.tool_call_id || `${call.tool_name || "tool"}-${index}`}
