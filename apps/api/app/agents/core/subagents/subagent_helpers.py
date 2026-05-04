@@ -12,6 +12,7 @@ from typing import Optional
 
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
+from app.agents.tools.core.toolkit_manifest import toolkit_manifest_registry
 from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_id
 from app.services.memory_service import memory_service
@@ -86,6 +87,10 @@ async def build_subagent_system_prompt(
                     )
         except Exception as e:
             log.warning(f"Failed to inject provider metadata: {e}")
+
+    manifest_text = toolkit_manifest_registry.format_by_integration_id(integration_id)
+    if manifest_text:
+        system_prompt = system_prompt + "\n\n" + manifest_text
 
     return system_prompt
 

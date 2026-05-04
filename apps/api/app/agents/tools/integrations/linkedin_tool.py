@@ -9,6 +9,12 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 from typing import Any, Dict, List
 
 import httpx
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+    ToolWorkflow,
+)
 from app.decorators.documentation import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.linkedin_models import (
@@ -438,3 +444,90 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         "LINKEDIN_CUSTOM_GET_POST_REACTIONS",
         "LINKEDIN_CUSTOM_GATHER_CONTEXT",
     ]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="linkedin",
+    tools={
+        "LINKEDIN_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of LinkedIn profile and recent posts authored by the authenticated user.",
+            outputs=[
+                ToolOutputField("user", "dict", "Profile with id, name, given_name, family_name, email, profile_picture"),
+                ToolOutputField("recent_posts", "list[dict]", "Up to 5 recent posts with id, text, created, visibility"),
+            ],
+        ),
+        "LINKEDIN_CUSTOM_CREATE_POST": ToolManifestEntry(
+            description="Create a LinkedIn post (text, image, carousel, document, or article link).",
+            outputs=[
+                ToolOutputField("post_id", "str", "LinkedIn URN of the created post — use as post_urn in comment/reaction tools"),
+                ToolOutputField("url", "str", "URL to view the post on LinkedIn"),
+                ToolOutputField("author", "str", "Author URN used to create the post"),
+                ToolOutputField("media_type", "str", "Post type: text, image, carousel, document, or article"),
+            ],
+            tags=["write"],
+        ),
+        "LINKEDIN_CUSTOM_ADD_COMMENT": ToolManifestEntry(
+            description="Add a comment to a LinkedIn post.",
+            outputs=[
+                ToolOutputField("comment_id", "str", "ID of the created comment"),
+                ToolOutputField("post_urn", "str", "URN of the post that was commented on"),
+                ToolOutputField("author", "str", "Author URN"),
+            ],
+            depends_on=["LINKEDIN_CUSTOM_CREATE_POST", "LINKEDIN_CUSTOM_GATHER_CONTEXT"],
+            tags=["write"],
+        ),
+        "LINKEDIN_CUSTOM_GET_POST_COMMENTS": ToolManifestEntry(
+            description="Retrieve comments on a LinkedIn post.",
+            outputs=[
+                ToolOutputField("comments", "list[dict]", "Comments with id, author, text, created_at, parent_comment"),
+                ToolOutputField("total_count", "int", "Total comment count on the post"),
+                ToolOutputField("post_urn", "str", "URN of the queried post"),
+            ],
+            depends_on=["LINKEDIN_CUSTOM_CREATE_POST", "LINKEDIN_CUSTOM_GATHER_CONTEXT"],
+        ),
+        "LINKEDIN_CUSTOM_REACT_TO_POST": ToolManifestEntry(
+            description="React to a LinkedIn post (LIKE, CELEBRATE, SUPPORT, FUNNY, LOVE, INSIGHTFUL, CURIOUS).",
+            outputs=[
+                ToolOutputField("post_urn", "str", "URN of the post reacted to"),
+                ToolOutputField("reaction_type", "str", "The reaction type applied"),
+                ToolOutputField("author", "str", "Author URN"),
+            ],
+            depends_on=["LINKEDIN_CUSTOM_CREATE_POST", "LINKEDIN_CUSTOM_GATHER_CONTEXT"],
+            tags=["write"],
+        ),
+        "LINKEDIN_CUSTOM_DELETE_REACTION": ToolManifestEntry(
+            description="Remove the authenticated user's reaction from a LinkedIn post.",
+            outputs=[
+                ToolOutputField("post_urn", "str", "URN of the post"),
+                ToolOutputField("message", "str", "Confirmation message"),
+            ],
+            depends_on=["LINKEDIN_CUSTOM_REACT_TO_POST"],
+            tags=["write", "destructive"],
+        ),
+        "LINKEDIN_CUSTOM_GET_POST_REACTIONS": ToolManifestEntry(
+            description="Retrieve all reactions on a LinkedIn post.",
+            outputs=[
+                ToolOutputField("reactions", "list[dict]", "Reactions with actor, reaction_type, created_at"),
+                ToolOutputField("total_count", "int", "Total reaction count on the post"),
+                ToolOutputField("post_urn", "str", "URN of the queried post"),
+            ],
+            depends_on=["LINKEDIN_CUSTOM_CREATE_POST", "LINKEDIN_CUSTOM_GATHER_CONTEXT"],
+        ),
+    },
+    workflows=[
+        ToolWorkflow(
+            goal="Create a post and then engage with it (comment, react)",
+            steps=[
+                "1. Call LINKEDIN_CUSTOM_CREATE_POST — save the returned post_id as post_urn",
+                "2. Use that post_urn in LINKEDIN_CUSTOM_ADD_COMMENT or LINKEDIN_CUSTOM_REACT_TO_POST",
+            ],
+        ),
+        ToolWorkflow(
+            goal="Engage with an existing post",
+            steps=[
+                "1. Call LINKEDIN_CUSTOM_GATHER_CONTEXT to find recent_posts with their IDs",
+                "2. Use the post id as post_urn in comment/reaction tools",
+            ],
+        ),
+    ],
+)

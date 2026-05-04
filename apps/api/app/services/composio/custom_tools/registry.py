@@ -72,6 +72,31 @@ from app.services.composio.custom_tools.gmail_tools import (
 )
 from composio import Composio
 
+from app.agents.tools.core.toolkit_manifest import toolkit_manifest_registry
+from app.agents.tools.integrations.calendar_tool import MANIFEST as CALENDAR_MANIFEST
+from app.agents.tools.integrations.notion_tool import MANIFEST as NOTION_MANIFEST
+from app.agents.tools.integrations.google_sheets_tool import MANIFEST as GOOGLE_SHEETS_MANIFEST
+from app.agents.tools.integrations.linear_tool import MANIFEST as LINEAR_MANIFEST
+from app.agents.tools.integrations.slack_tool import MANIFEST as SLACK_MANIFEST
+from app.agents.tools.integrations.github_tool import MANIFEST as GITHUB_MANIFEST
+from app.agents.tools.integrations.google_tasks_tool import MANIFEST as GOOGLE_TASKS_MANIFEST
+from app.agents.tools.integrations.google_maps_tool import MANIFEST as GOOGLE_MAPS_MANIFEST
+from app.agents.tools.integrations.google_meet_tool import MANIFEST as GOOGLE_MEET_MANIFEST
+from app.agents.tools.integrations.asana_tool import MANIFEST as ASANA_MANIFEST
+from app.agents.tools.integrations.airtable_tool import MANIFEST as AIRTABLE_MANIFEST
+from app.agents.tools.integrations.hubspot_tool import MANIFEST as HUBSPOT_MANIFEST
+from app.agents.tools.integrations.reddit_tool import MANIFEST as REDDIT_MANIFEST
+from app.agents.tools.integrations.instagram_tool import MANIFEST as INSTAGRAM_MANIFEST
+from app.agents.tools.integrations.clickup_tool import MANIFEST as CLICKUP_MANIFEST
+from app.agents.tools.integrations.trello_tool import MANIFEST as TRELLO_MANIFEST
+from app.agents.tools.integrations.todoist_tool import MANIFEST as TODOIST_MANIFEST
+from app.agents.tools.integrations.microsoft_teams_tool import MANIFEST as MICROSOFT_TEAMS_MANIFEST
+from app.agents.tools.integrations.urgency_tool import MANIFEST as URGENCY_MANIFEST
+from app.agents.tools.integrations.google_docs_tool import MANIFEST as GOOGLE_DOCS_MANIFEST
+from app.agents.tools.integrations.twitter_tool import MANIFEST as TWITTER_MANIFEST
+from app.agents.tools.integrations.linkedin_tool import MANIFEST as LINKEDIN_MANIFEST
+from app.services.composio.custom_tools.gmail_tools import MANIFEST as GMAIL_MANIFEST
+
 
 class CustomToolsRegistry:
     """
@@ -141,6 +166,7 @@ class CustomToolsRegistry:
 
         try:
             self._register_all_tools()
+            self._register_all_manifests()
         except Exception:
             self._composio = None
             self._tools_by_toolkit.clear()
@@ -154,6 +180,36 @@ class CustomToolsRegistry:
 
         for toolkit, register_func in self._toolkit_registrations():
             self._register_toolkit(toolkit, register_func)
+
+    def _register_all_manifests(self) -> None:
+        """Register all toolkit manifests with the global manifest registry."""
+        manifests = [
+            CALENDAR_MANIFEST,
+            NOTION_MANIFEST,
+            GOOGLE_SHEETS_MANIFEST,
+            LINEAR_MANIFEST,
+            SLACK_MANIFEST,
+            GITHUB_MANIFEST,
+            GOOGLE_TASKS_MANIFEST,
+            GOOGLE_MAPS_MANIFEST,
+            GOOGLE_MEET_MANIFEST,
+            ASANA_MANIFEST,
+            AIRTABLE_MANIFEST,
+            HUBSPOT_MANIFEST,
+            REDDIT_MANIFEST,
+            INSTAGRAM_MANIFEST,
+            CLICKUP_MANIFEST,
+            TRELLO_MANIFEST,
+            TODOIST_MANIFEST,
+            MICROSOFT_TEAMS_MANIFEST,
+            URGENCY_MANIFEST,
+            GOOGLE_DOCS_MANIFEST,
+            TWITTER_MANIFEST,
+            LINKEDIN_MANIFEST,
+            GMAIL_MANIFEST,
+        ]
+        for manifest in manifests:
+            toolkit_manifest_registry.register(manifest)
 
     def _register_toolkit(
         self,

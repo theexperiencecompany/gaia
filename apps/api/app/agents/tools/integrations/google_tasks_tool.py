@@ -5,6 +5,11 @@ from typing import Any, Dict, List
 
 from composio import Composio
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -37,3 +42,17 @@ def register_google_tasks_custom_tools(composio: Composio) -> List[str]:
         return {"tasks": tasks, "overdue_tasks": overdue}
 
     return ["GOOGLETASKS_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="googletasks",
+    tools={
+        "GOOGLETASKS_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Google Tasks: active tasks and overdue items.",
+            outputs=[
+                ToolOutputField("tasks", "list[dict]", "Active tasks with title, due, status, notes fields"),
+                ToolOutputField("overdue_tasks", "list[dict]", "Subset of tasks where due date is past today"),
+            ],
+        ),
+    },
+)

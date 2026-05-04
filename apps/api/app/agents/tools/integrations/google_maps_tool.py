@@ -3,6 +3,11 @@
 from typing import Any, Dict, List
 
 import httpx
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from composio import Composio
 
@@ -64,3 +69,18 @@ def register_google_maps_custom_tools(composio: Composio) -> List[str]:
         }
 
     return ["GOOGLE_MAPS_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="google_maps",
+    tools={
+        "GOOGLE_MAPS_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Confirms Google Maps API connectivity and returns available service list.",
+            outputs=[
+                ToolOutputField("api_connected", "bool", "True if the API key or token is valid and geocoding responds with OK"),
+                ToolOutputField("status", "str", "Google Maps API status string (OK, REQUEST_DENIED, ZERO_RESULTS, etc.)"),
+                ToolOutputField("available_services", "list[str]", "Services enabled: geocoding, places, directions, distance_matrix, elevation, timezone"),
+            ],
+        ),
+    },
+)

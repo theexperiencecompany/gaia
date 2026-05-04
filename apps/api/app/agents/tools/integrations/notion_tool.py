@@ -8,6 +8,13 @@ These tools wrap existing Composio Notion tools and add markdown conversion:
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+    ToolWorkflow,
+)
+
 from typing import Any, Dict, List
 
 import httpx
@@ -393,3 +400,83 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         "NOTION_CUSTOM_CREATE_TEST_PAGE",
         "NOTION_CUSTOM_GATHER_CONTEXT",
     ]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="notion",
+    tools={
+        "NOTION_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Fetch recent Notion pages relevant to the current context. Call at conversation start.",
+            outputs=[
+                ToolOutputField("relevant_pages", "list[dict]", "Recent pages with id, title, url"),
+            ],
+            tags=["context"],
+        ),
+        "NOTION_FETCH_DATA": ToolManifestEntry(
+            description="Search or list Notion pages, databases, or blocks. Use to find page_ids for other tools.",
+            outputs=[
+                ToolOutputField("values", "list[dict]", "id, title, type for each result"),
+                ToolOutputField("count", "int", "Number of results"),
+                ToolOutputField("has_more", "bool", "Whether more results exist"),
+            ],
+            tags=["read"],
+        ),
+        "NOTION_FETCH_PAGE_AS_MARKDOWN": ToolManifestEntry(
+            description="Read a Notion page and return its full content as markdown. Requires page_id from FETCH_DATA.",
+            outputs=[
+                ToolOutputField("page_id", "str", "The page id"),
+                ToolOutputField("title", "str", "Page title"),
+                ToolOutputField("markdown", "str", "Full page content as markdown"),
+                ToolOutputField("block_count", "int", "Number of blocks in the page"),
+            ],
+            depends_on=["NOTION_FETCH_DATA"],
+            tags=["read"],
+        ),
+        "NOTION_INSERT_MARKDOWN": ToolManifestEntry(
+            description="Append or insert markdown content into a Notion page. Requires parent_block_id from FETCH_DATA.",
+            outputs=[
+                ToolOutputField("parent_block_id", "str", "Block id content was inserted into"),
+                ToolOutputField("blocks_added", "int", "Number of blocks added"),
+                ToolOutputField("tables_added", "int", "Number of tables added"),
+                ToolOutputField("after", "str | None", "Block id after which content was inserted"),
+            ],
+            depends_on=["NOTION_FETCH_DATA"],
+            tags=["create", "update"],
+        ),
+        "NOTION_MOVE_PAGE": ToolManifestEntry(
+            description="Move a page under a new parent. Requires both page_id and parent_id from FETCH_DATA.",
+            outputs=[
+                ToolOutputField("page_id", "str", "Moved page id"),
+                ToolOutputField("new_parent", "dict", "New parent block/page info"),
+                ToolOutputField("url", "str", "Page URL after the move"),
+            ],
+            depends_on=["NOTION_FETCH_DATA"],
+            tags=["update"],
+        ),
+        "NOTION_CUSTOM_CREATE_TEST_PAGE": ToolManifestEntry(
+            description="Create a blank test page, optionally under a parent page.",
+            outputs=[
+                ToolOutputField("page_id", "str", "Created page id"),
+                ToolOutputField("url", "str", "Created page URL"),
+            ],
+            tags=["create"],
+        ),
+    },
+    workflows=[
+        ToolWorkflow(
+            goal="Read page content",
+            steps=["NOTION_FETCH_DATA", "NOTION_FETCH_PAGE_AS_MARKDOWN"],
+            note="page_id from FETCH_DATA.values[].id is required for FETCH_PAGE_AS_MARKDOWN",
+        ),
+        ToolWorkflow(
+            goal="Append content to a page",
+            steps=["NOTION_FETCH_DATA", "NOTION_INSERT_MARKDOWN"],
+            note="parent_block_id from FETCH_DATA.values[].id goes into INSERT_MARKDOWN",
+        ),
+        ToolWorkflow(
+            goal="Move a page to a new parent",
+            steps=["NOTION_FETCH_DATA", "NOTION_MOVE_PAGE"],
+            note="Two FETCH_DATA calls may be needed: one for the page to move, one for the destination parent",
+        ),
+    ],
+)

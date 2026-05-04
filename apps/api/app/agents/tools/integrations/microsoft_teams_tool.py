@@ -6,6 +6,11 @@ import httpx
 from composio import Composio
 
 from shared.py.wide_events import log
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 
 
@@ -115,3 +120,21 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
         }
 
     return ["MICROSOFT_TEAMS_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="microsoft_teams",
+    tools={
+        "MICROSOFT_TEAMS_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Microsoft Teams user info, joined teams, and recent chats with unread count.",
+            outputs=[
+                ToolOutputField("user", "dict", "Current user with id, display_name, email"),
+                ToolOutputField("teams", "list[dict]", "Joined teams with id, name, description"),
+                ToolOutputField("recent_chats", "list[dict]", "Last 10 chats with id, topic, chat_type, last_message_preview, is_read"),
+                ToolOutputField("team_count", "int", "Number of joined teams"),
+                ToolOutputField("chat_count", "int", "Number of chats returned"),
+                ToolOutputField("unread_chat_count", "int", "Number of chats with an unread last message"),
+            ],
+        ),
+    },
+)

@@ -5,6 +5,11 @@ from typing import Any, Dict, List
 from composio import Composio
 
 from shared.py.wide_events import log
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -57,3 +62,17 @@ def register_airtable_custom_tools(composio: Composio) -> List[str]:
         return {"bases": bases, "base_count": len(bases_raw)}
 
     return ["AIRTABLE_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="airtable",
+    tools={
+        "AIRTABLE_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Airtable bases (workspaces) and their tables.",
+            outputs=[
+                ToolOutputField("bases", "list[dict]", "Up to 3 bases, each with id, name, and tables list (id, name per table)"),
+                ToolOutputField("base_count", "int", "Total number of bases in the account"),
+            ],
+        ),
+    },
+)

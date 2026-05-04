@@ -3,6 +3,11 @@
 from typing import Any, Dict, List
 
 import httpx
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from composio import Composio
 
@@ -90,3 +95,19 @@ def register_reddit_custom_tools(composio: Composio) -> List[str]:
         }
 
     return ["REDDIT_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="reddit",
+    tools={
+        "REDDIT_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Reddit user profile, top subscribed subreddits, and unread messages.",
+            outputs=[
+                ToolOutputField("user", "dict", "Profile with name, id, link_karma, comment_karma, total_karma, is_gold"),
+                ToolOutputField("subscribed_subreddits", "list[dict]", "Top 5 subscribed subreddits with name, title, subscribers"),
+                ToolOutputField("unread_messages", "list[dict]", "Up to 5 unread messages with id, subject, author, created_utc"),
+                ToolOutputField("unread_message_count", "int", "Number of unread messages returned"),
+            ],
+        ),
+    },
+)

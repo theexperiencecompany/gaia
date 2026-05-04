@@ -5,6 +5,11 @@ from typing import Any, Dict, List
 
 from composio import Composio
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -43,3 +48,17 @@ def register_todoist_custom_tools(composio: Composio) -> List[str]:
         return {"tasks": tasks, "overdue_tasks": overdue}
 
     return ["TODOIST_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="todoist",
+    tools={
+        "TODOIST_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Todoist tasks and overdue items.",
+            outputs=[
+                ToolOutputField("tasks", "list[dict]", "Active tasks with content, due (dict with date), priority, project_id"),
+                ToolOutputField("overdue_tasks", "list[dict]", "Subset of tasks where due.date is earlier than today"),
+            ],
+        ),
+    },
+)

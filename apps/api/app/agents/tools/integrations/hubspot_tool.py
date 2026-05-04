@@ -6,6 +6,11 @@ import httpx
 from composio import Composio
 
 from shared.py.wide_events import log
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 
 
@@ -94,3 +99,19 @@ def register_hubspot_custom_tools(composio: Composio) -> List[str]:
         }
 
     return ["HUBSPOT_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="hubspot",
+    tools={
+        "HUBSPOT_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of recent HubSpot CRM contacts and deals.",
+            outputs=[
+                ToolOutputField("recent_contacts", "list[dict]", "Up to 10 contacts with id, firstname, lastname, email, lead_status"),
+                ToolOutputField("recent_deals", "list[dict]", "Up to 10 deals with id, dealname, amount, dealstage, closedate"),
+                ToolOutputField("contact_count", "int", "Number of contacts returned"),
+                ToolOutputField("deal_count", "int", "Number of deals returned"),
+            ],
+        ),
+    },
+)
