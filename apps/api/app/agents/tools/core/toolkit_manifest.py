@@ -128,12 +128,13 @@ def _format_manifest(manifest: ToolkitManifest) -> str:
         lines.append("")
 
     if manifest.workflows:
-        lines.append("**Dependency chains:**")
-        for i, wf in enumerate(manifest.workflows, 1):
-            chain = " → ".join(wf.steps)
-            lines.append(f"  {i}. {wf.goal}: {chain}")
+        lines.append("**Workflows:**")
+        for wf in manifest.workflows:
+            lines.append(f"  {wf.goal}:")
+            for step in wf.steps:
+                lines.append(f"    {step}")
             if wf.note:
-                lines.append(f"     ({wf.note})")
-        lines.append("")
+                lines.append(f"    Note: {wf.note}")
+            lines.append("")
 
     return "\n".join(lines)
