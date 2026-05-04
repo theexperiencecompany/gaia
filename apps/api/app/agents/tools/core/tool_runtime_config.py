@@ -66,9 +66,8 @@ def build_provider_parent_tool_runtime_config(
             "vfs_cmd",
             *finish,
             *todo_tool_names,
+            *(auto_bind_tool_names or []),
         ]
-        if auto_bind_tool_names and not disable_retrieve_tools:
-            initial.extend(auto_bind_tool_names)
 
     return ToolRuntimeConfig(
         initial_tool_names=initial,

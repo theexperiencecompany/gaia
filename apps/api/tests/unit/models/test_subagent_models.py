@@ -115,28 +115,16 @@ class TestSubagentEquality:
 @pytest.mark.unit
 class TestSubagentHashability:
     """`Subagent` is a frozen dataclass, so it requests `__hash__`. But its
-    `config` field is a Pydantic `BaseModel`, which is not hashable by default.
-    We document the actual behavior here rather than asserting an aspiration.
+    `config` field is a Pydantic `BaseModel`, which is not hashable by default —
+    so hashing the dataclass propagates a `TypeError`. The dataclass is
+    "frozen" for value-semantic safety, not for use as a dict key.
+
+    If this assertion ever fails (e.g., Pydantic gains hashability), revisit
+    whether `Subagent` should advertise itself as a hashable key.
     """
 
-    def test_hash_behavior(self) -> None:
+    def test_subagent_is_not_hashable(self) -> None:
         subagent = _make_subagent()
 
-        try:
-            hash_value = hash(subagent)
-        except TypeError:
-            # Expected: SubAgentConfig (Pydantic BaseModel) is not hashable, so
-            # hashing the dataclass propagates the TypeError. This is by design
-            # — the dataclass is "frozen" for value-semantic safety, not for
-            # use as a dict key. If this ever starts succeeding (e.g., Pydantic
-            # gains hashability), the test will fail and prompt revisiting
-            # whether Subagent should be used as a hashable key.
-            pytest.skip(
-                "Subagent is not hashable because SubAgentConfig "
-                "(Pydantic BaseModel) is not hashable. This is by design."
-            )
-        else:
-            # If it ever becomes hashable, equal instances must hash equal.
-            other = _make_subagent()
-            assert isinstance(hash_value, int)
-            assert hash(subagent) == hash(other)
+        with pytest.raises(TypeError):
+            hash(subagent)

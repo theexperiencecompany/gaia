@@ -65,10 +65,10 @@ class SubAgentFactory:
             tool_space: Tool space to use for retrieval (e.g., "gmail_delegated", "general")
             use_direct_tools: If True, bind all tools directly without retrieve_tools
             disable_retrieve_tools: If True, disable retrieve_tools mechanism entirely
-            auto_bind_tools: Tools to auto-bind at startup. Always honored —
-                included in `initial` whether use_direct_tools is True (added
-                alongside provider tools) or False (added when retrieve_tools
-                is enabled). Reduces latency for frequently-used tools.
+            auto_bind_tools: Tools to auto-bind at startup. Always included
+                in `initial` regardless of `use_direct_tools` or
+                `disable_retrieve_tools`. Reduces latency for
+                frequently-used tools.
             include_finish_task: When True (default), the subagent gets the
                 `finish_task` tool which it calls to signal completion.
                 When False, finish_task is omitted and the subagent

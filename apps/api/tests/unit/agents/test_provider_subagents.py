@@ -268,6 +268,29 @@ class TestCreateSubagent:
         assert result is mock_graph
         mock_registry.register_provider_tools.assert_called_once()
 
+    async def test_composio_without_oauth_integration_raises(self):
+        # A builtin Subagent declaring managed_by="composio" but with no
+        # matching OAuthIntegration must fail loudly instead of silently
+        # producing a tool-less agent.
+        from app.agents.core.subagents.provider_subagents import create_subagent
+
+        subagent = _make_subagent(managed_by="composio")
+        mock_registry = AsyncMock()
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
+                return_value=None,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+        ):
+            with pytest.raises(ValueError, match="no matching OAuth integration"):
+                await create_subagent(subagent)
+
 
 # ---------------------------------------------------------------------------
 # create_subagent_for_user

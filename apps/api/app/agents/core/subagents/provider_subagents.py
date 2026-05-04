@@ -76,16 +76,25 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
 
     # Handle Composio-managed integrations
     # `Subagent` does not carry composio_config; look up the OAuth integration
-    # for this branch (composio is OAuth-only).
+    # for this branch (composio is OAuth-only). The OAuthIntegration model
+    # validator enforces composio_config when managed_by="composio", so the
+    # only way to land here without one is a builtin Subagent declaring
+    # managed_by="composio" — which would silently produce a tool-less agent.
+    # Fail loudly instead.
     elif subagent.managed_by == "composio":
         integration = get_integration_by_id(subagent.id)
-        if integration and integration.composio_config:
-            toolkit_name = integration.composio_config.toolkit
-            await tool_registry.register_provider_tools(
-                toolkit_name=toolkit_name,
-                space_name=config.tool_space,
-                specific_tools=config.specific_tools,
+        if integration is None or integration.composio_config is None:
+            raise ValueError(
+                f"Composio subagent {subagent.id!r} has no matching OAuth "
+                f"integration with composio_config. managed_by='composio' "
+                f"must correspond to an OAUTH_INTEGRATIONS entry."
             )
+        toolkit_name = integration.composio_config.toolkit
+        await tool_registry.register_provider_tools(
+            toolkit_name=toolkit_name,
+            space_name=config.tool_space,
+            specific_tools=config.specific_tools,
+        )
 
     llm = init_llm()
 
