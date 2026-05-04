@@ -175,7 +175,7 @@ class SubAgentFactory:
             if auto_bind_tools
             else None
         )
-        if valid_auto_bind and not disable_retrieve_tools:
+        if valid_auto_bind:
             log.info(
                 f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
             )
