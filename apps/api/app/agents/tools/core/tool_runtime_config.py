@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
+from app.constants.general import FINISH_TASK_NAME
 
 
 @dataclass(slots=True)
@@ -49,7 +50,7 @@ def build_provider_parent_tool_runtime_config(
     include_finish_task: bool = True,
 ) -> ToolRuntimeConfig:
     """Build parent provider-agent tool runtime config."""
-    finish = ["finish_task"] if include_finish_task else []
+    finish = [FINISH_TASK_NAME] if include_finish_task else []
     # When `use_direct_tools=True`, `provider_tool_names` already contains every
     # tool in the subagent's tool_space, so any overlap with `auto_bind_tool_names`
     # would duplicate entries in `initial`. Filter the auto-bind list against
@@ -98,7 +99,7 @@ def build_child_tool_runtime_config(
             include_subagents_in_retrieve=False,
         )
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read", "vfs_cmd", "finish_task"],
+        initial_tool_names=["vfs_read", "vfs_cmd", FINISH_TASK_NAME],
         enable_retrieve_tools=not disable_retrieve_tools,
         include_subagents_in_retrieve=False,
     )
@@ -107,7 +108,7 @@ def build_child_tool_runtime_config(
 def build_executor_child_tool_runtime_config() -> ToolRuntimeConfig:
     """Build child tool runtime config for executor-spawned subagents."""
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read", "vfs_cmd", "finish_task"],
+        initial_tool_names=["vfs_read", "vfs_cmd", FINISH_TASK_NAME],
         enable_retrieve_tools=True,
         include_subagents_in_retrieve=False,
     )

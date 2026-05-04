@@ -352,6 +352,55 @@ and a other username in the connected apps.
 
 RICH_UI_SOURCES: frozenset[str] = frozenset({"web", "mobile", "desktop"})
 
+# Markers that bracket the embedded OpenUI component-instructions section
+# inside ``COMMS_AGENT_PROMPT``. Used to strip the section for messaging
+# platforms (WhatsApp, Telegram, Discord, Slack) where ``:::openui`` fences
+# render as literal text and contradict the platform context message that
+# tells the model to use plain text only.
+_OPENUI_SECTION_START_MARKER = "—Rich UI Components (OpenUI) — CRITICAL—"
+_OPENUI_SECTION_END_MARKER = (
+    "See the full OpenUI Lang reference with all components and "
+    "syntax rules at the end of this prompt."
+)
+
+
+def _strip_openui_section(prompt: str) -> str:
+    """Remove the embedded OpenUI component-instructions block from ``prompt``.
+
+    The block is delimited by ``_OPENUI_SECTION_START_MARKER`` and
+    ``_OPENUI_SECTION_END_MARKER``. If either marker is missing we log a
+    loud warning and return ``prompt`` unchanged — silently re-introducing
+    the bug (plain prompt still telling the model to emit ``:::openui``)
+    would be far worse than logging a noisy startup warning that someone
+    edited the prompt and forgot to keep the markers in sync.
+    """
+    from shared.py.wide_events import log
+
+    start = prompt.find(_OPENUI_SECTION_START_MARKER)
+    if start == -1:
+        log.warning(
+            "comms_prompts: OpenUI section start marker not found in "
+            "COMMS_AGENT_PROMPT — plain (whatsapp/telegram/discord/slack) "
+            "variant will still contain OpenUI instructions. Update "
+            "_OPENUI_SECTION_START_MARKER to match the prompt."
+        )
+        return prompt
+    end_marker_idx = prompt.find(_OPENUI_SECTION_END_MARKER, start)
+    if end_marker_idx == -1:
+        log.warning(
+            "comms_prompts: OpenUI section end marker not found after the "
+            "start marker — plain variant strip aborted. Update "
+            "_OPENUI_SECTION_END_MARKER to match the prompt."
+        )
+        return prompt
+    end_of_line = prompt.find("\n", end_marker_idx + len(_OPENUI_SECTION_END_MARKER))
+    end = end_of_line + 1 if end_of_line != -1 else len(prompt)
+    # Collapse the surrounding blank lines so the result still reads cleanly.
+    return prompt[:start].rstrip() + "\n\n" + prompt[end:].lstrip()
+
+
+_COMMS_AGENT_PROMPT_PLAIN = _strip_openui_section(COMMS_AGENT_PROMPT)
+
 
 def get_comms_agent_prompt(source: str | None = None) -> str:
     """Build the comms agent prompt.
@@ -359,13 +408,17 @@ def get_comms_agent_prompt(source: str | None = None) -> str:
     OpenUI Lang produces rich interactive cards that only the web / mobile /
     desktop clients can render. Messaging platforms (WhatsApp, Telegram,
     Discord, Slack) and email receive the raw ``:::openui`` fences as literal
-    text, which looks broken. For those sources we omit the OpenUI
-    instructions entirely so the model falls back to plain Markdown that the
-    platform-specific adapter can then format.
+    text, which looks broken. For those sources we omit BOTH the embedded
+    OpenUI component-instructions section and the appended OpenUI Lang
+    reference so the model falls back to plain Markdown that the
+    platform-specific adapter can then format. Leaving the embedded section
+    in (the previous behavior) caused the model to emit ``:::openui`` fences
+    on WhatsApp anyway, drowning out the comms voice and contradicting the
+    per-platform context message.
     """
     if source is None or source in RICH_UI_SOURCES:
         return COMMS_AGENT_PROMPT + "\n" + OPENUI_INSTRUCTIONS
-    return COMMS_AGENT_PROMPT
+    return _COMMS_AGENT_PROMPT_PLAIN
 
 
 EXECUTOR_AGENT_PROMPT = """
@@ -474,6 +527,49 @@ PLATFORM-AWARE OUTPUT
   - Return all results as plain text formatted for the messaging platform.
   - When a skill or tool produces an artifact, extract the key content and return it as text instead.
 - If the source is "web", "mobile", or unset: all output formats are available (artifacts, HTML, rich cards).
+
+WEB SEARCH AND RESEARCH INTEGRITY (CRITICAL — NEVER VIOLATE)
+You are a reporter of tool output, not an interpreter of it. When surfacing web_search_tool,
+deep_research, or fetch_webpages results, you do NOT get to infer, paraphrase, rename, or
+"clean up" anything that came from the tool. Repeat it as-is.
+
+VERBATIM-ONLY FIELDS (never rewrite, never infer, never guess):
+- Article / page / post titles — copy exactly as the tool returned them, including punctuation,
+  capitalization, quotes, brackets, and any " — Site Name" suffix. Do not shorten. Do not
+  translate. Do not "fix" typos. If the title is "How I built X (in 3 days)", you write
+  "How I built X (in 3 days)" — not "Building X in three days".
+- Source / publication / site names (e.g. "Hacker News", "TechCrunch", "arXiv") — only use the
+  name if it appears in the tool output. Never derive a "source name" from a domain you guessed.
+- Author / byline names — only if explicitly returned. Do not infer authorship from URL slugs.
+- Publication dates, timestamps, version numbers, prices, statistics, counts — only if returned.
+  Never round, normalize, or "estimate" them.
+- URLs — copy verbatim. Do not reconstruct, shorten, canonicalize, strip query params, or fix.
+- Direct quotes — only quote text that appears verbatim in the tool's snippet/content. Never
+  paraphrase inside quote marks.
+
+WHAT YOU MAY DO:
+- Summarize the OVERALL theme of results in your own words (e.g. "most discuss pricing strategy").
+- Group or order results.
+- Decide which results to surface and which to skip.
+- Add your own commentary clearly outside of any title/quote/citation.
+
+WHAT YOU MAY NOT DO:
+- Invent a title that "sounds like" what the article is probably about.
+- Replace a long/awkward title with a tidier one of your own.
+- Attribute a result to a source ("from Hacker News", "via TechCrunch") unless that source name
+  is in the tool output. A domain is not a source name unless the tool said so.
+- Fill missing fields with plausible guesses. Missing = say it's missing or omit the field.
+- Translate, localize, or rephrase any tool-returned string before showing it.
+
+WHEN TOOL OUTPUT IS EMPTY OR FAILS:
+- Say so plainly: "I searched for X but found no results" or "the fetch failed for that URL".
+- Never substitute invented results to fill the gap.
+
+TRANSPARENCY:
+- State what you actually searched for and how many real results came back.
+- If a result was only a snippet (no full page), say so — do not fabricate the rest of the body.
+- If a source's domain doesn't match what the user asked for (e.g. user asked for Hacker News
+  threads but results are blog posts about HN), call that out instead of pretending it matches.
 
 CAPABILITY GAPS AND SAFETY
 - Do not claim impossible until discovery retries fail.

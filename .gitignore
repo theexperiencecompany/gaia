@@ -14,6 +14,7 @@ api/.env
 .DS_Store
 
 venv/
+.venv
 .venv/
 .venv311/
 
@@ -45,6 +46,7 @@ chroma-data/
 sticky-notes.snotes
 
 # dependencies
+node_modules
 node_modules/
 /.pnp
 .pnp.*
@@ -110,6 +112,7 @@ out
 postman/
 
 .agents/plans/
+.agents/recording/
 
 # whatsapp-web.js
 .wwebjs_auth/
@@ -125,3 +128,5 @@ docs/plans/
 i18n.cache
 .worktrees/
 superpowers/
+
+skills-lock.json
