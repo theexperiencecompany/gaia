@@ -144,7 +144,7 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
           }}
         >
           <View style={{ padding: moderateScale(4, 0.5) }}>
-            <Menu01Icon size={iconSize.md} color="#ffffff" />
+            <Menu01Icon size={iconSize.md} color="#a1a1aa" />
           </View>
         </Pressable>
       )}

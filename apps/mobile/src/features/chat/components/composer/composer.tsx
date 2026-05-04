@@ -504,7 +504,7 @@ export function Composer({
                 <AppIcon
                   icon={PlusSignIcon}
                   size={iconSize.md}
-                  color="#d4d4d8"
+                  color="#a1a1aa"
                 />
               </Pressable>
             </Animated.View>

@@ -373,7 +373,7 @@ export function ConnectDrawerTrigger({ onOpen }: ConnectDrawerTriggerProps) {
         }}
         android_ripple={{ color: "rgba(255,255,255,0.08)", radius: 16 }}
       >
-        <AppIcon icon={Wrench01Icon} size={20} color="#d4d4d8" />
+        <AppIcon icon={Wrench01Icon} size={20} color="#a1a1aa" />
       </Pressable>
 
       <ConnectDrawer ref={drawerRef} onOpen={onOpen} />

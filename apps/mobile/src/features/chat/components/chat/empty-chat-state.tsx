@@ -34,14 +34,13 @@ export function EmptyChatState() {
       <Animated.View
         entering={FadeIn.duration(200)}
         style={{
-          flexDirection: "row",
           alignItems: "center",
-          gap: spacing.sm + 4,
+          gap: spacing.md,
         }}
       >
         <Image
           source={GaiaLogo}
-          style={{ width: 40, height: 40 }}
+          style={{ width: 56, height: 56 }}
           contentFit="contain"
         />
         <Text
@@ -51,7 +50,7 @@ export function EmptyChatState() {
             color: "#ffffff",
             letterSpacing: -0.3,
             lineHeight: Math.round(fontSize["2xl"] * 1.2),
-            flexShrink: 1,
+            textAlign: "center",
           }}
         >
           {greeting}
