@@ -4,6 +4,11 @@ from typing import Any, Dict, List
 
 from composio import Composio
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -34,3 +39,16 @@ def register_trello_custom_tools(composio: Composio) -> List[str]:
         return {"cards": cards}
 
     return ["TRELLO_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="trello",
+    tools={
+        "TRELLO_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Trello cards currently assigned to the authenticated user.",
+            outputs=[
+                ToolOutputField("cards", "list[dict]", "Cards assigned to user with id, name, due, idBoard, idList fields"),
+            ],
+        ),
+    },
+)

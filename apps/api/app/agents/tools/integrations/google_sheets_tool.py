@@ -8,6 +8,12 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 
 from typing import Any, Dict, List
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
+
 import httpx
 from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
@@ -767,3 +773,69 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         "GOOGLESHEETS_CUSTOM_CREATE_CHART",
         "GOOGLESHEETS_CUSTOM_GATHER_CONTEXT",
     ]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="googlesheets",
+    tools={
+        "GOOGLESHEETS_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="List recently modified spreadsheets with their IDs and URLs.",
+            outputs=[
+                ToolOutputField("recent_spreadsheets", "list[dict]", "id, name, modified, url"),
+                ToolOutputField("spreadsheet_count", "int", "Number of spreadsheets returned"),
+            ],
+            tags=["context"],
+        ),
+        "GOOGLESHEETS_CUSTOM_SHARE_SPREADSHEET": ToolManifestEntry(
+            description="Share a spreadsheet with one or more email recipients.",
+            outputs=[
+                ToolOutputField("spreadsheet_id", "str", "Spreadsheet id"),
+                ToolOutputField("url", "str", "Spreadsheet URL"),
+                ToolOutputField("shared", "list[dict]", "email, role, permission_id, notification_sent per recipient"),
+                ToolOutputField("total_shared", "int", "Successfully shared count"),
+                ToolOutputField("total_failed", "int", "Failed share count"),
+            ],
+            tags=["update"],
+        ),
+        "GOOGLESHEETS_CUSTOM_CREATE_PIVOT_TABLE": ToolManifestEntry(
+            description="Create a pivot table in the spreadsheet from a source data range.",
+            outputs=[
+                ToolOutputField("spreadsheet_id", "str", "Spreadsheet id"),
+                ToolOutputField("url", "str", "Spreadsheet URL"),
+                ToolOutputField("pivot_sheet", "str", "Name of the sheet where the pivot was created"),
+                ToolOutputField("source_range", "str", "Source data range used"),
+            ],
+            tags=["create"],
+        ),
+        "GOOGLESHEETS_CUSTOM_SET_DATA_VALIDATION": ToolManifestEntry(
+            description="Apply a data validation rule (dropdown, number, date, or formula) to a cell range.",
+            outputs=[
+                ToolOutputField("spreadsheet_id", "str", "Spreadsheet id"),
+                ToolOutputField("url", "str", "Spreadsheet URL"),
+                ToolOutputField("range_applied", "str", "Range the validation was applied to"),
+                ToolOutputField("validation_type", "str", "Type of validation applied"),
+            ],
+            tags=["update"],
+        ),
+        "GOOGLESHEETS_CUSTOM_ADD_CONDITIONAL_FORMAT": ToolManifestEntry(
+            description="Apply a conditional formatting rule (value-based, color scale, or formula) to a cell range.",
+            outputs=[
+                ToolOutputField("spreadsheet_id", "str", "Spreadsheet id"),
+                ToolOutputField("url", "str", "Spreadsheet URL"),
+                ToolOutputField("range_applied", "str", "Range the format was applied to"),
+                ToolOutputField("format_type", "str", "Format type applied"),
+            ],
+            tags=["update"],
+        ),
+        "GOOGLESHEETS_CUSTOM_CREATE_CHART": ToolManifestEntry(
+            description="Create a chart (BAR, LINE, PIE, COLUMN, AREA, SCATTER, COMBO) from a data range.",
+            outputs=[
+                ToolOutputField("spreadsheet_id", "str", "Spreadsheet id"),
+                ToolOutputField("url", "str", "Spreadsheet URL"),
+                ToolOutputField("chart_id", "str | None", "ID of the created chart"),
+                ToolOutputField("chart_type", "str", "Chart type created"),
+            ],
+            tags=["create"],
+        ),
+    },
+)

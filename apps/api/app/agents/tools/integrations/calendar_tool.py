@@ -13,6 +13,13 @@ import zoneinfo
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any, Dict, List
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+    ToolWorkflow,
+)
+
 import httpx
 from shared.py.wide_events import log
 from app.decorators import with_doc
@@ -791,3 +798,110 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         "GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE",
         "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
     ]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="googlecalendar",
+    tools={
+        "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Get today's event summary — date, timezone, events, next_event, busy_hours. Call at conversation start.",
+            outputs=[
+                ToolOutputField("date", "str", "Today's date in YYYY-MM-DD"),
+                ToolOutputField("timezone", "str", "User's timezone string"),
+                ToolOutputField("events", "list[dict]", "Today's events with id, summary, start, end, location, attendees"),
+                ToolOutputField("next_event", "dict | None", "Nearest upcoming event"),
+                ToolOutputField("busy_hours", "list", "Busy time ranges for today"),
+            ],
+            tags=["context"],
+        ),
+        "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS": ToolManifestEntry(
+            description="List all calendars the user has access to. Use calendar_id values for FETCH_EVENTS.",
+            outputs=[
+                ToolOutputField("calendars", "list[dict]", "id, summary, primary, accessRole for each calendar"),
+            ],
+            tags=["read"],
+        ),
+        "GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY": ToolManifestEntry(
+            description="Get events for a specific date (defaults to today).",
+            outputs=[
+                ToolOutputField("date", "str", "Requested date"),
+                ToolOutputField("timezone", "str", "User's timezone"),
+                ToolOutputField("events", "list[dict]", "Events with id, summary, start, end"),
+                ToolOutputField("next_event", "dict | None", "Next upcoming event on that date"),
+                ToolOutputField("busy_hours", "list", "Busy time ranges"),
+            ],
+            tags=["read"],
+        ),
+        "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS": ToolManifestEntry(
+            description="Fetch events across one or more calendars within a date range.",
+            outputs=[
+                ToolOutputField("calendar_fetch_data", "list[dict]", "Per-calendar results, each containing events[]"),
+                ToolOutputField("has_more", "bool", "True if more events exist beyond max_results"),
+            ],
+            tags=["read"],
+        ),
+        "GOOGLECALENDAR_CUSTOM_FIND_EVENT": ToolManifestEntry(
+            description="Search events by keyword. Returns event_id values needed by GET, PATCH, DELETE, ADD_RECURRENCE.",
+            outputs=[
+                ToolOutputField("events", "list[dict]", "Matches with event_id, calendar_id, summary, start, end"),
+                ToolOutputField("calendar_search_data", "dict", "Raw search metadata"),
+            ],
+            tags=["read"],
+        ),
+        "GOOGLECALENDAR_CUSTOM_GET_EVENT": ToolManifestEntry(
+            description="Fetch full details for one or more events by event_id.",
+            outputs=[
+                ToolOutputField("events", "list[dict]", "Full event objects: event_id, calendar_id, event (all fields)"),
+            ],
+            depends_on=["GOOGLECALENDAR_CUSTOM_FIND_EVENT"],
+            tags=["read"],
+        ),
+        "GOOGLECALENDAR_CUSTOM_CREATE_EVENT": ToolManifestEntry(
+            description="Create one or more calendar events. Returns calendar_options for user confirmation if confirm_immediately=False.",
+            outputs=[
+                ToolOutputField("created", "bool", "True if events were created immediately"),
+                ToolOutputField("created_events", "list[dict] | None", "Created event objects (if confirmed)"),
+                ToolOutputField("calendar_options", "list[dict] | None", "Options presented to user for confirmation"),
+                ToolOutputField("message", "str | None", "Status message"),
+            ],
+            tags=["create"],
+        ),
+        "GOOGLECALENDAR_CUSTOM_PATCH_EVENT": ToolManifestEntry(
+            description="Modify an existing event's fields. Requires event_id from FIND_EVENT.",
+            outputs=[
+                ToolOutputField("event", "dict", "Updated event object with all fields"),
+            ],
+            depends_on=["GOOGLECALENDAR_CUSTOM_FIND_EVENT"],
+            tags=["update"],
+        ),
+        "GOOGLECALENDAR_CUSTOM_DELETE_EVENT": ToolManifestEntry(
+            description="Delete one or more events by event_id. Requires event_id from FIND_EVENT.",
+            outputs=[
+                ToolOutputField("deleted", "list[dict]", "Deleted event_id and calendar_id pairs"),
+            ],
+            depends_on=["GOOGLECALENDAR_CUSTOM_FIND_EVENT"],
+            tags=["delete"],
+        ),
+        "GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE": ToolManifestEntry(
+            description="Add a recurrence rule (RRULE) to an existing event. Requires event_id from FIND_EVENT.",
+            outputs=[
+                ToolOutputField("event", "dict", "Updated event object with recurrence"),
+                ToolOutputField("recurrence_rule", "str", "RRULE string applied"),
+            ],
+            depends_on=["GOOGLECALENDAR_CUSTOM_FIND_EVENT"],
+            tags=["update"],
+        ),
+    },
+    workflows=[
+        ToolWorkflow(
+            goal="Edit, delete, or make an event recurring",
+            steps=["GOOGLECALENDAR_CUSTOM_FIND_EVENT", "GOOGLECALENDAR_CUSTOM_PATCH_EVENT"],
+            note="event_id from FIND_EVENT.events[].event_id is required for GET/PATCH/DELETE/ADD_RECURRENCE",
+        ),
+        ToolWorkflow(
+            goal="Show today's schedule",
+            steps=["GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT"],
+            note="Single call — no dependencies needed",
+        ),
+    ],
+)

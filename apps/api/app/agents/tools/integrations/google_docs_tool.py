@@ -14,6 +14,12 @@ import httpx
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
 from shared.py.wide_events import log
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+    ToolWorkflow,
+)
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.google_docs_models import CreateTOCInput, DeleteDocInput, ShareDocInput
@@ -271,3 +277,63 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         "GOOGLEDOCS_CUSTOM_DELETE_DOC",
         "GOOGLEDOCS_CUSTOM_GATHER_CONTEXT",
     ]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="googledocs",
+    tools={
+        "GOOGLEDOCS_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of recently viewed/modified Google Docs — use to discover document IDs.",
+            outputs=[
+                ToolOutputField("recent_docs", "list[dict]", "Up to 20 recent docs with id, name, modified, url"),
+                ToolOutputField("doc_count", "int", "Number of docs returned"),
+            ],
+        ),
+        "GOOGLEDOCS_CUSTOM_SHARE_DOC": ToolManifestEntry(
+            description="Share a Google Doc with one or more recipients by granting Drive permissions.",
+            outputs=[
+                ToolOutputField("document_id", "str", "The document ID that was shared"),
+                ToolOutputField("url", "str", "Direct edit URL for the document"),
+                ToolOutputField("shared", "list[dict]", "Successfully shared recipients with email, role, permission_id"),
+            ],
+            depends_on=["GOOGLEDOCS_CUSTOM_GATHER_CONTEXT"],
+            tags=["write", "sharing"],
+        ),
+        "GOOGLEDOCS_CUSTOM_CREATE_TOC": ToolManifestEntry(
+            description="Generate and insert a table of contents into a Google Doc based on its heading structure.",
+            outputs=[
+                ToolOutputField("document_id", "str", "The document ID"),
+                ToolOutputField("url", "str", "Direct edit URL"),
+                ToolOutputField("headings_found", "int", "Number of headings detected in the document"),
+                ToolOutputField("toc_content", "str", "The generated TOC text that was inserted"),
+            ],
+            depends_on=["GOOGLEDOCS_CUSTOM_GATHER_CONTEXT"],
+            tags=["write"],
+        ),
+        "GOOGLEDOCS_CUSTOM_DELETE_DOC": ToolManifestEntry(
+            description="Permanently delete a Google Doc via Drive API. DESTRUCTIVE — confirm with user first.",
+            outputs=[
+                ToolOutputField("successful", "bool", "True if the document was deleted"),
+                ToolOutputField("document_id", "str", "The deleted document ID"),
+            ],
+            depends_on=["GOOGLEDOCS_CUSTOM_GATHER_CONTEXT"],
+            tags=["write", "destructive"],
+        ),
+    },
+    workflows=[
+        ToolWorkflow(
+            goal="Share a document with collaborators",
+            steps=[
+                "1. Call GOOGLEDOCS_CUSTOM_GATHER_CONTEXT to find the document_id",
+                "2. Call GOOGLEDOCS_CUSTOM_SHARE_DOC with document_id and recipients list",
+            ],
+        ),
+        ToolWorkflow(
+            goal="Insert a table of contents into a document",
+            steps=[
+                "1. Call GOOGLEDOCS_CUSTOM_GATHER_CONTEXT to find the document_id",
+                "2. Call GOOGLEDOCS_CUSTOM_CREATE_TOC with document_id and desired insertion_index",
+            ],
+        ),
+    ],
+)

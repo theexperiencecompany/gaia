@@ -5,6 +5,11 @@ from typing import Any, Dict, List
 
 from composio import Composio
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -37,3 +42,17 @@ def register_asana_custom_tools(composio: Composio) -> List[str]:
         return {"tasks": tasks, "overdue_tasks": overdue}
 
     return ["ASANA_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="asana",
+    tools={
+        "ASANA_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of assigned open Asana tasks across workspaces.",
+            outputs=[
+                ToolOutputField("tasks", "list[dict]", "Assigned open tasks with gid, name, due_on, completed fields"),
+                ToolOutputField("overdue_tasks", "list[dict]", "Subset of tasks where due_on is earlier than today"),
+            ],
+        ),
+    },
+)

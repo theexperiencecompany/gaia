@@ -9,6 +9,13 @@ from typing import Any, Dict, List
 from composio import Composio
 from pydantic import BaseModel, Field
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+    ToolWorkflow,
+)
+
 
 class UrgencyAggregatorInput(BaseModel):
     """Input for the urgency aggregator — a dict of integration snapshots."""
@@ -229,3 +236,42 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
         }
 
     return ["GAIA_CUSTOM_URGENCY_AGGREGATOR"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="gaia",
+    tools={
+        "GAIA_CUSTOM_URGENCY_AGGREGATOR": ToolManifestEntry(
+            description=(
+                "Aggregates urgency signals from multiple CUSTOM_GATHER_CONTEXT outputs "
+                "into a single prioritized list of items needing attention."
+            ),
+            outputs=[
+                ToolOutputField("urgent_items", "list[dict]", "Items sorted by priority (high/medium/low) with integration, type, count, description, details"),
+                ToolOutputField("total_urgent", "int", "Total number of urgent items across all integrations"),
+                ToolOutputField("summary", "dict", "Priority breakdown: high_priority, medium_priority, low_priority counts"),
+            ],
+            depends_on=[
+                "SLACK_CUSTOM_GATHER_CONTEXT",
+                "GITHUB_CUSTOM_GATHER_CONTEXT",
+                "ASANA_CUSTOM_GATHER_CONTEXT",
+                "CLICKUP_CUSTOM_GATHER_CONTEXT",
+                "TODOIST_CUSTOM_GATHER_CONTEXT",
+                "MICROSOFT_TEAMS_CUSTOM_GATHER_CONTEXT",
+                "REDDIT_CUSTOM_GATHER_CONTEXT",
+            ],
+            tags=["aggregator", "cross-integration"],
+        ),
+    },
+    workflows=[
+        ToolWorkflow(
+            goal="Get a unified urgency overview across all active integrations",
+            steps=[
+                "1. Call CUSTOM_GATHER_CONTEXT for each integration the user has connected",
+                "2. Collect all results into a snapshots dict keyed by integration name",
+                "3. Call GAIA_CUSTOM_URGENCY_AGGREGATOR with the snapshots dict",
+                "4. Present urgent_items to the user sorted by priority",
+            ],
+        ),
+    ],
+)

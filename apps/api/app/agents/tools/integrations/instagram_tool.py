@@ -3,6 +3,11 @@
 from typing import Any, Dict, List
 
 import httpx
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from composio import Composio
 
@@ -78,3 +83,17 @@ def register_instagram_custom_tools(composio: Composio) -> List[str]:
         }
 
     return ["INSTAGRAM_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="instagram",
+    tools={
+        "INSTAGRAM_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Instagram profile info and last 5 media posts.",
+            outputs=[
+                ToolOutputField("user", "dict", "Profile with id, name, username, account_type, media_count, followers, following, biography"),
+                ToolOutputField("recent_media", "list[dict]", "Last 5 posts with id, caption, media_type, timestamp, likes, comments, permalink"),
+            ],
+        ),
+    },
+)

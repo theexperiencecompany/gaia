@@ -7,6 +7,12 @@ import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+    ToolWorkflow,
+)
 from app.models.common_models import GatherContextInput
 from app.services.contact_service import get_gmail_contacts
 from composio import Composio
@@ -488,3 +494,74 @@ def register_gmail_custom_tools(composio: Composio):
         "GMAIL_GET_CONTACT_LIST",
         "GMAIL_CUSTOM_GATHER_CONTEXT",
     ]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="gmail",
+    tools={
+        "GMAIL_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Gmail: user profile, inbox unread count, and recent message IDs.",
+            outputs=[
+                ToolOutputField("user", "dict", "Profile with email, messages_total, threads_total"),
+                ToolOutputField("inbox", "dict", "Inbox stats with unread_count and message_count"),
+                ToolOutputField("recent_message_ids", "list[str]", "IDs of up to 5 recent inbox messages — pass directly to MARK_AS_READ, ARCHIVE, STAR tools"),
+            ],
+        ),
+        "GMAIL_MARK_AS_READ": ToolManifestEntry(
+            description="Remove the UNREAD label from specified messages, marking them as read.",
+            outputs=[],
+            depends_on=["GMAIL_CUSTOM_GATHER_CONTEXT"],
+            tags=["write"],
+        ),
+        "GMAIL_MARK_AS_UNREAD": ToolManifestEntry(
+            description="Add the UNREAD label to specified messages, marking them as unread.",
+            outputs=[],
+            depends_on=["GMAIL_CUSTOM_GATHER_CONTEXT"],
+            tags=["write"],
+        ),
+        "GMAIL_ARCHIVE_EMAIL": ToolManifestEntry(
+            description="Remove messages from INBOX (archive them to All Mail).",
+            outputs=[],
+            depends_on=["GMAIL_CUSTOM_GATHER_CONTEXT"],
+            tags=["write"],
+        ),
+        "GMAIL_STAR_EMAIL": ToolManifestEntry(
+            description="Star or unstar Gmail messages by adding/removing the STARRED label.",
+            outputs=[
+                ToolOutputField("action", "str", "Either 'starred' or 'unstarred'"),
+            ],
+            depends_on=["GMAIL_CUSTOM_GATHER_CONTEXT"],
+            tags=["write"],
+        ),
+        "GMAIL_GET_UNREAD_COUNT": ToolManifestEntry(
+            description="Get unread and total message counts by label or search query.",
+            outputs=[
+                ToolOutputField("unreadCount", "int", "Number of unread messages matching the criteria"),
+                ToolOutputField("totalCount", "int", "Total messages matching the criteria"),
+                ToolOutputField("counts", "dict", "Per-label breakdown when multiple labels requested"),
+            ],
+        ),
+        "GMAIL_GET_CONTACT_LIST": ToolManifestEntry(
+            description="Extract unique email contacts from Gmail history matching a search query.",
+            outputs=[
+                ToolOutputField("contacts", "list[dict]", "Unique contacts with name and email fields"),
+            ],
+        ),
+    },
+    workflows=[
+        ToolWorkflow(
+            goal="Process recent inbox messages (read, archive, or star)",
+            steps=[
+                "1. Call GMAIL_CUSTOM_GATHER_CONTEXT to get recent_message_ids",
+                "2. Pass those IDs to GMAIL_MARK_AS_READ, GMAIL_ARCHIVE_EMAIL, or GMAIL_STAR_EMAIL",
+            ],
+        ),
+        ToolWorkflow(
+            goal="Check how many unread emails are in the inbox",
+            steps=[
+                "1. Call GMAIL_GET_UNREAD_COUNT with label_ids=['INBOX']",
+                "2. Report the unreadCount to the user",
+            ],
+        ),
+    ],
+)

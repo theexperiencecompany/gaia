@@ -4,6 +4,11 @@ import datetime
 from typing import Any, Dict, List
 
 import httpx
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from composio import Composio
 
@@ -88,3 +93,18 @@ def register_google_meet_custom_tools(composio: Composio) -> List[str]:
         }
 
     return ["GOOGLEMEET_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="googlemeet",
+    tools={
+        "GOOGLEMEET_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Google Meet: user profile and upcoming calendar events that have Meet links.",
+            outputs=[
+                ToolOutputField("user", "dict", "Authenticated user with email, name, picture"),
+                ToolOutputField("upcoming_meets", "list[dict]", "Up to 5 upcoming events with id, summary, start, meet_link"),
+                ToolOutputField("upcoming_meet_count", "int", "Number of upcoming Meet events returned"),
+            ],
+        ),
+    },
+)

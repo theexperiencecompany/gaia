@@ -15,6 +15,12 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 
 from typing import Any, Dict, List, Optional
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+    ToolWorkflow,
+)
 from app.decorators.documentation import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.twitter_models import (
@@ -475,3 +481,78 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
         "TWITTER_CUSTOM_SCHEDULE_TWEET",
         "TWITTER_CUSTOM_GATHER_CONTEXT",
     ]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="twitter",
+    tools={
+        "TWITTER_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of Twitter/X profile and last 5 tweets.",
+            outputs=[
+                ToolOutputField("user", "dict", "Profile with id, username, name, description, followers, following, tweet_count"),
+                ToolOutputField("recent_tweets", "list[dict]", "Last 5 tweets with id, text, created_at, likes, retweets"),
+            ],
+        ),
+        "TWITTER_CUSTOM_BATCH_FOLLOW": ToolManifestEntry(
+            description="Follow multiple Twitter users at once by username or user_id.",
+            outputs=[
+                ToolOutputField("results", "list[dict]", "Per-user result with user_id, username, success, error"),
+                ToolOutputField("followed_count", "int", "Number of users successfully followed"),
+                ToolOutputField("failed_count", "int", "Number of users that failed"),
+            ],
+            tags=["write"],
+        ),
+        "TWITTER_CUSTOM_BATCH_UNFOLLOW": ToolManifestEntry(
+            description="Unfollow multiple Twitter users at once. DESTRUCTIVE — confirm with user before calling.",
+            outputs=[
+                ToolOutputField("results", "list[dict]", "Per-user result with user_id, username, success, error"),
+                ToolOutputField("unfollowed_count", "int", "Number successfully unfollowed"),
+                ToolOutputField("failed_count", "int", "Number that failed"),
+            ],
+            tags=["write", "destructive"],
+        ),
+        "TWITTER_CUSTOM_CREATE_THREAD": ToolManifestEntry(
+            description="Post a Twitter thread (chain of connected tweets) in a single call.",
+            outputs=[
+                ToolOutputField("thread_id", "str", "ID of the first tweet in the thread"),
+                ToolOutputField("tweet_ids", "list[str]", "IDs of all tweets in posting order"),
+                ToolOutputField("tweet_count", "int", "Number of tweets posted"),
+                ToolOutputField("thread_url", "str", "URL to the first tweet"),
+            ],
+            tags=["write"],
+        ),
+        "TWITTER_CUSTOM_SEARCH_USERS": ToolManifestEntry(
+            description="Find Twitter users by name, bio, or keyword when their exact username is unknown.",
+            outputs=[
+                ToolOutputField("users", "list[dict]", "Matched users with id, username, name, description, followers, verified"),
+                ToolOutputField("count", "int", "Number of users returned"),
+            ],
+        ),
+        "TWITTER_CUSTOM_SCHEDULE_TWEET": ToolManifestEntry(
+            description="Create a scheduled tweet draft for later posting.",
+            outputs=[
+                ToolOutputField("draft", "dict", "Draft with text, scheduled_time, media_urls, reply_to_tweet_id"),
+                ToolOutputField("message", "str", "Confirmation message about scheduling"),
+            ],
+            tags=["write"],
+        ),
+    },
+    workflows=[
+        ToolWorkflow(
+            goal="Follow users when only their name or topic is known",
+            steps=[
+                "1. Call TWITTER_CUSTOM_SEARCH_USERS with a descriptive query",
+                "2. Pick target users from the results",
+                "3. Call TWITTER_CUSTOM_BATCH_FOLLOW with their usernames",
+            ],
+        ),
+        ToolWorkflow(
+            goal="Create and post a tweet thread",
+            steps=[
+                "1. Prepare list of tweet texts (each ≤280 chars)",
+                "2. Call TWITTER_CUSTOM_CREATE_THREAD with the tweets list",
+                "3. Return thread_url to user",
+            ],
+        ),
+    ],
+)

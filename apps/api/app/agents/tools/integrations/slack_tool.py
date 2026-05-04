@@ -6,6 +6,11 @@ from typing import Any, Dict, List
 from composio import Composio
 
 from shared.py.wide_events import log
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -59,3 +64,18 @@ def register_slack_custom_tools(composio: Composio) -> List[str]:
         }
 
     return ["SLACK_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="slack",
+    tools={
+        "SLACK_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of today's Slack messages, @mentions, and unread count.",
+            outputs=[
+                ToolOutputField("messages", "list[dict]", "Today's messages (excluding @mentions) with ts, text, channel, username"),
+                ToolOutputField("mentions", "list[dict]", "Today's @mentions of the authenticated user"),
+                ToolOutputField("unread_count", "int", "Total messages seen today (mentions + others combined)"),
+            ],
+        ),
+    },
+)

@@ -5,6 +5,11 @@ from typing import Any, Dict, List
 from composio import Composio
 
 from shared.py.wide_events import log
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+)
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -67,3 +72,19 @@ def register_github_custom_tools(composio: Composio) -> List[str]:
         }
 
     return ["GITHUB_CUSTOM_GATHER_CONTEXT"]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="github",
+    tools={
+        "GITHUB_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Snapshot of GitHub assigned issues, PRs, review requests, and unread notifications.",
+            outputs=[
+                ToolOutputField("assigned_issues", "list[dict]", "Open issues assigned to the authenticated user"),
+                ToolOutputField("assigned_prs", "list[dict]", "Open PRs assigned to the authenticated user"),
+                ToolOutputField("review_requests", "list[dict]", "Open PRs requesting review from the authenticated user"),
+                ToolOutputField("notifications", "list[dict]", "Up to 10 unread GitHub notifications"),
+            ],
+        ),
+    },
+)

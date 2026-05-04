@@ -9,6 +9,12 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
+from app.agents.tools.core.toolkit_manifest import (
+    ToolManifestEntry,
+    ToolkitManifest,
+    ToolOutputField,
+    ToolWorkflow,
+)
 from app.decorators import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.linear_models import (
@@ -1024,3 +1030,159 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         "LINEAR_CUSTOM_GET_WORKSPACE_CONTEXT",
         "LINEAR_CUSTOM_GATHER_CONTEXT",
     ]
+
+
+MANIFEST = ToolkitManifest(
+    toolkit="linear",
+    tools={
+        "LINEAR_CUSTOM_GATHER_CONTEXT": ToolManifestEntry(
+            description="Lightweight workspace snapshot: current user, teams, and urgent item counts. Call at conversation start.",
+            outputs=[
+                ToolOutputField("user", "dict", "id, name, email"),
+                ToolOutputField("teams", "list[dict]", "id, name, key"),
+                ToolOutputField("urgent_items", "dict", "overdue and high_priority counts"),
+            ],
+            tags=["context"],
+        ),
+        "LINEAR_CUSTOM_GET_WORKSPACE_CONTEXT": ToolManifestEntry(
+            description="Full workspace overview: user, all teams with active sprint progress, and urgent items.",
+            outputs=[
+                ToolOutputField("user", "dict", "id, name, email, assigned_issue_count"),
+                ToolOutputField("teams", "list[dict]", "id, name, key, active_cycle, cycle_progress"),
+                ToolOutputField("urgent_items", "dict", "overdue, high_priority, sla_at_risk counts"),
+            ],
+            tags=["context"],
+        ),
+        "LINEAR_CUSTOM_RESOLVE_CONTEXT": ToolManifestEntry(
+            description="Resolve fuzzy team/user/project/label/state names to Linear UUIDs. Call first when any ID is unknown.",
+            outputs=[
+                ToolOutputField("data.teams", "list[dict]", "id, name, key, states[], projects[], labels[]"),
+                ToolOutputField("data.users", "list[dict]", "id, name for workspace members"),
+                ToolOutputField("data.labels", "list[dict]", "id, name for issue labels"),
+                ToolOutputField("data.projects", "list[dict]", "id, name for projects"),
+                ToolOutputField("data.states", "list[dict]", "id, name, type for workflow states"),
+                ToolOutputField("data.current_user", "dict", "id, name of authenticated user"),
+            ],
+            tags=["context"],
+        ),
+        "LINEAR_CUSTOM_GET_MY_TASKS": ToolManifestEntry(
+            description="Get issues assigned to the current user, filterable by time window or priority.",
+            outputs=[
+                ToolOutputField("issues", "list[dict]", "id, identifier, title, state, priority, dueDate"),
+                ToolOutputField("filter", "str", "Filter applied: all/today/this_week/overdue/high_priority"),
+                ToolOutputField("count", "int", "Number of issues returned"),
+            ],
+            tags=["read"],
+        ),
+        "LINEAR_CUSTOM_SEARCH_ISSUES": ToolManifestEntry(
+            description="Search issues by keyword, team, state, priority, or assignee.",
+            outputs=[
+                ToolOutputField("issues", "list[dict]", "id, identifier, title, state, priority"),
+                ToolOutputField("query", "str", "Search query used"),
+                ToolOutputField("count", "int", "Number of results"),
+            ],
+            tags=["read"],
+        ),
+        "LINEAR_CUSTOM_GET_ISSUE_FULL_CONTEXT": ToolManifestEntry(
+            description="Get complete details for a single issue including comments, activity, sub-issues, and relations.",
+            outputs=[
+                ToolOutputField(
+                    "issue",
+                    "dict",
+                    "id, identifier, title, description, priority, state, dueDate, estimate, "
+                    "team, project, cycle, assignee, creator, parent, sub_issues[], relations[], "
+                    "comments[], activity[], attachments[]",
+                ),
+            ],
+            tags=["read"],
+        ),
+        "LINEAR_CUSTOM_GET_NOTIFICATIONS": ToolManifestEntry(
+            description="Fetch the user's Linear notifications (unread by default).",
+            outputs=[
+                ToolOutputField("notifications", "list[dict]", "id, type, created_at, read, issue, actor"),
+                ToolOutputField("count", "int", "Number of notifications"),
+            ],
+            tags=["read"],
+        ),
+        "LINEAR_CUSTOM_GET_ACTIVE_SPRINT": ToolManifestEntry(
+            description="Get active sprint (cycle) data for one or all teams.",
+            outputs=[
+                ToolOutputField(
+                    "sprints",
+                    "list[dict]",
+                    "id, name, number, team, team_key, starts_at, ends_at, progress, "
+                    "total_issues, issues_by_state, in_progress[], todo[]",
+                ),
+                ToolOutputField("sprint_count", "int", "Number of active sprints"),
+            ],
+            tags=["read"],
+        ),
+        "LINEAR_CUSTOM_GET_ISSUE_ACTIVITY": ToolManifestEntry(
+            description="Get the change history and activity log for a specific issue.",
+            outputs=[
+                ToolOutputField("issue", "dict", "id, identifier, title"),
+                ToolOutputField("activities", "list[dict]", "timestamp, actor, change_type, from, to, labels"),
+                ToolOutputField("activity_count", "int", "Number of activity entries"),
+            ],
+            tags=["read"],
+        ),
+        "LINEAR_CUSTOM_CREATE_ISSUE": ToolManifestEntry(
+            description="Create a new Linear issue. team_id is required — get it from LINEAR_CUSTOM_RESOLVE_CONTEXT.",
+            outputs=[
+                ToolOutputField("issue", "dict", "id, identifier, title, url"),
+                ToolOutputField("sub_issues", "list[dict]", "id, identifier, title (if sub_issues input provided)"),
+                ToolOutputField("sub_issue_errors", "list[str]", "Errors for any sub-issues that failed (optional)"),
+            ],
+            depends_on=["LINEAR_CUSTOM_RESOLVE_CONTEXT"],
+            tags=["create"],
+        ),
+        "LINEAR_CUSTOM_CREATE_SUB_ISSUES": ToolManifestEntry(
+            description="Create one or more sub-issues under an existing parent issue.",
+            outputs=[
+                ToolOutputField("parent", "dict", "Parent issue id and identifier"),
+                ToolOutputField("sub_issues", "list[dict]", "Newly created sub-issues: id, identifier, title"),
+                ToolOutputField("created_count", "int", "Number of sub-issues created"),
+            ],
+            depends_on=["LINEAR_CUSTOM_SEARCH_ISSUES"],
+            tags=["create"],
+        ),
+        "LINEAR_CUSTOM_CREATE_ISSUE_RELATION": ToolManifestEntry(
+            description="Create a relation between two issues (blocks, is_blocked_by, relates_to, duplicates).",
+            outputs=[
+                ToolOutputField("relation", "dict", "id, type, from_issue, to_issue"),
+            ],
+            tags=["create"],
+        ),
+        "LINEAR_CUSTOM_BULK_UPDATE_ISSUES": ToolManifestEntry(
+            description="Update state, priority, assignee, cycle, project, or labels on multiple issues at once.",
+            outputs=[
+                ToolOutputField("updated_issues", "list[dict]", "id, identifier for each updated issue"),
+                ToolOutputField("updated_count", "int", "Number of issues updated"),
+            ],
+            depends_on=["LINEAR_CUSTOM_SEARCH_ISSUES"],
+            tags=["update"],
+        ),
+    },
+    workflows=[
+        ToolWorkflow(
+            goal="Create a new issue",
+            steps=["LINEAR_CUSTOM_RESOLVE_CONTEXT", "LINEAR_CUSTOM_CREATE_ISSUE"],
+            note="team_id from RESOLVE_CONTEXT.data.teams[].id is required for CREATE_ISSUE",
+        ),
+        ToolWorkflow(
+            goal="Bulk update issues (e.g., close all overdue)",
+            steps=["LINEAR_CUSTOM_SEARCH_ISSUES", "LINEAR_CUSTOM_BULK_UPDATE_ISSUES"],
+            note="issue_ids from SEARCH_ISSUES.issues[].id go into BULK_UPDATE_ISSUES.issue_ids",
+        ),
+        ToolWorkflow(
+            goal="Create sub-issues under a parent",
+            steps=["LINEAR_CUSTOM_SEARCH_ISSUES", "LINEAR_CUSTOM_CREATE_SUB_ISSUES"],
+            note="parent_issue_id from SEARCH_ISSUES.issues[].id is required for CREATE_SUB_ISSUES",
+        ),
+        ToolWorkflow(
+            goal="Get full details on a specific issue",
+            steps=["LINEAR_CUSTOM_SEARCH_ISSUES", "LINEAR_CUSTOM_GET_ISSUE_FULL_CONTEXT"],
+            note="Use issue_identifier from SEARCH_ISSUES (e.g., ENG-123) for GET_ISSUE_FULL_CONTEXT",
+        ),
+    ],
+)
