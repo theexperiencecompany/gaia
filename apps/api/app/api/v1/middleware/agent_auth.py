@@ -96,10 +96,17 @@ async def verify_agent_token(
         # infinitely replayable and we do not want to keep that surface.
         return None
 
-    if expected_room_id is not None:
-        token_room = payload.get("room_id")
-        if not token_room or token_room != expected_room_id:
+    # Enforce room binding when the token claims one: a token minted with
+    # ``room_id`` MUST be presented with a matching ``expected_room_id``,
+    # otherwise it could be replayed against an endpoint that does not
+    # forward the room header. Tokens minted without ``room_id`` (legacy /
+    # non-room flows) still pass through.
+    token_room = payload.get("room_id")
+    if token_room:
+        if expected_room_id is None or token_room != expected_room_id:
             return None
+    elif expected_room_id is not None:
+        return None
 
     # Single-use: atomically claim the jti. ``set ... nx`` returns False
     # if the key already exists (== token was already spent).

@@ -28,11 +28,9 @@ from langchain_core.documents import Document
 # codepoints. RTL-override characters (U+202E, U+2066-U+2069, etc.) can
 # disguise filenames in UI listings — e.g. "innocent‮gpj.exe" renders
 # as ``innocentexe.jpg`` while still executing as .exe.
-_BIDI_CONTROL = "‪-‮⁦-⁩"
+_BIDI_CONTROL = "‎‏؜‪-‮⁦-⁩"
 _UNSAFE_FILENAME_CHARS = re.compile(rf"[\x00-\x1f\x7f/\\{_BIDI_CONTROL}]")
-_UNSAFE_TEXT_CHARS = re.compile(
-    rf"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f{_BIDI_CONTROL}]"
-)
+_UNSAFE_TEXT_CHARS = re.compile(rf"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f{_BIDI_CONTROL}]")
 # Fields the client is permitted to update via the file-update endpoint.
 # Anything else (user_id, file_id, _id, page_wise_summary, etc.) must be
 # server-controlled — preventing tenant takeover via $set with a stray key.

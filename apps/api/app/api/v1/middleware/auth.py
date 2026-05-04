@@ -131,10 +131,11 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             agent_info = None
             if auth_header and auth_header.startswith("Bearer "):
                 token = auth_header.split(" ", 1)[1]
-                # Room binding (C7): the caller can supply an X-Room-Id
-                # header; the token's room_id claim must match. If the
-                # caller does not provide one, the token is still rejected
-                # unless it has no room binding (legacy).
+                # Room binding (C7): when the token carries a ``room_id``
+                # claim, ``verify_agent_token`` requires the X-Room-Id
+                # header to be present and equal. Tokens minted without
+                # a ``room_id`` claim (legacy / non-room flows) pass when
+                # the header is absent.
                 expected_room = request.headers.get("X-Room-Id")
                 agent_info = await verify_agent_token(
                     token, expected_room_id=expected_room

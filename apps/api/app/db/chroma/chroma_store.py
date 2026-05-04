@@ -59,19 +59,33 @@ _MAC_PREFIX_V2 = "mac2:"
 _MAC_SEP = ":"
 
 
-def _mac_key() -> bytes:
-    """Return the MAC key derived from the app's secret configuration.
+# Domain-separation tag for the Chroma pickle MAC. Derived subkey is bound
+# to this label so the same operator secret cannot be reused with a
+# different label elsewhere in the app and produce identical tags.
+_CHROMA_MAC_KDF_INFO = b"chroma-state-mac-v1"
 
-    Falls back to ``WORKOS_COOKIE_PASSWORD`` so operators don't need to
-    provision an additional secret. ``assert_chroma_mac_key_configured``
-    is the prod-time guard against neither being set.
-    """
+
+def _raw_mac_secret() -> bytes:
+    """Return the operator-supplied secret bytes used as KDF input."""
     raw = (
         getattr(settings, "CHROMA_STATE_MAC_KEY", None)
         or getattr(settings, "WORKOS_COOKIE_PASSWORD", None)
         or "dev-only-chroma-mac-key"
     )
     return raw.encode("utf-8") if isinstance(raw, str) else raw
+
+
+def _mac_key() -> bytes:
+    """Return a domain-separated MAC key derived from the operator secret.
+
+    Prefers ``CHROMA_STATE_MAC_KEY``, falls back to ``WORKOS_COOKIE_PASSWORD``
+    so operators don't need to provision an additional secret on day one.
+    Whichever input is used, we derive a Chroma-specific subkey via HMAC
+    so the raw cookie-encryption key and the pickle MAC key never share
+    material (key separation). ``assert_chroma_mac_key_configured`` is
+    the prod-time guard against neither being set.
+    """
+    return hmac.new(_raw_mac_secret(), _CHROMA_MAC_KDF_INFO, hashlib.sha256).digest()
 
 
 def assert_chroma_mac_key_configured() -> None:
@@ -131,8 +145,18 @@ def _verify_and_unpickle(document: str) -> Any:
             raise ValueError("chroma_store: invalid base64 payload") from exc
     else:
         payload = payload_str.encode("latin1")
-    expected = hmac.new(_mac_key(), payload, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(tag, expected):
+    # Verify against the derived (key-separated) subkey first. Documents
+    # written before key separation was introduced were tagged with the
+    # raw operator secret directly — accept those too so existing stores
+    # keep working through the migration. New writes always use the
+    # derived key. Both branches use ``hmac.compare_digest`` for constant
+    # time and we always run both to avoid timing-disambiguating the two
+    # envelopes.
+    expected_derived = hmac.new(_mac_key(), payload, hashlib.sha256).hexdigest()
+    expected_legacy = hmac.new(_raw_mac_secret(), payload, hashlib.sha256).hexdigest()
+    matches_derived = hmac.compare_digest(tag, expected_derived)
+    matches_legacy = hmac.compare_digest(tag, expected_legacy)
+    if not (matches_derived or matches_legacy):
         raise ValueError("chroma_store: MAC verification failed — refusing to unpickle")
     # Only reached after MAC verification — payload is known to have been
     # produced by this app.

@@ -16,7 +16,9 @@ router = APIRouter()
 # (e.g. ``․․`` U+2024 ONE DOT LEADER, ``‥`` U+2025 TWO DOT LEADER) and
 # bidi-control codepoints used for filename spoofing. NFKC normalize the
 # whole path first so the canonical comparison sees ASCII dots.
-_VFS_BIDI_CONTROL_RE = re.compile(r"[‪-‮⁦-⁩]")
+# Covers LRM/RLM (U+200E/U+200F), ALM (U+061C), formatting controls
+# (U+202A–U+202E), and isolates (U+2066–U+2069).
+_VFS_BIDI_CONTROL_RE = re.compile(r"[‎‏؜‪-‮⁦-⁩]")
 
 
 def _validate_vfs_path(path: str, user_id: str) -> str:
