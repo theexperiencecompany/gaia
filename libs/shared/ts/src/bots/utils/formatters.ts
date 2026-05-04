@@ -128,8 +128,8 @@ export function convertToTelegramMarkdown(text: string): string {
     text,
     (segment) =>
       segment
-        .replace(/\*\*\*(.+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
-        .replace(/\*\*(.+?)\*\*/g, "*$1*") // **bold** → *bold*
+        .replace(/\*\*\*([^*\n]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
+        .replace(/\*\*([^*\n]+)\*\*/g, "*$1*") // **bold** → *bold*
         .replace(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
         .replace(/^>\s*/gm, "") // > quote → strip prefix
         .replace(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
@@ -151,8 +151,8 @@ export function convertToSlackMrkdwn(text: string): string {
     text,
     (segment) =>
       segment
-        .replace(/\*\*\*(.+?)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
-        .replace(/\*\*(.+?)\*\*/g, "*$1*") // **bold** → *bold*
+        .replace(/\*\*\*([^*\n]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
+        .replace(/\*\*([^*\n]+)\*\*/g, "*$1*") // **bold** → *bold*
         .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<$2|$1>") // [label](url) → <url|label>
         .replace(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
         .replace(/^>\s*/gm, "") // > quote → strip prefix
@@ -193,7 +193,7 @@ export function convertToWhatsAppMarkdown(text: string): string {
         .replaceAll(/\*\*\*([^*\n]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
         .replaceAll(/\*\*([^*\n]+)\*\*/g, "*$1*") // **bold** → *bold*
         .replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
-        .replaceAll(/^(\s*)[*\-+]\s+/gm, "$1• ") // - / * / + bullet → •
+        .replaceAll(/^([ \t]*)[*\-+][ \t]+/gm, "$1• ") // - / * / + bullet → •
         .replaceAll(/^>\s*/gm, ""), // > quote → strip prefix
   );
 }
