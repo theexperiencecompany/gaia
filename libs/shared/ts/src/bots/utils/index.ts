@@ -152,7 +152,7 @@ function countSingleAsterisks(text: string): number {
   // Drop ``**`` first so the bold pairs don't double-count toward single-`*`.
   const noDouble = text.replaceAll("**", "");
   // Drop bullet-list ``*`` followed by a space at line start.
-  const noBullets = noDouble.replace(/^\*\s/gm, "");
+  const noBullets = noDouble.replaceAll(/^\*\s/gm, "");
   return (noBullets.match(/\*/g) ?? []).length;
 }
 
@@ -228,7 +228,7 @@ function findOrphanSingleAsterisk(text: string, scan: "tail" | "head"): number {
     indices.push(i);
   }
   if (indices.length === 0) return -1;
-  return scan === "tail" ? indices[indices.length - 1] : indices[0];
+  return scan === "tail" ? (indices.at(-1) ?? -1) : indices[0];
 }
 
 /**
@@ -274,6 +274,41 @@ function pickCutBoundary(text: string, limit: number): number {
   return limit;
 }
 
+function balanceDoubleAsterisks(
+  chunk: string,
+  next: string,
+  chunkNarrative: string,
+): [string, string] {
+  const doubleOpens = (chunkNarrative.match(/\*\*/g) ?? []).length;
+  if (doubleOpens % 2 !== 1) return [chunk, next];
+  const lastIdx = chunk.lastIndexOf("**");
+  if (lastIdx !== -1) {
+    chunk = chunk.slice(0, lastIdx) + chunk.slice(lastIdx + 2);
+  }
+  const firstIdx = next.indexOf("**");
+  if (firstIdx !== -1) {
+    next = next.slice(0, firstIdx) + next.slice(firstIdx + 2);
+  }
+  return [chunk, next];
+}
+
+function balanceSingleAsterisks(
+  chunk: string,
+  next: string,
+  chunkNarrative: string,
+): [string, string] {
+  if (countSingleAsterisks(chunkNarrative) % 2 !== 1) return [chunk, next];
+  const lastIdx = findOrphanSingleAsterisk(chunk, "tail");
+  if (lastIdx !== -1) {
+    chunk = chunk.slice(0, lastIdx) + chunk.slice(lastIdx + 1);
+  }
+  const firstIdx = findOrphanSingleAsterisk(next, "head");
+  if (firstIdx !== -1) {
+    next = next.slice(0, firstIdx) + next.slice(firstIdx + 1);
+  }
+  return [chunk, next];
+}
+
 /**
  * Splits a long response into platform-sized chunks for delivery as multiple
  * messages instead of a single truncated bubble. Used by bot adapters so the
@@ -314,42 +349,9 @@ export function chunkResponse(
     let chunk = remaining.slice(0, cutAt);
     let next = remaining.slice(cutAt);
 
-    // Belt-and-suspenders: balance unbalanced emphasis markers across the
-    // cut in narrative text. We ignore markers inside fenced code blocks
-    // (Python ``**kwargs``, shell globs ``*.txt``, backtick-quoted strings)
-    // so legitimate code doesn't flip parity and mask a real prose orphan.
     const chunkNarrative = stripFencedBlocks(chunk);
-    const nextNarrative = stripFencedBlocks(next);
-
-    // 1. Double-asterisk markdown bold (``**X**``).
-    const doubleOpens = (chunkNarrative.match(/\*\*/g) ?? []).length;
-    if (doubleOpens % 2 === 1) {
-      const lastIdx = chunk.lastIndexOf("**");
-      if (lastIdx !== -1) {
-        chunk = chunk.slice(0, lastIdx) + chunk.slice(lastIdx + 2);
-      }
-      const firstIdx = next.indexOf("**");
-      if (firstIdx !== -1) {
-        next = next.slice(0, firstIdx) + next.slice(firstIdx + 2);
-      }
-    }
-
-    // 2. Single-asterisk WhatsApp-native bold (``*X*``). The platform context
-    //    steers the model toward this style on WhatsApp, so without this
-    //    branch a cut inside ``*Bold Heading*`` leaves stray ``*`` glyphs in
-    //    the rendered bubbles.
-    if (countSingleAsterisks(chunkNarrative) % 2 === 1) {
-      // Strip the orphan single ``*`` from chunk's tail (skipping any ``**``
-      // and bullet-list ``*`` markers) and the matching opener from next.
-      const lastIdx = findOrphanSingleAsterisk(chunk, "tail");
-      if (lastIdx !== -1) {
-        chunk = chunk.slice(0, lastIdx) + chunk.slice(lastIdx + 1);
-      }
-      const firstIdx = findOrphanSingleAsterisk(next, "head");
-      if (firstIdx !== -1) {
-        next = next.slice(0, firstIdx) + next.slice(firstIdx + 1);
-      }
-    }
+    [chunk, next] = balanceDoubleAsterisks(chunk, next, chunkNarrative);
+    [chunk, next] = balanceSingleAsterisks(chunk, next, chunkNarrative);
 
     // Balance code fences across the cut: if the chunk has an odd number of
     // ``` it ends inside an open fence — close it here and reopen on the next

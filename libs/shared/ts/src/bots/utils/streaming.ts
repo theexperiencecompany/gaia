@@ -142,6 +142,23 @@ async function _handleStream(
     }
   };
 
+  const deliverOverflowChunk = async (chunk: string): Promise<void> => {
+    if (sendNewMessage) {
+      currentEditor = await sendNewMessage(chunk);
+      sentText = chunk;
+    } else {
+      // Adapter cannot post additional bubbles — best-effort fallback that
+      // keeps the legacy truncation behaviour for this single bubble.
+      const overflow = truncateResponse(chunk, platform);
+      try {
+        await currentEditor(overflow);
+        sentText = overflow;
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   /**
    * Final delivery: split ``text`` on any unprocessed ``<NEW_MESSAGE_BREAK>``
    * markers, chunk each segment to the platform character limit, and deliver
@@ -160,37 +177,21 @@ async function _handleStream(
       .filter(Boolean);
     if (segments.length === 0) return;
 
-    let isFirstOutput = true;
-    for (const segment of segments) {
-      const chunks = chunkResponse(segment, platform);
-      for (const chunk of chunks) {
-        if (isFirstOutput) {
-          isFirstOutput = false;
-          if (chunk === sentText) continue;
-          try {
-            await currentEditor(chunk);
-            sentText = chunk;
-          } catch {
-            // current bubble may have been deleted or expired
-          }
-          continue;
-        }
+    const allChunks = segments.flatMap((s) => chunkResponse(s, platform));
+    if (allChunks.length === 0) return;
 
-        if (sendNewMessage) {
-          currentEditor = await sendNewMessage(chunk);
-          sentText = chunk;
-        } else {
-          // Adapter cannot post additional bubbles — best-effort fallback that
-          // keeps the legacy truncation behaviour for this single bubble.
-          const overflow = truncateResponse(chunk, platform);
-          try {
-            await currentEditor(overflow);
-            sentText = overflow;
-          } catch {
-            // ignore
-          }
-        }
+    const [firstChunk, ...remainingChunks] = allChunks;
+    if (firstChunk !== sentText) {
+      try {
+        await currentEditor(firstChunk);
+        sentText = firstChunk;
+      } catch {
+        // current bubble may have been deleted or expired
       }
+    }
+
+    for (const chunk of remainingChunks) {
+      await deliverOverflowChunk(chunk);
     }
   };
 
