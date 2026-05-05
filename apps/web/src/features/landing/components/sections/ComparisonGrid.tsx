@@ -28,12 +28,12 @@ const COMPETITORS: CompetitorInfo[] = [
   {
     name: "OpenClaw",
     slug: "openclaw",
-    logo: { type: "letter", char: "O" },
+    logo: { type: "image", src: "/images/icons/openclaw.svg" },
   },
   {
     name: "Poke",
     slug: "poke",
-    logo: { type: "letter", char: "P" },
+    logo: { type: "image", src: "/images/icons/poke.png" },
   },
   {
     name: "ChatGPT",
