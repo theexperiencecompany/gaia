@@ -4,8 +4,8 @@ import hashlib
 import inspect
 from typing import Any
 
+from app.agents.core.subagents.registry import all_subagents
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.oauth_config import get_subagent_integrations
 from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
@@ -73,15 +73,11 @@ async def _get_subagent_tools() -> dict[str, dict]:
         Dictionary mapping subagent tool names to their hash and namespace info
     """
     subagent_tools = {}
-    subagent_integrations = get_subagent_integrations()
 
-    for integration in subagent_integrations:
-        cfg = integration.subagent_config
-        if not cfg:
-            continue
-
-        provider_name = integration.name
-        short_name = integration.short_name or integration.id
+    for subagent in all_subagents():
+        cfg = subagent.config
+        provider_name = subagent.name
+        short_name = subagent.short_name or subagent.id
 
         # Create comprehensive description matching handoff_tools pattern
         description = (
@@ -94,7 +90,7 @@ async def _get_subagent_tools() -> dict[str, dict]:
         # Compute hash based on description only
         subagent_hash = hashlib.sha256(description.encode()).hexdigest()
 
-        subagent_tools[f"subagents::subagent:{integration.id}"] = {
+        subagent_tools[f"subagents::subagent:{subagent.id}"] = {
             "hash": subagent_hash,
             "namespace": "subagents",
             "description": description,
@@ -220,7 +216,6 @@ def _build_put_operations(
         else:
             # Subagent tool
             description = tool_data["description"]
-        print("composio tool description", description)
         put_ops.append(
             PutOp(
                 namespace=(tool_data["namespace"],),

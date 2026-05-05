@@ -105,24 +105,40 @@ async def deep_research(
         successful_searches = sum(
             1 for r in search_results if isinstance(r, dict) and r.get("results")
         )
+        total_raw_urls = sum(
+            len(r.get("results", []))
+            for r in search_results
+            if isinstance(r, dict) and r.get("results")
+        )
         writer(
             {
-                "progress": f"{successful_searches}/{len(sub_queries)} searches returned results"
+                "progress": (
+                    f"{successful_searches}/{len(sub_queries)} searches returned results "
+                    f"({total_raw_urls} total URLs before deduplication)"
+                )
             }
         )
 
         # ── Phase 3: Deduplicate + rank URLs ────────────────────────────────
         ranked_urls = rank_and_deduplicate_urls(search_results, max_urls=max_sources)
+        found_urls = [u["url"] for u in ranked_urls]
         writer(
             {
-                "progress": f"Found {len(ranked_urls)} unique sources — fetching full content..."
+                "progress": f"Found {len(ranked_urls)} unique sources — fetching full content...",
+                "found_urls": found_urls,
             }
         )
 
         if not ranked_urls:
             return {
-                "error": "No sources found for the given query. Try broadening your search.",
+                "error": (
+                    "Search returned no results for the given query. "
+                    "No URLs were found — do not fabricate links. "
+                    "Try broadening the search or inform the user that no sources were found."
+                ),
                 "query": query,
+                "searched_queries": sub_queries,
+                "source_count": 0,
                 "data": None,
             }
 
@@ -205,6 +221,8 @@ async def deep_research(
         )
 
         # ── Build result ─────────────────────────────────────────────────────
+        # Include the authoritative list of real URLs so the LLM cannot fabricate others
+        authoritative_urls = [s["url"] for s in valid_sources]
         result: Dict[str, Any] = {
             "query": query,
             "scope": scope,
@@ -212,9 +230,15 @@ async def deep_research(
             "sub_queries": sub_queries,
             "sources": valid_sources,
             "source_count": len(valid_sources),
+            "authoritative_urls": authoritative_urls,
             "depth": depth,
             "elapsed_seconds": elapsed,
+            "failed_sources": failed_count,
             "error": None,
+            "integrity_note": (
+                "All URLs in `sources` and `authoritative_urls` were returned by real search "
+                "queries. Only cite URLs from this list — never invent or guess URLs."
+            ),
         }
 
         # Only cache when we have content — avoid masking transient fetch failures

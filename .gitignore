@@ -112,6 +112,7 @@ out
 postman/
 
 .agents/plans/
+.agents/recording/
 
 # whatsapp-web.js
 .wwebjs_auth/
@@ -132,3 +133,5 @@ superpowers/
 # Claude Code / agent session transcripts (top-level, dated)
 /20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]-*.txt
 .claude/sessions/
+
+skills-lock.json

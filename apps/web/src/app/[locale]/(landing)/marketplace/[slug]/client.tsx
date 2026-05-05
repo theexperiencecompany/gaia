@@ -23,6 +23,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
+import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
 import { toast } from "@/lib/toast";
@@ -405,6 +406,13 @@ export function IntegrationDetailClient({
               )}
             </CardBody>
           </Card>
+
+          {/* Related community workflows */}
+          <IntegrationRelatedWorkflows
+            integrationId={integration.integrationId}
+            integrationName={integration.name}
+            variant="section"
+          />
 
           {/* Rich content sections for SEO and user education */}
           <IntegrationRichContent
