@@ -37,7 +37,7 @@ const PHASE_ORDER: WorkflowDemoPhase[] = [
 ];
 
 const MemoDemoWorkflowModal = memo(DemoWorkflowModal);
-const MemoDemoWorkflowCard = memo(DemoWorkflowCard);
+const _MemoDemoWorkflowCard = memo(DemoWorkflowCard);
 const MemoDemoExecutionChat = memo(DemoExecutionChat);
 const MemoDemoCommunityCards = memo(DemoCommunityCards);
 const MemoDummyComposer = memo(DummyComposer);

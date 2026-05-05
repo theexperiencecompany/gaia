@@ -183,6 +183,11 @@ export default function FinalSection({
               : "text-white! text-lg h-12 px-2 rounded-2xl"
           }
         />
+        <p
+          className={`text-sm font-light mt-1 ${isDark ? "text-zinc-400" : "text-white/60"}`}
+        >
+          Free forever for personal use. No credit card.
+        </p>
 
         {showSocials && (
           <div className="mt-4 flex items-center gap-3 sm:mt-6 sm:gap-2">

@@ -539,6 +539,15 @@ export default function Tired() {
           <ArrowRight02Icon width={20} height={20} />
         </RaisedButton>
       </Link>
+      <p className="text-sm text-zinc-500 text-center mt-6">
+        Replacing Bardeen, Zapier, or Make?{" "}
+        <Link
+          href="/alternative-to/bardeen"
+          className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200 transition-colors"
+        >
+          See how GAIA compares.
+        </Link>
+      </p>
     </section>
   );
 }

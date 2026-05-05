@@ -449,7 +449,6 @@ export default function ChatDemoSection() {
             <MemoDemoTodosView />
           </div>
         );
-      case "chats":
       default:
         return null;
     }

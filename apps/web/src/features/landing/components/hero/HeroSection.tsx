@@ -67,8 +67,9 @@ export default function HeroSection({
           <div
             className={`mb-3 max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl animate-[fadeIn_0.4s_ease-out_0.2s_both] ${isDark ? "text-zinc-200" : "text-black"}`}
           >
-            GAIA handles your emails, tasks, calendar, and workflows,
-            <br /> so you can focus on work that actually matters.{" "}
+            GAIA watches your inbox, calendar, and tools and acts before you
+            ask.
+            <br /> Reachable from WhatsApp, Slack, Telegram, or the web.
           </div>
         </div>
         <div className="flex gap-4">
@@ -82,6 +83,11 @@ export default function HeroSection({
             text="Try GAIA Free"
           />
         </div>
+        <p
+          className={`text-sm font-light mt-1 ${isDark ? "text-zinc-400" : "text-zinc-600"}`}
+        >
+          Free forever for personal use. No credit card.
+        </p>
       </div>
     </div>
   );

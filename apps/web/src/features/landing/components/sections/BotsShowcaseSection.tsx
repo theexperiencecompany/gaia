@@ -1335,6 +1335,15 @@ export default function BotsShowcaseSection() {
             />
           </div>
         </div>
+        <p className="text-sm text-zinc-500 text-center">
+          Already on Poke?{" "}
+          <Link
+            href="/compare/poke"
+            className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200 transition-colors"
+          >
+            See how GAIA compares.
+          </Link>
+        </p>
       </div>
     </section>
   );

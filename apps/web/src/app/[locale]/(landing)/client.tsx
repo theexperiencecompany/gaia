@@ -31,6 +31,10 @@ const ChatDemoSection = dynamic(
   () => import("@/features/landing/components/demo/ChatDemoSection"),
   { loading: SectionLoader },
 );
+const BuiltForEveryone = dynamic(
+  () => import("@/features/landing/components/sections/BuiltForEveryone"),
+  { loading: SectionLoader },
+);
 const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),
   { loading: SectionLoader },
@@ -55,6 +59,14 @@ const OpenSource = dynamic(
   () => import("@/features/landing/components/sections/OpenSource"),
   { loading: SectionLoader },
 );
+const LandingPricingSection = dynamic(
+  () => import("@/features/landing/components/sections/LandingPricingSection"),
+  { loading: SectionLoader },
+);
+const ComparisonGrid = dynamic(
+  () => import("@/features/landing/components/sections/ComparisonGrid"),
+  { loading: SectionLoader },
+);
 const FAQAccordion = dynamic(
   () =>
     import("@/features/pricing/components/FAQAccordion").then((mod) => ({
@@ -73,6 +85,10 @@ const LandingDownloadSection = dynamic(
 //   () => import("@/features/landing/components/sections/CommunitySection"),
 //   { loading: SectionLoader },
 // );
+const EditorialClose = dynamic(
+  () => import("@/features/landing/components/sections/EditorialClose"),
+  { loading: SectionLoader },
+);
 const FinalSection = dynamic(
   () => import("@/features/landing/components/sections/FinalSection"),
   { loading: SectionLoader },
@@ -146,14 +162,18 @@ export default function LandingPageClient({
         </section>
 
         <div>
+          <BuiltForEveryone />
           <TiredBoringAssistants />
           <WorkflowSection />
           <UseCasesSectionLanding />
           <BotsShowcaseSection />
           <TodoShowcaseSection />
           <OpenSource />
+          <LandingPricingSection />
+          <ComparisonGrid />
           <FAQAccordion />
           <LandingDownloadSection />
+          <EditorialClose />
           {/* <CommunitySection /> */}
           <FinalSection
             showSocials={false}

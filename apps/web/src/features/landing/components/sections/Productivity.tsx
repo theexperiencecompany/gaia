@@ -11,8 +11,25 @@ export default function UseCasesSectionLanding() {
     <div className="relative flex flex-col items-center justify-start px-4 sm:px-6 min-h-screen">
       <div className="relative z-1 flex w-full max-w-7xl flex-col items-center justify-center p-4 sm:p-6 lg:p-7 gap-10 min-h-screen">
         <h3 className="text-4xl font-serif font-normal!">
-          Here's a few things GAIA can do for you
+          What people use GAIA for
         </h3>
+        <div className="flex flex-wrap gap-2 justify-center">
+          {[
+            { label: "Chiefs of Staff", slug: "chiefs-of-staff" },
+            { label: "Recruiters", slug: "recruiters" },
+            { label: "Agency Owners", slug: "agency-owners" },
+            { label: "Founders", slug: "startup-founders" },
+            { label: "Sales Professionals", slug: "sales-professionals" },
+          ].map(({ label, slug }) => (
+            <Link
+              key={slug}
+              href={`/for/${slug}`}
+              className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition-colors"
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
         <div className="max-w-5xl">
           <UseCaseSection
             dummySectionRef={contentRef}

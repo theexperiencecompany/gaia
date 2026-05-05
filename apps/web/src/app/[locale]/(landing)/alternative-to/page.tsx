@@ -4,10 +4,7 @@ import Link from "next/link";
 
 import JsonLd from "@/components/seo/JsonLd";
 import type { AlternativeData } from "@/features/alternatives/data/alternativesData";
-import {
-  getAllAlternatives,
-  getAlternativesByCategory,
-} from "@/features/alternatives/data/alternativesData";
+import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,
