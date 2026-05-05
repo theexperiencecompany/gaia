@@ -795,6 +795,7 @@ class MemoryService:
             )
             return False
 
+    @CacheInvalidator(key_patterns=["user:{user_id}:memories:*"])
     async def delete_all_memories(self, user_id: Optional[str]) -> bool:
         """
         Delete all memories for a user using Mem0 v2 API.

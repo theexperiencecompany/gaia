@@ -98,17 +98,26 @@ async def warmup_subagent_graphs() -> None:
         if integ.subagent_config and integ.subagent_config.agent_name
     ]
 
-    async def _warm(name: str) -> None:
+    async def _warm(name: str) -> bool:
         try:
             await providers.aget(name)
+            return True
         except Exception as e:
             log.warning(f"Subagent graph pre-warm failed for {name}: {e}")
+            return False
 
-    await asyncio.gather(*(_warm(n) for n in agent_names), return_exceptions=True)
-    log.info(
-        "Subagent graphs pre-warmed",
+    results = await asyncio.gather(*(_warm(n) for n in agent_names))
+    succeeded = sum(1 for ok in results if ok)
+    failed = len(agent_names) - succeeded
+    log.info(f"Subagent graphs pre-warmed: {succeeded}/{len(agent_names)} succeeded")
+    log.set(
+        subagent_warmup={
+            "total": len(agent_names),
+            "succeeded": succeeded,
+            "failed": failed,
+            "names": agent_names,
+        }
     )
-    log.set(subagent_warmup={"count": len(agent_names), "names": agent_names})
 
 
 setup_warnings()

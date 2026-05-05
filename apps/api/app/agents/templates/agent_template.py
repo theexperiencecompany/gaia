@@ -96,7 +96,7 @@ def get_comms_static_prompt(source: str | None) -> str:
     """
     if not source:
         return COMMS_PROMPT_DEFAULT
-    return COMMS_PROMPT_BY_SOURCE.get(source, COMMS_PROMPT_DEFAULT)
+    return COMMS_PROMPT_BY_SOURCE.get(source.strip().lower(), COMMS_PROMPT_DEFAULT)
 
 
 # Legacy name still imported by a few call sites. Kept as an alias for the

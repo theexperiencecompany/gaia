@@ -42,6 +42,14 @@ def _is_todo_context(msg: AnyMessage) -> bool:
     return _has_marker(msg, "todo_context")
 
 
+def _is_time_context(msg: AnyMessage) -> bool:
+    """Time-context HumanMessages carry the current clock — emitted each turn
+    by ``build_current_time_message``. We keep only the latest so checkpointed
+    threads don't accumulate stale clocks that contradict the current time.
+    """
+    return _has_marker(msg, "time_context")
+
+
 def manage_system_prompts_node(
     state: State, config: RunnableConfig, store: BaseStore
 ) -> State:
@@ -53,7 +61,11 @@ def manage_system_prompts_node(
     - At most ONE todo-context system prompt is kept — the latest. Emitted by
       ``todo_pre_model_hook``; kept in its own slot so it does not collide with
       the real static prompt when accumulated snapshots exist in state.
-    - All other system messages are dropped. Non-system messages pass through.
+    - At most ONE time-context HumanMessage is kept — the latest. Emitted each
+      turn by ``build_current_time_message``; older copies are dropped so the
+      LLM never sees contradictory clocks across a checkpointed thread.
+    - All other system messages are dropped. Non-time-context non-system
+      messages pass through.
 
     Runs as a pre-model hook so this also fires when a generation is cancelled
     (end-of-graph hooks don't run on cancellation).
@@ -66,23 +78,26 @@ def manage_system_prompts_node(
         latest_static_idx: int | None = None
         latest_dynamic_idx: int | None = None
         latest_todo_idx: int | None = None
+        latest_time_idx: int | None = None
         for idx in range(len(messages) - 1, -1, -1):
             msg = messages[idx]
-            if msg.type != "system":
-                continue
-            if _is_todo_context(msg):
-                if latest_todo_idx is None:
-                    latest_todo_idx = idx
-            elif _is_dynamic_context(msg):
-                if latest_dynamic_idx is None:
-                    latest_dynamic_idx = idx
-            else:
-                if latest_static_idx is None:
-                    latest_static_idx = idx
+            if msg.type == "system":
+                if _is_todo_context(msg):
+                    if latest_todo_idx is None:
+                        latest_todo_idx = idx
+                elif _is_dynamic_context(msg):
+                    if latest_dynamic_idx is None:
+                        latest_dynamic_idx = idx
+                else:
+                    if latest_static_idx is None:
+                        latest_static_idx = idx
+            elif _is_time_context(msg) and latest_time_idx is None:
+                latest_time_idx = idx
             if (
                 latest_static_idx is not None
                 and latest_dynamic_idx is not None
                 and latest_todo_idx is not None
+                and latest_time_idx is not None
             ):
                 break
 
@@ -99,6 +114,7 @@ def manage_system_prompts_node(
         # ``todo_context`` slot sits at the tail of ``system_instruction``
         # so its per-step churn does not shift the cacheable prefix.
         dropped_system = 0
+        dropped_time = 0
         static_msg: AnyMessage | None = None
         dynamic_msg: AnyMessage | None = None
         todo_msg: AnyMessage | None = None
@@ -113,6 +129,11 @@ def manage_system_prompts_node(
                     todo_msg = msg
                 else:
                     dropped_system += 1
+            elif _is_time_context(msg):
+                if idx == latest_time_idx:
+                    non_system.append(msg)
+                else:
+                    dropped_time += 1
             else:
                 non_system.append(msg)
 
@@ -130,6 +151,7 @@ def manage_system_prompts_node(
                 "messages_in": len(messages),
                 "messages_out": len(filtered),
                 "dropped_system_prompts": dropped_system,
+                "dropped_time_context": dropped_time,
                 "kept_static": static_msg is not None,
                 "kept_dynamic": dynamic_msg is not None,
                 "kept_todo": todo_msg is not None,

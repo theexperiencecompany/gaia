@@ -58,7 +58,7 @@ def invalidate_user_subagent_cache(
             _USER_SUBAGENT_CACHE.pop(key, None)
 
 
-async def create_subagent(integration_id: str):
+async def create_subagent(integration_id: str) -> Any:
     """
     Create a provider subagent graph on-demand.
     Registers provider tools to registry if not already present.
@@ -140,7 +140,7 @@ async def create_subagent(integration_id: str):
     return graph
 
 
-async def create_subagent_for_user(integration_id: str, user_id: str):
+async def create_subagent_for_user(integration_id: str, user_id: str) -> Any | None:
     """
     Create (or retrieve from in-memory cache) a per-user subagent graph.
 
@@ -200,7 +200,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
         return graph
 
 
-async def _build_user_subagent(integration_id: str, user_id: str):
+async def _build_user_subagent(integration_id: str, user_id: str) -> Any | None:
     """Build a per-user subagent graph from scratch (called on cache miss)."""
     integration = get_integration_by_id(integration_id)
 
@@ -277,7 +277,7 @@ async def _build_user_subagent(integration_id: str, user_id: str):
     return graph
 
 
-async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
+async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Any | None:
     """
     Create a subagent graph for a custom MCP integration from MongoDB.
 

@@ -12,6 +12,7 @@ they patch ``create_system_message`` and ``build_dynamic_context_message``
 and verify the assembled message list.
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -41,7 +42,7 @@ def _patches(
     tool_msg: str = "Tool selection",
     reply_msg: str = "Reply context\n\noriginal",
     files_str: str = "",
-):
+) -> dict[str, Any]:
     """Bundle context-manager patches for the helpers `construct_langchain_messages` calls."""
     return {
         "create_system": patch(

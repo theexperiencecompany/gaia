@@ -389,6 +389,20 @@ async def _invalidate_caches(
     except redis.RedisError as e:
         log.warning(f"Failed to invalidate OAuth status cache: {e}")
 
+    # Provider metadata cache (24h TTL) is keyed by integration.provider, not
+    # integration_id. Without this clear, disconnected integrations keep
+    # injecting stale metadata into subagent prompts until the TTL expires.
+    integration = get_integration_by_id(integration_id)
+    if integration and integration.provider:
+        try:
+            metadata_key = f"provider_metadata:{user_id}:{integration.provider}"
+            await delete_cache(metadata_key)
+            log.info(
+                f"Provider metadata cache invalidated for {user_id}:{integration.provider}"
+            )
+        except redis.RedisError as e:
+            log.warning(f"Failed to invalidate provider metadata cache: {e}")
+
     # Determine whether to delete record or set status to "created"
     if managed_by == "mcp":
         # MCP integrations: record already deleted in main disconnect logic

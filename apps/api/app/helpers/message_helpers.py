@@ -257,10 +257,12 @@ async def build_dynamic_context_message(
 
     except Exception as e:
         log.error(f"Error creating dynamic context message: {e}")
-        utc_time_str = datetime.now(timezone.utc).strftime("%A, %B %d, %Y, %H:%M UTC")
-        return _mark_dynamic_context(
-            SystemMessage(content=f"Current UTC Time: {utc_time_str}")
-        )
+        # Return a byte-stable empty message so a persistent failure here
+        # doesn't change the prompt prefix every minute and silently
+        # invalidate the implicit prompt cache. The clock lives in a
+        # HumanMessage built by build_current_time_message, so omitting
+        # time here is safe.
+        return _mark_dynamic_context(SystemMessage(content=""))
 
 
 # --- Back-compat shims -----------------------------------------------------
