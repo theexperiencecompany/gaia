@@ -12,30 +12,30 @@ import {
 
 // Source: Anthropic Economic Index, 2025
 // https://www.anthropic.com/research/labor-market-impacts
-// Values are 0-1 (proportion of tasks covered/observed).
+// Values read directly from the published radar chart (rings at 0.2, 0.4, 0.6, 0.8, 1.0).
 const CHART_DATA = [
-  { occupation: "Management", theoretical: 0.85, observed: 0.1 },
-  { occupation: "Business & finance", theoretical: 0.9, observed: 0.15 },
-  { occupation: "Computer & math", theoretical: 0.95, observed: 0.35 },
+  { occupation: "Management", theoretical: 0.78, observed: 0.1 },
+  { occupation: "Business & finance", theoretical: 0.85, observed: 0.2 },
+  { occupation: "Computer & math", theoretical: 0.9, observed: 0.4 },
   { occupation: "Architecture & engineering", theoretical: 0.8, observed: 0.1 },
-  { occupation: "Life & social sciences", theoretical: 0.65, observed: 0.05 },
-  { occupation: "Social services", theoretical: 0.4, observed: 0.05 },
+  { occupation: "Life & social sciences", theoretical: 0.85, observed: 0.1 },
+  { occupation: "Social services", theoretical: 0.55, observed: 0.05 },
   { occupation: "Legal", theoretical: 0.95, observed: 0.1 },
-  { occupation: "Education & library", theoretical: 0.55, observed: 0.1 },
-  { occupation: "Arts & media", theoretical: 0.75, observed: 0.2 },
-  { occupation: "Healthcare practitioners", theoretical: 0.55, observed: 0.05 },
-  { occupation: "Healthcare support", theoretical: 0.3, observed: 0.05 },
-  { occupation: "Protective service", theoretical: 0.3, observed: 0.05 },
+  { occupation: "Education & library", theoretical: 0.65, observed: 0.2 },
+  { occupation: "Arts & media", theoretical: 0.85, observed: 0.2 },
+  { occupation: "Healthcare practitioners", theoretical: 0.65, observed: 0.1 },
+  { occupation: "Healthcare support", theoretical: 0.4, observed: 0.1 },
+  { occupation: "Protective service", theoretical: 0.3, observed: 0.1 },
   { occupation: "Food & serving", theoretical: 0.1, observed: 0.05 },
   { occupation: "Grounds maintenance", theoretical: 0.1, observed: 0.05 },
   { occupation: "Personal care", theoretical: 0.1, observed: 0.05 },
   { occupation: "Sales", theoretical: 0.3, observed: 0.2 },
-  { occupation: "Office & admin", theoretical: 0.85, observed: 0.3 },
+  { occupation: "Office & admin", theoretical: 0.95, observed: 0.3 },
   { occupation: "Agriculture", theoretical: 0.1, observed: 0.05 },
   { occupation: "Construction", theoretical: 0.1, observed: 0.05 },
   { occupation: "Installation & repair", theoretical: 0.2, observed: 0.05 },
-  { occupation: "Production", theoretical: 0.2, observed: 0.05 },
-  { occupation: "Transportation", theoretical: 0.2, observed: 0.05 },
+  { occupation: "Production", theoretical: 0.3, observed: 0.1 },
+  { occupation: "Transportation", theoretical: 0.2, observed: 0.1 },
 ];
 
 const COLOR_THEORETICAL = "#60a5fa";
@@ -88,8 +88,8 @@ export default function BuiltForEveryone() {
             GAIA is for everyone else.
           </h2>
           <p className="text-base sm:text-lg text-zinc-400 font-light max-w-2xl">
-            Programmers are 75% AI-covered. Operations, legal, sales, HR —
-            barely touched.
+            AI changed how engineers work. Most other work is still done by
+            hand.
           </p>
         </div>
 
@@ -112,21 +112,17 @@ export default function BuiltForEveryone() {
             </div>
           </div>
 
-          <div className="mx-auto w-full max-w-3xl">
-            <ResponsiveContainer width="100%" height={620}>
+          <div className="mx-auto w-full max-w-5xl">
+            <ResponsiveContainer width="100%" height={760}>
               <RadarChart
                 data={CHART_DATA}
-                outerRadius="70%"
-                margin={{ top: 60, right: 80, bottom: 40, left: 80 }}
+                outerRadius="68%"
+                margin={{ top: 80, right: 120, bottom: 60, left: 120 }}
               >
-                <PolarGrid
-                  stroke="#3f3f46"
-                  strokeDasharray="2 4"
-                  gridType="polygon"
-                />
+                <PolarGrid stroke="#3f3f46" gridType="circle" />
                 <PolarAngleAxis
                   dataKey="occupation"
-                  tick={{ fill: "#a1a1aa", fontSize: 10 }}
+                  tick={{ fill: "#a1a1aa", fontSize: 11 }}
                   tickLine={false}
                 />
                 <PolarRadiusAxis
@@ -144,8 +140,8 @@ export default function BuiltForEveryone() {
                   stroke={COLOR_THEORETICAL}
                   fill={COLOR_THEORETICAL}
                   fillOpacity={0.35}
-                  strokeWidth={1.5}
-                  dot={{ r: 2, fill: COLOR_THEORETICAL, strokeWidth: 0 }}
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: COLOR_THEORETICAL, strokeWidth: 0 }}
                 />
                 <Radar
                   name="Observed AI coverage"
@@ -153,8 +149,8 @@ export default function BuiltForEveryone() {
                   stroke={COLOR_OBSERVED}
                   fill={COLOR_OBSERVED}
                   fillOpacity={0.45}
-                  strokeWidth={1.5}
-                  dot={{ r: 2, fill: COLOR_OBSERVED, strokeWidth: 0 }}
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: COLOR_OBSERVED, strokeWidth: 0 }}
                 />
                 <Tooltip content={<CustomTooltip />} />
               </RadarChart>
