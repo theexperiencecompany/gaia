@@ -1,49 +1,45 @@
 "use client";
 
-import Link from "next/link";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from "recharts";
 
+// Source: Anthropic Economic Index, 2025
+// https://www.anthropic.com/research/labor-market-impacts
+// Values are 0-1 (proportion of tasks covered/observed).
 const CHART_DATA = [
-  { occupation: "Computer Programmers", actual: 75, theoretical: 95 },
-  { occupation: "Customer Service", actual: 67, theoretical: 88 },
-  { occupation: "Data Entry Keyers", actual: 67, theoretical: 82 },
-  { occupation: "Computer & Math", actual: 33, theoretical: 94 },
-  { occupation: "Office & Admin", actual: 8, theoretical: 90 },
-  { occupation: "Sales & Marketing", actual: 12, theoretical: 65 },
-  { occupation: "Healthcare", actual: 5, theoretical: 45 },
-  { occupation: "Food & Service", actual: 0, theoretical: 15 },
+  { occupation: "Management", theoretical: 0.85, observed: 0.1 },
+  { occupation: "Business & finance", theoretical: 0.9, observed: 0.15 },
+  { occupation: "Computer & math", theoretical: 0.95, observed: 0.35 },
+  { occupation: "Architecture & engineering", theoretical: 0.8, observed: 0.1 },
+  { occupation: "Life & social sciences", theoretical: 0.65, observed: 0.05 },
+  { occupation: "Social services", theoretical: 0.4, observed: 0.05 },
+  { occupation: "Legal", theoretical: 0.95, observed: 0.1 },
+  { occupation: "Education & library", theoretical: 0.55, observed: 0.1 },
+  { occupation: "Arts & media", theoretical: 0.75, observed: 0.2 },
+  { occupation: "Healthcare practitioners", theoretical: 0.55, observed: 0.05 },
+  { occupation: "Healthcare support", theoretical: 0.3, observed: 0.05 },
+  { occupation: "Protective service", theoretical: 0.3, observed: 0.05 },
+  { occupation: "Food & serving", theoretical: 0.1, observed: 0.05 },
+  { occupation: "Grounds maintenance", theoretical: 0.1, observed: 0.05 },
+  { occupation: "Personal care", theoretical: 0.1, observed: 0.05 },
+  { occupation: "Sales", theoretical: 0.3, observed: 0.2 },
+  { occupation: "Office & admin", theoretical: 0.85, observed: 0.3 },
+  { occupation: "Agriculture", theoretical: 0.1, observed: 0.05 },
+  { occupation: "Construction", theoretical: 0.1, observed: 0.05 },
+  { occupation: "Installation & repair", theoretical: 0.2, observed: 0.05 },
+  { occupation: "Production", theoretical: 0.2, observed: 0.05 },
+  { occupation: "Transportation", theoretical: 0.2, observed: 0.05 },
 ];
 
-const OCCUPATION_SLUG: Record<string, string> = {
-  "Computer Programmers": "software-developers",
-  "Customer Service": "customer-success",
-  "Computer & Math": "software-developers",
-  "Office & Admin": "operations-managers",
-  "Sales & Marketing": "sales-professionals",
-};
-
-const PERSONA_CHIPS = [
-  { label: "Chiefs of Staff", slug: "chiefs-of-staff" },
-  { label: "Recruiters", slug: "recruiters" },
-  { label: "Agency Owners", slug: "agency-owners" },
-  { label: "Founders", slug: "startup-founders" },
-  { label: "Sales Professionals", slug: "sales-professionals" },
-  { label: "Operations Managers", slug: "operations-managers" },
-  { label: "Lawyers", slug: "lawyers" },
-  { label: "HR Managers", slug: "hr-managers" },
-];
-
-const COLOR_ACTUAL = "#00bbff";
-const COLOR_THEORETICAL = "#52525b";
+const COLOR_THEORETICAL = "#60a5fa";
+const COLOR_OBSERVED = "#f87171";
 
 interface TooltipPayloadItem {
   name: string;
@@ -59,28 +55,19 @@ interface CustomTooltipProps {
 
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload?.length) return null;
-  const slug = label ? OCCUPATION_SLUG[label] : undefined;
-
   return (
-    <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-3 text-sm shadow-xl">
-      {slug ? (
-        <Link
-          href={`/for/${slug}`}
-          className="mb-2 block font-medium text-zinc-100 hover:text-primary transition-colors"
-        >
-          {label}
-        </Link>
-      ) : (
-        <p className="mb-2 font-medium text-zinc-100">{label}</p>
-      )}
+    <div className="rounded-xl bg-zinc-900 p-3 text-sm shadow-xl outline outline-1 outline-zinc-800">
+      <p className="mb-1.5 font-medium text-zinc-100">{label}</p>
       {payload.map((item) => (
         <div key={item.name} className="flex items-center gap-2 text-zinc-300">
           <span
             className="inline-block h-2 w-2 rounded-full"
             style={{ backgroundColor: item.color }}
           />
-          <span>{item.name}:</span>
-          <span className="font-medium">{item.value}%</span>
+          <span className="text-xs">{item.name}:</span>
+          <span className="text-xs font-medium tabular-nums">
+            {Math.round(item.value * 100)}%
+          </span>
         </div>
       ))}
     </div>
@@ -90,137 +77,107 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 export default function BuiltForEveryone() {
   return (
     <section className="flex flex-col items-center px-4 py-24 sm:px-6 sm:py-28 lg:px-8">
-      <div className="flex w-full max-w-7xl flex-col items-center gap-12">
-        {/* Eyebrow */}
-        <p className="text-primary text-xs uppercase tracking-widest font-medium">
-          AI shouldn&apos;t only be for engineers
-        </p>
+      <div className="flex w-full max-w-7xl flex-col items-center gap-10">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="text-primary text-xs uppercase tracking-widest font-medium">
+            Built for the other 95%
+          </p>
+          <h2 className="text-4xl sm:text-5xl md:text-6xl font-medium font-serif! tracking-tight max-w-3xl">
+            AI was built for developers.
+            <br />
+            GAIA is for everyone else.
+          </h2>
+          <p className="text-base sm:text-lg text-zinc-400 font-light max-w-2xl">
+            Programmers are 75% AI-covered. Operations, legal, sales, HR —
+            barely touched.
+          </p>
+        </div>
 
-        {/* Headline */}
-        <h2 className="text-4xl sm:text-5xl md:text-6xl font-medium font-serif! text-center tracking-tight max-w-4xl">
-          Today, AI works hardest for developers. GAIA works for everyone else.
-        </h2>
+        {/* Chart card */}
+        <div className="w-full max-w-4xl rounded-2xl bg-zinc-900 p-6 sm:p-8 outline outline-1 outline-zinc-800">
+          <h3 className="mb-2 text-center text-sm font-medium text-zinc-200 sm:text-base">
+            Theoretical capability and observed usage by occupational category
+          </h3>
 
-        {/* Body text */}
-        <p className="text-base sm:text-xl text-zinc-400 font-light text-center max-w-3xl">
-          Anthropic&apos;s research shows computer programmers are 75%
-          AI-covered. Operations, sales, recruiting, legal, HR — the people who
-          actually run companies — are barely touched. GAIA is built for them.
-        </p>
+          <div className="relative">
+            <ResponsiveContainer width="100%" height={520}>
+              <RadarChart
+                data={CHART_DATA}
+                outerRadius="78%"
+                margin={{ top: 20, right: 60, bottom: 20, left: 60 }}
+              >
+                <PolarGrid
+                  stroke="#3f3f46"
+                  strokeDasharray="2 4"
+                  gridType="polygon"
+                />
+                <PolarAngleAxis
+                  dataKey="occupation"
+                  tick={{ fill: "#a1a1aa", fontSize: 10 }}
+                  tickLine={false}
+                />
+                <PolarRadiusAxis
+                  angle={90}
+                  domain={[0, 1]}
+                  tick={{ fill: "#52525b", fontSize: 9 }}
+                  tickCount={6}
+                  axisLine={false}
+                  tickFormatter={(v: number) => v.toFixed(1)}
+                  stroke="#3f3f46"
+                />
+                <Radar
+                  name="Theoretical AI coverage"
+                  dataKey="theoretical"
+                  stroke={COLOR_THEORETICAL}
+                  fill={COLOR_THEORETICAL}
+                  fillOpacity={0.35}
+                  strokeWidth={1.5}
+                  dot={{ r: 2, fill: COLOR_THEORETICAL, strokeWidth: 0 }}
+                />
+                <Radar
+                  name="Observed AI coverage"
+                  dataKey="observed"
+                  stroke={COLOR_OBSERVED}
+                  fill={COLOR_OBSERVED}
+                  fillOpacity={0.45}
+                  strokeWidth={1.5}
+                  dot={{ r: 2, fill: COLOR_OBSERVED, strokeWidth: 0 }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
 
-        {/* Chart */}
-        <div className="w-full max-w-4xl">
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart
-              data={CHART_DATA}
-              layout="vertical"
-              margin={{ top: 0, right: 24, bottom: 0, left: 140 }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="#27272a"
-                horizontal={false}
+          {/* Legend */}
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-zinc-400">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: COLOR_THEORETICAL }}
               />
-              <XAxis
-                type="number"
-                domain={[0, 100]}
-                tickFormatter={(v: number) => `${v}%`}
-                tick={{ fill: "#a1a1aa", fontSize: 12 }}
-                axisLine={{ stroke: "#3f3f46" }}
-                tickLine={false}
+              Theoretical AI coverage
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: COLOR_OBSERVED }}
               />
-              <YAxis
-                type="category"
-                dataKey="occupation"
-                width={136}
-                tick={({
-                  x,
-                  y,
-                  payload,
-                }: {
-                  x: number;
-                  y: number;
-                  payload: { value: string };
-                }) => {
-                  const slug = OCCUPATION_SLUG[payload.value];
-                  return (
-                    <foreignObject
-                      x={x - 136}
-                      y={y - 10}
-                      width={132}
-                      height={20}
-                    >
-                      {slug ? (
-                        <a
-                          href={`/for/${slug}`}
-                          className="block text-right text-xs text-primary hover:underline leading-5 truncate"
-                        >
-                          {payload.value}
-                        </a>
-                      ) : (
-                        <span className="block text-right text-xs text-zinc-400 leading-5 truncate">
-                          {payload.value}
-                        </span>
-                      )}
-                    </foreignObject>
-                  );
-                }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                content={<CustomTooltip />}
-                cursor={{ fill: "rgba(255,255,255,0.03)" }}
-              />
-              <Legend
-                wrapperStyle={{
-                  fontSize: 12,
-                  color: "#a1a1aa",
-                  paddingTop: 12,
-                }}
-              />
-              <Bar
-                dataKey="theoretical"
-                name="Theoretical potential"
-                fill={COLOR_THEORETICAL}
-                radius={[0, 3, 3, 0]}
-                barSize={8}
-              />
-              <Bar
-                dataKey="actual"
-                name="Actual AI usage"
-                fill={COLOR_ACTUAL}
-                radius={[0, 3, 3, 0]}
-                barSize={8}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+              Observed AI coverage
+            </div>
+          </div>
 
           {/* Caption */}
-          <p className="text-xs text-zinc-500 mt-2 text-center">
+          <p className="mt-3 text-center text-[11px] text-zinc-500">
             Source:{" "}
             <a
               href="https://www.anthropic.com/research/labor-market-impacts"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:text-zinc-300"
+              className="underline underline-offset-2 hover:text-zinc-300 transition-colors"
             >
               Anthropic Economic Index, 2025
             </a>
           </p>
-        </div>
-
-        {/* Persona chips */}
-        <div className="flex flex-wrap gap-2 justify-center">
-          {PERSONA_CHIPS.map((chip) => (
-            <Link
-              key={chip.slug}
-              href={`/for/${chip.slug}`}
-              className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-300 hover:border-primary hover:text-primary transition-colors"
-            >
-              {chip.label}
-            </Link>
-          ))}
         </div>
       </div>
     </section>
