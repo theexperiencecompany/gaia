@@ -865,15 +865,15 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
   const gaugeData = [{ name: "value", value: pct, fill: color }];
 
   return wrap(
-    <ToolCard size="full" className="p-3 text-center w-[200px]">
+    <ToolCard size="full" className="p-3 text-center w-[200px] rounded-3xl">
       <SquareChart config={gaugeConfig}>
         <RadialBarChart
           data={gaugeData}
           startAngle={90}
           endAngle={-270}
           outerRadius="100%"
-          innerRadius="86%"
-          barSize={9}
+          innerRadius="80%"
+          barSize={14}
         >
           <PolarAngleAxis
             type="number"
