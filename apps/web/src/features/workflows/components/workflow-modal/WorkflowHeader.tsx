@@ -28,9 +28,9 @@ interface WorkflowHeaderProps {
   isTogglingActivation: boolean;
   onToggleActivation: (activated: boolean) => void;
   isPublic?: boolean;
-  onUnpublish?: () => void;
+  onUnpublish?: () => void | Promise<void>;
   onDelete: () => void;
-  onResetToDefault?: () => void;
+  onResetToDefault?: () => void | Promise<void>;
 }
 
 export default function WorkflowHeader({
