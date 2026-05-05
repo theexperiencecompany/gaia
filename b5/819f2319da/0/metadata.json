@@ -1,0 +1,88 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "b5819f2319da",
+  "session_id": "2f0a1b02-b4af-43d9-8565-1d27f1c9b0e2",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-05T14:55:21.558177Z",
+  "branch": "optimise-llm-calls",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "CLAUDE.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "b1f4c510738c",
+  "token_usage": {
+    "input_tokens": 67,
+    "cache_creation_tokens": 91495,
+    "cache_read_tokens": 3400535,
+    "output_tokens": 16871,
+    "api_call_count": 42
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-05T14:55:21.524879Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 265,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 265,
+    "total_lines_changed": 319,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 189,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 126,
+        "CLAUDE.md": 18,
+        "apps/web/.claude/settings.local.json": 25,
+        "packages/cli/.claude/settings.local.json": 20
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 171,
+      "user_lines_removed": 0,
+      "agent_lines_added": 18,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 126,
+        "apps/web/.claude/settings.local.json": 25,
+        "packages/cli/.claude/settings.local.json": 20
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 171,
+      "user_lines_removed": 0,
+      "agent_lines_added": 18,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 126,
+        "apps/web/.claude/settings.local.json": 25,
+        "packages/cli/.claude/settings.local.json": 20
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 171,
+      "user_lines_removed": 0,
+      "agent_lines_added": 18,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 126,
+        "apps/web/.claude/settings.local.json": 25,
+        "packages/cli/.claude/settings.local.json": 20
+      }
+    }
+  ]
+}
