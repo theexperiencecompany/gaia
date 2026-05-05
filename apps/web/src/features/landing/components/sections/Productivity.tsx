@@ -24,15 +24,26 @@ export default function UseCasesSectionLanding() {
             scroller={null}
           />
         </div>
-        <Link href={"/use-cases"} className="mt-2">
-          <RaisedButton
-            className="rounded-xl text-black! before:rounded-xl hover:scale-110 gap-1"
-            color="#00bbff"
-          >
-            View all Use Cases
-            <ChevronRight width={18} height={18} />
-          </RaisedButton>
-        </Link>
+        <div className="mt-2 flex flex-col gap-3 sm:flex-row">
+          <Link href={"/use-cases"}>
+            <RaisedButton
+              className="rounded-xl text-black! before:rounded-xl hover:scale-110 gap-1"
+              color="#00bbff"
+            >
+              View all Use Cases
+              <ChevronRight width={18} height={18} />
+            </RaisedButton>
+          </Link>
+          <Link href={"/for"}>
+            <RaisedButton
+              className="rounded-xl text-white! before:rounded-xl hover:scale-110 gap-1"
+              color="#3f3f46"
+            >
+              View all Personas
+              <ChevronRight width={18} height={18} />
+            </RaisedButton>
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -540,9 +540,9 @@ export default function Tired() {
         </RaisedButton>
       </Link>
       <p className="text-sm text-zinc-500 text-center mt-6">
-        Replacing Bardeen, Zapier, or Make?{" "}
+        Replacing Claude Code?{" "}
         <Link
-          href="/alternative-to/bardeen"
+          href="/compare/claude"
           className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200 transition-colors"
         >
           See how GAIA compares.

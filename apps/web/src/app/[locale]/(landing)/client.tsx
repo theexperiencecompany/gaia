@@ -55,16 +55,16 @@ const BotsShowcaseSection = dynamic(
   () => import("@/features/landing/components/sections/BotsShowcaseSection"),
   { loading: SectionLoader },
 );
+const ComparisonGrid = dynamic(
+  () => import("@/features/landing/components/sections/ComparisonGrid"),
+  { loading: SectionLoader },
+);
 const OpenSource = dynamic(
   () => import("@/features/landing/components/sections/OpenSource"),
   { loading: SectionLoader },
 );
 const LandingPricingSection = dynamic(
   () => import("@/features/landing/components/sections/LandingPricingSection"),
-  { loading: SectionLoader },
-);
-const ComparisonGrid = dynamic(
-  () => import("@/features/landing/components/sections/ComparisonGrid"),
   { loading: SectionLoader },
 );
 const FAQAccordion = dynamic(
@@ -79,14 +79,6 @@ const LandingDownloadSection = dynamic(
     import("@/features/download/components/DownloadPage").then((mod) => ({
       default: mod.LandingDownloadSection,
     })),
-  { loading: SectionLoader },
-);
-// const CommunitySection = dynamic(
-//   () => import("@/features/landing/components/sections/CommunitySection"),
-//   { loading: SectionLoader },
-// );
-const EditorialClose = dynamic(
-  () => import("@/features/landing/components/sections/EditorialClose"),
   { loading: SectionLoader },
 );
 const FinalSection = dynamic(
@@ -162,19 +154,26 @@ export default function LandingPageClient({
         </section>
 
         <div>
+          {/* Positioning — why GAIA exists */}
           <BuiltForEveryone />
+
+          {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
           <WorkflowSection />
           <UseCasesSectionLanding />
-          <BotsShowcaseSection />
           <TodoShowcaseSection />
+
+          {/* Reach — where you can use it */}
+          <BotsShowcaseSection />
+
+          {/* Decision — how it stacks up, trust, price */}
+          <ComparisonGrid />
           <OpenSource />
           <LandingPricingSection />
-          <ComparisonGrid />
+
+          {/* Objections + final CTA */}
           <FAQAccordion />
           <LandingDownloadSection />
-          <EditorialClose />
-          {/* <CommunitySection /> */}
           <FinalSection
             showSocials={false}
             timeOfDay={timeOfDay}

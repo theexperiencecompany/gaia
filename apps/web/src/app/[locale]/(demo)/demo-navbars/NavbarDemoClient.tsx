@@ -4,17 +4,24 @@ import {
   ArrowRight02Icon,
   CheckmarkCircle02Icon,
   ConnectIcon,
-  DiscordIcon,
   Globe02Icon,
   MapsIcon,
   Search01Icon,
+  SmartPhone01Icon,
   StarIcon,
   WorkflowSquare10Icon,
   ZapIcon,
 } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
-import { ChevronDown, Github } from "@/components/shared/icons";
+import {
+  ChevronDown,
+  DiscordIcon,
+  Github,
+  SlackIcon,
+  TelegramIcon,
+  WhatsappIcon,
+} from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -134,54 +141,167 @@ function Floater({
 /* P1 — Featurebase-style 4×2 bento (2 tall + 4 medium)                        */
 /* ────────────────────────────────────────────────────────────────────────── */
 
+/* Compact bento card — same aesthetic as BentoCard, shorter, gradient bg */
+function MiniBento({
+  href,
+  title,
+  sub,
+  Icon,
+  iconColor,
+  bgGradient,
+  imgSrc,
+}: {
+  href: string;
+  title: string;
+  sub?: string;
+  Icon: React.ComponentType<{
+    width?: number;
+    height?: number;
+    color?: string;
+    className?: string;
+  }>;
+  iconColor?: string;
+  bgGradient?: string;
+  imgSrc?: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="group relative block h-32 overflow-hidden rounded-2xl bg-zinc-900 transition-all duration-300"
+    >
+      {imgSrc && (
+        <Image
+          src={imgSrc}
+          alt=""
+          fill
+          sizes="20vw"
+          className="object-cover transition-transform duration-700 group-hover:scale-110"
+        />
+      )}
+      {bgGradient && (
+        <div
+          className="absolute inset-0"
+          style={{ backgroundImage: bgGradient }}
+        />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+      <div className="absolute inset-0 p-4 flex flex-col justify-between">
+        <div className="flex size-9 items-center justify-center rounded-xl bg-white/12 backdrop-blur-md">
+          <Icon
+            width={18}
+            height={18}
+            color={iconColor ?? "#ffffff"}
+            className="size-[18px]"
+          />
+        </div>
+        <div>
+          <div className="text-[14px] font-semibold text-white leading-tight">
+            {title}
+          </div>
+          {sub && (
+            <div className="text-[11px] text-white/60 leading-snug mt-0.5">
+              {sub}
+            </div>
+          )}
+        </div>
+      </div>
+    </a>
+  );
+}
+
 function P1_Bento() {
   return (
     <Floater>
-      <div className="grid grid-cols-4 grid-rows-2 gap-3 h-[440px]">
-        <BentoCard
-          src={wp.staircase}
-          title="Use Cases"
-          desc="80+ ready-to-run workflows. Fork any and edit in plain English."
-          className="row-span-2"
-          IconComp={WorkflowSquare10Icon}
-          href="/use-cases"
-        />
-        <BentoCard
-          src={wp.library}
-          title="Marketplace"
-          desc="Community integrations, agents, and tools. Install in one click."
-          className="row-span-2"
-          IconComp={ConnectIcon}
-          href="/marketplace"
-        />
-        <BentoCard
-          src={wp.mesh}
-          title="Features"
-          desc="Voice, workflows, memory, and 50+ tools."
-          IconComp={ZapIcon}
-          href="/features"
-        />
-        <BentoCard
-          src={wp.space}
-          title="Roadmap"
-          desc="What's coming next."
-          IconComp={MapsIcon}
-          href="/roadmap"
-        />
-        <BentoCard
-          src={wp.swissDay}
-          title="For your role"
-          desc="Founders, devs, sales, PMs, and more."
-          IconComp={StarIcon}
-          href="/for"
-        />
-        <BentoCard
-          src={wp.switzerlandMac}
-          title="Download"
-          desc="Mac, iOS, Android, CLI."
-          IconComp={Globe02Icon}
-          href="/download"
-        />
+      <div className="space-y-3">
+        {/* Rows 1-2: image bento — discover/browse */}
+        <div className="grid grid-cols-4 grid-rows-2 gap-3 h-[400px]">
+          <BentoCard
+            src={wp.staircase}
+            title="Use Cases"
+            desc="80+ ready-to-run workflows. Fork any and edit in plain English."
+            className="row-span-2"
+            IconComp={WorkflowSquare10Icon}
+            href="/use-cases"
+          />
+          <BentoCard
+            src={wp.library}
+            title="Marketplace"
+            desc="Community integrations, agents, and tools. Install in one click."
+            className="row-span-2"
+            IconComp={ConnectIcon}
+            href="/marketplace"
+          />
+          <BentoCard
+            src={wp.mesh}
+            title="Features"
+            desc="Voice, workflows, memory, and 50+ tools."
+            IconComp={ZapIcon}
+            href="/features"
+          />
+          <BentoCard
+            src={wp.space}
+            title="Roadmap"
+            desc="What's coming next."
+            IconComp={MapsIcon}
+            href="/roadmap"
+          />
+          <BentoCard
+            src={wp.swissDay}
+            title="For your role"
+            desc="Founders, devs, sales, PMs."
+            IconComp={StarIcon}
+            href="/for"
+          />
+          <BentoCard
+            src={wp.switzerlandNight}
+            title="Compare"
+            desc="GAIA vs ChatGPT, Notion AI, and more."
+            IconComp={CheckmarkCircle02Icon}
+            href="/compare"
+          />
+        </div>
+
+        {/* Row 3: 5 compact bento cards, same image-led aesthetic */}
+        <div className="grid grid-cols-5 gap-3">
+          <MiniBento
+            href="/whatsapp"
+            title="WhatsApp"
+            sub="Text GAIA from your phone"
+            Icon={WhatsappIcon}
+            iconColor="#25D366"
+            bgGradient="radial-gradient(circle at 30% 30%, rgba(37, 211, 102, 0.55), rgba(7, 94, 84, 0.4) 50%, #0a0a0a 100%)"
+          />
+          <MiniBento
+            href="/bots"
+            title="Telegram"
+            sub="Chat in any group or DM"
+            Icon={TelegramIcon}
+            iconColor="#ffffff"
+            bgGradient="radial-gradient(circle at 30% 30%, rgba(42, 171, 238, 0.6), rgba(28, 61, 91, 0.5) 50%, #0a0a0a 100%)"
+          />
+          <MiniBento
+            href="/discord-bot"
+            title="Discord"
+            sub="Bring GAIA to your server"
+            Icon={DiscordIcon}
+            iconColor="#ffffff"
+            bgGradient="radial-gradient(circle at 30% 30%, rgba(88, 101, 242, 0.55), rgba(45, 50, 120, 0.4) 50%, #0a0a0a 100%)"
+          />
+          <MiniBento
+            href="/desktop"
+            title="Desktop"
+            sub="Mac · Windows"
+            Icon={Globe02Icon}
+            imgSrc={wp.switzerlandMac}
+          />
+          <MiniBento
+            href="/download"
+            title="Mobile"
+            sub="iOS · Android"
+            Icon={SmartPhone01Icon}
+            imgSrc={wp.field}
+          />
+        </div>
       </div>
     </Floater>
   );

@@ -1316,10 +1316,11 @@ export default function BotsShowcaseSection() {
     >
       <div className="flex w-full max-w-7xl flex-col items-center gap-16">
         <div className="flex flex-col items-center text-center">
-          <LargeHeader headingText="One assistant, every app" centered />
+          <LargeHeader headingText="Reach GAIA from anywhere" centered />
           <p className="mt-2 max-w-[960px] text-base font-light text-zinc-400 sm:text-xl">
-            Chat, delegate tasks, and get answers right inside Discord,
-            Telegram, Slack, or WhatsApp.
+            Text it on WhatsApp. Mention it in Slack. Slash-command it in
+            Discord. Same assistant, same memory, every channel you already live
+            in.
           </p>
         </div>
 

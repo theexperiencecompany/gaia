@@ -76,8 +76,8 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 
 export default function BuiltForEveryone() {
   return (
-    <section className="flex flex-col items-center px-4 py-24 sm:px-6 sm:py-28 lg:px-8">
-      <div className="flex w-full max-w-7xl flex-col items-center gap-10">
+    <section className="flex flex-col items-center px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+      <div className="flex w-full max-w-6xl flex-col items-center gap-10">
         <div className="flex flex-col items-center gap-4 text-center">
           <p className="text-primary text-xs uppercase tracking-widest font-medium">
             Built for the other 95%
@@ -93,18 +93,31 @@ export default function BuiltForEveryone() {
           </p>
         </div>
 
-        {/* Chart card */}
-        <div className="w-full max-w-4xl rounded-2xl bg-zinc-900 p-6 sm:p-8 outline outline-1 outline-zinc-800">
-          <h3 className="mb-2 text-center text-sm font-medium text-zinc-200 sm:text-base">
-            Theoretical capability and observed usage by occupational category
-          </h3>
+        <div className="relative w-full">
+          {/* Top-right legend */}
+          <div className="absolute right-0 top-0 z-10 flex flex-col gap-1.5 text-xs text-zinc-400 sm:right-4 sm:top-4">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: COLOR_THEORETICAL }}
+              />
+              Theoretical AI coverage
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: COLOR_OBSERVED }}
+              />
+              Observed AI coverage
+            </div>
+          </div>
 
-          <div className="relative">
-            <ResponsiveContainer width="100%" height={520}>
+          <div className="mx-auto w-full max-w-3xl">
+            <ResponsiveContainer width="100%" height={620}>
               <RadarChart
                 data={CHART_DATA}
-                outerRadius="78%"
-                margin={{ top: 20, right: 60, bottom: 20, left: 60 }}
+                outerRadius="70%"
+                margin={{ top: 60, right: 80, bottom: 40, left: 80 }}
               >
                 <PolarGrid
                   stroke="#3f3f46"
@@ -148,26 +161,7 @@ export default function BuiltForEveryone() {
             </ResponsiveContainer>
           </div>
 
-          {/* Legend */}
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-zinc-400">
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: COLOR_THEORETICAL }}
-              />
-              Theoretical AI coverage
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-block h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: COLOR_OBSERVED }}
-              />
-              Observed AI coverage
-            </div>
-          </div>
-
-          {/* Caption */}
-          <p className="mt-3 text-center text-[11px] text-zinc-500">
+          <p className="mt-2 text-center text-[11px] text-zinc-500">
             Source:{" "}
             <a
               href="https://www.anthropic.com/research/labor-market-impacts"
