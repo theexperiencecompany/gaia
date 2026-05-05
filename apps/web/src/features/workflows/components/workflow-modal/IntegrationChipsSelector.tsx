@@ -35,14 +35,14 @@ function IntegrationChipsSelector({
     [integrations],
   );
 
+  const allIntegrationsBySlug = useMemo(
+    () => new Map(integrations.map((i) => [i.slug, i])),
+    [integrations],
+  );
+
   const selectedSlugSet = useMemo(
     () => new Set(selectedSlugs),
     [selectedSlugs],
-  );
-
-  const selectedIntegrations = useMemo(
-    () => connectedIntegrations.filter((i) => selectedSlugSet.has(i.slug)),
-    [connectedIntegrations, selectedSlugSet],
   );
 
   const availableIntegrations = useMemo(() => {
@@ -73,63 +73,78 @@ function IntegrationChipsSelector({
     [onChange, selectedSlugs],
   );
 
-  if (!isLoading && connectedIntegrations.length === 0) return null;
+  // Hide only when not loading, no connected integrations, and no selected slugs.
+  // If selected slugs exist for now-disconnected integrations, keep rendering so
+  // users can see and remove them.
+  if (
+    !isLoading &&
+    connectedIntegrations.length === 0 &&
+    selectedSlugs.length === 0
+  )
+    return null;
 
   return (
     <div className="flex flex-col gap-2">
-      <Autocomplete
-        aria-label="Add integration to this workflow"
-        placeholder={
-          selectedIntegrations.length === 0
-            ? "Select integrations"
-            : "Add integration"
-        }
-        description="Suggest Apps GAIA should use in this workflow"
-        size="sm"
-        variant="flat"
-        isLoading={isLoading}
-        items={availableIntegrations}
-        selectedKey={null}
-        inputValue={inputValue}
-        onInputChange={setInputValue}
-        onSelectionChange={handleSelectionChange}
-        menuTrigger="focus"
-        className="max-w-sm"
-      >
-        {(integration) => (
-          <AutocompleteItem
-            key={integration.slug}
-            textValue={integration.name}
-            startContent={<IntegrationIcon integration={integration} />}
-          >
-            {integration.name}
-          </AutocompleteItem>
-        )}
-      </Autocomplete>
-
-      {selectedIntegrations.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {selectedIntegrations.map((integration) => (
-            <Chip
+      {connectedIntegrations.length > 0 && (
+        <Autocomplete
+          aria-label="Add integration to this workflow"
+          placeholder={
+            selectedSlugs.length === 0
+              ? "Select integrations"
+              : "Add integration"
+          }
+          description="Suggest Apps GAIA should use in this workflow"
+          size="sm"
+          variant="flat"
+          isLoading={isLoading}
+          items={availableIntegrations}
+          selectedKey={null}
+          inputValue={inputValue}
+          onInputChange={setInputValue}
+          onSelectionChange={handleSelectionChange}
+          menuTrigger="focus"
+          className="max-w-sm"
+        >
+          {(integration) => (
+            <AutocompleteItem
               key={integration.slug}
-              size="sm"
-              variant="flat"
-              color="primary"
-              as="button"
-              type="button"
-              onClick={() => removeIntegration(integration.slug)}
-              onClose={() => removeIntegration(integration.slug)}
-              aria-label={`Remove ${integration.name}`}
-              startContent={
-                <span className="ml-1 flex items-center">
-                  <IntegrationIcon integration={integration} />
-                </span>
-              }
-              className="cursor-pointer transition-colors hover:bg-primary/30"
+              textValue={integration.name}
+              startContent={<IntegrationIcon integration={integration} />}
             >
               {integration.name}
-            </Chip>
-          ))}
+            </AutocompleteItem>
+          )}
+        </Autocomplete>
+      )}
+
+      {selectedSlugs.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedSlugs.map((slug) => {
+            const integration = allIntegrationsBySlug.get(slug);
+            return (
+              <Chip
+                key={slug}
+                size="sm"
+                variant="flat"
+                color="primary"
+                as="button"
+                type="button"
+                onClick={() => removeIntegration(slug)}
+                onClose={() => removeIntegration(slug)}
+                aria-label={`Remove ${integration?.name ?? slug}`}
+                startContent={
+                  integration ? (
+                    <span className="ml-1 flex items-center">
+                      <IntegrationIcon integration={integration} />
+                    </span>
+                  ) : undefined
+                }
+                className="cursor-pointer transition-colors hover:bg-primary/30"
+              >
+                {integration?.name ?? slug}
+              </Chip>
+            );
+          })}
         </div>
       )}
     </div>

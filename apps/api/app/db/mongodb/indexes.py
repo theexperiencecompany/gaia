@@ -556,7 +556,7 @@ async def create_workflow_indexes():
             await workflows_collection.create_index(
                 [("slug", 1)],
                 unique=True,
-                partialFilterExpression={"is_public": True},
+                partialFilterExpression={"is_public": True, "slug": {"$type": 2}},
                 name="slug_public_unique_idx",
             )
         except OperationFailure as e:

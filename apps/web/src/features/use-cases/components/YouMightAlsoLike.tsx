@@ -97,7 +97,7 @@ export default function YouMightAlsoLike({
               variant="community"
               showCreator={true}
               onCardClick={() => {
-                router.push(`/use-cases/${workflow.slug}`);
+                if (workflow.slug) router.push(`/use-cases/${workflow.slug}`);
               }}
             />
           ))}

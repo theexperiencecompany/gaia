@@ -1,11 +1,16 @@
 "use client";
 
-import { Modal, ModalBody, ModalContent } from "@heroui/modal";
+import { Button } from "@heroui/button";
+import {
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@heroui/modal";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-
 import { useHotkeys } from "react-hotkeys-hook";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
@@ -16,6 +21,7 @@ import WorkflowRightPanel from "@/features/workflows/components/workflow-modal/W
 import WorkflowTriggerSection from "@/features/workflows/components/workflow-modal/WorkflowTriggerSection";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { usePlatform } from "@/hooks/ui/usePlatform";
+import { useRouter } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
@@ -88,6 +94,8 @@ export default function WorkflowModal({
   } = useWorkflowModalStore();
 
   const router = useRouter();
+
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
   // Single source of truth for workflow data
   const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(null);
@@ -483,6 +491,13 @@ export default function WorkflowModal({
       await fetchWorkflows();
     } catch (error) {
       console.error("Failed to update workflow:", error);
+      toast.error("Failed to save workflow", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
+        duration: 4000,
+      });
     }
   };
 
@@ -508,29 +523,30 @@ export default function WorkflowModal({
     }
   };
 
-  const handleDelete = async () => {
-    if (mode === "edit" && existingWorkflow) {
-      try {
-        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_DELETED, {
-          workflow_id: existingWorkflow.id,
-          workflow_title: existingWorkflow.title,
-          step_count: existingWorkflow.steps?.length || 0,
-          is_public: existingWorkflow.is_public,
-        });
-
-        // Call the actual delete API
-        await workflowApi.deleteWorkflow(existingWorkflow.id);
-
-        // Optimistic update: remove from store immediately
-        removeFromStore(existingWorkflow.id);
-
-        if (onWorkflowDeleted) onWorkflowDeleted(existingWorkflow.id);
-
-        await fetchWorkflows();
-        handleClose();
-      } catch (error) {
-        console.error("Failed to delete workflow:", error);
-      }
+  const handleDeleteConfirm = async () => {
+    if (mode !== "edit" || !existingWorkflow) return;
+    setIsDeleteConfirmOpen(false);
+    try {
+      trackEvent(ANALYTICS_EVENTS.WORKFLOWS_DELETED, {
+        workflow_id: existingWorkflow.id,
+        workflow_title: existingWorkflow.title,
+        step_count: existingWorkflow.steps?.length || 0,
+        is_public: existingWorkflow.is_public,
+      });
+      await workflowApi.deleteWorkflow(existingWorkflow.id);
+      removeFromStore(existingWorkflow.id);
+      if (onWorkflowDeleted) onWorkflowDeleted(existingWorkflow.id);
+      await fetchWorkflows();
+      handleClose();
+    } catch (error) {
+      console.error("Failed to delete workflow:", error);
+      toast.error("Failed to delete workflow", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
+        duration: 4000,
+      });
     }
   };
 
@@ -726,110 +742,143 @@ export default function WorkflowModal({
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onOpenChange={(open) => {
-        if (!open) handleFormReset();
-        onOpenChange(open);
-      }}
-      // isDismissable={false}
-      hideCloseButton
-      size={mode === "create" ? "3xl" : "4xl"}
-      className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
-      backdrop="blur"
-    >
-      <ModalContent>
-        <ModalBody className="min-h-0 overflow-hidden pr-2">
-          {creationPhase === "form" ? (
-            <div className="flex min-h-0 flex-1 gap-8">
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto ">
-                  <WorkflowHeader
-                    mode={mode}
-                    control={control}
-                    errors={errors}
-                    currentWorkflow={currentWorkflow}
-                    isActivated={isActivated}
-                    isTogglingActivation={isTogglingActivation}
-                    onToggleActivation={handleActivationToggle}
-                    isPublic={!!currentWorkflow?.is_public}
-                    onUnpublish={handlePublishToggle}
-                    onDelete={handleDelete}
-                    onResetToDefault={handleResetToDefault}
-                  />
+    <>
+      <Modal
+        isOpen={isOpen}
+        onOpenChange={(open) => {
+          if (!open) handleFormReset();
+          onOpenChange(open);
+        }}
+        // isDismissable={false}
+        hideCloseButton
+        size={mode === "create" ? "3xl" : "4xl"}
+        className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
+        backdrop="blur"
+      >
+        <ModalContent>
+          <ModalBody className="min-h-0 overflow-hidden pr-2">
+            {creationPhase === "form" ? (
+              <div className="flex min-h-0 flex-1 gap-8">
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="min-h-0 flex-1 space-y-5 overflow-y-auto ">
+                    <WorkflowHeader
+                      mode={mode}
+                      control={control}
+                      errors={errors}
+                      currentWorkflow={currentWorkflow}
+                      isActivated={isActivated}
+                      isTogglingActivation={isTogglingActivation}
+                      onToggleActivation={handleActivationToggle}
+                      isPublic={!!currentWorkflow?.is_public}
+                      onUnpublish={handlePublishToggle}
+                      onDelete={() => setIsDeleteConfirmOpen(true)}
+                      onResetToDefault={handleResetToDefault}
+                    />
 
-                  <WorkflowTriggerSection
-                    activeTab={formData.activeTab}
-                    selectedTrigger={formData.selectedTrigger}
-                    triggerConfig={formData.trigger_config}
-                    onActiveTabChange={handleActiveTabChange}
-                    onSelectedTriggerChange={(trigger) =>
-                      setValue("selectedTrigger", trigger)
-                    }
-                    onTriggerConfigChange={(config) =>
-                      setValue("trigger_config", config)
-                    }
-                  />
+                    <WorkflowTriggerSection
+                      activeTab={formData.activeTab}
+                      selectedTrigger={formData.selectedTrigger}
+                      triggerConfig={formData.trigger_config}
+                      onActiveTabChange={handleActiveTabChange}
+                      onSelectedTriggerChange={(trigger) =>
+                        setValue("selectedTrigger", trigger)
+                      }
+                      onTriggerConfigChange={(config) =>
+                        setValue("trigger_config", config)
+                      }
+                    />
 
-                  <div>
-                    <div className="space-y-4">
-                      <WorkflowDescriptionField
-                        control={control}
-                        errors={errors}
-                        setValue={setValue}
-                        mode={mode}
-                        selectedIntegrationSlugs={selectedIntegrationSlugs}
-                        onIntegrationSlugsChange={setSelectedIntegrationSlugs}
-                      />
+                    <div>
+                      <div className="space-y-4">
+                        <WorkflowDescriptionField
+                          control={control}
+                          errors={errors}
+                          setValue={setValue}
+                          mode={mode}
+                          selectedIntegrationSlugs={selectedIntegrationSlugs}
+                          onIntegrationSlugsChange={setSelectedIntegrationSlugs}
+                        />
+                      </div>
                     </div>
                   </div>
+
+                  <WorkflowFooter
+                    existingWorkflow={!!existingWorkflow}
+                    hasSteps={
+                      !!currentWorkflow?.steps &&
+                      currentWorkflow.steps.length > 0
+                    }
+                    onRunWorkflow={handleRunWorkflow}
+                    onCancel={handleClose}
+                    onSave={() => handleSubmit(handleSave)()}
+                    isSaveDisabled={isSaveDisabled()}
+                    isCreating={isCreating}
+                    modifierKeyName={modifierKeyName}
+                    buttonText={getButtonText()}
+                    isPublic={!!currentWorkflow?.is_public}
+                    onPublishToggle={handlePublishToggle}
+                    onViewMarketplace={
+                      currentWorkflow?.slug ? handleMarketplaceView : undefined
+                    }
+                  />
                 </div>
 
-                <WorkflowFooter
-                  existingWorkflow={!!existingWorkflow}
-                  hasSteps={
-                    !!currentWorkflow?.steps && currentWorkflow.steps.length > 0
-                  }
-                  onRunWorkflow={handleRunWorkflow}
-                  onCancel={handleClose}
-                  onSave={() => handleSubmit(handleSave)()}
-                  isSaveDisabled={isSaveDisabled()}
-                  isCreating={isCreating}
-                  modifierKeyName={modifierKeyName}
-                  buttonText={getButtonText()}
-                  isPublic={!!currentWorkflow?.is_public}
-                  onPublishToggle={handlePublishToggle}
-                  onViewMarketplace={
-                    currentWorkflow?.slug ? handleMarketplaceView : undefined
-                  }
-                />
+                {mode === "edit" && existingWorkflow && (
+                  <WorkflowRightPanel
+                    workflow={currentWorkflow}
+                    workflowId={existingWorkflow.id}
+                    isGenerating={isGeneratingSteps}
+                    isRegenerating={isRegeneratingSteps}
+                    regenerationError={regenerationError}
+                    onRegenerateWithReason={handleRegenerateWithReason}
+                    onInitialGeneration={handleInitialGeneration}
+                    onClearError={() => setRegenerationError(null)}
+                  />
+                )}
               </div>
+            ) : (
+              <WorkflowLoadingState
+                phase={creationPhase}
+                mode={mode}
+                error={creationError}
+                workflow={currentWorkflow}
+                onClose={handleClose}
+                onRetry={() => setCreationPhase("form")}
+              />
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
 
-              {mode === "edit" && existingWorkflow && (
-                <WorkflowRightPanel
-                  workflow={currentWorkflow}
-                  workflowId={existingWorkflow.id}
-                  isGenerating={isGeneratingSteps}
-                  isRegenerating={isRegeneratingSteps}
-                  regenerationError={regenerationError}
-                  onRegenerateWithReason={handleRegenerateWithReason}
-                  onInitialGeneration={handleInitialGeneration}
-                  onClearError={() => setRegenerationError(null)}
-                />
-              )}
-            </div>
-          ) : (
-            <WorkflowLoadingState
-              phase={creationPhase}
-              mode={mode}
-              error={creationError}
-              workflow={currentWorkflow}
-              onClose={handleClose}
-              onRetry={() => setCreationPhase("form")}
-            />
-          )}
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+      <Modal
+        isOpen={isDeleteConfirmOpen}
+        onOpenChange={setIsDeleteConfirmOpen}
+        size="sm"
+        backdrop="blur"
+      >
+        <ModalContent>
+          <ModalHeader>Delete workflow?</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-foreground-500">
+              <span className="font-medium text-foreground">
+                {currentWorkflow?.title}
+              </span>{" "}
+              will be permanently deleted. This cannot be undone.
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="flat"
+              onPress={() => setIsDeleteConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button color="danger" onPress={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </>
   );
 }

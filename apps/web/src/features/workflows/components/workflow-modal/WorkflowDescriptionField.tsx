@@ -117,7 +117,7 @@ export default function WorkflowDescriptionField({
               }
               minRows={5}
               variant="flat"
-              className="text-sm"
+              className="text-base"
               isRequired
               isInvalid={!!errors.prompt}
               errorMessage={errors.prompt?.message}
