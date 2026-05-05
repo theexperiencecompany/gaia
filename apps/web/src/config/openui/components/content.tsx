@@ -423,7 +423,7 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
     [arcs],
   );
 
-  const fitBounds = props.fitBounds ?? hasExtras;
+  const fitBounds = props.fitBounds ?? (hasExtras && props.zoom == null);
 
   const title = props.label ? (
     <span className="flex items-center gap-2">
@@ -442,7 +442,7 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
           className="h-[220px] w-full overflow-hidden"
           attributionControl={false}
         >
-          {!markers && (
+          {!hasExtras && (
             <MapMarker longitude={lng} latitude={lat}>
               <MarkerContent />
             </MapMarker>

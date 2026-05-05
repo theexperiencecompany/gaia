@@ -78,8 +78,8 @@ Check against ALL the **DON'T** guidelines in the impeccable skill. Look for AI 
 |---|-----------|-------|-------------|
 | 1 | Accessibility | ? | [most critical a11y issue or "--"] |
 | 2 | Performance | ? | |
-| 3 | Responsive Design | ? | |
-| 4 | Theming | ? | |
+| 3 | Theming | ? | |
+| 4 | Responsive Design | ? | |
 | 5 | Anti-Patterns | ? | |
 | **Total** | | **??/20** | **[Rating band]** |
 

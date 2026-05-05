@@ -19,6 +19,7 @@ import {
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
+import { cn } from "@/lib/utils";
 import { ToolCard } from "../primitives";
 
 // ---------------------------------------------------------------------------
@@ -214,11 +215,12 @@ export function CopyableContentView(
 
   if (inline) {
     return (
-      <button
-        type="button"
-        onClick={copy}
+      <Button
+        size="sm"
+        variant="flat"
+        onPress={copy}
         aria-label={copied ? "Copied" : "Copy content"}
-        className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors px-3 py-1.5 cursor-pointer"
+        className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors px-3 py-1.5 min-w-0 h-auto"
       >
         <span className="font-mono text-xs text-zinc-200 truncate">
           {props.content}
@@ -228,7 +230,7 @@ export function CopyableContentView(
         ) : (
           <Copy01Icon className="w-3 h-3 shrink-0 text-zinc-500" />
         )}
-      </button>
+      </Button>
     );
   }
 
@@ -241,7 +243,10 @@ export function CopyableContentView(
     <ToolCard size="standard" className="p-3">
       <div className="flex items-start gap-2">
         <pre
-          className={`flex-1 text-sm leading-relaxed break-words whitespace-pre-wrap ${isCode ? "font-mono text-zinc-200" : "font-sans text-zinc-300"}`}
+          className={cn(
+            "flex-1 text-sm leading-relaxed break-words whitespace-pre-wrap",
+            isCode ? "font-mono text-zinc-200" : "font-sans text-zinc-300",
+          )}
         >
           {props.content}
         </pre>
@@ -251,7 +256,10 @@ export function CopyableContentView(
           variant="light"
           onPress={copy}
           aria-label={copied ? "Copied" : "Copy content"}
-          className={`shrink-0 aspect-square min-w-7 w-7 h-7 p-0 ${copied ? "text-emerald-400" : "text-zinc-500"}`}
+          className={cn(
+            "shrink-0 aspect-square min-w-7 w-7 h-7 p-0",
+            copied ? "text-emerald-400" : "text-zinc-500",
+          )}
         >
           {copied ? (
             <CheckmarkCircle02Icon className="w-4 h-4" />
