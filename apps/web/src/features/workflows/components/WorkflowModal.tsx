@@ -2,7 +2,7 @@
 
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -98,6 +98,20 @@ export default function WorkflowModal({
   // Delete confirmation dialog state
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Action to fire after the modal finishes closing (e.g. select-and-send a
+  // workflow into chat). Stored in a ref so the close-effect can run it once
+  // the parent has actually unmounted the modal, avoiding focus/state conflicts.
+  const pendingPostCloseActionRef = useRef<(() => void) | null>(null);
+
+  // Fire any pending post-close action once the modal is closed.
+  useEffect(() => {
+    if (!isOpen && pendingPostCloseActionRef.current) {
+      const action = pendingPostCloseActionRef.current;
+      pendingPostCloseActionRef.current = null;
+      action();
+    }
+  }, [isOpen]);
 
   // Fetch trigger schemas for slug normalization
   const { data: triggerSchemas } = useTriggerSchemas();
@@ -377,13 +391,11 @@ export default function WorkflowModal({
 
         // In createAndSend mode, auto-execute the workflow in chat after creation
         if (createAndSend) {
-          handleClose();
-          setTimeout(() => {
+          pendingPostCloseActionRef.current = () => {
             selectWorkflow(createdWorkflow, { autoSend: true });
-          }, 50);
-        } else {
-          handleClose();
+          };
         }
+        handleClose();
       } else {
         setCreationPhase("error");
       }
@@ -425,6 +437,13 @@ export default function WorkflowModal({
       handleClose();
     } catch (error) {
       console.error("Failed to update workflow:", error);
+      toast.error("Failed to update workflow", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred. Please try again.",
+        duration: 4000,
+      });
     }
   };
 
@@ -617,14 +636,12 @@ export default function WorkflowModal({
         trigger_type: existingWorkflow.trigger_config.type,
       });
 
-      // Close modal first to ensure clean state
-      onOpenChange(false);
-
-      // Then navigate after modal starts closing
-      // Small delay ensures modal close animation begins and component cleanup doesn't interfere
-      setTimeout(() => {
+      // Defer navigation until after the modal has actually closed; the
+      // close-effect on isOpen will fire this once the parent unmounts us.
+      pendingPostCloseActionRef.current = () => {
         selectWorkflow(existingWorkflow, { autoSend: true });
-      }, 50);
+      };
+      onOpenChange(false);
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
     }

@@ -3,7 +3,7 @@ import { UndoIcon } from "@icons";
 import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import WorkflowModal from "@/features/workflows/components/WorkflowModal";
 import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
@@ -60,7 +60,6 @@ const SuggestionCard = memo(function SuggestionCard({
 });
 
 export const ChatSuggestions: React.FC = () => {
-  const shouldReduceMotion = useReducedMotion();
   const { workflows: allWorkflows } = useExploreWorkflows();
   const [currentSuggestions, setCurrentSuggestions] = useState<
     CommunityWorkflow[]
@@ -79,7 +78,7 @@ export const ChatSuggestions: React.FC = () => {
   );
 
   // Set initial suggestions when featured workflows are available
-  useMemo(() => {
+  useEffect(() => {
     if (featuredWorkflows.length > 0 && currentSuggestions.length === 0) {
       const initialSuggestions = shuffleArray(featuredWorkflows).slice(0, 3);
       setCurrentSuggestions(initialSuggestions);
@@ -146,13 +145,7 @@ export const ChatSuggestions: React.FC = () => {
         </div>
       )}
 
-      <m.div
-        className="grid w-full grid-cols-3 gap-4"
-        initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -20 }}
-        transition={{ duration: shouldReduceMotion ? 0 : 0.3, ease: "easeOut" }}
-      >
+      <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
         {currentSuggestions.map((workflow, index) => (
           <SuggestionCard
             key={workflow.id}
@@ -161,7 +154,7 @@ export const ChatSuggestions: React.FC = () => {
             onCardClick={handleSuggestionClick}
           />
         ))}
-      </m.div>
+      </div>
 
       {isModalOpen && draftData && (
         <WorkflowModal
