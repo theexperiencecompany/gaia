@@ -85,15 +85,15 @@ export default function WorkflowHeader({
             </DropdownTrigger>
             <DropdownMenu
               disabledKeys={isTogglingActivation ? ["activation"] : []}
-              onAction={async (key) => {
+              onAction={(key) => {
                 if (key === "activation") {
                   onToggleActivation(!isActivated);
                 } else if (key === "unpublish" && onUnpublish) {
-                  await onUnpublish();
+                  onUnpublish();
                 } else if (key === "reset" && onResetToDefault) {
-                  await onResetToDefault();
+                  onResetToDefault();
                 } else if (key === "delete") {
-                  await onDelete();
+                  onDelete();
                 }
               }}
             >

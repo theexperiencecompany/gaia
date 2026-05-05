@@ -301,9 +301,11 @@ export default function WorkflowModal({
     const currentFormData = workflowToFormData(existingWorkflow);
 
     const persistedSlugs = [...(existingWorkflow.selected_integrations ?? [])]
-      .sort()
+      .sort((a, b) => a.localeCompare(b))
       .join(",");
-    const currentSlugs = [...selectedIntegrationSlugs].sort().join(",");
+    const currentSlugs = [...selectedIntegrationSlugs]
+      .sort((a, b) => a.localeCompare(b))
+      .join(",");
 
     return (
       formData.title !== currentFormData.title ||
@@ -407,9 +409,11 @@ export default function WorkflowModal({
       // so the comparison runs against the previous truth.
       const previousFormData = workflowToFormData(currentWorkflow);
       const previousSlugs = [...(currentWorkflow.selected_integrations ?? [])]
-        .sort()
+        .sort((a, b) => a.localeCompare(b))
         .join(",");
-      const currentSlugs = [...selectedIntegrationSlugs].sort().join(",");
+      const currentSlugs = [...selectedIntegrationSlugs]
+        .sort((a, b) => a.localeCompare(b))
+        .join(",");
       const stepRelevantChanged =
         data.prompt !== previousFormData.prompt ||
         data.description !== previousFormData.description ||
