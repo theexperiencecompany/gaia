@@ -1,0 +1,51 @@
+i'm in worktree gaia-6 · optimizePackageImports                                                                                                                       
+                                                                                                                                                 
+✓ Starting...                                                                                                                          
+                                                                                                                                                 
+-----                                                                                                                                            
+FATAL: An unexpected Turbopack error occurred. A panic log has been written to /var/folders/xl/mv9_0w811nxf85twkqkpx36w0000gn/T/next-pa
+809d54e743e330bea1f72900b4.log.                                                                                                                  
+                                                                                                                                                 
+- Local:         http://localhost:3000
+- Network:       http://10.149.173.63:3000
+- Environments: .env
+- Experiments (use with caution):
+  · clientTraceMetadata
+  ✓ optimizeCss
+  · optimizePackageImports
+
+✓ Starting...
+
+-----
+FATAL: An unexpected Turbopack error occurred. A panic log has been written to /var/folders/xl/mv9_0w811nxf85twkqkpx36w0000gn/T/next-panic-58fc9c
+809d54e743e330bea1f72900b4.log.
+
+To help make Turbopack better, report this error by clicking here.
+-----
+
+Error [TurbopackInternalError]: Symlink apps/web/node_modules is invalid, it points out of the filesystem root
+
+Debug info:
+- Execution of get_entrypoints_with_issues_operation failed
+- Execution of EntrypointsOperation::new failed
+- Execution of Project::entrypoints failed
+- Execution of AppProject::routes failed
+- Execution of directory_tree_to_entrypoints_internal failed
+- Execution of try_get_next_package failed
+- Execution of *ResolveResult::first_source failed
+- Execution of resolve failed
+- Execution of resolve_internal failed
+- Execution of find_package failed
+- Symlink apps/web/node_modules is invalid, it points out of the filesystem root
+    at ignore-listed frames {
+  location: undefined
+}
+ NX ✖ web:dev                                  . i keep having this issue even after i did pnpm i. what did i do wrong?
+
+---
+
+i think we've set something like this up in the GAIA/gaia folder. tell me, is it correct? how does thi sowkr?
+
+---
+
+and should we push that to develop and pull in all other branches? what are the implications of this for other user with no symlinks at all and just normal installation?

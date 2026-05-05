@@ -1,0 +1,63 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "b5819f2319da",
+  "session_id": "35fc3c96-72db-4e20-b0a9-b6eed8b0fb81",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-05T14:55:21.783631Z",
+  "branch": "optimise-llm-calls",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CLAUDE.md"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "49d996c0d459",
+  "token_usage": {
+    "input_tokens": 37,
+    "cache_creation_tokens": 86177,
+    "cache_read_tokens": 1189690,
+    "output_tokens": 7763,
+    "api_call_count": 25
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-05T14:55:21.763357Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 265,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 265,
+    "total_lines_changed": 319,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 208,
+      "user_lines_removed": 2,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 126,
+        "CLAUDE.md": 18,
+        "apps/web/.claude/settings.local.json": 25,
+        "apps/web/next.config.mjs": 19,
+        "packages/cli/.claude/settings.local.json": 20
+      },
+      "user_removed_per_file": {
+        "apps/web/next.config.mjs": 2
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
