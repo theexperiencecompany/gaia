@@ -93,7 +93,7 @@ export default function UseCaseDetailClient({
 
   // Prepare common data
   const title = "title" in data ? data.title : "";
-  const currentSlug = useCase?.slug || communityWorkflow?.id || slug;
+  const currentSlug = useCase?.slug ?? communityWorkflow?.slug ?? slug;
 
   // Prepare breadcrumbs
   const breadcrumbs = [

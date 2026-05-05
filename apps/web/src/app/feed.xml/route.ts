@@ -350,16 +350,16 @@ async function getWorkflowItems(baseUrl: string): Promise<FeedItem[]> {
 
     return allWorkflows
       .filter((wf) => {
-        if (seen.has(wf.id)) return false;
-        seen.add(wf.id);
+        if (seen.has(wf.slug)) return false;
+        seen.add(wf.slug);
         return true;
       })
       .map((wf) => ({
-        title: wf.title || wf.id,
-        link: `${baseUrl}/use-cases/${wf.id}`,
+        title: wf.title,
+        link: `${baseUrl}/use-cases/${wf.slug}`,
         description:
           wf.description ||
-          `AI workflow: ${wf.title || wf.id}. Automate this use case with GAIA.`,
+          `AI workflow: ${wf.title}. Automate this use case with GAIA.`,
         pubDate: new Date(wf.created_at).toUTCString(),
         category: wf.categories?.includes("featured")
           ? "Featured Workflows"

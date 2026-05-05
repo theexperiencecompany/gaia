@@ -74,7 +74,7 @@ export type { ExecutionConfig, WorkflowMetadata };
  */
 export interface CommunityWorkflow {
   id: string;
-  slug?: string; // human-readable URL slug
+  slug: string; // human-readable URL slug (always set for public workflows)
   title: string;
   description: string;
   prompt?: string;
@@ -139,8 +139,8 @@ export interface Workflow {
   prompt: string;
   steps: WorkflowStepType[];
   trigger_config: TriggerConfig;
-  execution_config: ExecutionConfig;
-  metadata: WorkflowMetadata;
+  execution_config?: ExecutionConfig;
+  metadata?: WorkflowMetadata;
   activated: boolean;
   user_id: string;
   created_at: string;
@@ -166,6 +166,9 @@ export interface Workflow {
   is_system_workflow?: boolean;
   source_integration?: string;
   system_workflow_key?: string;
+
+  /** Integration slugs the user picked to bias step generation */
+  selected_integrations?: string[];
 }
 
 // API request types

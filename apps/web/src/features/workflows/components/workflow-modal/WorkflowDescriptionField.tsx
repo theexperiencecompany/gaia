@@ -57,6 +57,10 @@ export default function WorkflowDescriptionField({
         description: description ?? undefined,
         trigger_config: triggerConfig as Record<string, unknown>,
         existing_prompt: hasExistingPrompt ? currentPrompt : undefined,
+        selected_integrations:
+          selectedIntegrationSlugs.length > 0
+            ? selectedIntegrationSlugs
+            : undefined,
       });
       onChange(result.prompt);
 
@@ -105,14 +109,14 @@ export default function WorkflowDescriptionField({
           <div className="relative group">
             <Textarea
               {...field}
-              label="Instructions"
+              aria-label="Workflow instructions"
               placeholder={
                 mode === "edit"
                   ? "Detailed instructions for what this workflow should do"
                   : "Describe in detail what this workflow should do when triggered"
               }
               minRows={5}
-              variant="underlined"
+              variant="flat"
               className="text-sm"
               isRequired
               isInvalid={!!errors.prompt}
@@ -147,10 +151,7 @@ export default function WorkflowDescriptionField({
           </div>
         )}
       />
-      <div className="flex items-center gap-2 pt-1">
-        <span className="shrink-0 text-xs text-zinc-500">
-          Use integrations:
-        </span>
+      <div className="pt-1">
         <IntegrationChipsSelector
           selectedSlugs={selectedIntegrationSlugs}
           onChange={onIntegrationSlugsChange}

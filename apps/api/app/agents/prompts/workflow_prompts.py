@@ -397,6 +397,7 @@ Trigger suggestion rules (apply in STRICT priority order):
 
 WORKFLOW_PROMPT_GENERATION_TEMPLATE = """{title_section}{description_section}
 {trigger_hint}
+{integrations_hint}
 {available_triggers}
 {existing_section}
 {mode_instruction}
