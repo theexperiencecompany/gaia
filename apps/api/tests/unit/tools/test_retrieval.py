@@ -6,6 +6,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+def _make_subagent_mock(
+    id: str, managed_by: str = "internal", name: str | None = None
+) -> MagicMock:
+    """Build a Subagent-shaped MagicMock for retrieval tests."""
+    sa = MagicMock()
+    sa.id = id
+    sa.name = name or id.title()
+    sa.managed_by = managed_by
+    return sa
+
+
 # ---------------------------------------------------------------------------
 # _get_user_context
 # ---------------------------------------------------------------------------
@@ -16,7 +27,10 @@ class TestGetUserContext:
     async def test_no_user_id_returns_defaults(self):
         from app.agents.tools.core.retrieval import _get_user_context
 
-        with patch("app.agents.tools.core.retrieval.OAUTH_INTEGRATIONS", []):
+        with patch(
+            "app.agents.tools.core.retrieval.all_subagents",
+            return_value=(),
+        ):
             ns, connected, internal = await _get_user_context(
                 None, "general", include_subagents=True
             )
@@ -28,12 +42,10 @@ class TestGetUserContext:
     async def test_includes_internal_subagents(self):
         from app.agents.tools.core.retrieval import _get_user_context
 
-        integration = MagicMock()
-        integration.id = "gmail"
-        integration.managed_by = "internal"
-        integration.subagent_config.has_subagent = True
-
-        with patch("app.agents.tools.core.retrieval.OAUTH_INTEGRATIONS", [integration]):
+        with patch(
+            "app.agents.tools.core.retrieval.all_subagents",
+            return_value=(_make_subagent_mock("gmail", "internal"),),
+        ):
             ns, connected, internal = await _get_user_context(
                 None, "general", include_subagents=True
             )
@@ -43,12 +55,10 @@ class TestGetUserContext:
     async def test_excludes_internal_subagents_when_disabled(self):
         from app.agents.tools.core.retrieval import _get_user_context
 
-        integration = MagicMock()
-        integration.id = "gmail"
-        integration.managed_by = "internal"
-        integration.subagent_config.has_subagent = True
-
-        with patch("app.agents.tools.core.retrieval.OAUTH_INTEGRATIONS", [integration]):
+        with patch(
+            "app.agents.tools.core.retrieval.all_subagents",
+            return_value=(_make_subagent_mock("gmail", "internal"),),
+        ):
             ns, connected, internal = await _get_user_context(
                 None, "general", include_subagents=False
             )
@@ -59,11 +69,18 @@ class TestGetUserContext:
         from app.agents.tools.core.retrieval import _get_user_context
 
         with (
-            patch("app.agents.tools.core.retrieval.OAUTH_INTEGRATIONS", []),
+            patch(
+                "app.agents.tools.core.retrieval.all_subagents",
+                return_value=(),
+            ),
             patch(
                 "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
                 new_callable=AsyncMock,
                 return_value=["general", "gmail", "subagents"],
+            ),
+            patch(
+                "app.agents.tools.core.retrieval.get_subagent_by_id",
+                return_value=None,
             ),
             patch(
                 "app.agents.tools.core.retrieval.get_integration_by_id",
@@ -83,7 +100,10 @@ class TestGetUserContext:
         from app.agents.tools.core.retrieval import _get_user_context
 
         with (
-            patch("app.agents.tools.core.retrieval.OAUTH_INTEGRATIONS", []),
+            patch(
+                "app.agents.tools.core.retrieval.all_subagents",
+                return_value=(),
+            ),
             patch(
                 "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
                 new_callable=AsyncMock,
@@ -101,15 +121,12 @@ class TestGetUserContext:
     async def test_connected_integrations_with_subagent_config(self):
         from app.agents.tools.core.retrieval import _get_user_context
 
-        # Platform integration with subagent config
-        platform_integ = MagicMock()
-        platform_integ.id = "slack"
-        platform_integ.managed_by = "composio"
-        platform_integ.subagent_config.has_subagent = True
+        slack_subagent = _make_subagent_mock("slack", "composio")
 
         with (
             patch(
-                "app.agents.tools.core.retrieval.OAUTH_INTEGRATIONS", [platform_integ]
+                "app.agents.tools.core.retrieval.all_subagents",
+                return_value=(slack_subagent,),
             ),
             patch(
                 "app.agents.tools.core.retrieval.get_user_available_tool_namespaces",
@@ -117,8 +134,8 @@ class TestGetUserContext:
                 return_value=["general", "slack", "subagents"],
             ),
             patch(
-                "app.agents.tools.core.retrieval.get_integration_by_id",
-                return_value=platform_integ,
+                "app.agents.tools.core.retrieval.get_subagent_by_id",
+                return_value=slack_subagent,
             ),
         ):
             ns, connected, internal = await _get_user_context(
@@ -487,14 +504,14 @@ class TestInjectAvailableSubagents:
     def test_injects_internal_and_connected(self):
         from app.agents.tools.core.retrieval import _inject_available_subagents
 
-        integ_internal = MagicMock()
-        integ_internal.name = "Internal App"
-        integ_connected = MagicMock()
-        integ_connected.name = "Connected App"
+        sa_internal = MagicMock()
+        sa_internal.name = "Internal App"
+        sa_connected = MagicMock()
+        sa_connected.name = "Connected App"
 
         with patch(
-            "app.agents.tools.core.retrieval.get_integration_by_id",
-            side_effect=lambda x: integ_internal if x == "int1" else integ_connected,
+            "app.agents.tools.core.retrieval.get_subagent_by_id",
+            side_effect=lambda x: sa_internal if x == "int1" else sa_connected,
         ):
             result = _inject_available_subagents(
                 ["tool_a"], {"int1"}, {"conn1"}, include_subagents=True
@@ -507,7 +524,7 @@ class TestInjectAvailableSubagents:
         from app.agents.tools.core.retrieval import _inject_available_subagents
 
         with patch(
-            "app.agents.tools.core.retrieval.get_integration_by_id",
+            "app.agents.tools.core.retrieval.get_subagent_by_id",
             return_value=None,
         ):
             result = _inject_available_subagents(

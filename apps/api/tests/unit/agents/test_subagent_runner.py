@@ -18,11 +18,11 @@ from app.agents.core.subagents.subagent_runner import (
     call_subagent,
     check_subagent_integration,
     execute_subagent_stream,
-    get_subagent_by_id,
-    get_subagent_integrations,
     prepare_executor_execution,
     prepare_subagent_execution,
 )
+from app.models.mcp_config import SubAgentConfig
+from app.models.subagent_models import Subagent
 
 
 # ---------------------------------------------------------------------------
@@ -30,35 +30,35 @@ from app.agents.core.subagents.subagent_runner import (
 # ---------------------------------------------------------------------------
 
 
-def _make_integration(
-    integration_id: str = "github",
-    short_name: str = "gh",
-    has_subagent: bool = True,
+def _make_subagent_config(agent_name: str = "github_agent") -> SubAgentConfig:
+    return SubAgentConfig(
+        has_subagent=True,
+        agent_name=agent_name,
+        tool_space="github_space",
+        handoff_tool_name="call_github",
+        domain="github",
+        capabilities="github stuff",
+        use_cases="github use",
+        system_prompt="You are the GitHub agent.",
+    )
+
+
+def _make_subagent(
+    subagent_id: str = "github",
+    short_name: str | None = "gh",
     agent_name: str = "github_agent",
     provider: str = "github",
-):
-    """Create a mock OAuthIntegration with subagent_config."""
-    subagent_cfg = MagicMock()
-    subagent_cfg.has_subagent = has_subagent
-    subagent_cfg.agent_name = agent_name
-    subagent_cfg.system_prompt = "You are the GitHub agent."
-
-    integration = MagicMock()
-    integration.id = integration_id
-    integration.name = integration_id.title()
-    integration.short_name = short_name
-    integration.provider = provider
-    integration.subagent_config = subagent_cfg
-    return integration
-
-
-def _make_integration_no_subagent(integration_id: str = "stripe"):
-    integration = MagicMock()
-    integration.id = integration_id
-    integration.name = integration_id.title()
-    integration.short_name = None
-    integration.subagent_config = None
-    return integration
+    managed_by: str = "composio",
+) -> Subagent:
+    """Create a real Subagent instance for tests."""
+    return Subagent(
+        id=subagent_id,
+        name=subagent_id.title(),
+        provider=provider,
+        managed_by=managed_by,  # type: ignore[arg-type]
+        config=_make_subagent_config(agent_name=agent_name),
+        short_name=short_name,
+    )
 
 
 def _make_ctx(**overrides) -> SubagentExecutionContext:
@@ -76,94 +76,38 @@ def _make_ctx(**overrides) -> SubagentExecutionContext:
     return SubagentExecutionContext(**defaults)  # type: ignore[arg-type]
 
 
-FAKE_INTEGRATIONS = [
-    _make_integration("github", "gh", True, "github_agent"),
-    _make_integration("gmail", "gmail", True, "gmail_agent"),
-    _make_integration_no_subagent("stripe"),
-]
+FAKE_SUBAGENTS = (
+    _make_subagent("github", "gh", "github_agent", "github"),
+    _make_subagent("gmail", "gmail", "gmail_agent", "gmail"),
+)
 
 
-# ---------------------------------------------------------------------------
-# get_subagent_integrations
-# ---------------------------------------------------------------------------
+def _make_integration(
+    integration_id: str = "github",
+    short_name: str = "gh",
+    has_subagent: bool = True,
+    agent_name: str = "github_agent",
+    provider: str = "github",
+) -> MagicMock:
+    """Subagent-shaped fixture for `get_subagent_by_id` (used by
+    `build_subagent_system_prompt`).
 
+    Mirrors the `Subagent` dataclass surface: `.id`, `.name`, `.short_name`,
+    `.provider`, and `.config` with `.agent_name`, `.system_prompt`, and
+    `.has_subagent`.
+    """
+    subagent_cfg = MagicMock()
+    subagent_cfg.has_subagent = has_subagent
+    subagent_cfg.agent_name = agent_name
+    subagent_cfg.system_prompt = "You are the GitHub agent."
 
-@pytest.mark.unit
-class TestGetSubagentIntegrations:
-    def test_filters_integrations_with_subagent(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_integrations()
-
-        assert len(result) == 2
-        ids = [i.id for i in result]
-        assert "github" in ids
-        assert "gmail" in ids
-        assert "stripe" not in ids
-
-    def test_empty_integrations(self):
-        with patch("app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS", []):
-            assert get_subagent_integrations() == []
-
-
-# ---------------------------------------------------------------------------
-# get_subagent_by_id
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestGetSubagentById:
-    def test_find_by_id(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("github")
-        assert result is not None
-        assert result.id == "github"
-
-    def test_find_by_short_name(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("gh")
-        assert result is not None
-        assert result.id == "github"
-
-    def test_case_insensitive(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("GITHUB")
-        assert result is not None
-
-    def test_not_found(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("nonexistent")
-        assert result is None
-
-    def test_integration_without_subagent_not_returned(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("stripe")
-        assert result is None
-
-    def test_strips_whitespace(self):
-        with patch(
-            "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-            FAKE_INTEGRATIONS,
-        ):
-            result = get_subagent_by_id("  github  ")
-        assert result is not None
+    subagent = MagicMock()
+    subagent.id = integration_id
+    subagent.name = integration_id.title()
+    subagent.short_name = short_name
+    subagent.provider = provider
+    subagent.config = subagent_cfg
+    return subagent
 
 
 # ---------------------------------------------------------------------------
@@ -279,11 +223,12 @@ class TestPrepareSubagentExecution:
     @pytest.mark.asyncio
     async def test_happy_path(self):
         mock_graph = MagicMock(name="subagent_graph")
+        github = _make_subagent("github", "gh", "github_agent", "github")
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
+                "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
+                return_value=github,
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.providers.aget",
@@ -324,8 +269,12 @@ class TestPrepareSubagentExecution:
     async def test_subagent_not_found_error(self):
         with (
             patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
+                "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
+                return_value=None,
+            ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.all_subagents",
+                return_value=FAKE_SUBAGENTS,
             ),
             patch("app.agents.core.subagents.subagent_runner.log"),
         ):
@@ -343,10 +292,11 @@ class TestPrepareSubagentExecution:
 
     @pytest.mark.asyncio
     async def test_graph_not_available_error(self):
+        github = _make_subagent("github", "gh", "github_agent", "github")
         with (
             patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
+                "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
+                return_value=github,
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.providers.aget",
@@ -370,12 +320,13 @@ class TestPrepareSubagentExecution:
     async def test_strips_subagent_prefix(self):
         """subagent_id like 'subagent:github' should resolve to 'github'."""
         mock_graph = MagicMock(name="subagent_graph")
+        github = _make_subagent("github", "gh", "github_agent", "github")
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
-            ),
+                "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
+                return_value=github,
+            ) as mock_lookup,
             patch(
                 "app.agents.core.subagents.subagent_runner.providers.aget",
                 new_callable=AsyncMock,
@@ -407,6 +358,8 @@ class TestPrepareSubagentExecution:
 
         assert error is None
         assert ctx is not None
+        # Verify "subagent:" prefix was stripped before lookup
+        mock_lookup.assert_called_once_with("github")
 
 
 # ---------------------------------------------------------------------------
@@ -747,6 +700,7 @@ class TestPrepareExecutorExecution:
     async def test_direct_handoff_hint_injected(self):
         """When tool_category matches a known subagent, a hint is injected."""
         mock_graph = MagicMock(name="executor_graph")
+        github = _make_subagent("github", "gh", "github_agent", "github")
 
         with (
             patch(
@@ -768,8 +722,8 @@ class TestPrepareExecutorExecution:
                 return_value=SystemMessage(content="ctx"),
             ),
             patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
+                "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
+                return_value=github,
             ),
         ):
             ctx, error = await prepare_executor_execution(
@@ -974,10 +928,11 @@ class TestCallSubagent:
 
     @pytest.mark.asyncio
     async def test_integration_check_failure_yields_error(self):
+        github = _make_subagent("github", "gh", "github_agent", "github")
         with (
             patch(
-                "app.agents.core.subagents.subagent_runner.OAUTH_INTEGRATIONS",
-                FAKE_INTEGRATIONS,
+                "app.agents.core.subagents.subagent_runner.get_subagent_by_id",
+                return_value=github,
             ),
             patch(
                 "app.agents.core.subagents.subagent_runner.check_subagent_integration",
@@ -1223,7 +1178,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1245,7 +1200,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1275,7 +1230,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1296,7 +1251,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(
@@ -1317,7 +1272,7 @@ class TestBuildSubagentSystemPrompt:
 
         with (
             patch(
-                "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
                 return_value=integration,
             ),
             patch(

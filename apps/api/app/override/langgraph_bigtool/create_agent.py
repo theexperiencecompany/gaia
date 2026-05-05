@@ -42,7 +42,7 @@ from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.middleware.executor import MiddlewareExecutor
-from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 from app.override.langgraph_bigtool.hooks import (
     HookType,
@@ -59,7 +59,6 @@ from app.override.langgraph_bigtool.utils import (
 from shared.py.wide_events import log
 
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
-_FINISH_TASK_NAME = "finish_task"
 
 
 def create_agent(
@@ -419,10 +418,10 @@ def create_agent(
             finish_calls: list[ToolCall] = [
                 call
                 for call in last_message.tool_calls
-                if call.get("name") == _FINISH_TASK_NAME
+                if call.get("name") == FINISH_TASK_NAME
             ]
             if finish_calls:
-                return Send("finish_task", finish_calls)
+                return Send(FINISH_TASK_NAME, finish_calls)
 
             for call in last_message.tool_calls:
                 if retrieve_tools is not None and call["name"] == retrieve_tools.name:
@@ -460,7 +459,7 @@ def create_agent(
                 ToolMessage(
                     content=content,
                     tool_call_id=call.get("id", ""),
-                    name=_FINISH_TASK_NAME,
+                    name=FINISH_TASK_NAME,
                 )
             )
         return {"messages": messages}  # type: ignore[return-value]
@@ -497,7 +496,7 @@ def create_agent(
         builder.add_node("select_tools", select_tools_node)  # type: ignore[possibly-undefined]
     builder.add_node("tools", tool_node)
     builder.add_node(
-        "finish_task",
+        FINISH_TASK_NAME,
         RunnableCallable(finish_task_node, afinish_task_node),
     )
     builder.add_node(
@@ -505,7 +504,7 @@ def create_agent(
         RunnableCallable(reject_unbound_tools, areject_unbound_tools),
     )
 
-    path_map = ["tools", "finish_task", "reject_unbound_tools", END]
+    path_map = ["tools", FINISH_TASK_NAME, "reject_unbound_tools", END]
     if not disable_retrieve_tools:
         path_map.insert(0, "select_tools")
     if end_graph_hooks:
@@ -526,7 +525,7 @@ def create_agent(
 
     builder.add_edge("tools", "agent")
     builder.add_edge(
-        "finish_task",
+        FINISH_TASK_NAME,
         "end_graph_hooks" if end_graph_hooks else END,
     )
     builder.add_edge("reject_unbound_tools", "agent")

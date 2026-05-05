@@ -27,6 +27,11 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
 )
 from app.services.workflow.trigger_service import TriggerService
+from app.utils.creator import (
+    SYSTEM_CREATOR_NAME,
+    creator_lookup_stage,
+    format_creator,
+)
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import (
     ensure_trigger_config_object,
@@ -984,30 +989,7 @@ class WorkflowService:
                 {"$sort": {"created_at": -1}},
                 {"$skip": offset},
                 {"$limit": limit},
-                {
-                    "$lookup": {
-                        "from": "users",
-                        "let": {"creator_id": "$created_by"},
-                        "pipeline": [
-                            {
-                                "$match": {
-                                    "$expr": {
-                                        "$eq": ["$_id", {"$toObjectId": "$$creator_id"}]
-                                    }
-                                }
-                            },
-                            {
-                                "$project": {
-                                    "name": 1,
-                                    "email": 1,
-                                    "picture": 1,
-                                    "_id": 0,
-                                }
-                            },
-                        ],
-                        "as": "creator_info",
-                    }
-                },
+                creator_lookup_stage(),
                 {
                     "$project": {
                         "_id": 1,
@@ -1048,12 +1030,6 @@ class WorkflowService:
             for workflow in workflows:
                 await ensure_public_workflow_slug(workflow)
 
-                creator_info = (
-                    workflow.get("creator_info", [{}])[0]
-                    if workflow.get("creator_info")
-                    else {}
-                )
-
                 # Normalize steps to use 'category' field (handle legacy 'tool_category')
                 raw_steps = workflow.get("steps", [])
                 normalized_steps = []
@@ -1077,11 +1053,7 @@ class WorkflowService:
                     "prompt": workflow.get("prompt"),
                     "steps": normalized_steps,
                     "created_at": workflow["created_at"],
-                    "creator": {
-                        "id": workflow.get("created_by"),
-                        "name": creator_info.get("name", "Unknown"),
-                        "avatar": creator_info.get("picture"),
-                    },
+                    "creator": format_creator(workflow),
                 }
                 formatted_workflows.append(formatted_workflow)
 
@@ -1128,12 +1100,6 @@ class WorkflowService:
             for workflow in workflows:
                 await ensure_public_workflow_slug(workflow)
 
-                creator_info = (
-                    workflow.get("creator_info", [{}])[0]
-                    if workflow.get("creator_info")
-                    else {}
-                )
-
                 # Normalize steps to use 'category' field (handle legacy 'tool_category')
                 raw_steps = workflow.get("steps", [])
                 normalized_steps = []
@@ -1159,11 +1125,9 @@ class WorkflowService:
                     "created_at": workflow["created_at"],
                     "categories": workflow.get("use_case_categories", ["featured"]),
                     "total_executions": workflow.get("total_executions", 0),
-                    "creator": {
-                        "id": workflow.get("created_by"),
-                        "name": creator_info.get("name", "GAIA Team"),
-                        "avatar": creator_info.get("picture"),
-                    },
+                    "creator": format_creator(
+                        workflow, default_name=SYSTEM_CREATOR_NAME
+                    ),
                 }
                 formatted_workflows.append(formatted_workflow)
 

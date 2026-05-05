@@ -1,7 +1,11 @@
+import { Button } from "@heroui/button";
+import { Link } from "@heroui/link";
 import { CheckmarkCircle01Icon } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
+import { useSafeTriggerAction } from "../hooks/useSafeTriggerAction";
+import { ToolCard } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -14,15 +18,27 @@ export const timelineSchema = z.object({
       title: z.string(),
       description: z.string().optional(),
       status: z.enum(["success", "error", "warning", "neutral"]).optional(),
+      actor: z.string().optional(),
+      links: z
+        .array(
+          z.object({
+            label: z.string(),
+            url: z.string(),
+            type: z.enum(["primary", "secondary"]).optional(),
+          }),
+        )
+        .optional(),
+      actions: z
+        .array(
+          z.object({
+            label: z.string(),
+            value: z.string(),
+          }),
+        )
+        .optional(),
     }),
   ),
   title: z.string().optional(),
-});
-
-export const alertBannerSchema = z.object({
-  variant: z.enum(["info", "success", "warning", "error"]),
-  title: z.string(),
-  description: z.string().optional(),
 });
 
 export const stepsSchema = z.object({
@@ -67,32 +83,6 @@ const TIMELINE_STATUS: Record<
     ring: "ring-zinc-500/20",
     label: "",
     labelColor: "",
-  },
-};
-
-const ALERT_STYLES: Record<
-  string,
-  { inner: string; text: string; accent: string }
-> = {
-  info: {
-    inner: "bg-blue-400/10",
-    text: "text-blue-400",
-    accent: "text-blue-300",
-  },
-  success: {
-    inner: "bg-emerald-400/10",
-    text: "text-emerald-400",
-    accent: "text-emerald-300",
-  },
-  warning: {
-    inner: "bg-amber-400/10",
-    text: "text-amber-400",
-    accent: "text-amber-300",
-  },
-  error: {
-    inner: "bg-red-400/10",
-    text: "text-red-400",
-    accent: "text-red-300",
   },
 };
 
@@ -153,20 +143,20 @@ function StepDot({
 // ---------------------------------------------------------------------------
 
 export function TimelineView(props: z.infer<typeof timelineSchema>) {
+  const triggerAction = useSafeTriggerAction();
+
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-lg">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-4">
-          {props.title}
-        </p>
-      )}
+    <ToolCard size="standard" title={props.title}>
       <div className="relative">
-        {/* Continuous connector line */}
         <div className="absolute left-[5px] top-3 bottom-3 w-px bg-zinc-700/50" />
         <div className="space-y-0">
           {props.items.map((item, i) => {
             const st = TIMELINE_STATUS[item.status ?? "neutral"];
             const isLast = i === props.items.length - 1;
+            const hasExtra =
+              item.actor ||
+              (item.links && item.links.length > 0) ||
+              (item.actions && item.actions.length > 0);
             return (
               <div
                 key={`${item.time}-${item.title}`}
@@ -179,9 +169,16 @@ export function TimelineView(props: z.infer<typeof timelineSchema>) {
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium text-zinc-100 leading-tight">
-                      {item.title}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-zinc-100 leading-tight">
+                        {item.title}
+                      </p>
+                      {item.actor && (
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          {item.actor}
+                        </p>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {item.status && item.status !== "neutral" && (
                         <span
@@ -200,27 +197,41 @@ export function TimelineView(props: z.infer<typeof timelineSchema>) {
                       {item.description}
                     </p>
                   )}
+                  {hasExtra && (
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      {item.links?.map((link) => (
+                        <Link
+                          key={`${item.title}-${link.label}-${link.url}`}
+                          href={link.url}
+                          isExternal
+                          className={
+                            link.type === "primary"
+                              ? "text-xs text-[#00bbff]"
+                              : "text-xs text-zinc-400"
+                          }
+                        >
+                          {link.label}
+                        </Link>
+                      ))}
+                      {item.actions?.map((action) => (
+                        <Button
+                          key={`${item.title}-${action.value}`}
+                          size="sm"
+                          variant="flat"
+                          onPress={() => triggerAction(action.value)}
+                        >
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       </div>
-    </div>
-  );
-}
-
-export function AlertBannerView(props: z.infer<typeof alertBannerSchema>) {
-  const style = ALERT_STYLES[props.variant] ?? ALERT_STYLES.info;
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-xl">
-      <div className={`rounded-xl ${style.inner} p-3`}>
-        <p className={`text-sm font-semibold ${style.text}`}>{props.title}</p>
-        {props.description && (
-          <p className={`text-xs mt-1 ${style.accent}`}>{props.description}</p>
-        )}
-      </div>
-    </div>
+    </ToolCard>
   );
 }
 
@@ -229,12 +240,7 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
   const activeIndex = props.items.findIndex((item) => item.status === "active");
 
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full max-w-sm">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
+    <ToolCard size="full" title={props.title} className="p-3">
       <div className="space-y-2">
         {props.items.map((item, i) => {
           const status = (item.status ?? "pending") as
@@ -242,8 +248,6 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
             | "active"
             | "pending";
           const isActive = status === "active";
-          // When no active item exists, pending items look normal (not dimmed).
-          // When an active item exists, only items after it look dimmed.
           const isDimmed =
             status === "pending" && hasActiveItem && i > activeIndex;
 
@@ -251,9 +255,7 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
             <div
               key={item.title}
               className={`rounded-2xl p-3 flex items-start gap-3 ${
-                isActive
-                  ? "bg-primary/10 border-1 border-primary/50"
-                  : "bg-zinc-900"
+                isActive ? "bg-primary/10" : "bg-white/[0.04]"
               }`}
             >
               <StepDot status={status} index={i} dimmed={isDimmed} />
@@ -281,7 +283,7 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
           );
         })}
       </div>
-    </div>
+    </ToolCard>
   );
 }
 
@@ -291,16 +293,10 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
 
 export const timelineDef = defineComponent({
   name: "Timeline",
-  description: "Ordered sequence of events with timestamps.",
+  description:
+    "Chronological event feed with timestamps, status dots, optional actor, links, and actions.",
   props: timelineSchema,
   component: ({ props }) => React.createElement(TimelineView, props),
-});
-
-export const alertBannerDef = defineComponent({
-  name: "AlertBanner",
-  description: "Inline alert notice with variant styling.",
-  props: alertBannerSchema,
-  component: ({ props }) => React.createElement(AlertBannerView, props),
 });
 
 export const stepsDef = defineComponent({

@@ -204,7 +204,7 @@ export default function UnifiedWorkflowCard({
   };
 
   const handleNavigate = () => {
-    const targetSlug = slug ?? communityWorkflow?.slug ?? workflow?.slug;
+    const targetSlug = slug || communityWorkflow?.slug || workflow?.slug;
     if (targetSlug) {
       trackEvent(ANALYTICS_EVENTS.WORKFLOW_CARD_NAVIGATE, {
         slug: targetSlug,

@@ -283,6 +283,7 @@ export default function WorkflowPage() {
             hideUserWorkflows={true}
             exploreWorkflows={exploreWorkflows}
             disableCentering={true}
+            noMaxWidth={true}
           />
         ) : null,
         undefined,

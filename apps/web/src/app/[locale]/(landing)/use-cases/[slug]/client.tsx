@@ -17,6 +17,7 @@ import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "@/features/workflows/triggers/utils";
+import { resolveCreatorAvatar } from "@/features/workflows/utils/creator";
 import type { UseCase } from "@/types/features/workflowTypes";
 
 interface UseCaseDetailClientProps {
@@ -119,9 +120,12 @@ export default function UseCaseDetailClient({
       : communityWorkflow
         ? "GAIA Team"
         : null;
-  const creatorAvatar = hasCreatorObject
-    ? communityWorkflow.creator?.avatar
-    : undefined;
+  const creatorRecord = hasCreatorObject
+    ? communityWorkflow.creator
+    : communityWorkflow?.created_by
+      ? { id: communityWorkflow.created_by }
+      : null;
+  const creatorAvatar = resolveCreatorAvatar(creatorRecord);
   const showCreator = !!communityWorkflow && !!creatorName;
 
   // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList

@@ -18,6 +18,8 @@ from app.db.chroma.chroma_tools_store import (
     delete_tools_by_namespace,
     index_tools_to_store,
 )
+from app.models.mcp_config import SubAgentConfig
+from app.models.subagent_models import Subagent
 
 
 # ---------------------------------------------------------------------------
@@ -65,21 +67,27 @@ class TestComputeToolHash:
 @pytest.mark.asyncio
 class TestGetSubagentTools:
     async def test_returns_subagent_tools(self):
-        cfg = SimpleNamespace(
+        cfg = SubAgentConfig(
+            has_subagent=True,
+            agent_name="gmail_agent",
+            tool_space="gmail_space",
+            handoff_tool_name="call_gmail",
             domain="email",
             use_cases="send, read",
             capabilities="full CRUD",
-            has_subagent=True,
+            system_prompt="You are gmail.",
         )
-        integ = SimpleNamespace(
+        subagent = Subagent(
             id="gmail",
             name="Gmail",
+            provider="gmail",
+            managed_by="composio",
+            config=cfg,
             short_name="gmail",
-            subagent_config=cfg,
         )
         with patch(
-            "app.db.chroma.chroma_tools_store.get_subagent_integrations",
-            return_value=[integ],
+            "app.db.chroma.chroma_tools_store.all_subagents",
+            return_value=(subagent,),
         ):
             result = await _get_subagent_tools()
 
@@ -88,16 +96,12 @@ class TestGetSubagentTools:
         assert entry["namespace"] == "subagents"
         assert "Gmail" in entry["description"]
 
-    async def test_skips_integration_without_subagent_config(self):
-        integ = SimpleNamespace(
-            id="x",
-            name="X",
-            short_name="x",
-            subagent_config=None,
-        )
+    async def test_skips_when_registry_empty(self):
+        # Registry never surfaces entries without a config; an empty registry
+        # produces an empty result.
         with patch(
-            "app.db.chroma.chroma_tools_store.get_subagent_integrations",
-            return_value=[integ],
+            "app.db.chroma.chroma_tools_store.all_subagents",
+            return_value=(),
         ):
             result = await _get_subagent_tools()
         assert result == {}

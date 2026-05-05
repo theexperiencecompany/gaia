@@ -1,4 +1,5 @@
 import { apiService } from "@/lib/api/service";
+import type { CommunityWorkflowsResponse } from "@/types/features/workflowTypes";
 
 import type {
   CommunityIntegration,
@@ -443,5 +444,19 @@ export const integrationsApi = {
       integrations: PublicIntegrationResponse[];
       query: string;
     };
+  },
+
+  /**
+   * Get community workflows related to an integration by slug or native ID
+   */
+  getRelatedWorkflows: async (
+    identifier: string,
+    limit: number = 10,
+  ): Promise<CommunityWorkflowsResponse> => {
+    const response = await apiService.get(
+      `/integrations/public/${encodeURIComponent(identifier)}/workflows?limit=${limit}`,
+      { silent: true },
+    );
+    return response as CommunityWorkflowsResponse;
   },
 };

@@ -10,13 +10,13 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
-from shared.py.wide_events import log
-from app.config.oauth_config import get_integration_by_id
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage
+from shared.py.wide_events import log
 
 
 async def build_subagent_system_prompt(
@@ -44,29 +44,24 @@ async def build_subagent_system_prompt(
         >>> prompt = await build_subagent_system_prompt("github", user_id="123")
         >>> # Returns: "{base_prompt}\n\nUSER CONTEXT FOR GITHUB:\n- Username: Dhruv-Maradiya\n"
     """
-    integration = get_integration_by_id(integration_id)
+    subagent = get_subagent_by_id(integration_id)
 
-    if not integration:
+    if not subagent:
         # Handle custom/public MCPs - use universal prompt
-        # If not in OAUTH_INTEGRATIONS, it's a custom or public MCP integration
+        # If not in the subagent registry, it's a custom or public MCP integration
         if integration_id:
             return base_system_prompt or CUSTOM_MCP_SUBAGENT_PROMPT
 
         log.warning(f"Integration {integration_id} not found")
         return base_system_prompt or ""
 
-    # Use provided system prompt or get from integration config
-    system_prompt = base_system_prompt
-    if not system_prompt and integration.subagent_config:
-        system_prompt = integration.subagent_config.system_prompt
-
-    if not system_prompt:
-        system_prompt = ""
+    # Use provided system prompt or get from subagent config
+    system_prompt = base_system_prompt or subagent.config.system_prompt or ""
 
     # Inject provider metadata if user_id is provided
-    if user_id and integration.provider:
+    if user_id and subagent.provider:
         try:
-            metadata = await get_provider_metadata(user_id, integration.provider)
+            metadata = await get_provider_metadata(user_id, subagent.provider)
             if metadata:
                 # Build context lines for all extracted variables
                 context_lines = []
@@ -75,13 +70,13 @@ async def build_subagent_system_prompt(
 
                 if context_lines:
                     provider_context = (
-                        f"\n\nUSER CONTEXT FOR {integration.name.upper()}:\n"
+                        f"\n\nUSER CONTEXT FOR {subagent.name.upper()}:\n"
                         + "\n".join(context_lines)
                         + "\n"
                     )
                     system_prompt = system_prompt + provider_context
                     log.debug(
-                        f"Injected {integration.provider} metadata into system prompt: "
+                        f"Injected {subagent.provider} metadata into system prompt: "
                         f"{list(metadata.keys())}"
                     )
         except Exception as e:

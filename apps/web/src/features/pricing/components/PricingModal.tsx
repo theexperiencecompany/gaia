@@ -18,7 +18,7 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      size="3xl"
+      size="full"
       radius="lg"
       backdrop="blur"
       scrollBehavior="inside"
@@ -40,7 +40,7 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
           </div>
 
           {/* Tabs + Cards */}
-          <div className="w-full flex flex-col items-center">
+          <div className="w-full flex flex-col items-center px-5">
             <Tabs aria-label="Billing period" radius="lg">
               <Tab key="monthly" title="Monthly">
                 {/* Trust bar */}
