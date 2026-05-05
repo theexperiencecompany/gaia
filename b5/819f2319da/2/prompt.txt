@@ -1,0 +1,5 @@
+can u hop in readme/improvements proper worktree. help me improve the architecture to be a bit more higher level
+
+---
+
+can u hop in readme/improvements proper worktree. help me improve the architecture in the README to be a bit more higher level like could u give me a couple different altnernate versions for the flowchart as to what to do
