@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight01Icon } from "@icons";
+import { ArrowRight02Icon } from "@icons";
 import Link from "next/link";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 
@@ -17,7 +17,7 @@ export default function LandingPricingSection() {
           className="flex items-center gap-1 text-sm text-zinc-400 transition-colors hover:text-zinc-200"
         >
           Self-host for free
-          <ArrowRight01Icon width={14} height={14} />
+          <ArrowRight02Icon width={14} height={14} />
         </Link>
       </div>
     </section>

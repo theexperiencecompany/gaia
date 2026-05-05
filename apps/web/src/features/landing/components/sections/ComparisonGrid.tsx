@@ -1,7 +1,7 @@
 "use client";
 
 import { Tooltip } from "@heroui/tooltip";
-import { Cancel01Icon, Tick02Icon } from "@icons";
+import { ArrowRight02Icon, Cancel01Icon, Tick02Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -265,9 +265,10 @@ export default function ComparisonGrid() {
           Sourced from official websites and documentation.{" "}
           <Link
             href="/compare"
-            className="underline underline-offset-2 transition-colors hover:text-zinc-300"
+            className="inline-flex items-center gap-1 underline underline-offset-2 transition-colors hover:text-zinc-300"
           >
-            See full comparisons →
+            See full comparisons
+            <ArrowRight02Icon width={12} height={12} />
           </Link>
         </p>
       </div>
