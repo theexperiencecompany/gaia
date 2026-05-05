@@ -195,19 +195,23 @@ export default function ComparisonGrid() {
   return (
     <section className="flex w-full flex-col items-center px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
       <div className="flex w-full max-w-6xl flex-col items-center gap-10">
-        <LargeHeader headingText="How GAIA compares" centered />
+        <LargeHeader
+          headingText="How GAIA compares"
+          subHeadingText="Every cell sourced from official websites and docs. We even call out where competitors beat us."
+          centered
+        />
 
         <div className="w-full overflow-x-auto rounded-3xl bg-gradient-to-b from-zinc-900 to-zinc-950 outline outline-1 outline-zinc-900">
           <table className="w-full min-w-[720px] border-collapse">
             <thead>
               <tr>
-                <th className="w-[200px] p-5 text-left text-xs font-medium uppercase tracking-widest text-zinc-500">
+                <th className="w-[200px] px-5 py-3 text-left text-xs font-medium uppercase tracking-widest text-zinc-500">
                   Feature
                 </th>
                 {COMPETITORS.map((c) => (
                   <th
                     key={c.name}
-                    className={`p-5 text-center align-middle ${
+                    className={`px-5 py-3 text-center align-middle ${
                       c.slug === null ? "bg-primary/5" : ""
                     }`}
                   >
