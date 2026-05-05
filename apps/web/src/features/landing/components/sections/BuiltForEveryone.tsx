@@ -25,15 +25,15 @@ const CHART_DATA = [
   { occupation: "Life & social sciences", theoretical: 0.76, observed: 0.1 },
   { occupation: "Social services", theoretical: 0.48, observed: 0.05 },
   { occupation: "Legal", theoretical: 0.9, observed: 0.2 },
-  { occupation: "Education & library", theoretical: 0.65, observed: 0.18 },
-  { occupation: "Arts & media", theoretical: 0.85, observed: 0.2 },
-  { occupation: "Healthcare practitioners", theoretical: 0.65, observed: 0.1 },
-  { occupation: "Healthcare support", theoretical: 0.4, observed: 0 },
-  { occupation: "Protective service", theoretical: 0.3, observed: 0 },
-  { occupation: "Food & serving", theoretical: 0.1, observed: 0 },
+  { occupation: "Education & library", theoretical: 0.61, observed: 0.18 },
+  { occupation: "Arts & media", theoretical: 0.8, observed: 0.2 },
+  { occupation: "Healthcare practitioners", theoretical: 0.6, observed: 0.1 },
+  { occupation: "Healthcare support", theoretical: 0.28, observed: 0 },
+  { occupation: "Protective service", theoretical: 0.31, observed: 0 },
+  { occupation: "Food & serving", theoretical: 0.2, observed: 0 },
   { occupation: "Grounds maintenance", theoretical: 0.1, observed: 0 },
-  { occupation: "Personal care", theoretical: 0.1, observed: 0.05 },
-  { occupation: "Sales", theoretical: 0.3, observed: 0.2 },
+  { occupation: "Personal care", theoretical: 0.2, observed: 0.05 },
+  { occupation: "Sales", theoretical: 0.63, observed: 0.2 },
   { occupation: "Office & admin", theoretical: 0.95, observed: 0.3 },
   { occupation: "Agriculture", theoretical: 0.15, observed: 0 },
   { occupation: "Construction", theoretical: 0.17, observed: 0 },
@@ -87,13 +87,14 @@ export default function BuiltForEveryone() {
             Built for the other 95%
           </p>
           <h2 className="text-4xl sm:text-5xl md:text-6xl font-medium font-serif! tracking-tight max-w-3xl">
-            AI lives inside engineers&apos; tools.
+            AI can do most knowledge work.
             <br />
-            GAIA lives inside everything else.
+            Today, it mostly does code.
           </h2>
           <p className="text-base sm:text-lg text-zinc-400 font-light max-w-2xl">
-            Inbox, calendar, Slack, WhatsApp — GAIA is the assistant that comes
-            to you, not the tab you have to switch to.
+            Blue is what LLMs could handle. Red is what they&apos;re actually
+            handling. GAIA is built for the gap — the inbox, calendar, and
+            follow-ups AI tools haven&apos;t reached yet.
           </p>
         </div>
 
@@ -161,17 +162,28 @@ export default function BuiltForEveryone() {
             </ResponsiveContainer>
           </div>
 
-          <p className="mt-2 text-center text-[11px] text-zinc-500">
-            Source:{" "}
-            <a
-              href="https://www.anthropic.com/research/labor-market-impacts"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-2 hover:text-zinc-300 transition-colors"
-            >
-              Anthropic Economic Index, 2025
-            </a>
-          </p>
+          <div className="mx-auto mt-4 max-w-3xl space-y-1 text-center text-[11px] text-zinc-500">
+            <p className="font-medium text-zinc-400">
+              Figure 2: Theoretical capability and observed exposure by
+              occupational category
+            </p>
+            <p>
+              Share of job tasks that LLMs could theoretically perform (blue
+              area) and our own job coverage measure derived from usage data
+              (red area).
+            </p>
+            <p className="pt-1">
+              Source:{" "}
+              <a
+                href="https://www.anthropic.com/research/labor-market-impacts"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-zinc-300 transition-colors"
+              >
+                Anthropic Economic Index, 2025
+              </a>
+            </p>
+          </div>
         </div>
       </div>
     </section>
