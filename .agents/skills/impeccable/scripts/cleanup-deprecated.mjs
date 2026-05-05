@@ -19,7 +19,8 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync, lstatSync, unlinkSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Skills that were renamed, merged, or folded in v2.0 and v2.1.
 const DEPRECATED_NAMES = [
@@ -60,16 +61,44 @@ export function findProjectRoot(startDir = process.cwd()) {
 }
 
 /**
- * Check whether a skill directory belongs to Impeccable by reading its
- * SKILL.md and looking for the word "impeccable" (case-insensitive).
- * Returns false for non-existent paths or skills that don't match.
+ * Load skills-lock.json once and return its `skills` map (or null).
+ * Used to authoritatively confirm whether a skill came from pbakaus/impeccable.
  */
-export function isImpeccableSkill(skillDir) {
+export function loadLockSkills(projectRoot) {
+  const lockPath = join(projectRoot, 'skills-lock.json');
+  if (!existsSync(lockPath)) return null;
+  try {
+    const lock = JSON.parse(readFileSync(lockPath, 'utf-8'));
+    return lock?.skills && typeof lock.skills === 'object' ? lock.skills : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check whether a skill directory belongs to Impeccable.
+ *
+ * Prefers an authoritative cross-reference against skills-lock.json
+ * (entry whose `source === 'pbakaus/impeccable'`). Falls back to a
+ * stricter SKILL.md frontmatter check that requires an explicit
+ * pbakaus/impeccable attribution — substring matches in skill bodies
+ * (e.g. "see /impeccable") are no longer treated as confirmation, since
+ * generic deprecated names (extract, normalize, onboard) can collide
+ * with unrelated user skills.
+ */
+export function isImpeccableSkill(skillDir, lockSkills = null) {
+  if (lockSkills) {
+    const entry = lockSkills[basename(skillDir)];
+    if (entry?.source === 'pbakaus/impeccable') return true;
+    if (entry) return false;
+  }
   const skillMd = join(skillDir, 'SKILL.md');
   if (!existsSync(skillMd)) return false;
   try {
     const content = readFileSync(skillMd, 'utf-8');
-    return /impeccable/i.test(content);
+    const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fm) return false;
+    return /pbakaus\/impeccable|Anthropic['’]s\s+frontend-design/i.test(fm[1]);
   } catch {
     return false;
   }
@@ -110,6 +139,7 @@ export function findSkillsDirs(projectRoot) {
 export function removeDeprecatedSkills(projectRoot) {
   const targets = buildTargetNames();
   const skillsDirs = findSkillsDirs(projectRoot);
+  const lockSkills = loadLockSkills(projectRoot);
   const deleted = [];
 
   for (const skillsDir of skillsDirs) {
@@ -129,7 +159,7 @@ export function removeDeprecatedSkills(projectRoot) {
         // Symlink: check the target if it's alive, otherwise treat
         // dangling symlinks to deprecated names as safe to remove.
         const targetAlive = existsSync(skillPath);
-        const isMatch = targetAlive ? isImpeccableSkill(skillPath) : true;
+        const isMatch = targetAlive ? isImpeccableSkill(skillPath, lockSkills) : true;
         if (isMatch) {
           unlinkSync(skillPath);
           deleted.push(skillPath);
@@ -138,7 +168,7 @@ export function removeDeprecatedSkills(projectRoot) {
       }
 
       // Regular directory -- verify it belongs to impeccable
-      if (isImpeccableSkill(skillPath)) {
+      if (isImpeccableSkill(skillPath, lockSkills)) {
         rmSync(skillPath, { recursive: true, force: true });
         deleted.push(skillPath);
       }
@@ -197,7 +227,7 @@ export function cleanup(projectRoot) {
 }
 
 // CLI entry point
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   const result = cleanup();
   if (result.deletedPaths.length === 0 && result.removedLockEntries.length === 0) {
     console.log('No deprecated Impeccable skills found. Nothing to clean up.');

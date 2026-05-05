@@ -17,7 +17,11 @@ export function useSafeTriggerAction(): ReturnType<typeof useTriggerAction> {
     // biome-ignore lint/correctness/useHookAtTopLevel: useTriggerAction internally calls exactly one useContext before deciding whether to throw, so the try/catch keeps hook order stable across renders.
     const trigger = useTriggerAction();
     return trigger;
-  } catch {
+  } catch (err) {
+    // Only swallow the "hook used outside <Renderer />" error. Anything else
+    // (changed API, internal assertion, app-level bug) should surface instead
+    // of silently degrading every Button / action handler to a no-op.
+    if (!(err instanceof Error) || !/Renderer/i.test(err.message)) throw err;
     return NOOP;
   }
 }

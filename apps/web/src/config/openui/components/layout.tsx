@@ -188,13 +188,26 @@ export function CopyableContentView(
 ) {
   const [copied, setCopied] = React.useState(false);
   const inline = props.mode === "inline";
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(
+    () => () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    },
+    [],
+  );
 
   const copy = React.useCallback(() => {
+    // navigator.clipboard is undefined in non-secure contexts (e.g. http,
+    // some webviews). Calling writeText on undefined would throw synchronously
+    // before the catch can swallow it.
+    if (!navigator.clipboard?.writeText) return;
     void navigator.clipboard
       .writeText(props.content)
       .then(() => {
         setCopied(true);
-        setTimeout(() => setCopied(false), 1800);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => setCopied(false), 1800);
       })
       .catch(() => {});
   }, [props.content]);

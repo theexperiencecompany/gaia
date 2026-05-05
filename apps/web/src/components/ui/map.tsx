@@ -1,6 +1,9 @@
 "use client";
 
-import MapLibreGL, { type MarkerOptions, type PopupOptions } from "maplibre-gl";
+import type { MarkerOptions, PopupOptions } from "maplibre-gl";
+// maplibre-gl v5 dropped the default export — use a namespace import so
+// `MapLibreGL.Map / Marker / Popup` and the type re-exports continue to work.
+import * as MapLibreGL from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Cancel01Icon,
@@ -1076,16 +1079,28 @@ function MapRoute({
   const sourceId = `route-source-${id}`;
   const layerId = `route-layer-${id}`;
 
-  // Add source and layer on mount
+  // Add source and layer once we have a valid LineString to draw. Skipping
+  // the placeholder empty-coordinates source avoids rendering an invisible
+  // layer that's immediately replaced — and keeps cleanup symmetric.
   useEffect(() => {
-    if (!isLoaded || !map) return;
+    if (!isLoaded || !map || coordinates.length < 2) return;
+
+    if (map.getSource(sourceId)) {
+      const existing = map.getSource(sourceId) as MapLibreGL.GeoJSONSource;
+      existing.setData({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "LineString", coordinates },
+      });
+      return;
+    }
 
     map.addSource(sourceId, {
       type: "geojson",
       data: {
         type: "Feature",
         properties: {},
-        geometry: { type: "LineString", coordinates: [] },
+        geometry: { type: "LineString", coordinates },
       },
     });
 
@@ -1111,20 +1126,6 @@ function MapRoute({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, map]);
-
-  // When coordinates change, update the source data
-  useEffect(() => {
-    if (!isLoaded || !map || coordinates.length < 2) return;
-
-    const source = map.getSource(sourceId) as MapLibreGL.GeoJSONSource;
-    if (source) {
-      source.setData({
-        type: "Feature",
-        properties: {},
-        geometry: { type: "LineString", coordinates },
-      });
-    }
   }, [isLoaded, map, coordinates, sourceId]);
 
   useEffect(() => {

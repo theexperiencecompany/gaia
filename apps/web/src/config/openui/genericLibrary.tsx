@@ -98,7 +98,11 @@ const stackSchema = z.object({
   gap: z.enum(["xs", "s", "m", "l", "xl"]).optional(),
   align: z.enum(["start", "center", "end", "stretch"]).optional(),
   justify: z.enum(["start", "center", "end", "between", "around"]).optional(),
-  wrap: z.boolean().optional(),
+  // "wrap" lets items flow onto a new line; "scroll" keeps a single row that
+  // overflows horizontally (kanban-style). The two intents are mutually
+  // exclusive — combining flex-wrap with overflow-x-auto silently disables
+  // the scroll behaviour.
+  wrap: z.union([z.boolean(), z.enum(["wrap", "scroll"])]).optional(),
 });
 
 const rowSchema = z.object({
@@ -154,14 +158,19 @@ const JUSTIFY_MAP: Record<string, string> = {
 const stackDef = defineComponent({
   name: "Stack",
   description:
-    "Flexible container — vertical (default) or horizontal row. Supports gap, align, justify, and wrap for kanban-style overflow.",
+    'Flexible container — vertical (default) or horizontal row. Supports gap, align, justify, and wrap ("wrap" flows to a new line, "scroll" / true keeps one row with horizontal scroll for kanban-style overflow).',
   props: stackSchema,
   component: ({ props, renderNode }) => {
     const isRow = props.direction === "row";
     const gap = GAP_MAP[props.gap ?? "m"] ?? "gap-3";
     const align = ALIGN_MAP[props.align ?? ""] ?? "";
     const justify = JUSTIFY_MAP[props.justify ?? ""] ?? "";
-    const wrap = props.wrap ? "flex-wrap overflow-x-auto" : "";
+    const wrap =
+      props.wrap === "wrap"
+        ? "flex-wrap"
+        : props.wrap === "scroll" || props.wrap === true
+          ? "flex-nowrap overflow-x-auto"
+          : "";
     const stretch = isRow ? "" : "w-full [&>*]:max-w-full";
     const cls = [
       "flex",

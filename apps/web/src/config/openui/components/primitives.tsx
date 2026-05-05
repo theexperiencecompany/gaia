@@ -14,7 +14,15 @@ import {
   TableHeader,
   TableRow,
 } from "@heroui/react";
-import { ArrowDown01Icon, ArrowRight01Icon, ArrowUp01Icon } from "@icons";
+import {
+  Alert02Icon,
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  ArrowUp01Icon,
+  Cancel02Icon,
+  CheckmarkCircle02Icon,
+  InformationCircleIcon,
+} from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
@@ -192,9 +200,10 @@ export function TagView(props: z.infer<typeof tagSchema>) {
 export function TagBlockView(props: z.infer<typeof tagBlockSchema>) {
   return (
     <div className="flex flex-wrap gap-1.5">
-      {(props.labels ?? []).map((label) => (
+      {(props.labels ?? []).map((label, i) => (
         <Chip
-          key={label}
+          // biome-ignore lint/suspicious/noArrayIndexKey: positional tags, labels can duplicate
+          key={`${label}-${i}`}
           size="sm"
           variant="flat"
           classNames={{ base: "h-5", content: "text-[11px] px-1" }}
@@ -206,10 +215,34 @@ export function TagBlockView(props: z.infer<typeof tagBlockSchema>) {
   );
 }
 
+const CALLOUT_WIDTH: Record<
+  NonNullable<z.infer<typeof calloutSchema>["width"]>,
+  string
+> = {
+  sm: "max-w-sm",
+  md: "max-w-md",
+  lg: "max-w-lg",
+  full: "max-w-full",
+};
+
+const CALLOUT_ICON = {
+  info: InformationCircleIcon,
+  success: CheckmarkCircle02Icon,
+  warning: Alert02Icon,
+  error: Cancel02Icon,
+} as const;
+
 export function CalloutView(props: z.infer<typeof calloutSchema>) {
   const tone = props.variant === "error" ? "danger" : props.variant;
+  const widthClass = CALLOUT_WIDTH[props.width ?? "lg"];
+  const Icon = props.showIcon === false ? null : CALLOUT_ICON[props.variant];
   return (
-    <ToolBanner tone={tone} title={props.title}>
+    <ToolBanner
+      tone={tone}
+      title={props.title}
+      className={widthClass}
+      icon={Icon ? <Icon className="w-4 h-4" /> : undefined}
+    >
       {props.description}
     </ToolBanner>
   );
@@ -274,10 +307,10 @@ export function ButtonView(props: z.infer<typeof buttonSchema>) {
   const triggerAction = useSafeTriggerAction();
   const handlePress = () => {
     if (props.url) {
-      triggerAction(props.label, undefined, {
-        type: "open_url",
-        params: { url: props.url },
-      });
+      // Open the URL directly: useSafeTriggerAction is a no-op outside a
+      // mounted <Renderer />, so the dispatcher path would silently drop
+      // standalone (demo / preview) clicks.
+      window.open(props.url, "_blank", "noopener,noreferrer");
       return;
     }
     if (props.action) triggerAction(props.action);
@@ -308,8 +341,11 @@ export function ButtonView(props: z.infer<typeof buttonSchema>) {
 }
 
 export function ProgressView(props: z.infer<typeof progressSchema>) {
-  const max = props.max ?? 100;
-  const pct = Math.min(100, Math.round((props.value / max) * 100));
+  const max = props.max && props.max > 0 ? props.max : 100;
+  const ratio = (props.value ?? 0) / max;
+  const pct = Number.isFinite(ratio)
+    ? Math.max(0, Math.min(100, Math.round(ratio * 100)))
+    : 0;
   return (
     <div className="w-full">
       {(props.label || props.showValue) && (
