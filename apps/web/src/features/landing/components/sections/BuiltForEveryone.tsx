@@ -14,28 +14,32 @@ import {
 // https://www.anthropic.com/research/labor-market-impacts
 // Values read directly from the published radar chart (rings at 0.2, 0.4, 0.6, 0.8, 1.0).
 const CHART_DATA = [
-  { occupation: "Management", theoretical: 0.78, observed: 0.1 },
-  { occupation: "Business & finance", theoretical: 0.85, observed: 0.2 },
-  { occupation: "Computer & math", theoretical: 0.9, observed: 0.4 },
-  { occupation: "Architecture & engineering", theoretical: 0.8, observed: 0.1 },
-  { occupation: "Life & social sciences", theoretical: 0.85, observed: 0.1 },
-  { occupation: "Social services", theoretical: 0.55, observed: 0.05 },
-  { occupation: "Legal", theoretical: 0.95, observed: 0.1 },
-  { occupation: "Education & library", theoretical: 0.65, observed: 0.2 },
+  { occupation: "Management", theoretical: 0.9, observed: 0.1 },
+  { occupation: "Business & finance", theoretical: 0.92, observed: 0.31 },
+  { occupation: "Computer & math", theoretical: 0.91, observed: 0.37 },
+  {
+    occupation: "Architecture & engineering",
+    theoretical: 0.83,
+    observed: 0,
+  },
+  { occupation: "Life & social sciences", theoretical: 0.76, observed: 0.1 },
+  { occupation: "Social services", theoretical: 0.48, observed: 0.05 },
+  { occupation: "Legal", theoretical: 0.9, observed: 0.2 },
+  { occupation: "Education & library", theoretical: 0.65, observed: 0.18 },
   { occupation: "Arts & media", theoretical: 0.85, observed: 0.2 },
   { occupation: "Healthcare practitioners", theoretical: 0.65, observed: 0.1 },
-  { occupation: "Healthcare support", theoretical: 0.4, observed: 0.1 },
-  { occupation: "Protective service", theoretical: 0.3, observed: 0.1 },
-  { occupation: "Food & serving", theoretical: 0.1, observed: 0.05 },
-  { occupation: "Grounds maintenance", theoretical: 0.1, observed: 0.05 },
+  { occupation: "Healthcare support", theoretical: 0.4, observed: 0 },
+  { occupation: "Protective service", theoretical: 0.3, observed: 0 },
+  { occupation: "Food & serving", theoretical: 0.1, observed: 0 },
+  { occupation: "Grounds maintenance", theoretical: 0.1, observed: 0 },
   { occupation: "Personal care", theoretical: 0.1, observed: 0.05 },
   { occupation: "Sales", theoretical: 0.3, observed: 0.2 },
   { occupation: "Office & admin", theoretical: 0.95, observed: 0.3 },
-  { occupation: "Agriculture", theoretical: 0.1, observed: 0.05 },
-  { occupation: "Construction", theoretical: 0.1, observed: 0.05 },
-  { occupation: "Installation & repair", theoretical: 0.2, observed: 0.05 },
-  { occupation: "Production", theoretical: 0.3, observed: 0.1 },
-  { occupation: "Transportation", theoretical: 0.2, observed: 0.1 },
+  { occupation: "Agriculture", theoretical: 0.15, observed: 0 },
+  { occupation: "Construction", theoretical: 0.17, observed: 0 },
+  { occupation: "Installation & repair", theoretical: 0.19, observed: 0 },
+  { occupation: "Production", theoretical: 0.2, observed: 0 },
+  { occupation: "Transportation", theoretical: 0.1, observed: 0 },
 ];
 
 const COLOR_THEORETICAL = "#60a5fa";
@@ -83,13 +87,13 @@ export default function BuiltForEveryone() {
             Built for the other 95%
           </p>
           <h2 className="text-4xl sm:text-5xl md:text-6xl font-medium font-serif! tracking-tight max-w-3xl">
-            AI was built for developers.
+            AI lives inside engineers&apos; tools.
             <br />
-            GAIA is for everyone else.
+            GAIA lives inside everything else.
           </h2>
           <p className="text-base sm:text-lg text-zinc-400 font-light max-w-2xl">
-            AI changed how engineers work. Most other work is still done by
-            hand.
+            Inbox, calendar, Slack, WhatsApp — GAIA is the assistant that comes
+            to you, not the tab you have to switch to.
           </p>
         </div>
 
