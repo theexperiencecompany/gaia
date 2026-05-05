@@ -178,8 +178,8 @@ export type WorkflowDraftData = {
   suggested_description: string;
   /** Detailed prompt/instructions for the workflow execution */
   prompt: string;
-  /** Trigger type: manual, scheduled, or integration */
-  trigger_type: "manual" | "scheduled" | "integration";
+  /** Trigger type: manual, schedule, or integration */
+  trigger_type: "manual" | "schedule" | "integration";
   /** Trigger slug for integration triggers (e.g., GMAIL_NEW_GMAIL_MESSAGE) */
   trigger_slug?: string | null;
   /** Cron expression for scheduled triggers */
@@ -196,7 +196,7 @@ export type WorkflowCreatedData = {
   description: string;
   /** Trigger configuration */
   trigger_config: {
-    type: "manual" | "scheduled" | "integration";
+    type: "manual" | "schedule" | "integration";
     cron_expression?: string | null;
     trigger_name?: string | null;
     enabled?: boolean;

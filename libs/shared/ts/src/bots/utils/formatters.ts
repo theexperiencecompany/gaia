@@ -175,12 +175,26 @@ export function convertToWhatsAppMarkdown(text: string): string {
     text,
     (segment) =>
       segment
-        .replaceAll(/\*\*\*([^*]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
-        .replaceAll(/\*\*([^*]+)\*\*/g, "*$1*") // **bold** → *bold*
-        .replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
+        // Headings FIRST so the content gets wrapped in ``*`` before the
+        // bold rule sees it. Otherwise the model's ``### **Heading**`` would
+        // become ``### *Heading*`` (after bold) and then ``**Heading**`` once
+        // the heading rule wraps the already-emphasised content in ``*`` —
+        // re-introducing the double asterisks we tried to remove.
         .replaceAll(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
-        .replaceAll(/^>\s*/gm, "") // > quote → strip prefix
-        .replaceAll(/^[-_]{3,}$/gm, ""), // --- / ___ → remove
+        // Horizontal-rule remover MUST run before the bold rule. Otherwise
+        // ``***`` on its own line followed by ``**Heading**`` lets the bold
+        // regex's ``[^*]`` greedy-match the inter-line newlines and pair
+        // chars across the ``***`` boundary into ``**X**``, splitting the
+        // ``**Heading**`` and leaving stray ``**`` glyphs in the output.
+        .replaceAll(/^[-_*]{3,}$/gm, "") // --- / ___ / *** → remove
+        // Bold rules: keep ``[^*\n]`` (no newlines) so a single ``**`` opener
+        // cannot reach across blank lines and accidentally pair with the
+        // opener of a SEPARATE bold span.
+        .replaceAll(/\*\*\*([^*\n]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
+        .replaceAll(/\*\*([^*\n]+)\*\*/g, "*$1*") // **bold** → *bold*
+        .replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)") // [label](url) → label (url)
+        .replaceAll(/^(\s*)[*\-+]\s+/gm, "$1• ") // - / * / + bullet → •
+        .replaceAll(/^>\s*/gm, ""), // > quote → strip prefix
   );
 }
 

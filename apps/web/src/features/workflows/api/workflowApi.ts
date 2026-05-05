@@ -63,6 +63,7 @@ export const workflowApi = {
       prompt?: string;
       trigger_config?: CreateWorkflowRequest["trigger_config"];
       activated?: boolean;
+      selected_integrations?: string[];
     },
   ): Promise<WorkflowResponse> => {
     return apiService.put<WorkflowResponse>(
@@ -113,6 +114,7 @@ export const workflowApi = {
     options?: {
       instruction?: string;
       force_different_tools?: boolean;
+      selected_integrations?: string[];
     },
   ): Promise<WorkflowResponse> => {
     return apiService.post<WorkflowResponse>(
@@ -120,6 +122,7 @@ export const workflowApi = {
       {
         instruction: options?.instruction || "Generate workflow steps",
         force_different_tools: options?.force_different_tools ?? true,
+        selected_integrations: options?.selected_integrations,
       },
       {
         errorMessage: "Failed to regenerate workflow steps",
@@ -191,8 +194,12 @@ export const workflowApi = {
   // Publish workflow to community
   publishWorkflow: async (
     workflowId: string,
-  ): Promise<{ message: string; workflow_id: string }> => {
-    return apiService.post<{ message: string; workflow_id: string }>(
+  ): Promise<{ message: string; workflow_id: string; slug?: string }> => {
+    return apiService.post<{
+      message: string;
+      workflow_id: string;
+      slug?: string;
+    }>(
       `/workflows/${workflowId}/publish`,
       {},
       {
@@ -255,6 +262,7 @@ export const workflowApi = {
     description?: string;
     trigger_config?: Record<string, unknown>;
     existing_prompt?: string;
+    selected_integrations?: string[];
   }): Promise<{
     prompt: string;
     suggested_trigger?: {

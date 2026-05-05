@@ -11,6 +11,41 @@ from app.agents.core.subagents.handoff_tools import (
     check_integration_connection,
     index_custom_mcp_as_subagent,
 )
+from app.models.mcp_config import MCPConfig, SubAgentConfig
+from app.models.subagent_models import Subagent
+
+
+def _make_subagent_config(agent_name: str = "gmail_agent") -> SubAgentConfig:
+    return SubAgentConfig(
+        has_subagent=True,
+        agent_name=agent_name,
+        tool_space="gmail_space",
+        handoff_tool_name="call_gmail",
+        domain="gmail",
+        capabilities="email",
+        use_cases="emails",
+        system_prompt="You are gmail.",
+    )
+
+
+def _make_subagent(
+    subagent_id: str = "gmail",
+    short_name: str | None = "gmail",
+    name: str = "Gmail",
+    managed_by: str = "internal",
+    mcp_config: MCPConfig | None = None,
+    agent_name: str = "gmail_agent",
+) -> Subagent:
+    """Real Subagent for tests of handoff_tools (post-refactor)."""
+    return Subagent(
+        id=subagent_id,
+        name=name,
+        provider=subagent_id,
+        managed_by=managed_by,  # type: ignore[arg-type]
+        config=_make_subagent_config(agent_name=agent_name),
+        short_name=short_name,
+        mcp_config=mcp_config,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -22,18 +57,18 @@ from app.agents.core.subagents.handoff_tools import (
 class TestCheckIntegrationConnection:
     async def test_returns_none_when_integration_not_found(self):
         with patch(
-            "app.agents.core.subagents.handoff_tools.get_integration_by_id",
+            "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
             return_value=None,
         ):
             result = await check_integration_connection("bogus", "user1")
         assert result is None
 
     async def test_returns_none_when_connected(self):
-        integ = SimpleNamespace(name="Gmail", id="gmail")
+        subagent = _make_subagent("gmail")
         with (
             patch(
-                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
-                return_value=integ,
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.check_integration_status",
@@ -45,12 +80,12 @@ class TestCheckIntegrationConnection:
         assert result is None
 
     async def test_returns_error_when_not_connected(self):
-        integ = SimpleNamespace(name="Gmail", id="gmail")
+        subagent = _make_subagent("gmail")
         mock_writer = MagicMock()
         with (
             patch(
-                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
-                return_value=integ,
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.check_integration_status",
@@ -70,7 +105,7 @@ class TestCheckIntegrationConnection:
 
     async def test_returns_none_on_exception(self):
         with patch(
-            "app.agents.core.subagents.handoff_tools.get_integration_by_id",
+            "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
             side_effect=RuntimeError("boom"),
         ):
             result = await check_integration_connection("bad", "user1")
@@ -85,43 +120,33 @@ class TestCheckIntegrationConnection:
 @pytest.mark.asyncio
 class TestGetSubagentById:
     async def test_finds_platform_integration_by_id(self):
-        cfg = SimpleNamespace(has_subagent=True)
-        integ = SimpleNamespace(
-            id="gmail",
-            short_name="gmail",
-            subagent_config=cfg,
-        )
+        subagent = _make_subagent("gmail")
         with patch(
-            "app.agents.core.subagents.handoff_tools.OAUTH_INTEGRATIONS",
-            [integ],
+            "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+            return_value=subagent,
         ):
             result = await _get_subagent_by_id("gmail")
-        assert result is integ
+        assert result is subagent
 
     async def test_finds_platform_integration_by_short_name(self):
-        cfg = SimpleNamespace(has_subagent=True)
-        integ = SimpleNamespace(
-            id="google_calendar",
-            short_name="gcal",
-            subagent_config=cfg,
-        )
+        subagent = _make_subagent("google_calendar", short_name="gcal")
+        # Registry's get_subagent_by_id resolves the short_name lookup itself —
+        # the mock returns the same subagent regardless of the input string.
         with patch(
-            "app.agents.core.subagents.handoff_tools.OAUTH_INTEGRATIONS",
-            [integ],
+            "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+            return_value=subagent,
         ):
             result = await _get_subagent_by_id("gcal")
-        assert result is integ
+        assert result is subagent
 
     async def test_skips_platform_without_subagent_config(self):
-        integ = SimpleNamespace(
-            id="slack",
-            short_name="slack",
-            subagent_config=None,
-        )
+        # Registry never returns subagents without a config; falls through to
+        # cache/MongoDB. Slack is not a registered subagent, so the lookup
+        # returns None and we exercise the custom-MCP fallback path.
         with (
             patch(
-                "app.agents.core.subagents.handoff_tools.OAUTH_INTEGRATIONS",
-                [integ],
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=None,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.get_cache",
@@ -148,8 +173,8 @@ class TestGetSubagentById:
         cached = {"id": "abc123", "name": "Custom MCP"}
         with (
             patch(
-                "app.agents.core.subagents.handoff_tools.OAUTH_INTEGRATIONS",
-                [],
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=None,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.get_cache",
@@ -163,8 +188,8 @@ class TestGetSubagentById:
     async def test_returns_none_for_negative_cache(self):
         with (
             patch(
-                "app.agents.core.subagents.handoff_tools.OAUTH_INTEGRATIONS",
-                [],
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=None,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.get_cache",
@@ -186,8 +211,8 @@ class TestGetSubagentById:
         }
         with (
             patch(
-                "app.agents.core.subagents.handoff_tools.OAUTH_INTEGRATIONS",
-                [],
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=None,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.get_cache",
@@ -218,8 +243,8 @@ class TestGetSubagentById:
         resolved = SimpleNamespace(custom_doc=resolved_doc, source="user_integrations")
         with (
             patch(
-                "app.agents.core.subagents.handoff_tools.OAUTH_INTEGRATIONS",
-                [],
+                "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
+                return_value=None,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.get_cache",
@@ -287,8 +312,11 @@ class TestResolveSubagent:
                 return_value=None,
             ),
             patch(
-                "app.agents.core.subagents.handoff_tools.get_subagent_integrations",
-                return_value=[SimpleNamespace(id="gmail"), SimpleNamespace(id="slack")],
+                "app.agents.core.subagents.handoff_tools.all_subagents",
+                return_value=(
+                    _make_subagent("gmail"),
+                    _make_subagent("slack"),
+                ),
             ),
         ):
             graph, name, error, is_custom = await _resolve_subagent("unknown", "user1")
@@ -355,33 +383,17 @@ class TestResolveSubagent:
         assert graph is None
         assert "Failed to create" in error
 
-    async def test_platform_integration_no_subagent_config(self):
-        integ = SimpleNamespace(subagent_config=None)
-        with patch(
-            "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
-            new_callable=AsyncMock,
-            return_value=integ,
-        ):
-            graph, name, error, is_custom = await _resolve_subagent("integ", "user1")
-        assert graph is None
-        assert "not configured" in error
-
     async def test_platform_mcp_requires_auth_connected(self):
-        cfg = SimpleNamespace(agent_name="gmail_agent", has_subagent=True)
-        mcp_cfg = SimpleNamespace(requires_auth=True)
-        integ = SimpleNamespace(
-            id="gmail",
-            name="Gmail",
-            subagent_config=cfg,
-            managed_by="mcp",
-            mcp_config=mcp_cfg,
+        mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
+        subagent = _make_subagent(
+            "gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg
         )
         mock_graph = MagicMock()
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
-                return_value=integ,
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.MCPTokenStore"
@@ -402,20 +414,15 @@ class TestResolveSubagent:
         assert is_custom is False
 
     async def test_platform_mcp_requires_auth_not_connected(self):
-        cfg = SimpleNamespace(agent_name="gmail_agent", has_subagent=True)
-        mcp_cfg = SimpleNamespace(requires_auth=True)
-        integ = SimpleNamespace(
-            id="gmail",
-            name="Gmail",
-            subagent_config=cfg,
-            managed_by="mcp",
-            mcp_config=mcp_cfg,
+        mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
+        subagent = _make_subagent(
+            "gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg
         )
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
-                return_value=integ,
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.MCPTokenStore"
@@ -429,39 +436,33 @@ class TestResolveSubagent:
         assert "OAuth" in error
 
     async def test_platform_mcp_requires_auth_no_user(self):
-        cfg = SimpleNamespace(agent_name="gmail_agent", has_subagent=True)
-        mcp_cfg = SimpleNamespace(requires_auth=True)
-        integ = SimpleNamespace(
-            id="gmail",
-            name="Gmail",
-            subagent_config=cfg,
-            managed_by="mcp",
-            mcp_config=mcp_cfg,
+        mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
+        subagent = _make_subagent(
+            "gmail", "gmail", "Gmail", managed_by="mcp", mcp_config=mcp_cfg
         )
         with patch(
             "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
             new_callable=AsyncMock,
-            return_value=integ,
+            return_value=subagent,
         ):
             graph, name, error, is_custom = await _resolve_subagent("gmail", None)
         assert graph is None
         assert "authentication" in error.lower()
 
     async def test_platform_non_mcp_uses_provider(self):
-        cfg = SimpleNamespace(agent_name="calendar_agent", has_subagent=True)
-        integ = SimpleNamespace(
-            id="gcal",
-            name="Google Calendar",
-            subagent_config=cfg,
+        subagent = _make_subagent(
+            "gcal",
+            "gcal",
+            "Google Calendar",
             managed_by="internal",
-            mcp_config=None,
+            agent_name="calendar_agent",
         )
         mock_graph = MagicMock()
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
-                return_value=integ,
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.providers"
@@ -473,19 +474,18 @@ class TestResolveSubagent:
         assert name == "calendar_agent"
 
     async def test_platform_composio_checks_connection(self):
-        cfg = SimpleNamespace(agent_name="composio_agent", has_subagent=True)
-        integ = SimpleNamespace(
-            id="composio",
-            name="Composio",
-            subagent_config=cfg,
+        subagent = _make_subagent(
+            "composio",
+            "composio",
+            "Composio",
             managed_by="composio",
-            mcp_config=None,
+            agent_name="composio_agent",
         )
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
-                return_value=integ,
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.check_integration_connection",
@@ -498,19 +498,14 @@ class TestResolveSubagent:
         assert error == "Not connected"
 
     async def test_platform_provider_not_available(self):
-        cfg = SimpleNamespace(agent_name="missing_agent", has_subagent=True)
-        integ = SimpleNamespace(
-            id="x",
-            name="X",
-            subagent_config=cfg,
-            managed_by="internal",
-            mcp_config=None,
+        subagent = _make_subagent(
+            "x", "x", "X", managed_by="internal", agent_name="missing_agent"
         )
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
-                return_value=integ,
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.providers"
@@ -522,20 +517,20 @@ class TestResolveSubagent:
         assert "not available" in error
 
     async def test_platform_mcp_graph_creation_fails(self):
-        cfg = SimpleNamespace(agent_name="mcp_agent", has_subagent=True)
-        mcp_cfg = SimpleNamespace(requires_auth=True)
-        integ = SimpleNamespace(
-            id="mcp_int",
-            name="MCP Int",
-            subagent_config=cfg,
+        mcp_cfg = MCPConfig(server_url="https://example.com", requires_auth=True)
+        subagent = _make_subagent(
+            "mcp_int",
+            "mcp_int",
+            "MCP Int",
             managed_by="mcp",
             mcp_config=mcp_cfg,
+            agent_name="mcp_agent",
         )
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
                 new_callable=AsyncMock,
-                return_value=integ,
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.MCPTokenStore"

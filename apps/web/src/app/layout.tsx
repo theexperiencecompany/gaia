@@ -6,6 +6,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale } from "next-intl/server";
 import { Suspense } from "react";
 
+import { AgentationProvider } from "@/components/dev/AgentationProvider";
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
 import {
   generateOrganizationSchema,
@@ -187,6 +188,7 @@ export default async function RootLayout({
         </Script>
 
         <AnalyticsLayout />
+        <AgentationProvider />
       </body>
     </html>
   );

@@ -14,6 +14,7 @@ import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import React from "react";
 import { z } from "zod";
+import { ToolCard } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -167,16 +168,16 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
   }, [fields, editor]);
 
   return (
-    <div className="openui-document rounded-2xl bg-zinc-800 p-4 w-full max-w-2xl">
+    <ToolCard size="wide" className="openui-document">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-zinc-100">{title}</span>
 
         {/* Copy button group */}
         <div
           className={[
             "flex items-center rounded-lg overflow-hidden transition-all duration-150",
-            copied ? "bg-emerald-500/20" : "bg-zinc-700/50",
+            copied ? "bg-emerald-500/20" : "bg-white/[0.06]",
           ].join(" ")}
         >
           {/* Main copy button — copies as markdown */}
@@ -228,7 +229,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
 
       {/* Fields */}
       {fields && fields.length > 0 && (
-        <div className="mb-3 space-y-1">
+        <div className="space-y-1">
           {fields.map((field, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static LLM-provided field list
             <div key={i} className="flex gap-2 text-sm">
@@ -242,14 +243,14 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       )}
 
       {/* Divider */}
-      <div className="mb-3 h-px bg-zinc-700" />
+      <div className="h-px bg-zinc-700" />
 
       {/* Bubble menu — appears on text selection */}
       {editor && (
         <BubbleMenu
           editor={editor}
           tippyOptions={{ duration: 100 }}
-          className="flex items-center gap-0.5 rounded-xl bg-zinc-700 p-1 shadow-lg"
+          className="flex items-center gap-0.5 rounded-2xl bg-zinc-700 p-1 shadow-lg"
         >
           <ToolbarButton
             active={editor.isActive("heading", { level: 1 })}
@@ -299,7 +300,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       <div className="[&_.ProseMirror_h1]:text-xl [&_.ProseMirror_h1]:font-semibold [&_.ProseMirror_h1]:text-zinc-100 [&_.ProseMirror_h1]:mb-2 [&_.ProseMirror_h2]:text-base [&_.ProseMirror_h2]:font-semibold [&_.ProseMirror_h2]:text-zinc-100 [&_.ProseMirror_h2]:mb-1.5 [&_.ProseMirror_p]:text-sm [&_.ProseMirror_p]:text-zinc-200 [&_.ProseMirror_p]:leading-relaxed [&_.ProseMirror_p+p]:mt-2">
         <EditorContent editor={editor} />
       </div>
-    </div>
+    </ToolCard>
   );
 }
 

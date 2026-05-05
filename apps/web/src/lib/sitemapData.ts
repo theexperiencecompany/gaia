@@ -147,8 +147,8 @@ async function getExploreWorkflowPages(
 
     const data = await response.json();
     return (data.workflows || []).map(
-      (wc: { id: string; created_at: string; categories?: string[] }) => ({
-        url: `${baseUrl}/use-cases/${wc.id}`,
+      (wc: { slug: string; created_at: string; categories?: string[] }) => ({
+        url: `${baseUrl}/use-cases/${wc.slug}`,
         lastModified: new Date(wc.created_at),
         changeFrequency: "weekly" as const,
         priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
@@ -185,8 +185,8 @@ async function getCommunityWorkflowPages(
       if (!response.ok) return [];
       const data = await response.json();
       return (data.workflows || []).map(
-        (workflow: { id: string; created_at: string }) => ({
-          url: `${baseUrl}/use-cases/${workflow.id}`,
+        (workflow: { slug: string; created_at: string }) => ({
+          url: `${baseUrl}/use-cases/${workflow.slug}`,
           lastModified: new Date(workflow.created_at),
           changeFrequency: "weekly" as const,
           priority: 0.6,
@@ -194,7 +194,7 @@ async function getCommunityWorkflowPages(
       );
     }
 
-    const allWorkflows: Array<{ id: string; created_at: string }> =
+    const allWorkflows: Array<{ slug: string; created_at: string }> =
       await fetchAllPaginated(async (limit, offset) => {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -221,7 +221,7 @@ async function getCommunityWorkflowPages(
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.slug}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,

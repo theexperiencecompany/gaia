@@ -20,10 +20,14 @@
  */
 import type { Analytics } from "../../analytics";
 import { BOT_EVENTS } from "../../analytics/events/bots";
+import {
+  NEW_MESSAGE_BREAK_TOKEN,
+  NEW_MESSAGE_BREAK_TOKEN_LENGTH,
+} from "../../utils/messageBreakUtils";
 import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
 import { formatBotError } from "./formatters";
-import { truncateResponse } from "./index";
+import { chunkResponse, truncateResponse } from "./index";
 
 export interface StreamingOptions {
   editIntervalMs: number;
@@ -85,7 +89,6 @@ async function _handleStream(
   let streamDone = false;
   let currentEditor = editMessage;
   let sentText = "";
-  let breakHandledDuringStreaming = false;
 
   // Serialization queue to prevent concurrent Telegram API calls
   // which cause out-of-order message updates
@@ -97,7 +100,7 @@ async function _handleStream(
 
   const updateDisplay = async (text: string) => {
     // Strip any unprocessed break tags before displaying
-    const cleaned = text.replaceAll("<NEW_MESSAGE_BREAK>", "").trim();
+    const cleaned = text.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim();
     if (!cleaned) return;
     const truncated = truncateResponse(cleaned, platform);
     if (truncated === sentText) return;
@@ -112,10 +115,12 @@ async function _handleStream(
   const handleNewMessageBreak = async () => {
     if (!sendNewMessage) return;
 
-    while (fullText.includes("<NEW_MESSAGE_BREAK>")) {
-      const breakIndex = fullText.indexOf("<NEW_MESSAGE_BREAK>");
+    while (fullText.includes(NEW_MESSAGE_BREAK_TOKEN)) {
+      const breakIndex = fullText.indexOf(NEW_MESSAGE_BREAK_TOKEN);
       const beforeBreak = fullText.slice(0, breakIndex).trim();
-      const afterBreak = fullText.slice(breakIndex + 19);
+      const afterBreak = fullText.slice(
+        breakIndex + NEW_MESSAGE_BREAK_TOKEN_LENGTH,
+      );
 
       if (beforeBreak && beforeBreak !== sentText) {
         await updateDisplay(beforeBreak);
@@ -125,17 +130,68 @@ async function _handleStream(
       if (!afterTrimmed) {
         // Break at end of text with nothing after — just update current segment
         fullText = "";
-        breakHandledDuringStreaming = true;
         return;
       }
 
       currentEditor = await sendNewMessage(
-        afterTrimmed.replaceAll("<NEW_MESSAGE_BREAK>", "").trim() || "...",
+        afterTrimmed.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim() || "...",
       );
       fullText = afterTrimmed;
       sentText =
-        afterTrimmed.replaceAll("<NEW_MESSAGE_BREAK>", "").trim() || "...";
-      breakHandledDuringStreaming = true;
+        afterTrimmed.replaceAll(NEW_MESSAGE_BREAK_TOKEN, "").trim() || "...";
+    }
+  };
+
+  const deliverOverflowChunk = async (chunk: string): Promise<void> => {
+    if (sendNewMessage) {
+      currentEditor = await sendNewMessage(chunk);
+      sentText = chunk;
+    } else {
+      // Adapter cannot post additional bubbles — best-effort fallback that
+      // keeps the legacy truncation behaviour for this single bubble.
+      const overflow = truncateResponse(chunk, platform);
+      try {
+        await currentEditor(overflow);
+        sentText = overflow;
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  /**
+   * Final delivery: split ``text`` on any unprocessed ``<NEW_MESSAGE_BREAK>``
+   * markers, chunk each segment to the platform character limit, and deliver
+   * the chunks in order — first chunk edits the current bubble, every
+   * subsequent chunk is posted via ``sendNewMessage`` as a new bubble. Falls
+   * back to truncation only when the adapter cannot send additional bubbles.
+   *
+   * Used at the end of the stream so the user always receives the full
+   * response across as many bubbles as it takes, instead of a single bubble
+   * with a ``... (truncated)`` suffix.
+   */
+  const finalizeDelivery = async (text: string): Promise<void> => {
+    const segments = text
+      .split(NEW_MESSAGE_BREAK_TOKEN)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (segments.length === 0) return;
+
+    const allChunks = segments.flatMap((s) => chunkResponse(s, platform));
+    if (allChunks.length === 0) return;
+
+    const [firstChunk, ...remainingChunks] = allChunks;
+    if (firstChunk !== sentText) {
+      try {
+        await currentEditor(firstChunk);
+        sentText = firstChunk;
+      } catch {
+        // current bubble may have been deleted or expired
+      }
+    }
+
+    for (const chunk of remainingChunks) {
+      await deliverOverflowChunk(chunk);
     }
   };
 
@@ -147,7 +203,7 @@ async function _handleStream(
 
         const now = Date.now();
         if (
-          fullText.includes("<NEW_MESSAGE_BREAK>") ||
+          fullText.includes(NEW_MESSAGE_BREAK_TOKEN) ||
           now - lastEditTime >= editIntervalMs
         ) {
           lastEditTime = now;
@@ -182,35 +238,17 @@ async function _handleStream(
         // Wait for any in-flight operations to finish before final update
         await opQueue;
 
-        if (streaming && breakHandledDuringStreaming) {
-          // Breaks were already processed during streaming — just do final update
-          // of the current (last) segment without re-splitting
-          await updateDisplay(fullText);
-        } else if (
-          sendNewMessage &&
-          finalText.includes("<NEW_MESSAGE_BREAK>")
-        ) {
-          // Handle NEW_MESSAGE_BREAK for non-streaming platforms (e.g. Discord)
+        // Non-streaming platforms (Discord, WhatsApp) haven't shown anything
+        // yet — adopt the full ``finalText``. Streaming platforms have been
+        // live-editing one bubble (and potentially split off prior bubbles
+        // via handleNewMessageBreak); ``fullText`` already holds the current
+        // segment, no reset needed.
+        if (!streaming) {
           fullText = finalText;
           sentText = "";
-          const parts = fullText
-            .split("<NEW_MESSAGE_BREAK>")
-            .map((p) => p.trim())
-            .filter(Boolean);
-          if (parts.length > 0) {
-            await updateDisplay(parts[0]);
-            for (let i = 1; i < parts.length; i++) {
-              currentEditor = await sendNewMessage(parts[i]);
-            }
-          }
-        } else {
-          // For streaming, don't reset sentText — avoid re-sending already displayed content
-          if (!streaming) {
-            fullText = finalText;
-            sentText = "";
-          }
-          await updateDisplay(fullText);
         }
+
+        await finalizeDelivery(fullText);
       },
       async (error) => {
         streamDone = true;

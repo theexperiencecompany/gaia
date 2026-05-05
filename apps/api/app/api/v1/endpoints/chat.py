@@ -18,7 +18,6 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
-from shared.py.wide_events import ChatContext, log
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
@@ -26,6 +25,7 @@ from app.models.message_models import MessageRequestWithHistory
 from app.services.chat_service import run_chat_stream_background
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from shared.py.wide_events import ChatContext, log
 
 # Set to hold references to background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task] = set()
@@ -139,6 +139,12 @@ async def chat_stream_endpoint(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
+    # CORS is intentionally NOT set here — CORSMiddleware echoes the request's
+    # Origin against the allowlist in get_allowed_origins() (FRONTEND_URL, the
+    # production heygaia.* domains, and the localhost ports the desktop app
+    # uses). Hardcoding a single origin here would break desktop and any
+    # additional allowed domains. Mobile and bots use native HTTP / a separate
+    # /api/v1/bot/chat-stream endpoint and are not subject to browser CORS.
     return StreamingResponse(
         _stream_from_redis(stream_id, request, start_event=start_event),
         media_type="text/event-stream",
@@ -146,7 +152,6 @@ async def chat_stream_endpoint(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
-            "Access-Control-Allow-Origin": "*",
             "X-Stream-Id": stream_id,  # Send stream ID for cancellation
         },
     )

@@ -44,7 +44,7 @@ export default function ShareButton({
       }
       onPress={handleCopyLink}
     >
-      {copied ? "Copied" : "Copy Link"}
+      {copied ? "Copied link" : "Share"}
     </Button>
   );
 }

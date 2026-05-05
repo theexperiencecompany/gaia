@@ -6,9 +6,9 @@ Covers the comms -> executor -> subagent delegation path:
 - SubagentExecutionContext stores all fields correctly
 - Different thread IDs produce independent checkpointed state
 - build_initial_messages constructs the correct 3-message list
-- get_subagent_by_id / get_subagent_integrations return real data
+- get_subagent_by_id / all_subagents return real data
 - prepare_subagent_execution fails gracefully when subagent not found
-- register_subagent_providers registers integrations from OAUTH_INTEGRATIONS
+- register_subagent_providers registers integrations from the subagent registry
 - execute_subagent_stream processes streamed events correctly
 
 All external I/O (LLM, DB, Composio, Redis, MCP servers) is mocked.
@@ -35,6 +35,13 @@ from langgraph.store.memory import InMemoryStore
 
 from langchain_core.tools import tool
 
+from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
+from app.agents.core.subagents.subagent_runner import (
+    SubagentExecutionContext,
+    build_initial_messages,
+    execute_subagent_stream,
+    prepare_subagent_execution,
+)
 from tests.factories import make_user
 from tests.helpers import create_fake_llm
 from tests.integration.conftest import SimpleState
@@ -321,11 +328,6 @@ class TestSubagentExecutionContext:
         """SubagentExecutionContext must be accepted and consumed by the real
         execute_subagent_stream function — verifying that field names and types
         match what the production streaming function actually reads."""
-        from app.agents.core.subagents.subagent_runner import (
-            SubagentExecutionContext,
-            execute_subagent_stream,
-        )
-
         chunk = AIMessageChunk(content="context field test passed")
         events = [("messages", (chunk, {}))]
 
@@ -412,16 +414,7 @@ class TestSubagentThreadIsolation:
         expected pattern for two different integration IDs sharing the same
         parent conversation_id.
         """
-        from datetime import timezone
-
-        from langchain_core.messages import SystemMessage
-
-        from app.agents.core.subagents.subagent_runner import (
-            get_subagent_integrations,
-            prepare_subagent_execution,
-        )
-
-        integrations = get_subagent_integrations()
+        integrations = all_subagents()
         # Need at least two non-auth-required integrations to compare
         eligible = [
             i
@@ -537,17 +530,7 @@ class TestSubagentRun:
         I/O mocked at the boundary (LLM graph, system message, context message).
         Asserts on the real context structure and real graph invocation result.
         """
-        from datetime import timezone
-
-        from langchain_core.messages import SystemMessage
-
-        from app.agents.core.subagents.subagent_runner import (
-            SubagentExecutionContext,
-            get_subagent_integrations,
-            prepare_subagent_execution,
-        )
-
-        integrations = get_subagent_integrations()
+        integrations = all_subagents()
         eligible = [
             i
             for i in integrations
@@ -593,7 +576,7 @@ class TestSubagentRun:
         assert error is None, f"prepare_subagent_execution failed: {error}"
         assert ctx is not None
         assert isinstance(ctx, SubagentExecutionContext)
-        assert ctx.agent_name == first.subagent_config.agent_name
+        assert ctx.agent_name == first.config.agent_name
         assert ctx.integration_id == first.id
         assert ctx.subagent_graph is real_graph
         assert "messages" in ctx.initial_state
@@ -614,11 +597,6 @@ class TestSubagentRun:
     async def test_execute_subagent_stream_returns_content(self):
         """execute_subagent_stream must accumulate AI content from messages
         stream events and return the joined string."""
-        from app.agents.core.subagents.subagent_runner import (
-            SubagentExecutionContext,
-            execute_subagent_stream,
-        )
-
         # Build a fake graph that yields known streaming events
         chunk = AIMessageChunk(content="Hello from Gmail agent")
         events = [
@@ -649,11 +627,6 @@ class TestSubagentRun:
     async def test_execute_subagent_stream_default_on_empty(self):
         """execute_subagent_stream must return 'Task completed' when no AI
         content is produced."""
-        from app.agents.core.subagents.subagent_runner import (
-            SubagentExecutionContext,
-            execute_subagent_stream,
-        )
-
         mock_graph = MagicMock()
         mock_graph.astream = MagicMock(return_value=_async_iter([]))
 
@@ -676,11 +649,6 @@ class TestSubagentRun:
 
     async def test_execute_subagent_stream_forwards_custom_events(self):
         """Custom stream events must be forwarded to the stream_writer."""
-        from app.agents.core.subagents.subagent_runner import (
-            SubagentExecutionContext,
-            execute_subagent_stream,
-        )
-
         custom_payload = {"progress": "Processing..."}
         events = [
             ("custom", custom_payload),
@@ -713,11 +681,6 @@ class TestSubagentRun:
 
     async def test_execute_subagent_stream_skips_silent_messages(self):
         """Messages with metadata silent=True must be ignored."""
-        from app.agents.core.subagents.subagent_runner import (
-            SubagentExecutionContext,
-            execute_subagent_stream,
-        )
-
         silent_chunk = AIMessageChunk(content="SHOULD NOT APPEAR")
         visible_chunk = AIMessageChunk(content="SHOULD APPEAR")
 
@@ -755,7 +718,7 @@ class TestSubagentRun:
 
 @pytest.mark.integration
 class TestSubagentProviderRegistration:
-    """Verify register_subagent_providers registers entries from OAUTH_INTEGRATIONS."""
+    """Verify register_subagent_providers registers entries from the subagent registry."""
 
     def test_register_subagent_providers_returns_positive_count(self):
         """register_subagent_providers must register at least one provider."""
@@ -769,7 +732,7 @@ class TestSubagentProviderRegistration:
             mock_providers.register = MagicMock()
             count = register_subagent_providers()
 
-        # There must be at least one subagent registered from OAUTH_INTEGRATIONS
+        # There must be at least one subagent registered from the subagent registry
         assert count > 0, "Expected at least one subagent provider to be registered"
 
     def test_register_subagent_providers_skips_auth_required_mcp(self):
@@ -778,7 +741,6 @@ class TestSubagentProviderRegistration:
         from app.agents.core.subagents.provider_subagents import (
             register_subagent_providers,
         )
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
 
         with patch(
             "app.agents.core.subagents.provider_subagents.providers"
@@ -791,14 +753,10 @@ class TestSubagentProviderRegistration:
 
         # Find auth-required MCP agent names that should NOT be registered
         auth_mcp_names = [
-            integ.subagent_config.agent_name
-            for integ in OAUTH_INTEGRATIONS
+            sa.config.agent_name
+            for sa in all_subagents()
             if (
-                integ.subagent_config
-                and integ.subagent_config.has_subagent
-                and integ.managed_by == "mcp"
-                and integ.mcp_config
-                and integ.mcp_config.requires_auth
+                sa.managed_by == "mcp" and sa.mcp_config and sa.mcp_config.requires_auth
             )
         ]
 
@@ -817,9 +775,8 @@ class TestSubagentProviderRegistration:
         from app.agents.core.subagents.provider_subagents import (
             register_subagent_providers,
         )
-        from app.config.oauth_config import get_subagent_integrations
 
-        all_available = get_subagent_integrations()
+        all_available = all_subagents()
         # Filter to integrations that will actually be registered (not auth-required MCP)
         registerable = [
             i
@@ -830,11 +787,11 @@ class TestSubagentProviderRegistration:
         ]
         if not registerable:
             pytest.skip(
-                "No non-auth-required subagent integrations available in OAUTH_INTEGRATIONS"
+                "No non-auth-required subagent integrations available in registry"
             )
 
         target = registerable[0]
-        expected_agent_name = target.subagent_config.agent_name
+        expected_agent_name = target.config.agent_name
 
         with patch(
             "app.agents.core.subagents.provider_subagents.providers"
@@ -861,7 +818,7 @@ class TestSubagentProviderRegistration:
 
 
 # ---------------------------------------------------------------------------
-# Test: get_subagent_integrations / get_subagent_by_id data integrity
+# Test: all_subagents / get_subagent_by_id data integrity
 # ---------------------------------------------------------------------------
 
 
@@ -869,24 +826,17 @@ class TestSubagentProviderRegistration:
 class TestSubagentRunnerHelpers:
     """Verify helper functions in subagent_runner.py return coherent data."""
 
-    def test_get_subagent_integrations_returns_nonempty_list(self):
-        """get_subagent_integrations must return a non-empty list from OAUTH_INTEGRATIONS."""
-        from app.agents.core.subagents.subagent_runner import get_subagent_integrations
-
-        integrations = get_subagent_integrations()
-        assert isinstance(integrations, list)
+    def test_all_subagents_returns_nonempty_list(self):
+        """all_subagents must return a non-empty tuple from the registry."""
+        integrations = all_subagents()
+        assert isinstance(integrations, tuple)
         assert len(integrations) > 0, (
             "Expected at least one configured subagent integration"
         )
 
     def test_get_subagent_by_id_resolves_known_id(self):
         """get_subagent_by_id must resolve a known integration ID."""
-        from app.agents.core.subagents.subagent_runner import (
-            get_subagent_by_id,
-            get_subagent_integrations,
-        )
-
-        integrations = get_subagent_integrations()
+        integrations = all_subagents()
         first = integrations[0]
 
         result = get_subagent_by_id(first.id)
@@ -895,19 +845,12 @@ class TestSubagentRunnerHelpers:
 
     def test_get_subagent_by_id_returns_none_for_unknown(self):
         """get_subagent_by_id must return None for a non-existent ID."""
-        from app.agents.core.subagents.subagent_runner import get_subagent_by_id
-
         result = get_subagent_by_id("nonexistent_integration_xyz_9999")
         assert result is None
 
     def test_get_subagent_by_id_resolves_short_name(self):
         """get_subagent_by_id must resolve integrations by short_name alias."""
-        from app.agents.core.subagents.subagent_runner import (
-            get_subagent_by_id,
-            get_subagent_integrations,
-        )
-
-        integrations = get_subagent_integrations()
+        integrations = all_subagents()
         with_short_name = [i for i in integrations if i.short_name]
         if not with_short_name:
             pytest.skip("No subagent integrations with short_name found")
@@ -921,23 +864,15 @@ class TestSubagentRunnerHelpers:
 
     def test_all_subagent_integrations_have_agent_name(self):
         """Every subagent integration must have a non-empty agent_name."""
-        from app.agents.core.subagents.subagent_runner import get_subagent_integrations
-
-        for integ in get_subagent_integrations():
-            cfg = integ.subagent_config
-            assert cfg is not None
-            assert cfg.agent_name, (
-                f"Integration '{integ.id}' has empty agent_name in subagent_config"
+        for sa in all_subagents():
+            assert sa.config.agent_name, (
+                f"Integration '{sa.id}' has empty agent_name in config"
             )
 
     def test_all_subagent_integrations_have_tool_space(self):
         """Every subagent integration must declare a non-empty tool_space."""
-        from app.agents.core.subagents.subagent_runner import get_subagent_integrations
-
-        for integ in get_subagent_integrations():
-            cfg = integ.subagent_config
-            assert cfg is not None
-            assert cfg.tool_space, f"Integration '{integ.id}' has empty tool_space"
+        for sa in all_subagents():
+            assert sa.config.tool_space, f"Integration '{sa.id}' has empty tool_space"
 
 
 # ---------------------------------------------------------------------------
@@ -952,8 +887,6 @@ class TestBuildInitialMessages:
     async def test_build_initial_messages_returns_three_messages(self):
         """build_initial_messages must return exactly 3 messages:
         system, context, and human."""
-        from app.agents.core.subagents.subagent_runner import build_initial_messages
-
         system_msg = SystemMessage(content="You are a Gmail agent.")
         configurable = {
             "thread_id": str(uuid4()),
@@ -978,8 +911,6 @@ class TestBuildInitialMessages:
 
     async def test_build_initial_messages_first_is_system(self):
         """First message must be the supplied system message."""
-        from app.agents.core.subagents.subagent_runner import build_initial_messages
-
         system_msg = SystemMessage(content="You are a Gmail agent.")
 
         with patch(
@@ -997,8 +928,6 @@ class TestBuildInitialMessages:
 
     async def test_build_initial_messages_last_is_human_with_task(self):
         """Last message must be a HumanMessage whose content equals the task."""
-        from app.agents.core.subagents.subagent_runner import build_initial_messages
-
         task = "Schedule a meeting for tomorrow at 10am"
 
         with patch(
@@ -1019,8 +948,6 @@ class TestBuildInitialMessages:
     async def test_build_initial_messages_uses_retrieval_query_for_context(self):
         """When retrieval_query is provided it must be passed to
         create_agent_context_message instead of the raw task."""
-        from app.agents.core.subagents.subagent_runner import build_initial_messages
-
         retrieval_query = "original query without hints"
         enhanced_task = f"{retrieval_query}\n\nDIRECT EXECUTION HINT: ..."
 
@@ -1061,8 +988,6 @@ class TestPrepareSubagentExecutionErrors:
     async def test_returns_error_for_unknown_subagent(self):
         """prepare_subagent_execution must return (None, error_str) when the
         subagent ID cannot be resolved."""
-        from app.agents.core.subagents.subagent_runner import prepare_subagent_execution
-
         user = make_user()
         ctx, error = await prepare_subagent_execution(
             subagent_id="definitely_nonexistent_agent_xyz",
@@ -1079,12 +1004,7 @@ class TestPrepareSubagentExecutionErrors:
     async def test_returns_error_when_graph_unavailable(self):
         """prepare_subagent_execution must return an error when providers.aget
         returns None for the agent graph."""
-        from app.agents.core.subagents.subagent_runner import (
-            get_subagent_integrations,
-            prepare_subagent_execution,
-        )
-
-        integrations = get_subagent_integrations()
+        integrations = all_subagents()
         if not integrations:
             pytest.skip("No subagent integrations available")
 
@@ -1110,10 +1030,7 @@ class TestPrepareSubagentExecutionErrors:
 
         assert ctx is None
         assert error is not None
-        assert (
-            "not available" in error.lower()
-            or first.subagent_config.agent_name in error
-        )
+        assert "not available" in error.lower() or first.config.agent_name in error
 
 
 # ---------------------------------------------------------------------------

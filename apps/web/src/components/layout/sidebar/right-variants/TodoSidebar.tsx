@@ -129,6 +129,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               ) : (
                 <h1
                   onClick={() => setIsEditingTitle(true)}
+                  style={{ wordBreak: "break-all" }}
                   className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
                 >
                   {todo.title}

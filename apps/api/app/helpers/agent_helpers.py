@@ -17,8 +17,8 @@ from langsmith import traceable
 from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.oauth_config import OAUTH_INTEGRATIONS
 from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import (
@@ -142,18 +142,15 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
     clean_id, _ = parse_subagent_id(subagent_id)
     clean_id = clean_id.lower()
 
-    # Check platform integrations first (in-memory, no caching needed)
-    for integ in OAUTH_INTEGRATIONS:
-        if integ.id.lower() == clean_id or (
-            integ.short_name and integ.short_name.lower() == clean_id
-        ):
-            if integ.subagent_config and integ.subagent_config.has_subagent:
-                log.set(integration_type="platform")
-                return {
-                    "icon_url": None,  # Platform integrations use category-based icons
-                    "integration_id": integ.id,
-                    "integration_name": integ.name,
-                }
+    # Check platform/builtin subagents first (in-memory, no caching needed)
+    subagent = get_subagent_by_id(clean_id)
+    if subagent:
+        log.set(integration_type="platform")
+        return {
+            "icon_url": None,  # Platform/builtin subagents use category-based icons
+            "integration_id": subagent.id,
+            "integration_name": subagent.name,
+        }
 
     # Check Redis cache for custom integrations
     cache_key = f"{HANDOFF_METADATA_CACHE_PREFIX}:{clean_id}"
