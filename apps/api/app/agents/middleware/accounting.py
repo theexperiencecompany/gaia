@@ -191,12 +191,14 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         provider = configurable.get("provider", "unknown")
         user_id = configurable.get("user_id")
 
-        # Cost in USD via existing pricing table.
+        # Cost in USD. Pass full input_tokens + cached_tokens so the cached
+        # subset is billed at the discounted rate, not free.
         try:
             cost = await calculate_token_cost(
                 model_name=str(model_name),
-                input_tokens=max(input_tokens - cached_tokens, 0),
+                input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
             )
             total_cost = float(cost.get("total_cost", 0.0))
         except Exception as e:
@@ -208,19 +210,35 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         handoff_latency_ms = (
             round((time.monotonic() - start) * 1000, 2) if start is not None else 0.0
         )
-        cache_hit_rate = cached_tokens / max(input_tokens, 1) if input_tokens else 0.0
+        # Aggregate per-step counts into the wide event so the end-of-stream
+        # ``worker_task`` rollup reflects totals across the whole run, not just
+        # the last step. ``log.set(model=...)`` does a shallow merge — without
+        # reading the prior totals first, every step would overwrite the dict
+        # and the final event would carry only the last step's numbers (which
+        # is how ``cached_tokens`` / ``cache_hit_rate`` came back null).
+        prior = log.get().get("model") or {}
+        prior_input = int(prior.get("input_tokens") or 0)
+        prior_output = int(prior.get("output_tokens") or 0)
+        prior_cached = int(prior.get("cached_tokens") or 0)
+        prior_cost = float(prior.get("cost_usd") or 0.0)
+
+        agg_input = prior_input + input_tokens
+        agg_output = prior_output + output_tokens
+        agg_cached = prior_cached + cached_tokens
+        agg_cost = prior_cost + total_cost
+        agg_hit_rate = agg_cached / max(agg_input, 1) if agg_input else 0.0
 
         log.set(
             model=ModelContext(
                 name=str(model_name),
                 provider=str(provider),
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                tokens_used=input_tokens + output_tokens,
-                cached_tokens=cached_tokens,
-                cache_hit_rate=round(cache_hit_rate, 4),
-                cost_usd=total_cost,
-                credits_charged=total_cost,
+                input_tokens=agg_input,
+                output_tokens=agg_output,
+                tokens_used=agg_input + agg_output,
+                cached_tokens=agg_cached,
+                cache_hit_rate=round(agg_hit_rate, 4),
+                cost_usd=round(agg_cost, 6),
+                credits_charged=round(agg_cost, 6),
                 step_index=step_index,
                 agent_name=self.agent_name,
                 handoff_latency_ms=handoff_latency_ms,

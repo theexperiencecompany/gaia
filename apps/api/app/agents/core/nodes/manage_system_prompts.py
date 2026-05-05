@@ -5,7 +5,15 @@ Keeps exactly ONE static main prompt and ONE dynamic-context prompt per run.
 Stacking ten timestamped dynamic-context messages across a ten-turn
 conversation is what shatters the LLM's implicit prompt-cache prefix — this
 node discards every older copy so the LLM sees a stable
-`[static_main, dynamic_context_latest, ...conversation]` shape on every turn.
+`[static_main, dynamic_context_latest, time_human, ...conversation]` shape on
+every turn.
+
+The bigtool override's ``acall_model`` calls hooks via
+``state = await execute_hooks(...)`` and then invokes the LLM with
+``state["messages"]`` directly — the hook's return value is what the LLM
+sees on that single call. The persistent checkpoint state still grows
+unfiltered (LangGraph's ``add_messages`` reducer never reorders by ID), but
+that doesn't matter for the cache: only the per-call request bytes do.
 """
 
 from typing import cast
@@ -110,14 +118,22 @@ def manage_system_prompts_node(
         # dropped. Preserving original order on multi-turn runs leaves system
         # messages at idx > 0, which wipes out the entire system prompt and
         # kills implicit caching. So we rebuild the list as
-        # ``[static, dynamic, todo_context, ...non_system...]`` — the
+        # ``[static, dynamic, todo_context, time, ...non_system...]`` — the
         # ``todo_context`` slot sits at the tail of ``system_instruction``
         # so its per-step churn does not shift the cacheable prefix.
+        #
+        # The latest time HumanMessage is hoisted to the FRONT of contents
+        # (right after the system block) so its byte position is constant
+        # across turns. If it stayed at its original position, every new
+        # turn would shift it later in the list (because new dialogue is
+        # appended before it), and the contents prefix would diverge at byte 0
+        # on every turn — making cache hits impossible across turns.
         dropped_system = 0
         dropped_time = 0
         static_msg: AnyMessage | None = None
         dynamic_msg: AnyMessage | None = None
         todo_msg: AnyMessage | None = None
+        time_msg: AnyMessage | None = None
         non_system: list[AnyMessage] = []
         for idx, msg in enumerate(messages):
             if msg.type == "system":
@@ -131,7 +147,7 @@ def manage_system_prompts_node(
                     dropped_system += 1
             elif _is_time_context(msg):
                 if idx == latest_time_idx:
-                    non_system.append(msg)
+                    time_msg = msg
                 else:
                     dropped_time += 1
             else:
@@ -144,6 +160,8 @@ def manage_system_prompts_node(
             filtered.append(dynamic_msg)
         if todo_msg is not None:
             filtered.append(todo_msg)
+        if time_msg is not None:
+            filtered.append(time_msg)
         filtered.extend(non_system)
 
         log.set(
@@ -155,9 +173,17 @@ def manage_system_prompts_node(
                 "kept_static": static_msg is not None,
                 "kept_dynamic": dynamic_msg is not None,
                 "kept_todo": todo_msg is not None,
+                "kept_time": time_msg is not None,
             }
         )
 
+        # ``acall_model`` (in the bigtool override) calls the hooks via
+        # ``state = await execute_hooks(...)`` and then invokes the LLM with
+        # ``state["messages"]`` directly — the hook's return value is used
+        # for that single LLM call without going through LangGraph's
+        # ``add_messages`` reducer. So returning the filtered/reordered list
+        # here is what controls the per-call shape that the provider sees,
+        # which is what implicit caching keys on.
         return cast(State, {**state, "messages": filtered})
 
     except Exception as e:

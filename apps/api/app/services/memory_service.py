@@ -639,7 +639,21 @@ class MemoryService:
             )
 
         except Exception as e:
-            self.logger.error(f"Error searching memories for user {user_id}: {e}")
+            # Mem0 returns 429 / 5xx during quota or upstream blips. We already
+            # swallow the failure and return an empty result, so this is not a
+            # user-facing error and must NOT bump the request's wide-event
+            # outcome to "failed". Demote transient HTTP errors to warning;
+            # everything else stays as error so genuine bugs still surface.
+            msg = str(e)
+            transient = any(
+                s in msg for s in ("429", "Too Many Requests", "503", "502", "504")
+            )
+            if transient:
+                self.logger.warning(
+                    f"Transient mem0 error searching memories for user {user_id}: {e}"
+                )
+            else:
+                self.logger.error(f"Error searching memories for user {user_id}: {e}")
             return MemorySearchResult()
 
     async def search_agent_memories(
