@@ -213,8 +213,7 @@ export const appConfig = {
         href: "/learn",
         label: "Glossary",
         icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
-        description: "AI and productivity terms explained",
-        hideNavbar: true,
+        description: "AI and productivity terms, decoded",
       },
       {
         href: "/alternative-to",
