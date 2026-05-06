@@ -3,9 +3,9 @@
 import { Tooltip } from "@heroui/tooltip";
 import { CircleArrowRight02Icon } from "@icons";
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { Link } from "@/i18n/navigation";
 import LargeHeader from "../shared/LargeHeader";
 
 const TOOL_ICONS = [

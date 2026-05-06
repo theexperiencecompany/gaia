@@ -1,8 +1,8 @@
 "use client";
 
 import { ArrowRight02Icon } from "@icons";
-import Link from "next/link";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
+import { Link } from "@/i18n/navigation";
 
 import LargeHeader from "../shared/LargeHeader";
 

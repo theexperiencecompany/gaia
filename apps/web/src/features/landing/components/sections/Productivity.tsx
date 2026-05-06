@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { useRef } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
+import { Link } from "@/i18n/navigation";
 import GetStartedButton from "../shared/GetStartedButton";
 
 export default function UseCasesSectionLanding() {

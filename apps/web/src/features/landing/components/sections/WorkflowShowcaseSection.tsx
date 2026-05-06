@@ -1,6 +1,7 @@
 "use client";
 
 import { CircleArrowUpRight02Icon } from "@icons";
+import Link from "next/link";
 import { ZapIcon } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import WorkflowDemoAnimation from "../demo/workflow-demo/WorkflowDemoAnimation";
@@ -39,10 +40,12 @@ export default function WorkflowShowcaseSection() {
             contentSections={CONTENT_SECTIONS}
           />
           <div className="flex justify-end">
-            <RaisedButton className="rounded-xl text-black!" color="#00bbff">
-              View Community Workflows
-              <CircleArrowUpRight02Icon width={18} height={18} />
-            </RaisedButton>
+            <Link href="/use-cases">
+              <RaisedButton className="rounded-xl text-black!" color="#00bbff">
+                View Community Workflows
+                <CircleArrowUpRight02Icon width={18} height={18} />
+              </RaisedButton>
+            </Link>
           </div>
         </>
       }

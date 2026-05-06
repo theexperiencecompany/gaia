@@ -1,5 +1,6 @@
 "use client";
 
+import { Link } from "@heroui/link";
 import {
   PolarAngleAxis,
   PolarGrid,
@@ -216,14 +217,14 @@ export default function BuiltForEveryone() {
             </p>
             <p className="pt-1">
               Source:{" "}
-              <a
+              <Link
                 href="https://www.anthropic.com/research/labor-market-impacts"
-                target="_blank"
-                rel="noopener noreferrer"
+                isExternal
+                showAnchorIcon={false}
                 className="underline underline-offset-2 hover:text-zinc-300 transition-colors"
               >
                 Anthropic Economic Index, 2025
-              </a>
+              </Link>
             </p>
           </div>
         </div>

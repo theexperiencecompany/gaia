@@ -3,7 +3,7 @@
 import { Tooltip } from "@heroui/tooltip";
 import { ArrowRight02Icon, Cancel01Icon, Tick02Icon } from "@icons";
 import Image from "next/image";
-import Link from "next/link";
+import { Link } from "@/i18n/navigation";
 
 import LargeHeader from "../shared/LargeHeader";
 

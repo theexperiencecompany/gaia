@@ -1,7 +1,7 @@
 import { CircleArrowRight02Icon, DiscoverCircleIcon } from "@icons";
 import Image from "next/image";
-import Link from "next/link";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
+import { Link } from "@/i18n/navigation";
 import { MotionContainer } from "@/layouts/MotionContainer";
 import GetStartedButton from "../shared/GetStartedButton";
 import { SplitTextBlur } from "./SplitTextBlur";
@@ -112,7 +112,7 @@ export default function HeroSection({
                 {/* <span>Slack,</span> */}
                 <Image
                   src="/images/icons/macos/discord.webp"
-                  alt="Slack"
+                  alt="Discord"
                   className="inline-block size-7 rotate-12 hover:scale-105 transition-transform"
                   width={100}
                   height={100}
