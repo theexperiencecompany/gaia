@@ -37,7 +37,7 @@ const NAV_ITEMS = [
   {
     icon: ConnectIcon,
     label: "Integrations",
-    route: "/(app)/(tabs)/integrations",
+    route: "/(app)/integrations",
     matchPrefix: "/integrations",
   },
   {

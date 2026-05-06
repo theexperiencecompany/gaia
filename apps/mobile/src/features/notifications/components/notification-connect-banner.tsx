@@ -71,7 +71,7 @@ export function NotificationConnectBanner() {
         </View>
 
         <Pressable
-          onPress={() => router.push("/(app)/(tabs)/integrations")}
+          onPress={() => router.push("/(app)/integrations")}
           style={{
             borderRadius: 8,
             backgroundColor: "rgba(0,187,255,0.12)",

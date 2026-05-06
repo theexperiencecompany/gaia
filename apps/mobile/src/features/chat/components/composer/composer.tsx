@@ -1,4 +1,5 @@
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { PressableFeedback } from "heroui-native";
 import { useCallback, useRef, useState } from "react";
 import { Keyboard, Pressable, TextInput, View } from "react-native";
@@ -18,9 +19,10 @@ import {
   Cancel01Icon,
   LinkBackwardIcon,
   PlusSignIcon,
+  Wrench01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { ConnectDrawerTrigger } from "@/features/integrations/components/connect-drawer";
+import { haptics } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
 import type { AttachmentFile } from "./attachment-preview";
 import { AttachmentPreview } from "./attachment-preview";
@@ -110,6 +112,7 @@ export function Composer({
   selectedCalendarEvent,
   onRemoveCalendarEvent,
 }: ComposerProps) {
+  const router = useRouter();
   const [internalMessage, setInternalMessage] = useState("");
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const inputRef = useRef<TextInput>(null);
@@ -509,7 +512,26 @@ export function Composer({
               </Pressable>
             </Animated.View>
 
-            <ConnectDrawerTrigger onOpen={dismissKeyboard} />
+            <Pressable
+              onPress={() => {
+                haptics.light();
+                dismissKeyboard();
+                router.push("/(app)/integrations");
+              }}
+              hitSlop={6}
+              style={{
+                width: 32,
+                height: 32,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              android_ripple={{
+                color: "rgba(255,255,255,0.08)",
+                radius: 16,
+              }}
+            >
+              <AppIcon icon={Wrench01Icon} size={20} color="#a1a1aa" />
+            </Pressable>
           </View>
 
           <Animated.View style={sendAnimatedStyle}>

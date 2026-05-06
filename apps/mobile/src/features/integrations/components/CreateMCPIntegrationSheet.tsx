@@ -26,16 +26,19 @@ import {
   createCustomIntegration,
   type TestConnectionResponse,
   testIntegrationConnection,
+  updateCustomIntegration,
 } from "../api/integrations-api";
+import type { Integration } from "../types";
 import { TestConnectionResult } from "./TestConnectionResult";
 
 export interface CreateMCPIntegrationSheetRef {
-  open: () => void;
+  open: (integration?: Integration | null) => void;
   close: () => void;
 }
 
 interface CreateMCPIntegrationSheetProps {
   onIntegrationCreated?: (integrationId: string) => void;
+  onIntegrationUpdated?: (integrationId: string) => void;
 }
 
 type AuthType = "none" | "bearer";
@@ -63,11 +66,12 @@ function validateUrl(url: string): boolean {
 export const CreateMCPIntegrationSheet = forwardRef<
   CreateMCPIntegrationSheetRef,
   CreateMCPIntegrationSheetProps
->(({ onIntegrationCreated }, ref) => {
+>(({ onIntegrationCreated, onIntegrationUpdated }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   const { fontSize, spacing, moderateScale } = useResponsive();
 
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResponse | null>(
@@ -78,13 +82,30 @@ export const CreateMCPIntegrationSheet = forwardRef<
     null,
   );
 
+  const isEditing = editingId !== null;
+
   const snapPoints = useMemo(
     () => (form.authType === "bearer" ? ["85%"] : ["75%"]),
     [form.authType],
   );
 
   useImperativeHandle(ref, () => ({
-    open: () => {
+    open: (integration?: Integration | null) => {
+      if (integration && integration.source === "custom") {
+        setEditingId(integration.id);
+        setForm({
+          name: integration.name,
+          description: integration.description ?? "",
+          // Server URL is not exposed via the integration list; users edit
+          // the visible fields and re-paste the URL if they need to rotate it.
+          serverUrl: "",
+          authType: integration.authType === "bearer" ? "bearer" : "none",
+          bearerToken: "",
+        });
+      } else {
+        setEditingId(null);
+        setForm(INITIAL_FORM);
+      }
       setIsOpen(true);
     },
     close: () => {
@@ -98,6 +119,7 @@ export const CreateMCPIntegrationSheet = forwardRef<
 
   const handleDismiss = useCallback(() => {
     setForm(INITIAL_FORM);
+    setEditingId(null);
     setTestResult(null);
     setTestError(null);
     setSavedIntegrationId(null);
@@ -124,11 +146,19 @@ export const CreateMCPIntegrationSheet = forwardRef<
       Alert.alert("Validation Error", "Name is required.");
       return;
     }
-    if (!form.serverUrl.trim()) {
-      Alert.alert("Validation Error", "Server URL is required.");
-      return;
-    }
-    if (!validateUrl(form.serverUrl)) {
+    if (!isEditing) {
+      if (!form.serverUrl.trim()) {
+        Alert.alert("Validation Error", "Server URL is required.");
+        return;
+      }
+      if (!validateUrl(form.serverUrl)) {
+        Alert.alert(
+          "Validation Error",
+          "Please enter a valid URL starting with http:// or https://",
+        );
+        return;
+      }
+    } else if (form.serverUrl.trim() && !validateUrl(form.serverUrl)) {
       Alert.alert(
         "Validation Error",
         "Please enter a valid URL starting with http:// or https://",
@@ -138,6 +168,26 @@ export const CreateMCPIntegrationSheet = forwardRef<
 
     setIsSaving(true);
     try {
+      if (isEditing && editingId) {
+        const updates: Partial<CreateCustomIntegrationParams> = {
+          name: form.name.trim(),
+          description: form.description.trim() || undefined,
+          auth_type: form.authType,
+        };
+        if (form.serverUrl.trim()) {
+          updates.server_url = form.serverUrl.trim();
+        }
+        if (form.authType === "bearer" && form.bearerToken.trim()) {
+          updates.bearer_token = form.bearerToken.trim();
+          updates.requires_auth = true;
+        }
+
+        await updateCustomIntegration(editingId, updates);
+        onIntegrationUpdated?.(editingId);
+        handleClose();
+        return;
+      }
+
       const params: CreateCustomIntegrationParams = {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
@@ -175,12 +225,23 @@ export const CreateMCPIntegrationSheet = forwardRef<
     } catch (err) {
       Alert.alert(
         "Error",
-        err instanceof Error ? err.message : "Failed to create integration.",
+        err instanceof Error
+          ? err.message
+          : isEditing
+            ? "Failed to update integration."
+            : "Failed to create integration.",
       );
     } finally {
       setIsSaving(false);
     }
-  }, [form, onIntegrationCreated, handleClose]);
+  }, [
+    form,
+    isEditing,
+    editingId,
+    onIntegrationCreated,
+    onIntegrationUpdated,
+    handleClose,
+  ]);
 
   const handleTestConnection = useCallback(async () => {
     if (!savedIntegrationId) {
@@ -324,10 +385,12 @@ export const CreateMCPIntegrationSheet = forwardRef<
                   color: "#fff",
                 }}
               >
-                New MCP Integration
+                {isEditing ? "Edit Integration" : "New MCP Integration"}
               </Text>
               <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-                Connect an MCP server to extend GAIA&apos;s capabilities
+                {isEditing
+                  ? "Update the details for this custom integration."
+                  : "Connect an MCP server to extend GAIA's capabilities"}
               </Text>
             </View>
             <Pressable
@@ -563,7 +626,7 @@ export const CreateMCPIntegrationSheet = forwardRef<
                       color: "#fff",
                     }}
                   >
-                    Save Integration
+                    {isEditing ? "Save Changes" : "Save Integration"}
                   </Text>
                 )}
               </Pressable>

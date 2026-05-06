@@ -207,7 +207,7 @@ export function ConnectionStatusCard({ data }: { data: ConnectionStatusData }) {
   const items = normalize(data);
 
   const handleManage = useCallback(() => {
-    router.push("/(app)/(tabs)/integrations");
+    router.push("/(app)/integrations");
   }, [router]);
 
   if (items.length === 0) {

@@ -416,7 +416,7 @@ export function ChatScreenContent({
       }
 
       if (command === "integrations") {
-        router.push("/(app)/(tabs)/integrations");
+        router.push("/(app)/integrations");
         return true;
       }
 

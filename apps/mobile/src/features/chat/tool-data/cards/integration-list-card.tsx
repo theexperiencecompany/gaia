@@ -337,7 +337,7 @@ export function IntegrationListCard({
                 onPress={() => {
                   // Web links to /marketplace; mobile routes to the
                   // integrations tab where the marketplace lives.
-                  router.push("/(app)/(tabs)/integrations");
+                  router.push("/(app)/integrations");
                 }}
                 android_ripple={{ color: "rgba(255,255,255,0.05)" }}
                 className="flex-row items-center justify-center gap-1 py-3"
