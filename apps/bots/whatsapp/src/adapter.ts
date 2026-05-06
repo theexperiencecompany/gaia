@@ -32,6 +32,7 @@ import {
   sanitizeErrorForLog,
 } from "@gaia/shared";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
+import { REPLAY_WINDOW_MS } from "./constants";
 import {
   extractTextBody,
   extractWaId,
@@ -167,6 +168,32 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         const waId = extractWaId(event);
         const waIdHash = hashLogIdentifier(waId);
         const text = extractTextBody(event);
+        const timestampSec = Number(event.message.timestamp);
+        if (!Number.isFinite(timestampSec)) {
+          this.adapterLogger.warn("webhook_invalid_timestamp", {
+            wa_hash: waIdHash,
+            message_id: event.message.id,
+          });
+          continue;
+        }
+        const eventTimeMs = timestampSec * 1000;
+        const eventAgeMs = Date.now() - eventTimeMs;
+        if (eventAgeMs < 0) {
+          this.adapterLogger.warn("webhook_future_timestamp", {
+            wa_hash: waIdHash,
+            message_id: event.message.id,
+            age_ms: eventAgeMs,
+          });
+          continue;
+        }
+        if (eventAgeMs > REPLAY_WINDOW_MS) {
+          this.adapterLogger.warn("webhook_event_replayed", {
+            wa_hash: waIdHash,
+            message_id: event.message.id,
+            age_ms: eventAgeMs,
+          });
+          continue;
+        }
         this.adapterLogger.info("webhook_message_received", {
           wa_hash: waIdHash,
           message_type: event.message.type,

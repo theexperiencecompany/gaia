@@ -21,12 +21,12 @@ from typing import (
     Union,
 )
 
+from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.db.chroma.public_integrations_store import search_public_integrations
-from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
@@ -38,86 +38,24 @@ from shared.py.wide_events import log
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
 
 
-def _get_integration_for_space(tool_space: str):
-    for integration in OAUTH_INTEGRATIONS:
-        if (
-            integration.subagent_config
-            and integration.subagent_config.tool_space == tool_space
-        ):
-            return integration
-    return None
+def _is_platform_tool_space(tool_space: str) -> bool:
+    """True if `tool_space` belongs to a hardcoded platform integration.
 
+    Platform integrations (github, gmail, slack, ...) are defined in
+    OAUTH_INTEGRATIONS and have a fixed `subagent_config.tool_space`.
+    Their tool descriptions are not user-owned, so it is safe to search
+    them without checking that the caller's `user_namespaces` lists them.
 
-async def _maybe_hydrate_missing_tools(
-    *,
-    tool_registry,
-    tool_space: str,
-    results: list[Any],
-    available_tool_names: set[str],
-) -> tuple[set[str], int]:
-    if tool_space in {"general", "subagents"}:
-        return available_tool_names, 0
-
-    integration = _get_integration_for_space(tool_space)
-    if not integration or not integration.composio_config:
-        return available_tool_names, 0
-
-    missing: set[str] = set()
-    for result in results:
-        if not isinstance(result, list) or not result:
-            continue
-        if isinstance(result[0], dict):
-            continue
-        for item in result:
-            if not hasattr(item, "namespace"):
-                continue
-            if item.namespace != (tool_space,):
-                continue
-            tool_key = str(item.key)
-            if tool_key.startswith("subagent:"):
-                continue
-            if tool_key not in available_tool_names:
-                missing.add(tool_key)
-
-    if not missing:
-        return available_tool_names, 0
-
-    missing_list = list(missing)[:10]
-    try:
-        composio_service = get_composio_service()
-        tools = await composio_service.get_tools_by_name(missing_list)
-    except Exception as e:
-        log.warning(f"Lazy hydration failed for {tool_space}: {e}")
-        return available_tool_names, 0
-
-    if not tools:
-        return available_tool_names, 0
-
-    category_name = None
-    category = None
-    for name, cat in tool_registry._categories.items():
-        if cat.space == tool_space:
-            category_name = name
-            category = cat
-            break
-
-    if category is None:
-        try:
-            await tool_registry.register_provider_tools(
-                toolkit_name=integration.composio_config.toolkit,
-                space_name=tool_space,
-                specific_tools=missing_list,
-            )
-        except Exception as e:
-            log.warning(f"Lazy hydration registry load failed for {tool_space}: {e}")
-            return available_tool_names, 0
-    else:
-        category.add_tools(tools)
-        if category_name:
-            await tool_registry._index_category_tools(category_name)
-
-    refreshed = set(tool_registry.get_tool_names())
-    return refreshed, len(tools)
+    Custom MCPs and user-added integrations have dynamic, user-owned
+    namespaces (e.g. URL-derived). Those MUST stay gated by user_namespaces
+    so one user cannot search another user's MCP tools.
+    """
+    return any(
+        integration.available is True
+        and integration.subagent_config is not None
+        and integration.subagent_config.tool_space == tool_space
+        for integration in OAUTH_INTEGRATIONS
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -230,44 +168,55 @@ async def _get_user_context(
     Returns:
         Tuple of (user_namespaces, connected_integrations, internal_subagents)
     """
-    user_namespaces: Set[str] = {tool_space, "general"}
+    # Seed namespaces:
+    # - "general" is always available (core tools).
+    # - tool_space is seeded ONLY when it belongs to a platform integration
+    #   (hardcoded in OAUTH_INTEGRATIONS). For custom MCPs / user-owned
+    #   integrations the namespace is user-scoped, so it must come from
+    #   user_namespaces and not be implicitly granted by the seed —
+    #   otherwise one user could search another user's MCP tools.
+    user_namespaces: Set[str] = {"general"}
+    if _is_platform_tool_space(tool_space):
+        user_namespaces.add(tool_space)
+
     connected_integrations: Set[str] = set()
     internal_subagents: Set[str] = set()
 
     # Only compute subagent data when subagents are included
     if include_subagents:
         internal_subagents = {
-            integration.id
-            for integration in OAUTH_INTEGRATIONS
-            if integration.managed_by == "internal"
-            and integration.subagent_config
-            and integration.subagent_config.has_subagent
+            sa.id for sa in all_subagents() if sa.managed_by == "internal"
         }
 
     if not user_id:
         return user_namespaces, connected_integrations, internal_subagents
 
     try:
-        user_namespaces = set(await get_user_available_tool_namespaces(user_id))
+        # Union (not assign) so platform seeds survive cache contents.
+        # Custom MCP namespaces only enter via the cache lookup, which is
+        # the user-scoped source of truth.
+        user_namespaces |= set(await get_user_available_tool_namespaces(user_id))
 
         if include_subagents:
             raw_connected = user_namespaces - {"general", "subagents"}
 
-            # Filter to only integrations with subagent configurations
-            connected_integrations = {
-                integration_id
-                for integration_id in raw_connected
-                if (
-                    # Platform integrations with subagent config
-                    (
-                        (integ := get_integration_by_id(integration_id))
-                        and integ.subagent_config
-                        and integ.subagent_config.has_subagent
-                    )
-                    # Custom/public integrations (not in platform config)
-                    or get_integration_by_id(integration_id) is None
-                )
+            # raw_connected contains tool namespaces (e.g. "github_delegated"),
+            # not subagent ids. Map each namespace back to its subagent via
+            # config.tool_space, falling back to treating it as a custom/public
+            # MCP integration when no OAuth integration matches.
+            tool_space_to_subagent_id = {
+                sa.config.tool_space: sa.id for sa in all_subagents()
             }
+
+            connected_integrations = set()
+            for namespace in raw_connected:
+                subagent_id = tool_space_to_subagent_id.get(namespace)
+                if subagent_id:
+                    connected_integrations.add(subagent_id)
+                elif get_integration_by_id(namespace) is None:
+                    # Custom/public MCP integration — not in OAuth config and
+                    # no subagent claims this namespace; surface it directly.
+                    connected_integrations.add(namespace)
 
             log.info(f"User {user_id} connected subagents: {connected_integrations}")
 
@@ -286,17 +235,34 @@ def _build_search_tasks(
     include_subagents: bool,
     limit: int,
 ) -> List[Awaitable[Union[List[SearchItem], List[dict[str, Any]]]]]:
-    """Build list of search tasks to execute."""
+    """Build list of search tasks to execute.
+
+    The `tool_space in user_namespaces` gate is the security boundary that
+    keeps a user from searching another user's custom MCP tools. We never
+    bypass it here — _get_user_context is responsible for ensuring
+    user_namespaces contains tool_space whenever the caller is entitled
+    to search it (always for platform integrations, only when the user
+    has the integration connected for custom MCPs).
+    """
     search_tasks: List[Awaitable[Union[List[SearchItem], List[dict[str, Any]]]]] = []
 
     # Search in tool_space
     if tool_space in user_namespaces or tool_space == "general":
         log.info(f"Adding search for tool_space: {tool_space}")
         search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
+    else:
+        # Caller is in a subagent whose namespace they don't own. This is
+        # unusual — usually it means a stale cache or a misrouted handoff.
+        # We refuse the search rather than leak another user's tool index.
+        log.warning(
+            "retrieve_tools refused search: tool_space not in user_namespaces",
+            tool_space=tool_space,
+            user_namespaces=sorted(user_namespaces),
+        )
 
-    # For subagents, also search 'general' namespace with small limit
-    # to discover core tools like webpage tools
-    if tool_space != "general" and "general" in user_namespaces:
+    # For subagents, also search 'general' namespace with a small limit
+    # so core tools (e.g. webpage tools) are still discoverable.
+    if tool_space != "general":
         log.info("Adding search for general namespace (limited to 5 for core tools)")
         search_tasks.append(store.asearch(("general",), query=query, limit=5))
 
@@ -484,36 +450,38 @@ def _inject_available_subagents(
     if not include_subagents:
         return discovered_tools
 
-    seen = set(discovered_tools)
     result = list(discovered_tools)
+
+    # Dedupe by canonical integration id rather than rendered subagent_key
+    # ("subagent:gmail" vs "subagent:gmail (Gmail)" must collapse). Seed
+    # seen_ids with ids parsed out of any pre-existing entries.
+    seen_ids: Set[str] = set()
+    for entry in discovered_tools:
+        if entry.startswith("subagent:"):
+            tail = entry[len("subagent:") :]
+            canonical_id = tail.split(" ", 1)[0]
+            seen_ids.add(canonical_id)
+
+    def _add_subagent(integration_id: str) -> None:
+        if integration_id in seen_ids:
+            return
+        sa = get_subagent_by_id(integration_id)
+        name = sa.name if sa else None
+        subagent_key = (
+            f"subagent:{integration_id} ({name})"
+            if name
+            else f"subagent:{integration_id}"
+        )
+        result.append(subagent_key)
+        seen_ids.add(integration_id)
 
     # Add internal subagents (always available)
     for integration_id in internal_subagents:
-        # Get display name for LLM readability
-        integ = get_integration_by_id(integration_id)
-        name = integ.name if integ else None
-        subagent_key = (
-            f"subagent:{integration_id} ({name})"
-            if name
-            else f"subagent:{integration_id}"
-        )
-        if subagent_key not in seen:
-            result.append(subagent_key)
-            seen.add(subagent_key)
+        _add_subagent(integration_id)
 
     # Add connected integration subagents
     for integration_id in connected_integrations:
-        # Get display name for LLM readability
-        integ = get_integration_by_id(integration_id)
-        name = integ.name if integ else None
-        subagent_key = (
-            f"subagent:{integration_id} ({name})"
-            if name
-            else f"subagent:{integration_id}"
-        )
-        if subagent_key not in seen:
-            result.append(subagent_key)
-            seen.add(subagent_key)
+        _add_subagent(integration_id)
 
     return result
 
@@ -578,14 +546,36 @@ def get_retrieve_tools_function(
 
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
-            validated_tool_names = []
+            available_tool_names_set = set(available_tool_names)
+            validated_tool_names: list[str] = []
+            unknown_tool_names: list[str] = []
             for tool_name in exact_tool_names:
                 if tool_name.startswith("subagent:"):
-                    # Only pass through subagent keys when subagents are enabled
+                    # Subagents are invoked via the `handoff` tool, not bound
+                    # here — the docstring tells the LLM this and select_tools
+                    # filters subagent:* out before binding. We accept the
+                    # key when subagents are enabled so it appears in the
+                    # response (purely informational); membership validation
+                    # happens at handoff time where it actually matters.
                     if include_subagents:
                         validated_tool_names.append(tool_name)
-                elif tool_name in available_tool_names:
+                    else:
+                        unknown_tool_names.append(tool_name)
+                elif tool_name in available_tool_names_set:
                     validated_tool_names.append(tool_name)
+                else:
+                    unknown_tool_names.append(tool_name)
+
+            if unknown_tool_names:
+                # Surfacing this is important: silently dropping requested tools
+                # makes registry-population bugs invisible to operators.
+                log.warning(
+                    "retrieve_tools binding dropped unknown tools",
+                    tool_space=tool_space,
+                    unknown=unknown_tool_names,
+                    available_count=len(available_tool_names_set),
+                )
+
             log.set(
                 tool_retrieval=dict(
                     mode="binding",
@@ -615,12 +605,6 @@ def get_retrieve_tools_function(
         results = await asyncio.gather(*search_tasks, return_exceptions=True)
 
         available_tool_names_set = set(available_tool_names)
-        available_tool_names_set, hydrated_count = await _maybe_hydrate_missing_tools(
-            tool_registry=tool_registry,
-            tool_space=tool_space,
-            results=results,
-            available_tool_names=available_tool_names_set,
-        )
 
         chroma_hits = 0
         public_hits = 0

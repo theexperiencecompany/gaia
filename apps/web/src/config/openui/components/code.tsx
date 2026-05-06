@@ -4,6 +4,7 @@ import type { FileDiffMetadata } from "@pierre/diffs/react";
 import { FileDiff } from "@pierre/diffs/react";
 import React from "react";
 import { z } from "zod";
+import { ToolCard, ToolInset } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -49,14 +50,9 @@ export function CodeDiffView(props: z.infer<typeof codeDiffSchema>) {
   }, [props.filename, props.oldCode, props.newCode, props.lang]);
 
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-2xl">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
-      <div className="rounded-xl overflow-hidden">
-        {fileDiff ? (
+    <ToolCard size="wide" className="p-2">
+      {fileDiff ? (
+        <ToolInset flush>
           <FileDiff
             fileDiff={fileDiff}
             options={{
@@ -71,13 +67,13 @@ export function CodeDiffView(props: z.infer<typeof codeDiffSchema>) {
               expandUnchanged: props.expandUnchanged ?? false,
             }}
           />
-        ) : (
-          <div className="bg-zinc-900 p-3 text-xs text-zinc-500">
-            Loading diff…
-          </div>
-        )}
-      </div>
-    </div>
+        </ToolInset>
+      ) : (
+        <ToolInset>
+          <div className="text-xs text-zinc-500">Loading diff…</div>
+        </ToolInset>
+      )}
+    </ToolCard>
   );
 }
 

@@ -147,8 +147,8 @@ async function getExploreWorkflowPages(
 
     const data = await response.json();
     return (data.workflows || []).map(
-      (wc: { id: string; created_at: string; categories?: string[] }) => ({
-        url: `${baseUrl}/use-cases/${wc.id}`,
+      (wc: { slug: string; created_at: string; categories?: string[] }) => ({
+        url: `${baseUrl}/use-cases/${wc.slug}`,
         lastModified: new Date(wc.created_at),
         changeFrequency: "weekly" as const,
         priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
@@ -185,8 +185,8 @@ async function getCommunityWorkflowPages(
       if (!response.ok) return [];
       const data = await response.json();
       return (data.workflows || []).map(
-        (workflow: { id: string; created_at: string }) => ({
-          url: `${baseUrl}/use-cases/${workflow.id}`,
+        (workflow: { slug: string; created_at: string }) => ({
+          url: `${baseUrl}/use-cases/${workflow.slug}`,
           lastModified: new Date(workflow.created_at),
           changeFrequency: "weekly" as const,
           priority: 0.6,
@@ -194,7 +194,7 @@ async function getCommunityWorkflowPages(
       );
     }
 
-    const allWorkflows: Array<{ id: string; created_at: string }> =
+    const allWorkflows: Array<{ slug: string; created_at: string }> =
       await fetchAllPaginated(async (limit, offset) => {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10_000);
@@ -221,7 +221,7 @@ async function getCommunityWorkflowPages(
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.slug}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,
@@ -327,8 +327,10 @@ async function getIntegrationPages(
 /**
  * Comparison pages (GAIA vs competitors)
  */
-function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllComparisonSlugs();
+async function getComparisonPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllComparisonSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/compare/${slug}`,
     lastModified: BUILD_DATE,
@@ -361,7 +363,7 @@ async function getPersonaPages(
     const { getAllPersonaSlugs } = await import(
       "@/features/personas/data/personasData"
     );
-    const slugs = getAllPersonaSlugs();
+    const slugs = await getAllPersonaSlugs();
     return slugs.map((slug) => ({
       url: `${baseUrl}/for/${slug}`,
       lastModified: BUILD_DATE,
@@ -377,8 +379,10 @@ async function getPersonaPages(
 /**
  * Glossary term pages (AI/productivity concepts)
  */
-function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllGlossaryTermSlugs();
+async function getGlossaryPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllGlossaryTermSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/learn/${slug}`,
     lastModified: BUILD_DATE,
@@ -390,8 +394,10 @@ function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
 /**
  * Alternative-to pages (GAIA as alternative to competitors)
  */
-function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllAlternativeSlugs();
+async function getAlternativePages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllAlternativeSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/alternative-to/${slug}`,
     lastModified: BUILD_DATE,
@@ -403,8 +409,10 @@ function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
 /**
  * Integration combo pages ([toolA] + [toolB] automation)
  */
-function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
-  const allCombos = getAllCombos();
+async function getIntegrationComboPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const allCombos = await getAllCombos();
   return allCombos
     .filter((c) => !c.canonicalSlug)
     .map((combo) => ({
@@ -449,15 +457,15 @@ export async function getSitemapEntries(
     case SITEMAP_IDS.INTEGRATIONS:
       return getIntegrationPages(baseUrl);
     case SITEMAP_IDS.COMPARISONS:
-      return withLocaleUrls(getComparisonPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getComparisonPages(baseUrl), baseUrl);
     case SITEMAP_IDS.PERSONAS:
       return withLocaleUrls(await getPersonaPages(baseUrl), baseUrl);
     case SITEMAP_IDS.GLOSSARY:
-      return withLocaleUrls(getGlossaryPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getGlossaryPages(baseUrl), baseUrl);
     case SITEMAP_IDS.ALTERNATIVES:
-      return withLocaleUrls(getAlternativePages(baseUrl), baseUrl);
+      return withLocaleUrls(await getAlternativePages(baseUrl), baseUrl);
     case SITEMAP_IDS.INTEGRATION_COMBOS:
-      return withLocaleUrls(getIntegrationComboPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getIntegrationComboPages(baseUrl), baseUrl);
     case SITEMAP_IDS.NATIVE_INTEGRATIONS:
       return [];
     default:

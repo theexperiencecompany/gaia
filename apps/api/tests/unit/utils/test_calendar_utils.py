@@ -308,12 +308,11 @@ class TestFetchSameDayEvents:
                 {"id": "evt-2", "summary": "Lunch"},
             ]
         }
-        result = fetch_same_day_events({"2025-01-15"}, "token-abc", "user-1")
+        result = fetch_same_day_events({"2025-01-15"}, "user-1")
         assert len(result) == 2
         assert result[0]["id"] == "evt-1"
         assert result[1]["id"] == "evt-2"
         mock_get_events.assert_called_once_with(
-            access_token="token-abc",
             user_id="user-1",
             time_min="2025-01-15T00:00:00Z",
             time_max="2025-01-15T23:59:59Z",
@@ -330,7 +329,7 @@ class TestFetchSameDayEvents:
 
         mock_get_events.side_effect = side_effect
         result = fetch_same_day_events(
-            {"2025-01-15", "2025-01-16"}, "token-abc", "user-1"
+            {"2025-01-15", "2025-01-16"}, "user-1"
         )
         assert len(result) == 3
         event_ids = {e["id"] for e in result}
@@ -339,13 +338,13 @@ class TestFetchSameDayEvents:
     @patch(_GET_CALENDAR_EVENTS)
     def test_empty_events_key(self, mock_get_events: MagicMock) -> None:
         mock_get_events.return_value = {"events": []}
-        result = fetch_same_day_events({"2025-01-15"}, "token-abc", "user-1")
+        result = fetch_same_day_events({"2025-01-15"}, "user-1")
         assert result == []
 
     @patch(_GET_CALENDAR_EVENTS)
     def test_none_response_no_events(self, mock_get_events: MagicMock) -> None:
         mock_get_events.return_value = None
-        result = fetch_same_day_events({"2025-01-15"}, "token-abc", "user-1")
+        result = fetch_same_day_events({"2025-01-15"}, "user-1")
         assert result == []
 
     @patch(_GET_CALENDAR_EVENTS)
@@ -362,7 +361,7 @@ class TestFetchSameDayEvents:
 
         mock_get_events.side_effect = side_effect
         result = fetch_same_day_events(
-            {"2025-01-15", "2025-01-16"}, "token-abc", "user-1"
+            {"2025-01-15", "2025-01-16"}, "user-1"
         )
         # One date failed, one succeeded
         assert len(result) == 1
@@ -372,27 +371,26 @@ class TestFetchSameDayEvents:
     def test_all_dates_fail_returns_empty(self, mock_get_events: MagicMock) -> None:
         mock_get_events.side_effect = RuntimeError("total failure")
         result = fetch_same_day_events(
-            {"2025-01-15", "2025-01-16"}, "token-abc", "user-1"
+            {"2025-01-15", "2025-01-16"}, "user-1"
         )
         assert result == []
 
     def test_empty_dates_set(self) -> None:
-        result = fetch_same_day_events(set(), "token-abc", "user-1")
+        result = fetch_same_day_events(set(), "user-1")
         assert result == []
 
     @patch(_GET_CALENDAR_EVENTS)
     def test_response_missing_events_key(self, mock_get_events: MagicMock) -> None:
         mock_get_events.return_value = {"other_key": "value"}
-        result = fetch_same_day_events({"2025-01-15"}, "token-abc", "user-1")
+        result = fetch_same_day_events({"2025-01-15"}, "user-1")
         assert result == []
 
     @patch(_GET_CALENDAR_EVENTS)
     def test_time_min_and_max_format(self, mock_get_events: MagicMock) -> None:
         """Verify that the time boundaries are correctly formatted."""
         mock_get_events.return_value = {"events": []}
-        fetch_same_day_events({"2025-12-31"}, "token-abc", "user-1")
+        fetch_same_day_events({"2025-12-31"}, "user-1")
         mock_get_events.assert_called_once_with(
-            access_token="token-abc",
             user_id="user-1",
             time_min="2025-12-31T00:00:00Z",
             time_max="2025-12-31T23:59:59Z",

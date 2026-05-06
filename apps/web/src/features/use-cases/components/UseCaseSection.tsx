@@ -21,6 +21,7 @@ export default function UseCaseSection({
   showDescriptionAsTooltip,
   useBlurEffect,
   disableCentering = false,
+  noMaxWidth = false,
   slicePerTab,
   hideAllCategory = false,
   rows,
@@ -35,6 +36,7 @@ export default function UseCaseSection({
   showDescriptionAsTooltip?: boolean;
   useBlurEffect?: boolean;
   disableCentering?: boolean;
+  noMaxWidth?: boolean;
   slicePerTab?: number;
   hideAllCategory?: boolean;
   rows?: number;
@@ -68,7 +70,7 @@ export default function UseCaseSection({
           .filter((v, i, a) => a.indexOf(v) === i) || [],
       categories: w.categories || ["featured"],
       published_id: w.id,
-      slug: w.slug || w.id,
+      slug: w.slug ?? undefined,
       steps: w.steps,
       creator: w.creator,
       total_executions: w.total_executions || 0,
@@ -275,7 +277,7 @@ export default function UseCaseSection({
           selectedCategory !== "workflows" && (
             <m.div
               key={selectedCategory}
-              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${noMaxWidth ? "" : setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -327,7 +329,7 @@ export default function UseCaseSection({
           workflows.length > 0 && (
             <m.div
               key="workflows"
-              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${noMaxWidth ? "" : setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}

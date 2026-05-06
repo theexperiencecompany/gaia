@@ -36,7 +36,8 @@ interface PageProps {
 }
 
 export async function generateStaticParams() {
-  return getAllAlternativeSlugs().map((slug) => ({ slug }));
+  const slugs = await getAllAlternativeSlugs();
+  return slugs.map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({

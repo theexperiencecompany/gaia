@@ -29,7 +29,8 @@ interface PageProps {
 }
 
 export async function generateStaticParams() {
-  return getAllComboSlugs().map((slug) => ({ combo: slug }));
+  const slugs = await getAllComboSlugs();
+  return slugs.map((slug) => ({ combo: slug }));
 }
 
 export const dynamicParams = false;

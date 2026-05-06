@@ -1,12 +1,16 @@
 """Public integration routes (no auth required for SEO/sharing)."""
 
+import re
+
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from shared.py.wide_events import log
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
+    workflows_collection,
 )
+from app.models.workflow_models import PublicWorkflowsResponse
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     AddIntegrationResponse,
@@ -20,6 +24,7 @@ from app.services.integrations.integration_connection_service import (
 )
 from app.services.integrations.user_integrations import add_user_integration
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.utils.creator import creator_lookup_stage, format_creator
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.helpers.integration_helpers import (
     build_public_integration_pipeline,
@@ -267,3 +272,116 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
     except Exception as e:
         log.error(f"Error searching integrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to search integrations")
+
+
+@router.get(
+    "/public/{identifier}/workflows",
+    responses={
+        500: {"description": "Failed to fetch related workflows"},
+    },
+)
+async def get_related_workflows(
+    identifier: str,
+    limit: int = 10,
+    offset: int = 0,
+) -> PublicWorkflowsResponse:
+    """Get public community workflows related to an integration by identifier (slug or native ID)."""
+    try:
+        log.set(operation="get_related_workflows", integration_id=identifier)
+
+        # Normalize limit/offset
+        limit = max(1, min(limit, 50))
+        offset = max(0, offset)
+
+        # Escape the identifier so it is treated as a literal string in the
+        # MongoDB regex, preventing ReDoS and regex-injection attacks.
+        escaped_identifier = re.escape(identifier)
+
+        # Mix featured (is_explore) and community (is_public) workflows that
+        # use this integration, sorted by total runs so the most popular ones
+        # surface first regardless of source.
+        match_stage: dict[str, object] = {
+            "$or": [{"is_public": True}, {"is_explore": True}],
+            "steps": {
+                "$elemMatch": {
+                    "category": {
+                        "$regex": escaped_identifier,
+                        "$options": "i",
+                    }
+                }
+            },
+        }
+
+        pipeline: list = [
+            {"$match": match_stage},
+            {"$sort": {"total_executions": -1, "created_at": -1}},
+            {"$skip": offset},
+            {"$limit": limit},
+            creator_lookup_stage(),
+            {
+                "$project": {
+                    "_id": 1,
+                    "title": 1,
+                    "description": 1,
+                    "slug": 1,
+                    "prompt": 1,
+                    "steps": {
+                        "$map": {
+                            "input": "$steps",
+                            "as": "step",
+                            "in": {
+                                "id": "$$step.id",
+                                "title": "$$step.title",
+                                "category": "$$step.category",
+                                "description": "$$step.description",
+                            },
+                        }
+                    },
+                    "total_executions": 1,
+                    "created_at": 1,
+                    "created_by": 1,
+                    "creator_info": 1,
+                }
+            },
+        ]
+
+        workflows = await workflows_collection.aggregate(pipeline).to_list(length=limit)
+
+        total = await workflows_collection.count_documents(match_stage)
+
+        formatted_workflows = []
+        for workflow in workflows:
+            raw_steps = workflow.get("steps", [])
+            normalized_steps = []
+            for step in raw_steps:
+                normalized_steps.append(
+                    {
+                        "id": step.get("id", ""),
+                        "title": step.get("title", ""),
+                        "description": step.get("description", ""),
+                        "category": step.get("category")
+                        or step.get("tool_category", "general"),
+                    }
+                )
+
+            formatted_workflows.append(
+                {
+                    "id": workflow["_id"],
+                    "title": workflow["title"],
+                    "description": workflow.get("description"),
+                    "slug": workflow.get("slug"),
+                    "prompt": workflow.get("prompt"),
+                    "steps": normalized_steps,
+                    "total_executions": workflow.get("total_executions", 0),
+                    "created_at": workflow["created_at"],
+                    "creator": format_creator(workflow),
+                }
+            )
+
+        log.set(result_count=len(formatted_workflows))
+        log.set(outcome="success")
+        return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
+
+    except Exception as e:
+        log.error(f"Error fetching related workflows for {identifier}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch related workflows")

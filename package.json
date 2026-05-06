@@ -1,6 +1,11 @@
 {
   "name": "gaia",
-  "scripts": {},
+  "scripts": {
+    "tokens:export": "design.md export --format dtcg DESIGN.md > design.tokens.json",
+    "tokens:build": "style-dictionary build",
+    "tokens": "pnpm run tokens:export && pnpm run tokens:build",
+    "tokens:check": "design.md export --format dtcg DESIGN.md | diff - design.tokens.json"
+  },
   "dependencies": {
     "@react-navigation/native": "^7.1.25",
     "@react-navigation/native-stack": "^7.8.6",
@@ -13,10 +18,12 @@
   },
   "packageManager": "pnpm@10.17.1",
   "devDependencies": {
+    "@google/design.md": "latest",
     "@nx/docker": "^22.2.3",
     "@nx/next": "22.2.3",
     "knip": "^5",
     "nx": "22.2.3",
+    "style-dictionary": "^4.4.0",
     "tsx": "^4.21.0"
   },
   "pnpm": {

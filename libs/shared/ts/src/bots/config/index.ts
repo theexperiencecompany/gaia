@@ -45,16 +45,32 @@ export async function loadConfig(): Promise<BotConfig> {
   const gaiaApiUrl = process.env.GAIA_API_URL;
   const gaiaApiKey = process.env.GAIA_BOT_API_KEY;
   const gaiaFrontendUrl = process.env.GAIA_FRONTEND_URL;
+  const botLogHashSecret = process.env.BOT_LOG_HASH_SECRET;
 
   const missing: string[] = [];
   if (!gaiaApiUrl) missing.push("GAIA_API_URL");
   if (!gaiaApiKey) missing.push("GAIA_BOT_API_KEY");
   if (!gaiaFrontendUrl) missing.push("GAIA_FRONTEND_URL");
+  if (!botLogHashSecret) missing.push("BOT_LOG_HASH_SECRET");
 
   if (missing.length > 0) {
     throw new Error(
       `Missing required config: ${missing.join(", ")}. ` +
-        "Set them in apps/bots/.env or configure Infisical.",
+        "Set them in apps/bots/.env or configure Infisical. " +
+        "Generate BOT_LOG_HASH_SECRET with: openssl rand -hex 32",
+    );
+  }
+
+  // BOT_LOG_HASH_SECRET is the HMAC-SHA256 key used to hash PII (phone numbers,
+  // platform user IDs) in logs. RFC 2104 recommends a key of at least the hash
+  // output size (32 bytes / 256 bits) to prevent brute-force recovery of hashed
+  // identifiers. We document hex-encoded keys, so enforce 64 characters
+  // (= 32 bytes when hex-decoded). A 32-char hex value would only be 16 bytes
+  // and falls below the RFC 2104 floor.
+  if (botLogHashSecret!.length < 64) {
+    throw new Error(
+      "BOT_LOG_HASH_SECRET must be at least 64 characters (32 bytes / 256 bits). " +
+        "Generate one with: openssl rand -hex 32",
     );
   }
 

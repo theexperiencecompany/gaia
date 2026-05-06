@@ -1,106 +1,48 @@
 import {
   AccordionItem,
-  Avatar,
-  AvatarGroup,
-  Chip,
+  Button,
   Accordion as HeroAccordion,
   Kbd,
-  Progress,
-  Radio,
-  RadioGroup,
   Tab,
   Tabs,
 } from "@heroui/react";
 import {
   ArrowDown01Icon,
   ArrowRight01Icon,
-  Cancel01Icon,
-  CheckmarkCircle01Icon,
+  CheckmarkCircle02Icon,
+  Copy01Icon,
+  DashedLineCircleIcon,
   File01Icon,
   Folder02Icon,
+  WorkflowCircle06Icon,
 } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
+import { cn } from "@/lib/utils";
+import { ToolCard } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
 
-export const dataCardSchema = z.object({
-  title: z.string(),
-  fields: z.array(z.object({ label: z.string(), value: z.string() })),
-});
-
-export const resultListSchema = z.object({
-  items: z.array(
-    z.object({
-      title: z.string(),
-      subtitle: z.string().optional(),
-      body: z.string().optional(),
-      url: z.string().optional(),
-      badge: z.string().optional(),
-    }),
-  ),
-  title: z.string().optional(),
-});
-
-export const comparisonTableSchema = z.object({
-  leftLabel: z.string(),
-  rightLabel: z.string(),
-  rows: z.array(
-    z.object({
-      label: z.string(),
-      left: z.string(),
-      right: z.string(),
-      highlight: z.boolean().optional(),
-    }),
-  ),
-  title: z.string().optional(),
-});
-
-export const statusCardSchema = z.object({
-  title: z.string(),
-  status: z.enum(["success", "error", "warning", "info", "pending"]),
-  message: z.string().optional(),
-  detail: z.string().optional(),
-});
-
-export const actionCardSchema = z.object({
-  title: z.string(),
-  description: z.string().optional(),
-  actions: z
-    .array(
-      z.object({
-        label: z.string(),
-        type: z.literal("continue_conversation"),
-        value: z.string(),
-      }),
-    )
-    .optional(),
-});
-
-export const tagGroupSchema = z.object({
-  tags: z.array(
-    z.object({
-      label: z.string(),
-      color: z
-        .enum(["default", "primary", "success", "warning", "danger"])
-        .optional(),
-    }),
-  ),
-  title: z.string().optional(),
+export const copyableContentSchema = z.object({
+  content: z.string(),
+  mode: z.enum(["inline", "block"]).optional(),
+  languageHint: z.string().optional(),
 });
 
 export const fileTreeSchema = z.object({
   items: z.array(
     z.object({
       path: z.string(),
-      type: z.enum(["file", "dir"]),
+      type: z.enum(["file", "dir", "item"]).optional(),
       size: z.string().optional(),
+      description: z.string().optional(),
     }),
   ),
   title: z.string().optional(),
+  variant: z.enum(["file", "generic"]).optional(),
 });
 
 export const accordionSchema = z.object({
@@ -109,77 +51,13 @@ export const accordionSchema = z.object({
 });
 
 export const tabsBlockSchema = z.object({
-  tabs: z.array(z.object({ label: z.string(), content: z.string() })),
+  tabs: z.array(z.object({ label: z.string(), content: z.unknown() })),
 });
 
-export const progressListSchema = z.object({
-  items: z.array(
-    z.object({
-      label: z.string(),
-      value: z.number(),
-      max: z.number().optional(),
-      color: z
-        .enum(["default", "primary", "success", "warning", "danger"])
-        .optional(),
-    }),
-  ),
-  title: z.string().optional(),
-});
-
-export const selectableListSchema = z.object({
-  options: z.array(
-    z.object({
-      label: z.string(),
-      description: z.string().optional(),
-      value: z.string(),
-      badge: z.string().optional(),
-    }),
-  ),
-  title: z.string().optional(),
+export const kbdRowSchema = z.object({
+  keys: z.array(z.string()),
   description: z.string().optional(),
 });
-
-export const avatarListSchema = z.object({
-  items: z.array(
-    z.object({
-      name: z.string(),
-      role: z.string().optional(),
-      description: z.string().optional(),
-      initials: z.string().optional(),
-      color: z.string().optional(),
-    }),
-  ),
-  title: z.string().optional(),
-});
-
-export const kbdBlockSchema = z.object({
-  shortcuts: z.array(
-    z.object({ keys: z.array(z.string()), description: z.string() }),
-  ),
-  title: z.string().optional(),
-});
-
-// ---------------------------------------------------------------------------
-// Status helpers
-// ---------------------------------------------------------------------------
-
-const STATUS_CHIP_COLOR: Record<
-  string,
-  "success" | "danger" | "warning" | "default"
-> = {
-  success: "success",
-  error: "danger",
-  warning: "warning",
-  pending: "default",
-};
-
-const STATUS_DOT: Record<string, string> = {
-  success: "bg-emerald-400",
-  error: "bg-red-400",
-  warning: "bg-amber-400",
-  info: "bg-blue-400",
-  pending: "bg-zinc-500",
-};
 
 // ---------------------------------------------------------------------------
 // FileTree helpers
@@ -187,13 +65,20 @@ const STATUS_DOT: Record<string, string> = {
 
 type FileTreeNode = {
   name: string;
-  type: "file" | "dir";
+  type: "file" | "dir" | "item";
   size?: string;
+  description?: string;
   children: Record<string, FileTreeNode>;
 };
 
 function buildFileTree(
-  items: Array<{ path: string; type: "file" | "dir"; size?: string }>,
+  items: Array<{
+    path: string;
+    type?: "file" | "dir" | "item";
+    size?: string;
+    description?: string;
+  }>,
+  defaultLeafType: "file" | "item" = "file",
 ): Record<string, FileTreeNode> {
   const root: Record<string, FileTreeNode> = {};
   for (const item of items) {
@@ -205,8 +90,9 @@ function buildFileTree(
       if (!current[part]) {
         current[part] = {
           name: part,
-          type: isLast ? item.type : "dir",
+          type: isLast ? (item.type ?? defaultLeafType) : "dir",
           size: isLast ? item.size : undefined,
+          description: isLast ? item.description : undefined,
           children: {},
         };
       }
@@ -219,9 +105,11 @@ function buildFileTree(
 function FileTreeNodeRow({
   node,
   depth,
+  generic,
 }: {
   node: FileTreeNode;
   depth: number;
+  generic?: boolean;
 }) {
   const [open, setOpen] = React.useState(true);
   const isDir = node.type === "dir";
@@ -230,7 +118,7 @@ function FileTreeNodeRow({
   return (
     <div>
       <div
-        className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg hover:bg-zinc-800/60 transition cursor-pointer select-none"
+        className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg transition cursor-pointer select-none group/file [&_span]:hover:text-zinc-100"
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={isDir && hasChildren ? () => setOpen((o) => !o) : undefined}
       >
@@ -244,20 +132,33 @@ function FileTreeNodeRow({
           ) : (
             <span className="w-3 h-3 shrink-0" />
           )}
-          {isDir ? (
-            <Folder02Icon className="w-4 h-4 text-[#00bbff] shrink-0" />
+          {generic ? (
+            isDir ? (
+              <WorkflowCircle06Icon className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
+            ) : (
+              <DashedLineCircleIcon className="w-3.5 h-3.5 shrink-0 text-zinc-600" />
+            )
+          ) : isDir ? (
+            <Folder02Icon className="w-4 h-4 shrink-0 text-[#00bbff]" />
           ) : (
-            <File01Icon className="w-4 h-4 text-zinc-500 shrink-0" />
+            <File01Icon className="w-4 h-4 shrink-0 text-zinc-500" />
           )}
-          <span
-            className={
-              isDir
-                ? "text-sm font-medium text-zinc-300 truncate"
-                : "text-sm text-zinc-400 truncate"
-            }
-          >
-            {node.name}
-          </span>
+          <div className="min-w-0">
+            <span
+              className={
+                isDir
+                  ? "text-sm font-medium text-zinc-300 truncate"
+                  : "text-sm text-zinc-400 truncate"
+              }
+            >
+              {node.name}
+            </span>
+            {generic && node.description && (
+              <p className="text-xs text-zinc-600 truncate">
+                {node.description}
+              </p>
+            )}
+          </div>
         </div>
         {!isDir && node.size && (
           <span className="text-xs text-zinc-600 shrink-0">{node.size}</span>
@@ -266,7 +167,12 @@ function FileTreeNodeRow({
       {isDir && open && hasChildren && (
         <div>
           {Object.values(node.children).map((child) => (
-            <FileTreeNodeRow key={child.name} node={child} depth={depth + 1} />
+            <FileTreeNodeRow
+              key={child.name}
+              node={child}
+              depth={depth + 1}
+              generic={generic}
+            />
           ))}
         </div>
       )}
@@ -278,268 +184,125 @@ function FileTreeNodeRow({
 // Views
 // ---------------------------------------------------------------------------
 
-export function DataCardView(props: z.infer<typeof dataCardSchema>) {
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
-      <p className="text-sm font-semibold text-zinc-100 mb-3">{props.title}</p>
-      <div className="space-y-2">
-        {props.fields.map((field) => (
-          <div
-            key={field.label}
-            className="rounded-2xl bg-zinc-900 p-3 flex items-center justify-between gap-4"
-          >
-            <span className="text-xs text-zinc-500">{field.label}</span>
-            <span className="text-sm font-medium text-zinc-200">
-              {field.value}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function ResultListView(props: z.infer<typeof resultListSchema>) {
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
-      <div className="space-y-2">
-        {props.items.map((item) => (
-          <div key={item.title} className="rounded-2xl bg-zinc-900 p-3">
-            <div className="flex items-start justify-between gap-2">
-              <span className="text-sm font-medium text-zinc-200">
-                {item.title}
-              </span>
-              {item.badge && (
-                <span className="rounded-full bg-zinc-700/50 px-2 py-0.5 text-xs text-zinc-400 shrink-0">
-                  {item.badge}
-                </span>
-              )}
-            </div>
-            {item.subtitle && (
-              <p className="text-xs text-zinc-400 mt-1">{item.subtitle}</p>
-            )}
-            {item.body && (
-              <p className="text-xs text-zinc-400 mt-1">{item.body}</p>
-            )}
-            {item.url && (
-              <div className="flex items-center gap-1 mt-1.5">
-                <span className="text-xs text-zinc-600 truncate flex-1">
-                  {item.url}
-                </span>
-                <ArrowRight01Icon className="w-3 h-3 text-zinc-600 shrink-0" />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function ComparisonTableView(
-  props: z.infer<typeof comparisonTableSchema>,
+export function CopyableContentView(
+  props: z.infer<typeof copyableContentSchema>,
 ) {
-  return (
-    <div>
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
-      <div className="rounded-2xl bg-zinc-900 overflow-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800">
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-500" />
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-300">
-                {props.leftLabel}
-              </th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-zinc-300">
-                {props.rightLabel}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {props.rows.map((row) => (
-              <tr
-                key={row.label}
-                className={
-                  row.highlight
-                    ? "bg-[#00bbff]/5"
-                    : "hover:bg-zinc-800/40 transition-colors"
-                }
-              >
-                <td className="px-3 py-2 text-xs text-zinc-500">{row.label}</td>
-                <td className="px-3 py-2 text-xs text-zinc-300">
-                  {row.left.toLowerCase() === "yes" ? (
-                    <CheckmarkCircle01Icon className="w-4 h-4 text-emerald-400" />
-                  ) : row.left.toLowerCase() === "no" ? (
-                    <Cancel01Icon className="w-4 h-4 text-red-400/70" />
-                  ) : (
-                    row.left
-                  )}
-                </td>
-                <td className="px-3 py-2 text-xs text-zinc-300">
-                  {row.right.toLowerCase() === "yes" ? (
-                    <CheckmarkCircle01Icon className="w-4 h-4 text-emerald-400" />
-                  ) : row.right.toLowerCase() === "no" ? (
-                    <Cancel01Icon className="w-4 h-4 text-red-400/70" />
-                  ) : (
-                    row.right
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+  const [copied, setCopied] = React.useState(false);
+  const inline = props.mode === "inline";
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-export function StatusCardView(props: z.infer<typeof statusCardSchema>) {
-  const chipColor = STATUS_CHIP_COLOR[props.status] ?? "default";
-  const dotColor = STATUS_DOT[props.status] ?? "bg-zinc-500";
-  const isPending = props.status === "pending";
-  const isInfo = props.status === "info";
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-xl">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="relative flex h-2.5 w-2.5 shrink-0">
-          {isPending && (
-            <span
-              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-50 ${dotColor}`}
-            />
-          )}
-          <span
-            className={`relative inline-flex rounded-full h-2.5 w-2.5 ${dotColor}`}
-          />
+  React.useEffect(
+    () => () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    },
+    [],
+  );
+
+  const copy = React.useCallback(() => {
+    // navigator.clipboard is undefined in non-secure contexts (e.g. http,
+    // some webviews). Calling writeText on undefined would throw synchronously
+    // before the catch can swallow it.
+    if (!navigator.clipboard?.writeText) return;
+    void navigator.clipboard
+      .writeText(props.content)
+      .then(() => {
+        setCopied(true);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => setCopied(false), 1800);
+      })
+      .catch(() => {});
+  }, [props.content]);
+
+  if (inline) {
+    return (
+      <Button
+        size="sm"
+        variant="flat"
+        onPress={copy}
+        aria-label={copied ? "Copied" : "Copy content"}
+        className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors px-3 py-1.5 min-w-0 h-auto"
+      >
+        <span className="font-mono text-xs text-zinc-200 truncate">
+          {props.content}
         </span>
-        <p className="text-sm font-medium text-zinc-200 flex-1">
-          {props.title}
-        </p>
-        {isInfo ? (
-          <span className="inline-flex items-center rounded-full bg-[#00bbff]/10 px-2 py-0.5 text-xs font-medium text-[#00bbff]">
-            {props.status.charAt(0).toUpperCase() + props.status.slice(1)}
-          </span>
+        {copied ? (
+          <CheckmarkCircle02Icon className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
         ) : (
-          <Chip size="sm" variant="flat" color={chipColor}>
-            {props.status.charAt(0).toUpperCase() + props.status.slice(1)}
-          </Chip>
+          <Copy01Icon className="w-3 h-3 shrink-0 text-zinc-500" />
         )}
-      </div>
-      {props.message && (
-        <p className="text-sm text-zinc-300 mt-1">{props.message}</p>
-      )}
-      {props.detail && (
-        <p className="text-xs text-zinc-500 mt-1">{props.detail}</p>
-      )}
-    </div>
-  );
-}
-
-export function ActionCardView(props: z.infer<typeof actionCardSchema>) {
-  const handleClick = (value: string) => {
-    window.dispatchEvent(
-      new CustomEvent("openui:action", {
-        detail: { type: "continue_conversation", value },
-      }),
+      </Button>
     );
-  };
+  }
+
+  const isCode =
+    props.languageHint !== undefined ||
+    props.content.includes("\n") ||
+    /^[A-Z_]+=/.test(props.content);
 
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
-      <p className="text-sm font-semibold text-zinc-100 mb-1">{props.title}</p>
-      {props.description && (
-        <p className="text-xs text-zinc-400 mb-3">{props.description}</p>
-      )}
-      {props.actions && props.actions.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-3">
-          {props.actions.map((action) => (
-            <button
-              key={action.value}
-              type="button"
-              onClick={() => handleClick(action.value)}
-              className="rounded-full bg-zinc-700/60 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors cursor-pointer"
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function TagGroupView(props: z.infer<typeof tagGroupSchema>) {
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-2">
-        {props.tags.map((tag) =>
-          tag.color === "primary" ? (
-            <span
-              key={tag.label}
-              className="inline-flex items-center rounded-full bg-[#00bbff]/10 px-2 py-0.5 text-xs font-medium text-[#00bbff]"
-            >
-              {tag.label}
-            </span>
+    <ToolCard size="standard" className="p-3">
+      <div className="flex items-start gap-2">
+        <pre
+          className={cn(
+            "flex-1 text-sm leading-relaxed break-words whitespace-pre-wrap",
+            isCode ? "font-mono text-zinc-200" : "font-sans text-zinc-300",
+          )}
+        >
+          {props.content}
+        </pre>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          onPress={copy}
+          aria-label={copied ? "Copied" : "Copy content"}
+          className={cn(
+            "shrink-0 aspect-square min-w-7 w-7 h-7 p-0",
+            copied ? "text-emerald-400" : "text-zinc-500",
+          )}
+        >
+          {copied ? (
+            <CheckmarkCircle02Icon className="w-4 h-4" />
           ) : (
-            <Chip
-              key={tag.label}
-              size="sm"
-              variant="flat"
-              color={tag.color ?? "default"}
-            >
-              {tag.label}
-            </Chip>
-          ),
-        )}
+            <Copy01Icon className="w-3.5 h-3.5" />
+          )}
+        </Button>
       </div>
-    </div>
+    </ToolCard>
   );
 }
 
 export function FileTreeView(props: z.infer<typeof fileTreeSchema>) {
-  const tree = buildFileTree(props.items);
+  const generic = props.variant === "generic";
+  const tree = buildFileTree(props.items, generic ? "item" : "file");
   return (
-    <div className="rounded-2xl bg-zinc-900 p-3">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
+    <ToolCard size="standard" title={props.title} className="p-2">
       <div>
         {Object.values(tree).map((node) => (
-          <FileTreeNodeRow key={node.name} node={node} depth={0} />
+          <FileTreeNodeRow
+            key={node.name}
+            node={node}
+            depth={0}
+            generic={generic}
+          />
         ))}
       </div>
-    </div>
+    </ToolCard>
   );
 }
 
 export function AccordionView(props: z.infer<typeof accordionSchema>) {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-3 py-0 w-full min-w-fit max-w-lg">
+    <div className="w-full max-w-2xl">
       {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 pt-3 pb-2">
-          {props.title}
-        </p>
+        <p className="text-sm font-semibold text-zinc-100">{props.title}</p>
       )}
       <HeroAccordion variant="light">
         {props.items.map((item) => (
           <AccordionItem
             key={item.label}
             aria-label={item.label}
+            classNames={{ trigger: "!cursor-pointer" }}
             title={
               <span className="text-sm font-medium text-zinc-200">
                 {item.label}
@@ -554,199 +317,44 @@ export function AccordionView(props: z.infer<typeof accordionSchema>) {
   );
 }
 
-export function TabsBlockView(props: z.infer<typeof tabsBlockSchema>) {
+export function TabsBlockView(props: {
+  tabs: Array<{ label: string; content: React.ReactNode }>;
+}) {
   return (
-    <Tabs variant="solid" size="sm">
-      {props.tabs.map((tab) => (
-        <Tab
-          key={tab.label}
-          title={<span className="text-sm">{tab.label}</span>}
-        >
-          <div className="rounded-2xl bg-zinc-800/50 p-4">
-            <p className="text-sm text-zinc-300 whitespace-pre-wrap">
-              {tab.content}
-            </p>
-          </div>
-        </Tab>
-      ))}
-    </Tabs>
-  );
-}
-
-export function ProgressListView(props: z.infer<typeof progressListSchema>) {
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
-      <div className="space-y-2">
-        {props.items.map((item) => {
-          const max = item.max ?? 100;
-          const pct = Math.min(100, Math.round((item.value / max) * 100));
-          return (
-            <div key={item.label} className="rounded-2xl bg-zinc-900 p-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-sm font-medium text-zinc-200">
-                  {item.label}
-                </span>
-                <span className="text-xs text-zinc-500">{pct}%</span>
-              </div>
-              <Progress
-                value={pct}
-                color={item.color ?? "primary"}
-                size="sm"
-                className="w-full"
-                classNames={{
-                  indicator:
-                    !item.color || item.color === "primary"
-                      ? "!bg-[#00bbff]"
-                      : undefined,
-                }}
-              />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-export function SelectableListView(
-  props: z.infer<typeof selectableListSchema>,
-) {
-  const [selected, setSelected] = React.useState<string>("");
-
-  const handleSelect = (value: string) => {
-    setSelected(value);
-    window.dispatchEvent(
-      new CustomEvent("openui:action", {
-        detail: { type: "continue_conversation", value },
-      }),
-    );
-  };
-
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-sm">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-1">
-          {props.title}
-        </p>
-      )}
-      {props.description && (
-        <p className="text-xs text-zinc-400 mb-3">{props.description}</p>
-      )}
-      <RadioGroup
-        value={selected}
-        onValueChange={handleSelect}
-        orientation="vertical"
-        classNames={{ wrapper: "space-y-2" }}
-      >
-        {props.options.map((option) => (
-          <Radio
-            key={option.value}
-            value={option.value}
-            classNames={{
-              base: [
-                "rounded-2xl bg-zinc-900 p-3 m-0 min-w-full cursor-pointer",
-                "data-[selected=true]:bg-primary/20!",
-              ].join(" "),
-              wrapper: "group-data-[selected=true]:border-[#00bbff]",
-              label: "text-zinc-200",
-              description: "text-zinc-400",
-            }}
-            description={option.description}
+    <div className="w-full max-w-2xl">
+      <Tabs variant="solid" size="sm">
+        {props.tabs.map((tab) => (
+          <Tab
+            key={tab.label}
+            title={<span className="text-sm">{tab.label}</span>}
           >
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-zinc-200">
-                {option.label}
-              </span>
-              {option.badge && (
-                <span className="rounded-full bg-zinc-700/50 px-2 py-0.5 text-xs text-zinc-400">
-                  {option.badge}
-                </span>
-              )}
-            </div>
-          </Radio>
+            {typeof tab.content === "string" ? (
+              <p className="text-sm text-zinc-300 whitespace-pre-wrap pt-2 max-w-full">
+                {tab.content}
+              </p>
+            ) : (
+              <div className="pt-3 max-w-full [&>*]:max-w-full">
+                {tab.content}
+              </div>
+            )}
+          </Tab>
         ))}
-      </RadioGroup>
+      </Tabs>
     </div>
   );
 }
 
-export function AvatarListView(props: z.infer<typeof avatarListSchema>) {
-  const hasDetails = props.items.some((item) => item.role || item.description);
+export function KbdRowView(props: z.infer<typeof kbdRowSchema>) {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
+    <div className="flex items-center justify-between gap-4">
+      {props.description && (
+        <span className="text-xs text-zinc-400 flex-1">
+          {props.description}
+        </span>
       )}
-      {hasDetails ? (
-        <div className="space-y-2">
-          {props.items.map((item) => (
-            <div key={item.name} className="flex items-center gap-3">
-              <Avatar
-                name={item.initials ?? item.name}
-                size="sm"
-                className="shrink-0"
-                style={item.color ? { backgroundColor: item.color } : undefined}
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-zinc-200">{item.name}</p>
-                {item.role && (
-                  <p className="text-xs text-zinc-400">{item.role}</p>
-                )}
-                {item.description && (
-                  <p className="text-xs text-zinc-500 truncate">
-                    {item.description}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <AvatarGroup max={7} size="sm">
-          {props.items.map((item) => (
-            <Avatar
-              key={item.name}
-              name={item.initials ?? item.name}
-              className="shrink-0"
-              style={item.color ? { backgroundColor: item.color } : undefined}
-            />
-          ))}
-        </AvatarGroup>
-      )}
-    </div>
-  );
-}
-
-export function KbdBlockView(props: z.infer<typeof kbdBlockSchema>) {
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
-      {props.title && (
-        <p className="text-sm font-semibold text-zinc-100 mb-3">
-          {props.title}
-        </p>
-      )}
-      <div className="space-y-2">
-        {props.shortcuts.map((shortcut) => (
-          <div
-            key={shortcut.description}
-            className="rounded-2xl bg-zinc-900 p-3 flex items-center justify-between gap-4"
-          >
-            <span className="text-xs text-zinc-400 flex-1">
-              {shortcut.description}
-            </span>
-            <div className="flex items-center gap-1 shrink-0">
-              {shortcut.keys.map((key) => (
-                <Kbd key={key}>{key}</Kbd>
-              ))}
-            </div>
-          </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {props.keys.map((key) => (
+          <Kbd key={key}>{key}</Kbd>
         ))}
       </div>
     </div>
@@ -757,51 +365,18 @@ export function KbdBlockView(props: z.infer<typeof kbdBlockSchema>) {
 // Component definitions
 // ---------------------------------------------------------------------------
 
-export const dataCardDef = defineComponent({
-  name: "DataCard",
-  description: "Single record fields as label-value pairs.",
-  props: dataCardSchema,
-  component: ({ props }) => React.createElement(DataCardView, props),
-});
-
-export const resultListDef = defineComponent({
-  name: "ResultList",
-  description: "List of results with title, subtitle, body, url, badge.",
-  props: resultListSchema,
-  component: ({ props }) => React.createElement(ResultListView, props),
-});
-
-export const comparisonTableDef = defineComponent({
-  name: "ComparisonTable",
-  description: "A vs B comparison table.",
-  props: comparisonTableSchema,
-  component: ({ props }) => React.createElement(ComparisonTableView, props),
-});
-
-export const statusCardDef = defineComponent({
-  name: "StatusCard",
-  description: "Operation result card with status indicator.",
-  props: statusCardSchema,
-  component: ({ props }) => React.createElement(StatusCardView, props),
-});
-
-export const actionCardDef = defineComponent({
-  name: "ActionCard",
-  description: "Next-step suggestions with action buttons.",
-  props: actionCardSchema,
-  component: ({ props }) => React.createElement(ActionCardView, props),
-});
-
-export const tagGroupDef = defineComponent({
-  name: "TagGroup",
-  description: "Flat set of labeled chips/tags.",
-  props: tagGroupSchema,
-  component: ({ props }) => React.createElement(TagGroupView, props),
+export const copyableContentDef = defineComponent({
+  name: "CopyableContent",
+  description:
+    "Copyable non-code text content, supports inline chips and long form blocks.",
+  props: copyableContentSchema,
+  component: ({ props }) => React.createElement(CopyableContentView, props),
 });
 
 export const fileTreeDef = defineComponent({
   name: "FileTree",
-  description: "Directory or file listing.",
+  description:
+    "File/directory tree (variant='file') or generic collapsible tree (variant='generic').",
   props: fileTreeSchema,
   component: ({ props }) => React.createElement(FileTreeView, props),
 });
@@ -815,35 +390,25 @@ export const accordionDef = defineComponent({
 
 export const tabsBlockDef = defineComponent({
   name: "TabsBlock",
-  description: "Tabbed content panels.",
+  description: "Tabbed content panels — each tab can contain any OpenUI node.",
   props: tabsBlockSchema,
-  component: ({ props }) => React.createElement(TabsBlockView, props),
+  component: ({ props, renderNode }) => (
+    <TabsBlockView
+      tabs={props.tabs.map((tab) => ({
+        label: tab.label,
+        content:
+          typeof tab.content === "string"
+            ? tab.content
+            : renderNode(tab.content),
+      }))}
+    />
+  ),
 });
 
-export const progressListDef = defineComponent({
-  name: "ProgressList",
-  description: "Labeled progress bars.",
-  props: progressListSchema,
-  component: ({ props }) => React.createElement(ProgressListView, props),
-});
-
-export const selectableListDef = defineComponent({
-  name: "SelectableList",
-  description: "Selectable options with radio group.",
-  props: selectableListSchema,
-  component: ({ props }) => React.createElement(SelectableListView, props),
-});
-
-export const avatarListDef = defineComponent({
-  name: "AvatarList",
-  description: "People list with avatars.",
-  props: avatarListSchema,
-  component: ({ props }) => React.createElement(AvatarListView, props),
-});
-
-export const kbdBlockDef = defineComponent({
-  name: "KbdBlock",
-  description: "Keyboard shortcut reference table.",
-  props: kbdBlockSchema,
-  component: ({ props }) => React.createElement(KbdBlockView, props),
+export const kbdRowDef = defineComponent({
+  name: "KbdRow",
+  description:
+    "A single keyboard shortcut row — keys + description. Compose inside a Card for a shortcut table.",
+  props: kbdRowSchema,
+  component: ({ props }) => React.createElement(KbdRowView, props),
 });

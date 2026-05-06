@@ -11,9 +11,20 @@ import { genericLibrary } from "@/config/openui/genericLibrary";
 // ---------------------------------------------------------------------------
 const EXPECTED_GROUPS: Record<string, string[]> = {
   "Layout & Data": [
+    "Stack",
+    "Card",
+    "Grid",
+    "Row",
+    "Column",
+    "Separator",
     "DataCard",
     "ResultList",
     "ComparisonTable",
+    "DataTable",
+    "CopyableContent",
+    "WorkItemList",
+    "ActivityFeed",
+    "EntityCard",
     "StatusCard",
     "ActionCard",
     "TagGroup",
@@ -36,18 +47,17 @@ const EXPECTED_GROUPS: Record<string, string[]> = {
     "GaugeChart",
   ],
   Content: [
-    "ImageBlock",
     "ImageGallery",
     "VideoBlock",
     "AudioPlayer",
     "MapBlock",
-    "CalendarMini",
     "NumberTicker",
     "Carousel",
     "TreeView",
   ],
   "Timeline & Notifications": ["Timeline", "AlertBanner", "Steps"],
   Code: ["CodeDiff"],
+  Documents: ["TextDocument"],
 };
 
 const ALL_COMPONENT_NAMES = Object.values(EXPECTED_GROUPS).flat();
@@ -65,14 +75,14 @@ describe("genericLibrary", () => {
     expect(typeof genericLibrary.components).toBe("object");
   });
 
-  it("contains exactly 36 components", () => {
+  it("contains exactly 47 components", () => {
     const count = Object.keys(genericLibrary.components).length;
-    expect(count).toBe(36);
+    expect(count).toBe(47);
   });
 
-  it("has exactly 5 component groups", () => {
+  it("has exactly 6 component groups", () => {
     expect(genericLibrary.componentGroups).toBeDefined();
-    expect(genericLibrary.componentGroups!.length).toBe(5);
+    expect(genericLibrary.componentGroups!.length).toBe(6);
   });
 
   it("has component groups with the exact expected names", () => {
@@ -82,6 +92,7 @@ describe("genericLibrary", () => {
     expect(groupNames).toContain("Content");
     expect(groupNames).toContain("Timeline & Notifications");
     expect(groupNames).toContain("Code");
+    expect(groupNames).toContain("Documents");
   });
 
   it.each(

@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.models.mcp_config import (
     ComposioConfig,
@@ -59,6 +59,24 @@ class OAuthIntegration(BaseModel):
     subagent_config: Optional[SubAgentConfig] = None
     metadata_config: Optional[ProviderMetadataConfig] = None
     content: Optional[IntegrationContent] = None
+
+    @model_validator(mode="after")
+    def _enforce_composio_invariant(self) -> "OAuthIntegration":
+        # `provider_subagents.py` selects the Composio branch using
+        # `managed_by == "composio"` and then expects `composio_config` to
+        # be present. Pin the bidirectional invariant so a future config
+        # entry can't silently skip Composio tool registration.
+        if self.composio_config is not None and self.managed_by != "composio":
+            raise ValueError(
+                f"Integration {self.id!r} sets composio_config but "
+                f"managed_by={self.managed_by!r}; expected 'composio'."
+            )
+        if self.managed_by == "composio" and self.composio_config is None:
+            raise ValueError(
+                f"Integration {self.id!r} has managed_by='composio' but "
+                f"no composio_config."
+            )
+        return self
 
 
 class IntegrationConfigResponse(BaseModel):

@@ -213,8 +213,9 @@ function getFeaturePages(baseUrl: string): FeedItem[] {
   }));
 }
 
-function getComparisonPages(baseUrl: string): FeedItem[] {
-  return getAllComparisons().map((item) => ({
+async function getComparisonPages(baseUrl: string): Promise<FeedItem[]> {
+  const all = await getAllComparisons();
+  return all.map((item) => ({
     title: item.metaTitle || `GAIA vs ${item.name}`,
     link: `${baseUrl}/compare/${item.slug}`,
     description: item.metaDescription || item.description,
@@ -223,8 +224,9 @@ function getComparisonPages(baseUrl: string): FeedItem[] {
   }));
 }
 
-function getAlternativePages(baseUrl: string): FeedItem[] {
-  return getAllAlternatives().map((item) => ({
+async function getAlternativePages(baseUrl: string): Promise<FeedItem[]> {
+  const all = await getAllAlternatives();
+  return all.map((item) => ({
     title: item.metaTitle || `GAIA Alternative to ${item.name}`,
     link: `${baseUrl}/alternative-to/${item.slug}`,
     description: item.metaDescription || item.tagline,
@@ -233,8 +235,9 @@ function getAlternativePages(baseUrl: string): FeedItem[] {
   }));
 }
 
-function getPersonaPages(baseUrl: string): FeedItem[] {
-  return getAllPersonas().map((item) => ({
+async function getPersonaPages(baseUrl: string): Promise<FeedItem[]> {
+  const all = await getAllPersonas();
+  return all.map((item) => ({
     title: item.metaTitle || `GAIA for ${item.title}`,
     link: `${baseUrl}/for/${item.slug}`,
     description: item.metaDescription || item.intro,
@@ -243,8 +246,9 @@ function getPersonaPages(baseUrl: string): FeedItem[] {
   }));
 }
 
-function getGlossaryPages(baseUrl: string): FeedItem[] {
-  return getAllGlossaryTerms()
+async function getGlossaryPages(baseUrl: string): Promise<FeedItem[]> {
+  const all = await getAllGlossaryTerms();
+  return all
     .filter((term) => !term.canonicalSlug)
     .map((term) => ({
       title: term.metaTitle || term.term,
@@ -255,8 +259,9 @@ function getGlossaryPages(baseUrl: string): FeedItem[] {
     }));
 }
 
-function getComboPages(baseUrl: string): FeedItem[] {
-  return getAllCombos()
+async function getComboPages(baseUrl: string): Promise<FeedItem[]> {
+  const all = await getAllCombos();
+  return all
     .filter((combo) => !combo.canonicalSlug)
     .map((combo) => ({
       title: combo.metaTitle || `${combo.toolA} + ${combo.toolB} Automation`,
@@ -350,16 +355,16 @@ async function getWorkflowItems(baseUrl: string): Promise<FeedItem[]> {
 
     return allWorkflows
       .filter((wf) => {
-        if (seen.has(wf.id)) return false;
-        seen.add(wf.id);
+        if (seen.has(wf.slug)) return false;
+        seen.add(wf.slug);
         return true;
       })
       .map((wf) => ({
-        title: wf.title || wf.id,
-        link: `${baseUrl}/use-cases/${wf.id}`,
+        title: wf.title,
+        link: `${baseUrl}/use-cases/${wf.slug}`,
         description:
           wf.description ||
-          `AI workflow: ${wf.title || wf.id}. Automate this use case with GAIA.`,
+          `AI workflow: ${wf.title}. Automate this use case with GAIA.`,
         pubDate: new Date(wf.created_at).toUTCString(),
         category: wf.categories?.includes("featured")
           ? "Featured Workflows"
@@ -375,20 +380,34 @@ export async function GET() {
   try {
     const baseUrl = siteConfig.url;
 
-    const [blogItems, workflowItems, integrationItems] = await Promise.all([
+    const [
+      blogItems,
+      workflowItems,
+      integrationItems,
+      comparisonPages,
+      alternativePages,
+      glossaryPages,
+      comboPages,
+      personaPages,
+    ] = await Promise.all([
       getBlogItems(baseUrl),
       getWorkflowItems(baseUrl),
       getIntegrationItems(baseUrl),
+      getComparisonPages(baseUrl),
+      getAlternativePages(baseUrl),
+      getGlossaryPages(baseUrl),
+      getComboPages(baseUrl),
+      getPersonaPages(baseUrl),
     ]);
 
     const allItems: FeedItem[] = [
       ...getStaticPages(baseUrl),
       ...getFeaturePages(baseUrl),
-      ...getComparisonPages(baseUrl),
-      ...getAlternativePages(baseUrl),
-      ...getPersonaPages(baseUrl),
-      ...getGlossaryPages(baseUrl),
-      ...getComboPages(baseUrl),
+      ...comparisonPages,
+      ...alternativePages,
+      ...personaPages,
+      ...glossaryPages,
+      ...comboPages,
       ...integrationItems,
       ...blogItems,
       ...workflowItems,

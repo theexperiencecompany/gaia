@@ -1,10 +1,9 @@
-import { Card, CardBody, CardFooter, CardHeader } from "@heroui/card";
-import { ArrowDown01Icon, ArrowRight01Icon, ArrowUp01Icon } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import {
   Area,
   Bar,
+  CartesianGrid,
   Cell,
   Label,
   LabelList,
@@ -35,6 +34,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { SquareChart, ToolCard } from "../primitives";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -48,17 +48,16 @@ function toKeys(v: string | string[]): string[] {
   return Array.isArray(v) ? v : [v];
 }
 
+/** Compact number formatter: 1500 → "1.5K", 1200000 → "1.2M" */
+function fmtNum(v: number): string {
+  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return String(v);
+}
+
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
-
-export const statRowSchema = z.object({
-  title: z.string(),
-  value: z.union([z.string(), z.number()]),
-  unit: z.string().optional(),
-  trend: z.enum(["up", "down", "neutral"]).optional(),
-  trendLabel: z.string().optional(),
-});
 
 const chartDataSchema = z.array(
   z.record(z.string(), z.union([z.string(), z.number()])),
@@ -137,102 +136,41 @@ export const gaugeChartSchema = z.object({
   variant: z.enum(["gauge", "text", "stacked"]).optional(),
   secondValue: z.number().optional(),
   secondLabel: z.string().optional(),
+  size: z.enum(["sm", "md", "lg"]).optional(),
 });
 
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-const TREND_STYLES: Record<string, { color: string }> = {
-  up: { color: "text-emerald-400" },
-  down: { color: "text-red-400" },
-  neutral: { color: "text-zinc-400" },
-};
-
-function TrendIcon({
-  trend,
-  className,
-}: {
-  trend: string;
-  className?: string;
-}) {
-  if (trend === "up") return <ArrowUp01Icon className={className} />;
-  if (trend === "down") return <ArrowDown01Icon className={className} />;
-  return <ArrowRight01Icon className={className} />;
-}
-
 function ChartCard({
   title,
   description,
   footer,
   children,
-  dataPoints = 0,
 }: {
   title?: string;
   description?: string;
   footer?: string;
   children: React.ReactNode;
-  dataPoints?: number;
 }) {
-  // Scale width to data: ~80px per point, min 300px, max 3xl (48rem)
-  const width =
-    dataPoints > 0 ? Math.min(768, Math.max(300, dataPoints * 80)) : undefined;
   return (
-    <Card
-      className="bg-zinc-800 border-none shadow-none max-w-3xl"
-      style={width ? { width } : { width: "100%" }}
+    <ToolCard
+      size="standard"
+      title={title}
+      subtitle={description}
+      footer={
+        footer ? <p className="text-xs text-zinc-500">{footer}</p> : undefined
+      }
     >
-      {(title || description) && (
-        <CardHeader className="pb-0 flex-col items-start">
-          {title && (
-            <p className="text-sm font-semibold text-zinc-100">{title}</p>
-          )}
-          {description && (
-            <p className="text-xs text-zinc-400">{description}</p>
-          )}
-        </CardHeader>
-      )}
-      <CardBody>{children}</CardBody>
-      {footer && (
-        <CardFooter>
-          <p className="text-xs text-zinc-500">{footer}</p>
-        </CardFooter>
-      )}
-    </Card>
+      {children}
+    </ToolCard>
   );
 }
 
 // ---------------------------------------------------------------------------
 // Views
 // ---------------------------------------------------------------------------
-
-export function StatRowView(props: z.infer<typeof statRowSchema>) {
-  const trendStyle = props.trend ? TREND_STYLES[props.trend] : null;
-  return (
-    <div className="rounded-2xl bg-zinc-800 p-5 w-fit min-w-50 h-full flex flex-col justify-between">
-      <p className="text-xs text-zinc-500 truncate">{props.title}</p>
-      <div className="flex items-end gap-1.5">
-        <span className="text-4xl font-bold text-zinc-100 leading-none">
-          {props.value}
-        </span>
-        {props.unit && (
-          <span className="text-sm text-zinc-500 mb-0.5">{props.unit}</span>
-        )}
-      </div>
-      <div className="h-4 flex items-center">
-        {trendStyle && props.trendLabel && props.trend ? (
-          <div className={`flex items-center gap-1 ${trendStyle.color}`}>
-            <TrendIcon
-              trend={props.trend}
-              className={`w-3.5 h-3.5 ${trendStyle.color}`}
-            />
-            <span className="text-xs font-medium">{props.trendLabel}</span>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 export function BarChartView(props: z.infer<typeof barChartSchema>) {
   const keys = toKeys(props.yKeys);
@@ -254,13 +192,27 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-50 w-full">
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-[250px] w-full"
+      >
         <RechartsBarChart
           data={props.data}
           layout={isHorizontal ? "vertical" : "horizontal"}
+          margin={
+            isHorizontal
+              ? { top: 4, right: 48, bottom: 4, left: 4 }
+              : { top: 20, right: 8, bottom: 4, left: 8 }
+          }
         >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#3f3f46"
+            opacity={0.6}
+            vertical={isHorizontal}
+            horizontal={!isHorizontal}
+          />
           {isHorizontal ? (
             <>
               <YAxis
@@ -269,13 +221,14 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: "#71717a", fontSize: 11 }}
-                width={80}
+                width={88}
               />
               <XAxis
                 type="number"
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: "#71717a", fontSize: 11 }}
+                tickFormatter={fmtNum}
               />
             </>
           ) : (
@@ -290,20 +243,35 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: "#71717a", fontSize: 11 }}
+                tickFormatter={fmtNum}
+                width={40}
               />
             </>
           )}
-          <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+          <ChartTooltip
+            cursor={{ fill: "rgba(255,255,255,0.04)" }}
+            content={<ChartTooltipContent />}
+          />
           {showLegend && <ChartLegend content={<ChartLegendContent />} />}
-          {keys.map((key) => (
+          {keys.map((key, ki) => (
             <Bar
               key={key}
               dataKey={key}
               fill={`var(--color-${key})`}
-              radius={8}
-              maxBarSize={40}
+              radius={isStacked && ki < keys.length - 1 ? 0 : [6, 6, 0, 0]}
+              maxBarSize={48}
               {...(isStacked ? { stackId: "stack" } : {})}
-            />
+            >
+              {!isStacked && !isHorizontal && keys.length === 1 && (
+                <LabelList
+                  dataKey={key}
+                  position="top"
+                  formatter={fmtNum}
+                  className="fill-foreground"
+                  fontSize={11}
+                />
+              )}
+            </Bar>
           ))}
         </RechartsBarChart>
       </ChartContainer>
@@ -326,15 +294,21 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-50 w-full">
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-[250px] w-full"
+      >
         <RechartsLineChart
           data={props.data}
-          {...(props.showLabels === true
-            ? { margin: { top: 24, left: 12, right: 12 } }
-            : {})}
+          margin={{ top: 20, right: 12, bottom: 4, left: 8 }}
         >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#3f3f46"
+            opacity={0.6}
+            vertical={false}
+          />
           <XAxis
             dataKey={props.xKey}
             axisLine={false}
@@ -345,8 +319,10 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#71717a", fontSize: 11 }}
+            tickFormatter={fmtNum}
+            width={40}
           />
-          <ChartTooltip content={<ChartTooltipContent />} />
+          <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
           {showLegend && <ChartLegend content={<ChartLegendContent />} />}
           {keys.map((key) => (
             <Line
@@ -360,14 +336,15 @@ export function LineChartView(props: z.infer<typeof lineChartSchema>) {
                   ? { fill: `var(--color-${key})` }
                   : false
               }
+              activeDot={{ r: 6 }}
             >
               {props.showLabels === true && (
                 <LabelList
                   position="top"
                   offset={12}
+                  className="fill-foreground"
                   fontSize={12}
-                  fill="#a1a1aa"
-                  dataKey={props.xKey}
+                  formatter={fmtNum}
                 />
               )}
             </Line>
@@ -393,10 +370,15 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-50 w-full">
-        <RechartsAreaChart data={props.data}>
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-[250px] w-full"
+      >
+        <RechartsAreaChart
+          data={props.data}
+          margin={{ top: 8, right: 12, bottom: 4, left: 8 }}
+        >
           <defs>
             {keys.map((key) => (
               <linearGradient
@@ -408,18 +390,24 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
                 y2="1"
               >
                 <stop
-                  offset="0%"
+                  offset="5%"
                   stopColor={`var(--color-${key})`}
-                  stopOpacity={0.4}
+                  stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
                   stopColor={`var(--color-${key})`}
-                  stopOpacity={0.05}
+                  stopOpacity={0.1}
                 />
               </linearGradient>
             ))}
           </defs>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#3f3f46"
+            opacity={0.6}
+            vertical={false}
+          />
           <XAxis
             dataKey={props.xKey}
             axisLine={false}
@@ -430,8 +418,13 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#71717a", fontSize: 11 }}
+            tickFormatter={fmtNum}
+            width={40}
           />
-          <ChartTooltip content={<ChartTooltipContent />} />
+          <ChartTooltip
+            cursor={false}
+            content={<ChartTooltipContent indicator="dot" />}
+          />
           {showLegend && <ChartLegend content={<ChartLegendContent />} />}
           {keys.map((key) => (
             <Area
@@ -439,8 +432,12 @@ export function AreaChartView(props: z.infer<typeof areaChartSchema>) {
               type="natural"
               dataKey={key}
               stroke={`var(--color-${key})`}
-              strokeWidth={2}
+              strokeWidth={2.5}
               fill={`url(#gradient-${key})`}
+              fillOpacity={1}
+              dot={false}
+              activeDot={{ r: 5, strokeWidth: 0 }}
+              stackId={keys.length > 1 ? "a" : undefined}
             />
           ))}
         </RechartsAreaChart>
@@ -470,11 +467,12 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer
+      <SquareChart
         config={chartConfig}
-        className={`h-50 w-full ${mode === "label" ? "[&_.recharts-pie-label-text]:fill-foreground" : ""}`}
+        className={
+          mode === "label" ? "[&_.recharts-pie-label-text]:fill-foreground" : ""
+        }
       >
         <RechartsPieChart>
           {mode === "donut" ? (
@@ -486,7 +484,9 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
               cy="50%"
               outerRadius={80}
               innerRadius={60}
-              strokeWidth={0}
+              paddingAngle={2}
+              strokeWidth={5}
+              stroke="#27272a"
             >
               {props.data.map((entry, i) => (
                 <Cell
@@ -509,16 +509,20 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
                           y={viewBox.cy}
                           className="fill-foreground text-2xl font-bold"
                         >
-                          {total}
+                          {fmtNum(total)}
                         </tspan>
-                        <tspan
-                          x={viewBox.cx}
-                          y={(viewBox.cy || 0) + 20}
-                          fontSize={12}
-                          fill="#71717a"
-                        >
-                          {props.valueKey}
-                        </tspan>
+                        {props.title && (
+                          <tspan
+                            x={viewBox.cx}
+                            y={(viewBox.cy || 0) + 20}
+                            fontSize={12}
+                            fill="#71717a"
+                          >
+                            {props.title.length > 14
+                              ? `${props.title.slice(0, 12)}…`
+                              : props.title}
+                          </tspan>
+                        )}
                       </text>
                     );
                   }
@@ -571,7 +575,7 @@ export function PieChartView(props: z.infer<typeof pieChartSchema>) {
             />
           )}
         </RechartsPieChart>
-      </ChartContainer>
+      </SquareChart>
     </ChartCard>
   );
 }
@@ -585,24 +589,41 @@ export function ScatterChartView(props: z.infer<typeof scatterChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-50 w-full">
-        <RechartsScatterChart>
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-[250px] w-full"
+      >
+        <RechartsScatterChart
+          margin={{ top: 20, right: 12, bottom: 4, left: 8 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" opacity={0.6} />
           <XAxis
             dataKey={props.xKey}
+            name={props.xKey}
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#71717a", fontSize: 11 }}
+            tickFormatter={fmtNum}
           />
           <YAxis
             dataKey={props.yKey}
+            name={props.yKey}
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#71717a", fontSize: 11 }}
+            tickFormatter={fmtNum}
+            width={40}
           />
-          <ChartTooltip content={<ChartTooltipContent />} />
-          <Scatter data={props.data} fill="var(--color-scatter)" />
+          <ChartTooltip
+            cursor={{ strokeDasharray: "3 3" }}
+            content={<ChartTooltipContent />}
+          />
+          <Scatter
+            data={props.data}
+            fill="var(--color-scatter)"
+            fillOpacity={0.8}
+          />
         </RechartsScatterChart>
       </ChartContainer>
     </ChartCard>
@@ -624,9 +645,8 @@ export function RadarChartView(props: z.infer<typeof radarChartSchema>) {
       title={props.title}
       description={props.description}
       footer={props.footer}
-      dataPoints={props.data.length}
     >
-      <ChartContainer config={chartConfig} className="h-55 w-full">
+      <SquareChart config={chartConfig} size={260}>
         <RechartsRadarChart data={props.data}>
           <PolarGrid stroke="#3f3f46" />
           <PolarAngleAxis
@@ -666,10 +686,12 @@ export function RadarChartView(props: z.infer<typeof radarChartSchema>) {
           ))}
           {showLegend && <ChartLegend content={<ChartLegendContent />} />}
         </RechartsRadarChart>
-      </ChartContainer>
+      </SquareChart>
     </ChartCard>
   );
 }
+
+const GAUGE_SCALE: Record<string, number> = { sm: 0.8, md: 1, lg: 1.25 };
 
 export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
   const min = props.min ?? 0;
@@ -684,14 +706,25 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
     pct >= danger ? "#f87171" : pct >= warning ? "#fbbf24" : "#34d399";
 
   const variant = props.variant ?? "gauge";
+  const scale = GAUGE_SCALE[props.size ?? "md"];
+  const wrap = (node: React.ReactNode) =>
+    scale === 1 ? (
+      <>{node}</>
+    ) : (
+      <div
+        style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}
+      >
+        {node}
+      </div>
+    );
 
   if (variant === "text") {
     const textChartConfig: ChartConfig = {
       value: { label: props.title ?? "Value", color },
     };
     const textData = [{ name: "value", value: pct, fill: color }];
-    return (
-      <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+    return wrap(
+      <ToolCard size="standard" className="p-2 text-center">
         <ChartContainer config={textChartConfig} className="mx-auto">
           <RadialBarChart
             data={textData}
@@ -748,7 +781,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
             </PolarRadiusAxis>
           </RadialBarChart>
         </ChartContainer>
-      </div>
+      </ToolCard>,
     );
   }
 
@@ -764,8 +797,8 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
         color: CHART_COLORS[1],
       },
     };
-    return (
-      <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+    return wrap(
+      <ToolCard size="standard" className="p-2 text-center">
         <ChartContainer config={stackChartConfig} className="mx-auto">
           <RadialBarChart
             data={stackData}
@@ -819,46 +852,40 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
             </PolarRadiusAxis>
           </RadialBarChart>
         </ChartContainer>
-      </div>
+      </ToolCard>,
     );
   }
 
-  // Default: "gauge" variant — radial chart with PolarGrid track ring
-  // PolarGrid draws the full ring as background track; endAngle is proportional to fill
-  const maxArc = 250;
-  const valueAngle = Math.max(1, (pct / 100) * maxArc);
-  const outerR = 65;
-  const innerR = 55;
-
+  // Default: "gauge" variant — single-arc radial chart
+  // RadialBar's built-in `background` prop renders the full track, then the
+  // filled portion is drawn on top at length proportional to pct.
   const gaugeConfig: ChartConfig = {
     value: { label: props.title ?? "Value", color },
   };
-  const gaugeData = [{ name: "value", value: 1, fill: color }];
+  const gaugeData = [{ name: "value", value: pct, fill: color }];
 
-  return (
-    <div
-      className="rounded-2xl bg-zinc-800 p-4 text-center"
-      style={{ width: 200 }}
-    >
-      <ChartContainer
-        config={gaugeConfig}
-        className="mx-auto h-[160px] w-[160px]"
-      >
+  return wrap(
+    <ToolCard size="full" className="p-3 text-center w-[200px] rounded-3xl">
+      <SquareChart config={gaugeConfig}>
         <RadialBarChart
           data={gaugeData}
-          startAngle={0}
-          endAngle={valueAngle}
-          outerRadius={outerR}
-          innerRadius={innerR}
+          startAngle={90}
+          endAngle={-270}
+          outerRadius="100%"
+          innerRadius="80%"
+          barSize={14}
         >
-          <PolarGrid
-            gridType="circle"
-            radialLines={false}
-            stroke="none"
-            className="first:fill-zinc-700 last:fill-zinc-800"
-            polarRadius={[outerR, innerR]}
+          <PolarAngleAxis
+            type="number"
+            domain={[0, 100]}
+            tick={false}
+            axisLine={false}
           />
-          <RadialBar dataKey="value" cornerRadius={10} />
+          <RadialBar
+            dataKey="value"
+            cornerRadius={10}
+            background={{ fill: "#3f3f46" }}
+          />
           <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
             <Label
               content={({ viewBox }) => {
@@ -897,21 +924,14 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
             />
           </PolarRadiusAxis>
         </RadialBarChart>
-      </ChartContainer>
-    </div>
+      </SquareChart>
+    </ToolCard>,
   );
 }
 
 // ---------------------------------------------------------------------------
 // Component definitions
 // ---------------------------------------------------------------------------
-
-export const statRowDef = defineComponent({
-  name: "StatRow",
-  description: "Single KPI with optional trend.",
-  props: statRowSchema,
-  component: ({ props }) => React.createElement(StatRowView, props),
-});
 
 export const barChartDef = defineComponent({
   name: "BarChart",

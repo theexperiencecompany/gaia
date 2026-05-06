@@ -83,12 +83,20 @@
   background-color: rgb(59 130 246 / 0.4) !important;
 }
 
+/* Sileo viewport sits above HeroUI Modal (both default to z-50).
+   Sileo injects its own stylesheet at runtime, so we need !important
+   to win against its later-loaded rule at equal specificity. */
+[data-sileo-viewport] {
+  /* biome-ignore lint/complexity/noImportantStyles: override sileo's runtime-injected z-50 */
+  z-index: 1000 !important;
+}
+
 @theme {
   /* Font Family */
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-serif: var(--font-pp-editorial-new), serif;
   --font-mono:
-    var(--font-anonymous-pro), ui-monospace, "Cascadia Code", "Source Code Pro",
+    var(--font-geist-mono), ui-monospace, "Cascadia Code", "Source Code Pro",
     Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
   --color-secondary-bg: #1a1a1a; /* sidebar */
@@ -513,6 +521,12 @@
   .heroimage {
     image-rendering: crisp-edges;
   }
+  .maplibregl-popup-content {
+    @apply bg-transparent! shadow-none! p-0! rounded-none!;
+  }
+  .maplibregl-popup-tip {
+    @apply hidden!;
+  }
 }
 
 /* --- Non-critical component styles (from globals.css) --- */
@@ -784,10 +798,16 @@
     outline-offset: 2px;
   }
 
-  /* OpenUI document card — cap height and scroll for long content */
+  /* OpenUI document card — outline only; let the conversation scroll the body */
   .openui-document .tiptap {
-    max-height: 20rem;
-    overflow-y: auto;
+    outline: none;
+  }
+
+  /* Restore the keyboard focus ring inside OpenUI document cards so keyboard
+     users keep a visible focus indicator. */
+  .openui-document .tiptap:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
   }
 
   /* Mail reply editor — overflow only; height is capped by the parent max-h-[250px] wrapper */

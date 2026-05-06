@@ -32,12 +32,12 @@ from app.patches.opik_patch import apply_opik_patch
 apply_opik_patch()
 
 import opik  # noqa: E402
+from app.agents.core.subagents.registry import get_subagent_by_id  # noqa: E402
 from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
     build_subagent_system_prompt,
 )
 from app.agents.llm.client import init_llm  # noqa: E402
 from shared.py.wide_events import log  # noqa: E402
-from app.config.oauth_config import get_integration_by_id  # noqa: E402
 from app.config.settings import settings  # noqa: E402
 from app.core.lazy_loader import providers  # noqa: E402
 from app.helpers.agent_helpers import build_agent_config  # noqa: E402
@@ -214,11 +214,26 @@ class SubagentEvaluator:
             raise ValueError(f"Failed to load subagent: {self.config.agent_name}")
         self.subagent_graph = subagent
 
-        # Use system prompt from config (already synced to Opik) or fallback to integration
+        # Use system prompt from config (already synced to Opik) or fallback to subagent
         if not self.system_prompt:
-            integration = get_integration_by_id(self.config.integration_id)
-            if integration and integration.subagent_config:
-                self.system_prompt = integration.subagent_config.system_prompt
+            subagent = get_subagent_by_id(self.config.integration_id)
+            if subagent and subagent.config.system_prompt:
+                self.system_prompt = subagent.config.system_prompt
+                # Sync the registry-sourced prompt to Opik so prompt provenance
+                # (commit hash) flows through to run_evaluation().
+                self.subagent_prompt = opik.Prompt(
+                    name=self.config.prompt_name,
+                    prompt=self.system_prompt,
+                    metadata={
+                        "type": "subagent_system_prompt",
+                        "subagent": self.config.id,
+                        "source": "registry",
+                    },
+                )
+                log.info(
+                    f"Subagent prompt '{self.config.prompt_name}' (registry fallback) "
+                    f"synced to Opik: {self.subagent_prompt.commit}"
+                )
 
         self.judge_llm = init_llm()
         log.info(f"Evaluator initialized for {self.config.name}")

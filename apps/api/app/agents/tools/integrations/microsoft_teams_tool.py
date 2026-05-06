@@ -2,11 +2,14 @@
 
 from typing import Any, Dict, List
 
-import httpx
 from composio import Composio
 
 from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
+from app.services.composio.proxy_client import proxy_request_sync
+
+TEAMS_TOOLKIT = "MICROSOFT_TEAMS"
+GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
 
 
 def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
@@ -23,22 +26,19 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
         Zero required parameters. Returns current Teams state for situational awareness.
         """
         log.set(tool={"integration": "microsoft_teams", "action": "gather_context"})
-        token = auth_credentials.get("access_token")
-        if not token:
-            raise ValueError("Missing access_token in auth_credentials")
-        headers = {"Authorization": f"Bearer {token}"}
-        base = "https://graph.microsoft.com/v1.0"
+        user_id = auth_credentials.get("user_id")
+        if not user_id:
+            raise ValueError("Missing user_id in auth_credentials")
 
         user_info: Dict[str, Any] = {}
         try:
-            resp = httpx.get(
-                f"{base}/me",
-                headers=headers,
-                params={"$select": "id,displayName,mail,userPrincipalName"},
-                timeout=15,
-            )
-            resp.raise_for_status()
-            me = resp.json()
+            me = proxy_request_sync(
+                user_id=user_id,
+                toolkit=TEAMS_TOOLKIT,
+                endpoint=f"{GRAPH_API_BASE}/me",
+                method="GET",
+                query={"$select": "id,displayName,mail,userPrincipalName"},
+            ) or {}
             user_info = {
                 "id": me.get("id"),
                 "display_name": me.get("displayName"),
@@ -49,20 +49,20 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
 
         teams: List[Dict[str, Any]] = []
         try:
-            resp = httpx.get(
-                f"{base}/me/joinedTeams",
-                headers=headers,
-                params={"$select": "id,displayName,description"},
-                timeout=15,
-            )
-            resp.raise_for_status()
+            data = proxy_request_sync(
+                user_id=user_id,
+                toolkit=TEAMS_TOOLKIT,
+                endpoint=f"{GRAPH_API_BASE}/me/joinedTeams",
+                method="GET",
+                query={"$select": "id,displayName,description"},
+            ) or {}
             teams = [
                 {
                     "id": t.get("id"),
                     "name": t.get("displayName"),
                     "description": t.get("description"),
                 }
-                for t in resp.json().get("value", [])
+                for t in data.get("value", [])
             ]
         except Exception as e:
             log.debug(f"Teams joinedTeams fetch failed: {e}")
@@ -70,14 +70,14 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
         chats: List[Dict[str, Any]] = []
         unread_count = 0
         try:
-            resp = httpx.get(
-                f"{base}/me/chats",
-                headers=headers,
-                params={"$expand": "lastMessagePreview", "$top": 10},
-                timeout=15,
-            )
-            resp.raise_for_status()
-            raw_chats = resp.json().get("value", [])
+            data = proxy_request_sync(
+                user_id=user_id,
+                toolkit=TEAMS_TOOLKIT,
+                endpoint=f"{GRAPH_API_BASE}/me/chats",
+                method="GET",
+                query={"$expand": "lastMessagePreview", "$top": 10},
+            ) or {}
+            raw_chats = data.get("value", [])
             unread_count = sum(
                 1
                 for c in raw_chats

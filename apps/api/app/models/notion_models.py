@@ -47,13 +47,6 @@ class InsertMarkdownInput(BaseModel):
     )
 
 
-class CreateTestPageInput(BaseModel):
-    """Input for creating a simple test page."""
-
-    title: str = Field(..., description="Title of the page")
-    parent_page_id: Optional[str] = Field(None, description="Parent page ID (optional)")
-
-
 class FetchDataInput(BaseModel):
     """Input for fetching databases or pages from Notion."""
 

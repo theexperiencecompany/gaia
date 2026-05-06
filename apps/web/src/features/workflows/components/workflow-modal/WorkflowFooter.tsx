@@ -1,43 +1,36 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
-import { Switch } from "@heroui/switch";
 import { Tooltip } from "@heroui/tooltip";
-import { PlayIcon } from "@icons";
+import { GlobeIcon, LinkSquare02Icon, PlayIcon } from "@icons";
 
 interface WorkflowFooterProps {
-  mode: "create" | "edit";
   existingWorkflow: boolean;
-  isSystemWorkflow?: boolean;
-  isActivated: boolean;
-  isTogglingActivation: boolean;
-  onToggleActivation: (activated: boolean) => void;
   hasSteps: boolean;
   onRunWorkflow: () => void;
-  onResetToDefault?: () => void;
   onCancel: () => void;
   onSave: () => void;
   isSaveDisabled: boolean;
   isCreating: boolean;
   modifierKeyName: "command" | "ctrl" | "shift" | "option" | "alt";
   buttonText: string;
+  isPublic?: boolean;
+  onPublishToggle?: () => void;
+  onViewMarketplace?: () => void;
 }
 
 export default function WorkflowFooter({
-  mode,
   existingWorkflow,
-  isSystemWorkflow,
-  isActivated,
-  isTogglingActivation,
-  onToggleActivation,
   hasSteps,
   onRunWorkflow,
-  onResetToDefault,
   onCancel,
   onSave,
   isSaveDisabled,
   isCreating,
   modifierKeyName,
   buttonText,
+  isPublic,
+  onPublishToggle,
+  onViewMarketplace,
 }: WorkflowFooterProps) {
   return (
     <div className="mt-8 border-t border-zinc-800 pt-6 pb-3">
@@ -61,38 +54,33 @@ export default function WorkflowFooter({
                 size="sm"
                 isDisabled={!hasSteps}
               >
-                Run Manually
+                Run
               </Button>
             </Tooltip>
           )}
 
-          {mode === "edit" && (
-            <div className="flex items-center gap-3">
-              <Tooltip
-                content={
-                  isActivated
-                    ? "Deactivate this workflow to prevent it from running"
-                    : "Activate this workflow to allow it to run"
-                }
-                placement="top"
+          {existingWorkflow && !isPublic && onPublishToggle && (
+            <Tooltip content="Share to community marketplace" placement="top">
+              <Button
+                variant="flat"
+                size="sm"
+                onPress={onPublishToggle}
+                startContent={<GlobeIcon className="h-4 w-4" />}
               >
-                <Switch
-                  isSelected={isActivated}
-                  onValueChange={onToggleActivation}
-                  isDisabled={isTogglingActivation}
-                  size="sm"
-                />
-              </Tooltip>
-            </div>
+                Publish
+              </Button>
+            </Tooltip>
           )}
 
-          {isSystemWorkflow && onResetToDefault && (
-            <Tooltip
-              content="Restore this workflow to its original GAIA-provided definition"
-              placement="top"
-            >
-              <Button variant="flat" size="sm" onPress={onResetToDefault}>
-                Reset to Default
+          {existingWorkflow && isPublic && onViewMarketplace && (
+            <Tooltip content="Open community marketplace" placement="top">
+              <Button
+                variant="flat"
+                size="sm"
+                onPress={onViewMarketplace}
+                startContent={<LinkSquare02Icon className="h-4 w-4" />}
+              >
+                View on Marketplace
               </Button>
             </Tooltip>
           )}
@@ -100,24 +88,25 @@ export default function WorkflowFooter({
 
         {/* Right side: Cancel and Save */}
         <div className="flex items-center gap-3">
-          <Button
-            variant="flat"
-            onPress={onCancel}
-            endContent={<Kbd keys={["escape"]} />}
+          <Tooltip content={<Kbd keys={["escape"]} />} placement="top">
+            <Button variant="flat" onPress={onCancel}>
+              Cancel
+            </Button>
+          </Tooltip>
+          <Tooltip
+            content={<Kbd keys={[modifierKeyName, "enter"]} />}
+            placement="top"
+            isDisabled={isCreating || isSaveDisabled}
           >
-            Cancel
-          </Button>
-          <Button
-            color="primary"
-            onPress={onSave}
-            isLoading={isCreating}
-            isDisabled={isSaveDisabled}
-            endContent={
-              !isCreating && <Kbd keys={[modifierKeyName, "enter"]} />
-            }
-          >
-            {buttonText}
-          </Button>
+            <Button
+              color="primary"
+              onPress={onSave}
+              isLoading={isCreating}
+              isDisabled={isSaveDisabled}
+            >
+              {buttonText}
+            </Button>
+          </Tooltip>
         </div>
       </div>
     </div>
