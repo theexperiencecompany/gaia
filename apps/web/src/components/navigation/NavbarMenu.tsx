@@ -136,7 +136,14 @@ const ListItem = React.memo(
                 sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                 className="absolute inset-0 z-0 object-cover transition-all group-hover:brightness-60"
               />
-              <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+              <div
+                className={cn(
+                  "absolute inset-0 z-[1] from-black/90 via-black/50 to-black/20",
+                  textPosition === "top"
+                    ? "bg-gradient-to-b"
+                    : "bg-gradient-to-t",
+                )}
+              />
             </>
           )}
           <div
