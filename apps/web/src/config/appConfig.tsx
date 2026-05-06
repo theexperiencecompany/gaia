@@ -66,6 +66,8 @@ const BotStackIcon = (): ReactElement => (
 
 export interface AppLink {
   label: string;
+  /** Override the label when rendered in the footer. */
+  footerLabel?: string;
   href: string;
   icon?: ReactElement;
   /** Render the icon without the default pill background (e.g. stacked logos). */
@@ -141,6 +143,7 @@ export const appConfig = {
       {
         href: "/bots",
         label: "Talk to GAIA in the apps you already use",
+        footerLabel: "Bots",
         icon: <BotStackIcon />,
         richIcon: true,
         description: "Discord, Slack, Telegram, and WhatsApp",
@@ -163,6 +166,7 @@ export const appConfig = {
         label: "Tailored For Your Role",
         icon: <UserGroupIcon width={20} height={20} color={"currentColor"} />,
         description: "Built for the way you actually work",
+        hideFooter: true,
       },
       {
         href: "/compare",
