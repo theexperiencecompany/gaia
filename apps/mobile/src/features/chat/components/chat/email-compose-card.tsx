@@ -1,5 +1,6 @@
 import { Button, Chip } from "heroui-native";
-import { Pressable, ScrollView, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import { AppIcon, PencilEdit01Icon } from "@/components/icons";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
@@ -78,7 +79,7 @@ function Separator() {
 
 function EditIconButton({ onPress }: { onPress?: () => void }) {
   return (
-    <Pressable onPress={onPress} hitSlop={8} className="p-1">
+    <Pressable onPress={onPress} hitSlop={12} className="p-2">
       <AppIcon icon={PencilEdit01Icon} size={20} color="#71717a" />
     </Pressable>
   );
@@ -104,32 +105,76 @@ export function EmailComposeCard({
   const toDisplay = data.to?.join(", ") ?? "";
   const bodyText = data.is_html ? stripHtml(data.body) : data.body;
 
+  const [isSending, setIsSending] = useState(false);
+  const sendDisabled = !hasRecipients || isSending;
+
+  const handleSend = async (): Promise<void> => {
+    if (!onSend) return;
+    setIsSending(true);
+    try {
+      await onSend();
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
-    <View className="mx-4 my-1 overflow-hidden rounded-3xl bg-zinc-800">
+    // Use inline styles for layout-critical parts so the card renders
+    // identically regardless of NativeWind class processing. Header icon and
+    // footer Send button were both invisible on device when expressed via
+    // utility classes — they now use explicit gap/padding/min-height.
+    <View
+      style={{
+        marginHorizontal: 16,
+        marginVertical: 4,
+        overflow: "hidden",
+        borderRadius: 24,
+        backgroundColor: "#27272a",
+      }}
+    >
       {/* Header */}
-      <View className="px-6 py-1">
-        <View className="flex-row items-center gap-2 pt-3 pb-2">
-          <GmailIcon width={18} height={18} />
-          <Text className="text-zinc-100 text-sm font-medium">
-            {isDraft ? "Email Draft" : "Compose Email"}
-          </Text>
-          {isReply && (
-            <Chip size="sm" variant="soft" color="accent">
-              <Chip.Label>Reply</Chip.Label>
-            </Chip>
-          )}
-        </View>
+      <View
+        style={{
+          paddingHorizontal: 24,
+          paddingTop: 14,
+          paddingBottom: 8,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <GmailIcon width={18} height={18} />
+        <Text style={{ color: "#f4f4f5", fontSize: 14, fontWeight: "500" }}>
+          {isDraft ? "Email Draft" : "Compose Email"}
+        </Text>
+        {isReply && (
+          <Chip size="sm" variant="soft" color="accent">
+            <Chip.Label>Reply</Chip.Label>
+          </Chip>
+        )}
       </View>
 
       {/* Body rows */}
-      <View className="px-6 gap-1">
+      <View style={{ paddingHorizontal: 24, gap: 4 }}>
         {/* To row */}
-        <View className="flex-row items-center gap-2 min-h-9">
-          <Text className="text-sm text-zinc-400">To:</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            minHeight: 40,
+          }}
+        >
+          <Text style={{ fontSize: 14, color: "#a1a1aa" }}>To:</Text>
           {hasRecipients ? (
             <>
               <Text
-                className="flex-1 text-sm font-medium text-zinc-200"
+                style={{
+                  flex: 1,
+                  fontSize: 14,
+                  fontWeight: "500",
+                  color: "#e4e4e7",
+                }}
                 numberOfLines={1}
               >
                 {toDisplay}
@@ -137,8 +182,8 @@ export function EmailComposeCard({
               <EditIconButton onPress={onEditRecipients} />
             </>
           ) : (
-            <View className="flex-1 flex-row">
-              <Button variant="secondary" size="sm" onPress={onEditRecipients}>
+            <View style={{ flex: 1, flexDirection: "row" }}>
+              <Button variant="primary" size="sm" onPress={onEditRecipients}>
                 <Button.Label>Add Recipients</Button.Label>
               </Button>
             </View>
@@ -148,10 +193,22 @@ export function EmailComposeCard({
         <Separator />
 
         {/* Subject row */}
-        <View className="flex-row items-center gap-2 min-h-9">
-          <Text className="text-sm text-zinc-400">Subject:</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            minHeight: 40,
+          }}
+        >
+          <Text style={{ fontSize: 14, color: "#a1a1aa" }}>Subject:</Text>
           <Text
-            className="flex-1 text-sm font-medium text-zinc-200"
+            style={{
+              flex: 1,
+              fontSize: 14,
+              fontWeight: "500",
+              color: "#e4e4e7",
+            }}
             numberOfLines={1}
           >
             {data.subject}
@@ -162,35 +219,63 @@ export function EmailComposeCard({
         <Separator />
 
         {/* Body — scrollable with edit button overlaid top-right */}
-        <View className="relative">
-          <View className="absolute top-0 right-0 z-10">
+        <View style={{ position: "relative" }}>
+          <View style={{ position: "absolute", top: 0, right: 0, zIndex: 10 }}>
             <EditIconButton onPress={onEditBody} />
           </View>
           <ScrollView
-            style={{ maxHeight: 184 }}
+            style={{ maxHeight: 140 }}
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
             contentContainerStyle={{ paddingBottom: 20 }}
           >
-            <View className="pr-8">
+            <View style={{ paddingRight: 32 }}>
               <MarkdownRenderer content={bodyText} />
             </View>
           </ScrollView>
         </View>
       </View>
 
-      {/* Footer */}
-      <View className="flex-row justify-end px-6 pb-5">
-        <Button
-          variant="primary"
-          className="rounded-full px-5"
-          onPress={onSend}
-          isDisabled={!hasRecipients}
+      {/* Footer — explicit minHeight guarantees the Send button always has
+          space to paint, even if a parent ScrollView/measurement hiccups. */}
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "flex-end",
+          paddingHorizontal: 24,
+          paddingTop: 12,
+          paddingBottom: 20,
+          minHeight: 64,
+        }}
+      >
+        <Pressable
+          onPress={handleSend}
+          disabled={sendDisabled}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            // Disabled state uses zinc-600 + zinc-300 so the button stays
+            // visibly present against the zinc-800 card bg even when no
+            // recipients have been resolved yet.
+            backgroundColor: sendDisabled ? "#52525b" : "#00bbff",
+            borderRadius: 999,
+            paddingHorizontal: 20,
+            paddingVertical: 10,
+            minHeight: 40,
+          }}
         >
-          <Button.Label className="font-medium">
-            {isDraft ? "Send Draft" : "Send"}
-          </Button.Label>
-        </Button>
+          {isSending && <ActivityIndicator size="small" color="#000" />}
+          <Text
+            style={{
+              color: sendDisabled ? "#d4d4d8" : "#000",
+              fontSize: 14,
+              fontWeight: "600",
+            }}
+          >
+            {isSending ? "Sending..." : isDraft ? "Send Draft" : "Send"}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );

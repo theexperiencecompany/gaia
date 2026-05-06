@@ -1,3 +1,4 @@
+import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
 import { Spinner } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
@@ -9,8 +10,7 @@ import {
   WhatsappIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import type { ChannelPreferences } from "@/features/settings/api/settings-api";
-import { settingsApi } from "@/features/settings/api/settings-api";
+import { inAppNotificationsApi } from "@/features/notifications/api/inapp-notifications-api";
 import { useResponsive } from "@/lib/responsive";
 import { SettingsGroup, SettingsSwitchRow } from "../settings-row";
 
@@ -22,14 +22,13 @@ export function NotificationSection() {
     whatsapp: false,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [updatingChannel, setUpdatingChannel] = useState<
-    "telegram" | "discord" | "whatsapp" | null
-  >(null);
+  const [updatingChannel, setUpdatingChannel] =
+    useState<ChannelPlatform | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
-    settingsApi
+    inAppNotificationsApi
       .getChannelPreferences()
       .then((data) => {
         if (!cancelled) setChannels(data);
@@ -47,12 +46,12 @@ export function NotificationSection() {
   }, []);
 
   const handleToggle = useCallback(
-    async (platform: "telegram" | "discord" | "whatsapp", enabled: boolean) => {
+    async (platform: ChannelPlatform, enabled: boolean) => {
       setUpdatingChannel(platform);
       const previous = channels[platform];
       setChannels((prev) => ({ ...prev, [platform]: enabled }));
       try {
-        await settingsApi.updateChannelPreference(platform, enabled);
+        await inAppNotificationsApi.updateChannelPreference(platform, enabled);
       } catch {
         setChannels((prev) => ({ ...prev, [platform]: previous }));
         Alert.alert("Error", "Failed to update notification preference.");

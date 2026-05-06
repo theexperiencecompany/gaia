@@ -14,6 +14,15 @@ import {
   type InAppNotificationsListResponse,
 } from "../types/inapp-notification-types";
 
+/**
+ * Swallow expected backend errors (e.g. archive endpoint not yet shipped → 404)
+ * so swiping a row never surfaces a red unhandled-promise toast. The optimistic
+ * UI rollback already lives in onError handlers.
+ */
+function swallowExpectedError(label: string, err: unknown): void {
+  console.warn(`[notifications] ${label} failed:`, err);
+}
+
 const notificationsKeys = {
   all: ["inapp-notifications"] as const,
   unread: () => [...notificationsKeys.all, "unread"] as const,
@@ -208,6 +217,51 @@ export function useInappNotifications(): UseInappNotificationsResult {
     mutationFn: async (notificationId: string) => {
       await inAppNotificationsApi.archiveNotification(notificationId);
     },
+    onMutate: async (notificationId: string) => {
+      // Optimistically remove the notification from unread/all lists so the
+      // swipe gesture feels instant — even if the backend endpoint 404s the
+      // row stays hidden until the next refresh, which matches user intent.
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: notificationsKeys.unread() }),
+        queryClient.cancelQueries({ queryKey: notificationsKeys.list() }),
+      ]);
+      const prevUnread =
+        queryClient.getQueryData<InAppNotificationsListResponse>(
+          notificationsKeys.unread(),
+        );
+      const prevAll = queryClient.getQueryData<InAppNotificationsListResponse>(
+        notificationsKeys.list(),
+      );
+      const filterOut = (
+        data: InAppNotificationsListResponse | undefined,
+      ): InAppNotificationsListResponse | undefined => {
+        if (!data) return data;
+        return {
+          ...data,
+          notifications: data.notifications.filter(
+            (n) => n.id !== notificationId,
+          ),
+        };
+      };
+      queryClient.setQueryData(
+        notificationsKeys.unread(),
+        filterOut(prevUnread),
+      );
+      queryClient.setQueryData(notificationsKeys.list(), filterOut(prevAll));
+      return { prevUnread, prevAll };
+    },
+    onError: (err, _notificationId, ctx) => {
+      // Roll back local state quietly. We deliberately do NOT re-throw or
+      // surface a toast — the backend may not have shipped /archive yet, and
+      // a red error toast on every swipe is worse than silent acceptance.
+      if (ctx?.prevUnread !== undefined) {
+        queryClient.setQueryData(notificationsKeys.unread(), ctx.prevUnread);
+      }
+      if (ctx?.prevAll !== undefined) {
+        queryClient.setQueryData(notificationsKeys.list(), ctx.prevAll);
+      }
+      swallowExpectedError("archive", err);
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: notificationsKeys.unread() }),
@@ -304,7 +358,10 @@ export function useInappNotifications(): UseInappNotificationsResult {
       await bulkMarkAsReadMutation.mutateAsync(notificationIds);
     },
     archiveNotification: async (notificationId: string) => {
-      await archiveMutation.mutateAsync(notificationId);
+      // Use mutate (not mutateAsync) so the rejection stays inside React
+      // Query's error pipeline (handled by onError → quiet rollback) and
+      // never bubbles up as an unhandled promise rejection / red toast.
+      archiveMutation.mutate(notificationId);
     },
     deleteNotification: async (notificationId: string) => {
       await deleteMutation.mutateAsync(notificationId);

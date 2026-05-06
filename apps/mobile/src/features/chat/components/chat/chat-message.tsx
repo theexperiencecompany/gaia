@@ -320,9 +320,10 @@ export function ChatMessage({
           width: "100%",
         }}
       >
-        {/* Tool data cards — full width, rendered before message text */}
+        {/* Tool data cards — rendered inline before message text, matches
+            web's chat_bubble_container flow (flex column, gap from cards) */}
         {message.toolData?.length ? (
-          <View style={{ width: "100%", marginBottom: spacing.xs }}>
+          <View style={{ paddingHorizontal: spacing.md }}>
             <ToolDataRenderer toolData={message.toolData} />
           </View>
         ) : null}

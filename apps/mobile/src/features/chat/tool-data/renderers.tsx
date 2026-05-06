@@ -371,9 +371,12 @@ interface ToolDataRendererProps {
  */
 function consolidateToolData(toolData: ToolDataEntry[]): ToolDataEntry[] {
   const result: ToolDataEntry[] = [];
-  let toolCallsBuffer: unknown[] = [];
+  let toolCallsBuffer: Record<string, unknown>[] = [];
   let firstToolCallsTimestamp: ToolDataEntry["timestamp"] | undefined;
-  const seenToolCallIds = new Set<string>();
+  // tool_call_id → index inside toolCallsBuffer, so a later streamed entry
+  // (e.g. carrying `output` once execution finishes) can be merged into the
+  // earlier entry instead of being dropped as a duplicate.
+  const idToIndex = new Map<string, number>();
 
   const flush = () => {
     if (toolCallsBuffer.length > 0) {
@@ -390,10 +393,30 @@ function consolidateToolData(toolData: ToolDataEntry[]): ToolDataEntry[] {
   for (const entry of toolData) {
     if (entry.tool_name === "tool_calls_data") {
       const calls = Array.isArray(entry.data) ? entry.data : [entry.data];
-      for (const call of calls) {
-        const id = (call as { tool_call_id?: string })?.tool_call_id;
-        if (id && seenToolCallIds.has(id)) continue;
-        if (id) seenToolCallIds.add(id);
+      for (const rawCall of calls) {
+        const call = (rawCall ?? {}) as Record<string, unknown>;
+        const id =
+          typeof call.tool_call_id === "string" ? call.tool_call_id : undefined;
+
+        if (id && idToIndex.has(id)) {
+          // Merge new fields onto the existing entry. Prefer the latest
+          // non-empty value for fields that grow over time (status, output,
+          // message). Inputs typically stream complete on the first event,
+          // but we still merge to be defensive.
+          const existingIndex = idToIndex.get(id) as number;
+          const existing = toolCallsBuffer[existingIndex] ?? {};
+          toolCallsBuffer[existingIndex] = {
+            ...existing,
+            ...Object.fromEntries(
+              Object.entries(call).filter(
+                ([, v]) => v !== undefined && v !== "",
+              ),
+            ),
+          };
+          continue;
+        }
+
+        if (id) idToIndex.set(id, toolCallsBuffer.length);
         toolCallsBuffer.push(call);
       }
       if (firstToolCallsTimestamp === undefined) {
@@ -416,7 +439,7 @@ export function ToolDataRenderer({ toolData }: ToolDataRendererProps) {
   const consolidated = consolidateToolData(toolData);
 
   return (
-    <View className="flex-col">
+    <View className="flex-col w-full">
       {consolidated.map((entry, index) => {
         const toolName = entry.tool_name;
         const renderer = TOOL_RENDERERS[toolName];

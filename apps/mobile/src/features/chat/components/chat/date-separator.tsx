@@ -33,8 +33,8 @@ export function DateSeparator({ date }: DateSeparatorProps) {
       style={{
         flexDirection: "row",
         alignItems: "center",
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.md,
       }}
     >
       <Divider style={{ flex: 1 }} />

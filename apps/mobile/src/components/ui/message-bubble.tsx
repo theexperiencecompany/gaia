@@ -1,53 +1,8 @@
 import type * as React from "react";
-import { useEffect } from "react";
 import { View } from "react-native";
-import Reanimated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-
-// Blinking text cursor shown at the end of a streaming message
-function StreamingCursor() {
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    opacity.value = withRepeat(
-      withSequence(
-        withTiming(0, { duration: 450 }),
-        withTiming(1, { duration: 450 }),
-      ),
-      -1,
-      false,
-    );
-  }, [opacity]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
-
-  return (
-    <Reanimated.View
-      style={[
-        animatedStyle,
-        {
-          width: 2,
-          height: 16,
-          backgroundColor: "rgba(255,255,255,0.75)",
-          borderRadius: 1,
-          marginLeft: 2,
-          alignSelf: "flex-end",
-          marginBottom: 1,
-        },
-      ]}
-    />
-  );
-}
 
 export interface MessageBubbleProps {
   message?: string;
@@ -154,14 +109,7 @@ function MessageBubble({
         }}
       >
         {children ?? (
-          <>
-            <MarkdownRenderer content={message ?? ""} />
-            {isStreaming ? (
-              <View style={{ flexDirection: "row" }}>
-                <StreamingCursor />
-              </View>
-            ) : null}
-          </>
+          <MarkdownRenderer content={(message ?? "").replace(/\s+$/, "")} />
         )}
       </View>
     </View>

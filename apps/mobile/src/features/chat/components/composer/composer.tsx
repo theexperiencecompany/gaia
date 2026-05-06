@@ -438,13 +438,13 @@ export function Composer({
         <TextInput
           ref={inputRef}
           style={{
-            paddingHorizontal: 14,
-            paddingTop: 10,
-            paddingBottom: 4,
+            paddingHorizontal: 16,
+            paddingTop: 14,
+            paddingBottom: 6,
             fontSize: fontSize.base,
             lineHeight: Math.round(fontSize.base * 1.35),
             color: "#ffffff",
-            minHeight: 32,
+            minHeight: 36,
             maxHeight: maxInputHeight,
             ...(inputHeight > 0 && {
               height: Math.min(inputHeight, maxInputHeight),
@@ -465,23 +465,23 @@ export function Composer({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            paddingHorizontal: 6,
-            paddingBottom: 6,
-            paddingTop: 2,
-            gap: 4,
+            paddingHorizontal: 10,
+            paddingBottom: 10,
+            paddingTop: 6,
+            gap: 8,
           }}
         >
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 2,
+              gap: 6,
             }}
           >
             <Animated.View style={plusAnimatedStyle}>
               <Pressable
                 onPress={handlePlusPress}
-                hitSlop={6}
+                hitSlop={8}
                 onPressIn={() => {
                   plusScale.value = withSpring(0.92, {
                     damping: 15,
@@ -495,8 +495,8 @@ export function Composer({
                   });
                 }}
                 style={{
-                  width: 32,
-                  height: 32,
+                  width: 36,
+                  height: 36,
                   alignItems: "center",
                   justifyContent: "center",
                 }}
@@ -515,12 +515,12 @@ export function Composer({
           <Animated.View style={sendAnimatedStyle}>
             <Pressable
               onPress={handleSend}
-              hitSlop={6}
+              hitSlop={8}
               disabled={!isStreaming && !hasContent}
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
                 backgroundColor: isStreaming
                   ? "rgba(63,63,70,0.8)"
                   : hasContent

@@ -522,16 +522,22 @@ export function ChatScreenContent({
   const showSkeleton =
     isLoading && !isTyping && !!activeChatId && messages.length === 0;
 
+  // Breathing space between top of soft keyboard and bottom of composer pill.
+  const KEYBOARD_GAP = 10;
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 0}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 56 - KEYBOARD_GAP : 0}
     >
       <View
         style={{
           flex: 1,
-          paddingBottom: Platform.OS === "android" ? androidKeyboardHeight : 0,
+          paddingBottom:
+            Platform.OS === "android" && androidKeyboardHeight > 0
+              ? androidKeyboardHeight + KEYBOARD_GAP
+              : 0,
         }}
       >
         {showSkeleton ? (

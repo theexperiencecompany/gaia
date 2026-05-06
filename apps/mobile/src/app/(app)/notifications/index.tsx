@@ -1,14 +1,16 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Modal, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AppIcon,
   ArrowLeft01Icon,
   Cancel01Icon,
+  CheckmarkBadge01Icon,
   Delete02Icon,
   FolderIcon,
+  MoreVerticalIcon,
   Notification01Icon,
   Settings01Icon,
   Tick02Icon,
@@ -46,6 +48,7 @@ export default function NotificationsScreen() {
   const [activeTab, setActiveTab] = useState<NotificationsTab>("unread");
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const prefsSheetRef = useRef<NotificationPreferencesSheetRef>(null);
   const snoozeSheetRef = useRef<NotificationSnoozeSheetRef>(null);
 
@@ -166,16 +169,18 @@ export default function NotificationsScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#131416" }}>
-      {/* Header */}
+    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
+      {/* Header — mirrors web NotificationsHeader.tsx structure:
+          [back] [bell + "Notifications"] [Mark All as Read] [settings]
+          Tabs row with count badge on Unread (web parity). */}
       <View
         style={{
-          paddingTop: insets.top + spacing.sm,
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.md,
+          paddingTop: insets.top + 8,
+          paddingHorizontal: 16,
+          paddingBottom: 12,
           borderBottomWidth: 1,
-          borderBottomColor: "rgba(255,255,255,0.07)",
-          gap: spacing.md,
+          borderBottomColor: "rgba(255,255,255,0.06)",
+          gap: 12,
         }}
       >
         {/* Title row */}
@@ -183,7 +188,7 @@ export default function NotificationsScreen() {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            gap: spacing.sm,
+            gap: 8,
           }}
         >
           {isSelectMode ? (
@@ -204,10 +209,10 @@ export default function NotificationsScreen() {
 
               <Text
                 style={{
-                  fontSize: fontSize.base,
+                  fontSize: 16,
                   fontWeight: "600",
                   color: "#e8ebef",
-                  marginLeft: spacing.sm + 4,
+                  marginLeft: 8,
                 }}
               >
                 {selectedIds.size} selected
@@ -220,14 +225,14 @@ export default function NotificationsScreen() {
                 style={{
                   backgroundColor: "rgba(0,187,255,0.1)",
                   borderRadius: 8,
-                  paddingHorizontal: spacing.md,
+                  paddingHorizontal: 12,
                   paddingVertical: 6,
                 }}
               >
                 <Text
                   style={{
                     color: "#00bbff",
-                    fontSize: fontSize.xs,
+                    fontSize: 12,
                     fontWeight: "500",
                   }}
                 >
@@ -247,6 +252,7 @@ export default function NotificationsScreen() {
                   justifyContent: "center",
                   backgroundColor: "rgba(255,255,255,0.05)",
                 }}
+                hitSlop={6}
               >
                 <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
               </Pressable>
@@ -256,66 +262,55 @@ export default function NotificationsScreen() {
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 8,
-                  marginLeft: spacing.sm + 4,
+                  marginLeft: 4,
+                  flex: 1,
                 }}
               >
-                <AppIcon icon={Notification01Icon} size={18} color="#8e8e93" />
+                <AppIcon icon={Notification01Icon} size={20} color="#e8ebef" />
                 <Text
                   style={{
-                    fontSize: fontSize.base,
+                    fontSize: 17,
                     fontWeight: "600",
-                    color: "#e8ebef",
+                    color: "#ffffff",
                   }}
                 >
                   Notifications
                 </Text>
               </View>
 
-              <View style={{ flex: 1 }} />
-
               <Pressable
-                onPress={() => prefsSheetRef.current?.open()}
-                style={{ marginRight: spacing.sm, opacity: 0.7 }}
+                onPress={() => setIsMenuOpen(true)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 999,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(255,255,255,0.05)",
+                }}
+                hitSlop={6}
+                accessibilityLabel="Notifications options"
               >
-                <AppIcon icon={Settings01Icon} size={20} color="#8e8e93" />
+                <AppIcon icon={MoreVerticalIcon} size={18} color="#e4e4e7" />
               </Pressable>
-
-              {unreadNotifications.length > 0 && (
-                <Pressable
-                  disabled={isMarkingAllAsRead}
-                  onPress={() => {
-                    void handleMarkAllAsRead();
-                  }}
-                  style={{
-                    opacity: isMarkingAllAsRead ? 0.5 : 1,
-                    backgroundColor: "rgba(0,187,255,0.1)",
-                    borderRadius: 8,
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: 6,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: "#00bbff",
-                      fontSize: fontSize.xs,
-                      fontWeight: "500",
-                    }}
-                  >
-                    {isMarkingAllAsRead ? "Marking..." : "Mark all read"}
-                  </Text>
-                </Pressable>
-              )}
             </>
           )}
         </View>
 
-        {/* Tab picker */}
+        {/* Tab picker — web NotificationsHeader uses <Tabs> from HeroUI
+            (underlined). On mobile we render minimal underline-style tabs to
+            keep visual parity with the web's quiet header treatment. */}
         <View
-          style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}
+          style={{
+            flexDirection: "row",
+            gap: 24,
+            paddingHorizontal: 4,
+          }}
         >
           {TABS.map(({ key, label }) => {
             const isActive = activeTab === key;
             const count = tabCounts[key];
+            const showBadge = key === "unread" && count > 0;
 
             return (
               <Pressable
@@ -325,28 +320,51 @@ export default function NotificationsScreen() {
                   if (isSelectMode) handleCancelSelect();
                 }}
                 style={{
-                  borderRadius: 999,
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.xs,
-                  backgroundColor: isActive
-                    ? "rgba(0,187,255,0.18)"
-                    : "rgba(255,255,255,0.06)",
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 6,
+                  paddingVertical: 8,
+                  borderBottomWidth: 2,
+                  borderBottomColor: isActive ? "#00bbff" : "transparent",
                 }}
               >
                 <Text
+                  // Web tab: text-sm; active uses primary, inactive zinc-500
                   style={{
-                    fontSize: fontSize.xs,
-                    color: isActive ? "#00bbff" : "#c5cad2",
-                    fontWeight: isActive ? "600" : "400",
+                    fontSize: 14,
+                    color: isActive ? "#ffffff" : "#71717a",
+                    fontWeight: isActive ? "600" : "500",
                   }}
                 >
-                  {count > 0
-                    ? `${label} (${count > 99 ? "99+" : count})`
-                    : label}
+                  {label}
                 </Text>
+                {showBadge && (
+                  // Web Unread badge:
+                  //   ml-0.5 flex h-5 min-w-5 rounded-full bg-primary/10
+                  //   px-1.5 text-xs font-semibold text-primary
+                  <View
+                    style={{
+                      minWidth: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      paddingHorizontal: 6,
+                      backgroundColor: "rgba(0,187,255,0.10)",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginLeft: 2,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: "600",
+                        color: "#00bbff",
+                      }}
+                    >
+                      {count > 99 ? "99+" : count}
+                    </Text>
+                  </View>
+                )}
               </Pressable>
             );
           })}
@@ -363,18 +381,20 @@ export default function NotificationsScreen() {
           error={error}
           emptyTitle={
             activeTab === "unread"
-              ? "No unread notifications"
+              ? "You're all caught up"
               : activeTab === "archived"
-                ? "No archived notifications"
-                : "No notifications yet"
+                ? "Archive is empty"
+                : "Nothing here yet"
           }
           emptyDescription={
             activeTab === "unread"
-              ? "All caught up! You're up to date with everything."
+              ? "Take a breath."
               : activeTab === "archived"
-                ? "Archived notifications will appear here."
-                : "Notifications will appear here when you receive them."
+                ? "Notifications you archive will appear here."
+                : "GAIA will surface things that need your attention."
           }
+          emptyActionLabel="Notification preferences"
+          onEmptyAction={() => prefsSheetRef.current?.open()}
           onRefresh={() => {
             void refetch();
           }}
@@ -504,6 +524,120 @@ export default function NotificationsScreen() {
 
       <NotificationPreferencesSheet ref={prefsSheetRef} />
       <NotificationSnoozeSheet ref={snoozeSheetRef} />
+
+      <Modal
+        visible={isMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMenuOpen(false)}
+      >
+        <Pressable
+          onPress={() => setIsMenuOpen(false)}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.4)",
+            justifyContent: "flex-start",
+          }}
+        >
+          <View
+            style={{
+              marginTop: insets.top + 56,
+              marginRight: 16,
+              alignSelf: "flex-end",
+              minWidth: 220,
+              backgroundColor: "#1c1f26",
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.06)",
+              overflow: "hidden",
+            }}
+          >
+            <Pressable
+              disabled={isMarkingAllAsRead || unreadNotifications.length === 0}
+              onPress={() => {
+                setIsMenuOpen(false);
+                void handleMarkAllAsRead();
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                opacity:
+                  unreadNotifications.length === 0 || isMarkingAllAsRead
+                    ? 0.4
+                    : 1,
+                backgroundColor: pressed
+                  ? "rgba(255,255,255,0.04)"
+                  : "transparent",
+              })}
+            >
+              <AppIcon icon={CheckmarkBadge01Icon} size={16} color="#e4e4e7" />
+              <Text style={{ color: "#e4e4e7", fontSize: 14 }}>
+                Mark all as read
+              </Text>
+            </Pressable>
+            <View
+              style={{
+                height: 1,
+                backgroundColor: "rgba(255,255,255,0.06)",
+              }}
+            />
+            <Pressable
+              onPress={() => {
+                setIsMenuOpen(false);
+                prefsSheetRef.current?.open();
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                backgroundColor: pressed
+                  ? "rgba(255,255,255,0.04)"
+                  : "transparent",
+              })}
+            >
+              <AppIcon icon={Settings01Icon} size={16} color="#e4e4e7" />
+              <Text style={{ color: "#e4e4e7", fontSize: 14 }}>
+                Notification preferences
+              </Text>
+            </Pressable>
+            <View
+              style={{
+                height: 1,
+                backgroundColor: "rgba(255,255,255,0.06)",
+              }}
+            />
+            <Pressable
+              onPress={() => {
+                setIsMenuOpen(false);
+                // "Filter" cycles to the next tab — quick keyboard-free filter.
+                const nextIdx =
+                  (TABS.findIndex((t) => t.key === activeTab) + 1) %
+                  TABS.length;
+                const next = TABS[nextIdx];
+                if (next) setActiveTab(next.key);
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                backgroundColor: pressed
+                  ? "rgba(255,255,255,0.04)"
+                  : "transparent",
+              })}
+            >
+              <AppIcon icon={FolderIcon} size={16} color="#e4e4e7" />
+              <Text style={{ color: "#e4e4e7", fontSize: 14 }}>Filter</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
