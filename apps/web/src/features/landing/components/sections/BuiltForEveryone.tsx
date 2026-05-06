@@ -10,6 +10,8 @@ import {
   Tooltip,
 } from "recharts";
 
+import LargeHeader from "../shared/LargeHeader";
+
 // Source: Anthropic Economic Index, 2025
 // https://www.anthropic.com/research/labor-market-impacts
 // Values read directly from the published radar chart (rings at 0.2, 0.4, 0.6, 0.8, 1.0).
@@ -57,6 +59,44 @@ interface CustomTooltipProps {
   label?: string;
 }
 
+interface AngleTickProps {
+  x?: number;
+  y?: number;
+  cx?: number;
+  cy?: number;
+  payload?: { value: string };
+}
+
+const LABEL_OFFSET = 18;
+
+function renderAngleTick(props: AngleTickProps) {
+  const { x = 0, y = 0, cx = 0, cy = 0, payload } = props;
+  const dx = x - cx;
+  const dy = y - cy;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  const nx = x + (dx / dist) * LABEL_OFFSET;
+  const ny = y + (dy / dist) * LABEL_OFFSET;
+
+  // textAnchor follows the horizontal direction of the label relative to centre
+  const horizontalRatio = dx / dist;
+  let textAnchor: "start" | "middle" | "end" = "middle";
+  if (horizontalRatio > 0.2) textAnchor = "start";
+  else if (horizontalRatio < -0.2) textAnchor = "end";
+
+  return (
+    <text
+      x={nx}
+      y={ny}
+      fill="#a1a1aa"
+      fontSize={11}
+      textAnchor={textAnchor}
+      dominantBaseline="middle"
+    >
+      {payload?.value}
+    </text>
+  );
+}
+
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
@@ -82,21 +122,18 @@ export default function BuiltForEveryone() {
   return (
     <section className="flex flex-col items-center px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
       <div className="flex w-full max-w-6xl flex-col items-center gap-10">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <p className="text-primary text-xs uppercase tracking-widest font-medium">
-            Built for the other 95%
-          </p>
-          <h2 className="text-4xl sm:text-5xl md:text-6xl font-medium font-serif! tracking-tight max-w-3xl">
-            AI can do most knowledge work.
-            <br />
-            Today, it mostly does code.
-          </h2>
-          <p className="text-base sm:text-lg text-zinc-400 font-light max-w-2xl">
-            Blue is what LLMs could handle. Red is what they&apos;re actually
-            handling. GAIA is built for the gap — the inbox, calendar, and
-            follow-ups AI tools haven&apos;t reached yet.
-          </p>
-        </div>
+        <LargeHeader
+          chipText="Built for the other 95%"
+          headingText={
+            <>
+              AI happened to coding.
+              <br />
+              It hasn&apos;t happened to anything else yet.
+            </>
+          }
+          subHeadingText="Blue is what LLMs could handle. Red is what they're actually handling. GAIA is built to bridge the gap other assistants have not."
+          centered
+        />
 
         <div className="relative w-full">
           {/* Top-right legend */}
@@ -118,20 +155,20 @@ export default function BuiltForEveryone() {
           </div>
 
           <div className="mx-auto w-full max-w-5xl">
-            <ResponsiveContainer width="100%" height={760}>
+            <ResponsiveContainer width="100%" height={580}>
               <RadarChart
                 data={CHART_DATA}
-                outerRadius="68%"
-                margin={{ top: 80, right: 120, bottom: 60, left: 120 }}
+                outerRadius="78%"
+                margin={{ top: 30, right: 120, bottom: 30, left: 120 }}
               >
                 <PolarGrid stroke="#3f3f46" gridType="circle" />
                 <PolarAngleAxis
                   dataKey="occupation"
-                  tick={{ fill: "#a1a1aa", fontSize: 11 }}
+                  tick={renderAngleTick}
                   tickLine={false}
                 />
                 <PolarRadiusAxis
-                  angle={90}
+                  angle={135}
                   domain={[0, 1]}
                   tick={{ fill: "#52525b", fontSize: 9 }}
                   tickCount={6}
@@ -162,15 +199,20 @@ export default function BuiltForEveryone() {
             </ResponsiveContainer>
           </div>
 
-          <div className="mx-auto mt-4 max-w-3xl space-y-1 text-center text-[11px] text-zinc-500">
+          <div className="mx-auto max-w-3xl space-y-1 text-center text-[11px] text-zinc-500">
             <p className="font-medium text-zinc-400">
-              Figure 2: Theoretical capability and observed exposure by
+              Figure: Theoretical capability and observed exposure by
               occupational category
             </p>
             <p>
-              Share of job tasks that LLMs could theoretically perform (blue
-              area) and our own job coverage measure derived from usage data
-              (red area).
+              <span className="text-blue-400 pr-1">
+                Share of job tasks that LLMs could theoretically perform (blue
+                area)
+              </span>
+              <span className="text-red-400">
+                and our own job coverage measure derived from usage data (red
+                area).
+              </span>
             </p>
             <p className="pt-1">
               Source:{" "}

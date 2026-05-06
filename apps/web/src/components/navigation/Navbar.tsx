@@ -1,7 +1,7 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
 import { Login02Icon, MessageMultiple02Icon } from "@icons";
+import NumberFlow from "@number-flow/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -26,11 +26,6 @@ const NavbarMenu = dynamic(
   () => import("./NavbarMenu").then((m) => ({ default: m.NavbarMenu })),
   { ssr: false },
 );
-const AnimatedNumber = dynamic(() => import("animated-number-react"), {
-  ssr: false,
-  loading: () => <Skeleton className="h-5 w-10 rounded-md" />,
-});
-
 const NAVBAR_ITEMS = [
   { type: "dropdown", label: "Product", menu: "product" },
   { type: "link", label: "Pricing", href: "/pricing" },
@@ -45,6 +40,22 @@ export default function Navbar() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const { data: repoData } = useGitHubStars("theexperiencecompany/gaia");
+
+  // GitHub stars: while loading, rapidly cycle random three-digit values so
+  // the digits flicker like a slot-machine readout. Initial 100 is stable
+  // across SSR/CSR; randomization only runs client-side in the effect.
+  const [stars, setStars] = useState(100);
+  const isStarsLoading = !repoData?.stargazers_count;
+  useEffect(() => {
+    if (repoData?.stargazers_count) {
+      setStars(Math.round(repoData.stargazers_count));
+      return;
+    }
+    const id = setInterval(() => {
+      setStars(Math.floor(100 + Math.random() * 900));
+    }, 80);
+    return () => clearInterval(id);
+  }, [repoData?.stargazers_count]);
 
   const user = useUser();
 
@@ -215,14 +226,22 @@ export default function Navbar() {
                   </div>
                   <div className="flex items-center gap-1 text-sm">
                     <StarFilledIcon className="relative top-px size-4 text-white group-hover:text-yellow-300" />
-                    <span className="font-medium text-white">
-                      <AnimatedNumber
-                        value={repoData?.stargazers_count.toFixed(0)}
-                        className="font-medium text-white"
-                        duration={1000}
-                        formatValue={(n: number) => Math.round(n).toString()}
-                      />
-                    </span>
+                    <NumberFlow
+                      value={stars}
+                      className="font-medium text-white tabular-nums"
+                      transformTiming={{
+                        duration: isStarsLoading ? 120 : 900,
+                        easing: isStarsLoading
+                          ? "linear"
+                          : "cubic-bezier(.2,.8,.2,1)",
+                      }}
+                      spinTiming={{
+                        duration: isStarsLoading ? 120 : 900,
+                        easing: isStarsLoading
+                          ? "linear"
+                          : "cubic-bezier(.2,.8,.2,1)",
+                      }}
+                    />
                   </div>
                 </Button>
               </a>

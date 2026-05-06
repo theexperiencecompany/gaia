@@ -203,6 +203,7 @@
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.180.0",
     "tinycolor2": "^1.6.0",
+    "torph": "^0.0.9",
     "ts-key-enum": "^3.0.13",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.0.0",

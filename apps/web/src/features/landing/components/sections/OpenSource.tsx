@@ -175,7 +175,7 @@ export default function OpenSource() {
             </RaisedButton>
           </Link>
         </div>
-        <p className="text-sm text-zinc-500 text-center pt-2">
+        <p className="text-sm text-zinc-500 text-center pt-4">
           Considering self-hosted alternatives?{" "}
           <Link
             href="/compare/openclaw"

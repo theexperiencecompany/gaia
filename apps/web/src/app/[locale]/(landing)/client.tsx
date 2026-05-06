@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
+import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import {
   getTimeOfDay,
   isDarkTimeOfDay,
@@ -30,6 +31,10 @@ function SectionLoader() {
 const ChatDemoSection = dynamic(
   () => import("@/features/landing/components/demo/ChatDemoSection"),
   { loading: SectionLoader },
+);
+const TimeSavedCounter = dynamic(
+  () => import("@/features/landing/components/sections/TimeSavedCounter"),
+  { loading: SectionLoader, ssr: false },
 );
 const BuiltForEveryone = dynamic(
   () => import("@/features/landing/components/sections/BuiltForEveryone"),
@@ -63,10 +68,6 @@ const OpenSource = dynamic(
   () => import("@/features/landing/components/sections/OpenSource"),
   { loading: SectionLoader },
 );
-const LandingPricingSection = dynamic(
-  () => import("@/features/landing/components/sections/LandingPricingSection"),
-  { loading: SectionLoader },
-);
 const FAQAccordion = dynamic(
   () =>
     import("@/features/pricing/components/FAQAccordion").then((mod) => ({
@@ -88,8 +89,10 @@ const FinalSection = dynamic(
 
 export default function LandingPageClient({
   initialTimeOfDay,
+  latestRelease,
 }: {
   initialTimeOfDay: TimeOfDay;
+  latestRelease: LatestRelease | null;
 }) {
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(initialTimeOfDay);
   const [clickCount, setClickCount] = useState(0);
@@ -127,10 +130,14 @@ export default function LandingPageClient({
         </div>
 
         <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
-          <HeroSection isDark={isDark} onTextClick={handleTextClick} />
+          <HeroSection
+            isDark={isDark}
+            onTextClick={handleTextClick}
+            latestRelease={latestRelease}
+          />
         </section>
 
-        <section className="relative z-20 w-full py-28 sm:py-20 mb-12 sm:mb-30">
+        <section className="relative z-20 w-full py-16 sm:py-12 mb-12 sm:mb-16">
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
 
           <Image
@@ -153,10 +160,9 @@ export default function LandingPageClient({
           <ChatDemoSection />
         </section>
 
-        <div>
-          {/* Positioning — why GAIA exists */}
-          <BuiltForEveryone />
+        <TimeSavedCounter />
 
+        <div>
           {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
           <WorkflowSection />
@@ -168,8 +174,11 @@ export default function LandingPageClient({
 
           {/* Decision — how it stacks up, trust, price */}
           <ComparisonGrid />
+
+          {/* Positioning — why GAIA exists */}
+          <BuiltForEveryone />
+
           <OpenSource />
-          <LandingPricingSection />
 
           {/* Objections + final CTA */}
           <FAQAccordion />

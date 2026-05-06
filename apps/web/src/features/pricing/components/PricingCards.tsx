@@ -97,7 +97,7 @@ export function PricingCards({
   if (error && (!plans || plans.length === 0)) {
     return (
       <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
-        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 p-8">
+        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl bg-red-500/10 p-6">
           <p className="text-center text-red-400">
             Unable to load pricing plans. Please refresh the page or try again
             later.

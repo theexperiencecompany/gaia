@@ -62,19 +62,19 @@ const GRID_ROWS: GridRow[] = [
     feature: "Acts before you ask",
     values: [
       { type: "yes" },
-      { type: "partial", label: "More mature workflow system" },
-      { type: "partial", label: "Inbox/calendar via SMS" },
-      { type: "partial", label: "10 scheduled reminders" },
+      { type: "yes" },
+      { type: "yes" },
       { type: "no" },
-      { type: "partial", label: "Rolling out 2026" },
+      { type: "no" },
+      { type: "no" },
     ],
   },
   {
     feature: "WhatsApp / Slack / Telegram",
     values: [
       { type: "yes" },
-      { type: "no" },
-      { type: "partial", label: "Telegram + iMessage" },
+      { type: "yes" },
+      { type: "yes" },
       { type: "no" },
       { type: "no" },
       { type: "no" },
@@ -84,11 +84,11 @@ const GRID_ROWS: GridRow[] = [
     feature: "Mobile + Desktop app",
     values: [
       { type: "yes" },
-      { type: "partial", label: "Desktop only" },
-      { type: "partial", label: "SMS only" },
-      { type: "partial", label: "No Linux" },
-      { type: "partial", label: "No Linux" },
-      { type: "partial", label: "No Linux" },
+      { type: "partial", label: "CLI" },
+      { type: "no" },
+      { type: "yes" },
+      { type: "yes" },
+      { type: "yes" },
     ],
   },
   {
@@ -99,29 +99,51 @@ const GRID_ROWS: GridRow[] = [
       { type: "no" },
       { type: "no" },
       { type: "no" },
-      { type: "partial", label: "Open weights only" },
+      { type: "no" },
     ],
   },
   {
-    feature: "Multi-step scheduled workflows",
+    feature: "Zero Technical Setup",
+    values: [
+      { type: "yes" },
+      { type: "no" },
+      { type: "yes" },
+      { type: "yes" },
+      { type: "yes" },
+      { type: "yes" },
+    ],
+  },
+  {
+    feature: "Multi-step workflows",
     values: [
       { type: "yes" },
       { type: "yes" },
       { type: "partial", label: "Basic recipes" },
-      { type: "partial", label: "No cron triggers" },
-      { type: "partial", label: "No cron triggers" },
-      { type: "partial", label: "Enterprise only" },
+      { type: "no" },
+      { type: "yes" },
+      { type: "no" },
     ],
   },
   {
-    feature: "Cross-tool persistent memory",
+    feature: "Automated todo list",
     values: [
       { type: "yes" },
-      { type: "partial", label: "Session-only" },
       { type: "no" },
-      { type: "partial", label: "3-layer memory" },
-      { type: "partial", label: "Projects memory" },
-      { type: "partial", label: "Google data only" },
+      { type: "no" },
+      { type: "no" },
+      { type: "no" },
+      { type: "no" },
+    ],
+  },
+  {
+    feature: "Community integration marketplace",
+    values: [
+      { type: "yes" },
+      { type: "yes" },
+      { type: "yes" },
+      { type: "no" },
+      { type: "no" },
+      { type: "no" },
     ],
   },
   {
@@ -132,7 +154,7 @@ const GRID_ROWS: GridRow[] = [
       { type: "no" },
       { type: "no" },
       { type: "no" },
-      { type: "partial", label: "Workspace only" },
+      { type: "partial", label: "Google Workspace only" },
     ],
   },
   {
@@ -140,10 +162,10 @@ const GRID_ROWS: GridRow[] = [
     values: [
       { type: "text", label: "50+ native + MCP" },
       { type: "text", label: "50+ + 100 skills" },
-      { type: "text", label: "~10 services" },
-      { type: "text", label: "1000+ via plugins" },
+      { type: "text", label: "~10 services + MCP" },
+      { type: "no" },
       { type: "text", label: "MCP connectors" },
-      { type: "text", label: "Google native" },
+      { type: "no" },
     ],
   },
 ];
@@ -151,7 +173,7 @@ const GRID_ROWS: GridRow[] = [
 function BrandLogo({ competitor }: { competitor: CompetitorInfo }) {
   if (competitor.logo.type === "image") {
     return (
-      <div className="relative h-7 w-7 overflow-hidden rounded-md bg-white/5">
+      <div className="relative h-7 w-7 overflow-hidden rounded-md">
         <Image
           src={competitor.logo.src}
           alt={competitor.name}
@@ -193,11 +215,11 @@ function Cell({ value }: { value: CellValue }) {
 
 export default function ComparisonGrid() {
   return (
-    <section className="flex w-full flex-col items-center px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+    <section className="flex w-full flex-col items-center px-4 pb-24 sm:px-6 sm:pb-32 lg:px-8">
       <div className="flex w-full max-w-6xl flex-col items-center gap-10">
         <LargeHeader
-          headingText="How GAIA compares"
-          subHeadingText="Every cell sourced from official websites and docs. We even call out where competitors beat us."
+          headingText="Your chatbot doesn't do this."
+          subHeadingText="Everything ChatGPT does. Plus everything it doesn't."
           centered
         />
 
