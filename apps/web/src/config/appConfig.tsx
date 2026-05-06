@@ -213,7 +213,8 @@ export const appConfig = {
         href: "/learn",
         label: "Glossary",
         icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
-        description: "AI and productivity terms, decoded",
+        description: "AI and productivity terms explained",
+        hideNavbar: true,
       },
       {
         href: "/alternative-to",
@@ -228,8 +229,7 @@ export const appConfig = {
         href: "/automate",
         label: "Automation Combos",
         icon: <ConnectIcon width={20} height={20} color={"currentColor"} />,
-        description: "Automate any two tools together with GAIA",
-        hideNavbar: true,
+        description: "Recipes for connecting any two tools",
       },
       {
         href: "/feed.xml",
