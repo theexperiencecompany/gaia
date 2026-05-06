@@ -92,10 +92,6 @@ const nextConfig = {
   },
   serverExternalPackages: ["moment", "moment-timezone"],
   experimental: {
-    // Inline critical CSS via critters so the first paint doesn't wait on a
-    // separate CSS round-trip. Object form (e.g. `{ fonts: true, preload: "swap" }`)
-    // silently no-ops in Next 16.1.6 — stick with the boolean.
-    optimizeCss: true,
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
