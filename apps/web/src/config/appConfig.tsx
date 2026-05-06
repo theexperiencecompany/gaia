@@ -2,7 +2,9 @@ import {
   ArrowRight02Icon,
   BlushBrush02Icon,
   BookOpen02Icon,
+  ComputerTerminal01Icon,
   ConnectIcon,
+  Download02Icon,
   GlobalIcon,
   Home01Icon,
   Idea01Icon,
@@ -10,7 +12,9 @@ import {
   MessageMultiple02Icon,
   PackageOpenIcon,
   QuillWrite01Icon,
+  UserGroupIcon,
 } from "@icons";
+import Image from "next/image";
 import type { ReactElement } from "react";
 import {
   DiscordIcon,
@@ -22,10 +26,50 @@ import {
   YoutubeIcon,
 } from "@/components/shared/icons";
 
+const BOT_ICONS: { src: string; alt: string; rotate: string }[] = [
+  {
+    src: "/images/icons/macos/discord.webp",
+    alt: "Discord",
+    rotate: "-rotate-6",
+  },
+  { src: "/images/icons/macos/slack.webp", alt: "Slack", rotate: "rotate-6" },
+  {
+    src: "/images/icons/macos/telegram.webp",
+    alt: "Telegram",
+    rotate: "-rotate-6",
+  },
+  {
+    src: "/images/icons/macos/whatsapp.webp",
+    alt: "WhatsApp",
+    rotate: "rotate-6",
+  },
+];
+
+const BotStackIcon = (): ReactElement => (
+  <div className="flex -space-x-3">
+    {BOT_ICONS.map((bot) => (
+      <div
+        key={bot.alt}
+        className={`relative size-9 shrink-0 ${bot.rotate} drop-shadow-md transition-transform duration-200 group-hover:rotate-0`}
+      >
+        <Image
+          src={bot.src}
+          alt={bot.alt}
+          fill
+          sizes="36px"
+          className="object-contain"
+        />
+      </div>
+    ))}
+  </div>
+);
+
 export interface AppLink {
   label: string;
   href: string;
   icon?: ReactElement;
+  /** Render the icon without the default pill background (e.g. stacked logos). */
+  richIcon?: boolean;
   external?: boolean;
   requiresAuth?: boolean;
   guestOnly?: boolean;
@@ -65,101 +109,105 @@ export const appConfig = {
     // Navigation menu sections
     product: [
       {
-        href: "/login",
-        label: "Get Started",
-        icon: (
-          <MessageMultiple02Icon
-            width={20}
-            height={20}
-            color={"currentColor"}
-          />
-        ),
-        requiresAuth: false,
-        description: "Sign Up / Login to GAIA",
-      },
-
-      {
         href: "/use-cases",
         label: "Use Cases",
         icon: <Idea01Icon width={20} height={20} color={"currentColor"} />,
-        description: "Discover workflows and AI prompts",
+        description: "Real workflows people actually run",
       },
       {
         href: "/marketplace",
         label: "Integration Marketplace",
         icon: <ConnectIcon width={20} height={20} color={"currentColor"} />,
-        description: "Explore community integrations",
+        description: "Plug GAIA into the tools you already use",
+      },
+      {
+        href: "/download",
+        label: "Download",
+        icon: <Download02Icon width={20} height={20} color={"currentColor"} />,
+        description: "Take GAIA everywhere you work",
+      },
+      {
+        href: "/cli",
+        label: "Self-Host CLI",
+        icon: (
+          <ComputerTerminal01Icon
+            width={20}
+            height={20}
+            color={"currentColor"}
+          />
+        ),
+        description: "Run GAIA on your own server, your way",
+      },
+      {
+        href: "/bots",
+        label: "Chat Bots",
+        icon: <BotStackIcon />,
+        richIcon: true,
+        description: "Talk to GAIA in the apps you already use",
       },
       {
         href: "/features",
         label: "Features",
         icon: <MapsIcon width={20} height={20} color={"currentColor"} />,
-        description: "Explore everything GAIA can do",
-      },
-      {
-        href: "/download",
-        label: "Download",
-        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
-        description: "Get GAIA for desktop, mobile, and web",
+        description: "Everything GAIA can do for you",
       },
       {
         href: "/roadmap",
         label: "Roadmap",
         icon: <MapsIcon width={20} height={20} color={"currentColor"} />,
         external: true,
-        description: "See what's coming next",
+        description: "Peek at what's cooking",
+      },
+      {
+        href: "/for",
+        label: "Tailored For Your Role",
+        icon: <UserGroupIcon width={20} height={20} color={"currentColor"} />,
+        description: "Built for the way you actually work",
+      },
+      {
+        href: "/compare",
+        label: "Compare",
+        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
+        description: "How GAIA stacks up against the rest",
       },
     ] as AppLink[],
 
     resources: [
-      {
-        href: "/cli",
-        label: "Install CLI",
-        icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
-        description: "Install the GAIA CLI for self-hosting",
-      },
       {
         href: "/blog",
         label: "Blog",
         icon: (
           <QuillWrite01Icon width={20} height={20} color={"currentColor"} />
         ),
-        description: "Read the latest updates and insights",
+        description: "Stories, lessons, and product updates",
       },
       {
         href: "https://docs.heygaia.io/release-notes",
         label: "Release Notes",
         icon: <PackageOpenIcon width={20} height={20} color={"currentColor"} />,
         external: true,
-        description: "See what's new in every release",
+        description: "What's new, what's fixed, what's better",
       },
       {
         href: "https://docs.heygaia.io",
         label: "Documentation",
         icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
         external: true,
-        description: "Guides, tutorials, and knowledge base",
+        description: "Everything you'd want to know",
       },
       {
         href: "/request-feature",
         label: "Request a Feature",
         icon: <Idea01Icon width={20} height={20} color={"currentColor"} />,
         external: true,
-        description: "Request new features and vote on ideas",
+        description: "Tell us what to build next",
       },
       {
         href: "/status",
         label: "Status",
         icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
         external: true,
-        description: "Check the status of GAIA services",
-      },
-      {
-        href: "/compare",
-        label: "Compare",
-        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
-        description: "See how GAIA compares to other tools",
-        hideNavbar: true,
+        description: "Live health check",
       },
       {
         href: "/learn",

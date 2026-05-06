@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @source "../../../src";
 @source "../../../../../libs/shared/ts/src/**/*.{js,ts,jsx,tsx}";
+@source inline("row-span-2 row-span-3 row-span-4");
+@source inline("col-span-2 col-span-3 col-span-4");
+@source inline("grid-rows-3 grid-rows-4 grid-cols-3 grid-cols-4");
 
 /* HeroUI */
 @source "../../../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
