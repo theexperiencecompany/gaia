@@ -17,12 +17,12 @@ import asyncio
 from typing import cast
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.constants.llm import FULL_BIND_THRESHOLD
 from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.llm.retry_policies import SUBAGENT_RETRY_POLICY
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.store import get_tools_store
@@ -96,48 +96,6 @@ class SubAgentFactory:
                 scoped_tool_dict[t.name] = t.tool
                 initial_tool_ids.append(t.name)
 
-        # Size-gated full tool binding.
-        # If the subagent's tool space contains few enough tools that binding
-        # them all fits comfortably in the prompt, skip retrieve_tools
-        # entirely for this subagent — the LLM can just pick the right tool
-        # from the bound set. Large tool spaces (Gmail/GitHub with 80-100+
-        # tools) stay on retrieval because binding everything would blow up
-        # the prompt and wipe out the caching savings from the stable prefix.
-        provider_tool_count = len(initial_tool_ids)
-        if (
-            category is not None
-            and provider_tool_count <= FULL_BIND_THRESHOLD
-            and not use_direct_tools
-            and not disable_retrieve_tools
-        ):
-            log.info(
-                f"Full-binding all {provider_tool_count} tools for {provider} "
-                f"(under threshold={FULL_BIND_THRESHOLD}); skipping retrieve_tools"
-            )
-            log.set(
-                subagent_binding={
-                    "provider": provider,
-                    "strategy": "full_bind",
-                    "tool_count": provider_tool_count,
-                    "threshold": FULL_BIND_THRESHOLD,
-                }
-            )
-            disable_retrieve_tools = True
-            # Ensure every provider tool is in auto_bind_tools so they are
-            # available to the LLM from step one without a retrieval call.
-            auto_bind_tools = list(
-                dict.fromkeys(list(auto_bind_tools or []) + initial_tool_ids)
-            )
-        else:
-            log.set(
-                subagent_binding={
-                    "provider": provider,
-                    "strategy": "retrieval",
-                    "tool_count": provider_tool_count,
-                    "threshold": FULL_BIND_THRESHOLD,
-                }
-            )
-
         # Add search_memory to scoped_tool_dict so subagents can access user memories
         scoped_tool_dict[search_memory.name] = search_memory
 
@@ -195,6 +153,7 @@ class SubAgentFactory:
                 todo_hook,
             ],
             "end_graph_hooks": [memory_node],
+            "agent_retry_policy": SUBAGENT_RETRY_POLICY,
         }
 
         valid_auto_bind = (

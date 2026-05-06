@@ -7,10 +7,6 @@ SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
-# Pre-bind every tool in a subagent's tool space when the count fits under
-# this threshold; above it we keep the ChromaDB retrieval flow. One number to
-# tune from post-landing observability.
-FULL_BIND_THRESHOLD = 20
 DEFAULT_MAX_TOKENS = 1_000_000
 DEFAULT_MODEL_NAME = "gemini-3.1-flash-lite-preview"
 # Direct Gemini API model

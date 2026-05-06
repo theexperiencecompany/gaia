@@ -125,9 +125,6 @@ def create_middleware_stack(
             middleware_stack={
                 "agent_name": agent_name,
                 "accounting_enabled": True,
-                "compaction_threshold": compaction_threshold,
-                "max_output_chars": max_output_chars,
-                "summarization_trigger": summarization_trigger,
             }
         )
 

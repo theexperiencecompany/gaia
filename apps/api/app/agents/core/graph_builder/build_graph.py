@@ -12,7 +12,8 @@ from app.agents.core.nodes import (
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
-from app.agents.llm.client import _LLM_RETRYABLE_EXCEPTIONS, init_llm
+from app.agents.llm.client import init_llm
+from app.agents.llm.retry_policies import COMMS_RETRY_POLICY, EXECUTOR_RETRY_POLICY
 from app.agents.middleware import create_comms_middleware, create_executor_middleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools import memory_tools
@@ -30,16 +31,6 @@ from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from langchain_core.language_models import LanguageModelLike
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.types import RetryPolicy
-
-_AGENT_RETRY_POLICY = RetryPolicy(
-    max_attempts=3,
-    initial_interval=1.0,
-    backoff_factor=2.0,
-    max_interval=30.0,
-    jitter=True,
-    retry_on=lambda exc: isinstance(exc, _LLM_RETRYABLE_EXCEPTIONS),
-)
 
 
 @asynccontextmanager
@@ -107,7 +98,7 @@ async def build_executor_graph(
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
-        agent_retry_policy=_AGENT_RETRY_POLICY,
+        agent_retry_policy=EXECUTOR_RETRY_POLICY,
     )
 
     checkpointer_manager = await get_checkpointer_manager()
@@ -181,7 +172,7 @@ async def build_comms_graph(
         end_graph_hooks=[
             follow_up_actions_node,
         ],
-        agent_retry_policy=_AGENT_RETRY_POLICY,
+        agent_retry_policy=COMMS_RETRY_POLICY,
     )
 
     checkpointer_manager = await get_checkpointer_manager()
