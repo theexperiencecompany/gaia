@@ -26,9 +26,8 @@ interface PageProps {
 }
 
 export async function generateStaticParams() {
-  return getAllGlossaryTermSlugs().map((term) => ({
-    term,
-  }));
+  const slugs = await getAllGlossaryTermSlugs();
+  return slugs.map((term) => ({ term }));
 }
 
 export const dynamicParams = false;

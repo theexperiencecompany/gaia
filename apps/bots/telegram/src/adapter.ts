@@ -35,6 +35,7 @@ import {
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
+  sanitizeErrorForLog,
 } from "@gaia/shared";
 import type { Message } from "@grammyjs/types";
 import { Bot, type Context } from "grammy";
@@ -151,7 +152,10 @@ export class TelegramAdapter extends BaseBotAdapter {
     try {
       await this.bot.api.setMyCommands(telegramCommands);
     } catch (e) {
-      this.adapterLogger.error("set_my_commands_failed", undefined, e);
+      this.adapterLogger.error(
+        "set_my_commands_failed",
+        sanitizeErrorForLog(e),
+      );
     }
   }
 
@@ -196,11 +200,54 @@ export class TelegramAdapter extends BaseBotAdapter {
     });
   }
 
-  /** Starts long polling. */
+  /** Starts long polling, retrying after 35 s on 409 Conflict. */
   protected async start(): Promise<void> {
-    this.bot.start({
-      onStart: () => this.adapterLogger.info("long_polling_started"),
-    });
+    // Remove any webhook that may have been set during development.
+    // A webhook prevents long polling and immediately returns 409.
+    try {
+      await this.bot.api.deleteWebhook({ drop_pending_updates: true });
+    } catch (e) {
+      this.adapterLogger.warn("delete_webhook_failed", sanitizeErrorForLog(e));
+    }
+
+    const runBot = async (retryDelayMs = 0): Promise<void> => {
+      if (retryDelayMs > 0) {
+        this.adapterLogger.info("long_poll_retry_waiting", {
+          delay_ms: retryDelayMs,
+        });
+        await new Promise<void>((r) => setTimeout(r, retryDelayMs));
+      }
+      await this.bot.start({
+        onStart: () => this.adapterLogger.info("long_polling_started"),
+      });
+    };
+
+    const startWithRetry = (retryDelayMs = 0): void => {
+      runBot(retryDelayMs).catch((err: unknown) => {
+        const code = (err as { error_code?: number })?.error_code;
+        if (code === 409) {
+          // Another getUpdates session is still active (e.g. previous container
+          // was SIGKILL'd before graceful shutdown). Wait 35 s for it to expire.
+          this.adapterLogger.warn("long_poll_conflict_retrying", {
+            wait_ms: 35_000,
+          });
+          startWithRetry(35_000);
+        } else {
+          this.adapterLogger.error("long_poll_fatal", undefined, err);
+          void this.shutdown()
+            .catch((shutdownErr) =>
+              this.adapterLogger.error(
+                "shutdown_failed",
+                undefined,
+                shutdownErr,
+              ),
+            )
+            .finally(() => process.exit(1));
+        }
+      });
+    };
+
+    startWithRetry();
   }
 
   /** Stops the bot. */

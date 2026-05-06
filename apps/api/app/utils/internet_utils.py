@@ -1,4 +1,6 @@
-import re
+import asyncio
+import ipaddress
+import socket
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -10,42 +12,168 @@ from app.models.search_models import URLResponse
 from bs4 import BeautifulSoup
 from fastapi import HTTPException, status
 
+# Cap scraped HTML to 2 MiB so a single URL cannot exhaust memory
+_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+_REQUEST_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+_MAX_REDIRECTS = 5
 
-def is_valid_url(url: str) -> bool:
+# Hostnames that always point at internal services — reject pre-DNS
+_BLOCKED_HOSTNAMES = frozenset(
+    {
+        "localhost",
+        "localhost.localdomain",
+        "ip6-localhost",
+        "ip6-loopback",
+        "broadcasthost",
+        "metadata",
+        "metadata.google.internal",
+        "metadata.goog",
+        "metadata.packet.net",
+        "instance-data",
+    }
+)
+
+
+def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True if the IP is anything other than a globally-routable address."""
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+        or not ip.is_global
+    )
+
+
+async def _resolve_and_validate(hostname: str) -> None:
     """
-    Validate if a URL is well-formed and uses an acceptable protocol.
+    Resolve hostname via DNS and reject if any resolved address is not globally
+    routable. This is the core SSRF guard — blocks RFC1918, loopback, link-local,
+    multicast, IPv6 ULA, cloud metadata IPs, etc.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await loop.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL host could not be resolved.",
+        ) from exc
 
-    Args:
-        url (str): The URL to validate
+    if not infos:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL host could not be resolved.",
+        )
 
-    Returns:
-        bool: True if URL is valid, False otherwise
+    for info in infos:
+        sockaddr = info[4]
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="URL host resolves to an unsupported address.",
+            )
+        if _is_blocked_ip(ip):
+            log.warning(
+                "ssrf_blocked",
+                hostname=hostname,
+                resolved_ip=ip_str,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="URL host is not allowed.",
+            )
+
+
+async def _validate_url_for_fetch(url: str) -> None:
+    """
+    SSRF guard. Raises HTTPException(400) on anything that could reach an
+    internal service. Safe to call multiple times (e.g. per redirect hop).
     """
     try:
         parsed = urlparse(url)
-        # Check for acceptable protocols
-        if parsed.scheme not in ("http", "https"):
-            return False
-        # Check for presence of netloc (domain)
-        if not parsed.netloc:
-            return False
-        # Reject IP addresses (basic check)
-        if re.match(r"^\d+\.\d+\.\d+\.\d+$", parsed.netloc):
-            log.warning(f"IP address URL rejected: {url}")
-            return False
-        return True
-    except Exception:
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid URL.",
+        ) from exc
+
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only http(s) URLs are allowed.",
+        )
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL host is missing.",
+        )
+
+    hostname = hostname.lower()
+
+    # Block hostnames that always map to internal resources
+    if hostname in _BLOCKED_HOSTNAMES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL host is not allowed.",
+        )
+
+    # Single-label hostnames (e.g. "rabbitmq", "grafana") are docker service
+    # DNS inside swarm networks — never valid for an external URL
+    if "." not in hostname:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL host is not a valid public domain.",
+        )
+
+    # Detect IP-literal hosts (including bracketed IPv6) and check directly —
+    # skip the DNS step so the error message is consistent
+    candidate = (
+        hostname[1:-1]
+        if hostname.startswith("[") and hostname.endswith("]")
+        else hostname
+    )
+    try:
+        ip = ipaddress.ip_address(candidate)
+    except ValueError:
+        # Not an IP literal — resolve via DNS
+        await _resolve_and_validate(hostname)
+        return
+
+    if _is_blocked_ip(ip):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL host is not allowed.",
+        )
+
+
+def is_valid_url(url: str) -> bool:
+    """
+    Lightweight sync validator used by non-fetch code paths. Only does shape/scheme
+    checks — DNS-level SSRF protection happens in ``_validate_url_for_fetch``.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
         return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if not parsed.hostname:
+        return False
+    return True
 
 
 async def fetch_url_metadata(url: str) -> URLResponse:
     """Fetch metadata for a URL, with caching and database fallback."""
     log.set(url=url, operation="fetch_url_metadata")
-    if not is_valid_url(url):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid URL provided.",
-        )
+    await _validate_url_for_fetch(url)
 
     cache_key = f"url_metadata:{url}"
     metadata = await get_cache(cache_key) or await search_urls_collection.find_one(
@@ -64,11 +192,33 @@ async def fetch_url_metadata(url: str) -> URLResponse:
 
 async def scrape_url_metadata(url: str) -> dict:
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(url, follow_redirects=True)
-            response.raise_for_status()
+        current_url = url
+        response: httpx.Response | None = None
+        # Manual redirect following so each hop re-passes the SSRF guard
+        async with httpx.AsyncClient(
+            timeout=_REQUEST_TIMEOUT, follow_redirects=False
+        ) as client:
+            for _ in range(_MAX_REDIRECTS + 1):
+                response = await client.get(current_url)
+                if response.is_redirect:
+                    next_location = response.headers.get("location")
+                    if not next_location:
+                        break
+                    current_url = str(httpx.URL(current_url).join(next_location))
+                    await _validate_url_for_fetch(current_url)
+                    continue
+                break
+            else:
+                log.debug("redirect_limit_exceeded", url=url)
+                return _empty_metadata(url)
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        if response is None:
+            return _empty_metadata(url)
+
+        response.raise_for_status()
+
+        content = response.content[:_MAX_RESPONSE_BYTES]
+        soup = BeautifulSoup(content, "html.parser")
 
         def to_absolute(relative_url: str) -> str | None:
             if not relative_url:
@@ -141,9 +291,16 @@ async def scrape_url_metadata(url: str) -> dict:
 
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:
         log.debug(f"Error fetching URL metadata: {exc}")
+    except HTTPException:
+        # Redirect chain tripped the SSRF guard — propagate
+        raise
     except Exception as exc:
         log.debug(f"Unexpected error: {exc}")
 
+    return _empty_metadata(url)
+
+
+def _empty_metadata(url: str) -> dict:
     return {
         "title": None,
         "description": None,

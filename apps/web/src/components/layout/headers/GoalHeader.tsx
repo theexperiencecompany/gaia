@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowRight01Icon, BubbleChatAddIcon, Target02Icon } from "@icons";
+import { BubbleChatAddIcon, Target02Icon } from "@icons";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
+import { ChevronRight } from "@/components/shared/icons";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import type { Goal } from "@/types/api/goalsApiTypes";
@@ -32,7 +33,7 @@ export default function GoalHeader() {
         </Link>
         {goal?.title && (
           <>
-            <ArrowRight01Icon width={18} height={17} />
+            <ChevronRight width={18} height={17} />
             <span className="text-zinc-300">{goal.title}</span>
           </>
         )}

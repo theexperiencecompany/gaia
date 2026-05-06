@@ -3,24 +3,23 @@
 These tools wrap existing Composio Notion tools and add markdown conversion:
 - FETCH_PAGE_AS_MARKDOWN: Calls NOTION_FETCH_ALL_BLOCK_CONTENTS → converts to markdown
 - INSERT_MARKDOWN: Converts markdown → calls NOTION_ADD_MULTIPLE_PAGE_CONTENT
-- MOVE_PAGE: Uses execute_request (no existing Composio equivalent)
+- MOVE_PAGE / FETCH_DATA : route through Composio's
+  proxy via `proxy_request_sync` (no existing Composio equivalent)
 
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 from typing import Any, Dict, List
 
-import httpx
-from shared.py.wide_events import log
-from app.models.common_models import GatherContextInput
 from app.decorators import with_doc
+from app.models.common_models import GatherContextInput
 from app.models.notion_models import (
-    CreateTestPageInput,
     FetchDataInput,
     FetchPageAsMarkdownInput,
     InsertMarkdownInput,
     MovePageInput,
 )
+from app.services.composio.proxy_client import proxy_request_sync
 from app.templates.docstrings.notion_tool_docs import (
     FETCH_DATA_DOC,
     FETCH_PAGE_AS_MARKDOWN_DOC,
@@ -28,9 +27,22 @@ from app.templates.docstrings.notion_tool_docs import (
     MOVE_PAGE_DOC,
 )
 from app.utils.context_utils import execute_tool
+from app.utils.errors import AppError
 from app.utils.notion_md import blocks_to_markdown, markdown_to_notion_blocks
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
+from shared.py.wide_events import log
+
+NOTION_API_BASE = "https://api.notion.com/v1"
+NOTION_TOOLKIT = "NOTION"
+_NOTION_HEADERS = {"Notion-Version": "2022-06-28"}
+
+
+def _user_id(auth_credentials: Dict[str, Any]) -> str:
+    user_id = auth_credentials.get("user_id")
+    if not user_id:
+        raise ValueError("Missing user_id in auth_credentials")
+    return user_id
 
 
 def register_notion_custom_tools(composio: Composio) -> List[str]:
@@ -228,37 +240,28 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
     ) -> Dict[str, Any]:
         """Fetch databases or pages from Notion workspace."""
         log.set(tool={"integration": "notion", "action": "fetch_data"})
-        headers = {
-            "Authorization": f"Bearer {auth_credentials.get('access_token')}",
-            "Notion-Version": "2022-06-28",
-            "Content-Type": "application/json",
-        }
+        user_id = _user_id(auth_credentials)
 
-        # Build search filter based on fetch_type
         search_filter = {"property": "object", "value": request.fetch_type.rstrip("s")}
 
-        # Build search body
         search_body: Dict[str, Any] = {
             "filter": search_filter,
-            "page_size": min(request.page_size, 100),  # Notion max is 100
+            "page_size": min(request.page_size, 100),
         }
 
-        # Add query if provided
         if request.query:
             search_body["query"] = request.query
 
         try:
-            # Call Notion search API
-            resp = httpx.post(
-                "https://api.notion.com/v1/search",
-                headers=headers,
-                json=search_body,
-                timeout=30,
-            )
-            resp.raise_for_status()
-            search_results = resp.json()
+            search_results = proxy_request_sync(
+                user_id=user_id,
+                toolkit=NOTION_TOOLKIT,
+                endpoint=f"{NOTION_API_BASE}/search",
+                method="POST",
+                body=search_body,
+                headers=_NOTION_HEADERS,
+            ) or {}
 
-            # Extract and simplify results
             results = search_results.get("results", [])
             values = []
 
@@ -266,18 +269,14 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
                 item_id = item.get("id")
                 object_type = item.get("object")
 
-                # Extract title based on object type
                 title = "Untitled"
                 if object_type == "database":
-                    # Database title is in title array
                     title_array = item.get("title", [])
                     if title_array and len(title_array) > 0:
                         title = title_array[0].get("plain_text", "Untitled")
                 elif object_type == "page":
-                    # Page title is in properties
                     properties = item.get("properties", {})
-                    # Find title property (it varies, usually "title" or "Name")
-                    for prop_name, prop_value in properties.items():
+                    for _prop_name, prop_value in properties.items():
                         if prop_value.get("type") == "title":
                             title_data = prop_value.get("title", [])
                             if title_data and len(title_data) > 0:
@@ -293,77 +292,14 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
                 "has_more": search_results.get("has_more", False),
             }
 
-        except httpx.HTTPStatusError as e:
-            log.error(f"Notion API error: {e.response.text}")
+        except AppError as e:
+            log.error(f"Notion API error: {e.message}")
             raise RuntimeError(
-                f"Failed to fetch {request.fetch_type}: {e.response.text}"
+                f"Failed to fetch {request.fetch_type}: {e.message}"
             )
         except Exception as e:
             log.error(f"Error fetching Notion {request.fetch_type}: {e}")
             raise RuntimeError(f"Failed to fetch {request.fetch_type}: {str(e)}")
-
-    @composio.tools.custom_tool(toolkit="NOTION")
-    @with_doc("Create a simple test page for integration testing.")
-    def CUSTOM_CREATE_TEST_PAGE(
-        request: CreateTestPageInput,
-        execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Create a new page in Notion."""
-        log.set(tool={"integration": "notion", "action": "create_test_page"})
-        # This is a wrapper around NOTION_CREATE_PAGE but simplified
-
-        # We need to construct the payload as expected by Notion API
-        # Parent can be page or database, for test page usually it's a page or workspace (if no parent?)
-        # Actually Notion API requires a parent.
-        # If parent_page_id is not provided, we might fail or try to find a root page?
-        # For testing, we assume parent is provided or we might default to search?
-
-        headers = {
-            "Authorization": f"Bearer {auth_credentials.get('access_token')}",
-            "Notion-Version": "2022-06-28",
-            "Content-Type": "application/json",
-        }
-
-        if not request.parent_page_id:
-            # Search for any page to use as parent
-            try:
-                search_resp = httpx.post(
-                    "https://api.notion.com/v1/search",
-                    headers=headers,
-                    json={
-                        "filter": {"property": "object", "value": "page"},
-                        "page_size": 1,
-                    },
-                    timeout=30,
-                )
-                search_resp.raise_for_status()
-                results = search_resp.json().get("results", [])
-                if results:
-                    request.parent_page_id = results[0]["id"]
-                else:
-                    raise ValueError(
-                        "No parent page provided and no pages found in workspace."
-                    )
-            except Exception as e:
-                raise ValueError(f"Failed to search for parent page: {e}")
-
-        properties = {"title": [{"type": "text", "text": {"content": request.title}}]}
-
-        parent = {"page_id": request.parent_page_id}
-
-        try:
-            resp = httpx.post(
-                "https://api.notion.com/v1/pages",
-                headers=headers,
-                json={"parent": parent, "properties": properties},
-                timeout=30,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return {"page_id": data.get("id"), "url": data.get("url")}
-        except Exception as e:
-            raise RuntimeError(f"Failed to create page: {e}")
 
     @composio.tools.custom_tool(toolkit="NOTION")
     def CUSTOM_GATHER_CONTEXT(
@@ -376,9 +312,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         Zero required parameters. Returns recently modified content for situational awareness.
         """
         log.set(tool={"integration": "notion", "action": "gather_context"})
-        user_id = auth_credentials.get("user_id", "")
-        if not user_id:
-            raise ValueError("Missing user_id in auth_credentials")
+        user_id = _user_id(auth_credentials)
         data = execute_tool(
             "NOTION_SEARCH_NOTION_PAGE", {"query": "", "page_size": 10}, user_id
         )
@@ -390,6 +324,5 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         "NOTION_FETCH_PAGE_AS_MARKDOWN",
         "NOTION_INSERT_MARKDOWN",
         "NOTION_FETCH_DATA",
-        "NOTION_CUSTOM_CREATE_TEST_PAGE",
         "NOTION_CUSTOM_GATHER_CONTEXT",
     ]

@@ -6,7 +6,8 @@ This module provides two tools for subagent delegation:
 2. handoff - Generic handoff tool that delegates to any subagent
 
 Subagents are lazy-loaded on first invocation via providers.aget().
-All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
+Subagent identity/metadata comes from agents/core/subagents/registry.py
+(unified view of OAuth-derived + builtin subagents).
 """
 
 import re
@@ -14,6 +15,7 @@ from datetime import datetime
 from typing import Annotated, Optional
 
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
+from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_subagent_system_message,
 )
@@ -23,11 +25,6 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
 )
 from shared.py.wide_events import log
-from app.config.oauth_config import (
-    OAUTH_INTEGRATIONS,
-    get_integration_by_id,
-    get_subagent_integrations,
-)
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
@@ -91,8 +88,8 @@ async def check_integration_connection(
 ) -> Optional[str]:
     """Check if integration is connected and return error message if not."""
     try:
-        integration = get_integration_by_id(integration_id)
-        if not integration:
+        subagent = get_subagent_by_id(integration_id)
+        if not subagent:
             return None
 
         is_connected = await check_integration_status(integration_id, user_id)
@@ -101,18 +98,16 @@ async def check_integration_connection(
             return None
 
         writer = get_stream_writer()
-        writer({"progress": f"Checking {integration.name} connection..."})
+        writer({"progress": f"Checking {subagent.name} connection..."})
 
         integration_data = {
-            "integration_id": integration.id,
-            "message": f"To use {integration.name} features, please connect your account first.",
+            "integration_id": subagent.id,
+            "message": f"To use {subagent.name} features, please connect your account first.",
         }
 
         writer({"integration_connection_required": integration_data})
 
-        return (
-            f"Integration {integration.name} is not connected. Please connect it first."
-        )
+        return f"Integration {subagent.name} is not connected. Please connect it first."
 
     except Exception as e:
         log.error(f"Error checking integration status for {integration_id}: {e}")
@@ -121,23 +116,22 @@ async def check_integration_connection(
 
 async def _get_subagent_by_id(subagent_id: str):
     """
-    Get subagent integration by ID or short_name.
+    Get subagent by ID or short_name.
 
-    Checks both platform integrations (OAUTH_INTEGRATIONS) and
-    custom MCPs from MongoDB. Uses Redis caching to avoid repeated DB queries.
+    Checks both platform/builtin subagents (via registry) and custom MCPs
+    from MongoDB. Uses Redis caching to avoid repeated DB queries for
+    custom MCPs.
 
     Returns:
-        Integration config or dict with custom MCP info, or None if not found
+        Subagent (platform/builtin) or dict (custom MCP info), or None if
+        not found
     """
     search_id = subagent_id.lower().strip()
 
-    # Check platform integrations first (no caching needed - in-memory)
-    for integ in OAUTH_INTEGRATIONS:
-        if integ.id.lower() == search_id or (
-            integ.short_name and integ.short_name.lower() == search_id
-        ):
-            if integ.subagent_config and integ.subagent_config.has_subagent:
-                return integ
+    # Check platform/builtin subagents first (no caching needed - in-memory)
+    subagent = get_subagent_by_id(search_id)
+    if subagent:
+        return subagent
 
     # Check Redis cache for custom integrations
     cache_key = f"{SUBAGENT_CACHE_PREFIX}:{search_id}"
@@ -266,10 +260,10 @@ async def _resolve_subagent(
     """
     clean_id, _ = parse_subagent_id(subagent_id)
 
-    integration = await _get_subagent_by_id(clean_id)
+    resolved = await _get_subagent_by_id(clean_id)
 
-    if not integration:
-        available = [i.id for i in get_subagent_integrations()][:5]
+    if not resolved:
+        available = [s.id for s in all_subagents()][:5]
         error = (
             f"Subagent '{subagent_id}' not found. "
             f"Use retrieve_tools to find available subagents. "
@@ -278,10 +272,10 @@ async def _resolve_subagent(
         return None, None, error, False
 
     # Handle custom MCPs (returned as dict from MongoDB)
-    if isinstance(integration, dict):
-        # Custom MCP - integration is a dict
-        integration_id = str(integration.get("id", ""))
-        integration_name = str(integration.get("name", integration_id))
+    if isinstance(resolved, dict):
+        # Custom MCP - resolved is a dict
+        integration_id = str(resolved.get("id", ""))
+        integration_name = str(resolved.get("name", integration_id))
 
         if not integration_id:
             return None, None, "Error: Custom integration has no ID", False
@@ -307,24 +301,16 @@ async def _resolve_subagent(
         agent_name = f"custom_mcp_{integration_id}"
         return subagent_graph, agent_name, integration_id, True
 
-    # Platform integration (OAuthIntegration object)
-    if not (hasattr(integration, "subagent_config") and integration.subagent_config):
-        return (
-            None,
-            None,
-            f"Error: {subagent_id} is not configured as a subagent",
-            False,
-        )
-
-    subagent_cfg = integration.subagent_config
-    agent_name = subagent_cfg.agent_name
-    int_id = integration.id
+    # Platform/builtin subagent (Subagent object)
+    subagent = resolved
+    agent_name = subagent.config.agent_name
+    int_id = subagent.id
 
     # Handle auth-required MCP integrations specially
     if (
-        integration.managed_by == "mcp"
-        and integration.mcp_config
-        and integration.mcp_config.requires_auth
+        subagent.managed_by == "mcp"
+        and subagent.mcp_config
+        and subagent.mcp_config.requires_auth
     ):
         if not user_id:
             return (
@@ -343,7 +329,7 @@ async def _resolve_subagent(
                 None,
                 (
                     f"Error: {agent_name} requires OAuth connection. "
-                    f"Please connect {integration.name} first via settings."
+                    f"Please connect {subagent.name} first via settings."
                 ),
                 False,
             )
@@ -360,7 +346,7 @@ async def _resolve_subagent(
     else:
         # Non-MCP or non-auth-required MCP integrations
         # Skip connection check for internal integrations (always available)
-        if integration.managed_by not in ("mcp", "internal") and user_id:
+        if subagent.managed_by not in ("mcp", "internal") and user_id:
             error_message = await check_integration_connection(int_id, user_id)
             if error_message:
                 return None, None, error_message, False
@@ -477,10 +463,12 @@ async def handoff(
         # Avoid passing Gaia display name as a service username
         provider_meta = None
         provider_name = None
-        integration = get_integration_by_id(int_id)
-        if integration and integration.provider and user_id:
-            provider_name = integration.provider
-            provider_meta = await get_provider_metadata(user_id, integration.provider)
+        platform_subagent = get_subagent_by_id(int_id)
+        if platform_subagent and platform_subagent.provider and user_id:
+            provider_name = platform_subagent.provider
+            provider_meta = await get_provider_metadata(
+                user_id, platform_subagent.provider
+            )
         service_username = _extract_service_username(provider_meta)
         integration_usernames: dict[str, str] = {}
         if provider_name and service_username:
@@ -523,20 +511,20 @@ async def handoff(
 
         integration_metadata = None
         if is_custom:
-            integration = await _get_subagent_by_id(int_id)
-            if isinstance(integration, dict):
+            custom_meta = await _get_subagent_by_id(int_id)
+            if isinstance(custom_meta, dict):
                 integration_metadata = {
-                    "icon_url": integration.get("icon_url"),
+                    "icon_url": custom_meta.get("icon_url"),
                     "integration_id": int_id,
-                    "name": str(integration.get("name", int_id)),
+                    "name": str(custom_meta.get("name", int_id)),
                 }
         else:
-            platform_integ = get_integration_by_id(int_id)
-            if platform_integ:
+            platform_subagent = get_subagent_by_id(int_id)
+            if platform_subagent:
                 integration_metadata = {
-                    "icon_url": getattr(platform_integ, "icon_url", None),
+                    "icon_url": None,
                     "integration_id": int_id,
-                    "name": platform_integ.name,
+                    "name": platform_subagent.name,
                 }
 
         # Execute using shared streaming function

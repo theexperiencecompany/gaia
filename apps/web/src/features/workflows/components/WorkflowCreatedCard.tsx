@@ -43,7 +43,7 @@ export default function WorkflowCreatedCard({
           color: "default" as const,
           bgColor: "bg-zinc-700/50",
         };
-      case "scheduled": {
+      case "schedule": {
         const cronLabel = workflow.trigger_config.cron_expression
           ? getScheduleDescription(workflow.trigger_config.cron_expression)
           : "Scheduled";

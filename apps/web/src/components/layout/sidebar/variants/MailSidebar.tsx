@@ -2,8 +2,15 @@
 
 import { Button } from "@heroui/button";
 import { InboxIcon, QuillWrite01Icon } from "@icons";
+import dynamic from "next/dynamic";
 import { useState } from "react";
-import MailCompose from "@/features/mail/components/MailCompose";
+
+// ssr:false — MailCompose imports @tiptap. Modal-only UI, never visible at
+// initial paint, no SEO impact.
+const MailCompose = dynamic(
+  () => import("@/features/mail/components/MailCompose"),
+  { ssr: false },
+);
 
 type MailItem = {
   label: string;

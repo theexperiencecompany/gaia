@@ -31,7 +31,7 @@ async function loadComparisonTranslations(
   const locale = localeOverride ?? (await getLocale());
   return loadFeatureTranslations<Record<string, TranslationOverrides>>(
     locale,
-    (l) => import(`../i18n/${l}.json`),
+    "comparisons",
   );
 }
 
@@ -41,9 +41,11 @@ export const getTranslatedComparison = cache(
     slug: string,
     locale?: string,
   ): Promise<ComparisonData | undefined> => {
-    const base = getComparison(slug);
+    const [base, translations] = await Promise.all([
+      getComparison(slug),
+      loadComparisonTranslations(locale),
+    ]);
     if (!base) return undefined;
-    const translations = await loadComparisonTranslations(locale);
     const t = translations[slug];
     if (!t) return base;
     return { ...base, ...t };
@@ -53,8 +55,11 @@ export const getTranslatedComparison = cache(
 export async function getTranslatedComparisons(
   locale?: string,
 ): Promise<ComparisonData[]> {
-  const translations = await loadComparisonTranslations(locale);
-  return getAllComparisons().map((comp) => {
+  const [all, translations] = await Promise.all([
+    getAllComparisons(),
+    loadComparisonTranslations(locale),
+  ]);
+  return all.map((comp) => {
     const t = translations[comp.slug];
     return t ? { ...comp, ...t } : comp;
   });

@@ -19,7 +19,10 @@ from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
-from app.services.oauth.oauth_state_service import validate_and_consume_oauth_state
+from app.services.oauth.oauth_state_service import (
+    is_safe_redirect_path,
+    validate_and_consume_oauth_state,
+)
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
 from workos import WorkOSClient
@@ -351,17 +354,11 @@ async def workos_callback(
         user_id, is_new_user = await store_user_info(name, email, picture_url)
         log.set(user_id=str(user_id), is_new_user=is_new_user)
 
-        # Redirect to return_url if provided, otherwise default /redirect
-        destination = return_url or f"{settings.FRONTEND_URL}/redirect"
-        # Ensure return_url is a relative path on our frontend (prevent open redirect)
-        if return_url and not return_url.startswith("/"):
-            destination = f"{settings.FRONTEND_URL}/redirect"
+        # Redirect to return_url if provided and safe, otherwise default /redirect
+        if return_url and is_safe_redirect_path(return_url):
+            destination = f"{settings.FRONTEND_URL}{return_url}"
         else:
-            destination = (
-                f"{settings.FRONTEND_URL}{return_url}"
-                if return_url
-                else f"{settings.FRONTEND_URL}/redirect"
-            )
+            destination = f"{settings.FRONTEND_URL}/redirect"
 
         response = RedirectResponse(url=destination)
 

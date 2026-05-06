@@ -374,11 +374,27 @@ export class DiscordAdapter extends BaseBotAdapter {
         };
       },
       async (authUrl: string) => {
-        const content = `Please authenticate first: ${authUrl}`;
-        if (isFirstMessage) {
-          await interaction.editReply({ content });
-        } else if (lastFollowUp) {
-          await lastFollowUp.edit({ content });
+        const publicContent =
+          "To use GAIA, please authenticate first — check your DMs for the link.";
+        const publicContentFallback =
+          "To use GAIA, please authenticate first — an ephemeral link has been sent above.";
+        try {
+          await interaction.user.send(
+            `Please authenticate with GAIA: ${authUrl}`,
+          );
+          if (isFirstMessage) {
+            await interaction.editReply({ content: publicContent });
+          } else if (lastFollowUp) {
+            await lastFollowUp.edit({ content: publicContent });
+          }
+        } catch {
+          await interaction.followUp({
+            content: `Please authenticate with GAIA: ${authUrl}`,
+            ephemeral: true,
+          });
+          if (isFirstMessage) {
+            await interaction.editReply({ content: publicContentFallback });
+          }
         }
       },
       async (errMsg: string) => {
@@ -441,10 +457,21 @@ export class DiscordAdapter extends BaseBotAdapter {
           };
         },
         async (authUrl: string) => {
-          await interaction.editReply({
-            content: `Please link your GAIA account first: ${authUrl}`,
-          });
-          replied = true;
+          try {
+            await interaction.editReply({
+              content: `Please link your GAIA account first: ${authUrl}`,
+            });
+            replied = true;
+          } catch {
+            try {
+              await interaction.user.send(
+                `Please link your GAIA account to use GAIA: ${authUrl}`,
+              );
+              replied = true;
+            } catch {
+              // both deliveries failed — leave replied false so error callback can run
+            }
+          }
         },
         async (err: string) => {
           if (!replied) await interaction.editReply({ content: err });
@@ -480,10 +507,21 @@ export class DiscordAdapter extends BaseBotAdapter {
           };
         },
         async (authUrl: string) => {
-          await interaction.editReply({
-            content: `Please link your GAIA account first: ${authUrl}`,
-          });
-          replied = true;
+          try {
+            await interaction.editReply({
+              content: `Please link your GAIA account first: ${authUrl}`,
+            });
+            replied = true;
+          } catch {
+            try {
+              await interaction.user.send(
+                `Please link your GAIA account to use GAIA: ${authUrl}`,
+              );
+              replied = true;
+            } catch {
+              // both deliveries failed — leave replied false so error callback can run
+            }
+          }
         },
         async (err: string) => {
           if (!replied) await interaction.editReply({ content: err });
@@ -749,16 +787,20 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         async (authUrl: string) => {
           clearTyping();
+          let dmSent = false;
           try {
-            await message.reply({
-              content: `Please link your GAIA account to use me here: ${authUrl}`,
-            });
-          } catch {
-            // Ephemeral replies unsupported on some message types — fall back publicly
-            await sendOrEdit(
-              `Please link your GAIA account: ${authUrl}\n\n_This link is for you only — don't share it._`,
+            await message.author.send(
+              `Please link your GAIA account to use me here: ${authUrl}`,
             );
+            dmSent = true;
+          } catch {
+            // DM failed — public message below will instruct the user
           }
+          await send(
+            dmSent
+              ? "To use GAIA here, please link your account — check your DMs for the link."
+              : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
+          );
         },
         async (errMsg: string) => {
           clearTyping();

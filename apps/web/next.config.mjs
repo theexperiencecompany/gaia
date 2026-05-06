@@ -57,6 +57,12 @@ const nextConfig = {
     // and:  https://nextjs-forum.com/post/1471409705514569798
     resolveAlias: {
       "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
+      // Stub out unused heavy deps (mirrors the webpack hook below). Webpack's
+      // `alias: false` doesn't exist for Turbopack — we point to a tiny empty
+      // module that exports a no-op proxy.
+      cytoscape: "./scripts/empty-module.mjs",
+      "cytoscape-cose-bilkent": "./scripts/empty-module.mjs",
+      "cytoscape-fcose": "./scripts/empty-module.mjs",
       "node:inspector": "inspector",
       "node:fs": "fs",
       "node:fs/promises": "fs/promises",
@@ -257,7 +263,10 @@ export default withSentryConfig(
   // side errors will fail.
   // tunnelRoute: "/monitoring",
 
-  // Disable auto-instrumentation to prevent @sentry/node-core + OpenTelemetry from leaking into the bundle
+  // Sentry's autoInstrument* flags are only honored under `webpack:` and are
+  // explicitly "Not supported with Turbopack" per the deprecation warning.
+  // We rely on bundleSizeOptimizations.excludeTracing/PerformanceMonitoring
+  // instead (those work for both bundlers).
   webpack: {
     autoInstrumentServerFunctions: false,
     autoInstrumentMiddleware: false,
@@ -267,11 +276,18 @@ export default withSentryConfig(
     },
   },
 
-  // Strip unused Sentry features from the client bundle
+  // Strip unused Sentry features from the bundle.
+  // - excludeTracing kills the @opentelemetry + @sentry/node-core + protobuf
+  //   tracing chunk (~1.5 MB raw on the server). Server-side Sentry is not
+  //   initialized in this app (sentry.server.config.ts is intentionally empty)
+  //   so dropping the tracing pipeline is safe.
+  // - excludePerformanceMonitoring drops the rest of the perf SDK.
   bundleSizeOptimizations: {
     excludeDebugStatements: true,
     excludeReplayShadowDom: true,
     excludeReplayIframe: true,
     excludeReplayWorker: true,
+    excludeTracing: true,
+    excludePerformanceMonitoring: true,
   },
 });

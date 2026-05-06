@@ -3,9 +3,17 @@
 
 [tool.uv]
 constraint-dependencies = [
-  "aiohttp>=3.13.3",
+  "aiohttp>=3.13.4",
   "pyjwt>=2.12.0",
   "urllib3>=2.6.3",
+  "cryptography>=46.0.7",
+  "Pygments>=2.20.0",
+  "requests>=2.33.0",
+  "python-multipart>=0.0.22",
+  "pyasn1>=0.6.3",
+  "pyopenssl>=26.0.0",
+  "nltk>=3.9.4",
+  "ecdsa>=0.19.2",
 ]
 
 [tool.uv.workspace]

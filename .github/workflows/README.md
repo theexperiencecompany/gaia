@@ -57,14 +57,15 @@ flowchart TD
     PLAN --> PLAN_FE{"frontend_deploy == true?"}:::decision
   end
 
-  PLAN_BE -- "Yes" --> DEPLOY_BACKEND["trigger-deploy -> deploy.yml"]:::deploy
+  PLAN_BE -- "Yes" --> DEPLOY_BACKEND["trigger-deploy -> deploy-swarm-prod.yml"]:::deploy
   PLAN_FE -- "Yes" --> DEPLOY_FRONTEND["trigger-web -> deploy-frontend.yml"]:::deploy
 
-  subgraph BACKEND_DEPLOY["deploy.yml (backend + bots)"]
+  subgraph BACKEND_DEPLOY["deploy-swarm-prod.yml (Swarm app stack)"]
     direction TB
-    DEPLOY_BACKEND --> D_AUTH["Auth to GCP + GHCR"]:::deploy
-    D_AUTH --> D_SSH["SSH VM -> docker compose pull + up -d"]:::deploy
-    D_SSH --> D_VERIFY["Verify services + cleanup + Discord notify"]:::deploy
+    DEPLOY_BACKEND --> D_AUTH["SSH key setup + GHCR login"]:::deploy
+    D_AUTH --> D_CTX["Create Docker context over SSH"]:::deploy
+    D_CTX --> D_STACK["docker stack deploy gaia-prod"]:::deploy
+    D_STACK --> D_NOTIFY["Loki annotation + Discord notify"]:::deploy
   end
 
   subgraph FRONTEND_DEPLOY["deploy-frontend.yml (frontend)"]
@@ -108,13 +109,15 @@ flowchart TD
 2. `docker-release`: detect affected backend/bot projects, publish images to GHCR via Dagger, optionally sync Discord commands.
 3. `docker-web`: detect `web` changes and build/push web image via Dagger only when affected.
 4. `deployment-plan` waits for both lanes and computes `backend_deploy` / `frontend_deploy`.
-5. Trigger `deploy.yml` and/or `deploy-frontend.yml` based on plan outputs.
+5. Trigger `deploy-swarm-prod.yml` and/or `deploy-frontend.yml` based on plan outputs.
 
-### `.github/workflows/deploy.yml`
-1. Authenticate to Google Cloud (WIF) and GHCR.
-2. SSH into production VM, pull latest images, run `docker compose up -d`.
-3. Verify expected services are running/healthy, then perform Docker cleanup.
-4. Send deployment status to Discord.
+### `.github/workflows/deploy-swarm-prod.yml`
+1. Install SSH private key from `PROD_VM_SSH_KEY` via the `setup-swarm-context` composite action and log in to GHCR.
+2. Create Docker context pointing at the Hetzner VM over SSH.
+3. Run `docker --context prod stack deploy --with-registry-auth` for the app stack (`gaia-prod`).
+   Swarm handles rolling update; the workflow polls both `gaia-backend` and `arq_worker` for convergence and fails on auto-rollback.
+4. Push a deploy annotation to Loki and send status to Discord.
+5. Manual `workflow_dispatch` supports `action=rollback` with `rollback_mode=last` (Docker service rollback) or `rollback_mode=digest` (redeploy pinned image).
 
 ### `.github/workflows/deploy-frontend.yml`
 1. Sync `master` to the private fork used as Vercel source.
@@ -148,7 +151,8 @@ flowchart TD
 ## File Map
 - `.github/workflows/main.yml`: CI quality gate and master promotion policy — delegates to Dagger for quality checks.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
-- `.github/workflows/deploy.yml`: production backend and bot deployment to GCP VM.
+- `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.
+- `.github/workflows/deploy.yml`: legacy compose-based deploy (superseded by deploy-swarm-prod.yml, kept for reference).
 - `.github/workflows/deploy-frontend.yml`: frontend sync path for Vercel source repository.
 - `.github/workflows/release-please.yml`: release PR/tag automation and CLI publish dispatch.
 - `.github/workflows/publish-cli.yml`: CLI package validation/build/publish workflow.

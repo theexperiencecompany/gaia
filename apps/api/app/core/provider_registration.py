@@ -31,7 +31,7 @@ from typing import Literal
 
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
-from app.agents.core.subagents.subagent_runner import get_subagent_integrations
+from app.agents.core.subagents.registry import all_subagents
 from app.agents.llm.client import register_llm_providers
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
@@ -87,15 +87,13 @@ async def warmup_subagent_graphs() -> None:
     the provider registry here pushes that cost to startup where it's
     amortised across all future requests.
     """
-    integrations = get_subagent_integrations()
-    if not integrations:
+    subagents = list(all_subagents())
+    if not subagents:
         log.info("No subagents to pre-warm")
         return
 
     agent_names = [
-        integ.subagent_config.agent_name
-        for integ in integrations
-        if integ.subagent_config and integ.subagent_config.agent_name
+        sa.config.agent_name for sa in subagents if sa.config and sa.config.agent_name
     ]
 
     async def _warm(name: str) -> bool:

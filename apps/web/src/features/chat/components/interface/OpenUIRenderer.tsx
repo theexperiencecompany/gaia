@@ -164,7 +164,7 @@ export default function OpenUIRenderer({
 }: OpenUIRendererProps) {
   return (
     <OpenUIErrorBoundary code={code}>
-      <div className="my-1">
+      <div className="my-4">
         <OpenUIRendererInner code={code} isStreaming={isStreaming} />
       </div>
     </OpenUIErrorBoundary>

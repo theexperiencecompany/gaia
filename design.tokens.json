@@ -1,0 +1,420 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "Dark-first, flat, single-accent visual language for GAIA — a proactive personal AI assistant. Depth comes from layered backgrounds, not borders.",
+  "color": {
+    "$type": "color",
+    "primary": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0, 0.733, 1],
+        "hex": "#00bbff"
+      }
+    },
+    "primary-foreground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0, 0, 0],
+        "hex": "#000000"
+      }
+    },
+    "primary-bg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.067, 0.067, 0.067],
+        "hex": "#111111"
+      }
+    },
+    "secondary-bg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.102, 0.102, 0.102],
+        "hex": "#1a1a1a"
+      }
+    },
+    "selection-bg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0, 0.212, 0.294],
+        "hex": "#00364b"
+      }
+    },
+    "selection-fg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0, 0.733, 1],
+        "hex": "#00bbff"
+      }
+    },
+    "neutral-100": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.957, 0.957, 0.961],
+        "hex": "#f4f4f5"
+      }
+    },
+    "neutral-200": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.894, 0.894, 0.906],
+        "hex": "#e4e4e7"
+      }
+    },
+    "neutral-300": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.831, 0.831, 0.847],
+        "hex": "#d4d4d8"
+      }
+    },
+    "neutral-400": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.631, 0.631, 0.667],
+        "hex": "#a1a1aa"
+      }
+    },
+    "neutral-700": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.247, 0.247, 0.275],
+        "hex": "#3f3f46"
+      }
+    },
+    "neutral-800": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.153, 0.153, 0.165],
+        "hex": "#27272a"
+      }
+    },
+    "neutral-900": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.094, 0.094, 0.106],
+        "hex": "#18181b"
+      }
+    },
+    "surface": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.012, 0.027, 0.067],
+        "hex": "#030711"
+      }
+    },
+    "on-surface": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.882, 0.906, 0.937],
+        "hex": "#e1e7ef"
+      }
+    },
+    "surface-accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.114, 0.161, 0.227],
+        "hex": "#1d293a"
+      }
+    },
+    "border": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.114, 0.161, 0.227],
+        "hex": "#1d293a"
+      }
+    },
+    "success": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.204, 0.827, 0.6],
+        "hex": "#34d399"
+      }
+    },
+    "warning": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.984, 0.749, 0.141],
+        "hex": "#fbbf24"
+      }
+    },
+    "error": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.973, 0.443, 0.443],
+        "hex": "#f87171"
+      }
+    },
+    "info": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.376, 0.647, 0.98],
+        "hex": "#60a5fa"
+      }
+    },
+    "destructive": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.498, 0.114, 0.114],
+        "hex": "#7f1d1d"
+      }
+    },
+    "priority-high": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.937, 0.267, 0.267],
+        "hex": "#ef4444"
+      }
+    },
+    "priority-medium": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.918, 0.702, 0.031],
+        "hex": "#eab308"
+      }
+    },
+    "priority-low": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.231, 0.51, 0.965],
+        "hex": "#3b82f6"
+      }
+    }
+  },
+  "spacing": {
+    "$type": "dimension",
+    "none": {
+      "$value": {
+        "value": 0,
+        "unit": "px"
+      }
+    },
+    "xs": {
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      }
+    },
+    "sm": {
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "md": {
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      }
+    },
+    "lg": {
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    },
+    "xl": {
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      }
+    },
+    "xxl": {
+      "$value": {
+        "value": 32,
+        "unit": "px"
+      }
+    },
+    "gutter": {
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    }
+  },
+  "rounded": {
+    "$type": "dimension",
+    "none": {
+      "$value": {
+        "value": 0,
+        "unit": "px"
+      }
+    },
+    "sm": {
+      "$value": {
+        "value": 6,
+        "unit": "px"
+      }
+    },
+    "md": {
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      }
+    },
+    "lg": {
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      }
+    },
+    "xl": {
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      }
+    },
+    "xxl": {
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      }
+    },
+    "full": {
+      "$value": {
+        "value": 9999,
+        "unit": "px"
+      }
+    }
+  },
+  "typography": {
+    "display": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "PP Editorial New",
+        "fontSize": {
+          "value": 48,
+          "unit": "px"
+        },
+        "fontWeight": 200,
+        "letterSpacing": {
+          "value": -0.02,
+          "unit": "em"
+        }
+      }
+    },
+    "headline-lg": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 30,
+          "unit": "px"
+        },
+        "fontWeight": 700
+      }
+    },
+    "headline-md": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 24,
+          "unit": "px"
+        },
+        "fontWeight": 700
+      }
+    },
+    "headline-sm": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 20,
+          "unit": "px"
+        },
+        "fontWeight": 700
+      }
+    },
+    "title-lg": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 18,
+          "unit": "px"
+        },
+        "fontWeight": 700
+      }
+    },
+    "title-md": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 16,
+          "unit": "px"
+        },
+        "fontWeight": 600
+      }
+    },
+    "title-sm": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 14,
+          "unit": "px"
+        },
+        "fontWeight": 600
+      }
+    },
+    "body-md": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 16,
+          "unit": "px"
+        },
+        "fontWeight": 400
+      }
+    },
+    "body-sm": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 14,
+          "unit": "px"
+        },
+        "fontWeight": 400
+      }
+    },
+    "body-xs": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 12,
+          "unit": "px"
+        },
+        "fontWeight": 400
+      }
+    },
+    "label": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Inter",
+        "fontSize": {
+          "value": 12,
+          "unit": "px"
+        },
+        "fontWeight": 500,
+        "letterSpacing": {
+          "value": 0.05,
+          "unit": "em"
+        }
+      }
+    },
+    "code": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "Anonymous Pro",
+        "fontSize": {
+          "value": 14,
+          "unit": "px"
+        },
+        "fontWeight": 400
+      }
+    }
+  }
+}

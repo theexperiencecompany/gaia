@@ -37,8 +37,8 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export default function PersonasHubPage() {
-  const personas = getAllPersonas();
+export default async function PersonasHubPage() {
+  const personas = await getAllPersonas();
 
   const webPageSchema = generateWebPageSchema(
     "GAIA for Every Role",

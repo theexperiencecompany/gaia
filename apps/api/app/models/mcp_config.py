@@ -51,6 +51,13 @@ class SubAgentConfig(BaseModel):
     specific_tools: Optional[List[str]] = None
     auto_bind_tools: Optional[List[str]] = None
     memory_prompt: Optional[str] = None
+    # When False, finish_task is omitted from the subagent's tool set. The
+    # subagent must terminate naturally with an AIMessage. The streaming
+    # layer's complete_message accumulator captures that text directly —
+    # no special-case extraction needed. Use False for read-only / answer-
+    # only subagents (e.g. doc fetchers). Default True preserves the
+    # explicit-completion contract for action subagents.
+    include_finish_task: bool = True
 
 
 class VariableExtraction(BaseModel):

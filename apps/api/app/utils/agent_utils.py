@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from langchain_core.messages import ToolCall
 
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
 from shared.py.wide_events import log
 from app.models.chat_models import (
@@ -14,7 +15,6 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
     tool_fields,
 )
-from app.config.oauth_config import get_integration_by_id
 from app.db.mongodb.collections import integrations_collection
 from app.decorators.caching import Cacheable
 from app.services.conversation_service import update_messages
@@ -66,9 +66,9 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
     if parsed_name:
         return parsed_name
 
-    platform_integ = get_integration_by_id(clean_id)
-    if platform_integ:
-        return platform_integ.name
+    platform_subagent = get_subagent_by_id(clean_id)
+    if platform_subagent:
+        return platform_subagent.name
 
     cached_name = await _lookup_custom_integration_name(clean_id)
     if cached_name:

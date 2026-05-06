@@ -63,6 +63,8 @@ Focus trapping in modals used to require complex JavaScript. Now use the `inert`
 </dialog>
 ```
 
+> **Note**: `<dialog open>` only makes the dialog visible — it does **not** put it in the top layer, render `::backdrop`, or trap focus. Pair `<main inert>` with `dialog.showModal()` (below) to get true modal behavior.
+
 Or use the native `<dialog>` element:
 
 ```javascript

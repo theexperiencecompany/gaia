@@ -13,14 +13,15 @@ import asyncio
 import re
 from typing import Optional
 
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
-from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_id
 from app.helpers.message_helpers import DYNAMIC_CONTEXT_MARKER
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage
+from shared.py.wide_events import log
 
 
 async def build_subagent_system_prompt(
@@ -40,17 +41,15 @@ async def build_subagent_system_prompt(
     """
     del user_id  # retained for signature compat; metadata flows via dynamic context
 
-    integration = get_integration_by_id(integration_id) if integration_id else None
-    if not integration:
+    subagent = get_subagent_by_id(integration_id) if integration_id else None
+    if not subagent:
+        # Custom or public MCP fallback — universal prompt; no per-user injection.
         if integration_id:
             return base_system_prompt or CUSTOM_MCP_SUBAGENT_PROMPT
         log.warning(f"Integration {integration_id} not found")
         return base_system_prompt or ""
 
-    prompt = base_system_prompt
-    if not prompt and integration.subagent_config:
-        prompt = integration.subagent_config.system_prompt
-    return prompt or ""
+    return base_system_prompt or subagent.config.system_prompt or ""
 
 
 async def create_subagent_system_message(

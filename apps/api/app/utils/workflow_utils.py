@@ -28,12 +28,6 @@ _TRIGGER_TYPE_MAP: dict[str, TriggerType] = {
     "integration": TriggerType.INTEGRATION,
 }
 
-_FRONTEND_TRIGGER_TYPE_MAP: dict[str, str] = {
-    "manual": "manual",
-    "schedule": "scheduled",
-    "integration": "integration",
-}
-
 
 async def handle_workflow_error(
     workflow_id: str,
@@ -241,9 +235,7 @@ async def create_workflow_directly(
             "title": workflow.title,
             "description": workflow.description,
             "trigger_config": {
-                "type": _FRONTEND_TRIGGER_TYPE_MAP.get(
-                    workflow.trigger_config.type, workflow.trigger_config.type
-                ),
+                "type": workflow.trigger_config.type,
                 "cron_expression": workflow.trigger_config.cron_expression,
                 "trigger_name": workflow.trigger_config.trigger_name,
                 "enabled": workflow.trigger_config.enabled,

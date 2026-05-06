@@ -1,6 +1,5 @@
 """Tests for ComposioService and Gmail custom tools."""
 
-from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -590,6 +589,70 @@ class TestDeleteConnectedAccount:
             with pytest.raises(RuntimeError, match="fail"):
                 await svc.delete_connected_account("user1", "gmail")
 
+    @pytest.mark.asyncio
+    async def test_delete_invalidates_proxy_cache(self):
+        """Disconnect must flush the proxy_client connected_account_id cache.
+
+        Otherwise the 10-minute TTL keeps the deleted account ID in memory and
+        every subsequent proxy request fails until the entry expires.
+        """
+        svc = _make_service()
+        config = MagicMock()
+        config.auth_config_id = "auth_gmail"
+        config.toolkit = "GMAIL"
+
+        account = MagicMock()
+        account.status = "ACTIVE"
+        account.auth_config.is_disabled = False
+        account.id = "acc1"
+
+        user_accounts = MagicMock()
+        user_accounts.items = [account]
+        svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
+        svc.composio.connected_accounts.delete = MagicMock(return_value=None)
+
+        with (
+            patch(
+                "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
+                {"gmail": config},
+            ),
+            patch(
+                "app.services.composio.composio_service.invalidate_connected_account_cache"
+            ) as mock_invalidate,
+        ):
+            await svc.delete_connected_account("user1", "gmail")
+
+        mock_invalidate.assert_called_once_with(user_id="user1", toolkit="GMAIL")
+
+    @pytest.mark.asyncio
+    async def test_delete_invalidates_proxy_cache_when_no_active_account(self):
+        """Even idempotent disconnects (no active account) must flush the cache.
+
+        A previous session may have cached an ID that has since been revoked
+        outside this code path; the next request should re-resolve.
+        """
+        svc = _make_service()
+        config = MagicMock()
+        config.auth_config_id = "auth_gmail"
+        config.toolkit = "GMAIL"
+
+        user_accounts = MagicMock()
+        user_accounts.items = []
+        svc.composio.connected_accounts.list = MagicMock(return_value=user_accounts)
+
+        with (
+            patch(
+                "app.services.composio.composio_service.COMPOSIO_SOCIAL_CONFIGS",
+                {"gmail": config},
+            ),
+            patch(
+                "app.services.composio.composio_service.invalidate_connected_account_cache"
+            ) as mock_invalidate,
+        ):
+            await svc.delete_connected_account("user1", "gmail")
+
+        mock_invalidate.assert_called_once_with(user_id="user1", toolkit="GMAIL")
+
 
 class TestHandleSubscribeTrigger:
     @pytest.mark.asyncio
@@ -658,17 +721,19 @@ class TestGetComposioService:
 
 
 class TestAuthHeaders:
-    def test_valid_token(self):
-        from app.services.composio.custom_tools.gmail_tools import _auth_headers
+    """The `_auth_headers` helper was removed in the Composio proxy migration.
 
-        result = _auth_headers({"access_token": "tok123"})
-        assert result == {"Authorization": "Bearer tok123"}
+    Gmail tools now route every request through `proxy_request_sync`, which
+    Composio authenticates server-side. Bearer-token construction is no longer
+    a Gmail-tools concern, so the helper and its tests no longer exist.
+    See test_composio_gmail_tools.py for the replacement coverage.
+    """
 
-    def test_missing_token_raises(self):
-        from app.services.composio.custom_tools.gmail_tools import _auth_headers
+    def test_helper_no_longer_exists(self):
+        from app.services.composio.custom_tools import gmail_tools
 
-        with pytest.raises(ValueError, match="Missing access_token"):
-            _auth_headers({})
+        assert not hasattr(gmail_tools, "_auth_headers")
+        assert not hasattr(gmail_tools, "_http_client")
 
 
 class TestGmailInputModels:
@@ -738,109 +803,9 @@ class TestRegisterGmailCustomTools:
         assert len(result) == 7
 
 
-class TestGmailMarkAsRead:
-    """Test MARK_AS_READ via direct function call after registration."""
-
-    def test_mark_as_read_calls_api(self):
-        from app.services.composio.custom_tools.gmail_tools import (
-            MarkAsReadInput,
-            _http_client,
-        )
-
-        request = MarkAsReadInput(message_ids=["msg1", "msg2"])
-
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status = MagicMock()
-
-        with patch.object(_http_client, "post", return_value=mock_resp) as mock_post:
-            # Call the inner logic directly
-            url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify"
-            payload = {"ids": request.message_ids, "removeLabelIds": ["UNREAD"]}
-            resp = _http_client.post(
-                url,
-                json=payload,
-                headers={"Authorization": "Bearer tok"},
-            )
-            resp.raise_for_status()
-
-        mock_post.assert_called_once()
-        call_kwargs = mock_post.call_args
-        assert call_kwargs[1]["json"]["removeLabelIds"] == ["UNREAD"]
-
-
-class TestGmailStarEmail:
-    def test_star_payload(self):
-        from app.services.composio.custom_tools.gmail_tools import StarEmailInput
-
-        request = StarEmailInput(message_ids=["m1"], unstar=False)
-        if request.unstar:
-            payload = {"ids": request.message_ids, "removeLabelIds": ["STARRED"]}
-            action = "unstarred"
-        else:
-            payload = {"ids": request.message_ids, "addLabelIds": ["STARRED"]}
-            action = "starred"
-        assert payload["addLabelIds"] == ["STARRED"]
-        assert action == "starred"
-
-    def test_unstar_payload(self):
-        from app.services.composio.custom_tools.gmail_tools import StarEmailInput
-
-        request = StarEmailInput(message_ids=["m1"], unstar=True)
-        if request.unstar:
-            payload = {"ids": request.message_ids, "removeLabelIds": ["STARRED"]}
-            action = "unstarred"
-        else:
-            payload = {"ids": request.message_ids, "addLabelIds": ["STARRED"]}
-            action = "starred"
-        assert payload["removeLabelIds"] == ["STARRED"]
-        assert action == "unstarred"
-
-
-class TestGetUnreadCountLogic:
-    """Test the GET_UNREAD_COUNT logic branches."""
-
-    def test_default_label_ids_is_inbox(self):
-        from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
-
-        request = GetUnreadCountInput()
-        resolved: list[str] = []
-        if request.label_ids:
-            resolved = [label for label in request.label_ids if label]
-        elif not request.query:
-            resolved = ["INBOX"]
-        assert resolved == ["INBOX"]
-
-    def test_query_mode_adds_unread_filter(self):
-        from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
-
-        request = GetUnreadCountInput(query="from:alice@example.com")
-        query = request.query.strip() if request.query else ""
-        unread_query = query if "is:unread" in query.lower() else f"{query} is:unread"
-        assert unread_query == "from:alice@example.com is:unread"
-
-    def test_query_already_has_unread(self):
-        from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
-
-        request = GetUnreadCountInput(query="is:unread from:bob")
-        query = request.query.strip() if request.query else ""
-        unread_query = query if "is:unread" in query.lower() else f"{query} is:unread"
-        assert unread_query == "is:unread from:bob"
-
-    def test_explicit_label_ids_used(self):
-        from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
-
-        request = GetUnreadCountInput(label_ids=["CATEGORY_PROMOTIONS", ""])
-        resolved: list[str] = []
-        if request.label_ids:
-            resolved = [label for label in request.label_ids if label]
-        assert resolved == ["CATEGORY_PROMOTIONS"]
-
-
-class TestGetContactList:
-    def test_missing_token_raises(self):
-        from app.services.composio.custom_tools.gmail_tools import GetContactListInput
-
-        GetContactListInput(query="john")
-        auth: Dict[str, Any] = {}
-        token = auth.get("access_token")
-        assert token is None
+# Behavior tests for MARK_AS_READ / STAR_EMAIL / GET_UNREAD_COUNT /
+# GET_CONTACT_LIST live in test_composio_gmail_tools.py — they invoke the
+# registered tool functions with the proxy mocked at the module boundary.
+# The previous tests here duplicated production logic inline (constructing
+# payloads in the test body instead of calling the tool), which provided
+# false confidence; they have been removed in the Composio proxy migration.

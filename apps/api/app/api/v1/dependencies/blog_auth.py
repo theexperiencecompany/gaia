@@ -2,10 +2,13 @@
 Blog authentication dependencies using Bearer token.
 """
 
-from fastapi import HTTPException, Security, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import secrets
 
-# Initialize the security scheme
+from fastapi import HTTPException, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from app.config.settings import settings
+
 security = HTTPBearer()
 
 
@@ -15,23 +18,14 @@ async def verify_blog_token(
     """
     Verify the bearer token for blog management operations.
 
-    Args:
-        credentials: HTTP Authorization credentials with Bearer token
-
-    Returns:
-        str: The validated token
-
-    Raises:
-        HTTPException: If token is invalid or missing
+    Uses constant-time comparison to prevent timing attacks against the
+    configured BLOG_BEARER_TOKEN.
     """
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Invalid authorization code"
         )
 
-    from app.config.settings import settings
-
-    # Get the expected token from settings
     expected_token = settings.BLOG_BEARER_TOKEN
 
     if not expected_token:
@@ -40,8 +34,7 @@ async def verify_blog_token(
             detail="Blog management token not configured",
         )
 
-    # Verify the token
-    if credentials.credentials != expected_token:
+    if not secrets.compare_digest(credentials.credentials, expected_token):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Invalid bearer token"
         )
