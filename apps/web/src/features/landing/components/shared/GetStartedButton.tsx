@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
@@ -12,7 +13,7 @@ export default function GetStartedButton({
   href = "/signup",
 }: {
   small_text?: boolean;
-  text?: string | Element;
+  text?: ReactNode;
   btnColor?: string;
   classname?: string;
   href?: string;

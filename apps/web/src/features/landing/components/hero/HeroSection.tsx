@@ -1,11 +1,4 @@
-import {
-  ArrowRight01Icon,
-  ArrowRight02Icon,
-  CircleArrowRight02Icon,
-  Compass01Icon,
-  CompassIcon,
-  DiscoverCircleIcon,
-} from "@icons";
+import { CircleArrowRight02Icon, DiscoverCircleIcon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
