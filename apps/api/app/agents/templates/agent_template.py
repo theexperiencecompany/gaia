@@ -18,8 +18,15 @@ from typing import Final
 from app.agents.prompts.comms_prompts import (
     COMMS_AGENT_PROMPT,
     EXECUTOR_AGENT_PROMPT,
+    _strip_openui_section,
 )
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
+
+# Base comms prompt with the embedded OpenUI component-instructions section
+# stripped out, so the per-channel addendum below is the single source of
+# truth for output format. Pre-computed once at import so the bytes stay
+# stable per channel (cache-friendly).
+_COMMS_AGENT_PROMPT_BASE: Final[str] = _strip_openui_section(COMMS_AGENT_PROMPT)
 
 
 # Output-format addendum for renderable channels (web, mobile, desktop).
@@ -74,13 +81,13 @@ _SLACK_ADDENDUM: Final[str] = _text_only_addendum(
 # string literal that lives for the process lifetime, so the bytes sent to
 # the LLM are identical for every user on that channel.
 COMMS_PROMPT_BY_SOURCE: Final[dict[str, str]] = {
-    "web": COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
-    "mobile": COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
-    "desktop": COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
-    "whatsapp": COMMS_AGENT_PROMPT + _WHATSAPP_ADDENDUM,
-    "telegram": COMMS_AGENT_PROMPT + _TELEGRAM_ADDENDUM,
-    "discord": COMMS_AGENT_PROMPT + _DISCORD_ADDENDUM,
-    "slack": COMMS_AGENT_PROMPT + _SLACK_ADDENDUM,
+    "web": _COMMS_AGENT_PROMPT_BASE + _OPENUI_ADDENDUM,
+    "mobile": _COMMS_AGENT_PROMPT_BASE + _OPENUI_ADDENDUM,
+    "desktop": _COMMS_AGENT_PROMPT_BASE + _OPENUI_ADDENDUM,
+    "whatsapp": _COMMS_AGENT_PROMPT_BASE + _WHATSAPP_ADDENDUM,
+    "telegram": _COMMS_AGENT_PROMPT_BASE + _TELEGRAM_ADDENDUM,
+    "discord": _COMMS_AGENT_PROMPT_BASE + _DISCORD_ADDENDUM,
+    "slack": _COMMS_AGENT_PROMPT_BASE + _SLACK_ADDENDUM,
 }
 
 # Default (web-style) static prompt used when ``source`` is unknown/None.
