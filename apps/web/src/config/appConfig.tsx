@@ -140,10 +140,10 @@ export const appConfig = {
       },
       {
         href: "/bots",
-        label: "Chat Bots",
+        label: "Talk to GAIA in the apps you already use",
         icon: <BotStackIcon />,
         richIcon: true,
-        description: "Talk to GAIA in the apps you already use",
+        description: "Discord, Slack, Telegram, and WhatsApp",
       },
       {
         href: "/features",
