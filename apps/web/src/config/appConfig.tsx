@@ -114,19 +114,19 @@ export const appConfig = {
         href: "/use-cases",
         label: "Use Cases",
         icon: <Idea01Icon width={20} height={20} color={"currentColor"} />,
-        description: "Real workflows people actually run",
+        description: "Here's what GAIA can do for you",
       },
       {
         href: "/marketplace",
         label: "Integration Marketplace",
         icon: <ConnectIcon width={20} height={20} color={"currentColor"} />,
-        description: "Plug GAIA into the tools you already use",
+        description: "Connect GAIA to the tools you already use",
       },
       {
         href: "/download",
         label: "Download",
         icon: <Download02Icon width={20} height={20} color={"currentColor"} />,
-        description: "Take GAIA everywhere you work",
+        description: "GAIA on your Mac, phone, and browser",
       },
       {
         href: "/cli",
@@ -138,7 +138,7 @@ export const appConfig = {
             color={"currentColor"}
           />
         ),
-        description: "Run GAIA on your own server, your way",
+        description: "Keep your data on your own infrastructure",
       },
       {
         href: "/bots",
@@ -146,33 +146,33 @@ export const appConfig = {
         footerLabel: "Bots",
         icon: <BotStackIcon />,
         richIcon: true,
-        description: "Discord, Slack, Telegram, and WhatsApp",
+        description: "Without leaving Slack, Discord, Telegram, or WhatsApp",
       },
       {
         href: "/features",
         label: "Features",
         icon: <MapsIcon width={20} height={20} color={"currentColor"} />,
-        description: "Everything GAIA can do for you",
+        description: "Every capability in one place",
       },
       {
         href: "/roadmap",
         label: "Roadmap",
         icon: <MapsIcon width={20} height={20} color={"currentColor"} />,
         external: true,
-        description: "Peek at what's cooking",
+        description: "What we're shipping next",
       },
       {
         href: "/for",
         label: "Tailored For Your Role",
         icon: <UserGroupIcon width={20} height={20} color={"currentColor"} />,
-        description: "Built for the way you actually work",
+        description: "Workflows tuned for your job, not generic ones",
         hideFooter: true,
       },
       {
         href: "/compare",
         label: "Compare",
         icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
-        description: "How GAIA stacks up against the rest",
+        description: "Side-by-side with ChatGPT, Claude, and Poke",
       },
     ] as AppLink[],
 
@@ -197,7 +197,7 @@ export const appConfig = {
         label: "Documentation",
         icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
         external: true,
-        description: "Everything you'd want to know",
+        description: "Setup, guides, and API reference",
       },
       {
         href: "/request-feature",
@@ -211,7 +211,7 @@ export const appConfig = {
         label: "Status",
         icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
         external: true,
-        description: "Live health check",
+        description: "Live system health",
       },
       {
         href: "/learn",
