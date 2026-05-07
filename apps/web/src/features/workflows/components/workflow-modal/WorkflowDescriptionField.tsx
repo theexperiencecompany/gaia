@@ -21,7 +21,8 @@ interface WorkflowDescriptionFieldProps {
   control: Control<WorkflowFormData>;
   errors: FieldErrors<WorkflowFormData>;
   setValue?: UseFormSetValue<WorkflowFormData>;
-  mode?: "create" | "edit";
+  mode?: "create" | "edit" | "preview";
+  isPreview?: boolean;
 }
 
 export default function WorkflowDescriptionField({
@@ -29,6 +30,7 @@ export default function WorkflowDescriptionField({
   errors,
   setValue,
   mode = "create",
+  isPreview = false,
 }: WorkflowDescriptionFieldProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -114,21 +116,23 @@ export default function WorkflowDescriptionField({
             isInvalid={!!errors.prompt}
             errorMessage={errors.prompt?.message}
           />
-          <div className="absolute top-1 right-0 z-10">
-            <Tooltip content={tooltipText} placement="top">
-              <Button
-                size="sm"
-                variant="light"
-                isIconOnly
-                isDisabled={isGenerating}
-                isLoading={isGenerating}
-                onPress={() => handleGenerate(field.onChange)}
-                className="text-foreground-400 hover:text-primary"
-              >
-                {!isGenerating && <SparklesIcon className="h-4 w-4" />}
-              </Button>
-            </Tooltip>
-          </div>
+          {!isPreview && (
+            <div className="absolute top-1 right-0 z-10">
+              <Tooltip content={tooltipText} placement="top">
+                <Button
+                  size="sm"
+                  variant="light"
+                  isIconOnly
+                  isDisabled={isGenerating}
+                  isLoading={isGenerating}
+                  onPress={() => handleGenerate(field.onChange)}
+                  className="text-foreground-400 hover:text-primary"
+                >
+                  {!isGenerating && <SparklesIcon className="h-4 w-4" />}
+                </Button>
+              </Tooltip>
+            </div>
+          )}
         </div>
       )}
     />
