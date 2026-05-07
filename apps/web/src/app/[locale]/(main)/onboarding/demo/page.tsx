@@ -90,11 +90,29 @@ const GMAIL_STAGES: OnboardingStage[] = [
   "workflows_ready",
 ];
 
+const DEMO_STATUS_BY_STAGE: Record<OnboardingStage, string | undefined> = {
+  inbox_scanning: "Fetched 312 emails",
+  writing_style_progress: "Analyzing tone and phrasing",
+  writing_style_ready: undefined,
+  social_profiles_ready: undefined,
+  triage_analyzing: "Analyzing 312 emails",
+  triage_analyzed: "Found 8 important threads",
+  triage_ready: undefined,
+  todos_creating: "Drafting todos from your inbox",
+  todos_ready: undefined,
+  workflows_creating: "Drafting workflow ideas",
+  workflows_ready: undefined,
+  holo_ready: undefined,
+  complete: undefined,
+};
+
 function ProcessingDemo() {
   const [completedStages, setCompletedStages] = useState<Set<OnboardingStage>>(
     new Set(),
   );
-  const [inboxScanCount, setInboxScanCount] = useState(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(
+    DEMO_STATUS_BY_STAGE.inbox_scanning ?? null,
+  );
 
   const advance = () => {
     const nextIdx = completedStages.size;
@@ -102,14 +120,13 @@ function ProcessingDemo() {
     const next = GMAIL_STAGES[nextIdx];
     if (!next) return;
     setCompletedStages((prev) => new Set([...prev, next]));
-    if (next === "inbox_scanning") {
-      setInboxScanCount(312);
-    }
+    const following = GMAIL_STAGES[nextIdx + 1];
+    setStatusMessage((following && DEMO_STATUS_BY_STAGE[following]) ?? null);
   };
 
   const reset = () => {
     setCompletedStages(new Set());
-    setInboxScanCount(0);
+    setStatusMessage(DEMO_STATUS_BY_STAGE.inbox_scanning ?? null);
   };
 
   return (
@@ -117,12 +134,7 @@ function ProcessingDemo() {
       <div className="flex flex-col gap-4">
         <OnboardingProcessing
           hasGmail
-          isIntelligenceComplete={completedStages.size === GMAIL_STAGES.length}
-          intelligenceConversationId={
-            completedStages.size === GMAIL_STAGES.length ? "demo-convo" : null
-          }
-          onComplete={() => {}}
-          inboxScanCount={inboxScanCount}
+          statusMessage={statusMessage}
           completedStages={completedStages}
         />
         <div className="flex gap-2">

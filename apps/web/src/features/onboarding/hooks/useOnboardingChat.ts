@@ -7,7 +7,7 @@ import type { IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
-interface UseOnboardingChatReturn {
+export interface UseOnboardingChatReturn {
   streamMessages: IMessage[];
   chatInputValue: string;
   isChatSending: boolean;
@@ -16,6 +16,15 @@ interface UseOnboardingChatReturn {
   sendChatMessage: (content: string) => Promise<void>;
 }
 
+/**
+ * Bridges the chat stage to the global chat stream + store for the welcome
+ * conversation. Subscribes to `messagesByConversation[conversationId]`,
+ * exposes input/sending state, and auto-sends `pendingTodoMessage` exactly
+ * once per (conversation, message) pair when both are present so a user
+ * clicking "Run now" on a todo lands the message into the live chat.
+ * Tracks completion of that auto-send via `isTodoExecutionDone` so the page
+ * can surface a "Continue to GAIA" CTA.
+ */
 export function useOnboardingChat(
   conversationId: string | null,
   pendingTodoMessage?: string | null,

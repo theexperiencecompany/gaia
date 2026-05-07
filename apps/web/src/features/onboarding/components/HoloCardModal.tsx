@@ -1,3 +1,10 @@
+/**
+ * Legacy full-screen holo card reveal modal. Fetches personalization on
+ * open, shows a tap-to-reveal shimmer card, then renders the editable
+ * `HoloCardEditor` and share buttons. The new flow embeds reveal inline
+ * via `HoloCardReveal`; this modal is retained for the older entry point.
+ */
+
 "use client";
 
 import { Button } from "@heroui/button";
@@ -10,6 +17,7 @@ import { TwitterShareButton } from "react-share";
 import { TwitterIcon } from "@/components/shared/icons";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
 import {
@@ -184,14 +192,10 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
               }
             </SimpleChatBubbleBot>
             <div className="mt-8 ml-12 space-x-2">
-              <Button
-                color="primary"
-                className="font-medium"
-                endContent={<Rocket01Icon width={18} height={18} />}
-                onPress={onClose}
-              >
+              <RaisedButton className="font-medium" onClick={onClose}>
                 Let's Go!
-              </Button>
+                <Rocket01Icon width={18} height={18} />
+              </RaisedButton>
 
               <TwitterShareButton url={shareUrl} title={shareTitle}>
                 <Button

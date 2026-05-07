@@ -2,7 +2,12 @@
  * WebSocket message types for onboarding feature
  */
 
-import type { OnboardingPhase } from "@/stores/onboardingStore";
+export type OnboardingPhase =
+  | "initial"
+  | "personalization_pending"
+  | "personalization_complete"
+  | "getting_started"
+  | "completed";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 
@@ -26,6 +31,11 @@ export interface PersonalizationData {
     title: string;
     description: string;
     steps: Array<{ category: string }>;
+    trigger?: {
+      type: string;
+      cron_expression?: string;
+      timezone?: string;
+    };
   }>;
   // Stage data for reveal card reconstruction on page reload
   writing_style?: { style_summary: string; example?: string } | null;
@@ -87,6 +97,11 @@ export interface WorkflowResults {
     title: string;
     description?: string;
     categories?: string[];
+    trigger?: {
+      type: string;
+      cron_expression?: string;
+      timezone?: string;
+    };
   }>;
 }
 
@@ -94,6 +109,7 @@ export interface WorkflowResults {
 
 export type OnboardingStage =
   | "inbox_scanning"
+  | "writing_style_progress"
   | "writing_style_ready"
   | "social_profiles_ready"
   | "triage_analyzing"
@@ -101,23 +117,26 @@ export type OnboardingStage =
   | "triage_ready"
   | "todos_creating"
   | "todos_ready"
+  | "workflows_creating"
   | "workflows_ready"
   | "holo_ready"
   | "complete";
 
 export interface StagePayloads {
-  inbox_scanning: { current: number };
+  inbox_scanning: { status_text: string };
+  writing_style_progress: { status_text: string };
   writing_style_ready: {
     style_summary: string | null;
     example?: string | null;
   };
   social_profiles_ready: SocialProfilesResults;
-  triage_analyzing: { total_emails: number; status: string };
-  triage_analyzed: { important_count: number; status: string };
+  triage_analyzing: { status_text: string };
+  triage_analyzed: { status_text: string };
   triage_ready: TriageResults;
-  todos_creating: { status: string };
-  todos_ready: TodoResults;
-  workflows_ready: WorkflowResults;
+  todos_creating: { status_text: string };
+  todos_ready: TodoResults & { status_text?: string };
+  workflows_creating: { status_text: string };
+  workflows_ready: WorkflowResults & { status_text?: string };
   holo_ready: Record<string, never>;
   complete: { conversation_id: string | null };
 }

@@ -24,10 +24,6 @@ export const STEP_LEARNING_STYLE = "Learning your style";
 export const STEP_CREATING_WORKFLOWS = "Setting up automations";
 export const STEP_BUILDING_PROFILE = "Building your profile";
 
-// ── Reveal card labels ───────────────────────────────────────────────────────
-
-export const WRITING_STYLE_LABEL = "Your writing style";
-
 // ── Reveal sequence GAIA bubble intros ──────────────────────────────────────
 
 export const REVEAL_WRITING_STYLE_INTRO =

@@ -1,11 +1,20 @@
+/**
+ * Editable writing-style summary plus a regenerated example email. Saving
+ * an edit hits `/onboarding/writing-style` and then re-renders the example
+ * via `/regenerate-example`. Auto-regenerates the example on mount when
+ * an existing snapshot lacks one (older DB rows).
+ */
+
 "use client";
 
 import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
 import { Skeleton } from "@heroui/skeleton";
+import { Spinner } from "@heroui/spinner";
 import { AiMail02Icon, Edit02Icon, QuillWrite01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import { useEffect, useState } from "react";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { apiService } from "@/lib/api/service";
 import type { WritingStyleResults } from "../../types/websocket";
 
@@ -138,14 +147,9 @@ export function WritingStyleRevealCard({
               <Button size="sm" variant="light" onPress={handleCancel}>
                 Cancel
               </Button>
-              <Button
-                size="sm"
-                color="primary"
-                isLoading={isSaving}
-                onPress={handleSave}
-              >
-                Save
-              </Button>
+              <RaisedButton size="sm" disabled={isSaving} onClick={handleSave}>
+                {isSaving ? <Spinner size="sm" color="current" /> : "Save"}
+              </RaisedButton>
             </div>
           </>
         ) : (

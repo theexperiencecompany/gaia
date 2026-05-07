@@ -1,12 +1,18 @@
+/**
+ * Inline holo card reveal shown above the chat stream. Three-state machine:
+ * shimmer placeholder → vibrate animation on tap → revealed editable card
+ * with confetti. Read-only personalization data passed in by the caller.
+ */
+
 "use client";
 
 import { Skeleton } from "@heroui/skeleton";
 import confetti from "canvas-confetti";
 import { m } from "motion/react";
-import { useRef, useState } from "react";
+import { useState } from "react";
+
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
-import { useOnboardingStore } from "@/stores/onboardingStore";
 import { HOLO_CARD_HEIGHT, HOLO_CARD_WIDTH } from "../../constants";
 import type { PersonalizationData } from "../../types/websocket";
 
@@ -18,8 +24,6 @@ type RevealState = "shimmer" | "vibrating" | "revealed";
 
 export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
   const [revealState, setRevealState] = useState<RevealState>("shimmer");
-  const hasMarkedShown = useRef(false);
-  const setHoloCardShown = useOnboardingStore((s) => s.setHoloCardShown);
 
   const holoCardData: HoloCardDisplayData = {
     house: personalizationData.house ?? "bluehaven",
@@ -50,12 +54,6 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
 
   const handleVibrationComplete = () => {
     setRevealState("revealed");
-
-    if (!hasMarkedShown.current) {
-      hasMarkedShown.current = true;
-      setHoloCardShown(true);
-    }
-
     confetti({
       particleCount: 120,
       spread: 70,

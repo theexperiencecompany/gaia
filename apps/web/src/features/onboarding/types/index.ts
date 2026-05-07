@@ -1,5 +1,3 @@
-import type { UserInfo } from "@/features/auth/api/authApi";
-
 export interface Message {
   id: string;
   type: "bot" | "user";
@@ -16,26 +14,7 @@ export interface Question {
   optional?: boolean;
 }
 
-export interface OnboardingState {
-  messages: Message[];
-  currentQuestionIndex: number;
-  currentInputs: {
-    text: string;
-    selectedProfession: string | null;
-  };
-  userResponses: Record<string, string>;
-  isProcessingPhase: boolean;
-  hasGmail: boolean;
-  hasAnsweredCurrentQuestion: boolean;
-}
-
 export interface ProfessionOption {
   label: string;
   value: string;
-}
-
-export interface OnboardingResponse {
-  success: boolean;
-  message: string;
-  user?: UserInfo;
 }

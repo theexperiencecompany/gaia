@@ -1,8 +1,15 @@
+/**
+ * List of generated todos with hover-revealed "Run now" buttons. Used in
+ * the `revealTodos` stage. Caps at MAX_VISIBLE; first card auto-shows the
+ * Run hint when nothing is hovered to teach the interaction.
+ */
+
 "use client";
 
-import { ArrowRight01Icon, CheckmarkCircle02Icon, Mail01Icon } from "@icons";
+import { Button } from "@heroui/button";
+import { CheckmarkCircle02Icon, Mail01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
-import { useState } from "react";
+import { memo, useState } from "react";
 
 interface OnboardingTodo {
   id: string;
@@ -27,7 +34,7 @@ function extractSenderName(sender: string): string {
   return sender.split("@")[0] ?? sender;
 }
 
-export function OnboardingTodoCards({
+function OnboardingTodoCardsImpl({
   todos,
   onExecuteTodo,
   isExecuting,
@@ -71,9 +78,7 @@ export function OnboardingTodoCards({
             <m.div
               key={todo.id}
               layout
-              className={`relative overflow-hidden rounded-2xl bg-zinc-800/60 ${
-                active ? "border-l-2 border-l-violet-500" : ""
-              }`}
+              className="relative overflow-hidden rounded-2xl bg-zinc-800/60"
               initial={{ opacity: 0, y: 12, scale: 0.97 }}
               animate={{ opacity: completed ? 0.6 : 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.95 }}
@@ -98,8 +103,8 @@ export function OnboardingTodoCards({
                 />
               )}
 
-              <div className="relative flex items-start gap-3 px-4 py-3 pr-28">
-                <div className="mt-0.5 shrink-0">
+              <div className="relative flex items-center gap-3 px-4 py-3 pr-28">
+                <div className="flex size-5 shrink-0 items-center justify-center">
                   {completed ? (
                     <m.div
                       initial={{ scale: 0 }}
@@ -110,11 +115,11 @@ export function OnboardingTodoCards({
                         damping: 15,
                       }}
                     >
-                      <CheckmarkCircle02Icon className="size-4 text-emerald-400" />
+                      <CheckmarkCircle02Icon className="size-5 text-emerald-400" />
                     </m.div>
                   ) : active ? (
                     <m.div
-                      className="size-4 rounded-full border-2 border-violet-400 border-t-transparent"
+                      className="size-5 rounded-full border-2 border-violet-400 border-t-transparent"
                       animate={{ rotate: 360 }}
                       transition={{
                         duration: 0.8,
@@ -123,7 +128,7 @@ export function OnboardingTodoCards({
                       }}
                     />
                   ) : (
-                    <div className="size-5 rounded-full border-2 border-dashed border-zinc-600 mt-1" />
+                    <div className="size-5 rounded-full border-2 border-dashed border-zinc-600" />
                   )}
                 </div>
 
@@ -158,17 +163,18 @@ export function OnboardingTodoCards({
                   )}
                 </div>
 
-                <button
-                  type="button"
+                <Button
+                  size="sm"
+                  variant="flat"
+                  color="success"
+                  onPress={() => handleExecute(todo.id)}
                   aria-hidden={!showRunNow}
-                  className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 rounded-lg bg-zinc-700/60 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-opacity duration-150 hover:bg-zinc-600/60 ${
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 transition-opacity duration-150 ${
                     showRunNow ? "opacity-100" : "pointer-events-none opacity-0"
                   }`}
-                  onClick={() => handleExecute(todo.id)}
                 >
                   Run now
-                  <ArrowRight01Icon className="size-3" />
-                </button>
+                </Button>
               </div>
             </m.div>
           );
@@ -177,3 +183,5 @@ export function OnboardingTodoCards({
     </m.div>
   );
 }
+
+export const OnboardingTodoCards = memo(OnboardingTodoCardsImpl);

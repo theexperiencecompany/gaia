@@ -1,3 +1,11 @@
+/**
+ * Stage-by-stage checklist of the backend personalization pipeline. Each
+ * step shows a spinner while active, a check once its corresponding
+ * `OnboardingStage` lands in `completedStages`, and a 30s "still working"
+ * notice if everything stalls. Steps differ for the Gmail vs no-Gmail
+ * branch — the no-Gmail branch is reordered to match actual emit order.
+ */
+
 "use client";
 
 import {
@@ -11,8 +19,7 @@ import {
   ZapIcon,
 } from "@icons";
 import { AnimatePresence, m } from "motion/react";
-import type { FC } from "react";
-import { useEffect, useRef, useState } from "react";
+import { type FC, memo, useEffect, useState } from "react";
 import {
   STEP_BUILDING_PROFILE,
   STEP_CREATING_TODOS,
@@ -21,6 +28,7 @@ import {
   STEP_SCANNING_INBOX,
   STEP_TRIAGING,
 } from "../constants/messages";
+import { EASE_OUT_QUART } from "../constants/motion";
 import type { OnboardingStage } from "../types/websocket";
 
 const SLOW_NOTICE_MS = 30_000;
@@ -82,14 +90,9 @@ const NO_GMAIL_STEPS: ProcessingStep[] = [
 
 interface OnboardingProcessingProps {
   hasGmail: boolean;
-  isIntelligenceComplete: boolean;
-  intelligenceConversationId: string | null;
-  onComplete: (conversationId: string) => void;
-  /** Running count of emails fetched, driven by inbox_scanning stage */
-  inboxScanCount?: number;
   /** Stages that have received a completion event from the backend */
   completedStages?: Set<OnboardingStage>;
-  /** Latest sub-status text from triage_analyzing/triage_analyzed/todos_creating */
+  /** Latest backend-emitted status_text — surfaced under the active step */
   statusMessage?: string | null;
 }
 
@@ -104,45 +107,17 @@ const STAGES_AFTER_INBOX_SCAN: OnboardingStage[] = [
   "complete",
 ];
 
-// Stages that get the live waitingStatus surfaced as their sub-message.
-// Other stages either have their own counter (inbox_scanning) or no
-// intermediate signal worth showing (writing_style_ready, workflows_ready).
-const STAGES_WITH_LIVE_STATUS: ReadonlySet<OnboardingStage> =
-  new Set<OnboardingStage>(["triage_ready", "todos_ready"]);
-
-export const OnboardingProcessing = ({
+function OnboardingProcessingImpl({
   hasGmail,
-  isIntelligenceComplete,
-  intelligenceConversationId,
-  onComplete,
-  inboxScanCount,
   completedStages,
   statusMessage,
-}: OnboardingProcessingProps) => {
+}: OnboardingProcessingProps) {
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
-  const completedRef = useRef(false);
   const [showSlowNotice, setShowSlowNotice] = useState(false);
-
-  // Navigate to chat when intelligence is complete
-  useEffect(() => {
-    if (
-      isIntelligenceComplete &&
-      intelligenceConversationId &&
-      !completedRef.current
-    ) {
-      completedRef.current = true;
-      onComplete(intelligenceConversationId);
-    }
-  }, [isIntelligenceComplete, intelligenceConversationId, onComplete]);
 
   // Show "taking longer" notice after 30s
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!completedRef.current) {
-        setShowSlowNotice(true);
-      }
-    }, SLOW_NOTICE_MS);
-
+    const timer = setTimeout(() => setShowSlowNotice(true), SLOW_NOTICE_MS);
     return () => clearTimeout(timer);
   }, []);
 
@@ -172,33 +147,17 @@ export const OnboardingProcessing = ({
       className="mt-3 flex flex-col gap-3 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl w-96"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: [0.19, 1, 0.22, 1] }}
+      transition={{ duration: 0.35, ease: EASE_OUT_QUART }}
     >
-      {isIntelligenceComplete && (
-        <p className="sr-only" aria-live="assertive" aria-atomic="true">
-          Setup complete. You can now start using GAIA.
-        </p>
-      )}
-
       <div className="flex flex-col gap-2.5" aria-live="polite">
         {steps.map((step, i) => {
           const Icon = step.icon;
           const isDone = isStepDone(i);
           const isActive = i === activeStepIndex && !isDone;
-          // Show live inbox counter on the inbox_scanning step; otherwise
-          // surface the backend sub-status (triage_analyzing /
-          // triage_analyzed / todos_creating) for stages that emit one.
-          const liveMessage = (() => {
-            if (step.stage === "inbox_scanning") {
-              return inboxScanCount && inboxScanCount > 0
-                ? `${inboxScanCount} emails fetched`
-                : undefined;
-            }
-            if (STAGES_WITH_LIVE_STATUS.has(step.stage) && statusMessage) {
-              return statusMessage;
-            }
-            return undefined;
-          })();
+          // Surface the backend's latest status_text under the active step
+          // — every stage emits one, so the same field works uniformly.
+          const liveMessage =
+            isActive && statusMessage ? statusMessage : undefined;
 
           return (
             <m.div
@@ -209,7 +168,7 @@ export const OnboardingProcessing = ({
               transition={{
                 delay: i * 0.12,
                 duration: 0.3,
-                ease: [0.19, 1, 0.22, 1],
+                ease: EASE_OUT_QUART,
               }}
             >
               <div className="relative size-4 shrink-0 self-start mt-0.5">
@@ -274,7 +233,7 @@ export const OnboardingProcessing = ({
                 </AnimatePresence>
               </div>
               <AnimatePresence>
-                {isActive && !isIntelligenceComplete && (
+                {isActive && (
                   <m.div
                     key="spinner"
                     initial={{ opacity: 0, scale: 0.8 }}
@@ -293,7 +252,7 @@ export const OnboardingProcessing = ({
       </div>
 
       <AnimatePresence>
-        {showSlowNotice && !isIntelligenceComplete && (
+        {showSlowNotice && (
           <m.p
             className="text-xs text-zinc-500"
             initial={{ opacity: 0, height: 0 }}
@@ -307,4 +266,6 @@ export const OnboardingProcessing = ({
       </AnimatePresence>
     </m.div>
   );
-};
+}
+
+export const OnboardingProcessing = memo(OnboardingProcessingImpl);

@@ -1,3 +1,9 @@
+/**
+ * Top progress bar plus the floating Restart button. Steps are filled based
+ * on `currentStep` (from `getProgress`) and clicking restart confirms via
+ * a modal before invoking the caller-supplied `onRestart`.
+ */
+
 import { Button } from "@heroui/button";
 import {
   Modal,
@@ -8,7 +14,7 @@ import {
 } from "@heroui/modal";
 import { ReloadIcon } from "@icons";
 import { m } from "motion/react";
-import { useId, useState } from "react";
+import { memo, useState } from "react";
 
 interface OnboardingProgressProps {
   currentStep: number;
@@ -17,28 +23,30 @@ interface OnboardingProgressProps {
   isRestarting?: boolean;
 }
 
-export const OnboardingProgress = ({
+function OnboardingProgressImpl({
   currentStep,
   totalSteps,
   onRestart,
   isRestarting = false,
-}: OnboardingProgressProps) => {
+}: OnboardingProgressProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const baseId = useId();
+  // Stable per-step keys derived from index (positions are intrinsically
+  // stable here — totalSteps is a constant). Prefixed so clashes with other
+  // route-level keys are impossible.
+  const stepKey = (i: number) => `onboarding-progress-step-${i}`;
   return (
     <nav
       aria-label="Onboarding progress"
       className="fixed top-0 right-0 left-0 z-50 mx-auto flex max-w-lg items-center justify-center gap-2 px-4 py-4"
     >
-      {Array.from({ length: totalSteps }).map((_, index) => {
+      {Array.from({ length: totalSteps }, (_, i) => i).map((index) => {
         const isCompleted = index < currentStep;
         const isCurrent = index === currentStep;
         const scaleXValue = isCompleted || isCurrent ? 1 : 0;
 
         return (
           <m.div
-            // biome-ignore lint/suspicious/noArrayIndexKey: Simply mapping progress data
-            key={baseId + index}
+            key={stepKey(index)}
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={100}
@@ -59,18 +67,10 @@ export const OnboardingProgress = ({
             }}
           >
             <m.div
-              className="absolute inset-0 rounded-full bg-primary"
+              className="absolute inset-0 origin-left rounded-full bg-primary"
               initial={{ scaleX: 0 }}
-              animate={{
-                scaleX: scaleXValue,
-              }}
-              transition={{
-                duration: 0.4,
-                ease: "easeInOut",
-              }}
-              style={{
-                transformOrigin: "left",
-              }}
+              animate={{ scaleX: scaleXValue }}
+              transition={{ duration: 0.4, ease: "easeInOut" }}
             />
           </m.div>
         );
@@ -105,7 +105,7 @@ export const OnboardingProgress = ({
               <ModalHeader>Restart onboarding?</ModalHeader>
               <ModalBody>
                 <p className="text-sm text-zinc-400">
-                  This wipes everything GAIA set up for you so far — generated
+                  This wipes everything GAIA set up for you so far. Generated
                   todos, suggested workflows, your writing style profile, and
                   the welcome conversation. You'll start over from question one.
                 </p>
@@ -130,4 +130,6 @@ export const OnboardingProgress = ({
       </Modal>
     </nav>
   );
-};
+}
+
+export const OnboardingProgress = memo(OnboardingProgressImpl);

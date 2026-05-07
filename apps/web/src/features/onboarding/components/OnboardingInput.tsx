@@ -1,3 +1,11 @@
+/**
+ * The bottom composer. Renders one of three modes via a discriminated union:
+ * - `qa`: the active question's input (text / Autocomplete / Gmail buttons).
+ * - `focus`: a plain text input for the synthetic focus question.
+ * - `freeChat`: free chat input for the post-reveal `chat` stage.
+ * Auto-focuses the right element via rAF when the active question changes.
+ */
+
 import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
@@ -10,14 +18,13 @@ import {
   SourceCodeIcon,
 } from "@icons";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { cn } from "@/lib/utils";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
-import type { OnboardingState } from "../types";
 
 interface DataPrivacyModalProps {
   open: boolean;
@@ -89,264 +96,368 @@ function DataPrivacyModal({ open, onOpenChange }: DataPrivacyModalProps) {
   );
 }
 
-interface OnboardingInputProps {
-  onboardingState: OnboardingState;
+interface QaModeProps {
+  mode: "qa";
+  questionIndex: number;
+  draftText: string;
+  draftProfession: string | null;
+  inputRef: React.RefObject<HTMLInputElement | null>;
   onSubmit: (e: React.FormEvent) => void;
   onInputChange: (value: string) => void;
-  onProfessionSelect: (professionKey: React.Key | null) => void;
+  onProfessionSelect: (key: React.Key | null) => void;
   onProfessionInputChange: (value: string) => void;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  onGmailSkip?: () => void;
-  /** When true, renders a plain text input instead of the Gmail buttons (focus question phase) */
-  isFocusPending?: boolean;
-  /** When true, renders a plain free-chat input instead of question-driven UI */
-  isFreeChatMode?: boolean;
-  freeChatValue?: string;
-  onFreeChatChange?: (value: string) => void;
-  onFreeChatSubmit?: (e: React.FormEvent) => void;
-  isSending?: boolean;
+  onGmailSkip: () => void;
 }
 
-export const OnboardingInput = ({
-  onboardingState,
+interface FocusModeProps {
+  mode: "focus";
+  draftText: string;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onSubmit: (e: React.FormEvent) => void;
+  onInputChange: (value: string) => void;
+}
+
+interface FreeChatModeProps {
+  mode: "freeChat";
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  freeChatValue: string;
+  isSending: boolean;
+  onFreeChatChange: (value: string) => void;
+  onFreeChatSubmit: (e: React.FormEvent) => void;
+}
+
+export type OnboardingInputProps =
+  | QaModeProps
+  | FocusModeProps
+  | FreeChatModeProps;
+
+function OnboardingInputImpl(props: OnboardingInputProps) {
+  if (props.mode === "freeChat") return <FreeChatInput {...props} />;
+  if (props.mode === "focus") return <FocusInput {...props} />;
+  return <QaInput {...props} />;
+}
+
+export const OnboardingInput = memo(OnboardingInputImpl);
+
+function FreeChatInput({
+  freeChatValue,
+  isSending,
+  onFreeChatChange,
+  onFreeChatSubmit,
+}: FreeChatModeProps) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    if (!freeChatValue.trim()) return;
+    e.preventDefault();
+    e.currentTarget.form?.requestSubmit();
+  };
+
+  return (
+    <form onSubmit={onFreeChatSubmit} className="mx-auto w-full max-w-2xl">
+      <div className="relative">
+        <Input
+          autoFocus
+          value={freeChatValue}
+          onChange={(e) => onFreeChatChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Ask me anything..."
+          radius="full"
+          variant="faded"
+          size="lg"
+          disabled={isSending}
+          classNames={{ inputWrapper: "pr-1" }}
+          endContent={
+            <Button
+              isIconOnly
+              type="submit"
+              disabled={!freeChatValue.trim() || isSending}
+              color={!freeChatValue.trim() || isSending ? "default" : "primary"}
+              radius="full"
+              aria-label="Send message"
+              className={cn(
+                isSending && "cursor-wait",
+                !freeChatValue.trim() || isSending
+                  ? "text-zinc-500"
+                  : "text-black",
+              )}
+            >
+              <ArrowUp02Icon />
+            </Button>
+          }
+        />
+      </div>
+    </form>
+  );
+}
+
+function FocusInput({
+  draftText,
+  inputRef,
   onSubmit,
+  onInputChange,
+}: FocusModeProps) {
+  useAutofocus(inputRef, "default");
+
+  return (
+    <form onSubmit={onSubmit} className="mx-auto w-full max-w-2xl">
+      <div className="relative">
+        <TextSendInput
+          inputRef={inputRef}
+          value={draftText}
+          placeholder="Type your answer..."
+          onChange={onInputChange}
+        />
+      </div>
+      <PressEnterHint />
+    </form>
+  );
+}
+
+function QaInput(props: QaModeProps) {
+  const {
+    questionIndex,
+    draftText,
+    draftProfession,
+    inputRef,
+    onSubmit,
+    onInputChange,
+    onProfessionSelect,
+    onProfessionInputChange,
+    onGmailSkip,
+  } = props;
+  const currentQuestion =
+    questionIndex < questions.length ? questions[questionIndex] : null;
+  const targetField =
+    currentQuestion?.fieldName === FIELD_NAMES.PROFESSION
+      ? "autocomplete"
+      : "default";
+  useAutofocus(inputRef, targetField);
+
+  if (!currentQuestion) return null;
+
+  return (
+    <form onSubmit={onSubmit} className="mx-auto w-full max-w-2xl">
+      <div className="relative">
+        <QaInputBody
+          field={currentQuestion.fieldName}
+          questionIndex={questionIndex}
+          placeholder={currentQuestion.placeholder}
+          draftText={draftText}
+          draftProfession={draftProfession}
+          inputRef={inputRef}
+          onInputChange={onInputChange}
+          onProfessionSelect={onProfessionSelect}
+          onProfessionInputChange={onProfessionInputChange}
+          onGmailSkip={onGmailSkip}
+        />
+      </div>
+      {currentQuestion.fieldName !== FIELD_NAMES.GMAIL && <PressEnterHint />}
+    </form>
+  );
+}
+
+interface QaInputBodyProps {
+  field: string;
+  questionIndex: number;
+  placeholder: string;
+  draftText: string;
+  draftProfession: string | null;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onInputChange: (value: string) => void;
+  onProfessionSelect: (key: React.Key | null) => void;
+  onProfessionInputChange: (value: string) => void;
+  onGmailSkip: () => void;
+}
+
+function QaInputBody({
+  field,
+  questionIndex,
+  placeholder,
+  draftText,
+  draftProfession,
+  inputRef,
   onInputChange,
   onProfessionSelect,
   onProfessionInputChange,
-  inputRef,
   onGmailSkip,
-  isFocusPending = false,
-  isFreeChatMode = false,
-  freeChatValue = "",
-  onFreeChatChange,
-  onFreeChatSubmit,
-  isSending = false,
-}: OnboardingInputProps) => {
+}: QaInputBodyProps) {
+  if (field === FIELD_NAMES.PROFESSION) {
+    return (
+      <Autocomplete
+        key={`profession-${questionIndex}`}
+        inputValue={draftProfession ?? ""}
+        onInputChange={onProfessionInputChange}
+        onSelectionChange={onProfessionSelect}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && draftProfession?.trim()) {
+            e.stopPropagation();
+          }
+        }}
+        placeholder="Type or select your profession..."
+        variant="faded"
+        size="lg"
+        radius="full"
+        allowsCustomValue
+        classNames={{ base: "w-full" }}
+      >
+        {professionOptions.map((profession) => (
+          <AutocompleteItem key={profession.value}>
+            {profession.label}
+          </AutocompleteItem>
+        ))}
+      </Autocomplete>
+    );
+  }
+
+  if (field === FIELD_NAMES.GMAIL) {
+    return <GmailInput onGmailSkip={onGmailSkip} />;
+  }
+
+  return (
+    <TextSendInput
+      key={`input-${questionIndex}`}
+      inputRef={inputRef}
+      value={draftText}
+      placeholder={placeholder}
+      onChange={onInputChange}
+    />
+  );
+}
+
+function GmailInput({ onGmailSkip }: { onGmailSkip: () => void }) {
   const { connectIntegration } = useIntegrations();
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
   const [isConnectingGmail, setIsConnectingGmail] = useState(false);
 
-  const currentQuestion =
-    onboardingState.currentQuestionIndex < questions.length
-      ? questions[onboardingState.currentQuestionIndex]
-      : null;
-
-  // Focus the appropriate input when question changes (Q&A phase only)
-  useEffect(() => {
-    if (isFreeChatMode) return;
-    if (isFocusPending || !onboardingState.hasAnsweredCurrentQuestion) {
-      setTimeout(() => {
-        if (currentQuestion?.fieldName === FIELD_NAMES.PROFESSION) {
-          const autocompleteInput = document.querySelector(
-            '[data-slot="input"]',
-          ) as HTMLInputElement;
-          if (autocompleteInput) {
-            autocompleteInput.focus();
-          }
-        } else {
-          inputRef.current?.focus();
-        }
-      }, 500);
-    }
-  }, [
-    isFreeChatMode,
-    isFocusPending,
-    onboardingState.hasAnsweredCurrentQuestion,
-    currentQuestion?.fieldName,
-    inputRef,
-  ]);
-
-  // Free-chat mode: plain text input for post-reveal conversation
-  if (isFreeChatMode) {
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter" && !e.shiftKey && freeChatValue.trim()) {
-        e.preventDefault();
-        onFreeChatSubmit?.(e as unknown as React.FormEvent);
-      }
-    };
-
-    return (
-      <form onSubmit={onFreeChatSubmit} className="mx-auto w-full max-w-2xl">
-        <div className="relative">
-          <Input
-            autoFocus
-            value={freeChatValue}
-            onChange={(e) => onFreeChatChange?.(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask me anything..."
-            radius="full"
-            variant="faded"
-            size="lg"
-            disabled={isSending}
-            classNames={{ inputWrapper: "pr-1" }}
-            endContent={
-              <Button
-                isIconOnly
-                type="submit"
-                disabled={!freeChatValue.trim() || isSending}
-                color={
-                  !freeChatValue.trim() || isSending ? "default" : "primary"
-                }
-                radius="full"
-                aria-label="Send message"
-                className={cn(
-                  isSending && "cursor-wait",
-                  !freeChatValue.trim() || isSending
-                    ? "text-zinc-500"
-                    : "text-black",
-                )}
-              >
-                <ArrowUp02Icon />
-              </Button>
-            }
-          />
-        </div>
-      </form>
-    );
-  }
-
-  if (onboardingState.isProcessingPhase) return null;
-  if (!currentQuestion) return null;
-
-  const renderInput = () => {
-    switch (currentQuestion.fieldName) {
-      case FIELD_NAMES.PROFESSION:
-        return (
-          <Autocomplete
-            key={`profession-${onboardingState.currentQuestionIndex}`}
-            inputValue={onboardingState.currentInputs.selectedProfession || ""}
-            onInputChange={onProfessionInputChange}
-            onSelectionChange={onProfessionSelect}
-            onKeyDown={(e) => {
-              if (
-                e.key === "Enter" &&
-                onboardingState.currentInputs.selectedProfession?.trim()
-              ) {
-                e.stopPropagation();
-              }
-            }}
-            placeholder="Type or select your profession..."
-            variant="faded"
-            size="lg"
-            radius="full"
-            allowsCustomValue
-            classNames={{
-              base: "w-full",
-            }}
-          >
-            {professionOptions.map((profession) => (
-              <AutocompleteItem key={profession.value}>
-                {profession.label}
-              </AutocompleteItem>
-            ))}
-          </Autocomplete>
-        );
-
-      case FIELD_NAMES.GMAIL:
-        if (!isFocusPending)
-          return (
-            <>
-              <div className="flex flex-col gap-3">
-                <RaisedButton
-                  color="#00bbff"
-                  onClick={() => {
-                    setIsConnectingGmail(true);
-                    void connectIntegration("gmail");
-                  }}
-                  className="w-full text-black!"
-                  disabled={isConnectingGmail}
-                >
-                  {isConnectingGmail ? (
-                    <Loading03Icon
-                      className="[animation:fadeIn_150ms_ease-out_forwards,spin_0.8s_linear_infinite]"
-                      size={16}
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <Image
-                      src="/images/icons/gmail.svg"
-                      alt=""
-                      className="-rotate-12"
-                      width={16}
-                      height={16}
-                      aria-hidden="true"
-                    />
-                  )}
-                  {isConnectingGmail ? "Connecting..." : "Connect Gmail"}
-                </RaisedButton>
-                <button
-                  type="button"
-                  onClick={onGmailSkip}
-                  aria-label="Continue onboarding without connecting Gmail"
-                  className="cursor-pointer text-center text-sm text-zinc-500 transition-colors hover:text-zinc-300"
-                >
-                  Continue without Gmail
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrivacyModalOpen(true)}
-                  className="flex cursor-pointer items-center justify-center gap-1 text-xs text-zinc-600 transition-colors hover:text-zinc-400"
-                >
-                  How we use your data
-                  <ChevronRight className="size-3" />
-                </button>
-              </div>
-              <DataPrivacyModal
-                open={privacyModalOpen}
-                onOpenChange={setPrivacyModalOpen}
-              />
-            </>
-          );
-        return null;
-
-      default:
-        return (
-          <Input
-            key={`input-${onboardingState.currentQuestionIndex}`}
-            ref={inputRef}
-            value={onboardingState.currentInputs.text}
-            radius="full"
-            onChange={(e) => onInputChange(e.target.value)}
-            placeholder={currentQuestion.placeholder}
-            variant="faded"
-            size="lg"
-            classNames={{ inputWrapper: "pr-1" }}
-            endContent={
-              <Button
-                isIconOnly
-                type="submit"
-                disabled={!onboardingState.currentInputs.text.trim()}
-                color={
-                  !onboardingState.currentInputs.text.trim()
-                    ? "default"
-                    : "primary"
-                }
-                radius="full"
-                aria-label="Send message"
-                className={cn(
-                  !onboardingState.currentInputs.text.trim()
-                    ? "text-zinc-500"
-                    : "text-black",
-                )}
-              >
-                <ArrowUp02Icon />
-              </Button>
-            }
-          />
-        );
-    }
-  };
-
   return (
-    <form onSubmit={onSubmit} className="mx-auto w-full max-w-2xl">
-      <div className="relative">{renderInput()}</div>
-      {currentQuestion.fieldName !== FIELD_NAMES.GMAIL && (
-        <p className="mt-2 flex items-center justify-center space-x-1 text-center text-xs text-zinc-500">
-          <span>Press</span>
-          <Kbd keys={"enter"} />
-          <span>to continue</span>
-        </p>
-      )}
-    </form>
+    <>
+      <div className="flex flex-col gap-3">
+        <RaisedButton
+          color="#00bbff"
+          onClick={() => {
+            setIsConnectingGmail(true);
+            void connectIntegration("gmail");
+          }}
+          className="w-full text-black!"
+          disabled={isConnectingGmail}
+        >
+          {isConnectingGmail ? (
+            <Loading03Icon
+              className="animate-spin"
+              size={16}
+              aria-hidden="true"
+            />
+          ) : (
+            <Image
+              src="/images/icons/gmail.svg"
+              alt=""
+              className="-rotate-12"
+              width={16}
+              height={16}
+              aria-hidden="true"
+            />
+          )}
+          {isConnectingGmail ? "Connecting..." : "Connect Gmail"}
+        </RaisedButton>
+        <Button
+          variant="light"
+          size="sm"
+          onPress={onGmailSkip}
+          aria-label="Continue onboarding without connecting Gmail"
+          className="text-zinc-500"
+        >
+          Continue without Gmail
+        </Button>
+        <Button
+          variant="light"
+          size="sm"
+          radius="full"
+          onPress={() => setPrivacyModalOpen(true)}
+          endContent={<ChevronRight className="size-3" />}
+          className="mx-auto w-fit text-xs text-zinc-600"
+        >
+          How we use your data
+        </Button>
+      </div>
+      <DataPrivacyModal
+        open={privacyModalOpen}
+        onOpenChange={setPrivacyModalOpen}
+      />
+    </>
   );
-};
+}
+
+interface TextSendInputProps {
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}
+
+function TextSendInput({
+  inputRef,
+  value,
+  placeholder,
+  onChange,
+}: TextSendInputProps) {
+  const disabled = !value.trim();
+  return (
+    <Input
+      ref={inputRef}
+      value={value}
+      radius="full"
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      variant="faded"
+      size="lg"
+      classNames={{ inputWrapper: "pr-1" }}
+      endContent={
+        <Button
+          isIconOnly
+          type="submit"
+          disabled={disabled}
+          color={disabled ? "default" : "primary"}
+          radius="full"
+          aria-label="Send message"
+          className={cn(disabled ? "text-zinc-500" : "text-black")}
+        >
+          <ArrowUp02Icon />
+        </Button>
+      }
+    />
+  );
+}
+
+function PressEnterHint() {
+  return (
+    <p className="mt-2 flex items-center justify-center space-x-1 text-center text-xs text-zinc-500">
+      <span>Press</span>
+      <Kbd keys={"enter"} />
+      <span>to continue</span>
+    </p>
+  );
+}
+
+/**
+ * Focus the relevant input on the next animation frame after a question
+ * change. rAF avoids the 500ms setTimeout the old code used to wait for
+ * HeroUI's internal mount; one frame is enough now that HeroUI is sync.
+ */
+function useAutofocus(
+  inputRef: React.RefObject<HTMLInputElement | null>,
+  target: "default" | "autocomplete",
+) {
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      if (target === "autocomplete") {
+        const el = document.querySelector(
+          '[data-slot="input"]',
+        ) as HTMLInputElement | null;
+        el?.focus();
+      } else {
+        inputRef.current?.focus();
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [target, inputRef]);
+}
