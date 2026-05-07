@@ -23,6 +23,7 @@ interface WorkflowDescriptionFieldProps {
   mode?: "create" | "edit";
   selectedIntegrationSlugs: string[];
   onIntegrationSlugsChange: (slugs: string[]) => void;
+  showIntegrationSelector?: boolean;
 }
 
 export default function WorkflowDescriptionField({
@@ -32,6 +33,7 @@ export default function WorkflowDescriptionField({
   mode = "create",
   selectedIntegrationSlugs,
   onIntegrationSlugsChange,
+  showIntegrationSelector = true,
 }: WorkflowDescriptionFieldProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -151,12 +153,14 @@ export default function WorkflowDescriptionField({
           </div>
         )}
       />
-      <div className="pt-1">
-        <IntegrationChipsSelector
-          selectedSlugs={selectedIntegrationSlugs}
-          onChange={onIntegrationSlugsChange}
-        />
-      </div>
+      {showIntegrationSelector && (
+        <div className="pt-1">
+          <IntegrationChipsSelector
+            selectedSlugs={selectedIntegrationSlugs}
+            onChange={onIntegrationSlugsChange}
+          />
+        </div>
+      )}
     </div>
   );
 }

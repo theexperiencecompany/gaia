@@ -1,5 +1,6 @@
 import { Button } from "@heroui/button";
-import { UndoIcon } from "@icons";
+import { Tooltip } from "@heroui/tooltip";
+import { ShuffleIcon } from "@icons";
 import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
@@ -50,7 +51,6 @@ const SuggestionCard = memo(function SuggestionCard({
         communityWorkflow={workflow}
         variant="suggestion"
         showExecutions={true}
-        showDescriptionAsTooltip={true}
         actionButtonLabel="Try"
         onCardClick={handleClick}
         primaryAction="none"
@@ -67,6 +67,15 @@ export const ChatSuggestions: React.FC = () => {
   const [selectedWorkflow, setSelectedWorkflow] =
     useState<CommunityWorkflow | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Clear selectedWorkflow only after the modal's exit animation finishes —
+  // dropping it synchronously on close unmounts the modal mid-animation and
+  // produces a flash. The 250ms matches HeroUI's modal exit transition.
+  useEffect(() => {
+    if (isModalOpen || !selectedWorkflow) return;
+    const timer = window.setTimeout(() => setSelectedWorkflow(null), 250);
+    return () => window.clearTimeout(timer);
+  }, [isModalOpen, selectedWorkflow]);
 
   // Filter for only featured workflows
   const featuredWorkflows = useMemo(
@@ -128,15 +137,17 @@ export const ChatSuggestions: React.FC = () => {
     >
       <div className="mb-2 flex w-full items-end justify-between px-1 text-zinc-300">
         <h2 className="text-sm font-light">Suggestions</h2>
-        <Button
-          isIconOnly
-          size="sm"
-          variant="light"
-          aria-label="Shuffle suggestions"
-          onPress={handleShuffle}
-        >
-          <UndoIcon width={16} height={16} className="text-zinc-300" />
-        </Button>
+        <Tooltip content="Shuffle suggestions" placement="top">
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            aria-label="Shuffle suggestions"
+            onPress={handleShuffle}
+          >
+            <ShuffleIcon width={16} height={16} className="text-zinc-300" />
+          </Button>
+        </Tooltip>
       </div>
 
       {currentSuggestions.length === 0 && (
@@ -156,15 +167,13 @@ export const ChatSuggestions: React.FC = () => {
         ))}
       </div>
 
-      {isModalOpen && draftData && (
+      {selectedWorkflow && draftData && (
         <WorkflowModal
           isOpen={isModalOpen}
-          onOpenChange={(open) => {
-            setIsModalOpen(open);
-            if (!open) setSelectedWorkflow(null);
-          }}
+          onOpenChange={setIsModalOpen}
           mode="create"
           draftData={draftData}
+          predefinedSteps={selectedWorkflow.steps}
           createAndSend
         />
       )}

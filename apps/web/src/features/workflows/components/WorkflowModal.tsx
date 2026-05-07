@@ -2,11 +2,12 @@
 
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import WorkflowDescriptionField from "@/features/workflows/components/workflow-modal/WorkflowDescriptionField";
 import WorkflowFooter from "@/features/workflows/components/workflow-modal/WorkflowFooter";
 import WorkflowHeader from "@/features/workflows/components/workflow-modal/WorkflowHeader";
@@ -19,6 +20,7 @@ import { useRouter } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
+import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 import { type Workflow, workflowApi } from "../api/workflowApi";
 import {
   getDefaultFormValues,
@@ -44,6 +46,13 @@ interface WorkflowModalProps {
   /** Pre-fill form from AI-generated draft data */
   draftData?: WorkflowDraftData | null;
   /**
+   * Pre-built steps from a public/community workflow. When provided:
+   * - the steps are forwarded to create so the backend skips regeneration
+   * - the integration chip selector is hidden
+   * - a read-only preview panel renders alongside the form
+   */
+  predefinedSteps?: PublicWorkflowStep[];
+  /**
    * When true, the create button shows "Create and Send" and the workflow is
    * immediately executed in the chat after creation.
    */
@@ -58,8 +67,10 @@ export default function WorkflowModal({
   mode,
   existingWorkflow,
   draftData,
+  predefinedSteps,
   createAndSend = false,
 }: WorkflowModalProps) {
+  const hasPredefinedSteps = !!predefinedSteps && predefinedSteps.length > 0;
   const {
     isCreating,
     error: creationError,
@@ -107,20 +118,6 @@ export default function WorkflowModal({
     string[]
   >([]);
 
-  // Action to fire after the modal finishes closing (e.g. select-and-send a
-  // workflow into chat). Stored in a ref so the close-effect can run it once
-  // the parent has actually unmounted the modal, avoiding focus/state conflicts.
-  const pendingPostCloseActionRef = useRef<(() => void) | null>(null);
-
-  // Fire any pending post-close action once the modal is closed.
-  useEffect(() => {
-    if (!isOpen && pendingPostCloseActionRef.current) {
-      const action = pendingPostCloseActionRef.current;
-      pendingPostCloseActionRef.current = null;
-      action();
-    }
-  }, [isOpen]);
-
   // Fetch trigger schemas for slug normalization
   const { data: triggerSchemas } = useTriggerSchemas();
 
@@ -139,6 +136,21 @@ export default function WorkflowModal({
     watch,
     formState: { errors },
   } = form;
+
+  // Defer the form reset until after the modal's exit animation finishes —
+  // resetting synchronously on close blanks out the visible form fields while
+  // the modal is still fading out, which reads as an abrupt close. The delay
+  // matches HeroUI's modal exit transition.
+  useEffect(() => {
+    if (isOpen) return;
+    const timer = window.setTimeout(() => {
+      resetFormValues(getDefaultFormValues());
+      setSelectedIntegrationSlugs([]);
+      resetToForm();
+      clearCreationError();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, resetFormValues, resetToForm, clearCreationError]);
 
   // Manage the single workflow state from all sources
   useEffect(() => {
@@ -344,13 +356,6 @@ export default function WorkflowModal({
     );
   };
 
-  const handleFormReset = () => {
-    resetFormValues(getDefaultFormValues());
-    setSelectedIntegrationSlugs([]);
-    resetToForm();
-    clearCreationError();
-  };
-
   const handleSave = async (data: WorkflowFormData) => {
     if (!data.title.trim() || !data.prompt?.trim()) return;
 
@@ -376,7 +381,18 @@ export default function WorkflowModal({
         description: data.description || undefined,
         prompt: data.prompt,
         trigger_config: data.trigger_config,
-        generate_immediately: true, // Generate steps immediately
+        // When predefined steps are supplied (from a community/featured
+        // workflow), forward them so the backend reuses them instead of
+        // regenerating a fresh plan.
+        steps: hasPredefinedSteps
+          ? predefinedSteps?.map((step) => ({
+              id: step.id ?? "",
+              title: step.title,
+              description: step.description,
+              category: step.category,
+            }))
+          : undefined,
+        generate_immediately: !hasPredefinedSteps,
         selected_integrations:
           selectedIntegrationSlugs.length > 0
             ? selectedIntegrationSlugs
@@ -412,11 +428,12 @@ export default function WorkflowModal({
         if (onWorkflowSaved) onWorkflowSaved(createdWorkflow.id);
         await fetchWorkflows();
 
-        // In createAndSend mode, auto-execute the workflow in chat after creation
+        // In createAndSend mode, auto-execute the workflow in chat after
+        // creation. Fire selectWorkflow BEFORE closing — the parent gates the
+        // modal render on local state and unmounts us synchronously on close,
+        // which would kill any post-close effect.
         if (createAndSend) {
-          pendingPostCloseActionRef.current = () => {
-            selectWorkflow(createdWorkflow, { autoSend: true });
-          };
+          selectWorkflow(createdWorkflow, { autoSend: true });
         }
         handleClose();
       } else {
@@ -527,7 +544,8 @@ export default function WorkflowModal({
   };
 
   const handleClose = () => {
-    handleFormReset();
+    // Reset is handled by the close-animation effect — calling it here would
+    // blank the form while the modal is still visibly fading out.
     onOpenChange(false);
   };
 
@@ -755,11 +773,9 @@ export default function WorkflowModal({
         trigger_type: existingWorkflow.trigger_config.type,
       });
 
-      // Defer navigation until after the modal has actually closed; the
-      // close-effect on isOpen will fire this once the parent unmounts us.
-      pendingPostCloseActionRef.current = () => {
-        selectWorkflow(existingWorkflow, { autoSend: true });
-      };
+      // Fire selectWorkflow before closing — the parent may unmount us
+      // synchronously, which would drop any post-close effect.
+      selectWorkflow(existingWorkflow, { autoSend: true });
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
@@ -781,13 +797,10 @@ export default function WorkflowModal({
     <>
       <Modal
         isOpen={isOpen}
-        onOpenChange={(open) => {
-          if (!open) handleFormReset();
-          onOpenChange(open);
-        }}
+        onOpenChange={onOpenChange}
         hideCloseButton
-        size={mode === "create" ? "3xl" : "4xl"}
-        className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
+        size={mode === "create" && !hasPredefinedSteps ? "3xl" : "4xl"}
+        className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" || hasPredefinedSteps ? "min-w-[80vw]" : ""}`}
         backdrop="blur"
       >
         <ModalContent>
@@ -832,6 +845,7 @@ export default function WorkflowModal({
                           mode={mode}
                           selectedIntegrationSlugs={selectedIntegrationSlugs}
                           onIntegrationSlugsChange={setSelectedIntegrationSlugs}
+                          showIntegrationSelector={!hasPredefinedSteps}
                         />
                       </div>
                     </div>
@@ -857,6 +871,29 @@ export default function WorkflowModal({
                     }
                   />
                 </div>
+
+                {mode === "create" && hasPredefinedSteps && (
+                  <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
+                    <div className="mb-2 flex items-center justify-between px-1">
+                      <span className="text-sm font-medium text-zinc-300">
+                        Steps
+                      </span>
+                      <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-xs text-primary">
+                        {predefinedSteps?.length}
+                      </span>
+                    </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      <WorkflowSteps
+                        steps={(predefinedSteps ?? []).map((step) => ({
+                          id: step.id ?? "",
+                          title: step.title,
+                          description: step.description,
+                          category: step.category,
+                        }))}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {mode === "edit" && existingWorkflow && (
                   <WorkflowRightPanel
