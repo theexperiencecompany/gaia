@@ -90,12 +90,14 @@ interface CodeBlockProps extends React.HTMLAttributes<HTMLElement> {
   inline?: boolean;
   className?: string;
   children: ReactNode;
+  hideToolbar?: boolean;
 }
 
 const CodeBlock: React.FC<CodeBlockProps> = ({
   inline,
   className,
   children,
+  hideToolbar,
   ...props
 }) => {
   const { isLoading } = useLoading();
@@ -163,6 +165,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
           className={className}
           copied={copied}
           onCopy={handleCopy}
+          hideToolbar={hideToolbar}
         >
           {children}
         </StandardCodeBlock>
