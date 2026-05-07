@@ -321,9 +321,12 @@ export function ChatMessage({
         }}
       >
         {/* Tool data cards — rendered inline before message text, matches
-            web's chat_bubble_container flow (flex column, gap from cards) */}
+            web's chat_bubble_container flow (flex column, gap from cards).
+            alignSelf: stretch so the wrapper fills the parent column —
+            ToolCallsSection's expanded Input/Output panels need to span the
+            full chat width, not collapse to icon+title content size. */}
         {message.toolData?.length ? (
-          <View style={{ paddingHorizontal: spacing.md }}>
+          <View style={{ paddingHorizontal: spacing.md, alignSelf: "stretch" }}>
             <ToolDataRenderer toolData={message.toolData} />
           </View>
         ) : null}

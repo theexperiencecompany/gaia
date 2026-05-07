@@ -1,15 +1,11 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  Add01Icon,
-  AppIcon,
-  ArrowLeft01Icon,
-  Folder02Icon,
-} from "@/components/icons";
+import { Add01Icon, AppIcon, Folder02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import { todoApi } from "../api/todo-api";
 import { useTodos } from "../hooks/use-todos";
 import type {
@@ -32,7 +28,6 @@ export function ProjectDetailView({
   project,
   allProjects,
 }: ProjectDetailViewProps) {
-  const router = useRouter();
   const { spacing, fontSize } = useResponsive();
   const insets = useSafeAreaInsets();
   const [showCreate, setShowCreate] = useState(false);
@@ -117,19 +112,7 @@ export function ProjectDetailView({
           gap: spacing.sm,
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-        </Pressable>
+        <BackButton />
 
         {/* Project icon */}
         <View

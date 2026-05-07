@@ -54,7 +54,7 @@ export function AppEmptyStateCard({
         {icon}
         <Card.Title className="text-center">{title}</Card.Title>
         {description ? (
-          <Card.Description className="text-center">
+          <Card.Description className="text-center text-zinc-400">
             {description}
           </Card.Description>
         ) : null}

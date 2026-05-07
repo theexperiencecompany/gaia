@@ -37,20 +37,20 @@ const SHEET_SNAP_POINTS: Array<string | number> = ["70%", "92%"];
 const SHEET_BACKGROUND = "#141414";
 const SHEET_HANDLE_COLOR = "rgba(255,255,255,0.25)";
 const SKELETON_ROW_COUNT = 6;
-const TAB_DOT_CONNECTED = "#00bbff";
-const TAB_DOT_DISCONNECTED = "#71717a";
 const ZINC_500 = "#71717a";
 const ZINC_400 = "#a1a1aa";
 const ZINC_200 = "#e4e4e7";
 const PRIMARY = "#00bbff";
-const AMBER_400 = "#fbbf24";
-const AMBER_TILE_BG = "rgba(245,158,11,0.15)";
-const PRIMARY_CHIP_BG = "rgba(0,187,255,0.10)";
-const PRIMARY_CHIP_BG_PRESSED = "rgba(0,187,255,0.20)";
+const RED_400 = "#f87171";
+const RED_TILE_BG = "rgba(239,68,68,0.15)";
+const PRIMARY_CHIP_BG = "rgba(0,187,255,0.15)";
+const PRIMARY_CHIP_BG_PRESSED = "rgba(0,187,255,0.25)";
 const ROW_BG_PRESSED = "rgba(63,63,70,0.4)";
-const SECTION_BG = "rgba(63,63,70,0.20)";
+const SECTION_BG = "#27272a";
 const SEARCH_BG = "rgba(255,255,255,0.05)";
 const HEADER_CLOSE_BG = "rgba(63,63,70,0.6)";
+const CHIP_ACTIVE_BG = "rgba(63,63,70,0.55)";
+const CHIP_INACTIVE_BG = "rgba(255,255,255,0.05)";
 
 interface EnhancedTool extends ToolInfo {
   isLocked: boolean;
@@ -273,7 +273,7 @@ function EmptyState({ hasQuery, spacing }: EmptyStateProps) {
             fontWeight: "600",
           }}
         >
-          {hasQuery ? "No matching tools" : "No tools available"}
+          {hasQuery ? "No tools found" : "No tools available"}
         </Text>
         <Text
           style={{
@@ -283,7 +283,7 @@ function EmptyState({ hasQuery, spacing }: EmptyStateProps) {
           }}
         >
           {hasQuery
-            ? "Try a different search or category."
+            ? "Try a different search term."
             : "Connect an integration to unlock more tools."}
         </Text>
       </View>
@@ -443,8 +443,6 @@ export const SlashCommandSheet = forwardRef<
       void haptics.light();
       setConnectingCategory(integrationId);
       try {
-        // useIntegrations.connect already fires success/warning haptics on its
-        // own; no need to duplicate here.
         await connect(integrationId);
       } finally {
         setConnectingCategory(null);
@@ -474,19 +472,19 @@ export const SlashCommandSheet = forwardRef<
             style={({ pressed }) => ({
               flexDirection: "row",
               alignItems: "center",
-              paddingHorizontal: spacing.sm + 4,
-              paddingVertical: spacing.sm + 2,
+              paddingHorizontal: 8,
+              paddingVertical: 8,
               marginBottom: 2,
               borderRadius: 12,
               backgroundColor: pressed ? ROW_BG_PRESSED : "transparent",
             })}
             android_ripple={{ color: "rgba(255,255,255,0.06)" }}
           >
-            <View style={{ marginRight: spacing.sm + 2 }}>
+            <View style={{ marginRight: 8 }}>
               {getToolCategoryIcon(
                 tool.category,
                 {
-                  size: 18,
+                  size: 20,
                   showBackground: true,
                   pulsating: false,
                 },
@@ -506,33 +504,6 @@ export const SlashCommandSheet = forwardRef<
                 {formatToolName(tool.name)}
               </Text>
             </View>
-
-            {selectedCategory === "all" && (
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: "rgba(63,63,70,0.9)",
-                  backgroundColor: "rgba(39,39,42,0.9)",
-                  paddingHorizontal: spacing.sm,
-                  paddingVertical: 2,
-                  borderRadius: 999,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: ZINC_400,
-                    fontWeight: "500",
-                  }}
-                  numberOfLines={1}
-                >
-                  {formatToolName(
-                    categoryDisplayMap[tool.category]?.displayName ||
-                      tool.category,
-                  )}
-                </Text>
-              </View>
-            )}
           </Pressable>
         );
       }
@@ -545,8 +516,8 @@ export const SlashCommandSheet = forwardRef<
               marginTop: spacing.md,
               marginBottom: spacing.xs,
               backgroundColor: SECTION_BG,
-              borderRadius: 16,
-              padding: spacing.sm + 4,
+              borderRadius: 12,
+              padding: 8,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
@@ -556,7 +527,7 @@ export const SlashCommandSheet = forwardRef<
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: spacing.sm + 2,
+                gap: 12,
                 flex: 1,
               }}
             >
@@ -564,20 +535,20 @@ export const SlashCommandSheet = forwardRef<
                 style={{
                   width: 32,
                   height: 32,
-                  borderRadius: 10,
-                  backgroundColor: AMBER_TILE_BG,
+                  borderRadius: 8,
+                  backgroundColor: RED_TILE_BG,
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <AppIcon icon={ShieldUserIcon} size={16} color={AMBER_400} />
+                <AppIcon icon={ShieldUserIcon} size={16} color={RED_400} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
                     fontSize: fontSize.sm,
                     color: ZINC_200,
-                    fontWeight: "600",
+                    fontWeight: "500",
                   }}
                   numberOfLines={1}
                 >
@@ -604,8 +575,8 @@ export const SlashCommandSheet = forwardRef<
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 6,
-                  paddingHorizontal: spacing.sm + 2,
-                  paddingVertical: spacing.xs + 2,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
                   borderRadius: 999,
                   opacity: isConnecting ? 0.85 : 1,
                   backgroundColor: pressed
@@ -627,7 +598,7 @@ export const SlashCommandSheet = forwardRef<
                 )}
                 <Text
                   style={{
-                    fontSize: fontSize.xs,
+                    fontSize: 13,
                     fontWeight: "600",
                     color: PRIMARY,
                   }}
@@ -640,7 +611,9 @@ export const SlashCommandSheet = forwardRef<
         );
       }
 
-      // locked tool
+      // locked tool — web mirrors LockedToolItem.tsx: blurred icon + name +
+      // shield + category pill. We keep the pill on locked rows (helps users
+      // know which integration to connect) but drop it on unlocked rows.
       const tool = item.tool;
       return (
         <Pressable
@@ -648,19 +621,19 @@ export const SlashCommandSheet = forwardRef<
           style={{
             flexDirection: "row",
             alignItems: "center",
-            paddingHorizontal: spacing.sm + 4,
-            paddingVertical: spacing.sm + 2,
+            paddingHorizontal: 8,
+            paddingVertical: 8,
             marginBottom: 2,
             borderRadius: 12,
             opacity: 0.55,
           }}
           android_ripple={{ color: "rgba(255,255,255,0.05)" }}
         >
-          <View style={{ marginRight: spacing.sm + 2 }}>
+          <View style={{ marginRight: 8 }}>
             {getToolCategoryIcon(
               tool.category,
               {
-                size: 18,
+                size: 20,
                 showBackground: true,
               },
               tool.icon_url,
@@ -707,14 +680,7 @@ export const SlashCommandSheet = forwardRef<
         </Pressable>
       );
     },
-    [
-      handleSelect,
-      handleConnect,
-      spacing,
-      fontSize,
-      selectedCategory,
-      categoryDisplayMap,
-    ],
+    [handleSelect, handleConnect, spacing, fontSize],
   );
 
   const keyExtractor = useCallback((item: ListItem, index: number) => {
@@ -733,6 +699,10 @@ export const SlashCommandSheet = forwardRef<
           snapPoints={SHEET_SNAP_POINTS}
           enableDynamicSizing={false}
           enablePanDownToClose
+          // Disable content-pan so the sheet only dismisses via the handle or
+          // backdrop. This frees the chip-strip ScrollView to handle horizontal
+          // gestures without competing with the sheet's vertical pan-gesture.
+          enableContentPanningGesture={false}
           backgroundStyle={{ backgroundColor: SHEET_BACKGROUND }}
           handleIndicatorStyle={{
             backgroundColor: SHEET_HANDLE_COLOR,
@@ -813,31 +783,26 @@ export const SlashCommandSheet = forwardRef<
             </View>
           </View>
 
-          {/* Category tabs */}
-          <View>
+          {/* Category chip strip — regular RN ScrollView. The sheet itself
+              has enableContentPanningGesture disabled so it only dismisses via
+              handle or backdrop. With no parent gesture competing, horizontal
+              scroll inside the strip works as expected. */}
+          <View style={{ height: 44 }}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              directionalLockEnabled
+              overScrollMode="never"
               contentContainerStyle={{
                 paddingHorizontal: spacing.md,
+                paddingVertical: 4,
                 gap: 6,
-                paddingVertical: spacing.xs,
+                alignItems: "center",
               }}
             >
               {allCategories.map((category) => {
                 const isActive = selectedCategory === category;
-                const integration =
-                  category === "all"
-                    ? undefined
-                    : findIntegration(integrations, category);
-                const isConnected = integration?.status === "connected";
-                const requiresConnection =
-                  category !== "all" &&
-                  enhancedTools.some(
-                    (tool) =>
-                      tool.category === category && tool.requires_integration,
-                  );
-
                 return (
                   <Pressable
                     key={category}
@@ -846,14 +811,14 @@ export const SlashCommandSheet = forwardRef<
                       flexDirection: "row",
                       alignItems: "center",
                       gap: 6,
-                      paddingHorizontal: spacing.sm + 4,
-                      paddingVertical: moderateScale(7, 0.5),
-                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 999,
                       backgroundColor: isActive
-                        ? "rgba(63,63,70,0.55)"
+                        ? CHIP_ACTIVE_BG
                         : pressed
-                          ? "rgba(255,255,255,0.06)"
-                          : "transparent",
+                          ? "rgba(255,255,255,0.08)"
+                          : CHIP_INACTIVE_BG,
                     })}
                   >
                     {category === "all" ? (
@@ -868,7 +833,7 @@ export const SlashCommandSheet = forwardRef<
                           category,
                           {
                             size: 14,
-                            showBackground: true,
+                            showBackground: false,
                           },
                           categoryDisplayMap[category]?.iconUrl,
                         )}
@@ -876,7 +841,7 @@ export const SlashCommandSheet = forwardRef<
                     )}
                     <Text
                       style={{
-                        fontSize: fontSize.xs,
+                        fontSize: 13,
                         fontWeight: "500",
                         color: isActive ? "#ffffff" : ZINC_400,
                       }}
@@ -889,26 +854,6 @@ export const SlashCommandSheet = forwardRef<
                               category,
                           )}
                     </Text>
-                    {requiresConnection && isConnected && (
-                      <View
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: 3,
-                          backgroundColor: TAB_DOT_CONNECTED,
-                        }}
-                      />
-                    )}
-                    {requiresConnection && !isConnected && (
-                      <View
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: 3,
-                          backgroundColor: TAB_DOT_DISCONNECTED,
-                        }}
-                      />
-                    )}
                   </Pressable>
                 );
               })}

@@ -333,6 +333,10 @@ function ToolCallItem({
         // Web detail outer:
         //   mt-2 space-y-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 mb-3 w-fit
         //   space-y-2 = 8px gap between Input/Output blocks
+        // Mobile: stretch full column width (was alignSelf: flex-start which
+        // collapsed the panel to its content) so the Input/Output text has
+        // breathing room on a phone screen. Web's max-w-140 (560px) cap is
+        // applied at the parent ToolCallsSection wrapper.
         <View
           style={{
             marginTop: 8,
@@ -341,8 +345,7 @@ function ToolCallItem({
             borderRadius: 12,
             padding: 12,
             gap: 8,
-            alignSelf: "flex-start",
-            maxWidth: "100%",
+            alignSelf: "stretch",
           }}
         >
           {hasInputs && (
@@ -524,8 +527,11 @@ export function ToolCallsSection({ tool_calls_data }: ToolCallsSectionProps) {
   const label = `Used ${tool_calls_data.length} tool${tool_calls_data.length > 1 ? "s" : ""}`;
 
   return (
-    // Web: w-fit max-w-140 (max-w-140 = 35rem = 560px). NO horizontal padding.
-    <View style={{ width: "100%", maxWidth: 560 }}>
+    // Web: w-fit max-w-140 (35rem = 560 CSS px). On a 390-CSS-px iPhone that's
+    // almost the entire viewport, so on mobile we drop the cap entirely and
+    // stretch to fill the chat column — anything narrower made the Input /
+    // Output text wrap unreadably.
+    <View style={{ alignSelf: "stretch", width: "100%" }}>
       <Pressable
         onPress={() => setIsExpanded((v) => !v)}
         style={({ pressed }) => ({

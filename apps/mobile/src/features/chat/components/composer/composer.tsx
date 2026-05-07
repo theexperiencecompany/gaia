@@ -1,5 +1,4 @@
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
 import { PressableFeedback } from "heroui-native";
 import { useCallback, useRef, useState } from "react";
 import { Keyboard, Pressable, TextInput, View } from "react-native";
@@ -112,7 +111,6 @@ export function Composer({
   selectedCalendarEvent,
   onRemoveCalendarEvent,
 }: ComposerProps) {
-  const router = useRouter();
   const [internalMessage, setInternalMessage] = useState("");
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const inputRef = useRef<TextInput>(null);
@@ -516,7 +514,7 @@ export function Composer({
               onPress={() => {
                 haptics.light();
                 dismissKeyboard();
-                router.push("/(app)/integrations");
+                slashCommandRef.current?.open();
               }}
               hitSlop={6}
               style={{
@@ -529,6 +527,7 @@ export function Composer({
                 color: "rgba(255,255,255,0.08)",
                 radius: 16,
               }}
+              accessibilityLabel="Tools"
             >
               <AppIcon icon={Wrench01Icon} size={20} color="#a1a1aa" />
             </Pressable>

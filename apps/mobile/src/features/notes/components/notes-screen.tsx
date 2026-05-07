@@ -1,15 +1,11 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { useCallback, useRef } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  Add01Icon,
-  AppIcon,
-  ArrowLeft01Icon,
-  Search01Icon,
-} from "@/components/icons";
+import { Add01Icon, AppIcon, Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import type { Note } from "../api/notes-api";
 import { useNotes } from "../hooks/use-notes";
 import type { NoteEditorSheetRef } from "./note-editor-sheet";
@@ -17,7 +13,6 @@ import { NoteEditorSheet } from "./note-editor-sheet";
 import { NotesList } from "./notes-list";
 
 export function NotesScreen() {
-  const router = useRouter();
   const { spacing, fontSize } = useResponsive();
   const insets = useSafeAreaInsets();
   const editorSheetRef = useRef<NoteEditorSheetRef>(null);
@@ -84,19 +79,7 @@ export function NotesScreen() {
           alignItems: "center",
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-        </Pressable>
+        <BackButton />
 
         <Text
           style={{

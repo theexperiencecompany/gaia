@@ -8,7 +8,6 @@ import {
 import {
   Analytics01Icon,
   AppIcon,
-  ArrowLeft01Icon,
   ArrowRight01Icon,
   BrainIcon,
   ConnectIcon,
@@ -29,6 +28,7 @@ import { ProfileSection } from "@/features/settings/components/sections/profile-
 import { SubscriptionSection } from "@/features/settings/components/sections/subscription-section";
 import { UsageSection } from "@/features/settings/components/sections/usage-section";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import { SettingsGroup, SettingsRow } from "./settings-row";
 
 export type SettingsSection =
@@ -85,22 +85,7 @@ function SettingsHeader({ title, onBack }: SettingsHeaderProps) {
         gap: spacing.sm,
       }}
     >
-      <Pressable
-        onPress={onBack}
-        hitSlop={8}
-        style={({ pressed }) => ({
-          width: 34,
-          height: 34,
-          borderRadius: 17,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: pressed
-            ? "rgba(255,255,255,0.08)"
-            : "rgba(255,255,255,0.05)",
-        })}
-      >
-        <AppIcon icon={ArrowLeft01Icon} size={18} color="#ffffff" />
-      </Pressable>
+      <BackButton onPress={onBack} hideWhenCannotGoBack={false} />
       <Text
         style={{
           fontSize: fontSize.lg,

@@ -1,11 +1,10 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Add01Icon,
   AppIcon,
-  ArrowLeft01Icon,
   Cancel01Icon,
   CheckmarkSquare03Icon,
   Delete02Icon,
@@ -16,6 +15,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import { todoApi } from "../api/todo-api";
 import { useProjects } from "../hooks/use-projects";
 import { useTodos } from "../hooks/use-todos";
@@ -45,7 +45,6 @@ const BULK_PRIORITY_OPTIONS: { key: Priority; label: string; emoji: string }[] =
 type BulkAction = "priority" | "project" | null;
 
 export function TodoScreen() {
-  const router = useRouter();
   const { spacing, fontSize } = useResponsive();
   const insets = useSafeAreaInsets();
   const [showCreate, setShowCreate] = useState(false);
@@ -314,19 +313,7 @@ export function TodoScreen() {
           </>
         ) : (
           <>
-            <Pressable
-              onPress={() => router.back()}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 999,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(255,255,255,0.05)",
-              }}
-            >
-              <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-            </Pressable>
+            <BackButton />
 
             <Text
               style={{

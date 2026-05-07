@@ -5,7 +5,6 @@ import { Modal, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AppIcon,
-  ArrowLeft01Icon,
   Cancel01Icon,
   CheckmarkBadge01Icon,
   Delete02Icon,
@@ -31,13 +30,13 @@ import type {
 } from "@/features/notifications/types/inapp-notification-types";
 import { getNotificationRoute } from "@/features/notifications/utils/notification-routes";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 
-type NotificationsTab = "unread" | "all" | "archived";
+type NotificationsTab = "unread" | "all";
 
 const TABS: { key: NotificationsTab; label: string }[] = [
   { key: "unread", label: "Unread" },
   { key: "all", label: "All" },
-  { key: "archived", label: "Archived" },
 ];
 
 export default function NotificationsScreen() {
@@ -55,7 +54,6 @@ export default function NotificationsScreen() {
   const {
     unreadNotifications,
     allNotifications,
-    archivedNotifications,
     isLoading,
     isRefreshing,
     error,
@@ -89,11 +87,7 @@ export default function NotificationsScreen() {
   });
 
   const notifications =
-    activeTab === "unread"
-      ? unreadNotifications
-      : activeTab === "archived"
-        ? archivedNotifications
-        : allNotifications;
+    activeTab === "unread" ? unreadNotifications : allNotifications;
 
   const handleMarkAllAsRead = async () => {
     await markAllAsRead(unreadNotifications.map((item) => item.id));
@@ -165,7 +159,6 @@ export default function NotificationsScreen() {
   const tabCounts: Record<NotificationsTab, number> = {
     unread: unreadNotifications.length,
     all: allNotifications.length,
-    archived: archivedNotifications.length,
   };
 
   return (
@@ -242,20 +235,7 @@ export default function NotificationsScreen() {
             </>
           ) : (
             <>
-              <Pressable
-                onPress={() => router.back()}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 999,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                }}
-                hitSlop={6}
-              >
-                <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-              </Pressable>
+              <BackButton />
 
               <View
                 style={{
@@ -380,18 +360,12 @@ export default function NotificationsScreen() {
           isRefreshing={isRefreshing}
           error={error}
           emptyTitle={
-            activeTab === "unread"
-              ? "You're all caught up"
-              : activeTab === "archived"
-                ? "Archive is empty"
-                : "Nothing here yet"
+            activeTab === "unread" ? "You're all caught up" : "Nothing here yet"
           }
           emptyDescription={
             activeTab === "unread"
               ? "Take a breath."
-              : activeTab === "archived"
-                ? "Notifications you archive will appear here."
-                : "GAIA will surface things that need your attention."
+              : "GAIA will surface things that need your attention."
           }
           emptyActionLabel="Notification preferences"
           onEmptyAction={() => prefsSheetRef.current?.open()}
@@ -401,14 +375,10 @@ export default function NotificationsScreen() {
           onMarkAsRead={(notificationId: string) => {
             void markAsRead(notificationId);
           }}
-          onArchive={
-            activeTab !== "archived"
-              ? (notificationId: string) => {
-                  void archiveNotification(notificationId);
-                }
-              : undefined
-          }
-          onSnooze={activeTab !== "archived" ? handleSnooze : undefined}
+          onArchive={(notificationId: string) => {
+            void archiveNotification(notificationId);
+          }}
+          onSnooze={handleSnooze}
           onActionPress={handleActionPress}
           isMarkingAsRead={isMarkingAsRead}
           isActionLoading={isActionLoading}
@@ -435,63 +405,59 @@ export default function NotificationsScreen() {
             gap: spacing.sm,
           }}
         >
-          {activeTab !== "archived" && (
-            <Pressable
-              onPress={() => {
-                void handleBulkMarkRead();
-              }}
+          <Pressable
+            onPress={() => {
+              void handleBulkMarkRead();
+            }}
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              backgroundColor: "rgba(0,187,255,0.12)",
+              borderRadius: 10,
+              paddingVertical: spacing.sm + 2,
+            }}
+          >
+            <AppIcon icon={Tick02Icon} size={16} color="#00bbff" />
+            <Text
               style={{
-                flex: 1,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                backgroundColor: "rgba(0,187,255,0.12)",
-                borderRadius: 10,
-                paddingVertical: spacing.sm + 2,
+                fontSize: fontSize.xs,
+                color: "#00bbff",
+                fontWeight: "500",
               }}
             >
-              <AppIcon icon={Tick02Icon} size={16} color="#00bbff" />
-              <Text
-                style={{
-                  fontSize: fontSize.xs,
-                  color: "#00bbff",
-                  fontWeight: "500",
-                }}
-              >
-                Mark Read
-              </Text>
-            </Pressable>
-          )}
+              Mark Read
+            </Text>
+          </Pressable>
 
-          {activeTab !== "archived" && (
-            <Pressable
-              onPress={() => {
-                void handleBulkArchive();
-              }}
+          <Pressable
+            onPress={() => {
+              void handleBulkArchive();
+            }}
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              backgroundColor: "rgba(251,191,36,0.1)",
+              borderRadius: 10,
+              paddingVertical: spacing.sm + 2,
+            }}
+          >
+            <AppIcon icon={FolderIcon} size={16} color="#fbbf24" />
+            <Text
               style={{
-                flex: 1,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                backgroundColor: "rgba(251,191,36,0.1)",
-                borderRadius: 10,
-                paddingVertical: spacing.sm + 2,
+                fontSize: fontSize.xs,
+                color: "#fbbf24",
+                fontWeight: "500",
               }}
             >
-              <AppIcon icon={FolderIcon} size={16} color="#fbbf24" />
-              <Text
-                style={{
-                  fontSize: fontSize.xs,
-                  color: "#fbbf24",
-                  fontWeight: "500",
-                }}
-              >
-                Archive
-              </Text>
-            </Pressable>
-          )}
+              Archive
+            </Text>
+          </Pressable>
 
           <Pressable
             onPress={() => {

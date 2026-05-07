@@ -1,5 +1,4 @@
-import { useRouter } from "expo-router";
-import { Card, Chip, Skeleton, SkeletonGroup } from "heroui-native";
+import { Skeleton, SkeletonGroup } from "heroui-native";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -12,15 +11,15 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AppIcon,
-  ArrowLeft01Icon,
+  ArrowRight01Icon,
   ConnectIcon,
   PlusSignIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { AppEmptyStateCard } from "@/shared/components/ui/app-empty-state-card";
-import { AppFilterChipGroup } from "@/shared/components/ui/app-filter-chip-group";
 import { AppSearchInput } from "@/shared/components/ui/app-search-input";
+import { BackButton } from "@/shared/components/ui/back-button";
 import { deleteCustomIntegration } from "../api/integrations-api";
 import { getCategoryLabel, sortCategories } from "../constants/categories";
 import { useIntegrations } from "../hooks/useIntegrations";
@@ -70,31 +69,40 @@ function LoadingState() {
   const { spacing } = useResponsive();
 
   return (
-    <View
-      style={{
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.xl * 2,
-      }}
-    >
-      <SkeletonGroup>
-        <Card
-          variant="secondary"
-          animation="disable-all"
-          className="rounded-2xl"
-        >
-          <Card.Body className="items-center gap-4 px-6 py-10">
-            <Skeleton className="h-4 w-40 rounded-xl" />
-            <Skeleton className="h-4 w-56 rounded-xl" />
-            <Skeleton className="h-4 w-32 rounded-xl" />
-          </Card.Body>
-        </Card>
-      </SkeletonGroup>
-    </View>
+    <SkeletonGroup>
+      <View
+        style={{
+          paddingHorizontal: spacing.md,
+          paddingTop: spacing.md,
+          gap: spacing.sm + 2,
+        }}
+      >
+        {Array.from({ length: 6 }).map((_, index) => (
+          <View
+            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+            key={index}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm + 2,
+              gap: spacing.sm + 4,
+            }}
+          >
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <View style={{ flex: 1, gap: 6 }}>
+              <Skeleton className="h-3.5 w-32 rounded-xl" />
+              <Skeleton className="h-3 w-48 rounded-xl" />
+            </View>
+            <Skeleton className="h-7 w-20 rounded-full" />
+          </View>
+        ))}
+      </View>
+    </SkeletonGroup>
   );
 }
 
 export function IntegrationsScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { spacing, fontSize } = useResponsive();
 
@@ -151,13 +159,6 @@ export function IntegrationsScreen() {
     return results;
   }, [integrations, searchQuery, selectedCategory]);
 
-  const connectedCount = useMemo(
-    () =>
-      integrations.filter((integration) => integration.status === "connected")
-        .length,
-    [integrations],
-  );
-
   const listItems = useMemo<ListItem[]>(() => {
     if (selectedCategory !== "all") {
       return filteredIntegrations.map((integration) => ({
@@ -204,6 +205,7 @@ export function IntegrationsScreen() {
 
   const handleConnect = useCallback(
     async (integration: Integration) => {
+      if (pendingId) return;
       const authType = integration.authType ?? "oauth";
       if (authType === "bearer") {
         bearerSheetRef.current?.open({
@@ -222,7 +224,7 @@ export function IntegrationsScreen() {
         Alert.alert("Error", result.error ?? "Failed to connect integration.");
       }
     },
-    [connect],
+    [connect, pendingId],
   );
 
   const handleDisconnect = useCallback(
@@ -235,31 +237,6 @@ export function IntegrationsScreen() {
       }
     },
     [disconnect],
-  );
-
-  const handleRowAction = useCallback(
-    (integration: Integration) => {
-      if (pendingId) return;
-      if (integration.status === "connected") {
-        Alert.alert(
-          "Disconnect Integration",
-          `Disconnect ${integration.name}?`,
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Disconnect",
-              style: "destructive",
-              onPress: () => {
-                void handleDisconnect(integration);
-              },
-            },
-          ],
-        );
-      } else {
-        void handleConnect(integration);
-      }
-    },
-    [pendingId, handleConnect, handleDisconnect],
   );
 
   const openDetailSheet = useCallback((integration: Integration) => {
@@ -301,7 +278,7 @@ export function IntegrationsScreen() {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              gap: 8,
+              gap: 10,
               paddingHorizontal: spacing.md,
               paddingTop: spacing.lg,
               paddingBottom: spacing.sm,
@@ -309,29 +286,32 @@ export function IntegrationsScreen() {
           >
             <Text
               className="text-zinc-100"
-              style={{ fontSize: fontSize.sm, fontWeight: "600" }}
+              style={{ fontSize: fontSize.base, fontWeight: "600" }}
             >
               {getCategoryLabel(item.category)}
             </Text>
-            <Text className="text-zinc-500" style={{ fontSize: fontSize.xs }}>
-              {item.count}
-            </Text>
+            <View
+              className="rounded-full bg-white/[0.06] px-2 py-0.5"
+              style={{ minWidth: 22, alignItems: "center" }}
+            >
+              <Text
+                className="text-zinc-400"
+                style={{ fontSize: fontSize.xs - 1, fontWeight: "600" }}
+              >
+                {item.count}
+              </Text>
+            </View>
           </View>
         );
       }
 
       return (
-        <View
-          style={{
-            paddingHorizontal: spacing.md,
-            marginBottom: spacing.sm,
-          }}
-        >
+        <View style={{ paddingHorizontal: spacing.sm }}>
           <IntegrationRow
             integration={item.integration}
             isPending={pendingId === item.integration.id}
             onPressRow={openDetailSheet}
-            onPressAction={handleRowAction}
+            onPressConnect={handleConnect}
           />
         </View>
       );
@@ -339,59 +319,123 @@ export function IntegrationsScreen() {
     [
       pendingId,
       openDetailSheet,
-      handleRowAction,
-      spacing.md,
+      handleConnect,
       spacing.sm,
+      spacing.md,
       spacing.lg,
-      fontSize.sm,
+      fontSize.base,
       fontSize.xs,
     ],
   );
 
   const ListHeader = useCallback(
     () => (
-      <View style={{ gap: spacing.md, paddingBottom: spacing.md }}>
-        <View style={{ paddingHorizontal: spacing.md }}>
-          <Card
-            variant="secondary"
-            animation="disable-all"
-            className="rounded-2xl"
+      <View style={{ paddingBottom: spacing.md, gap: spacing.md }}>
+        {/* Marketplace banner — mirrors web's "Explore the Marketplace" card */}
+        <View
+          style={{
+            marginHorizontal: spacing.md,
+            backgroundColor: "rgba(255,255,255,0.04)",
+            borderRadius: 16,
+            paddingVertical: spacing.md,
+            paddingHorizontal: spacing.md,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+          }}
+        >
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                fontWeight: "600",
+                color: "#f4f4f5",
+              }}
+            >
+              Explore the Marketplace
+            </Text>
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: "#a1a1aa",
+              }}
+              numberOfLines={2}
+            >
+              Discover community integrations
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setTab("community")}
+            accessibilityRole="button"
+            accessibilityLabel="Browse marketplace"
+            style={({ pressed }) => ({
+              paddingHorizontal: 16,
+              height: 40,
+              borderRadius: 999,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              backgroundColor: pressed ? "#0099d4" : "#00bbff",
+            })}
           >
-            <Card.Body className="flex-row items-center justify-between px-4 py-3">
-              <Text className="text-zinc-300" style={{ fontSize: fontSize.xs }}>
-                {connectedCount} of {integrations.length} connected
-              </Text>
-              {selectedCategory !== "all" ? (
-                <Chip
-                  size="sm"
-                  variant="soft"
-                  color="accent"
-                  animation="disable-all"
-                >
-                  <Chip.Label>{getCategoryLabel(selectedCategory)}</Chip.Label>
-                </Chip>
-              ) : null}
-            </Card.Body>
-          </Card>
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                fontWeight: "600",
+                color: "#000",
+              }}
+            >
+              Browse
+            </Text>
+            <AppIcon icon={ArrowRight01Icon} size={14} color="#000" />
+          </Pressable>
         </View>
 
         {availableCategories.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: spacing.md }}
+            contentContainerStyle={{
+              paddingHorizontal: spacing.md,
+              gap: 8,
+              alignItems: "center",
+            }}
           >
-            <AppFilterChipGroup
-              options={categoryOptions}
-              selectedKey={selectedCategory}
-              onSelect={(category) => {
-                setSelectedCategory(category ?? "all");
-              }}
-              className="flex-nowrap gap-2"
-              selectedVariant="primary"
-              unselectedVariant="tertiary"
-              chipClassName="bg-white/10"
-            />
+            {categoryOptions.map((option) => {
+              const isActive = option.key === selectedCategory;
+              return (
+                <Pressable
+                  key={option.key}
+                  onPress={() => setSelectedCategory(option.key)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
+                  style={({ pressed }) => ({
+                    paddingHorizontal: 14,
+                    height: 32,
+                    borderRadius: 999,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: isActive
+                      ? pressed
+                        ? "#0099d4"
+                        : "#00bbff"
+                      : pressed
+                        ? "rgba(63,63,70,0.6)"
+                        : "rgba(63,63,70,0.4)",
+                  })}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs,
+                      fontWeight: "600",
+                      color: isActive ? "#000000" : "#d4d4d8",
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </ScrollView>
         ) : null}
       </View>
@@ -399,11 +443,11 @@ export function IntegrationsScreen() {
     [
       availableCategories.length,
       categoryOptions,
-      connectedCount,
-      fontSize.xs,
-      integrations.length,
       selectedCategory,
       spacing.md,
+      spacing.sm,
+      fontSize.sm,
+      fontSize.xs,
     ],
   );
 
@@ -426,17 +470,10 @@ export function IntegrationsScreen() {
             gap: spacing.sm,
           }}
         >
-          {router.canGoBack() ? (
-            <Pressable
-              onPress={() => router.back()}
-              hitSlop={8}
-              className="h-9 w-9 items-center justify-center rounded-full active:bg-white/[0.06]"
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-            </Pressable>
-          ) : null}
+          <BackButton
+            onPress={tab === "community" ? () => setTab("all") : undefined}
+            hideWhenCannotGoBack={tab !== "community"}
+          />
 
           <Text
             className="flex-1 text-white"
@@ -447,21 +484,12 @@ export function IntegrationsScreen() {
 
           <Pressable
             onPress={() => createSheetRef.current?.open()}
-            hitSlop={6}
-            className="flex-row items-center gap-1 rounded-full bg-primary px-3 py-1.5"
+            hitSlop={8}
+            className="h-9 w-9 items-center justify-center rounded-full bg-primary/15 active:bg-primary/25"
             accessibilityRole="button"
-            accessibilityLabel="Add MCP integration"
+            accessibilityLabel="Add custom integration"
           >
-            <AppIcon icon={PlusSignIcon} size={14} color="#000" />
-            <Text
-              style={{
-                color: "#000",
-                fontSize: fontSize.xs,
-                fontWeight: "600",
-              }}
-            >
-              Add MCP
-            </Text>
+            <AppIcon icon={PlusSignIcon} size={18} color="#00bbff" />
           </Pressable>
         </View>
 
@@ -474,39 +502,10 @@ export function IntegrationsScreen() {
             inputClassName="bg-white/5"
           />
         </View>
-
-        <View
-          style={{
-            paddingHorizontal: spacing.md,
-            flexDirection: "row",
-            gap: spacing.sm,
-          }}
-        >
-          <Chip
-            size="sm"
-            variant={tab === "all" ? "primary" : "tertiary"}
-            color={tab === "all" ? "accent" : "default"}
-            onPress={() => setTab("all")}
-            animation="disable-all"
-            className={tab === "all" ? undefined : "bg-white/10"}
-          >
-            <Chip.Label>All</Chip.Label>
-          </Chip>
-          <Chip
-            size="sm"
-            variant={tab === "community" ? "primary" : "tertiary"}
-            color={tab === "community" ? "accent" : "default"}
-            onPress={() => setTab("community")}
-            animation="disable-all"
-            className={tab === "community" ? undefined : "bg-white/10"}
-          >
-            <Chip.Label>Community</Chip.Label>
-          </Chip>
-        </View>
       </View>
 
       {tab === "community" ? (
-        <CommunityIntegrationsTab />
+        <CommunityIntegrationsTab search={searchQuery} />
       ) : (
         <FlatList
           data={listItems}

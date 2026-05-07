@@ -306,9 +306,9 @@ export function DataCardView(props: z.infer<typeof dataCardSchema>) {
     <Card>
       <SectionTitle>{props.title}</SectionTitle>
       <View className="gap-2">
-        {props.fields.map((field) => (
+        {props.fields.map((field, index) => (
           <View
-            key={field.label}
+            key={`${field.label}-${index}`}
             className="rounded-2xl bg-zinc-900 p-3 flex-row items-center justify-between gap-4"
           >
             <SubtleText>{field.label}</SubtleText>

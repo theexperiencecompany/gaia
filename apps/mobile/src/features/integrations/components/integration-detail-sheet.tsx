@@ -7,25 +7,13 @@ import {
   useState,
 } from "react";
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
-import {
-  AppIcon,
-  Delete02Icon,
-  Edit02Icon,
-  Wrench01Icon,
-} from "@/components/icons";
+import { AppIcon, Delete02Icon, Edit02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
-import {
-  type TestConnectionResponse,
-  testIntegrationConnection,
-} from "../api/integrations-api";
 import type { Integration } from "../types";
 import { IntegrationDetailHeader } from "./IntegrationDetailHeader";
 import { IntegrationToolsPanel } from "./IntegrationToolsPanel";
-import { TestConnectionResult } from "./TestConnectionResult";
-
-const DESCRIPTION_PREVIEW_LIMIT = 120;
 
 export interface IntegrationDetailSheetRef {
   open: (integration: Integration) => void;
@@ -39,7 +27,6 @@ interface IntegrationDetailSheetProps {
   onDelete?: (integration: Integration) => void | Promise<void>;
   onPublish?: (integration: Integration) => void | Promise<void>;
   onUnpublish?: (integration: Integration) => void | Promise<void>;
-  onTest?: (integration: Integration) => void;
 }
 
 export const IntegrationDetailSheet = forwardRef<
@@ -51,26 +38,16 @@ export const IntegrationDetailSheet = forwardRef<
   const [isOpen, setIsOpen] = useState(false);
   const [integration, setIntegration] = useState<Integration | null>(null);
 
-  const [descExpanded, setDescExpanded] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<TestConnectionResponse | null>(
-    null,
-  );
-  const [testError, setTestError] = useState<string | null>(null);
 
   const snapPoints = useMemo(() => ["60%", "90%"], []);
 
   const reset = useCallback(() => {
-    setDescExpanded(false);
     setIsConnecting(false);
     setIsDisconnecting(false);
     setIsDeleting(false);
-    setIsTesting(false);
-    setTestResult(null);
-    setTestError(null);
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -117,21 +94,6 @@ export const IntegrationDetailSheet = forwardRef<
     );
   }, [integration, onDisconnect]);
 
-  const handleTest = useCallback(async () => {
-    if (!integration) return;
-    setIsTesting(true);
-    setTestResult(null);
-    setTestError(null);
-    try {
-      const result = await testIntegrationConnection(integration.id);
-      setTestResult(result);
-    } catch (err) {
-      setTestError(err instanceof Error ? err.message : "Test failed");
-    } finally {
-      setIsTesting(false);
-    }
-  }, [integration]);
-
   const handleEdit = useCallback(() => {
     if (!integration || !onEdit) return;
     onEdit(integration);
@@ -168,14 +130,9 @@ export const IntegrationDetailSheet = forwardRef<
 
   const isConnected = integration.status === "connected";
   const isError = integration.status === "error";
+  const showRetry = integration.status === "created";
   const isCustom = integration.source === "custom";
   const tools = integration.tools ?? [];
-  const descriptionIsLong =
-    integration.description.length > DESCRIPTION_PREVIEW_LIMIT;
-  const displayedDescription =
-    descExpanded || !descriptionIsLong
-      ? integration.description
-      : `${integration.description.slice(0, DESCRIPTION_PREVIEW_LIMIT)}...`;
 
   return (
     <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
@@ -190,224 +147,161 @@ export const IntegrationDetailSheet = forwardRef<
         >
           <BottomSheetScrollView
             contentContainerStyle={{
-              padding: spacing.lg,
-              gap: spacing.lg,
+              paddingHorizontal: spacing.lg,
+              paddingTop: spacing.md,
               paddingBottom: spacing.xl * 2,
+              gap: spacing.md,
             }}
           >
             <IntegrationDetailHeader integration={integration} />
 
             {integration.description ? (
-              <View style={{ gap: spacing.xs }}>
-                <Text
-                  className="text-zinc-400"
-                  style={{ fontSize: fontSize.sm, lineHeight: 20 }}
-                >
-                  {displayedDescription}
-                </Text>
-                {descriptionIsLong ? (
-                  <Pressable
-                    onPress={() => setDescExpanded((v) => !v)}
-                    hitSlop={8}
-                  >
-                    <Text
-                      className="text-primary"
-                      style={{ fontSize: fontSize.xs, fontWeight: "500" }}
-                    >
-                      {descExpanded ? "Show less" : "Show more"}
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
+              <Text
+                className="text-zinc-400"
+                style={{
+                  fontSize: fontSize.sm,
+                  lineHeight: 20,
+                  fontWeight: "300",
+                }}
+              >
+                {integration.description}
+              </Text>
             ) : null}
 
             {/* Primary connect / disconnect action */}
-            <View style={{ gap: spacing.sm }}>
-              {isConnected || isError ? (
-                <Pressable
-                  onPress={handleDisconnect}
-                  disabled={isDisconnecting}
-                  style={({ pressed }) => ({
-                    padding: spacing.md,
-                    borderRadius: moderateScale(14, 0.5),
-                    backgroundColor: pressed
-                      ? "rgba(239,68,68,0.15)"
-                      : "rgba(239,68,68,0.1)",
-                    borderWidth: 1,
-                    borderColor: "rgba(239,68,68,0.3)",
-                    alignItems: "center",
-                    flexDirection: "row",
-                    justifyContent: "center",
-                    gap: spacing.sm,
-                    opacity: isDisconnecting ? 0.6 : 1,
-                  })}
+            {isConnected || isError ? (
+              <Pressable
+                onPress={handleDisconnect}
+                disabled={isDisconnecting}
+                style={({ pressed }) => ({
+                  paddingVertical: spacing.sm + 2,
+                  paddingHorizontal: spacing.md,
+                  borderRadius: moderateScale(12, 0.5),
+                  backgroundColor: pressed
+                    ? "rgba(239,68,68,0.20)"
+                    : "rgba(239,68,68,0.12)",
+                  alignItems: "center",
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  gap: spacing.sm,
+                  opacity: isDisconnecting ? 0.6 : 1,
+                })}
+              >
+                {isDisconnecting ? (
+                  <ActivityIndicator size="small" color="#ef4444" />
+                ) : null}
+                <Text
+                  className="text-red-500"
+                  style={{ fontSize: fontSize.sm, fontWeight: "600" }}
                 >
-                  {isDisconnecting ? (
-                    <ActivityIndicator size="small" color="#ef4444" />
-                  ) : null}
-                  <Text
-                    className="text-red-500"
-                    style={{ fontSize: fontSize.sm, fontWeight: "600" }}
-                  >
-                    {isDisconnecting ? "Disconnecting..." : "Disconnect"}
-                  </Text>
-                </Pressable>
-              ) : (
-                <Pressable
-                  onPress={handleConnect}
-                  disabled={isConnecting}
-                  style={({ pressed }) => ({
-                    padding: spacing.md,
-                    borderRadius: moderateScale(14, 0.5),
-                    backgroundColor: pressed ? "#009dd4" : "#00bbff",
-                    alignItems: "center",
-                    flexDirection: "row",
-                    justifyContent: "center",
-                    gap: spacing.sm,
-                    opacity: isConnecting ? 0.7 : 1,
-                  })}
+                  {isDisconnecting ? "Disconnecting..." : "Disconnect"}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={handleConnect}
+                disabled={isConnecting}
+                style={({ pressed }) => ({
+                  paddingVertical: spacing.sm + 2,
+                  paddingHorizontal: spacing.md,
+                  borderRadius: moderateScale(12, 0.5),
+                  backgroundColor: pressed ? "#009dd4" : "#00bbff",
+                  alignItems: "center",
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  gap: spacing.sm,
+                  opacity: isConnecting ? 0.7 : 1,
+                })}
+              >
+                {isConnecting ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : null}
+                <Text
+                  style={{
+                    color: "#000",
+                    fontSize: fontSize.sm,
+                    fontWeight: "600",
+                  }}
                 >
-                  {isConnecting ? (
-                    <ActivityIndicator size="small" color="#000" />
-                  ) : null}
-                  <Text
-                    style={{
-                      color: "#000",
-                      fontSize: fontSize.sm,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {isConnecting ? "Connecting..." : "Connect"}
-                  </Text>
-                </Pressable>
-              )}
+                  {isConnecting
+                    ? "Connecting..."
+                    : showRetry
+                      ? "Retry Connection"
+                      : "Connect"}
+                </Text>
+              </Pressable>
+            )}
 
-              {isConnected ? (
-                <Pressable
-                  onPress={handleTest}
-                  disabled={isTesting}
-                  style={({ pressed }) => ({
-                    padding: spacing.md,
-                    borderRadius: moderateScale(14, 0.5),
-                    backgroundColor: pressed
-                      ? "rgba(255,255,255,0.07)"
-                      : "rgba(255,255,255,0.04)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.1)",
-                    alignItems: "center",
-                    flexDirection: "row",
-                    justifyContent: "center",
-                    gap: spacing.sm,
-                    opacity: isTesting ? 0.6 : 1,
-                  })}
-                >
-                  {isTesting ? (
-                    <ActivityIndicator size="small" color="#a1a1aa" />
-                  ) : (
-                    <AppIcon icon={Wrench01Icon} size={15} color="#a1a1aa" />
-                  )}
-                  <Text
-                    className="text-zinc-400"
-                    style={{ fontSize: fontSize.sm, fontWeight: "500" }}
-                  >
-                    {isTesting ? "Testing..." : "Test Connection"}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            {isTesting || testResult || testError ? (
-              <TestConnectionResult
-                isLoading={isTesting}
-                result={testResult}
-                error={testError}
-              />
-            ) : null}
-
-            <IntegrationToolsPanel tools={tools} />
+            <IntegrationToolsPanel
+              tools={tools}
+              categoryPrefix={integration.name}
+            />
 
             {isCustom ? (
               <View
                 style={{
+                  flexDirection: "row",
                   gap: spacing.sm,
-                  borderTopWidth: 1,
-                  borderTopColor: "rgba(255,255,255,0.07)",
-                  paddingTop: spacing.md,
+                  marginTop: spacing.xs,
                 }}
               >
-                <Text
-                  className="uppercase tracking-wider text-zinc-500"
-                  style={{ fontSize: fontSize.xs, fontWeight: "600" }}
-                >
-                  Manage
-                </Text>
-                <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                  {onEdit ? (
-                    <Pressable
-                      onPress={handleEdit}
-                      style={({ pressed }) => ({
-                        flex: 1,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: spacing.xs,
-                        padding: spacing.md,
-                        borderRadius: moderateScale(12, 0.5),
-                        backgroundColor: pressed
-                          ? "rgba(255,255,255,0.07)"
-                          : "rgba(255,255,255,0.04)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.1)",
-                      })}
+                {onEdit ? (
+                  <Pressable
+                    onPress={handleEdit}
+                    style={({ pressed }) => ({
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: spacing.xs,
+                      padding: spacing.sm + 2,
+                      borderRadius: moderateScale(10, 0.5),
+                      backgroundColor: pressed
+                        ? "rgba(255,255,255,0.07)"
+                        : "rgba(255,255,255,0.04)",
+                    })}
+                  >
+                    <AppIcon icon={Edit02Icon} size={14} color="#a1a1aa" />
+                    <Text
+                      className="text-zinc-300"
+                      style={{ fontSize: fontSize.sm, fontWeight: "500" }}
                     >
-                      <AppIcon icon={Edit02Icon} size={14} color="#a1a1aa" />
-                      <Text
-                        className="text-zinc-400"
-                        style={{ fontSize: fontSize.sm, fontWeight: "500" }}
-                      >
-                        Edit
-                      </Text>
-                    </Pressable>
-                  ) : null}
+                      Edit
+                    </Text>
+                  </Pressable>
+                ) : null}
 
-                  {onDelete ? (
-                    <Pressable
-                      onPress={handleDelete}
-                      disabled={isDeleting}
-                      style={({ pressed }) => ({
-                        flex: 1,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: spacing.xs,
-                        padding: spacing.md,
-                        borderRadius: moderateScale(12, 0.5),
-                        backgroundColor: pressed
-                          ? "rgba(239,68,68,0.12)"
-                          : "rgba(239,68,68,0.07)",
-                        borderWidth: 1,
-                        borderColor: "rgba(239,68,68,0.2)",
-                        opacity: isDeleting ? 0.6 : 1,
-                      })}
+                {onDelete ? (
+                  <Pressable
+                    onPress={handleDelete}
+                    disabled={isDeleting}
+                    style={({ pressed }) => ({
+                      flex: 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: spacing.xs,
+                      padding: spacing.sm + 2,
+                      borderRadius: moderateScale(10, 0.5),
+                      backgroundColor: pressed
+                        ? "rgba(239,68,68,0.10)"
+                        : "rgba(239,68,68,0.06)",
+                      opacity: isDeleting ? 0.6 : 1,
+                    })}
+                  >
+                    {isDeleting ? (
+                      <ActivityIndicator size="small" color="#ef4444" />
+                    ) : (
+                      <AppIcon icon={Delete02Icon} size={14} color="#ef4444" />
+                    )}
+                    <Text
+                      className="text-red-500"
+                      style={{ fontSize: fontSize.sm, fontWeight: "500" }}
                     >
-                      {isDeleting ? (
-                        <ActivityIndicator size="small" color="#ef4444" />
-                      ) : (
-                        <AppIcon
-                          icon={Delete02Icon}
-                          size={14}
-                          color="#ef4444"
-                        />
-                      )}
-                      <Text
-                        className="text-red-500"
-                        style={{ fontSize: fontSize.sm, fontWeight: "500" }}
-                      >
-                        Delete
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </View>
+                      Delete
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : null}
           </BottomSheetScrollView>

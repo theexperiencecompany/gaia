@@ -1,8 +1,7 @@
-import { Button, Chip, PressableFeedback } from "heroui-native";
-import { View } from "react-native";
+import { PressableFeedback } from "heroui-native";
+import { Pressable, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-import { getCategoryLabel } from "../constants/categories";
 import type { Integration } from "../types";
 import { IntegrationLogo } from "./IntegrationLogo";
 import { IntegrationStatusPill } from "./IntegrationStatusPill";
@@ -11,53 +10,39 @@ interface IntegrationRowProps {
   integration: Integration;
   isPending: boolean;
   onPressRow: (integration: Integration) => void;
-  onPressAction: (integration: Integration) => void;
+  onPressConnect: (integration: Integration) => void;
 }
 
-function AuthTypeChip({ authType }: { authType?: Integration["authType"] }) {
-  if (!authType || authType === "none") return null;
-  const label =
-    authType === "oauth" ? "OAuth" : authType === "bearer" ? "Bearer" : "MCP";
-  return (
-    <Chip size="sm" variant="soft" color="default" animation="disable-all">
-      <Chip.Label>{label}</Chip.Label>
-    </Chip>
-  );
-}
-
-function ManagedByChip({
-  managedBy,
-}: {
-  managedBy?: Integration["managedBy"];
-}) {
-  if (!managedBy || managedBy === "self" || managedBy === "internal") {
-    return null;
-  }
-  const label = managedBy === "composio" ? "Composio" : "MCP";
-  return (
-    <Chip size="sm" variant="soft" color="accent" animation="disable-all">
-      <Chip.Label>{label}</Chip.Label>
-    </Chip>
-  );
-}
-
+/**
+ * One row in the integrations list. Mirrors the web pattern in
+ * `apps/web/src/features/integrations/components/IntegrationsList.tsx`:
+ *
+ *  - 40px logo + name (medium 600) + truncated description.
+ *  - Trailing action is exactly one of:
+ *      • `Connected` flat success chip (when connected)
+ *      • `Connect` flat primary button (when available + not connected)
+ *      • nothing (unavailable / pending)
+ *  - Tapping the row anywhere opens the detail sheet, which is where
+ *    "Disconnect" lives. The row never offers a destructive action.
+ *  - Auth-type / managed-by / category badges live in the detail header,
+ *    never on the row itself.
+ */
 export function IntegrationRow({
   integration,
   isPending,
   onPressRow,
-  onPressAction,
+  onPressConnect,
 }: IntegrationRowProps) {
-  const { fontSize, spacing, moderateScale } = useResponsive();
+  const { fontSize, spacing } = useResponsive();
 
   const isConnected = integration.status === "connected";
   const isAvailable =
     integration.source === "custom" || integration.available !== false;
-  const toolCount = integration.tools?.length ?? 0;
 
   return (
     <PressableFeedback
       onPress={() => onPressRow(integration)}
-      className="rounded-2xl bg-zinc-800/30"
+      className="rounded-2xl"
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -70,74 +55,46 @@ export function IntegrationRow({
       </View>
 
       <View style={{ flex: 1, minWidth: 0, marginRight: spacing.sm }}>
-        <View
+        <Text
+          className="text-zinc-100"
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            flexWrap: "wrap",
+            fontSize: fontSize.sm,
+            fontWeight: "600",
           }}
+          numberOfLines={1}
         >
+          {integration.name}
+        </Text>
+        {integration.description ? (
           <Text
-            className="text-zinc-100"
-            style={{
-              fontSize: fontSize.sm,
-              fontWeight: "700",
-              flexShrink: 1,
-            }}
+            className="text-zinc-400"
+            style={{ fontSize: fontSize.xs, marginTop: 2 }}
             numberOfLines={1}
           >
-            {integration.name}
+            {integration.description}
           </Text>
-          <Chip size="sm" variant="soft" color="accent" animation="disable-all">
-            <Chip.Label>{getCategoryLabel(integration.category)}</Chip.Label>
-          </Chip>
-        </View>
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 4,
-            marginTop: 3,
-          }}
-        >
-          <AuthTypeChip authType={integration.authType} />
-          <ManagedByChip managedBy={integration.managedBy} />
-          {isConnected && toolCount > 0 ? (
-            <Text
-              className="text-zinc-500"
-              style={{ fontSize: fontSize.xs - 2 }}
-            >
-              {toolCount} {toolCount === 1 ? "tool" : "tools"}
-            </Text>
-          ) : null}
-        </View>
+        ) : null}
       </View>
 
-      <View style={{ alignItems: "flex-end", gap: 6 }}>
-        <IntegrationStatusPill
-          status={integration.status}
-          isPending={isPending}
-        />
-        {!isPending && isConnected ? (
-          <Button
-            size="sm"
-            variant="danger-soft"
-            onPress={() => onPressAction(integration)}
-            style={{ borderRadius: moderateScale(12, 0.5) }}
+      <View style={{ alignItems: "flex-end" }}>
+        {isPending ? (
+          <IntegrationStatusPill status={integration.status} isPending />
+        ) : isConnected ? (
+          <IntegrationStatusPill status={integration.status} />
+        ) : isAvailable && integration.status !== "created" ? (
+          <Pressable
+            onPress={() => onPressConnect(integration)}
+            hitSlop={6}
+            className="rounded-full bg-primary/15 px-3 py-1.5 active:bg-primary/25"
+            accessibilityRole="button"
+            accessibilityLabel={`Connect ${integration.name}`}
           >
-            <Button.Label>Disconnect</Button.Label>
-          </Button>
-        ) : !isPending && isAvailable && integration.status !== "created" ? (
-          <Button
-            size="sm"
-            variant="tertiary"
-            onPress={() => onPressAction(integration)}
-            style={{ borderRadius: moderateScale(12, 0.5) }}
-          >
-            <Button.Label>Connect</Button.Label>
-          </Button>
+            <Text className="text-primary text-[13px] font-semibold">
+              Connect
+            </Text>
+          </Pressable>
+        ) : integration.status === "created" ? (
+          <IntegrationStatusPill status="created" />
         ) : null}
       </View>
     </PressableFeedback>

@@ -1,12 +1,12 @@
 import { TOOL_FIXTURES } from "@gaia/shared/chat";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useMemo } from "react";
-import { Pressable, ScrollView, View } from "react-native";
-import { AppIcon, ArrowLeft01Icon } from "@/components/icons";
+import { ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type { ToolDataEntry } from "@/features/chat/tool-data/registry";
 import { ToolDataRenderer } from "@/features/chat/tool-data/renderers";
 import { StyledSafeAreaView } from "@/lib/uniwind";
+import { BackButton } from "@/shared/components/ui/back-button";
 
 function normalizeParam(raw: string | string[] | undefined): string | null {
   if (!raw) return null;
@@ -17,7 +17,6 @@ function normalizeParam(raw: string | string[] | undefined): string | null {
 
 export default function ToolGalleryToolPage() {
   const { tool } = useLocalSearchParams<{ tool?: string | string[] }>();
-  const router = useRouter();
   const toolName = normalizeParam(tool);
 
   const fixture = useMemo(
@@ -42,16 +41,7 @@ export default function ToolGalleryToolPage() {
   return (
     <StyledSafeAreaView className="flex-1 bg-background">
       <View className="flex-row items-center gap-3 px-4 py-3">
-        <Pressable
-          onPress={() => router.back()}
-          android_ripple={{
-            color: "rgba(255,255,255,0.08)",
-            borderless: true,
-          }}
-          className="h-9 w-9 items-center justify-center rounded-full"
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={20} color="#e4e4e7" />
-        </Pressable>
+        <BackButton />
         <View className="flex-1">
           <Text className="text-base font-semibold text-zinc-100">
             {fixture?.label ?? "Unknown tool"}

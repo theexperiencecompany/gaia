@@ -86,7 +86,7 @@ export function AppSearchInput({
           placeholder={placeholder}
           onChangeText={onChangeText}
           className={cn(
-            "min-h-12 rounded-2xl",
+            "min-h-12 flex-1 rounded-2xl",
             resolvedStartContent ? "pl-9" : "",
             resolvedEndContent ? "pr-9" : "",
             inputClassName,

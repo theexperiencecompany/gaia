@@ -224,29 +224,12 @@ export interface CreateCustomIntegrationResponse {
   connection?: ConnectionTestResult;
 }
 
-export interface TestConnectionResponse {
-  status: "connected" | "requires_oauth" | "failed";
-  tools_count?: number;
-  oauth_url?: string;
-  error?: string;
-}
-
 export async function createCustomIntegration(
   data: CreateCustomIntegrationParams,
 ): Promise<CreateCustomIntegrationResponse> {
   const response = await apiService.post<CreateCustomIntegrationResponse>(
     "/integrations/custom",
     data,
-  );
-  return response;
-}
-
-export async function testIntegrationConnection(
-  integrationId: string,
-): Promise<TestConnectionResponse> {
-  const response = await apiService.post<TestConnectionResponse>(
-    `/mcp/test/${integrationId}`,
-    {},
   );
   return response;
 }
@@ -351,7 +334,6 @@ export const integrationsApi = {
   connectIntegrationWithToken,
   disconnectIntegration,
   createCustomIntegration,
-  testIntegrationConnection,
   updateCustomIntegration,
   deleteCustomIntegration,
   getCommunityIntegrations,

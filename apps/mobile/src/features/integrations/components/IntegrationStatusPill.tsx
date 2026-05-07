@@ -1,10 +1,5 @@
 import { Skeleton } from "heroui-native";
 import { View } from "react-native";
-import {
-  AppIcon,
-  CheckmarkCircle02Icon,
-  InformationCircleIcon,
-} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type { Integration } from "../types";
 
@@ -14,7 +9,10 @@ interface IntegrationStatusPillProps {
 }
 
 /**
- * Single canonical status pill used in both the row and the detail sheet.
+ * Small flat status chip used inside the detail sheet header.
+ * Mirrors the web `Chip variant="flat" color="success"` pattern used in
+ * `apps/web/src/features/integrations/components/IntegrationsList.tsx` so
+ * the row stays consistent with the desktop integrations page.
  */
 export function IntegrationStatusPill({
   status,
@@ -26,9 +24,8 @@ export function IntegrationStatusPill({
 
   if (status === "connected") {
     return (
-      <View className="flex-row items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1">
-        <AppIcon icon={CheckmarkCircle02Icon} size={11} color="#00bbff" />
-        <Text className="text-[11px] font-semibold text-primary">
+      <View className="rounded-full bg-success/15 px-2.5 py-1">
+        <Text className="text-[11px] font-semibold text-success">
           Connected
         </Text>
       </View>
@@ -37,8 +34,7 @@ export function IntegrationStatusPill({
 
   if (status === "error") {
     return (
-      <View className="flex-row items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1">
-        <AppIcon icon={InformationCircleIcon} size={11} color="#ef4444" />
+      <View className="rounded-full bg-red-500/10 px-2.5 py-1">
         <Text className="text-[11px] font-semibold text-red-500">Error</Text>
       </View>
     );
@@ -54,11 +50,5 @@ export function IntegrationStatusPill({
     );
   }
 
-  return (
-    <View className="rounded-full bg-zinc-800/50 px-2.5 py-1">
-      <Text className="text-[11px] font-medium text-zinc-400">
-        Not Connected
-      </Text>
-    </View>
-  );
+  return null;
 }

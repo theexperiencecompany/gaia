@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import {
   AppIcon,
-  ArrowLeft01Icon,
   Delete01Icon,
   Edit02Icon,
   FlowCircleIcon,
@@ -25,6 +24,7 @@ import {
 import { Text } from "@/components/ui/text";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import { useWorkflowActions } from "../hooks/use-workflow-actions";
 import type { Workflow, WorkflowExecution } from "../types/workflow-types";
 import { EditWorkflowModal } from "./edit-workflow-modal";
@@ -214,19 +214,7 @@ export function WorkflowDetailScreen({
         gap: spacing.sm,
       }}
     >
-      <Pressable
-        onPress={onBack}
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 999,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: "rgba(255,255,255,0.05)",
-        }}
-      >
-        <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-      </Pressable>
+      <BackButton onPress={onBack} hideWhenCannotGoBack={false} />
 
       {title ? (
         <Text

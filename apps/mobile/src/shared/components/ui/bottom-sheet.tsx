@@ -105,6 +105,7 @@ interface ContentProps {
   snapPoints?: Array<string | number>;
   enableDynamicSizing?: boolean;
   enablePanDownToClose?: boolean;
+  enableContentPanningGesture?: boolean;
   backgroundStyle?: StyleProp<ViewStyle>;
   handleIndicatorStyle?: StyleProp<ViewStyle>;
   keyboardBehavior?: string;
@@ -117,6 +118,7 @@ function Content({
   snapPoints = ["50%"],
   enableDynamicSizing = false,
   enablePanDownToClose = true,
+  enableContentPanningGesture = true,
   backgroundStyle,
   handleIndicatorStyle,
 }: ContentProps) {
@@ -151,6 +153,7 @@ function Content({
       snapPoints={enableDynamicSizing ? undefined : snapPoints}
       enableDynamicSizing={enableDynamicSizing}
       enablePanDownToClose={enablePanDownToClose}
+      enableContentPanningGesture={enableContentPanningGesture}
       backdropComponent={renderBackdrop}
       animationConfigs={animationConfigs}
       backgroundStyle={
