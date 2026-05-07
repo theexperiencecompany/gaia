@@ -38,7 +38,7 @@ const TimeSavedCounter = dynamic(
 );
 const BuiltForEveryone = dynamic(
   () => import("@/features/landing/components/sections/BuiltForEveryone"),
-  { loading: SectionLoader },
+  { loading: SectionLoader, ssr: false },
 );
 const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),

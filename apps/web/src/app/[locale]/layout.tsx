@@ -167,9 +167,8 @@ export default async function LocaleLayout({ children, params }: Props) {
         <link
           rel="preload"
           as="image"
-          href="/_next/image?url=%2Fimages%2Flogos%2Ftext_w_logo_white.webp&w=256&q=75"
+          href="/images/logos/text_w_logo_white.webp"
           fetchPriority="high"
-          type="image/webp"
         />
         <link
           rel="alternate"

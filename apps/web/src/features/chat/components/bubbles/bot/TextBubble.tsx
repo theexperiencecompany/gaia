@@ -14,6 +14,7 @@ function getTypedData<K extends ToolName>(
 
 import { Chip } from "@heroui/chip";
 import { Alert01Icon } from "@icons";
+import dynamic from "next/dynamic";
 import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
@@ -98,7 +99,11 @@ import type {
 } from "@/types/features/twitterTypes";
 import type { WeatherData } from "@/types/features/weatherTypes";
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
-import OpenUIRenderer from "../../interface/OpenUIRenderer";
+
+const OpenUIRenderer = dynamic(() => import("../../interface/OpenUIRenderer"), {
+  ssr: false,
+});
+
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
 import CalendarEventSection from "./CalendarEventSection";
