@@ -1,0 +1,314 @@
+name: Deploy Swarm Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Operation to run"
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - rollback
+      rollback_mode:
+        description: "Rollback mode (rollback only)"
+        required: false
+        default: last
+        type: choice
+        options:
+          - last
+          - digest
+      image_digest:
+        description: "Full image ref for digest rollback (e.g. ghcr.io/org/gaia@sha256:...)"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      action:
+        required: false
+        type: string
+        default: deploy
+      rollback_mode:
+        required: false
+        type: string
+        default: last
+      image_digest:
+        required: false
+        type: string
+
+concurrency:
+  group: swarm-prod-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: inputs.action == 'deploy'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Swarm context
+        uses: ./.github/actions/setup-swarm-context
+        with:
+          ssh_key: ${{ secrets.PROD_VM_SSH_KEY }}
+          ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
+          ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy stack
+        run: |
+          docker --context prod stack deploy \
+            --with-registry-auth \
+            -c infra/docker/docker-compose.prod.yml \
+            gaia-prod
+
+      - name: Wait for convergence
+        id: converge
+        run: |
+          echo "Waiting for gaia-backend and arq_worker to converge (up to 5 minutes)..."
+          DEADLINE=$(( $(date +%s) + 300 ))
+
+          while true; do
+            # Detect if Swarm auto-rolled back any app service
+            for svc in gaia-backend arq_worker; do
+              state=$(docker --context prod service inspect "gaia-prod_${svc}" \
+                --format '{{.UpdateStatus.State}}' 2>/dev/null || echo "")
+              if echo "$state" | grep -qE "rollback_completed|rollback_started|rollback_paused"; then
+                echo "rolled_back=true" >> "$GITHUB_OUTPUT"
+                echo "::error::gaia-prod_${svc} was rolled back by Swarm (state: $state)"
+                exit 1
+              fi
+            done
+
+            # Check running replicas for both app services
+            running_backend=$(docker --context prod service ps gaia-prod_gaia-backend \
+              --filter desired-state=running \
+              --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
+            running_backend=${running_backend:-0}
+
+            running_worker=$(docker --context prod service ps gaia-prod_arq_worker \
+              --filter desired-state=running \
+              --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
+            running_worker=${running_worker:-0}
+
+            if [ "$running_backend" -ge 1 ] && [ "$running_worker" -ge 1 ]; then
+              echo "gaia-backend and arq_worker are running"
+              break
+            fi
+
+            now=$(date +%s)
+            if [ "$now" -ge "$DEADLINE" ]; then
+              echo "timed_out=true" >> "$GITHUB_OUTPUT"
+              echo "::error::services did not converge within 5 minutes (backend=${running_backend} worker=${running_worker})"
+              exit 1
+            fi
+
+            remaining=$(( DEADLINE - now ))
+            echo "  ... waiting (backend=${running_backend} worker=${running_worker}, ${remaining}s remaining)"
+            sleep 15
+          done
+
+      - name: Push deploy annotation to Loki
+        if: success()
+        env:
+          LOKI_PUSH_URL: ${{ secrets.LOKI_PUSH_URL }}
+        run: |
+          [ -z "$LOKI_PUSH_URL" ] && exit 0
+          TS_NS="$(date +%s%N)"
+          LINE=$(printf '{"event":"deploy","service":"api","sha":"%s","actor":"%s","ref":"%s"}' \
+            "${{ github.sha }}" "${{ github.actor }}" "${{ github.ref_name }}")
+          PAYLOAD=$(jq -n \
+            --arg ts "$TS_NS" \
+            --arg line "$LINE" \
+            '{"streams":[{"stream":{"event":"deploy","service":"ci","source":"github_actions"},"values":[[$ts,$line]]}]}')
+          curl -sS -X POST "$LOKI_PUSH_URL" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
+
+      - name: Notify Discord — deploy succeeded
+        if: success()
+        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          username: "Gaia Deploy Bot"
+          color: "#48f442"
+          message: |
+            **Backend Deploy Succeeded**
+            **Commit:** `${{ github.sha }}`
+            **Branch:** ${{ github.ref_name }}
+            **Actor:** ${{ github.actor }}
+
+      - name: Notify Discord — Swarm auto-rollback
+        if: failure() && steps.converge.outputs.rolled_back == 'true'
+        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          username: "Gaia Deploy Bot"
+          color: "#ffa500"
+          message: |
+            **Backend Deploy Failed — Swarm Auto-Rolled Back**
+            The new image failed health checks and Swarm reverted to the previous revision.
+            **Commit:** `${{ github.sha }}`
+            **Branch:** ${{ github.ref_name }}
+            **Actor:** ${{ github.actor }}
+
+      - name: Notify Discord — convergence timeout
+        if: failure() && steps.converge.outputs.timed_out == 'true'
+        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          username: "Gaia Deploy Bot"
+          color: "#ff6b6b"
+          message: |
+            **Backend Deploy Failed — Convergence Timeout**
+            gaia-backend and arq_worker did not reach Running state within 5 minutes. Check `docker service ps gaia-prod_gaia-backend` and `docker service ps gaia-prod_arq_worker` on the VM.
+            **Commit:** `${{ github.sha }}`
+            **Branch:** ${{ github.ref_name }}
+            **Actor:** ${{ github.actor }}
+
+      - name: Notify Discord — deploy failed
+        if: failure() && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true'
+        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          username: "Gaia Deploy Bot"
+          color: "#ff6b6b"
+          message: |
+            **Backend Deploy Failed**
+            The deploy step failed before Swarm could start convergence (image pull, auth, or config error).
+            **Commit:** `${{ github.sha }}`
+            **Branch:** ${{ github.ref_name }}
+            **Actor:** ${{ github.actor }}
+
+  rollback:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Swarm context
+        uses: ./.github/actions/setup-swarm-context
+        with:
+          ssh_key: ${{ secrets.PROD_VM_SSH_KEY }}
+          ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
+          ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Roll back app stack
+        env:
+          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+        run: |
+          if [ "$ROLLBACK_MODE" = "last" ]; then
+            for svc in $(docker --context prod stack services gaia-prod --format '{{.Name}}' \
+              | grep -E 'gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot'); do
+              echo "Rolling back $svc..."
+              docker --context prod service rollback "$svc"
+            done
+          elif [ "$ROLLBACK_MODE" = "digest" ]; then
+            [ -z "$IMAGE_DIGEST" ] && echo "image_digest required for digest mode" && exit 1
+            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_gaia-backend
+            docker --context prod service update --image "$IMAGE_DIGEST" gaia-prod_arq_worker
+          fi
+
+      - name: Wait for rollback convergence
+        id: converge
+        env:
+          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+        run: |
+          if [ "$ROLLBACK_MODE" = "last" ]; then
+            SERVICES=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
+              | grep -E 'gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot')
+          else
+            SERVICES="gaia-prod_gaia-backend gaia-prod_arq_worker"
+          fi
+          echo "Waiting for services to stabilise (up to 3 minutes): $SERVICES"
+          DEADLINE=$(( $(date +%s) + 180 ))
+          while true; do
+            pending=()
+            for svc in $SERVICES; do
+              running=$(docker --context prod service ps "$svc" \
+                --filter desired-state=running \
+                --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
+              [ "${running:-0}" -lt 1 ] && pending+=("$svc")
+            done
+            if [ "${#pending[@]}" -eq 0 ]; then
+              echo "All services are running"
+              break
+            fi
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              echo "timed_out=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::Did not stabilise within 3 minutes: ${pending[*]}"
+              break  # don't fail — rollback itself succeeded
+            fi
+            sleep 10
+          done
+
+      - name: Push rollback annotation to Loki
+        if: success()
+        env:
+          LOKI_PUSH_URL: ${{ secrets.LOKI_PUSH_URL }}
+          ROLLBACK_MODE: ${{ inputs.rollback_mode }}
+          ACTOR: ${{ github.actor }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          [ -z "$LOKI_PUSH_URL" ] && exit 0
+          TS_NS="$(date +%s%N)"
+          LINE=$(printf '{"event":"rollback","mode":"%s","actor":"%s","ref":"%s"}' \
+            "$ROLLBACK_MODE" "$ACTOR" "$REF_NAME")
+          PAYLOAD=$(jq -n \
+            --arg ts "$TS_NS" \
+            --arg line "$LINE" \
+            '{"streams":[{"stream":{"event":"rollback","service":"ci","source":"github_actions"},"values":[[$ts,$line]]}]}')
+          curl -sS -X POST "$LOKI_PUSH_URL" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD"
+
+      - name: Notify Discord — rollback succeeded
+        if: success()
+        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          username: "Gaia Deploy Bot"
+          color: "#ffa500"
+          message: |
+            **Backend Rollback Succeeded**
+            **Mode:** ${{ inputs.rollback_mode }}${{ inputs.image_digest && format(' (`{0}`)', inputs.image_digest) || '' }}
+            **Actor:** ${{ github.actor }}
+            ${{ steps.converge.outputs.timed_out == 'true' && '⚠️ Note: not all services stabilised within 3 minutes — verify manually.' || '' }}
+
+      - name: Notify Discord — rollback failed
+        if: failure()
+        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
+          username: "Gaia Deploy Bot"
+          color: "#ff6b6b"
+          message: |
+            **Backend Rollback Failed**
+            **Mode:** ${{ inputs.rollback_mode }}
+            **Actor:** ${{ github.actor }}
+            The rollback command itself failed. Production state is unknown — check the VM immediately.

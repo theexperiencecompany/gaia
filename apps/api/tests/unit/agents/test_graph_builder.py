@@ -83,10 +83,13 @@ def _apply_patches(stack: ExitStack, overrides: dict | None = None):
 # ===================================================================
 
 
+_TEST_DB_URL = "postgresql://localhost/test"
+
+
 class TestCheckpointerManager:
     """Tests for CheckpointerManager lifecycle."""
 
-    def _make_manager(self, conninfo: str = "postgresql://test:test@localhost/test"):
+    def _make_manager(self, conninfo: str = _TEST_DB_URL):
         from app.agents.core.graph_builder.checkpointer_manager import (
             CheckpointerManager,
         )
@@ -95,7 +98,7 @@ class TestCheckpointerManager:
 
     def test_init_defaults(self):
         mgr = self._make_manager()
-        assert mgr.conninfo == "postgresql://test:test@localhost/test"
+        assert mgr.conninfo == _TEST_DB_URL
         assert mgr.max_pool_size == 5
         assert mgr.pool is None
         assert mgr.checkpointer is None
@@ -801,3 +804,104 @@ class TestCompileKwargs:
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
             assert isinstance(call_kwargs["checkpointer"], InMemorySaver)
+
+
+# ===================================================================
+# RetryPolicy wiring
+# ===================================================================
+
+
+class TestRetryPolicyWiring:
+    """Verify _AGENT_RETRY_POLICY is passed to create_agent for both graphs."""
+
+    async def test_comms_graph_passes_retry_policy(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import (
+                _AGENT_RETRY_POLICY,
+                build_comms_graph,
+            )
+
+            async with build_comms_graph(
+                chat_llm=deps["llm"], in_memory_checkpointer=True
+            ) as _:
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+            assert kwargs["agent_retry_policy"] is _AGENT_RETRY_POLICY
+
+    async def test_executor_graph_passes_retry_policy(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import (
+                _AGENT_RETRY_POLICY,
+                build_executor_graph,
+            )
+
+            async with build_executor_graph(
+                chat_llm=deps["llm"], in_memory_checkpointer=True
+            ) as _:
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+            assert kwargs["agent_retry_policy"] is _AGENT_RETRY_POLICY
+
+    def test_retry_policy_configuration(self):
+        """_AGENT_RETRY_POLICY has expected max_attempts and intervals."""
+        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
+
+        assert _AGENT_RETRY_POLICY.max_attempts == 3
+        assert _AGENT_RETRY_POLICY.initial_interval == pytest.approx(1.0)
+        assert _AGENT_RETRY_POLICY.backoff_factor == pytest.approx(2.0)
+        assert _AGENT_RETRY_POLICY.max_interval == pytest.approx(30.0)
+        assert _AGENT_RETRY_POLICY.jitter is True
+
+    def test_retry_on_retryable_exceptions(self):
+        """retry_on returns True for every type in _LLM_RETRYABLE_EXCEPTIONS."""
+        from google.api_core.exceptions import (
+            DeadlineExceeded,
+            InternalServerError,
+            ResourceExhausted,
+            ServiceUnavailable,
+        )
+
+        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
+        from app.agents.llm.client import _LLM_RETRYABLE_EXCEPTIONS
+
+        retry_on = _AGENT_RETRY_POLICY.retry_on
+        assert callable(retry_on)
+
+        retryable_instances = [
+            ResourceExhausted("quota exceeded"),
+            ServiceUnavailable("service down"),
+            DeadlineExceeded("timeout"),
+            InternalServerError("server error"),
+            ConnectionError("connection reset"),
+            TimeoutError("timed out"),
+        ]
+        for exc in retryable_instances:
+            assert retry_on(exc) is True, (
+                f"Expected {type(exc).__name__} to be retryable"
+            )
+
+        assert all(
+            isinstance(exc, _LLM_RETRYABLE_EXCEPTIONS) for exc in retryable_instances
+        )
+
+    def test_retry_on_non_retryable_exceptions(self):
+        """retry_on returns False for non-retryable exception types."""
+        from app.agents.core.graph_builder.build_graph import _AGENT_RETRY_POLICY
+
+        retry_on = _AGENT_RETRY_POLICY.retry_on
+        assert callable(retry_on)
+
+        non_retryable = [
+            ValueError("bad input"),
+            TypeError("wrong type"),
+            KeyError("missing key"),
+            RuntimeError("logic error"),
+        ]
+        for exc in non_retryable:
+            assert retry_on(exc) is False, (
+                f"Expected {type(exc).__name__} to NOT be retryable"
+            )

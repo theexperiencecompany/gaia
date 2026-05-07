@@ -1,18 +1,23 @@
 """
 Subagent Helper Functions
 
-Reusable utilities for working with subagents, including system prompt creation
-with provider metadata injection and skill retrieval.
+Reusable utilities for working with subagents.
+
+Design note: the subagent's STATIC system prompt must be byte-identical across
+users so the LLM's implicit prompt cache hits. Per-user provider metadata
+(GitHub login, Gmail address, etc.) therefore lives in the DYNAMIC context
+message emitted alongside the static prompt — not inside the static prompt.
 """
 
 import asyncio
 import re
-from datetime import datetime, timezone
 from typing import Optional
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
+from app.config.oauth_config import get_integration_by_id
+from app.helpers.message_helpers import DYNAMIC_CONTEXT_MARKER
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage
@@ -24,65 +29,27 @@ async def build_subagent_system_prompt(
     user_id: Optional[str] = None,
     base_system_prompt: Optional[str] = None,
 ) -> str:
+    """Return the STATIC subagent system prompt.
+
+    Per-user provider metadata (username, email, etc.) is NOT injected here —
+    it lives in the dynamic-context message built alongside by
+    `create_agent_context_message`. Keeping this string independent of user_id
+    is what lets the implicit prompt cache hit on subagent invocations.
+
+    The ``user_id`` parameter is accepted for back-compat with existing
+    callers; it is intentionally unused.
     """
-    Build a system prompt for a subagent with optional provider metadata injection.
+    del user_id  # retained for signature compat; metadata flows via dynamic context
 
-    This function:
-    1. Gets the base system prompt from the integration config (if not provided)
-    2. Fetches provider metadata (username, etc.) for the user
-    3. Injects metadata context into the system prompt
-
-    Args:
-        integration_id: The integration ID (e.g., "github", "twitter")
-        user_id: The user ID to fetch metadata for (optional)
-        base_system_prompt: Override the default system prompt from config (optional)
-
-    Returns:
-        The complete system prompt with metadata injected (if available)
-
-    Example:
-        >>> prompt = await build_subagent_system_prompt("github", user_id="123")
-        >>> # Returns: "{base_prompt}\n\nUSER CONTEXT FOR GITHUB:\n- Username: Dhruv-Maradiya\n"
-    """
-    subagent = get_subagent_by_id(integration_id)
-
+    subagent = get_subagent_by_id(integration_id) if integration_id else None
     if not subagent:
-        # Handle custom/public MCPs - use universal prompt
-        # If not in the subagent registry, it's a custom or public MCP integration
+        # Custom or public MCP fallback — universal prompt; no per-user injection.
         if integration_id:
             return base_system_prompt or CUSTOM_MCP_SUBAGENT_PROMPT
-
         log.warning(f"Integration {integration_id} not found")
         return base_system_prompt or ""
 
-    # Use provided system prompt or get from subagent config
-    system_prompt = base_system_prompt or subagent.config.system_prompt or ""
-
-    # Inject provider metadata if user_id is provided
-    if user_id and subagent.provider:
-        try:
-            metadata = await get_provider_metadata(user_id, subagent.provider)
-            if metadata:
-                # Build context lines for all extracted variables
-                context_lines = []
-                for key, value in metadata.items():
-                    context_lines.append(f"- {key}: {value}")
-
-                if context_lines:
-                    provider_context = (
-                        f"\n\nUSER CONTEXT FOR {subagent.name.upper()}:\n"
-                        + "\n".join(context_lines)
-                        + "\n"
-                    )
-                    system_prompt = system_prompt + provider_context
-                    log.debug(
-                        f"Injected {subagent.provider} metadata into system prompt: "
-                        f"{list(metadata.keys())}"
-                    )
-        except Exception as e:
-            log.warning(f"Failed to inject provider metadata: {e}")
-
-    return system_prompt
+    return base_system_prompt or subagent.config.system_prompt or ""
 
 
 async def create_subagent_system_message(
@@ -91,34 +58,47 @@ async def create_subagent_system_message(
     user_id: Optional[str] = None,
     base_system_prompt: Optional[str] = None,
 ) -> SystemMessage:
-    """
-    Create a SystemMessage for a subagent with provider metadata injected.
+    """Return the static subagent prompt as a SystemMessage.
 
-    This is a convenience wrapper around build_subagent_system_prompt that
-    returns a LangChain SystemMessage object ready to use in message lists.
-
-    Args:
-        integration_id: The integration ID (e.g., "github", "twitter")
-        agent_name: The agent name for visibility metadata
-        user_id: The user ID to fetch metadata for (optional)
-        base_system_prompt: Override the default system prompt from config (optional)
-
-    Returns:
-        SystemMessage with the complete prompt and visibility metadata
-
-    Example:
-        >>> msg = await create_subagent_system_message(
-        ...     "github", "github_agent", user_id="123"
-        ... )
-        >>> # Returns SystemMessage with injected username context
+    ``user_id`` is intentionally unused here; provider metadata for this user
+    is carried on the dynamic-context SystemMessage emitted beside this one.
     """
     system_prompt = await build_subagent_system_prompt(
         integration_id=integration_id,
         user_id=user_id,
         base_system_prompt=base_system_prompt,
     )
-
     return SystemMessage(content=system_prompt)
+
+
+def _mark_dynamic(msg: SystemMessage) -> SystemMessage:
+    msg.additional_kwargs[DYNAMIC_CONTEXT_MARKER] = True
+    msg.additional_kwargs.setdefault("memory_message", True)  # back-compat marker
+    return msg
+
+
+async def _fetch_provider_metadata_block(
+    integration_id: Optional[str], user_id: Optional[str]
+) -> str:
+    """Return the provider-metadata lines for the dynamic context, or ''."""
+    if not (integration_id and user_id):
+        return ""
+    integration = get_integration_by_id(integration_id)
+    if not integration or not integration.provider:
+        return ""
+    try:
+        metadata = await get_provider_metadata(user_id, integration.provider)
+    except Exception as e:
+        log.warning(
+            f"Failed to fetch provider metadata for {integration.provider}: {e}"
+        )
+        return ""
+    if not metadata:
+        return ""
+    lines = [f"- {k}: {v}" for k, v in metadata.items()]
+    return (
+        f"\n\nUSER CONTEXT FOR {integration.name.upper()}:\n" + "\n".join(lines) + "\n"
+    )
 
 
 async def create_agent_context_message(
@@ -126,105 +106,92 @@ async def create_agent_context_message(
     user_id: Optional[str] = None,
     query: Optional[str] = None,
     subagent_id: Optional[str] = None,
+    integration_id: Optional[str] = None,
+    memories_text: Optional[str] = None,
+    skills_text: Optional[str] = None,
 ) -> SystemMessage:
-    """
-    Create a context message with time, timezone, memories, and skills for executor/subagents.
+    """Build the dynamic-context system message for executor/subagent runs.
 
-    This ensures executor and subagents have the same temporal awareness as the main agent,
-    including:
-    - Current UTC time
-    - User's timezone and local time (extracted from user_time)
-    - Conversation memories
-    - Relevant learned skills (for subagents)
+    Carries everything that varies per request: user name, current time,
+    memories, installable skills, and (for subagents) provider metadata. This
+    is the message `manage_system_prompts_node` keeps only the latest of.
 
     Args:
-        configurable: The config["configurable"] dict from RunnableConfig
-        user_id: Optional user ID (extracted from configurable if not provided)
-        query: Optional search query for memory retrieval
-        subagent_id: Optional subagent ID for skill retrieval (e.g., "twitter", "github")
-
-    Returns:
-        SystemMessage with time/timezone/memories/skills context
+        configurable: The config["configurable"] dict from RunnableConfig.
+        user_id: Optional override; otherwise taken from configurable.
+        query: Search query for memory retrieval.
+        subagent_id: Subagent ID for skill retrieval (e.g. "twitter", "github").
+        integration_id: When invoking a subagent, the underlying integration
+            ID — used to look up provider metadata (GitHub login, etc.).
+        memories_text: Pre-fetched memories section; if provided, skips
+            ChromaDB lookup. Memory fetched by the caller is passed through
+            the handoff payload so subagents don't re-run the same search.
+        skills_text: Pre-fetched skills section; same rationale as memories.
     """
-    context_parts = []
+    parts: list[str] = []
 
-    # Extract user info from configurable
     user_id = user_id or configurable.get("user_id")
     user_name = configurable.get("user_name")
     user_time_str = configurable.get("user_time", "")
 
-    # Add user name context
     if user_name:
-        context_parts.append(
-            f"Gaia Display Name: {user_name} (not a connected service username)"
-        )
+        parts.append(f"User Name: {user_name}")
 
-    # Add current UTC time
-    utc_time = datetime.now(timezone.utc)
-    formatted_utc_time = utc_time.strftime("%A, %B %d, %Y, %H:%M:%S UTC")
-    context_parts.append(f"Current UTC Time: {formatted_utc_time}")
-
-    # Extract timezone from user_time_str and add local time
+    # Clock is NOT embedded here any more — it lives in a HumanMessage built
+    # alongside by ``build_initial_messages`` so the system_instruction stays
+    # stable across minute ticks. Only the user's static timezone offset
+    # (byte-stable across turns) stays in system_instruction.
     if user_time_str:
         try:
-            user_time = datetime.fromisoformat(user_time_str)
-            formatted_user_time = user_time.strftime("%A, %B %d, %Y, %H:%M:%S")
-
-            # Extract timezone offset from user_time_str (e.g., +05:30 or -08:00 or Z)
             tz_match = re.search(r"([+-]\d{2}:\d{2}|Z)$", user_time_str)
             if tz_match:
                 tz_offset = tz_match.group(1)
                 if tz_offset == "Z":
                     tz_offset = "+00:00"
-                context_parts.append(f"User Timezone Offset: {tz_offset}")
-                context_parts.append(f"User Local Time: {formatted_user_time}")
-            else:
-                context_parts.append(f"User Local Time: {formatted_user_time}")
+                parts.append(f"User Timezone Offset: {tz_offset}")
         except Exception as e:
             log.warning(f"Error parsing user_time: {e}")
 
-    # Search for memories and skills concurrently
-    memories_section = ""
-    skills_section = ""
-
     async def _fetch_memories() -> str:
+        if memories_text is not None:
+            return memories_text
         if not (user_id and query):
             return ""
         try:
             results = await memory_service.search_memories(
                 query=query, user_id=user_id, limit=5
             )
-            if results:
-                memories = getattr(results, "memories", None)
-                if memories:
-                    log.info(f"Added {len(memories)} memories to subagent context")
-                    return "\n\nBased on our previous conversations:\n" + "\n".join(
-                        f"- {mem.content}" for mem in memories
-                    )
+            if results and (memories := getattr(results, "memories", None)):
+                log.info(f"Added {len(memories)} memories to subagent context")
+                return "\n\nBased on our previous conversations:\n" + "\n".join(
+                    f"- {mem.content}" for mem in memories
+                )
         except Exception as e:
             log.warning(f"Error retrieving memories for subagent: {e}")
         return ""
 
     async def _fetch_skills() -> str:
+        if skills_text is not None:
+            return f"\n\n{skills_text}" if skills_text else ""
         if not user_id:
             return ""
         try:
             agent_for_skills = subagent_id or "executor"
-            skills_text = await get_available_skills_text(
-                user_id=user_id,
-                agent_name=agent_for_skills,
+            text = await get_available_skills_text(
+                user_id=user_id, agent_name=agent_for_skills
             )
-            if skills_text:
+            if text:
                 log.info(f"Injected installable skills for {agent_for_skills}")
-                return f"\n\n{skills_text}"
+                return f"\n\n{text}"
         except Exception as e:
             log.warning(f"Error injecting installable skills: {e}")
         return ""
 
-    memories_section, skills_section = await asyncio.gather(
-        _fetch_memories(), _fetch_skills()
+    memories_section, skills_section, metadata_section = await asyncio.gather(
+        _fetch_memories(),
+        _fetch_skills(),
+        _fetch_provider_metadata_block(integration_id, user_id),
     )
 
-    content = "\n".join(context_parts) + memories_section + skills_section
-
-    return SystemMessage(content=content, memory_message=True)
+    content = "\n".join(parts) + memories_section + skills_section + metadata_section
+    return _mark_dynamic(SystemMessage(content=content))

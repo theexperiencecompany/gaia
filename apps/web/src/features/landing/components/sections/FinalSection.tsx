@@ -130,7 +130,7 @@ export default function FinalSection({
   const wallpaper = SWISS_KID_WALLPAPERS[timeOfDay];
 
   return (
-    <div className="relative z-1 m-0! flex min-h-[90vh] w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
+    <div className="relative z-1 m-0! flex min-h-screen w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
       <div className="absolute bottom-0 left-0 right-0 z-0">
@@ -175,14 +175,28 @@ export default function FinalSection({
         >
           Join thousands of professionals who gave their grunt work to GAIA.
         </div>
-        <GetStartedButton
-          btnColor={isDark ? "#00bbff" : "#000000"}
-          classname={
-            isDark
-              ? "text-black! text-lg h-12 px-2 rounded-2xl"
-              : "text-white! text-lg h-12 px-2 rounded-2xl"
-          }
-        />
+        <div className="flex gap-4">
+          <GetStartedButton
+            btnColor={isDark ? "#00bbff" : "#000000"}
+            classname={
+              isDark
+                ? "text-black! text-lg h-12 px-2 rounded-2xl hover:scale-105"
+                : "text-white! text-lg h-12 px-2 rounded-2xl hover:scale-105"
+            }
+            text="Try GAIA Free"
+          />
+          <GetStartedButton
+            btnColor="#ffffff"
+            classname="text-lg h-12 px-2 rounded-2xl hover:scale-105"
+            text="Explore"
+            href="/use-cases"
+          />
+        </div>
+        <p
+          className={`text-sm font-light mt-1 ${isDark ? "text-zinc-400" : "text-white/60"}`}
+        >
+          Free forever for personal use. No credit card.
+        </p>
 
         {showSocials && (
           <div className="mt-4 flex items-center gap-3 sm:mt-6 sm:gap-2">

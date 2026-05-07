@@ -37,7 +37,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
-from langgraph.types import Send
+from langgraph.types import RetryPolicy, Send
 from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
@@ -78,6 +78,7 @@ def create_agent(
     middleware: Sequence["AgentMiddleware"] | None = None,
     pre_model_hooks: list[HookType] | None = None,
     end_graph_hooks: list[HookType] | None = None,
+    agent_retry_policy: RetryPolicy | None = None,
 ) -> StateGraph:
     """Create an agent with a registry of tools.
 
@@ -491,7 +492,11 @@ def create_agent(
     )
 
     builder.set_entry_point("agent")
-    builder.add_node("agent", RunnableCallable(call_model, acall_model))
+    builder.add_node(
+        "agent",
+        RunnableCallable(call_model, acall_model),
+        retry_policy=agent_retry_policy,
+    )
     if not disable_retrieve_tools:
         builder.add_node("select_tools", select_tools_node)  # type: ignore[possibly-undefined]
     builder.add_node("tools", tool_node)

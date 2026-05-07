@@ -299,9 +299,9 @@ class SubagentEvaluator:
         errors: list[str] = []
 
         try:
-            result = await self.subagent_graph.ainvoke(
+            result = await self.subagent_graph.ainvoke(  # type: ignore[call-overload]
                 {"messages": messages},
-                config=runnable_config,  # type: ignore[arg-type]
+                config=runnable_config,
             )
 
             for msg in result.get("messages", []):

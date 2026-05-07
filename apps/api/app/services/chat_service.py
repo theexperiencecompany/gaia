@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
+from shared.py.wide_events import ChatContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import (
@@ -231,17 +231,25 @@ async def _process_data_chunk(
 
 def _aggregate_usage_metadata(
     usage_metadata: Dict[str, Any],
-) -> tuple[int, int]:
-    """Sum input and output tokens across all model entries in usage metadata."""
-    total_input = sum(
-        v.get("input_tokens", 0) for v in usage_metadata.values() if isinstance(v, dict)
-    )
-    total_output = sum(
-        v.get("output_tokens", 0)
-        for v in usage_metadata.values()
-        if isinstance(v, dict)
-    )
-    return total_input, total_output
+) -> tuple[int, int, int]:
+    """Sum input, output, and cache_read tokens across all model entries.
+
+    Returns (total_input, total_output, total_cached). ``cache_read`` lives in
+    each entry's ``input_token_details`` (LangChain canonical shape). Some
+    provider SDK versions surface it under different keys, hence the fallbacks.
+    """
+    total_input = 0
+    total_output = 0
+    total_cached = 0
+    for v in usage_metadata.values():
+        if not isinstance(v, dict):
+            continue
+        total_input += int(v.get("input_tokens") or 0)
+        total_output += int(v.get("output_tokens") or 0)
+        details = v.get("input_token_details") or {}
+        cached = details.get("cache_read") or v.get("cached_content_token_count") or 0
+        total_cached += int(cached or 0)
+    return total_input, total_output, total_cached
 
 
 async def _recover_stream_state(
@@ -310,9 +318,7 @@ async def _wait_for_http_subscriber(
     try:
         await asyncio.wait_for(start_event.wait(), timeout=5.0)
     except asyncio.TimeoutError:
-        log.warning(
-            f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway"
-        )
+        log.warning(f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
 
 
 async def _run_chat_stream(
@@ -417,13 +423,31 @@ async def _run_chat_stream(
                 await stream_manager.publish_chunk(stream_id, chunk)
 
         usage_metadata = usage_metadata_callback.usage_metadata or {}
-        total_input, total_output = _aggregate_usage_metadata(usage_metadata)
+        total_input, total_output, total_cached = _aggregate_usage_metadata(
+            usage_metadata
+        )
+        # Read cache_read out of the LangChain UsageMetadataCallback rather
+        # than the wide-event ContextVar. ``LLMAccountingMiddleware`` writes
+        # ``cached_tokens`` per-step into the wide event from inside a
+        # LangGraph node, but those writes happen in a child copy_context()
+        # frame that does not propagate back to the wide_task block — so the
+        # worker_task rollup would otherwise see ``cached_tokens=null`` even
+        # when caching fired. The callback handler runs in the parent context
+        # via LangChain's tracer and accumulates correctly across every model
+        # call.
+        cache_hit_rate = (
+            round(total_cached / max(total_input, 1), 4) if total_input else 0.0
+        )
+        existing_model = log.get().get("model") or {}
         log.set(
-            model=ModelContext(
-                tokens_used=total_input + total_output,
-                input_tokens=total_input,
-                output_tokens=total_output,
-            ),
+            model={
+                **existing_model,
+                "tokens_used": total_input + total_output,
+                "input_tokens": total_input,
+                "output_tokens": total_output,
+                "cached_tokens": total_cached,
+                "cache_hit_rate": cache_hit_rate,
+            },
             response_length=len(complete_message),
             follow_up_actions_count=len(follow_up_actions),
             is_cancelled=is_cancelled,
@@ -681,10 +705,20 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
             if isinstance(usage_data, dict):
                 input_tokens = usage_data.get("input_tokens", 0)
                 output_tokens = usage_data.get("output_tokens", 0)
+                # Bill cache reads at the discounted rate, not free.
+                details = usage_data.get("input_token_details") or {}
+                cached_tokens = int(
+                    details.get("cache_read")
+                    or usage_data.get("cached_content_token_count")
+                    or 0
+                )
 
                 if input_tokens > 0 or output_tokens > 0:
                     cost_info = await calculate_token_cost(
-                        model_name, input_tokens, output_tokens
+                        model_name,
+                        input_tokens,
+                        output_tokens,
+                        cached_tokens=cached_tokens,
                     )
                     total_credits += cost_info["total_cost"]
 

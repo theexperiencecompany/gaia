@@ -1,14 +1,14 @@
 from typing import List, Literal, Optional
 
 from app.helpers.message_helpers import (
+    build_current_time_message,
+    build_dynamic_context_message,
     create_system_message,
     format_calendar_event_context,
     format_files_list,
     format_reply_context,
     format_tool_selection_message,
     format_workflow_execution_message,
-    get_memory_message,
-    get_platform_context_message,
 )
 from app.models.message_models import (
     FileData,
@@ -61,37 +61,38 @@ async def construct_langchain_messages(
     Returns:
         List of LangChain messages ready for agent processing
     """
-    # Start with system message containing user name and instructions.
-    # Passing `source` lets the comms prompt drop OpenUI Lang on messaging
-    # platforms (whatsapp/telegram/discord/slack) where rich cards can't
-    # render and would otherwise leak as literal `:::openui` fences.
-    system_msg = create_system_message(user_id, user_name, agent_type, source=source)
-    chain_msgs = [system_msg]
+    # Static per-channel main prompt — byte-identical across every user on
+    # this channel, so the provider's implicit prompt cache can match across
+    # users. Web/mobile/desktop get the OpenUI-capable variant; text-only
+    # platforms get their formatting-restrictions variant.
+    system_msg = create_system_message(
+        user_id=user_id,
+        user_name=user_name,
+        agent_type=agent_type,
+        source=source,
+    )
 
-    # Add relevant memories if user context available
-    if user_id and query:
-        user_timezone = user_dict.get("timezone") if user_dict else None
-        user_preferences = (
-            user_dict.get("onboarding", {}).get("preferences") if user_dict else None
-        )
+    user_timezone = user_dict.get("timezone") if user_dict else None
+    user_preferences = (
+        user_dict.get("onboarding", {}).get("preferences") if user_dict else None
+    )
 
-        memory_msg = await get_memory_message(
-            user_id=user_id,
-            query=query,
-            user_name=user_name,
-            user_timezone=user_timezone,
-            user_preferences=user_preferences,
-        )
-
-        if memory_msg:
-            chain_msgs.append(memory_msg)
-
-    # Add platform context for comms agent only — executor already has
-    # PLATFORM-AWARE OUTPUT rules in its system prompt (EXECUTOR_AGENT_PROMPT).
-    if agent_type == "comms":
-        platform_msg = get_platform_context_message(source)
-        if platform_msg:
-            chain_msgs.append(platform_msg)
+    # Dynamic-context SystemMessage — user name, preferences, memories.
+    # Intentionally does NOT contain the clock or any output-format
+    # instructions; both live elsewhere to protect the cache prefix.
+    dynamic_msg = await build_dynamic_context_message(
+        user_id=user_id,
+        query=query,
+        user_name=user_name,
+        user_timezone=user_timezone,
+        user_preferences=user_preferences,
+        source=source,
+    )
+    # Current time lives in a HumanMessage in ``contents`` (not
+    # ``system_instruction``) so minute ticks never invalidate the cache
+    # prefix. See ``build_current_time_message`` for the full reasoning.
+    time_msg = build_current_time_message(user_timezone=user_timezone)
+    chain_msgs: list[AnyMessage] = [system_msg, dynamic_msg, time_msg]
 
     # Extract user's latest message content
     user_content = (

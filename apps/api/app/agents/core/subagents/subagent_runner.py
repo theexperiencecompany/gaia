@@ -16,9 +16,11 @@ Key exports:
 """
 
 import json
+import uuid
 from datetime import datetime
 from typing import AsyncGenerator, Optional
 
+from app.agents.core.graph_manager import GraphManager
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
@@ -29,6 +31,10 @@ from app.constants.general import FINISH_TASK_NAME
 from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import build_agent_config
+from app.helpers.message_helpers import (
+    build_current_time_message,
+    create_system_message,
+)
 from app.models.models_models import ModelConfig
 from app.services.oauth.oauth_service import check_integration_status
 from app.utils.stream_utils import extract_tool_entries_from_update
@@ -86,39 +92,60 @@ async def build_initial_messages(
     user_id: Optional[str] = None,
     subagent_id: Optional[str] = None,
     retrieval_query: Optional[str] = None,
+    integration_id: Optional[str] = None,
+    memories_text: Optional[str] = None,
+    skills_text: Optional[str] = None,
 ) -> list:
-    """
-    Build the standard message list for subagent/executor execution.
+    """Build the [static_prompt, dynamic_context, human_task] triplet.
 
-    Creates a consistent message structure with:
-    1. System message (agent-specific instructions)
-    2. Context message (time, timezone, memories, skills)
-    3. Human message (the task)
+    The static system prompt is byte-identical across users/channels. The
+    dynamic-context message carries user_name, memories, skills, platform
+    restrictions, and (for provider subagents) service-specific username
+    metadata. ``manage_system_prompts_node`` collapses repeats at run time.
 
     Args:
-        system_message: Pre-built system message for the agent
-        agent_name: Name of the agent (for visibility metadata)
+        system_message: Pre-built STATIC system message (must not include
+            any per-user or per-time content — keeps the cache prefix stable).
+        agent_name: Name of the agent (for HumanMessage visibility metadata).
         configurable: Config dict with user_time, user_name, etc.
-        task: The task/query to execute (used as LLM prompt content)
-        user_id: Optional user ID for memory retrieval
-        subagent_id: Optional subagent ID for skill retrieval (e.g., "twitter", "github")
-        retrieval_query: Optional query for memory/context retrieval. Defaults to task
-            if not provided. Use this to pass the original unenhanced task when task
-            contains injected hints that would pollute semantic search.
-
-    Returns:
-        List of [system_message, context_message, human_message]
+        task: The task/query to execute (goes into the HumanMessage).
+        user_id: Optional user ID for memory retrieval.
+        subagent_id: Optional subagent ID for skill retrieval.
+        retrieval_query: Query for memory/context retrieval. Defaults to
+            ``task`` but should be set to the original unenhanced task when
+            ``task`` contains injected hints that would pollute semantic
+            search.
+        integration_id: When invoking a provider subagent, the underlying
+            integration ID — used to fetch provider metadata (GitHub login,
+            Gmail address, etc.) for the dynamic-context message.
+        memories_text: Pre-fetched memories section. The parent can fetch in
+            parallel with its own work and pass it down here to avoid the
+            subagent running a duplicate ChromaDB lookup.
+        skills_text: Pre-fetched skills section; same rationale.
     """
+    log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
+
     context_message = await create_agent_context_message(
         configurable=configurable,
         user_id=user_id,
         query=retrieval_query if retrieval_query is not None else task,
         subagent_id=subagent_id,
+        integration_id=integration_id,
+        memories_text=memories_text,
+        skills_text=skills_text,
+    )
+
+    # Current time rides in a HumanMessage so the system_instruction prefix
+    # stays stable — minute ticks would otherwise reset the cache boundary
+    # at whatever byte position the timestamp occupies.
+    time_message = build_current_time_message(
+        user_timezone=configurable.get("user_timezone"),
     )
 
     return [
         system_message,
         context_message,
+        time_message,
         HumanMessage(
             content=task,
             additional_kwargs={"visible_to": {agent_name}},
@@ -201,6 +228,14 @@ async def prepare_subagent_execution(
         user_id=user_id,
     )
 
+    # Pass provider metadata (usernames/emails) into the DYNAMIC context
+    # message so the STATIC subagent prompt stays byte-identical across users.
+    # Handoff payload can pre-fetch memories/skills at the executor level and
+    # forward them here via base_configurable["__pinned_memories__" /
+    # "__pinned_skills__"] to avoid a duplicate ChromaDB round-trip.
+    pinned_memories = (base_configurable or {}).get("__pinned_memories__")
+    pinned_skills = (base_configurable or {}).get("__pinned_skills__")
+
     messages = await build_initial_messages(
         system_message=system_message,
         agent_name=agent_name,
@@ -208,9 +243,22 @@ async def prepare_subagent_execution(
         task=task,
         user_id=user_id,
         subagent_id=agent_name,
+        integration_id=subagent.id,
+        memories_text=pinned_memories,
+        skills_text=pinned_skills,
     )
 
     initial_state = {"messages": messages, "todos": []}
+
+    log.set(
+        subagent_prep={
+            "agent_name": agent_name,
+            "integration_id": subagent.id,
+            "thread_id": subagent_thread_id,
+            "had_pinned_memories": pinned_memories is not None,
+            "had_pinned_skills": pinned_skills is not None,
+        }
+    )
 
     return SubagentExecutionContext(
         subagent_graph=subagent_graph,
@@ -354,14 +402,22 @@ async def prepare_executor_execution(
         Tuple of (SubagentExecutionContext, None) on success, or
         (None, error_message) on failure
     """
-    # Lazy import to avoid circular dependency
-    from app.agents.core.graph_manager import GraphManager
-    from app.helpers.message_helpers import create_system_message
-
     user_id = configurable.get("user_id")
     thread_id = configurable.get("thread_id", "")
-    executor_thread_id = f"executor_{thread_id}"
 
+    # Fresh executor thread per call_executor invocation. Architecturally the
+    # comms agent owns the conversation thread; the executor is a subroutine
+    # invoked with a task description + the last user message. Giving it its
+    # own ephemeral thread keeps its context small and prevents stale tool
+    # observations from one task bleeding into the next. If a later user turn
+    # needs prior context, comms passes it explicitly in the new task
+    # description.
+    call_scope = uuid.uuid4().hex[:12]
+    executor_thread_id = f"executor_{thread_id}_{call_scope}"
+
+    # VFS session stays pinned to the PARENT conversation thread so files
+    # written by one executor call are visible to the next — the ephemeral
+    # thread only scopes agent reasoning, not persisted artefacts.
     vfs_session_id = configurable.get("vfs_session_id") or thread_id
 
     # Load executor graph
@@ -396,19 +452,32 @@ async def prepare_executor_execution(
         user_name=configurable.get("user_name"),
     )
 
-    # Inject direct handoff hint when tool_category maps to a known subagent
-    # This lets the executor skip the retrieve_tools discovery round-trip
+    # When comms provides a known tool_category, hint the executor to go
+    # straight to handoff(subagent_id=...) and skip the ChromaDB discovery
+    # call. We do NOT pre-bind tools — the target subagent still does its own
+    # retrieval. This only removes one redundant round-trip where comms
+    # already knows the category.
     enhanced_task = task
     tool_category = configurable.get("tool_category")
     selected_tool = configurable.get("selected_tool")
-    if tool_category and selected_tool:
-        if get_subagent_by_id(tool_category):
-            enhanced_task = (
-                f"{task}\n\n"
-                f"DIRECT EXECUTION HINT: The tool '{selected_tool}' belongs to the "
-                f"'{tool_category}' subagent. Skip retrieve_tools discovery and directly "
-                f'call handoff(subagent_id="{tool_category}", task="{task}").'
-            )
+    if tool_category and get_subagent_by_id(tool_category):
+        tool_hint = (
+            f"the '{selected_tool}' tool" if selected_tool else "the user's request"
+        )
+        enhanced_task = (
+            f"{task}\n\n"
+            f"DIRECT EXECUTION HINT: This request should be handled by "
+            f"'{tool_category}'. Skip retrieve_tools discovery and directly "
+            f'call handoff(subagent_id="{tool_category}", task="{task}") to '
+            f"route {tool_hint}."
+        )
+        log.set(
+            executor_prep={
+                "direct_hint_applied": True,
+                "tool_category": tool_category,
+                "selected_tool": selected_tool,
+            }
+        )
 
     # Build messages using shared helper.
     # Pass original task as retrieval_query so memory/context semantic search

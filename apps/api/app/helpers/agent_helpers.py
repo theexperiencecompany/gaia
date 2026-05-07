@@ -14,7 +14,6 @@ from typing import AsyncGenerator, Optional
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from langsmith import traceable
-from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.subagents.registry import get_subagent_by_id
@@ -268,10 +267,14 @@ def build_agent_config(
 
     callbacks: list[BaseCallbackHandler] = []
 
-    # Add OpikTracer in production, or in development only if configured
-    # This prevents cluttered error logs when Opik isn't set up locally
+    # Add OpikTracer in production, or in development only if configured.
+    # Import is deferred to avoid paying the cost when Opik is unused and to
+    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
+    # which conflicts with the real litellm at module load time).
     is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
     if settings.ENV == "production" or is_opik_configured:
+        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
+
         callbacks.append(
             OpikTracer(
                 tags=["langchain", settings.ENV],
@@ -317,6 +320,8 @@ def build_agent_config(
 
     # Cherry-pick specific keys from base_configurable if provided
     # Only inherit model config and user context, not LangChain internal state
+    pinned_memories = None
+    pinned_skills = None
     if base_configurable:
         # Inherit model config from parent if not overridden
         provider_name = base_configurable.get("provider", provider_name)
@@ -327,6 +332,10 @@ def build_agent_config(
         subagent_id = subagent_id or base_configurable.get("subagent_id")
         vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
         source = source or base_configurable.get("conversation_source")
+        # Pass pre-fetched memory/skills sections through to avoid repeat
+        # ChromaDB lookups on the subagent side.
+        pinned_memories = base_configurable.get("__pinned_memories__")
+        pinned_skills = base_configurable.get("__pinned_skills__")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -344,6 +353,8 @@ def build_agent_config(
         "subagent_id": subagent_id,
         "vfs_session_id": vfs_session_id,
         "conversation_source": source,
+        "__pinned_memories__": pinned_memories,
+        "__pinned_skills__": pinned_skills,
     }
 
     config = {

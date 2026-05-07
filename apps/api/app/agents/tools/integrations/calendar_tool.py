@@ -1,10 +1,11 @@
 """Calendar tools using Composio custom tool infrastructure.
 
-These tools provide calendar functionality using the access_token from Composio's
-auth_credentials. Uses shared calendar_service functions for all operations.
+These tools provide calendar functionality routed through Composio's proxy.
+The proxy attaches the user's OAuth token server-side, so tools only need to
+look up `user_id` from `auth_credentials`.
 
-Note: Errors are raised as exceptions, not returned as dicts - Composio wraps
-responses in {successful: bool, data: Any, error: str} format automatically.
+Note: Errors raised here propagate as exceptions; Composio wraps responses
+in {successful, data, error} format automatically.
 """
 
 import asyncio
@@ -13,7 +14,6 @@ import zoneinfo
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any, Dict, List
 
-import httpx
 from shared.py.wide_events import log
 from app.decorators import with_doc
 from app.models.calendar_models import (
@@ -29,6 +29,7 @@ from app.models.calendar_models import (
 )
 from app.models.common_models import GatherContextInput
 from app.services import calendar_service, user_service
+from app.services.composio.proxy_client import proxy_request_sync
 from app.templates.docstrings.calendar_tool_docs import (
     CUSTOM_ADD_RECURRENCE as CUSTOM_ADD_RECURRENCE_DOC,
 )
@@ -57,13 +58,12 @@ from app.templates.docstrings.calendar_tool_docs import (
     CUSTOM_PATCH_EVENT as CUSTOM_PATCH_EVENT_DOC,
 )
 from app.utils.context_utils import execute_tool
+from app.utils.errors import AppError
 from composio import Composio
 from langgraph.config import get_config, get_stream_writer
 
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
-
-# Reusable sync HTTP client for direct API calls
-_http_client = httpx.Client(timeout=30)
+CALENDAR_TOOLKIT = "GOOGLECALENDAR"
 
 
 def _extract_datetime(dt: Any) -> str:
@@ -119,22 +119,12 @@ def _format_calendar_for_stream(cal: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _get_access_token(auth_credentials: Dict[str, Any]) -> str:
-    """Extract access token from auth_credentials."""
-    token = auth_credentials.get("access_token")
-    if not token:
-        raise ValueError("Missing access_token in auth_credentials")
-    return token
-
-
 def _get_user_id(auth_credentials: Dict[str, Any]) -> str:
     """Extract user_id from auth_credentials."""
-    return auth_credentials.get("user_id", "")
-
-
-def _auth_headers(access_token: str) -> Dict[str, str]:
-    """Return Bearer token header for Google Calendar API."""
-    return {"Authorization": f"Bearer {access_token}"}
+    user_id = auth_credentials.get("user_id", "")
+    if not user_id:
+        raise ValueError("Missing user_id in auth_credentials")
+    return user_id
 
 
 def _get_user_timezone() -> tzinfo | None:
@@ -143,14 +133,12 @@ def _get_user_timezone() -> tzinfo | None:
         config = get_config()
         configurable = config.get("configurable", {})
 
-        # Try user_timezone format like "+05:30"
         user_timezone_str = configurable.get("user_timezone")
         if user_timezone_str and len(user_timezone_str) >= 6:
             sign = 1 if user_timezone_str.startswith("+") else -1
             hours, minutes = map(int, user_timezone_str[1:].split(":"))
             return timezone(timedelta(seconds=sign * (hours * 3600 + minutes * 60)))
 
-        # Fallback to user_time full ISO string
         user_time_str = configurable.get("user_time")
         if user_time_str:
             dt = datetime.fromisoformat(user_time_str)
@@ -171,10 +159,9 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "list_calendars"})
-        access_token = _get_access_token(auth_credentials)
-        calendars = calendar_service.list_calendars(access_token, short=request.short)
+        user_id = _get_user_id(auth_credentials)
+        calendars = calendar_service.list_calendars(user_id, short=request.short)
 
-        # Stream calendar list to frontend
         writer = get_stream_writer()
         if calendars:
             writer(
@@ -197,27 +184,22 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "get_day_summary"})
-        access_token = _get_access_token(auth_credentials)
         user_id = _get_user_id(auth_credentials)
 
-        # Get user's timezone from their preferences
         try:
             try:
                 asyncio.get_running_loop()
-                # Inside a running loop — offload to a new thread
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     user = pool.submit(
                         lambda: asyncio.run(user_service.get_user_by_id(user_id))
                     ).result(timeout=5)
                 user_timezone = user.get("timezone") if user else None
             except RuntimeError:
-                # No running loop — safe to use asyncio.run directly
                 user = asyncio.run(user_service.get_user_by_id(user_id))
                 user_timezone = user.get("timezone") if user else None
         except Exception:
             user_timezone = None
 
-        # Use user's timezone or fallback to UTC
         tz: zoneinfo.ZoneInfo | timezone = timezone.utc
         try:
             if user_timezone:
@@ -227,7 +209,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         except Exception:
             user_timezone = "UTC"
 
-        # Determine target date
         now = datetime.now(tz)
         if request.date:
             try:
@@ -246,7 +227,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
 
         result = calendar_service.get_calendar_events(
             user_id=user_id,
-            access_token=access_token,
             selected_calendars=None,
             time_min=day_start.isoformat(),
             time_max=day_end.isoformat(),
@@ -256,9 +236,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         events = result.get("events", [])
 
         try:
-            color_map, name_map = calendar_service.get_calendar_metadata_map(
-                access_token
-            )
+            color_map, name_map = calendar_service.get_calendar_metadata_map(user_id)
             formatted_events = [
                 calendar_service.format_event_for_frontend(event, color_map, name_map)
                 for event in events
@@ -266,7 +244,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         except Exception:
             formatted_events = events
 
-        # Calculate busy hours
         busy_minutes: float = 0.0
         for event in events:
             start = event.get("start", {})
@@ -307,7 +284,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
             "busy_hours": round(busy_minutes / 60, 1),
         }
 
-        # Stream events to frontend
         writer = get_stream_writer()
         if formatted_events:
             writer(
@@ -330,14 +306,12 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "fetch_events"})
-        access_token = _get_access_token(auth_credentials)
         user_id = _get_user_id(auth_credentials)
 
         time_min = request.time_min or datetime.now(timezone.utc).isoformat()
 
         result = calendar_service.get_calendar_events(
             user_id=user_id,
-            access_token=access_token,
             selected_calendars=request.calendar_ids if request.calendar_ids else None,
             time_min=time_min,
             time_max=request.time_max,
@@ -346,11 +320,8 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
 
         events = result.get("events", [])
 
-        # Format events for frontend
         try:
-            color_map, name_map = calendar_service.get_calendar_metadata_map(
-                access_token
-            )
+            color_map, name_map = calendar_service.get_calendar_metadata_map(user_id)
             calendar_fetch_data = [
                 calendar_service.format_event_for_frontend(event, color_map, name_map)
                 for event in events
@@ -358,7 +329,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         except Exception:
             calendar_fetch_data = events
 
-        # Stream fetched events to frontend
         writer = get_stream_writer()
         if calendar_fetch_data:
             writer(
@@ -384,24 +354,19 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "find_event"})
-        access_token = _get_access_token(auth_credentials)
         user_id = _get_user_id(auth_credentials)
 
         result = calendar_service.search_calendar_events_native(
             query=request.query,
             user_id=user_id,
-            access_token=access_token,
             time_min=request.time_min,
             time_max=request.time_max,
         )
 
         events = result.get("matching_events", [])
 
-        # Format events for frontend
         try:
-            color_map, name_map = calendar_service.get_calendar_metadata_map(
-                access_token
-            )
+            color_map, name_map = calendar_service.get_calendar_metadata_map(user_id)
             calendar_search_data = [
                 calendar_service.format_event_for_frontend(event, color_map, name_map)
                 for event in events
@@ -409,7 +374,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         except Exception:
             calendar_search_data = events
 
-        # Stream search results to frontend
         writer = get_stream_writer()
         if calendar_search_data:
             writer(
@@ -435,35 +399,39 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "get_event"})
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        user_id = _get_user_id(auth_credentials)
 
         results = []
         errors = []
 
         for event_ref in request.events:
-            url = f"{CALENDAR_API_BASE}/calendars/{event_ref.calendar_id}/events/{event_ref.event_id}"
             try:
-                resp = _http_client.get(url, headers=headers)
-                resp.raise_for_status()
+                event = proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=CALENDAR_TOOLKIT,
+                    endpoint=(
+                        f"{CALENDAR_API_BASE}/calendars/"
+                        f"{event_ref.calendar_id}/events/{event_ref.event_id}"
+                    ),
+                    method="GET",
+                )
                 results.append(
                     {
                         "event_id": event_ref.event_id,
                         "calendar_id": event_ref.calendar_id,
-                        "event": resp.json(),
+                        "event": event,
                     }
                 )
-            except httpx.HTTPStatusError as e:
+            except AppError as e:
                 log.error(f"Error getting event {event_ref.event_id}: {e}")
                 errors.append(
                     {
                         "event_id": event_ref.event_id,
                         "calendar_id": event_ref.calendar_id,
-                        "error": f"Event not found: {e}",
+                        "error": f"Event not found: {e.message}",
                     }
                 )
 
-        # If all events failed, raise an exception
         if errors and not results:
             raise RuntimeError(f"Failed to get events: {errors}")
 
@@ -477,34 +445,38 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "delete_event"})
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        user_id = _get_user_id(auth_credentials)
 
         deleted = []
         errors = []
 
         for event_ref in request.events:
-            url = f"{CALENDAR_API_BASE}/calendars/{event_ref.calendar_id}/events/{event_ref.event_id}"
             try:
-                resp = _http_client.delete(url, headers=headers)
-                resp.raise_for_status()
+                proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=CALENDAR_TOOLKIT,
+                    endpoint=(
+                        f"{CALENDAR_API_BASE}/calendars/"
+                        f"{event_ref.calendar_id}/events/{event_ref.event_id}"
+                    ),
+                    method="DELETE",
+                )
                 deleted.append(
                     {
                         "event_id": event_ref.event_id,
                         "calendar_id": event_ref.calendar_id,
                     }
                 )
-            except httpx.HTTPStatusError as e:
+            except AppError as e:
                 log.error(f"Error deleting event {event_ref.event_id}: {e}")
                 errors.append(
                     {
                         "event_id": event_ref.event_id,
                         "calendar_id": event_ref.calendar_id,
-                        "error": f"Failed to delete: {e}",
+                        "error": f"Failed to delete: {e.message}",
                     }
                 )
 
-        # If all deletions failed, raise an exception
         if errors and not deleted:
             raise RuntimeError(f"Failed to delete events: {errors}")
 
@@ -518,12 +490,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "patch_event"})
-        access_token = _get_access_token(auth_credentials)
-
-        url = f"{CALENDAR_API_BASE}/calendars/{request.calendar_id}/events/{request.event_id}"
-        headers = _auth_headers(access_token)
-        headers["Content-Type"] = "application/json"
-        params = {"sendUpdates": request.send_updates}
+        user_id = _get_user_id(auth_credentials)
 
         body: Dict[str, Any] = {}
         if request.summary is not None:
@@ -539,9 +506,17 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         if request.attendees is not None:
             body["attendees"] = [{"email": email} for email in request.attendees]
 
-        resp = _http_client.patch(url, headers=headers, json=body, params=params)
-        resp.raise_for_status()
-        event = resp.json()
+        event = proxy_request_sync(
+            user_id=user_id,
+            toolkit=CALENDAR_TOOLKIT,
+            endpoint=(
+                f"{CALENDAR_API_BASE}/calendars/"
+                f"{request.calendar_id}/events/{request.event_id}"
+            ),
+            method="PATCH",
+            body=body,
+            query={"sendUpdates": request.send_updates},
+        )
 
         return {"event": event}
 
@@ -553,16 +528,19 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "add_recurrence"})
-        access_token = _get_access_token(auth_credentials)
+        user_id = _get_user_id(auth_credentials)
+        endpoint = (
+            f"{CALENDAR_API_BASE}/calendars/"
+            f"{request.calendar_id}/events/{request.event_id}"
+        )
 
-        url = f"{CALENDAR_API_BASE}/calendars/{request.calendar_id}/events/{request.event_id}"
-        headers = _auth_headers(access_token)
+        event = proxy_request_sync(
+            user_id=user_id,
+            toolkit=CALENDAR_TOOLKIT,
+            endpoint=endpoint,
+            method="GET",
+        )
 
-        get_resp = _http_client.get(url, headers=headers)
-        get_resp.raise_for_status()
-        event = get_resp.json()
-
-        # Build RRULE string
         rrule_parts = [f"FREQ={request.frequency}"]
         if request.interval != 1:
             rrule_parts.append(f"INTERVAL={request.interval}")
@@ -577,12 +555,16 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         rrule = "RRULE:" + ";".join(rrule_parts)
         event["recurrence"] = [rrule]
 
-        headers["Content-Type"] = "application/json"
-        put_resp = _http_client.put(url, headers=headers, json=event)
-        put_resp.raise_for_status()
+        updated = proxy_request_sync(
+            user_id=user_id,
+            toolkit=CALENDAR_TOOLKIT,
+            endpoint=endpoint,
+            method="PUT",
+            body=event,
+        )
 
         return {
-            "event": put_resp.json(),
+            "event": updated,
             "recurrence_rule": rrule,
         }
 
@@ -594,15 +576,10 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "create_event"})
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
-        headers["Content-Type"] = "application/json"
+        user_id = _get_user_id(auth_credentials)
 
-        # Get calendar metadata for enrichment
         try:
-            color_map, name_map = calendar_service.get_calendar_metadata_map(
-                access_token
-            )
+            color_map, name_map = calendar_service.get_calendar_metadata_map(user_id)
         except Exception:
             color_map, name_map = {}, {}
 
@@ -637,7 +614,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
                 body["start"] = {"dateTime": start_dt.isoformat()}
                 body["end"] = {"dateTime": end_dt.isoformat()}
             else:
-                # Naive datetime — apply the user's timezone offset from config
                 user_tz = _get_user_timezone()
                 if user_tz is not None:
                     start_dt = start_dt.replace(tzinfo=user_tz)
@@ -659,20 +635,18 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
                 }
 
             if request.confirm_immediately:
-                # Create immediately
-                url = f"{CALENDAR_API_BASE}/calendars/{event.calendar_id}/events"
-                params = {"sendUpdates": "all"}
+                query: Dict[str, Any] = {"sendUpdates": "all"}
                 if event.create_meeting_room:
-                    params["conferenceDataVersion"] = "1"
+                    query["conferenceDataVersion"] = "1"
 
-                resp = _http_client.post(
-                    url,
-                    headers=headers,
-                    json=body,
-                    params=params,
+                created_event = proxy_request_sync(
+                    user_id=user_id,
+                    toolkit=CALENDAR_TOOLKIT,
+                    endpoint=f"{CALENDAR_API_BASE}/calendars/{event.calendar_id}/events",
+                    method="POST",
+                    body=body,
+                    query=query,
                 )
-                resp.raise_for_status()
-                created_event = resp.json()
                 created_events.append(
                     {
                         "index": index,
@@ -685,7 +659,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
                     }
                 )
             else:
-                # Prepare for frontend confirmation
                 calendar_option = {
                     "index": index,
                     "summary": event.summary,
@@ -705,12 +678,10 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
                     calendar_option["create_meeting_room"] = True
                 calendar_options.append(calendar_option)
 
-        # If all events failed with validation errors, raise
         if errors and not created_events and not calendar_options:
             raise ValueError(f"All events failed validation: {errors}")
 
         if request.confirm_immediately:
-            # Stream created events to frontend
             writer = get_stream_writer()
             if created_events:
                 writer(
@@ -737,28 +708,27 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
                 "created": len(created_events) > 0,
                 "created_events": created_events,
             }
-        else:
-            # Stream draft options to frontend for user confirmation
-            writer = get_stream_writer()
-            writer(
-                {
-                    "calendar_options": [
-                        _format_calendar_option_for_stream(opt)
-                        for opt in calendar_options
-                        if isinstance(opt, dict)
-                    ]
-                }
-            )
 
-            return {
-                "created": False,
-                "calendar_options": calendar_options,
-                "message": (
-                    f"{len(calendar_options)} event(s) have been drafted for review. "
-                    "They have NOT been added to your calendar yet. "
-                    "Inform the user to confirm or cancel using the event card."
-                ),
+        writer = get_stream_writer()
+        writer(
+            {
+                "calendar_options": [
+                    _format_calendar_option_for_stream(opt)
+                    for opt in calendar_options
+                    if isinstance(opt, dict)
+                ]
             }
+        )
+
+        return {
+            "created": False,
+            "calendar_options": calendar_options,
+            "message": (
+                f"{len(calendar_options)} event(s) have been drafted for review. "
+                "They have NOT been added to your calendar yet. "
+                "Inform the user to confirm or cancel using the event card."
+            ),
+        }
 
     @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
     def CUSTOM_GATHER_CONTEXT(
@@ -772,8 +742,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         """
         log.set(tool={"integration": "google_calendar", "action": "gather_context"})
         user_id = _get_user_id(auth_credentials)
-        if not user_id:
-            raise ValueError("Missing user_id in auth_credentials")
         date_str = date.today().strftime("%Y-%m-%d")
         return execute_tool(
             "GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY", {"date": date_str}, user_id

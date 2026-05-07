@@ -1,5 +1,6 @@
 .history
 .claude/worktrees
+.claude/scheduled_tasks.lock
 venv
 api/__pycache__
 */__pycache__/*
@@ -128,6 +129,16 @@ docs/plans/
 i18n.cache
 .worktrees/
 superpowers/
+
+# Local prod config (secrets, credentials, etc.) — runbooks should be tracked
+ops/*.env
+ops/secrets/
+ops/**/*.key
+ops/**/*.pem
+ops/**/*.p12
+ops/**/*.pfx
+chrome/
+
 .claude/scheduled_tasks.lock
 
 # Claude Code / agent session transcripts (top-level, dated)

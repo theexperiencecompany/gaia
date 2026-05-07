@@ -33,9 +33,14 @@ WORKDIR /app
 COPY --from=builder /app/apps/bots/${BOT_NAME}/dist ./dist
 COPY --from=builder /app/apps/bots/${BOT_NAME}/package.json ./
 
+# Entrypoint: reads Docker Swarm secrets into env vars before exec-ing the process
+COPY scripts/docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 ENV NODE_ENV=production \
     BOT_NAME=${BOT_NAME}
 
 USER node
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "dist/index.js"]

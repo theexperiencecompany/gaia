@@ -449,7 +449,6 @@ export default function ChatDemoSection() {
             <MemoDemoTodosView />
           </div>
         );
-      case "chats":
       default:
         return null;
     }
@@ -461,19 +460,19 @@ export default function ChatDemoSection() {
       className="relative flex w-full flex-col items-center"
     >
       <div
-        className={`mb-8 text-center ${isInView ? "animate-in fade-in slide-in-from-bottom-4 duration-[400ms]" : "opacity-0"}`}
+        className={`mb-4 text-center ${isInView ? "animate-in fade-in slide-in-from-bottom-4 duration-[400ms]" : "opacity-0"}`}
       >
         <p className="mb-2 text-sm uppercase tracking-widest text-primary">
           See it in action
         </p>
-        <h2 className="text-6xl font-serif tracking-tight text-white font-normal">
+        <h2 className="text-5xl sm:text-6xl font-serif tracking-tight text-white font-normal">
           Your GAIA, actually working
         </h2>
       </div>
 
       {/* Demo window */}
       <div
-        className={`overflow-hidden rounded-3xl h-[65vh] sm:h-[90vh] w-[95vw] sm:w-[85vw] ${isInView ? "animate-in fade-in slide-in-from-bottom-6 zoom-in-95 duration-500" : "opacity-0"}`}
+        className={`overflow-hidden rounded-3xl h-[65vh] sm:h-[72vh] w-[95vw] sm:w-[85vw] ${isInView ? "animate-in fade-in slide-in-from-bottom-6 zoom-in-95 duration-500" : "opacity-0"}`}
         style={
           {
             "--color-primary-bg": "#111111",

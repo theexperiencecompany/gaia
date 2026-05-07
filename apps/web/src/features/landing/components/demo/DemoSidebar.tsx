@@ -406,7 +406,6 @@ const DemoSidebar = memo(function DemoSidebar({
           label: "New Todo",
           icon: <CheckListIcon width={18} height={18} />,
         };
-      case "chats":
       default:
         return {
           label: "New Chat",

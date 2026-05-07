@@ -7,6 +7,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 
 from app.agents.llm.client import init_llm
 from app.agents.prompts.trigger_prompts import generate_trigger_context
+from app.agents.tools.core.registry import get_tool_registry
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
     WORKFLOW_PROMPT_GENERATION_TEMPLATE,
@@ -153,10 +154,6 @@ class WorkflowGenerationService:
         log.info(f"[WorkflowGen] ========== START: {title} ==========")
 
         log.info("[WorkflowGen] Getting tool registry...")
-        # Inline import required: top-level causes a circular import via
-        # registry → workflow_tool → services.workflow → generation_service
-        from app.agents.tools.core.registry import get_tool_registry
-
         tool_registry = await get_tool_registry()
 
         normalized_slugs = _normalize_slugs(selected_integrations)

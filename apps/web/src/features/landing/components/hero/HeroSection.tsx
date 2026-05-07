@@ -1,5 +1,7 @@
-import Link from "next/link";
-import { ChevronRight } from "@/components/shared/icons";
+import { CircleArrowRight02Icon, DiscoverCircleIcon } from "@icons";
+import Image from "next/image";
+import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
+import { Link } from "@/i18n/navigation";
 import { MotionContainer } from "@/layouts/MotionContainer";
 import GetStartedButton from "../shared/GetStartedButton";
 import { SplitTextBlur } from "./SplitTextBlur";
@@ -7,9 +9,11 @@ import { SplitTextBlur } from "./SplitTextBlur";
 export default function HeroSection({
   isDark = false,
   onTextClick,
+  latestRelease,
 }: {
   isDark?: boolean;
   onTextClick?: () => void;
+  latestRelease?: LatestRelease | null;
 }) {
   return (
     <div className="relative w-full flex-col gap-8 pb-20 sm:pb-30">
@@ -18,26 +22,41 @@ export default function HeroSection({
         staggerDelay={0.07}
         disableIntersectionObserver={true}
       >
-        <div className="mx-auto flex w-full justify-center gap-2">
-          <Link
-            href="https://docs.heygaia.io/release-notes"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <div
-              className={`relative z-10 flex w-fit cursor-pointer font-light items-center gap-1 rounded-full  ${isDark ? "text-white bg-zinc-400/30  outline-zinc-400/40" : "text-zinc-700 bg-white/40  outline-white/50"}  p-1 px-2 text-sm outline-1  transition mb-2 hover:scale-105 duration-300 backdrop-blur-xl`}
+        {latestRelease && (
+          <div className="mx-auto mb-2 flex w-full justify-center ">
+            <Link
+              href="https://docs.heygaia.io/release-notes"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex items-center gap-2 text-[13px] hover:bg-white/20 rounded-full px-1 py-1 transition hover:scale-105"
             >
-              <span className="size-2 rounded-full bg-primary shrink-0" />
-              <span>What&apos;s New</span>
-              <ChevronRight width={15} height={15} />
-            </div>
-          </Link>
-        </div>
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                  isDark ? "bg-white text-black" : "bg-black text-white"
+                }`}
+              >
+                New
+              </span>
+              <span
+                className={`max-w-[42ch] truncate ${
+                  isDark ? "text-zinc-50" : "text-zinc-800"
+                }`}
+              >
+                {latestRelease.headline}
+              </span>
+              {/* <CircleArrowRight02Icon
+                width={17}
+                height={17}
+                className={`${isDark ? "text-white!" : "text-black!"}`}
+              /> */}
+            </Link>
+          </div>
+        )}
 
         <div onClick={onTextClick} className="cursor-default select-none">
           {isDark ? (
             <SplitTextBlur
-              text="You shouldn't be doing this manually."
+              text="Get a workday back every week."
               delay={0}
               staggerDelay={0.08}
               className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible"
@@ -48,10 +67,10 @@ export default function HeroSection({
             />
           ) : (
             <SplitTextBlur
-              text="You shouldn't be doing this manually."
+              text="Get a workday back every week."
               delay={0}
               staggerDelay={0.08}
-              className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible"
+              className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none -space-y-10 sm:text-[6.5rem] font-normal tracking-tighter overflow-visible"
               gradient="linear-gradient(to bottom, #837e88, #000000)"
               lcpOptimized
               disableIntersectionObserver
@@ -65,21 +84,76 @@ export default function HeroSection({
       <div className="relative z-2 flex flex-col items-center gap-4 bg-transparent">
         <div className="relative">
           <div
-            className={`mb-3 max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl animate-[fadeIn_0.4s_ease-out_0.2s_both] ${isDark ? "text-zinc-200" : "text-black"}`}
+            className={`mb-3 max-w-(--breakpoint-lg) items-center justify-center gap-x-1.5 gap-y-1 px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl animate-[fadeIn_0.4s_ease-out_0.2s_both] ${isDark ? "text-zinc-200" : "text-black"}`}
           >
-            GAIA handles your emails, tasks, calendar, and workflows,
-            <br /> so you can focus on work that actually matters.{" "}
+            <span>
+              GAIA watches your inbox, calendar, and tools and acts before you
+              ask.
+            </span>
+            <br />
+            <div className="inline-flex flex-wrap items-center justify-center gap-y-1 align-middle">
+              <span>Reachable from</span>
+              <Link href={"/bots"}>
+                <Image
+                  src="/images/icons/macos/whatsapp.webp"
+                  alt="WhatsApp"
+                  className="inline-block size-7 rotate-12 hover:scale-105 transition-transform ml-2"
+                  width={100}
+                  height={100}
+                />
+                {/* <span>WhatsApp,</span> */}
+                <Image
+                  src="/images/icons/macos/slack.webp"
+                  alt="Slack"
+                  className="inline-block size-7 -rotate-12 hover:scale-105 transition-transform"
+                  width={100}
+                  height={100}
+                />
+                {/* <span>Slack,</span> */}
+                <Image
+                  src="/images/icons/macos/discord.webp"
+                  alt="Discord"
+                  className="inline-block size-7 rotate-12 hover:scale-105 transition-transform"
+                  width={100}
+                  height={100}
+                />
+                {/* <span>Discord,</span> */}
+                <Image
+                  src="/images/icons/macos/telegram.webp"
+                  alt="Telegram"
+                  className="inline-block size-7 -rotate-12 hover:scale-105 transition-transform mr-1"
+                  width={100}
+                  height={100}
+                />
+                <span>Telegram, </span>
+                <span>or the web.</span>
+              </Link>
+            </div>
           </div>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-4 mt-4">
           <GetStartedButton
             btnColor={isDark ? "#00bbff" : "#000000"}
             classname={
               isDark
-                ? "text-black! text-lg h-12 px-2 rounded-2xl"
-                : "text-white! text-lg h-12 px-2 rounded-2xl"
+                ? "text-black! px-1 hover:scale-105"
+                : "text-white! px-1 hover:scale-105"
             }
-            text="Try GAIA Free"
+            text={
+              <div className="flex items-center gap-1.5">
+                Sign Up <CircleArrowRight02Icon width={20} height={20} />
+              </div>
+            }
+          />
+          <GetStartedButton
+            btnColor="#ffffff"
+            classname="px-1 hover:scale-105"
+            text={
+              <div className="flex items-center gap-1.5">
+                Explore <DiscoverCircleIcon width={20} height={20} />
+              </div>
+            }
+            href="/use-cases"
           />
         </div>
       </div>

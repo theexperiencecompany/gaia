@@ -18,7 +18,11 @@ CHANNEL_TYPE_DISCORD = "discord"
 CHANNEL_TYPE_WHATSAPP = "whatsapp"
 
 # External channel types that are auto-injected based on platform links
-EXTERNAL_NOTIFICATION_CHANNELS = (CHANNEL_TYPE_TELEGRAM, CHANNEL_TYPE_DISCORD, CHANNEL_TYPE_WHATSAPP)
+EXTERNAL_NOTIFICATION_CHANNELS = (
+    CHANNEL_TYPE_TELEGRAM,
+    CHANNEL_TYPE_DISCORD,
+    CHANNEL_TYPE_WHATSAPP,
+)
 
 # All channel types that are auto-injected when no channels are explicitly specified.
 # inapp is always available; telegram/discord/whatsapp respect user preferences.

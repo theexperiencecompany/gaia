@@ -151,13 +151,19 @@ export default function Footer() {
                         (link.guestOnly && !isAuthenticated)) &&
                       !link.hideFooter,
                   )
-                  .sort((a, b) =>
-                    section.title === "Built For"
-                      ? 0
-                      : a.label.localeCompare(b.label, undefined, {
-                          sensitivity: "base",
-                        }),
-                  )
+                  .sort((a, b) => {
+                    if (section.title === "Built For") return 0;
+                    const aLabel = a.footerLabel ?? a.label;
+                    const bLabel = b.footerLabel ?? b.label;
+                    if (
+                      typeof aLabel !== "string" ||
+                      typeof bLabel !== "string"
+                    )
+                      return 0;
+                    return aLabel.localeCompare(bLabel, undefined, {
+                      sensitivity: "base",
+                    });
+                  })
                   .map((link) => (
                     <Link
                       key={link.href}
@@ -165,7 +171,7 @@ export default function Footer() {
                       className="group relative flex w-full cursor-pointer justify-start py-1 text-sm sm:justify-end"
                     >
                       <span className="text-zinc-400 transition-colors group-hover:text-primary">
-                        {link.label}
+                        {link.footerLabel ?? link.label}
                       </span>
                     </Link>
                   ))}

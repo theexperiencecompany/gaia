@@ -92,9 +92,14 @@ RUN adduser --disabled-password --gecos '' appuser \
 COPY apps/api/app ./apps/api/app
 COPY apps/api/scripts ./apps/api/scripts
 
+# Entrypoint: reads Docker Swarm secrets into env vars before exec-ing the process
+COPY scripts/docker-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 WORKDIR /app/apps/api
 
 USER appuser
 EXPOSE 8000
 
-CMD ["uv", "run", "python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "*"]

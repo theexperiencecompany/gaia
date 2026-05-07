@@ -18,7 +18,6 @@ import {
   SentIcon,
   TextBoldIcon,
   Video01Icon,
-  VolumeHighIcon,
 } from "@icons";
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
@@ -586,22 +585,14 @@ function ServerTile({
   logo,
   size,
   radius,
-  active,
 }: {
   logo: ServerLogo;
   size: number;
   radius: number;
-  active?: boolean;
 }) {
   const pad = Math.round(size * (logo.padding ?? 0.15));
   return (
     <div className="relative flex items-center">
-      {active && (
-        <span
-          className="absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-r-full bg-white"
-          aria-hidden
-        />
-      )}
       <Button
         isIconOnly
         radius="none"
@@ -636,32 +627,6 @@ function ServerTile({
 // ─── Slack ────────────────────────────────────────────────────────────────────
 
 const SLACK_BORDER = "rgba(255,255,255,0.06)";
-// Slack's iconic aubergine selection color.
-const SLACK_ACTIVE_BG = "#611F69";
-
-function SlackChannelRow({
-  label,
-  active,
-}: {
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <Button
-      fullWidth
-      variant="light"
-      size="sm"
-      radius="sm"
-      className={`justify-start gap-2 font-normal ${
-        active ? "text-white" : "text-zinc-400 data-[hover=true]:text-white"
-      }`}
-      style={active ? { backgroundColor: SLACK_ACTIVE_BG } : undefined}
-    >
-      <span className="text-zinc-500">#</span>
-      <span className="truncate">{label}</span>
-    </Button>
-  );
-}
 
 function SlackMessage({
   who,
@@ -723,78 +688,9 @@ function SlackDemo() {
         className="flex w-[72px] shrink-0 flex-col items-center gap-3 px-2 py-3"
         style={{ backgroundColor: "#19171D" }}
       >
-        {SLACK_WORKSPACES.map((logo, i) => (
-          <ServerTile
-            key={logo.name}
-            logo={logo}
-            size={40}
-            radius={10}
-            active={i === 0}
-          />
+        {SLACK_WORKSPACES.map((logo) => (
+          <ServerTile key={logo.name} logo={logo} size={40} radius={10} />
         ))}
-      </div>
-
-      {/* channel sidebar */}
-      <div
-        className="flex w-[36%] shrink-0 flex-col overflow-hidden"
-        style={{ backgroundColor: "#19171D" }}
-      >
-        <div
-          className="flex h-12 shrink-0 items-center justify-between px-4"
-          style={{ borderBottom: `1px solid ${SLACK_BORDER}` }}
-        >
-          <span className="text-[14px] font-bold text-white">GAIA</span>
-          <div className="h-2 w-2 rounded-full bg-emerald-400" />
-        </div>
-        <div className="flex flex-col overflow-y-auto py-2">
-          <p className="px-4 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Channels
-          </p>
-          <div className="flex flex-col gap-[1px] px-2">
-            <SlackChannelRow label="general" />
-            <SlackChannelRow label="product" active />
-            <SlackChannelRow label="eng" />
-            <SlackChannelRow label="design" />
-            <SlackChannelRow label="marketing" />
-          </div>
-          <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Direct Messages
-          </p>
-          <div className="flex flex-col gap-[1px] px-2">
-            <Button
-              fullWidth
-              variant="light"
-              size="sm"
-              radius="sm"
-              className="justify-start gap-2 font-normal text-zinc-400 data-[hover=true]:text-white"
-            >
-              <div className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
-              <span>GAIA</span>
-            </Button>
-            <Button
-              fullWidth
-              variant="light"
-              size="sm"
-              radius="sm"
-              className="justify-start gap-2 font-normal text-zinc-400 data-[hover=true]:text-white"
-            >
-              <div className="h-2 w-2 shrink-0 rounded-full bg-zinc-600" />
-              <span>dhruv</span>
-            </Button>
-          </div>
-        </div>
-        <div
-          className="mt-auto flex shrink-0 items-center gap-2.5 px-3 py-2"
-          style={{ backgroundColor: "#141517" }}
-        >
-          <RemoteAvatar src={AVATAR_ARYAN} size={28} alt="aryan" rounded="md" />
-          <div className="flex min-w-0 flex-col leading-none">
-            <span className="truncate text-[12px] font-semibold text-white">
-              aryan
-            </span>
-            <span className="mt-0.5 text-[9px] text-emerald-400">Active</span>
-          </div>
-        </div>
       </div>
 
       {/* main */}
@@ -878,33 +774,6 @@ function SlackDemo() {
 const DISCORD_BORDER = "rgba(0,0,0,0.35)";
 const DISCORD_HEADER_HEIGHT = 48;
 
-function DiscordChannelRow({
-  label,
-  active,
-  icon,
-}: {
-  label: string;
-  active?: boolean;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <Button
-      fullWidth
-      variant="light"
-      size="sm"
-      radius="sm"
-      className={`justify-start gap-2 font-normal ${
-        active ? "bg-white/10 text-white" : "text-zinc-400"
-      }`}
-    >
-      {icon ?? (
-        <span className="text-zinc-500 text-[15px] leading-none">#</span>
-      )}
-      <span>{label}</span>
-    </Button>
-  );
-}
-
 function DiscordMessage({
   who,
   avatarSrc,
@@ -963,76 +832,9 @@ function DiscordDemo() {
         className="flex w-[80px] shrink-0 flex-col items-center gap-2.5 px-2 py-3"
         style={{ backgroundColor: "#1E1F22" }}
       >
-        {DISCORD_SERVERS.map((logo, i) => (
-          <ServerTile
-            key={logo.name}
-            logo={logo}
-            size={46}
-            radius={15}
-            active={i === 1}
-          />
+        {DISCORD_SERVERS.map((logo) => (
+          <ServerTile key={logo.name} logo={logo} size={46} radius={15} />
         ))}
-      </div>
-
-      {/* channel sidebar */}
-      <div
-        className="flex w-[34%] shrink-0 flex-col overflow-hidden"
-        style={{ backgroundColor: "#2B2D31" }}
-      >
-        <div
-          className="flex shrink-0 items-center justify-between px-3"
-          style={{
-            height: DISCORD_HEADER_HEIGHT,
-            borderBottom: `1px solid ${DISCORD_BORDER}`,
-          }}
-        >
-          <span className="text-[14px] font-bold text-white">GAIA</span>
-        </div>
-        <div className="flex flex-1 flex-col overflow-y-auto px-2 py-2">
-          <p className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Text Channels
-          </p>
-          <div className="flex flex-col gap-[1px]">
-            <DiscordChannelRow label="general" active />
-            <DiscordChannelRow label="announcements" />
-            <DiscordChannelRow label="product" />
-            <DiscordChannelRow label="random" />
-            <DiscordChannelRow label="help" />
-          </div>
-          <p className="px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Voice Channels
-          </p>
-          <div className="flex flex-col gap-[1px]">
-            <DiscordChannelRow
-              label="Standup"
-              icon={<VolumeHighIcon width={DESKTOP_ICON} />}
-            />
-            <DiscordChannelRow
-              label="Hangout"
-              icon={<VolumeHighIcon width={DESKTOP_ICON} />}
-            />
-            <DiscordChannelRow
-              label="Pair"
-              icon={<VolumeHighIcon width={DESKTOP_ICON} />}
-            />
-            <DiscordChannelRow
-              label="Music"
-              icon={<VolumeHighIcon width={DESKTOP_ICON} />}
-            />
-          </div>
-        </div>
-        <div
-          className="flex shrink-0 items-center gap-2.5 px-2.5 py-2"
-          style={{ backgroundColor: "#232428" }}
-        >
-          <RemoteAvatar src={AVATAR_ARYAN} size={30} alt="aryan" />
-          <div className="flex min-w-0 flex-col leading-none">
-            <span className="truncate text-[12px] font-semibold text-white">
-              aryan
-            </span>
-            <span className="mt-0.5 text-[9px] text-emerald-400">Online</span>
-          </div>
-        </div>
       </div>
 
       {/* main */}
@@ -1316,10 +1118,11 @@ export default function BotsShowcaseSection() {
     >
       <div className="flex w-full max-w-7xl flex-col items-center gap-16">
         <div className="flex flex-col items-center text-center">
-          <LargeHeader headingText="One assistant, every app" centered />
+          <LargeHeader headingText="Reach GAIA from anywhere" centered />
           <p className="mt-2 max-w-[960px] text-base font-light text-zinc-400 sm:text-xl">
-            Chat, delegate tasks, and get answers right inside Discord,
-            Telegram, Slack, or WhatsApp.
+            Text it on WhatsApp. Mention it in Slack. Slash-command it in
+            Discord. Same assistant, same memory, every channel you already live
+            in.
           </p>
         </div>
 

@@ -3,16 +3,15 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 from zoneinfo import ZoneInfo
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     WORKFLOW_EXECUTION_PROMPT,
 )
 from app.agents.templates.agent_template import (
-    COMMS_PROMPT_TEMPLATE,
     EXECUTOR_PROMPT_TEMPLATE,
-    build_comms_prompt_template,
+    get_comms_static_prompt,
 )
 from app.models.message_models import (
     FileData,
@@ -28,6 +27,10 @@ from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
 
+# Sentinel marker on dynamic-context SystemMessages so
+# manage_system_prompts_node can keep only the latest one.
+DYNAMIC_CONTEXT_MARKER = "dynamic_context"
+
 
 def create_system_message(
     user_id: Optional[str] = None,
@@ -35,24 +38,54 @@ def create_system_message(
     agent_type: Literal["comms", "executor"] = "comms",
     source: Optional[str] = None,
 ) -> SystemMessage:
-    """Create main system message with user name only.
+    """Return the STATIC main system prompt for the given agent.
 
-    Args:
-        user_id: User's ID
-        user_name: User's full name
-        agent_type: Type of agent - "comms", "executor", or "main" (legacy)
-        source: Conversation source/platform (e.g. "whatsapp", "web"). Gates
-            OpenUI Lang out of the comms prompt for messaging platforms that
-            can't render interactive cards.
+    The content is byte-identical across every user on the same channel so
+    the provider's implicit prompt cache can match across users — the first
+    web user of the day warms the cache, every subsequent web user hits it
+    on turn 1. For comms, the per-channel variants embed the output-format
+    addendum (OpenUI on web/mobile/desktop; text-only restrictions on
+    messaging platforms). The executor prompt is single-variant.
+
+    All user, time, and memory context is delivered in the dynamic-context
+    message produced by ``build_dynamic_context_message`` and does NOT live
+    in this static prefix.
     """
+    del user_id, user_name  # intentionally unused — static prefix only
     if agent_type == "executor":
-        template = EXECUTOR_PROMPT_TEMPLATE
-    elif source is None:
-        template = COMMS_PROMPT_TEMPLATE
-    else:
-        template = build_comms_prompt_template(source)
+        return SystemMessage(content=EXECUTOR_PROMPT_TEMPLATE)
+    return SystemMessage(content=get_comms_static_prompt(source))
 
-    return SystemMessage(content=template.format(user_name=user_name or "there"))
+
+def build_current_time_message(
+    user_timezone: Optional[str] = None,
+) -> HumanMessage:
+    """Return a tiny HumanMessage carrying the current UTC + local time.
+
+    We keep the clock OUT of ``system_instruction`` and put it in
+    ``contents`` instead. Reason: Gemini's implicit cache matches the
+    longest common prefix. Any byte in ``system_instruction`` that ticks
+    every minute would push the cache boundary back to just before that
+    byte, so a call at 00:59 and a call at 01:01 would share less prefix
+    than they need to. Since ``contents`` already differ per turn anyway
+    (the user's actual message differs), attaching the clock to contents
+    costs us nothing on the cache budget but keeps ``system_instruction``
+    fully stable.
+    """
+    utc_now = datetime.now(timezone.utc).strftime("%A, %B %d, %Y, %H:%M UTC")
+    parts = [f"[Current UTC Time: {utc_now}]"]
+    if user_timezone:
+        try:
+            local_now = datetime.now(ZoneInfo(user_timezone)).strftime(
+                "%A, %B %d, %Y, %H:%M"
+            )
+            parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
+        except Exception as e:
+            log.warning(f"Error formatting user local time: {e}")
+    return HumanMessage(
+        content="\n".join(parts),
+        additional_kwargs={"time_context": True},
+    )
 
 
 async def _get_user_memories_section(query: str, user_id: str) -> str:
@@ -104,6 +137,140 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     return ""
 
 
+def _mark_dynamic_context(msg: SystemMessage) -> SystemMessage:
+    """Mark a SystemMessage as dynamic context.
+
+    Uses additional_kwargs so LangGraph / pydantic serialization preserves it
+    across checkpointer round-trips. `manage_system_prompts_node` keeps only
+    the latest message carrying this marker.
+    """
+    msg.additional_kwargs[DYNAMIC_CONTEXT_MARKER] = True
+    # Back-compat: existing filter logic looks at `memory_message` too.
+    msg.additional_kwargs.setdefault("memory_message", True)
+    return msg
+
+
+async def build_dynamic_context_message(
+    user_id: Optional[str],
+    query: Optional[str],
+    user_name: Optional[str] = None,
+    user_timezone: Optional[str] = None,
+    user_preferences: Optional[dict] = None,
+    source: Optional[str] = None,
+    include_openui: bool = False,
+    memories_text: Optional[str] = None,
+    skills_text: Optional[str] = None,
+) -> SystemMessage:
+    """Build the single dynamic-context system message.
+
+    This message is placed AFTER the static main prompt. It carries the
+    per-user, per-turn content: user name, timezone, preferences, memories,
+    GAIA knowledge, and installable skills. OpenUI / platform restrictions
+    and the clock are NOT here any more:
+
+    - Output-format addendums (OpenUI or text-only) are part of the static
+      per-channel prompt so they cache across every user on that channel.
+    - Current time lives in a HumanMessage so minute ticks never invalidate
+      the ``system_instruction`` prefix.
+
+    Within this message, content is ordered so the byte-identical-across-
+    turns sections come first (user name → timezone → preferences), then
+    the per-turn fetches (memories, GAIA knowledge, skills). The provider
+    caches bytes 0..N where byte N is the first to differ between turns —
+    so stable content up front maximises the cache hit length.
+
+    Args:
+        user_id: For memory/knowledge retrieval. If None, skips ChromaDB calls.
+        query: Search query for memory/knowledge retrieval.
+        user_name: User's display name.
+        user_timezone: IANA timezone string (used to format the address in the
+            static body; the actual clock is emitted in a HumanMessage).
+        user_preferences: Onboarding preferences.
+        source: Conversation source (web, whatsapp, telegram, ...). Preserved
+            on the wide event for observability; doesn't change what's here.
+        include_openui: Preserved for signature compatibility. OpenUI now
+            lives in the static per-channel prompt, not this message.
+        memories_text: Pre-fetched memories section. If provided, skips the
+            ChromaDB lookup.
+        skills_text: Pre-fetched skills section. Same rationale as memories.
+
+    Returns:
+        A SystemMessage marked with ``dynamic_context=True`` in
+        ``additional_kwargs``.
+    """
+    del include_openui  # accepted for back-compat; OpenUI is in static prompt now
+    try:
+        user_stable_parts: list[str] = []
+        variable_parts: list[str] = []
+
+        # --- Stable across turns for this user -----------------------------
+        if user_name:
+            user_stable_parts.append(f"User Name: {user_name}")
+        if user_timezone:
+            user_stable_parts.append(f"User Timezone: {user_timezone}")
+        if user_preferences:
+            if formatted := format_user_preferences_for_agent(user_preferences):
+                user_stable_parts.append(f"User Preferences:\n{formatted}")
+
+        # --- Fetches (may change turn-to-turn) -----------------------------
+        if memories_text is not None:
+            memories_section = memories_text
+            gaia_knowledge_section = ""
+            if user_id and query:
+                gaia_knowledge_section = await _get_gaia_knowledge_section(query)
+        elif user_id and query:
+            memories_section, gaia_knowledge_section = await asyncio.gather(
+                _get_user_memories_section(query, user_id),
+                _get_gaia_knowledge_section(query),
+            )
+        else:
+            memories_section = ""
+            gaia_knowledge_section = ""
+
+        if memories_section:
+            variable_parts.append(memories_section.lstrip("\n"))
+        if gaia_knowledge_section:
+            variable_parts.append(gaia_knowledge_section.lstrip("\n"))
+        if skills_text:
+            variable_parts.append(skills_text)
+
+        content_sections = [
+            "\n".join(user_stable_parts),
+            "\n\n".join(variable_parts),
+        ]
+        content = "\n\n".join(s for s in content_sections if s)
+
+        log.set(
+            dynamic_context={
+                "source": source or "web",
+                "has_memories": bool(memories_section),
+                "has_gaia_knowledge": bool(gaia_knowledge_section),
+                "has_skills": bool(skills_text),
+                "used_pinned_memories": memories_text is not None,
+                "char_count": len(content),
+                "user_stable_chars": sum(len(p) for p in user_stable_parts),
+                "variable_chars": sum(len(p) for p in variable_parts),
+            }
+        )
+
+        return _mark_dynamic_context(SystemMessage(content=content))
+
+    except Exception as e:
+        log.error(f"Error creating dynamic context message: {e}")
+        # Return a byte-stable empty message so a persistent failure here
+        # doesn't change the prompt prefix every minute and silently
+        # invalidate the implicit prompt cache. The clock lives in a
+        # HumanMessage built by build_current_time_message, so omitting
+        # time here is safe.
+        return _mark_dynamic_context(SystemMessage(content=""))
+
+
+# --- Back-compat shims -----------------------------------------------------
+# Kept so existing call sites (subagents, workflows) keep working while they
+# migrate to build_dynamic_context_message. New code MUST use the unified
+# builder above.
+
+
 async def get_memory_message(
     user_id: str,
     query: str,
@@ -111,146 +278,26 @@ async def get_memory_message(
     user_timezone: Optional[str] = None,
     user_preferences: Optional[dict] = None,
 ) -> SystemMessage:
-    """Create memory system message with user context (preferences, timezone, times) and optional memories.
-
-    This message ALWAYS returns (even if no memories exist) to provide:
-    - User preferences (profession, response style, custom instructions)
-    - User's name
-    - Current UTC time
-    - User's local timezone and time
-    - Conversation memories (if available)
-
-    Args:
-        user_id: User's ID for memory search
-        query: Search query for retrieving relevant memories
-        user_name: User's full name (already available from user dict)
-        user_timezone: User's timezone (already available from user dict)
-        user_preferences: User's onboarding preferences (already available from user dict)
-
-    Returns:
-        SystemMessage with user context and memories
-    """
-
-    try:
-        context_parts = []
-
-        # Add user name context
-        if user_name:
-            context_parts.append(
-                f"Gaia Display Name: {user_name} (not a connected service username)"
-            )
-
-        # Add user preferences if available
-        if user_preferences:
-            if formatted_prefs := format_user_preferences_for_agent(user_preferences):
-                context_parts.append(f"\nUser Preferences:\n{formatted_prefs}")
-
-        # Add time information
-        utc_time = datetime.now(timezone.utc)
-        formatted_utc_time = utc_time.strftime("%A, %B %d, %Y, %H:%M:%S UTC")
-        context_parts.append(f"\nCurrent UTC Time: {formatted_utc_time}")
-
-        # Add user's local timezone and time if available
-        if user_timezone:
-            try:
-                user_tz = ZoneInfo(user_timezone)
-                local_time = datetime.now(user_tz)
-                formatted_local_time = local_time.strftime("%A, %B %d, %Y, %H:%M:%S")
-                context_parts.append(f"User Timezone: {user_timezone}")
-                context_parts.append(f"User Local Time: {formatted_local_time}")
-            except Exception as e:
-                log.warning(f"Error formatting user local time: {e}")
-
-        # Search for conversation memories and GAIA knowledge in parallel
-        memories_section, gaia_knowledge_section = await asyncio.gather(
-            _get_user_memories_section(query, user_id),
-            _get_gaia_knowledge_section(query),
-        )
-
-        # Combine all sections
-        content = "\n".join(context_parts) + memories_section + gaia_knowledge_section
-        return SystemMessage(
-            content=content, additional_kwargs={"memory_message": True}
-        )
-
-    except Exception as e:
-        log.error(f"Error creating memory message: {e}")
-        # Return minimal context on error
-        utc_time_str = datetime.now(timezone.utc).strftime(
-            "%A, %B %d, %Y, %H:%M:%S UTC"
-        )
-        return SystemMessage(
-            content=f"Current UTC Time: {utc_time_str}",
-            additional_kwargs={"memory_message": True},
-        )
+    """Deprecated: thin wrapper over build_dynamic_context_message."""
+    return await build_dynamic_context_message(
+        user_id=user_id,
+        query=query,
+        user_name=user_name,
+        user_timezone=user_timezone,
+        user_preferences=user_preferences,
+    )
 
 
 def get_platform_context_message(
     source: Optional[str] = None,
 ) -> Optional[SystemMessage]:
-    """Create a system message informing the agent about the user's current platform.
-
-    This tells the LLM what output capabilities are available so it can adapt
-    its formatting. Text-only platforms (WhatsApp, Telegram, Discord, Slack)
-    cannot render HTML, interactive UI components, or artifacts.
-
-    Args:
-        source: The conversation source/platform identifier (e.g., "whatsapp", "web")
-
-    Returns:
-        SystemMessage with platform context, or None if source is web/unset
+    """Deprecated. Platform restrictions now live in the static per-channel
+    comms prompt selected by ``create_system_message(source=...)``. This
+    shim is kept only so older call sites don't break during migration;
+    new code should pass ``source`` to ``create_system_message``.
     """
-    if not source or source in ("web", "mobile"):
-        return None
-
-    platform_info = {
-        "whatsapp": {
-            "name": "WhatsApp",
-            "formatting": "WhatsApp formatting: *bold*, _italic_, ~strikethrough~, ```code```",
-        },
-        "telegram": {
-            "name": "Telegram",
-            "formatting": "Telegram formatting: **bold**, _italic_, `code`, ```code blocks```",
-        },
-        "discord": {
-            "name": "Discord",
-            "formatting": "Discord formatting: **bold**, *italic*, ~~strikethrough~~, `code`, ```code blocks```, > quotes",
-        },
-        "slack": {
-            "name": "Slack",
-            "formatting": "Slack formatting: *bold*, _italic_, ~strikethrough~, `code`, ```code blocks```, > quotes",
-        },
-    }
-
-    info = platform_info.get(source)
-    if not info:
-        return None
-
-    content = f"""—Platform Context (IMPORTANT)—
-The user is messaging from **{info["name"]}**. This is a text-based messaging platform.
-
-OUTPUT RESTRICTIONS for this platform:
-- NO HTML, interactive UI components, artifacts, or rich cards — the user cannot see them
-- NO markdown links [text](url) — just paste URLs directly
-- NO tables — use simple lists instead
-- NO images or embedded media in your response
-- Keep formatting simple and compatible: {info["formatting"]}
-- The user CANNOT see tool_data UI, MCP apps, or any frontend components
-- When showing structured data (search results, calendar events, emails, etc.), format as clean text lists
-- Artifacts and HTML content blocks are invisible to the user — describe results in plain text instead
-
-WHAT TO DO INSTEAD:
-- Present all information as formatted text using the platform's native formatting
-- For data that would normally show as a card/component, write it out as a clear text summary
-- For content that would be an artifact, include it directly in your message as text
-- Keep messages concise — messaging platforms work best with shorter, focused messages"""
-
-    # Mark as memory-style so manage_system_prompts_node preserves it alongside
-    # the COMMS_AGENT_PROMPT instead of treating this auxiliary platform context
-    # as the "latest non-memory system prompt" and silently dropping the real
-    # agent prompt. Platform context is persistent contextual metadata, not the
-    # agent's voice prompt — it should always travel with the conversation.
-    return SystemMessage(content=content, additional_kwargs={"memory_message": True})
+    del source
+    return None
 
 
 def format_tool_selection_message(

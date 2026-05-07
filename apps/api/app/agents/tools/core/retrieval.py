@@ -676,7 +676,7 @@ def get_retrieve_tools_function(
         )
 
         return RetrieveToolsResult(
-            tools_to_bind=final_tools,
+            tools_to_bind=[],
             response=final_tools,
         )
 

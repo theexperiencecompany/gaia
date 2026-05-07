@@ -54,7 +54,7 @@ function makeGaia() {
     deleteTodo: vi.fn(),
     listConversations: vi.fn(),
     resetSession: vi.fn(),
-    getFrontendUrl: vi.fn().mockReturnValue("https://app.heygaia.io"),
+    getFrontendUrl: vi.fn().mockReturnValue("https://heygaia.io"),
   } as unknown as import("@gaia/shared").GaiaClient;
 }
 
@@ -362,7 +362,7 @@ describe("handleConversationList", () => {
         },
       ],
     } as never);
-    vi.mocked(gaia.getFrontendUrl).mockReturnValue("https://app.heygaia.io");
+    vi.mocked(gaia.getFrontendUrl).mockReturnValue("https://heygaia.io");
 
     const result = await handleConversationList(gaia, ctx);
 
@@ -371,7 +371,7 @@ describe("handleConversationList", () => {
       limit: 5,
     });
     expect(result).toContain("Work chat");
-    expect(result).toContain("https://app.heygaia.io/c/c-1");
+    expect(result).toContain("https://heygaia.io/c/c-1");
   });
 
   it("passes page parameter", async () => {

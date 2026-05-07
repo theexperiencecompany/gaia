@@ -103,7 +103,8 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         bot_api_key = getattr(settings, "GAIA_BOT_API_KEY", None)
         if not bot_api_key:
             return False
-        return secrets.compare_digest(api_key, bot_api_key)
+        # Timing-safe comparison to avoid leaking the key via response-time diffs.
+        return secrets.compare_digest(api_key.encode(), bot_api_key.encode())
 
     async def _authenticate_platform(
         self, platform: str, platform_user_id: str

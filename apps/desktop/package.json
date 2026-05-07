@@ -34,10 +34,10 @@
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@types/node": "^22.10.2",
-    "electron": "^33.2.1",
+    "electron": "^39.8.5",
     "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
+    "electron-vite": "^3.0.0",
     "typescript": "^5.7.2",
-    "vite": "^5.4.21"
+    "vite": "^6.4.2"
   }
 }

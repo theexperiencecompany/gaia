@@ -354,10 +354,12 @@ class TestBuildAgentConfig:
             agent_name="comms_agent",
         )
 
+        from app.constants.llm import AGENT_RECURSION_LIMIT
+
         assert config["configurable"]["thread_id"] == CONV_ID
         assert config["configurable"]["user_id"] == USER_ID
         assert config["configurable"]["user_timezone"] == "+05:00"
-        assert config["recursion_limit"] == 75
+        assert config["recursion_limit"] == AGENT_RECURSION_LIMIT
 
     @patch("app.helpers.agent_helpers.providers")
     @patch("app.helpers.agent_helpers.settings")

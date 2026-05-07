@@ -22,7 +22,9 @@ from app.agents.core.nodes import (
     memory_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.llm.retry_policies import SUBAGENT_RETRY_POLICY
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
+from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_child_tool_runtime_config,
@@ -31,9 +33,11 @@ from app.agents.tools.core.tool_runtime_config import (
 )
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.finish_task_tool import finish_task
-from app.constants.general import FINISH_TASK_NAME
+from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.vfs_tools import vfs_cmd, vfs_read
+from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
+from app.constants.general import FINISH_TASK_NAME
 from shared.py.wide_events import log
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
@@ -81,10 +85,6 @@ class SubAgentFactory:
         Returns:
             Compiled LangGraph agent with tool registry, retrieval, and checkpointer
         """
-        from app.agents.tools.core.registry import get_tool_registry
-        from app.agents.tools.research_tool import deep_research
-        from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-
         log.set(subagent={"name": name, "provider": provider})
         log.info(
             f"Creating {provider} sub-agent graph using tool space '{tool_space}' with "
@@ -165,6 +165,7 @@ class SubAgentFactory:
                 todo_hook,
             ],
             "end_graph_hooks": [memory_node],
+            "agent_retry_policy": SUBAGENT_RETRY_POLICY,
         }
 
         valid_auto_bind = (

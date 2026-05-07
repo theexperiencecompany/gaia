@@ -25,8 +25,13 @@ interface ListItemBaseProps
   title: string;
   children?: React.ReactNode;
   icon?: React.ReactNode;
+  /** Render the icon raw, without the default rounded pill background. */
+  richIcon?: boolean;
   backgroundImage?: string;
+  /** When set with a backgroundImage, anchor the title block to the top instead of the bottom. */
+  textPosition?: "top" | "bottom";
   rowSpan?: number;
+  colSpan?: number;
 }
 
 interface InternalListItemProps extends ListItemBaseProps {
@@ -49,10 +54,51 @@ const menuMap: Record<string, typeof product> = {
 };
 
 const gridConfig: Record<string, string> = {
-  product: "grid-cols-3 grid-rows-3",
-  resources: "grid-cols-2 grid-rows-2",
+  product: "grid-cols-4",
+  resources: "grid-cols-3",
   company: "grid-cols-2 grid-rows-2",
   socials: "grid-cols-3 md:grid-cols-3",
+};
+
+const gridStyleConfig: Record<string, React.CSSProperties> = {
+  product: { gridTemplateRows: "repeat(4, minmax(0, 1fr))" },
+};
+
+interface ProductCellLayout {
+  rowSpan?: number;
+  colSpan?: number;
+  backgroundImage?: string;
+  textPosition?: "top" | "bottom";
+}
+
+/** Per-link grid placement for the product dropdown.
+ *  Grid is 4 cols × 4 rows. Cells flow row-by-row in `product` array order:
+ *  Use Cases (col 1, r-span-3), Marketplace (col 2, r-span-3),
+ *  Download (col 3, r-span-2), CLI (col 4, r-span-2),
+ *  Chat Bots (cols 3-4 row 3, c-span-2),
+ *  Row 4: Features | Roadmap | Tailored For Your Role | Compare. */
+const PRODUCT_LAYOUT: Record<string, ProductCellLayout> = {
+  "/use-cases": {
+    rowSpan: 3,
+    backgroundImage: wallpapers.useCases.webp,
+  },
+  "/marketplace": {
+    rowSpan: 3,
+    backgroundImage: wallpapers.integration.webp,
+  },
+  "/download": {
+    rowSpan: 2,
+    backgroundImage: "/images/screenshots/desktop_dock.webp",
+    textPosition: "top",
+  },
+  "/cli": {
+    rowSpan: 2,
+    backgroundImage: "/images/screenshots/cli.webp",
+    textPosition: "top",
+  },
+  "/bots": {
+    colSpan: 2,
+  },
 };
 
 const ListItem = React.memo(
@@ -65,14 +111,18 @@ const ListItem = React.memo(
         href,
         external,
         icon,
+        richIcon,
         backgroundImage,
+        textPosition = "bottom",
         rowSpan,
+        colSpan,
         ...props
       },
       ref,
     ) => {
       const sharedClassName = cn(
-        "group relative flex h-full min-h-18 w-full flex-col justify-center overflow-hidden rounded-2xl bg-zinc-800/0 p-3.5 leading-none no-underline transition-all duration-150 select-none hover:bg-zinc-800 hover:text-zinc-100 focus:bg-zinc-800 focus:text-zinc-100",
+        "group relative flex h-full min-h-18 w-full flex-col overflow-hidden rounded-2xl bg-zinc-800/0 p-3.5 leading-none no-underline transition-all duration-150 select-none hover:bg-zinc-800 hover:text-zinc-100 focus:bg-zinc-800 focus:text-zinc-100",
+        textPosition === "top" ? "justify-start" : "justify-center",
         className,
       );
       const content = (
@@ -86,26 +136,39 @@ const ListItem = React.memo(
                 sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                 className="absolute inset-0 z-0 object-cover transition-all group-hover:brightness-60"
               />
-              <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+              <div
+                className={cn(
+                  "absolute inset-0 z-[1] from-black/90 via-black/50 to-black/20",
+                  textPosition === "top"
+                    ? "bg-gradient-to-b"
+                    : "bg-gradient-to-t",
+                )}
+              />
             </>
           )}
           <div
             className={cn(
               "flex items-start gap-3",
-              backgroundImage && "relative z-[2] mt-auto",
+              backgroundImage && "relative z-[2]",
+              backgroundImage && textPosition === "bottom" && "mt-auto",
             )}
           >
-            {icon && (
-              <span
-                className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl ${
-                  backgroundImage
-                    ? "bg-white/5 backdrop-blur group-hover:bg-white/10"
-                    : "bg-zinc-800/80 group-hover:bg-zinc-700/80"
-                } p-2 text-primary transition group-hover:text-zinc-300`}
-              >
-                {icon}
-              </span>
-            )}
+            {icon &&
+              (richIcon ? (
+                <span className="relative flex items-center justify-center text-primary">
+                  {icon}
+                </span>
+              ) : (
+                <span
+                  className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl ${
+                    backgroundImage
+                      ? "bg-white/5 backdrop-blur group-hover:bg-white/10"
+                      : "bg-primary/10 group-hover:bg-primary/15"
+                  } p-2 text-primary transition`}
+                >
+                  {icon}
+                </span>
+              ))}
             <div className="flex h-full flex-col justify-start gap-1 leading-none font-normal text-zinc-100">
               {title}
               {children && (
@@ -123,8 +186,12 @@ const ListItem = React.memo(
         </>
       );
 
+      const liStyle: React.CSSProperties = {};
+      if (rowSpan) liStyle.gridRow = `span ${rowSpan} / span ${rowSpan}`;
+      if (colSpan) liStyle.gridColumn = `span ${colSpan} / span ${colSpan}`;
+
       return (
-        <li className={cn("list-none", rowSpan === 2 && "row-span-2")}>
+        <li className="list-none" style={liStyle}>
           {external ? (
             <a
               ref={ref}
@@ -161,6 +228,7 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
   );
 
   const gridClass = gridConfig[activeMenu] ?? "grid-cols-3";
+  const gridStyle = gridStyleConfig[activeMenu];
 
   return (
     <div
@@ -170,34 +238,28 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
       )}
     >
       <div className="p-6 pt-2">
-        <div className={cn("grid w-full gap-4", gridClass)}>
-          {links.map((link) => (
-            <ListItem
-              key={link.href}
-              href={link.href}
-              title={link.label}
-              external={link.external}
-              icon={link.icon}
-              backgroundImage={
-                link.href === "/login"
-                  ? "/images/wallpapers/swiss.webp"
-                  : link.href === "/use-cases"
-                    ? wallpapers.useCases.webp
-                    : link.href === "/marketplace"
-                      ? wallpapers.integration.webp
-                      : undefined
-              }
-              rowSpan={
-                link.href === "/login" ||
-                link.href === "/use-cases" ||
-                link.href === "/marketplace"
-                  ? 2
-                  : undefined
-              }
-            >
-              {getLinkDescription(link.label)}
-            </ListItem>
-          ))}
+        <div className={cn("grid w-full gap-4", gridClass)} style={gridStyle}>
+          {links.map((link) => {
+            const layout =
+              activeMenu === "product" ? PRODUCT_LAYOUT[link.href] : undefined;
+
+            return (
+              <ListItem
+                key={link.href}
+                href={link.href}
+                title={link.label}
+                external={link.external}
+                icon={link.icon}
+                richIcon={link.richIcon}
+                backgroundImage={layout?.backgroundImage}
+                textPosition={layout?.textPosition}
+                rowSpan={layout?.rowSpan}
+                colSpan={layout?.colSpan}
+              >
+                {getLinkDescription(link.label)}
+              </ListItem>
+            );
+          })}
         </div>
       </div>
     </div>
