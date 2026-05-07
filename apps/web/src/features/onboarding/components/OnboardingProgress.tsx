@@ -1,19 +1,29 @@
 import { Button } from "@heroui/button";
+import {
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@heroui/modal";
 import { ReloadIcon } from "@icons";
 import { m } from "motion/react";
-import { useId } from "react";
+import { useId, useState } from "react";
 
 interface OnboardingProgressProps {
   currentStep: number;
   totalSteps: number;
   onRestart?: () => void;
+  isRestarting?: boolean;
 }
 
 export const OnboardingProgress = ({
   currentStep,
   totalSteps,
   onRestart,
+  isRestarting = false,
 }: OnboardingProgressProps) => {
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const baseId = useId();
   return (
     <nav
@@ -71,14 +81,53 @@ export const OnboardingProgress = ({
           size="sm"
           variant="flat"
           radius="full"
-          onPress={onRestart}
+          onPress={() => setConfirmOpen(true)}
+          isLoading={isRestarting}
+          isDisabled={isRestarting}
+          startContent={!isRestarting && <ReloadIcon size={14} />}
           className="fixed right-3 bottom-3"
           aria-label="Restart onboarding"
         >
-          <ReloadIcon size={14} />
-          Restart Onboarding
+          {isRestarting ? "Restarting…" : "Restart Onboarding"}
         </Button>
       )}
+
+      <Modal
+        isOpen={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        size="md"
+        backdrop="blur"
+        placement="center"
+      >
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader>Restart onboarding?</ModalHeader>
+              <ModalBody>
+                <p className="text-sm text-zinc-400">
+                  This wipes everything GAIA set up for you so far — generated
+                  todos, suggested workflows, your writing style profile, and
+                  the welcome conversation. You'll start over from question one.
+                </p>
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="flat" onPress={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  color="danger"
+                  onPress={() => {
+                    onClose();
+                    onRestart?.();
+                  }}
+                >
+                  Restart
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </nav>
   );
 };

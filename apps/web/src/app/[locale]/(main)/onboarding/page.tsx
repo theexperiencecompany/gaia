@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ArrowRight02Icon } from "@icons";
+import { ArrowRight02Icon, CircleArrowRight02Icon } from "@icons";
 import { m } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
@@ -27,6 +27,8 @@ import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
 import { useOnboardingChat } from "@/features/onboarding/hooks/useOnboardingChat";
 import { useOnboardingFlow } from "@/features/onboarding/hooks/useOnboardingFlow";
 import { useOnboardingWebSocket } from "@/features/onboarding/hooks/useOnboardingWebSocket";
+import { db as chatDb } from "@/lib/db/chatDb";
+import { useChatStore } from "@/stores/chatStore";
 
 const BOT_BUBBLE_DEFAULTS = {
   message_id: "",
@@ -57,6 +59,7 @@ export default function Onboarding() {
     onboardingState,
     submissionError,
     isFocusPending,
+    isRestarting,
     messagesEndRef,
     inputRef,
     handleProfessionSelect,
@@ -64,7 +67,6 @@ export default function Onboarding() {
     handleInputChange,
     handleSubmit,
     handleGmailSkip,
-    handleEditResponse,
     handleConversationReady,
     handleRetrySubmission,
     handleRestart,
@@ -72,9 +74,30 @@ export default function Onboarding() {
 
   const flow = useOnboardingFlow(onboardingState.isProcessingPhase);
 
-  const handleRestartAll = useCallback(() => {
+  const handleRestartAll = useCallback(async () => {
+    const oldConversationId = flow.data.conversationId;
+
+    // Local resets fire synchronously so the UI snaps back instantly.
     flow.reset();
-    handleRestart();
+    if (oldConversationId) {
+      useChatStore.getState().removeConversation(oldConversationId);
+      // Fire-and-forget — IndexedDB cleanup shouldn't block the visible
+      // restart flow. A failure here is logged but doesn't surface to the
+      // user; worst case is an orphan record in their browser DB.
+      void chatDb
+        .deleteConversationAndMessages(oldConversationId)
+        .catch((error: unknown) => {
+          console.error(
+            "Failed to delete onboarding conversation from IndexedDB:",
+            error,
+          );
+        });
+    }
+
+    // handleRestart resets local state synchronously too, then awaits the
+    // backend reset call. The button keeps its loading state until that
+    // finishes, but the user's UI is already on question 1.
+    await handleRestart();
   }, [flow, handleRestart]);
 
   const chatMessages = useOnboardingChat(
@@ -113,21 +136,25 @@ export default function Onboarding() {
     [chatMessages],
   );
 
-  // Determine current progress step for the progress bar
-  const progressStep = (() => {
-    switch (flow.step.type) {
-      case "question":
-        return onboardingState.currentQuestionIndex;
-      case "loading":
-        return 3;
-      case "todos":
-        return 4;
-      case "workflows_and_connect":
-        return 5;
-      case "chat":
-        return 6;
-    }
-  })();
+  // Determine current progress step for the progress bar.
+  // While a restart is in flight, snap to 0 so the tabs animate back
+  // immediately instead of waiting for the backend roundtrip to finish.
+  const progressStep = isRestarting
+    ? 0
+    : (() => {
+        switch (flow.step.type) {
+          case "question":
+            return onboardingState.currentQuestionIndex;
+          case "loading":
+            return 3;
+          case "todos":
+            return 4;
+          case "workflows_and_connect":
+            return 5;
+          case "chat":
+            return 6;
+        }
+      })();
 
   const showQAInput =
     flow.step.type === "question" ||
@@ -142,6 +169,7 @@ export default function Onboarding() {
         currentStep={progressStep}
         totalSteps={6}
         onRestart={handleRestartAll}
+        isRestarting={isRestarting}
       />
 
       <div
@@ -158,10 +186,13 @@ export default function Onboarding() {
             isIntelligenceComplete={flow.step.type === "chat"}
             intelligenceConversationId={flow.data.conversationId}
             onProcessingComplete={handleConversationReady}
-            isProcessingSkipped={flow.step.type !== "loading"}
-            onEditMessage={handleEditResponse}
+            // Keep the processing checklist visible across the loading,
+            // todos, and workflows phases so the user sees every step tick
+            // off. It only unmounts once we transition into the chat step.
+            isProcessingSkipped={flow.step.type === "chat"}
             inboxScanCount={flow.inboxScanCount}
             completedStages={flow.completedStages}
+            processingStatusMessage={flow.data.waitingStatus}
             processingContinuationChildren={
               flow.step.type === "todos" ? (
                 <OnboardingRevealSequence
@@ -283,29 +314,28 @@ export default function Onboarding() {
                 </m.div>
               ))}
 
-              {/* Loading indicator during pre-send delay and initial streaming */}
-              {(chatMessages.isPendingTodoSend ||
-                (chatMessages.isChatSending &&
-                  !chatMessages.streamMessages.some(
-                    (m) => m.role === "assistant" && m.content,
-                  ))) && (
-                <m.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-center gap-2 pl-1"
-                >
-                  <div className="min-w-10 shrink-0" />
-                  <div className="flex gap-1.5">
-                    {[0, 150, 300].map((delay) => (
-                      <span
-                        key={delay}
-                        className="inline-block size-1.5 animate-bounce rounded-full bg-zinc-500"
-                        style={{ animationDelay: `${delay}ms` }}
-                      />
-                    ))}
-                  </div>
-                </m.div>
-              )}
+              {/* Loading indicator while waiting for first assistant chunk */}
+              {chatMessages.isChatSending &&
+                !chatMessages.streamMessages.some(
+                  (m) => m.role === "assistant" && m.content,
+                ) && (
+                  <m.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex items-center gap-2 pl-1"
+                  >
+                    <div className="min-w-10 shrink-0" />
+                    <div className="flex gap-1.5">
+                      {[0, 150, 300].map((delay) => (
+                        <span
+                          key={delay}
+                          className="inline-block size-1.5 animate-bounce rounded-full bg-zinc-500"
+                          style={{ animationDelay: `${delay}ms` }}
+                        />
+                      ))}
+                    </div>
+                  </m.div>
+                )}
 
               {/* Post-todo-execution CTA */}
               {chatMessages.isTodoExecutionDone && (
@@ -351,9 +381,8 @@ export default function Onboarding() {
           >
             <Button
               color="primary"
-              radius="full"
               size="md"
-              endContent={<ArrowRight02Icon className="size-4" />}
+              endContent={<CircleArrowRight02Icon className="size-4" />}
               onPress={() => setWorkflowsConfirmed(true)}
             >
               Understood

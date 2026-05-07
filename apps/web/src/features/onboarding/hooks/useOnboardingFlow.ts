@@ -129,10 +129,11 @@ export function useOnboardingFlow(
   // ── Auto-advance from "complete" reveal to workflows step ───────────────
   useEffect(() => {
     if (revealPhase !== "complete") return;
-    const timer = setTimeout(() => {
-      setStep({ type: "workflows_and_connect" });
-    }, 400);
-    return () => clearTimeout(timer);
+    setStep((prev) =>
+      prev.type === "todos" || prev.type === "loading"
+        ? { type: "workflows_and_connect" }
+        : prev,
+    );
   }, [revealPhase]);
 
   const handleStageEvent = useCallback(
@@ -175,24 +176,21 @@ export function useOnboardingFlow(
         case "todos_ready": {
           const p = payload as StagePayloads["todos_ready"];
           if (p.todos.length > 0) {
-            // data stored via setData — dataRef.current reflects it
-            setData((prev) => {
-              // If writing style never arrived, start reveal at todos phase
-              if (!prev.writingStyle) {
-                setRevealPhase("todos");
-              }
-              return { ...prev, todos: p.todos };
-            });
+            setData((prev) => ({ ...prev, todos: p.todos }));
             enterRevealSequence();
           }
-          // If user already clicked "Looks good" and is waiting, auto-advance
-          if (revealPhaseRef.current === "writing_style_done") {
-            if (p.todos.length > 0) {
-              setRevealPhase("todos");
-            } else {
-              setRevealPhase("complete");
-            }
+
+          // Resolve reveal phase exactly once based on current state.
+          const currentPhase = revealPhaseRef.current;
+          const hasWritingStyle = dataRef.current.writingStyle !== null;
+
+          if (currentPhase === "writing_style_done") {
+            // User already clicked "Looks good" — advance.
+            setRevealPhase(p.todos.length > 0 ? "todos" : "complete");
             setIsWaitingForNextPhase(false);
+          } else if (!hasWritingStyle && p.todos.length > 0) {
+            // Writing style never arrived — start reveal at todos.
+            setRevealPhase("todos");
           }
           break;
         }
@@ -317,8 +315,20 @@ export function useOnboardingFlow(
     [isExecutingTodo],
   );
 
+  // Tracked so we can cancel the popup-close watcher on unmount.
+  const popupCleanupRef = useRef<(() => void) | null>(null);
+
   const connectPlatform = useCallback(
     async (platform: string) => {
+      // Cancel any prior in-flight popup watcher.
+      popupCleanupRef.current?.();
+      popupCleanupRef.current = null;
+
+      const finish = () => {
+        setData((prev) => ({ ...prev, connectedPlatform: platform }));
+        advanceToChat();
+      };
+
       try {
         const response = await apiService.get<{
           auth_url: string | null;
@@ -341,31 +351,66 @@ export function useOnboardingFlow(
             `width=${width},height=${height},left=${left},top=${top}`,
           );
 
-          const poll = setInterval(() => {
-            if (popup?.closed) {
-              clearInterval(poll);
-              setData((prev) => ({ ...prev, connectedPlatform: platform }));
-              setTimeout(() => advanceToChat(), 1500);
+          if (!popup) {
+            finish();
+            return;
+          }
+
+          // Detect popup closure via the only reliable signal cross-origin:
+          // an rAF loop checking `popup.closed`. Properly torn down on
+          // unmount or when the user re-triggers connect.
+          let cancelled = false;
+          let rafId = 0;
+          const onMessage = (event: MessageEvent) => {
+            if (event.source === popup) {
+              cleanup();
+              finish();
             }
-          }, 500);
+          };
+          const cleanup = () => {
+            cancelled = true;
+            if (rafId) cancelAnimationFrame(rafId);
+            window.removeEventListener("message", onMessage);
+            popupCleanupRef.current = null;
+          };
+          const tick = () => {
+            if (cancelled) return;
+            if (popup.closed) {
+              cleanup();
+              finish();
+              return;
+            }
+            rafId = requestAnimationFrame(tick);
+          };
+          window.addEventListener("message", onMessage);
+          rafId = requestAnimationFrame(tick);
+          popupCleanupRef.current = cleanup;
         } else if (response.action_link) {
           window.open(response.action_link, "_blank");
-          setData((prev) => ({ ...prev, connectedPlatform: platform }));
-          setTimeout(() => advanceToChat(), 2000);
+          finish();
         }
       } catch {
-        setData((prev) => ({ ...prev, connectedPlatform: platform }));
-        setTimeout(() => advanceToChat(), 1500);
+        finish();
       }
     },
     [advanceToChat],
   );
+
+  // Cancel any popup watcher on unmount.
+  useEffect(() => {
+    return () => {
+      popupCleanupRef.current?.();
+      popupCleanupRef.current = null;
+    };
+  }, []);
 
   const skipPlatformConnect = useCallback(() => {
     advanceToChat();
   }, [advanceToChat]);
 
   const reset = useCallback(() => {
+    popupCleanupRef.current?.();
+    popupCleanupRef.current = null;
     setStep({ type: "question", index: 0 });
     setData(INITIAL_DATA);
     setLoadingStatuses([]);

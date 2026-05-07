@@ -105,28 +105,33 @@ FOCUS_TODOS_PROMPT = (
 
 TRIAGE_TODOS_PROMPT = (
     "You are GAIA, an AI assistant that can autonomously research, draft, analyze, and execute tasks.\n"
-    "Read these emails and generate action items that YOU (GAIA) can actually execute.\n\n"
-    "User context:\n"
+    "Generate 3 high-value action items GAIA can do for this user. The user's profession and focus are the primary signal — emails are supporting context, not the brief.\n\n"
+    "User context (PRIMARY):\n"
     "- Profession: {profession}\n"
     "- Current focus: {focus}\n\n"
-    "Emails:\n"
+    "Recent inbox signal (SECONDARY — use as context, not the source):\n"
     "{emails_context}\n\n"
     "GAIA's capabilities: web research, drafting emails/documents, summarizing info, searching the inbox, "
     "creating comparison tables, writing reports, preparing meeting agendas.\n"
     "GAIA cannot: log into external platforms, change account settings, make purchases, send emails without approval.\n\n"
+    "How to balance signals:\n"
+    "- At LEAST 1 todo must be anchored to the user's focus and profession, NOT to a specific email.\n"
+    "- AT MOST 2 todos may reference a specific email/sender — and only when that email reflects something genuinely important to the user's focus.\n"
+    "- Skip emails that are newsletters, automated notifications, or operational noise even if they were marked important.\n"
+    "- If the inbox is mostly noise, generate todos purely from profession + focus.\n\n"
     "Each todo MUST:\n"
-    "- Reference a specific person, company, or topic from the emails above\n"
-    "- Produce a concrete deliverable (a draft, a research brief, a summary, a comparison)\n"
-    "- Be something that would take a human 20+ minutes to do manually\n"
-    "- Be relevant to this user's profession and focus\n"
+    "- Produce a concrete deliverable (a draft, a research brief, a plan, a comparison, a summary with conclusions)\n"
+    "- Take a human 20+ minutes to do manually\n"
+    "- Move the user's focus or profession-relevant work forward\n"
     "- Start with a verb, under 60 characters\n\n"
     "Each todo MUST NOT:\n"
     "- Be generic ('Review your inbox', 'Organize your emails', 'Check this update')\n"
     "- Require external platform access GAIA doesn't have\n"
     "- Be trivially simple ('Read this email', 'Check this link')\n"
-    "- Just summarize an email with no further action\n"
+    "- Merely summarize an email without producing follow-on value\n"
     "- Duplicate another todo in the list\n\n"
-    "Generate exactly 3 todos. If fewer than 3 emails clearly qualify, combine scope or research broader context.\n\n"
+    "Cover 3 different shapes of work where possible (e.g. one research, one draft, one plan/synthesis).\n"
+    "If a todo is anchored to an email, populate source_sender and source_subject; otherwise leave them empty.\n\n"
     "{format_instructions}"
 )
 
@@ -215,34 +220,42 @@ Write a conversational first message. Rules:
 - Under 120 words. No emojis. No bullet points. No cards. No "Great!" or "Sure!". Talk like a competent colleague.
 """
 
-WORKFLOW_CREATION_PROMPT = """You are GAIA setting up automations for a new user. Create exactly 2 workflows tailored to their actual context.
+WORKFLOW_CREATION_PROMPT = """You are GAIA setting up recurring automations for a new user. Create exactly 2 workflows that fit how this person actually works.
 
-User profile:
+User profile (PRIMARY signal — weigh this most):
 - Profession: {profession}
 - Current focus: {focus}
+
+Secondary signals (use sparingly — do not let these dominate):
 - Has Gmail connected: {has_gmail}
+- Inbox patterns observed: {inbox_patterns}
+- Frequent senders: {email_senders_summary}
+- Writing style: {writing_style_summary}
 
-Inbox insights:
-- Key patterns: {inbox_patterns}
-- Key senders / email types: {email_senders_summary}
-
-Writing style: {writing_style_summary}
+How to think about this:
+1. Anchor every workflow to the person's profession and focus — that is who they are.
+2. Inbox patterns are ONE input, not the brief. Do not design every workflow around their email categories. The user is more than their inbox.
+3. At least ONE of the two workflows should NOT be primarily about email filtering, sorting, or summarizing. It should help the user move their actual work forward — research, drafting, planning, monitoring, follow-ups, prep, briefings.
+4. The second workflow may incorporate inbox signal, but only if it produces a tangible deliverable beyond "summarize emails" — e.g. a weekly digest of relevant external news, a prep brief before recurring meetings, a draft of a recurring outbound message.
 
 Requirements for each workflow:
-- Must save this person 20+ minutes per week — be specific, not generic
-- Must be grounded in their actual profession and inbox patterns above
-- Title: under 60 chars, starts with a verb or noun, no buzzwords
-- Description: 1-2 sentences — what triggers it, what it does, what output it produces
+- Must save this person 20+ minutes per week
+- Must feel personal — readable in one line as "yes, that's actually for me"
+- Title: under 60 chars, starts with a verb, no buzzwords, no "Daily/Weekly X" templates
+- Description: 1-2 sentences explaining what triggers it, what GAIA does, what output the user receives
 
-BAD (too generic):
-- "Daily Email Summary" — everyone gets this, no specificity
-- "Task Reminder" — vague, could apply to anyone
-- "Weekly Report" — no context-specificity
+BANNED patterns (auto-reject):
+- "Daily Email Summary" / "Weekly Inbox Digest" / "Inbox Triage" — too generic
+- "Flag X emails" as both workflows — at most one workflow can be email-filtering
+- "Task Reminder" / "Meeting Reminder" — vague, no specificity
+- Anything that just restates an inbox category without producing new value
 
-GOOD (specific to user context):
-- "Flag investor emails and draft follow-ups" — for a founder with investor threads in inbox
-- "Summarize new bug reports with reproduction steps" — for a developer with GitHub alerts
-- "Compile competitor coverage into weekly digest" — for marketing with competitor email patterns
+GOOD examples (specific, anchored to who the person is):
+- Founder, focus = raise Series A → "Brief me on the 5 most relevant VC moves each Monday" (industry monitoring, not inbox)
+- Engineer, focus = ship v2 launch → "Prep release-day checklist every Thursday from open PRs and issues" (work-in-progress synthesis)
+- Designer, focus = land freelance clients → "Draft weekly portfolio outreach to 3 new prospects" (proactive outbound)
+- PM, focus = align cross-team roadmap → "Compile cross-team status into a Friday digest" (synthesis, not filtering)
+- Researcher, focus = literature review → "Summarize new papers in my field every Tuesday" (external monitoring)
 
 Return JSON only:
 {{

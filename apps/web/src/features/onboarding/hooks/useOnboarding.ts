@@ -28,7 +28,7 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useUser();
-  const { setUser } = useUserActions();
+  const { setUser, updateUser } = useUserActions();
   const [isInitialized, setIsInitialized] = useState(false);
   const [submissionError, setSubmissionError] = useState(false);
   const onboardingStartTracked = useRef(false);
@@ -530,17 +530,19 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
         return;
       }
 
-      try {
-        await apiService.post("/onboarding/phase", {
-          phase: "getting_started",
-        });
-      } catch {
-        // non-blocking
-      }
+      // Navigate first so the user is on the chat page before the phase
+      // POST lands. If the user reloads during this window, the resume
+      // logic in the init effect can otherwise mis-route them — by the
+      // time the phase update sets `getting_started`, they're already on
+      // /c/{conversationId} and the onboarding page is no longer the
+      // active route.
+      router.push(`/c/${conversationId}`);
 
-      setTimeout(() => {
-        router.push(`/c/${conversationId}`);
-      }, 500);
+      void apiService
+        .post("/onboarding/phase", { phase: "getting_started" })
+        .catch(() => {
+          // non-blocking — phase tracking is bookkeeping, not critical
+        });
     },
     [router, skipAutoRedirect],
   );
@@ -600,47 +602,6 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     user.onboarding,
   ]);
 
-  const handleEditResponse = useCallback(
-    (questionFieldName: string) => {
-      const questionIndex = questions.findIndex(
-        (q) => q.fieldName === questionFieldName,
-      );
-      if (questionIndex === -1) return;
-
-      const messageIndex = onboardingState.messages.findIndex(
-        (m) => m.questionFieldName === questionFieldName,
-      );
-
-      setOnboardingState((prev) => ({
-        ...prev,
-        messages:
-          messageIndex >= 0
-            ? prev.messages.slice(0, messageIndex)
-            : prev.messages,
-        currentQuestionIndex: questionIndex,
-        userResponses: Object.fromEntries(
-          Object.entries(prev.userResponses).filter(([key]) => {
-            const keyIdx = questions.findIndex((q) => q.fieldName === key);
-            return keyIdx < questionIndex;
-          }),
-        ),
-        currentInputs: {
-          text:
-            questionFieldName !== FIELD_NAMES.PROFESSION
-              ? (prev.userResponses[questionFieldName] ?? "")
-              : "",
-          selectedProfession:
-            questionFieldName === FIELD_NAMES.PROFESSION
-              ? (prev.userResponses[questionFieldName] ?? null)
-              : null,
-        },
-        hasAnsweredCurrentQuestion: false,
-        isProcessingPhase: false,
-      }));
-    },
-    [onboardingState.messages, onboardingState.userResponses],
-  );
-
   const handleRetrySubmission = useCallback(() => {
     processingStarted.current = false;
     pendingDataRef.current = { responses: onboardingState.userResponses };
@@ -653,13 +614,31 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     void submitOnboardingToBackend(responses);
   }, [onboardingState.userResponses, submitOnboardingToBackend]);
 
-  const handleRestart = useCallback(() => {
+  const [isRestarting, setIsRestarting] = useState(false);
+
+  const handleRestart = useCallback(async (): Promise<void> => {
+    if (isRestarting) return;
+    setIsRestarting(true);
+
+    // ── Optimistic local reset ──────────────────────────────────────────
+    // The UI snaps to question 1 immediately so the user isn't waiting on
+    // a network roundtrip. The backend reset runs in the background; the
+    // restart button stays in its loading state until it resolves so the
+    // user has feedback. If the backend call fails we surface a toast —
+    // there's no clean rollback path (the user wanted to start over) and
+    // `complete_onboarding` now overwrites stale state as a safety net.
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
     }
 
     processingStarted.current = false;
     pendingDataRef.current = null;
+    gmailAutoAdvanced.current = false;
+    onboardingStartTracked.current = false;
+
+    // Clear backend-derived user.onboarding before resetting local state so
+    // the init effect's resume-detection path can't race in between.
+    updateUser({ onboarding: undefined });
 
     const firstQuestion = questions[0];
     const userName = user.name || "";
@@ -684,12 +663,24 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     });
 
     setIsInitialized(true);
-  }, [user.name]);
+
+    try {
+      await apiService.post("/onboarding/reset", {}, { silent: true });
+    } catch (error) {
+      console.error("Failed to reset onboarding on server:", error);
+      toast.error(
+        "We reset locally, but the server reset didn't fully complete.",
+      );
+    } finally {
+      setIsRestarting(false);
+    }
+  }, [isRestarting, user.name, updateUser]);
 
   return {
     onboardingState,
     submissionError,
     isFocusPending: focusPending,
+    isRestarting,
     messagesEndRef,
     inputRef,
     handleProfessionSelect,
@@ -698,7 +689,6 @@ export const useOnboarding = (skipAutoRedirect?: boolean) => {
     handleSubmit,
     handleGmailSkip,
     handleSkipSetup,
-    handleEditResponse,
     handleConversationReady,
     handleRetrySubmission,
     handleRestart,

@@ -27,6 +27,7 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
+    reset_onboarding,
     update_onboarding_preferences,
 )
 from app.services.onboarding.social_profile_service import save_confirmed_profiles
@@ -82,6 +83,20 @@ async def complete_user_onboarding(
     except Exception as e:
         log.error(f"Error completing onboarding: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
+
+
+@router.post("/reset", response_model=dict)
+async def reset_user_onboarding(user: dict = Depends(get_current_user)):
+    """Fully reset onboarding so the user can run the flow again from scratch."""
+    log.set(user={"id": user["user_id"]}, onboarding={"operation": "reset"})
+    try:
+        result = await reset_onboarding(user["user_id"])
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Error resetting onboarding: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to reset onboarding")
 
 
 @router.get("/status", response_model=dict)

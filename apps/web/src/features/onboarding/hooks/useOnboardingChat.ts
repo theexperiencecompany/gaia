@@ -12,7 +12,6 @@ interface UseOnboardingChatReturn {
   chatInputValue: string;
   isChatSending: boolean;
   isTodoExecutionDone: boolean;
-  isPendingTodoSend: boolean;
   setChatInputValue: (value: string) => void;
   sendChatMessage: (content: string) => Promise<void>;
 }
@@ -24,11 +23,10 @@ export function useOnboardingChat(
   const [chatInputValue, setChatInputValue] = useState("");
   const [isChatSending, setIsChatSending] = useState(false);
   const [isTodoExecutionDone, setIsTodoExecutionDone] = useState(false);
-  const [isPendingTodoSend, setIsPendingTodoSend] = useState(false);
 
   const fetchChatStream = useChatStream();
-  const activeConversationSetRef = useRef(false);
-  const todoSentRef = useRef(false);
+  const activeConversationIdRef = useRef<string | null>(null);
+  const sentTodoMessagesRef = useRef<Set<string>>(new Set());
   const todoExecutionInProgressRef = useRef(false);
 
   // Subscribe to full IMessage[] from the store for this conversation
@@ -40,11 +38,13 @@ export function useOnboardingChat(
     ),
   );
 
-  // Set active conversation so useChatStream posts to the right place
+  // Set active conversation so useChatStream posts to the right place.
+  // Re-runs if conversationId changes (e.g. after restart).
   useEffect(() => {
-    if (!conversationId || activeConversationSetRef.current) return;
+    if (!conversationId) return;
+    if (activeConversationIdRef.current === conversationId) return;
     useChatStore.getState().setActiveConversationId(conversationId);
-    activeConversationSetRef.current = true;
+    activeConversationIdRef.current = conversationId;
   }, [conversationId]);
 
   // Detect todo execution completion: isChatSending went true → false while todo was in progress
@@ -61,12 +61,15 @@ export function useOnboardingChat(
       const trimmed = content.trim();
       if (!trimmed || !conversationId || isChatSending) return;
 
-      if (!activeConversationSetRef.current) {
+      if (activeConversationIdRef.current !== conversationId) {
         useChatStore.getState().setActiveConversationId(conversationId);
-        activeConversationSetRef.current = true;
+        activeConversationIdRef.current = conversationId;
       }
 
-      const userMessageId = `onboarding-user-${Date.now()}`;
+      const userMessageId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? `onboarding-user-${crypto.randomUUID()}`
+          : `onboarding-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
       setChatInputValue("");
       setIsChatSending(true);
@@ -99,17 +102,16 @@ export function useOnboardingChat(
     [conversationId, isChatSending, fetchChatStream],
   );
 
-  // Auto-send pending todo message when entering chat from todo execution
+  // Auto-send pending todo message as soon as the conversation is ready.
+  // Keyed by message content + conversation so a remount within the same
+  // conversation can't double-send, but a new conversation re-arms.
   useEffect(() => {
-    if (!pendingTodoMessage || !conversationId || todoSentRef.current) return;
-    todoSentRef.current = true;
+    if (!pendingTodoMessage || !conversationId) return;
+    const key = `${conversationId}::${pendingTodoMessage}`;
+    if (sentTodoMessagesRef.current.has(key)) return;
+    sentTodoMessagesRef.current.add(key);
     todoExecutionInProgressRef.current = true;
-    setIsPendingTodoSend(true);
-    const timer = setTimeout(() => {
-      setIsPendingTodoSend(false);
-      void sendChatMessage(pendingTodoMessage);
-    }, 800);
-    return () => clearTimeout(timer);
+    void sendChatMessage(pendingTodoMessage);
   }, [pendingTodoMessage, conversationId, sendChatMessage]);
 
   return {
@@ -117,7 +119,6 @@ export function useOnboardingChat(
     chatInputValue,
     isChatSending,
     isTodoExecutionDone,
-    isPendingTodoSend,
     setChatInputValue,
     sendChatMessage,
   };

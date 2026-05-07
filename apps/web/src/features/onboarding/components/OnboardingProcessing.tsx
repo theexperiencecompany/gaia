@@ -89,7 +89,26 @@ interface OnboardingProcessingProps {
   inboxScanCount?: number;
   /** Stages that have received a completion event from the backend */
   completedStages?: Set<OnboardingStage>;
+  /** Latest sub-status text from triage_analyzing/triage_analyzed/todos_creating */
+  statusMessage?: string | null;
 }
+
+// Stages whose `inbox_scanning` step is genuinely complete. Writing-style
+// uses an independent 50-sent-email fetch so it firing tells us nothing
+// about the 500-email inbox scan — exclude it.
+const STAGES_AFTER_INBOX_SCAN: OnboardingStage[] = [
+  "triage_ready",
+  "social_profiles_ready",
+  "todos_ready",
+  "workflows_ready",
+  "complete",
+];
+
+// Stages that get the live waitingStatus surfaced as their sub-message.
+// Other stages either have their own counter (inbox_scanning) or no
+// intermediate signal worth showing (writing_style_ready, workflows_ready).
+const STAGES_WITH_LIVE_STATUS: ReadonlySet<OnboardingStage> =
+  new Set<OnboardingStage>(["triage_ready", "todos_ready"]);
 
 export const OnboardingProcessing = ({
   hasGmail,
@@ -98,6 +117,7 @@ export const OnboardingProcessing = ({
   onComplete,
   inboxScanCount,
   completedStages,
+  statusMessage,
 }: OnboardingProcessingProps) => {
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
   const completedRef = useRef(false);
@@ -127,16 +147,15 @@ export const OnboardingProcessing = ({
   }, []);
 
   // Per-step completion: each step is marked done only when ITS own stage
-  // has fired, not based on position relative to later completions. The
-  // active step is the first step that is not yet done. `inbox_scanning`
-  // is a repeating stage that never marks itself complete, so it is
-  // special-cased: it is considered done as soon as any downstream stage
-  // that depends on the inbox fetch (writing_style_ready, triage_ready, or
-  // beyond) has fired.
+  // has fired. `inbox_scanning` is a repeating stage that never emits its
+  // own completion — it is considered done only when a stage that genuinely
+  // depends on the inbox fetch has fired (NOT writing_style_ready, which
+  // uses a separate 50-sent-email fetch and finishes long before the 500-
+  // email inbox scan).
   const isStepDone = (i: number): boolean => {
     const step = steps[i];
     if (step.stage === "inbox_scanning") {
-      return steps.slice(i + 1).some((s) => completedStages?.has(s.stage));
+      return STAGES_AFTER_INBOX_SCAN.some((s) => completedStages?.has(s));
     }
     return completedStages?.has(step.stage) ?? false;
   };
@@ -166,13 +185,20 @@ export const OnboardingProcessing = ({
           const Icon = step.icon;
           const isDone = isStepDone(i);
           const isActive = i === activeStepIndex && !isDone;
-          // Show live inbox counter only on the first (inbox_scanning) step.
-          const liveMessage =
-            step.stage === "inbox_scanning" &&
-            inboxScanCount !== undefined &&
-            inboxScanCount > 0
-              ? `${inboxScanCount} emails fetched`
-              : undefined;
+          // Show live inbox counter on the inbox_scanning step; otherwise
+          // surface the backend sub-status (triage_analyzing /
+          // triage_analyzed / todos_creating) for stages that emit one.
+          const liveMessage = (() => {
+            if (step.stage === "inbox_scanning") {
+              return inboxScanCount && inboxScanCount > 0
+                ? `${inboxScanCount} emails fetched`
+                : undefined;
+            }
+            if (STAGES_WITH_LIVE_STATUS.has(step.stage) && statusMessage) {
+              return statusMessage;
+            }
+            return undefined;
+          })();
 
           return (
             <m.div

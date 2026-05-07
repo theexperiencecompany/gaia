@@ -2,7 +2,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from shared.py.wide_events import log
-from app.db.mongodb.collections import users_collection
+from app.db.mongodb.collections import (
+    conversations_collection,
+    todos_collection,
+    users_collection,
+)
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -10,6 +14,7 @@ from app.models.user_models import (
     OnboardingRequest,
 )
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
+from app.services.workflow.service import WorkflowService
 from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
 from pymongo import ReturnDocument
@@ -69,31 +74,18 @@ async def complete_onboarding(
         if onboarding_data.focus and onboarding_data.focus.strip():
             update_fields["onboarding.focus"] = onboarding_data.focus.strip()
 
-        # Atomic update with conditions to prevent race conditions and duplicate onboarding
+        # Overwriting update — re-running onboarding is allowed (used by the
+        # restart flow). The reset endpoint clears prior onboarding data, but
+        # we accept overwrites here as a safety net so a partial reset can
+        # still recover by re-completing.
         updated_user = await users_collection.find_one_and_update(
-            {
-                "_id": user_object_id,
-                # Ensure user exists and hasn't completed onboarding yet
-                "$or": [
-                    {"onboarding.completed": {"$ne": True}},
-                    {"onboarding": {"$exists": False}},
-                ],
-            },
+            {"_id": user_object_id},
             {"$set": update_fields},
             return_document=ReturnDocument.AFTER,
         )
 
         if not updated_user:
-            # Check if user exists but onboarding is already complete
-            existing_user = await users_collection.find_one({"_id": user_object_id})
-            if not existing_user:
-                raise HTTPException(status_code=404, detail="User not found")
-            elif existing_user.get("onboarding", {}).get("completed", False):
-                raise HTTPException(
-                    status_code=409, detail="Onboarding already completed"
-                )
-            else:
-                raise HTTPException(status_code=500, detail="Failed to update user")
+            raise HTTPException(status_code=404, detail="User not found")
 
         # Convert ObjectId to string for JSON serialization
         updated_user["_id"] = str(updated_user["_id"])
@@ -211,3 +203,85 @@ async def update_onboarding_preferences(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to update preferences")
+
+
+async def reset_onboarding(user_id: str) -> Dict[str, int]:
+    """
+    Fully reset a user's onboarding so they can run the flow from scratch.
+
+    Clears `users.onboarding`, deletes onboarding-tagged todos, deletes
+    workflows that were generated during onboarding, and deletes the first
+    conversation that was seeded for the user.
+
+    Returns counts of what was deleted for observability.
+    """
+    log.set(auth={"user_id": user_id}, onboarding={"operation": "reset"})
+
+    user_object_id = ObjectId(user_id)
+    user_doc = await users_collection.find_one(
+        {"_id": user_object_id},
+        {"onboarding": 1},
+    )
+
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    onboarding = user_doc.get("onboarding", {}) or {}
+    workflow_ids: list[Any] = onboarding.get("suggested_workflows", []) or []
+    first_conversation_id = onboarding.get("first_message_conversation_id")
+
+    workflows_deleted = 0
+    for wf_id in workflow_ids:
+        try:
+            # WorkflowService.delete_workflow cancels scheduled executions
+            # and unregisters Composio triggers — direct collection delete
+            # would leave orphaned schedules and triggers.
+            deleted = await WorkflowService.delete_workflow(str(wf_id), user_id)
+            if deleted:
+                workflows_deleted += 1
+        except Exception as e:
+            log.warning(f"[reset_onboarding] failed to delete workflow {wf_id}: {e}")
+
+    todos_deleted = 0
+    try:
+        todo_result = await todos_collection.delete_many(
+            {"user_id": user_id, "labels": "onboarding"}
+        )
+        todos_deleted = todo_result.deleted_count
+    except Exception as e:
+        log.warning(f"[reset_onboarding] failed to delete todos: {e}")
+
+    conversation_deleted = 0
+    if first_conversation_id:
+        try:
+            convo_result = await conversations_collection.delete_one(
+                {"user_id": user_id, "conversation_id": first_conversation_id}
+            )
+            conversation_deleted = convo_result.deleted_count
+        except Exception as e:
+            log.warning(f"[reset_onboarding] failed to delete conversation: {e}")
+
+    # Unset the entire onboarding sub-document so the next run starts fresh.
+    await users_collection.update_one(
+        {"_id": user_object_id},
+        {
+            "$unset": {"onboarding": ""},
+            "$set": {"updated_at": datetime.now(timezone.utc)},
+        },
+    )
+
+    log.set(
+        onboarding={
+            "operation": "reset",
+            "workflows_deleted": workflows_deleted,
+            "todos_deleted": todos_deleted,
+            "conversation_deleted": conversation_deleted,
+        }
+    )
+    log.info(f"Onboarding reset complete for user {user_id}")
+
+    return {
+        "workflows_deleted": workflows_deleted,
+        "todos_deleted": todos_deleted,
+        "conversation_deleted": conversation_deleted,
+    }
