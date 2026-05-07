@@ -59,10 +59,22 @@ def _build_trigger_hint(trigger_config: Optional[dict]) -> str:
     return f"User has selected trigger type: {trigger_type}."
 
 
-def _build_available_triggers() -> str:
-    """Build a compact list of available integration triggers for the LLM."""
+def _build_available_triggers(
+    connected_integration_ids: Optional[set[str]] = None,
+) -> str:
+    """Build a compact list of available integration triggers for the LLM.
+
+    If `connected_integration_ids` is provided, only triggers from those
+    integrations are listed. This prevents the LLM from suggesting triggers
+    the user can't actually use.
+    """
     lines: List[str] = []
     for integration in OAUTH_INTEGRATIONS:
+        if (
+            connected_integration_ids is not None
+            and integration.id not in connected_integration_ids
+        ):
+            continue
         for tc in integration.associated_triggers:
             schema = tc.workflow_trigger_schema
             if schema:
@@ -269,13 +281,17 @@ class WorkflowGenerationService:
         description: Optional[str] = None,
         trigger_config: Optional[dict] = None,
         existing_prompt: Optional[str] = None,
+        connected_integration_ids: Optional[set[str]] = None,
     ) -> dict:
         """Generate or improve workflow instructions using LLM.
 
         Returns a dict with keys: prompt, suggested_trigger (optional).
+
+        If `connected_integration_ids` is provided, the available-triggers
+        list shown to the LLM is restricted to those integrations.
         """
         trigger_hint = _build_trigger_hint(trigger_config)
-        available_triggers = _build_available_triggers()
+        available_triggers = _build_available_triggers(connected_integration_ids)
 
         llm = init_llm(use_free=True)
 

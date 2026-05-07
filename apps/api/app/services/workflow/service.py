@@ -25,6 +25,7 @@ from app.models.workflow_models import (
 )
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.exceptions import TriggerRegistrationError
+from app.utils.trigger_utils import get_integration_for_trigger
 from app.utils.workflow_utils import (
     ensure_trigger_config_object,
     handle_workflow_error,
@@ -72,8 +73,13 @@ class WorkflowService:
         Delegates to TriggerService which handles provider-specific logic.
         Returns list of registered trigger IDs.
 
+        If the backing integration is not connected, returns [] without raising
+        — callers should treat that as "leave workflow inactive". The user can
+        connect the integration later and activate from the workflow UI.
+
         Raises:
-            TriggerRegistrationError: If trigger registration fails
+            TriggerRegistrationError: If trigger registration fails for a
+                reason other than a missing connection.
         """
         # Only handle integration type triggers
         if trigger_config.type != TriggerType.INTEGRATION:
@@ -89,6 +95,22 @@ class WorkflowService:
                 "This indicates a frontend configuration error.",
                 trigger_name="unknown",
             )
+
+        # If the integration backing this trigger isn't connected, skip
+        # registration cleanly. The workflow stays inactive until the user
+        # connects the integration and activates it manually.
+        # Imported lazily to avoid a circular import via system_workflows.
+        from app.services.oauth.oauth_service import check_integration_status
+
+        integration_id = get_integration_for_trigger(trigger_name)
+        if integration_id:
+            connected = await check_integration_status(integration_id, user_id)
+            if not connected:
+                log.info(
+                    f"Skipping trigger registration: integration "
+                    f"'{integration_id}' not connected for user {user_id}"
+                )
+                return []
 
         # Use raise_on_failure=True to ensure errors propagate
         trigger_ids = await TriggerService.register_triggers(
@@ -208,53 +230,78 @@ class WorkflowService:
                 raise ValueError("Workflow ID is required")
 
             # Step 2: Register integration triggers (this can raise TriggerRegistrationError)
-            # The handlers will rollback their own partial triggers on failure
+            # The handlers will rollback their own partial triggers on failure.
+            # Returns [] without raising when the backing integration isn't
+            # connected — in that case we leave the workflow inactive so the
+            # user can connect later and activate from the UI.
             trigger_ids = await WorkflowService._register_integration_triggers(
                 workflow_id=workflow.id,
                 user_id=user_id,
                 trigger_config=trigger_config,
             )
 
-            # Step 3: Activate workflow and store trigger IDs
-            update_data: dict[str, Any] = {"activated": True}
-            if trigger_ids:
-                update_data["trigger_config.composio_trigger_ids"] = trigger_ids
-
-            await workflows_collection.update_one(
-                {"_id": workflow.id},
-                {"$set": update_data},
+            # Skip activation for integration triggers whose integration isn't
+            # connected (registration returned []). Workflow stays in pending
+            # state with activated=False.
+            integration_skipped = (
+                trigger_config.type == TriggerType.INTEGRATION and not trigger_ids
             )
 
-            # Update local workflow object
-            workflow.activated = True
-            if trigger_ids:
-                workflow.trigger_config.composio_trigger_ids = trigger_ids
-
-            log.set(
-                workflow={
-                    "id": workflow.id,
-                    "status": "activated",
-                    "title": workflow.title,
-                    "trigger_type": str(trigger_config.type),
-                    "step_count": len(workflow_steps),
-                }
-            )
-            log.info(
-                f"Activated workflow {workflow.id} with {len(trigger_ids)} triggers"
-            )
-
-            # Schedule the workflow if it's a scheduled type and enabled
-            if (
-                trigger_config.type == "schedule"
-                and trigger_config.enabled
-                and trigger_config.next_run
-            ):
-                await workflow_scheduler.schedule_workflow_execution(
-                    workflow.id,
-                    user_id,
-                    trigger_config.next_run,
-                    repeat=trigger_config.cron_expression,  # Enable recurring if cron exists
+            if integration_skipped:
+                log.set(
+                    workflow={
+                        "id": workflow.id,
+                        "status": "pending_connection",
+                        "title": workflow.title,
+                        "trigger_type": str(trigger_config.type),
+                        "step_count": len(workflow_steps),
+                    }
                 )
+                log.info(
+                    f"Workflow {workflow.id} created inactive — integration for "
+                    f"trigger '{trigger_config.trigger_name}' not connected"
+                )
+            else:
+                # Step 3: Activate workflow and store trigger IDs
+                update_data: dict[str, Any] = {"activated": True}
+                if trigger_ids:
+                    update_data["trigger_config.composio_trigger_ids"] = trigger_ids
+
+                await workflows_collection.update_one(
+                    {"_id": workflow.id},
+                    {"$set": update_data},
+                )
+
+                # Update local workflow object
+                workflow.activated = True
+                if trigger_ids:
+                    workflow.trigger_config.composio_trigger_ids = trigger_ids
+
+                log.set(
+                    workflow={
+                        "id": workflow.id,
+                        "status": "activated",
+                        "title": workflow.title,
+                        "trigger_type": str(trigger_config.type),
+                        "step_count": len(workflow_steps),
+                    }
+                )
+                log.info(
+                    f"Activated workflow {workflow.id} with {len(trigger_ids)} triggers"
+                )
+
+                # Schedule the workflow if it's a scheduled type and enabled
+                if (
+                    trigger_config.type == "schedule"
+                    and trigger_config.enabled
+                    and trigger_config.next_run
+                ):
+                    await workflow_scheduler.schedule_workflow_execution(
+                        workflow.id,
+                        user_id,
+                        trigger_config.next_run,
+                        repeat=trigger_config.cron_expression,  # Enable recurring if cron exists
+                    )
 
             # Generate steps only if not provided
             if not request.steps:
@@ -671,6 +718,26 @@ class WorkflowService:
             # 1. Register Composio triggers FIRST (can raise TriggerRegistrationError)
             trigger_config = workflow.trigger_config
             trigger_type = trigger_config.type
+
+            # Pre-check: if this is an integration trigger and the backing
+            # integration isn't connected, refuse activation with a clear
+            # error. _register_integration_triggers would silently no-op in
+            # that case, leaving the user confused about why nothing changed.
+            if trigger_type == TriggerType.INTEGRATION and trigger_config.trigger_name:
+                from app.services.oauth.oauth_service import (
+                    check_integration_status,
+                )
+
+                integration_id = get_integration_for_trigger(
+                    trigger_config.trigger_name
+                )
+                if integration_id and not await check_integration_status(
+                    integration_id, user_id
+                ):
+                    raise TriggerRegistrationError(
+                        f"Connect {integration_id} before activating this workflow.",
+                        trigger_name=trigger_config.trigger_name,
+                    )
 
             # Use the shared method for integration trigger registration
             trigger_ids = await WorkflowService._register_integration_triggers(
