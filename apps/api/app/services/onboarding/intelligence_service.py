@@ -48,8 +48,10 @@ from app.models.onboarding_models import (
     WritingStyleProfile,
 )
 from app.models.todo_models import Priority, TodoModel
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.composio.composio_service import get_composio_service
+from app.services.workflow.generation_service import WorkflowGenerationService
 from app.services.onboarding.first_message_service import generate_first_message
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.post_onboarding_service import (
@@ -84,7 +86,8 @@ class OnboardingStage(str, Enum):
     fetch's on_batch callback so the user sees a live "N emails fetched" counter.
     """
 
-    INBOX_SCANNING = "inbox_scanning"  # repeats; carries {current: n}
+    INBOX_SCANNING = "inbox_scanning"  # repeats; carries {status_text}
+    WRITING_STYLE_PROGRESS = "writing_style_progress"  # repeats; carries {status_text}
     WRITING_STYLE_READY = "writing_style_ready"
     SOCIAL_PROFILES_READY = "social_profiles_ready"
     TRIAGE_ANALYZING = "triage_analyzing"  # LLM is processing inbox
@@ -92,6 +95,7 @@ class OnboardingStage(str, Enum):
     TRIAGE_READY = "triage_ready"
     TODOS_CREATING = "todos_creating"  # about to create todos
     TODOS_READY = "todos_ready"
+    WORKFLOWS_CREATING = "workflows_creating"  # about to create workflows
     WORKFLOWS_READY = "workflows_ready"
     HOLO_READY = "holo_ready"
     COMPLETE = "complete"
@@ -260,12 +264,14 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     todos_future = asyncio.create_task(
         _run_todos(user_id, name, profession, focus, has_gmail, triage_future)
     )
+    user_timezone: str = (user_doc.get("timezone") or "UTC").strip() or "UTC"
     workflows_future = asyncio.create_task(
         _run_workflows(
             user_id,
             profession,
             has_gmail,
             focus,
+            user_timezone,
             triage_future,
             writing_style_future,
         )
@@ -346,14 +352,20 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
 async def _run_inbox_scanning(user_id: str) -> list[dict]:
     """Fetch the inbox for triage + social profile extraction.
-    Emits INBOX_SCANNING repeatedly with {"current": n} as batches land."""
+    Emits INBOX_SCANNING repeatedly with {"status_text": "..."} as batches land."""
     t0 = time.monotonic()
+
+    await _emit_stage(
+        user_id,
+        OnboardingStage.INBOX_SCANNING,
+        {"status_text": "Connecting to Gmail"},
+    )
 
     async def _on_batch(current: int) -> None:
         await _emit_stage(
             user_id,
             OnboardingStage.INBOX_SCANNING,
-            {"current": current},
+            {"status_text": f"Fetched {current} emails"},
         )
 
     try:
@@ -400,9 +412,18 @@ async def _run_writing_style(
         )
         return None
 
+    async def _on_status(status_text: str) -> None:
+        await _emit_stage(
+            user_id,
+            OnboardingStage.WRITING_STYLE_PROGRESS,
+            {"status_text": status_text},
+        )
+
     t0 = time.monotonic()
     try:
-        result = await learn_writing_style(user_id, profession=profession)
+        result = await learn_writing_style(
+            user_id, profession=profession, on_status=_on_status
+        )
     except Exception as e:
         log.error(f"[intelligence] writing_style failed: {e}", exc_info=True)
         result = None
@@ -519,7 +540,7 @@ async def _run_triage(
     await _emit_stage(
         user_id,
         OnboardingStage.TRIAGE_ANALYZING,
-        {"total_emails": len(emails), "status": "Analyzing your inbox..."},
+        {"status_text": f"Analyzing {len(emails)} emails"},
     )
 
     t0 = time.monotonic()
@@ -531,12 +552,12 @@ async def _run_triage(
     log.info(f"[intelligence:timing] triage: {time.monotonic() - t0:.1f}s")
 
     if result and result.important_emails:
+        n = len(result.important_emails)
         await _emit_stage(
             user_id,
             OnboardingStage.TRIAGE_ANALYZED,
             {
-                "important_count": len(result.important_emails),
-                "status": f"Found {len(result.important_emails)} important thread(s)",
+                "status_text": (f"Found {n} important thread{'s' if n != 1 else ''}"),
             },
         )
 
@@ -615,7 +636,7 @@ async def _run_todos(
             await _emit_stage(
                 user_id,
                 OnboardingStage.TODOS_CREATING,
-                {"status": "Creating action items..."},
+                {"status_text": "Drafting todos from your inbox"},
             )
             if triage and triage.important_emails:
                 todos = await _create_todos_from_triage(
@@ -627,7 +648,7 @@ async def _run_todos(
             await _emit_stage(
                 user_id,
                 OnboardingStage.TODOS_CREATING,
-                {"status": "Creating action items..."},
+                {"status_text": "Drafting todos from your focus"},
             )
             todos = await _create_focus_todos(user_id, name, profession, focus)
     except Exception as e:
@@ -640,10 +661,18 @@ async def _run_todos(
     # Always emit so the frontend has a definitive completion signal, even for
     # the zero-todos edge case (Gmail connected but triage found nothing
     # important AND no focus set).
+    n = len(todos)
     await _emit_stage(
         user_id,
         OnboardingStage.TODOS_READY,
-        {"todos": todos},
+        {
+            "todos": todos,
+            "status_text": (
+                f"Saved {n} todo{'s' if n != 1 else ''}"
+                if n > 0
+                else "No todos to save"
+            ),
+        },
     )
     return todos
 
@@ -653,15 +682,28 @@ async def _run_workflows(
     profession: str,
     has_gmail: bool,
     focus: str,
+    user_timezone: str,
     triage_future: asyncio.Task[Optional[InboxTriage]],
     writing_style_future: asyncio.Task[Optional[WritingStyleProfile]],
 ) -> list[dict]:
     triage, writing_style = await asyncio.gather(triage_future, writing_style_future)
 
+    await _emit_stage(
+        user_id,
+        OnboardingStage.WORKFLOWS_CREATING,
+        {"status_text": "Drafting workflow ideas"},
+    )
+
     t0 = time.monotonic()
     try:
         workflows = await _create_onboarding_workflows(
-            user_id, profession, has_gmail, focus, triage, writing_style
+            user_id,
+            profession,
+            has_gmail,
+            focus,
+            user_timezone,
+            triage,
+            writing_style,
         )
     except Exception as e:
         log.error(f"[intelligence] workflows failed: {e}", exc_info=True)
@@ -671,10 +713,18 @@ async def _run_workflows(
         f"[intelligence:timing] workflows: {time.monotonic() - t0:.1f}s "
         f"({len(workflows)} workflows)"
     )
+    n = len(workflows)
     await _emit_stage(
         user_id,
         OnboardingStage.WORKFLOWS_READY,
-        {"workflows": workflows},
+        {
+            "workflows": workflows,
+            "status_text": (
+                f"Saved {n} workflow{'s' if n != 1 else ''}"
+                if n > 0
+                else "No workflows to save"
+            ),
+        },
     )
     return workflows
 
@@ -887,10 +937,13 @@ async def _create_todos_from_triage(
     focus: str = "",
 ) -> list[dict]:
     """Create GAIA-actionable todos from important emails using structured LLM output."""
+    real_emails = triage.important_emails[:8]
     emails_context = "\n".join(
         f"- From: {e.sender} | Subject: {e.subject} | Why important: {e.why_important}"
-        for e in triage.important_emails[:8]
+        for e in real_emails
     )
+    real_senders = {e.sender for e in real_emails}
+    real_subjects = {e.subject for e in real_emails}
 
     prompt = TRIAGE_TODOS_PROMPT.format(
         emails_context=emails_context,
@@ -924,11 +977,20 @@ async def _create_todos_from_triage(
                 )
                 result = await TodoService.create_todo(todo, user_id)
                 todo_dict: dict = {"id": str(result.id), "title": safe_title}
-                if spec.source_sender or spec.source_subject:
+                sender_ok = spec.source_sender and spec.source_sender in real_senders
+                subject_ok = (
+                    spec.source_subject and spec.source_subject in real_subjects
+                )
+                if sender_ok and subject_ok:
                     todo_dict["source_email"] = {
                         "sender": spec.source_sender,
                         "subject": spec.source_subject,
                     }
+                elif spec.source_sender or spec.source_subject:
+                    log.warning(
+                        "[intelligence] Dropped hallucinated source_email "
+                        f"sender={spec.source_sender!r} subject={spec.source_subject!r}"
+                    )
                 return todo_dict
             except Exception as e:
                 log.warning(f"[intelligence] Failed to create todo: {e}")
@@ -949,11 +1011,75 @@ async def _create_todos_from_triage(
 # ── Workflow creation helpers ────────────────────────────────────────────────
 
 
+def _build_trigger_config_from_suggestion(
+    suggestion: Optional[dict],
+) -> TriggerConfig:
+    """Map a SuggestedTrigger-like dict from generate_workflow_prompt into a
+    real TriggerConfig.
+
+    For integration triggers, auto-fills `trigger_data` from the schema's
+    field defaults. If a required field has no default, falls back to a daily
+    schedule (the saga in WorkflowService would otherwise reject it).
+    """
+    if not suggestion:
+        return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+
+    s_type = (suggestion.get("type") or "").lower()
+    if s_type == "manual":
+        return TriggerConfig(type=TriggerType.MANUAL)
+
+    if s_type == "schedule":
+        cron = (suggestion.get("cron_expression") or "0 9 * * *").strip()
+        return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression=cron)
+
+    if s_type == "integration":
+        slug = suggestion.get("trigger_name")
+        schema = _find_workflow_trigger_schema(slug) if slug else None
+        if not schema:
+            return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+
+        # Onboarding only auto-creates integration triggers that need no
+        # provider-specific config. Triggers with config fields (e.g. calendar
+        # ids) need a typed `trigger_data` we can't build generically — fall
+        # back to a schedule for those.
+        if schema.config_schema:
+            return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+
+        return TriggerConfig(
+            type=TriggerType.INTEGRATION,
+            trigger_name=slug,
+        )
+
+    return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+
+
+def _find_workflow_trigger_schema(slug: str):
+    """Look up a WorkflowTriggerSchema by its frontend slug."""
+    for integration in OAUTH_INTEGRATIONS:
+        for tc in integration.associated_triggers or []:
+            if tc.workflow_trigger_schema and tc.workflow_trigger_schema.slug == slug:
+                return tc.workflow_trigger_schema
+    return None
+
+
+def _serialize_trigger_for_payload(trigger_config: TriggerConfig) -> dict:
+    """Shape used in the workflows_ready WS payload."""
+    payload: dict = {"type": str(trigger_config.type)}
+    if trigger_config.cron_expression:
+        payload["cron_expression"] = trigger_config.cron_expression
+    if trigger_config.timezone:
+        payload["timezone"] = trigger_config.timezone
+    if trigger_config.trigger_name:
+        payload["trigger_name"] = trigger_config.trigger_name
+    return payload
+
+
 async def _create_onboarding_workflows(
     user_id: str,
     profession: str,
     has_gmail: bool,
     focus: str = "",
+    user_timezone: str = "UTC",
     triage: Optional[InboxTriage] = None,
     writing_style: Optional[WritingStyleProfile] = None,
 ) -> list[dict]:
@@ -993,24 +1119,38 @@ async def _create_onboarding_workflows(
             [HumanMessage(content=prompt)]
         )
         created: list[dict] = []
-        for spec in parsed.workflows[:2]:
+        for spec in parsed.workflows:
             try:
-                safe_title = spec.title[:80]
-                safe_desc = spec.description[:500]
-                request = CreateWorkflowRequest(
-                    title=safe_title,
-                    description=safe_desc,
-                    prompt=safe_desc,
-                    trigger_config=TriggerConfig(type=TriggerType.SCHEDULE),
-                    generate_immediately=False,
+                gen_result = await WorkflowGenerationService.generate_workflow_prompt(
+                    title=spec.title,
+                    description=spec.description,
                 )
-                workflow = await WorkflowService.create_workflow(request, user_id)
+                workflow_prompt = (gen_result.get("prompt") or spec.description).strip()
+                suggested = gen_result.get("suggested_trigger")
+                suggested_dict = (
+                    suggested.model_dump() if suggested is not None else None
+                )
+                trigger_config = _build_trigger_config_from_suggestion(suggested_dict)
+
+                request = CreateWorkflowRequest(
+                    title=spec.title,
+                    description=spec.description,
+                    prompt=workflow_prompt,
+                    trigger_config=trigger_config,
+                    generate_immediately=True,
+                )
+                workflow = await WorkflowService.create_workflow(
+                    request, user_id, user_timezone=user_timezone
+                )
                 created.append(
                     {
                         "id": str(workflow.id),
-                        "title": safe_title,
-                        "description": safe_desc,
-                        "categories": spec.categories[:3],
+                        "title": spec.title,
+                        "description": spec.description,
+                        "categories": spec.categories,
+                        "trigger": _serialize_trigger_for_payload(
+                            workflow.trigger_config
+                        ),
                     }
                 )
             except Exception as e:
@@ -1018,13 +1158,16 @@ async def _create_onboarding_workflows(
         return created
     except Exception as e:
         log.warning(f"[intelligence] LLM workflow creation failed, using fallback: {e}")
-        return await _create_fallback_workflow(user_id, profession, focus)
+        return await _create_fallback_workflow(
+            user_id, profession, focus, user_timezone
+        )
 
 
 async def _create_fallback_workflow(
     user_id: str,
     profession: str,
     focus: str = "",
+    user_timezone: str = "UTC",
 ) -> list[dict]:
     """Fallback: create one generic daily briefing workflow when LLM fails."""
     title = "Daily Briefing"
@@ -1035,15 +1178,28 @@ async def _create_fallback_workflow(
         else "Every morning at 9am, summarize unread emails by priority, today's meetings, and open todos."
     )
     try:
+        trigger_config = TriggerConfig(
+            type=TriggerType.SCHEDULE, cron_expression="0 9 * * *"
+        )
         request = CreateWorkflowRequest(
             title=title,
             description=description,
             prompt=description,
-            trigger_config=TriggerConfig(type=TriggerType.SCHEDULE),
-            generate_immediately=False,
+            trigger_config=trigger_config,
+            generate_immediately=True,
         )
-        workflow = await WorkflowService.create_workflow(request, user_id)
-        return [{"id": str(workflow.id), "title": title, "description": description}]
+        workflow = await WorkflowService.create_workflow(
+            request, user_id, user_timezone=user_timezone
+        )
+        return [
+            {
+                "id": str(workflow.id),
+                "title": title,
+                "description": description,
+                "categories": [],
+                "trigger": _serialize_trigger_for_payload(workflow.trigger_config),
+            }
+        ]
     except Exception as e:
         log.warning(f"[intelligence] Fallback workflow creation failed: {e}")
         return []

@@ -114,9 +114,17 @@ TRIAGE_TODOS_PROMPT = (
     "GAIA's capabilities: web research, drafting emails/documents, summarizing info, searching the inbox, "
     "creating comparison tables, writing reports, preparing meeting agendas.\n"
     "GAIA cannot: log into external platforms, change account settings, make purchases, send emails without approval.\n\n"
+    "ANTI-HALLUCINATION RULES (highest priority — violating these is a hard failure):\n"
+    "- NEVER invent, paraphrase, summarize, or guess email content. The email list above is the ONLY source of email facts.\n"
+    "- If a todo references an email, source_sender and source_subject MUST match an email in the list above byte-for-byte. Copy them verbatim — do not reformat, translate, or 'clean up'.\n"
+    "- Do NOT fabricate senders, subjects, deadlines, names, companies, amounts, or events that do not appear in the list above.\n"
+    "- Do NOT reference a sender or subject just because it 'sounds plausible' for the profession — only real emails count.\n"
+    "- The todo title and description must be supported by either (a) the user's profession + focus, or (b) a real email in the list. Nothing else.\n"
+    "- If the inbox section above is empty, contains only newsletters/automation, or has fewer than 2 substantive emails: generate ALL todos from profession + focus only, and leave source_sender / source_subject empty for every todo. Do NOT invent emails to fill the slots.\n"
+    "- When in doubt about whether something came from the inbox, anchor to profession + focus instead. Inventing is worse than being generic-but-honest.\n\n"
     "How to balance signals:\n"
     "- At LEAST 1 todo must be anchored to the user's focus and profession, NOT to a specific email.\n"
-    "- AT MOST 2 todos may reference a specific email/sender — and only when that email reflects something genuinely important to the user's focus.\n"
+    "- AT MOST 2 todos may reference a specific email/sender — and only when that email reflects something genuinely important to the user's focus AND appears verbatim in the list above.\n"
     "- Skip emails that are newsletters, automated notifications, or operational noise even if they were marked important.\n"
     "- If the inbox is mostly noise, generate todos purely from profession + focus.\n\n"
     "Each todo MUST:\n"
@@ -129,9 +137,10 @@ TRIAGE_TODOS_PROMPT = (
     "- Require external platform access GAIA doesn't have\n"
     "- Be trivially simple ('Read this email', 'Check this link')\n"
     "- Merely summarize an email without producing follow-on value\n"
-    "- Duplicate another todo in the list\n\n"
+    "- Duplicate another todo in the list\n"
+    "- Reference any email, person, company, or event that is not present in the inbox signal above\n\n"
     "Cover 3 different shapes of work where possible (e.g. one research, one draft, one plan/synthesis).\n"
-    "If a todo is anchored to an email, populate source_sender and source_subject; otherwise leave them empty.\n\n"
+    "If a todo is anchored to an email, populate source_sender and source_subject with the EXACT strings from the list above. Otherwise leave them empty strings — never partial, never guessed.\n\n"
     "{format_instructions}"
 )
 
@@ -220,7 +229,7 @@ Write a conversational first message. Rules:
 - Under 120 words. No emojis. No bullet points. No cards. No "Great!" or "Sure!". Talk like a competent colleague.
 """
 
-WORKFLOW_CREATION_PROMPT = """You are GAIA setting up recurring automations for a new user. Create exactly 2 workflows that fit how this person actually works.
+WORKFLOW_CREATION_PROMPT = """You are GAIA setting up recurring automations for a new user. Create exactly 3 workflows that fit how this person actually works.
 
 User profile (PRIMARY signal — weigh this most):
 - Profession: {profession}
@@ -235,8 +244,9 @@ Secondary signals (use sparingly — do not let these dominate):
 How to think about this:
 1. Anchor every workflow to the person's profession and focus — that is who they are.
 2. Inbox patterns are ONE input, not the brief. Do not design every workflow around their email categories. The user is more than their inbox.
-3. At least ONE of the two workflows should NOT be primarily about email filtering, sorting, or summarizing. It should help the user move their actual work forward — research, drafting, planning, monitoring, follow-ups, prep, briefings.
-4. The second workflow may incorporate inbox signal, but only if it produces a tangible deliverable beyond "summarize emails" — e.g. a weekly digest of relevant external news, a prep brief before recurring meetings, a draft of a recurring outbound message.
+3. At least TWO of the three workflows should NOT be primarily about email filtering, sorting, or summarizing. They should help the user move their actual work forward — research, drafting, planning, monitoring, follow-ups, prep, briefings.
+4. At most ONE workflow may incorporate inbox signal, and only if it produces a tangible deliverable beyond "summarize emails" — e.g. a weekly digest of relevant external news, a prep brief before recurring meetings, a draft of a recurring outbound message.
+5. All three workflows must be distinct in shape and intent — do not return three variants of the same idea.
 
 Requirements for each workflow:
 - Must save this person 20+ minutes per week
@@ -246,7 +256,7 @@ Requirements for each workflow:
 
 BANNED patterns (auto-reject):
 - "Daily Email Summary" / "Weekly Inbox Digest" / "Inbox Triage" — too generic
-- "Flag X emails" as both workflows — at most one workflow can be email-filtering
+- "Flag X emails" as more than one workflow — at most one workflow can be email-filtering
 - "Task Reminder" / "Meeting Reminder" — vague, no specificity
 - Anything that just restates an inbox category without producing new value
 
@@ -257,11 +267,12 @@ GOOD examples (specific, anchored to who the person is):
 - PM, focus = align cross-team roadmap → "Compile cross-team status into a Friday digest" (synthesis, not filtering)
 - Researcher, focus = literature review → "Summarize new papers in my field every Tuesday" (external monitoring)
 
-Return JSON only:
+Return JSON only. The "workflows" array must contain exactly 3 entries:
 {{
   "workflows": [
-    {{"title": "...", "description": "..."}},
-    {{"title": "...", "description": "..."}}
+    {{"title": "...", "description": "...", "categories": ["..."]}},
+    {{"title": "...", "description": "...", "categories": ["..."]}},
+    {{"title": "...", "description": "...", "categories": ["..."]}}
   ]
 }}"""
 

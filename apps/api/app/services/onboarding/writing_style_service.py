@@ -1,6 +1,6 @@
 """Service to learn and save user writing style."""
 
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from bson import ObjectId
 from langchain_core.messages import HumanMessage
@@ -23,6 +23,7 @@ from app.services.mail.mail_service import search_messages
 async def learn_writing_style(
     user_id: str,
     profession: str = "",
+    on_status: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> Optional[WritingStyleProfile]:
     """
     Fetch the user's 50 most recent sent emails and analyze writing style.
@@ -32,11 +33,16 @@ async def learn_writing_style(
     Args:
         user_id: The user's ID
         profession: The user's profession (used to generate a relevant example)
+        on_status: Optional async callback fired with human-readable status
+            strings ("Reading your sent folder", etc.) so callers can stream
+            progress to the UI.
 
     Returns:
         WritingStyleProfile or None if insufficient sent emails
     """
     try:
+        if on_status is not None:
+            await on_status("Reading your sent folder")
         result = await search_messages(
             user_id=user_id,
             query="in:sent",
@@ -44,6 +50,12 @@ async def learn_writing_style(
         )
 
         sent_emails = result.get("messages", [])
+
+        if on_status is not None:
+            await on_status(
+                f"Found {len(sent_emails)} sent email"
+                f"{'s' if len(sent_emails) != 1 else ''}"
+            )
 
         if len(sent_emails) < 5:
             log.info(
@@ -81,6 +93,8 @@ async def learn_writing_style(
             profession=profession or "professional",
             email_samples=email_samples_text,
         )
+        if on_status is not None:
+            await on_status("Analyzing tone and phrasing")
         result_data: WritingStyleOutput = await structured_llm.ainvoke(
             [HumanMessage(content=prompt)]
         )
