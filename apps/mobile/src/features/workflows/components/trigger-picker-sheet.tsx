@@ -1,142 +1,49 @@
+import { getMobileIntegrationLogoUrl } from "@gaia/shared/icons";
+import {
+  BUILTIN_TRIGGER_META,
+  type BuiltinTriggerMeta,
+  buildDefaultTriggerConfig,
+  formatIntegrationLabel,
+  getSchemaFieldEntries,
+  getTriggerLogoKey,
+  groupTriggerSchemasByIntegration,
+  type IntegrationTriggerGroup,
+  type TriggerSchema,
+} from "@gaia/shared/workflows";
 import {
   BottomSheetFlatList,
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { Image as ExpoImage } from "expo-image";
 import {
   forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useState,
 } from "react";
-import { ActivityIndicator, Image, Pressable, View } from "react-native";
-import { AppIcon, Clock01Icon, PlayIcon } from "@/components/icons";
+import { ActivityIndicator, Pressable, View } from "react-native";
+import {
+  AppIcon,
+  ArrowLeft01Icon,
+  Clock01Icon,
+  PlayIcon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { workflowApi } from "../api/workflow-api";
-import type {
-  TriggerConfig,
-  TriggerFieldSchema,
-  TriggerSchema,
-} from "../types/trigger-types";
+import { WORKFLOW_COLORS } from "../constants/colors";
+import type { TriggerConfig } from "../types/trigger-types";
 import type { FieldWithMeta } from "./dynamic-trigger-form";
 import { DynamicTriggerForm } from "./dynamic-trigger-form";
 
 // ---------------------------------------------------------------------------
-// Static trigger display metadata (icon URLs, labels, categories)
+// Public types kept for backwards-compat with create/edit modals
 // ---------------------------------------------------------------------------
 
-interface StaticTriggerMeta {
-  id: string;
-  label: string;
-  description: string;
-  category: "basic" | "integration";
-  iconUrl?: string;
-  integrationId?: string;
-}
-
-const STATIC_TRIGGER_META: StaticTriggerMeta[] = [
-  {
-    id: "manual",
-    label: "Manual",
-    description: "Run on demand from chat or app",
-    category: "basic",
-  },
-  {
-    id: "schedule",
-    label: "Scheduled",
-    description: "Run on a time-based schedule",
-    category: "basic",
-  },
-  {
-    id: "gmail",
-    label: "Gmail",
-    description: "Triggers on Gmail events",
-    category: "integration",
-    integrationId: "gmail",
-    iconUrl:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Gmail_icon_%282020%29.svg/120px-Gmail_icon_%282020%29.svg.png",
-  },
-  {
-    id: "google_calendar",
-    label: "Google Calendar",
-    description: "Triggers on calendar events",
-    category: "integration",
-    integrationId: "google_calendar",
-    iconUrl:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Google_Calendar_icon_%282020%29.svg/120px-Google_Calendar_icon_%282020%29.svg.png",
-  },
-  {
-    id: "github",
-    label: "GitHub",
-    description: "Triggers on GitHub events",
-    category: "integration",
-    integrationId: "github",
-    iconUrl:
-      "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
-  },
-  {
-    id: "slack",
-    label: "Slack",
-    description: "Triggers on Slack messages",
-    category: "integration",
-    integrationId: "slack",
-    iconUrl:
-      "https://a.slack-edge.com/80588/marketing/img/meta/slack_hash_128.png",
-  },
-  {
-    id: "notion",
-    label: "Notion",
-    description: "Triggers on Notion page changes",
-    category: "integration",
-    integrationId: "notion",
-    iconUrl:
-      "https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png",
-  },
-  {
-    id: "linear",
-    label: "Linear",
-    description: "Triggers on Linear issues",
-    category: "integration",
-    integrationId: "linear",
-  },
-  {
-    id: "todoist",
-    label: "Todoist",
-    description: "Triggers on Todoist tasks",
-    category: "integration",
-    integrationId: "todoist",
-  },
-  {
-    id: "google_sheets",
-    label: "Google Sheets",
-    description: "Triggers on new rows",
-    category: "integration",
-    integrationId: "google_sheets",
-    iconUrl:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Google_Sheets_logo_%282014-2020%29.svg/120px-Google_Sheets_logo_%282014-2020%29.svg.png",
-  },
-  {
-    id: "asana",
-    label: "Asana",
-    description: "Triggers on Asana tasks",
-    category: "integration",
-    integrationId: "asana",
-  },
-  {
-    id: "google_docs",
-    label: "Google Docs",
-    description: "Triggers on Google Docs events",
-    category: "integration",
-    integrationId: "google_docs",
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 export interface TriggerOption {
   id: string;
   label: string;
@@ -145,8 +52,6 @@ export interface TriggerOption {
   iconUrl?: string;
   requiresIntegration?: string;
 }
-
-export { STATIC_TRIGGER_META as TRIGGER_OPTIONS };
 
 export interface TriggerPickerSheetRef {
   open: () => void;
@@ -159,44 +64,41 @@ interface TriggerPickerSheetProps {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Internal step machine
 // ---------------------------------------------------------------------------
 
-function buildDefaultConfig(slug: string): TriggerConfig {
-  return { type: slug, enabled: true };
-}
-function getSchemaFieldsForSlug(
-  slug: string,
-  schemas: TriggerSchema[],
-): FieldWithMeta[] {
-  const match = schemas.find(
-    (s) => s.slug === slug || s.integration_id === slug,
-  );
-  if (!match) return [];
-  return Object.entries(match.config_schema).map(
-    ([name, schema]: [string, TriggerFieldSchema]) => ({ name, schema }),
-  );
+type PickerStep =
+  | { kind: "integrations" }
+  | { kind: "subTriggers"; integrationId: string }
+  | { kind: "config"; schema: TriggerSchema }
+  | { kind: "config"; builtin: BuiltinTriggerMeta };
+
+function logoUrlForIntegration(
+  integrationId: string | undefined,
+): string | undefined {
+  if (!integrationId) return undefined;
+  const key = getTriggerLogoKey(integrationId);
+  return getMobileIntegrationLogoUrl(key) ?? undefined;
 }
 
-function metaForSlug(slug: string): StaticTriggerMeta | undefined {
-  return STATIC_TRIGGER_META.find(
-    (m) =>
-      m.id === slug || (m.integrationId && slug.startsWith(m.integrationId)),
-  );
+function builtinIcon(id: BuiltinTriggerMeta["id"]) {
+  return id === "schedule" ? Clock01Icon : PlayIcon;
 }
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// Row renderers
 // ---------------------------------------------------------------------------
 
-interface TriggerRowProps {
-  item: StaticTriggerMeta;
+interface RowProps {
+  iconNode: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  trailingLabel?: string;
   onPress: () => void;
-  spacing: ReturnType<typeof useResponsive>["spacing"];
-  fontSize: ReturnType<typeof useResponsive>["fontSize"];
 }
 
-function TriggerRow({ item, onPress, spacing, fontSize }: TriggerRowProps) {
+function Row({ iconNode, title, subtitle, trailingLabel, onPress }: RowProps) {
+  const { spacing, fontSize } = useResponsive();
   return (
     <Pressable
       onPress={onPress}
@@ -214,51 +116,133 @@ function TriggerRow({ item, onPress, spacing, fontSize }: TriggerRowProps) {
           width: 36,
           height: 36,
           borderRadius: 10,
-          backgroundColor: "#2c2c2e",
+          backgroundColor: WORKFLOW_COLORS.surfaceMuted,
           alignItems: "center",
           justifyContent: "center",
+          overflow: "hidden",
         }}
       >
-        {item.iconUrl ? (
-          <Image
-            source={{ uri: item.iconUrl }}
-            style={{ width: 22, height: 22 }}
-            resizeMode="contain"
-          />
-        ) : item.id === "schedule" ? (
-          <AppIcon icon={Clock01Icon} size={18} color="#a1a1aa" />
-        ) : (
-          <AppIcon icon={PlayIcon} size={18} color="#a1a1aa" />
-        )}
+        {iconNode}
       </View>
       <View style={{ flex: 1 }}>
         <Text
-          style={{ fontSize: fontSize.sm, fontWeight: "500", color: "#fff" }}
-        >
-          {item.label}
-        </Text>
-        <Text
-          style={{ fontSize: fontSize.xs, color: "#71717a" }}
+          style={{
+            fontSize: fontSize.sm,
+            fontWeight: "500",
+            color: WORKFLOW_COLORS.textPrimary,
+          }}
           numberOfLines={1}
         >
-          {item.description}
+          {title}
         </Text>
+        {subtitle ? (
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              color: WORKFLOW_COLORS.textZinc500,
+            }}
+            numberOfLines={2}
+          >
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
-      {item.category === "integration" ? (
+      {trailingLabel ? (
         <View
           style={{
             paddingHorizontal: spacing.sm,
             paddingVertical: 2,
-            backgroundColor: "#2c2c2e",
+            backgroundColor: WORKFLOW_COLORS.surfaceMuted,
             borderRadius: 6,
           }}
         >
-          <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
-            Integration
+          <Text
+            style={{
+              fontSize: fontSize.xs - 1,
+              color: WORKFLOW_COLORS.textZinc500,
+            }}
+          >
+            {trailingLabel}
           </Text>
         </View>
       ) : null}
     </Pressable>
+  );
+}
+
+interface BackHeaderProps {
+  onBack: () => void;
+  title: string;
+  iconUrl?: string;
+}
+
+function BackHeader({ onBack, title, iconUrl }: BackHeaderProps) {
+  const { spacing, fontSize } = useResponsive();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.sm,
+        paddingHorizontal: spacing.md,
+        paddingBottom: spacing.xs,
+      }}
+    >
+      <Pressable
+        onPress={onBack}
+        hitSlop={8}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          paddingHorizontal: spacing.sm,
+          paddingVertical: spacing.xs,
+          backgroundColor: WORKFLOW_COLORS.surfaceMuted,
+          borderRadius: 8,
+        }}
+      >
+        <AppIcon
+          icon={ArrowLeft01Icon}
+          size={12}
+          color={WORKFLOW_COLORS.textMuted}
+        />
+        <Text
+          style={{
+            fontSize: fontSize.xs,
+            color: WORKFLOW_COLORS.textMuted,
+            fontWeight: "600",
+          }}
+        >
+          Back
+        </Text>
+      </Pressable>
+      <View
+        style={{
+          flex: 1,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm,
+        }}
+      >
+        {iconUrl ? (
+          <ExpoImage
+            source={{ uri: iconUrl }}
+            style={{ width: 20, height: 20 }}
+            contentFit="contain"
+          />
+        ) : null}
+        <Text
+          style={{
+            fontSize: fontSize.md,
+            fontWeight: "600",
+            color: WORKFLOW_COLORS.textPrimary,
+          }}
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -274,9 +258,7 @@ export const TriggerPickerSheet = forwardRef<
   const [search, setSearch] = useState("");
   const [schemas, setSchemas] = useState<TriggerSchema[]>([]);
   const [schemasLoading, setSchemasLoading] = useState(false);
-  const [selectedMeta, setSelectedMeta] = useState<StaticTriggerMeta | null>(
-    null,
-  );
+  const [step, setStep] = useState<PickerStep>({ kind: "integrations" });
   const [triggerConfig, setTriggerConfig] = useState<TriggerConfig>({
     type: "manual",
     enabled: true,
@@ -284,7 +266,6 @@ export const TriggerPickerSheet = forwardRef<
 
   const { spacing, fontSize, moderateScale } = useResponsive();
 
-  // Fetch trigger schemas from backend
   const fetchSchemas = useCallback(async () => {
     if (schemasLoading || schemas.length > 0) return;
     setSchemasLoading(true);
@@ -292,7 +273,7 @@ export const TriggerPickerSheet = forwardRef<
       const result = await workflowApi.getTriggerSchemas();
       setSchemas(result);
     } catch {
-      // Silently fall back to static metadata when schemas are unavailable
+      // Silent: fall back to built-in triggers only.
     } finally {
       setSchemasLoading(false);
     }
@@ -305,186 +286,374 @@ export const TriggerPickerSheet = forwardRef<
   useImperativeHandle(ref, () => ({
     open: () => {
       setSearch("");
-      setSelectedMeta(null);
+      setStep({ kind: "integrations" });
       setIsOpen(true);
     },
     close: () => setIsOpen(false),
   }));
 
-  const filtered = STATIC_TRIGGER_META.filter(
-    (t) =>
-      t.label.toLowerCase().includes(search.toLowerCase()) ||
-      t.description.toLowerCase().includes(search.toLowerCase()),
+  const groupedIntegrations: IntegrationTriggerGroup[] = useMemo(
+    () => groupTriggerSchemasByIntegration(schemas),
+    [schemas],
   );
 
-  const handleSelectMeta = (meta: StaticTriggerMeta) => {
-    setSelectedMeta(meta);
-    setTriggerConfig(buildDefaultConfig(meta.id));
-    // Also notify parent immediately (for backwards-compat with onSelect)
-    const legacyOption: TriggerOption = {
-      id: meta.id,
-      label: meta.label,
-      description: meta.description,
-      category: meta.category,
-      iconUrl: meta.iconUrl,
-      requiresIntegration: meta.integrationId,
-    };
-    onSelect(legacyOption);
+  const filteredBuiltins = useMemo(() => {
+    if (!search.trim()) return BUILTIN_TRIGGER_META;
+    const q = search.toLowerCase();
+    return BUILTIN_TRIGGER_META.filter(
+      (t) =>
+        t.label.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q),
+    );
+  }, [search]);
+
+  const filteredIntegrations = useMemo(() => {
+    if (!search.trim()) return groupedIntegrations;
+    const q = search.toLowerCase();
+    return groupedIntegrations.filter((group) => {
+      const label = formatIntegrationLabel(group.integrationId).toLowerCase();
+      if (label.includes(q)) return true;
+      return group.schemas.some(
+        (schema) =>
+          schema.name.toLowerCase().includes(q) ||
+          schema.description.toLowerCase().includes(q),
+      );
+    });
+  }, [groupedIntegrations, search]);
+
+  // ---- Step transitions ----
+
+  const handlePickBuiltin = (builtin: BuiltinTriggerMeta) => {
+    setTriggerConfig(buildDefaultTriggerConfig(builtin.id));
+    onSelect({
+      id: builtin.id,
+      label: builtin.label,
+      description: builtin.description,
+      category: "basic",
+    });
+    setStep({ kind: "config", builtin });
+  };
+
+  const handlePickIntegration = (group: IntegrationTriggerGroup) => {
+    if (group.schemas.length === 1) {
+      // Skip the sub-trigger step when there's only one trigger for this
+      // integration — go straight to its config.
+      handlePickSchema(group.schemas[0]);
+      return;
+    }
+    setStep({ kind: "subTriggers", integrationId: group.integrationId });
+  };
+
+  const handlePickSchema = (schema: TriggerSchema) => {
+    setTriggerConfig(buildDefaultTriggerConfig(schema.slug));
+    onSelect({
+      id: schema.slug,
+      label: schema.name,
+      description: schema.description,
+      category: "integration",
+      iconUrl: logoUrlForIntegration(schema.integration_id),
+      requiresIntegration: schema.integration_id,
+    });
+    setStep({ kind: "config", schema });
   };
 
   const handleSave = () => {
-    if (!selectedMeta) return;
-    if (onSaveConfig) {
-      const legacyOption: TriggerOption = {
-        id: selectedMeta.id,
-        label: selectedMeta.label,
-        description: selectedMeta.description,
-        category: selectedMeta.category,
-        iconUrl: selectedMeta.iconUrl,
-        requiresIntegration: selectedMeta.integrationId,
-      };
-      onSaveConfig(legacyOption, triggerConfig);
+    if (!onSaveConfig || step.kind !== "config") {
+      setIsOpen(false);
+      return;
+    }
+    if ("builtin" in step) {
+      onSaveConfig(
+        {
+          id: step.builtin.id,
+          label: step.builtin.label,
+          description: step.builtin.description,
+          category: "basic",
+        },
+        triggerConfig,
+      );
+    } else {
+      const schema = step.schema;
+      onSaveConfig(
+        {
+          id: schema.slug,
+          label: schema.name,
+          description: schema.description,
+          category: "integration",
+          iconUrl: logoUrlForIntegration(schema.integration_id),
+          requiresIntegration: schema.integration_id,
+        },
+        triggerConfig,
+      );
     }
     setIsOpen(false);
-    setSelectedMeta(null);
+    setStep({ kind: "integrations" });
   };
 
-  const schemaFields = selectedMeta
-    ? getSchemaFieldsForSlug(selectedMeta.id, schemas)
-    : [];
+  // ---- Renderers per step ----
 
-  const renderListItem = ({ item }: { item: StaticTriggerMeta }) => (
-    <TriggerRow
-      item={item}
-      onPress={() => handleSelectMeta(item)}
-      spacing={spacing}
-      fontSize={fontSize}
-    />
-  );
+  type IntegrationsListItem =
+    | { kind: "builtin"; meta: BuiltinTriggerMeta }
+    | { kind: "integration"; group: IntegrationTriggerGroup };
 
-  // Config panel shown after a trigger is selected
-  const renderConfigPanel = () => {
-    if (!selectedMeta) return null;
+  const renderIntegrationsStep = () => {
+    const items: IntegrationsListItem[] = [
+      ...filteredBuiltins.map(
+        (meta): IntegrationsListItem => ({ kind: "builtin", meta }),
+      ),
+      ...filteredIntegrations.map(
+        (group): IntegrationsListItem => ({ kind: "integration", group }),
+      ),
+    ];
 
-    const hasSchemaFields = schemaFields.length > 0;
-    const displayMeta = metaForSlug(selectedMeta.id) ?? selectedMeta;
+    return (
+      <>
+        <View
+          style={{
+            paddingHorizontal: spacing.md,
+            paddingBottom: spacing.sm,
+          }}
+        >
+          <BottomSheetTextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search triggers..."
+            placeholderTextColor={WORKFLOW_COLORS.textMuted}
+            style={{
+              backgroundColor: WORKFLOW_COLORS.surfaceMuted,
+              borderRadius: 10,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm,
+              color: WORKFLOW_COLORS.textPrimary,
+              fontSize: fontSize.sm,
+            }}
+          />
+        </View>
+        {schemasLoading && schemas.length === 0 ? (
+          <View style={{ alignItems: "center", paddingVertical: spacing.xl }}>
+            <ActivityIndicator size="small" color={WORKFLOW_COLORS.primary} />
+            <Text
+              style={{
+                marginTop: spacing.xs,
+                fontSize: fontSize.xs,
+                color: WORKFLOW_COLORS.textMuted,
+              }}
+            >
+              Loading triggers…
+            </Text>
+          </View>
+        ) : (
+          <BottomSheetFlatList
+            data={items}
+            keyExtractor={(item: IntegrationsListItem) =>
+              item.kind === "builtin"
+                ? `builtin:${item.meta.id}`
+                : `integration:${item.group.integrationId}`
+            }
+            renderItem={({ item }: { item: IntegrationsListItem }) => {
+              if (item.kind === "builtin") {
+                return (
+                  <Row
+                    iconNode={
+                      <AppIcon
+                        icon={builtinIcon(item.meta.id)}
+                        size={18}
+                        color={WORKFLOW_COLORS.textMuted}
+                      />
+                    }
+                    title={item.meta.label}
+                    subtitle={item.meta.description}
+                    onPress={() => handlePickBuiltin(item.meta)}
+                  />
+                );
+              }
+              const url = logoUrlForIntegration(item.group.integrationId);
+              const subtitle =
+                item.group.schemas.length === 1
+                  ? item.group.schemas[0].description
+                  : `${item.group.schemas.length} triggers`;
+              return (
+                <Row
+                  iconNode={
+                    url ? (
+                      <ExpoImage
+                        source={{ uri: url }}
+                        style={{ width: 22, height: 22 }}
+                        contentFit="contain"
+                      />
+                    ) : (
+                      <AppIcon
+                        icon={PlayIcon}
+                        size={18}
+                        color={WORKFLOW_COLORS.textMuted}
+                      />
+                    )
+                  }
+                  title={formatIntegrationLabel(item.group.integrationId)}
+                  subtitle={subtitle}
+                  trailingLabel="Integration"
+                  onPress={() => handlePickIntegration(item.group)}
+                />
+              );
+            }}
+            contentContainerStyle={{ paddingBottom: spacing.xl }}
+          />
+        )}
+      </>
+    );
+  };
+
+  const renderSubTriggersStep = () => {
+    if (step.kind !== "subTriggers") return null;
+    const group = groupedIntegrations.find(
+      (g) => g.integrationId === step.integrationId,
+    );
+    if (!group) return null;
+    const url = logoUrlForIntegration(group.integrationId);
+    return (
+      <>
+        <BackHeader
+          onBack={() => setStep({ kind: "integrations" })}
+          title={formatIntegrationLabel(group.integrationId)}
+          iconUrl={url}
+        />
+        <BottomSheetFlatList
+          data={group.schemas}
+          keyExtractor={(item: TriggerSchema) => item.slug}
+          renderItem={({ item }: { item: TriggerSchema }) => (
+            <Row
+              iconNode={
+                url ? (
+                  <ExpoImage
+                    source={{ uri: url }}
+                    style={{ width: 22, height: 22 }}
+                    contentFit="contain"
+                  />
+                ) : (
+                  <AppIcon
+                    icon={PlayIcon}
+                    size={18}
+                    color={WORKFLOW_COLORS.textMuted}
+                  />
+                )
+              }
+              title={item.name}
+              subtitle={item.description}
+              onPress={() => handlePickSchema(item)}
+            />
+          )}
+          contentContainerStyle={{ paddingBottom: spacing.xl }}
+        />
+      </>
+    );
+  };
+
+  const renderConfigStep = () => {
+    if (step.kind !== "config") return null;
+    const isBuiltin = "builtin" in step;
+    const titleLabel = isBuiltin ? step.builtin.label : step.schema.name;
+    const description = isBuiltin
+      ? step.builtin.description
+      : step.schema.description;
+    const url = isBuiltin
+      ? undefined
+      : logoUrlForIntegration(step.schema.integration_id);
+
+    const onBack = () => {
+      if (isBuiltin) {
+        setStep({ kind: "integrations" });
+      } else {
+        const groupHasMultiple =
+          groupedIntegrations.find(
+            (g) => g.integrationId === step.schema.integration_id,
+          )?.schemas.length ?? 0;
+        if (groupHasMultiple > 1) {
+          setStep({
+            kind: "subTriggers",
+            integrationId: step.schema.integration_id,
+          });
+        } else {
+          setStep({ kind: "integrations" });
+        }
+      }
+    };
+
+    const fields: FieldWithMeta[] = isBuiltin
+      ? []
+      : getSchemaFieldEntries(step.schema);
 
     return (
       <BottomSheetScrollView
         contentContainerStyle={{
-          paddingHorizontal: spacing.md,
           paddingBottom: 40,
           gap: spacing.md,
         }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header row */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.sm,
-            paddingBottom: spacing.xs,
-          }}
-        >
-          <Pressable
-            onPress={() => setSelectedMeta(null)}
-            hitSlop={8}
-            style={{
-              paddingHorizontal: spacing.sm,
-              paddingVertical: spacing.xs,
-              backgroundColor: "#2c2c2e",
-              borderRadius: 8,
-            }}
-          >
-            <Text style={{ fontSize: fontSize.xs, color: "#a1a1aa" }}>
-              ← Back
-            </Text>
-          </Pressable>
-          <View
-            style={{
-              flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
-            }}
-          >
-            {displayMeta.iconUrl ? (
-              <Image
-                source={{ uri: displayMeta.iconUrl }}
-                style={{ width: 20, height: 20 }}
-                resizeMode="contain"
-              />
-            ) : null}
-            <Text
-              style={{
-                fontSize: fontSize.md,
-                fontWeight: "600",
-                color: "#fff",
-              }}
-            >
-              {displayMeta.label}
-            </Text>
-          </View>
-        </View>
+        <BackHeader onBack={onBack} title={titleLabel} iconUrl={url} />
 
-        <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-          {displayMeta.description}
-        </Text>
-
-        {schemasLoading ? (
-          <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
-            <ActivityIndicator size="small" color="#00bbff" />
+        <View style={{ paddingHorizontal: spacing.md, gap: spacing.md }}>
+          {description ? (
             <Text
               style={{
                 fontSize: fontSize.xs,
-                color: "#52525b",
-                marginTop: spacing.xs,
+                color: WORKFLOW_COLORS.textZinc500,
               }}
             >
-              Loading configuration options…
+              {description}
             </Text>
-          </View>
-        ) : hasSchemaFields ? (
-          <DynamicTriggerForm
-            fields={schemaFields}
-            config={triggerConfig}
-            onChange={setTriggerConfig}
-          />
-        ) : (
-          <View
-            style={{
-              backgroundColor: "#2c2c2e",
-              borderRadius: moderateScale(10, 0.5),
-              padding: spacing.md,
-            }}
-          >
-            <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
-              No additional configuration required for this trigger.
-            </Text>
-          </View>
-        )}
+          ) : null}
 
-        <Pressable
-          onPress={handleSave}
-          style={({ pressed }) => ({
-            borderRadius: moderateScale(12, 0.5),
-            paddingVertical: spacing.md,
-            alignItems: "center",
-            backgroundColor: pressed ? "#0099dd" : "#00bbff",
-            marginTop: spacing.sm,
-          })}
-        >
-          <Text
-            style={{
-              fontSize: fontSize.sm,
-              fontWeight: "600",
-              color: "#000",
-            }}
+          {!isBuiltin && fields.length > 0 ? (
+            <DynamicTriggerForm
+              fields={fields}
+              config={triggerConfig}
+              onChange={setTriggerConfig}
+              integrationId={step.schema.integration_id}
+              triggerSlug={step.schema.slug}
+            />
+          ) : (
+            <View
+              style={{
+                backgroundColor: WORKFLOW_COLORS.surfaceMuted,
+                borderRadius: moderateScale(10, 0.5),
+                padding: spacing.md,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  color: WORKFLOW_COLORS.textZinc500,
+                }}
+              >
+                No additional configuration required for this trigger.
+              </Text>
+            </View>
+          )}
+
+          <Pressable
+            onPress={handleSave}
+            style={({ pressed }) => ({
+              borderRadius: moderateScale(12, 0.5),
+              paddingVertical: spacing.md,
+              alignItems: "center",
+              backgroundColor: pressed
+                ? WORKFLOW_COLORS.primaryPressed
+                : WORKFLOW_COLORS.primary,
+              marginTop: spacing.sm,
+            })}
           >
-            Save trigger configuration
-          </Text>
-        </Pressable>
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                fontWeight: "600",
+                color: WORKFLOW_COLORS.onPrimary,
+              }}
+            >
+              Save trigger configuration
+            </Text>
+          </Pressable>
+        </View>
       </BottomSheetScrollView>
     );
   };
@@ -497,43 +666,15 @@ export const TriggerPickerSheet = forwardRef<
           snapPoints={["70%", "92%"]}
           enableDynamicSizing={false}
           enablePanDownToClose
-          backgroundStyle={{ backgroundColor: "#141414" }}
-          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
+          backgroundStyle={{ backgroundColor: WORKFLOW_COLORS.sheetBg }}
+          handleIndicatorStyle={{
+            backgroundColor: WORKFLOW_COLORS.handleIndicator,
+            width: 40,
+          }}
         >
-          {selectedMeta ? (
-            renderConfigPanel()
-          ) : (
-            <>
-              {" "}
-              <View
-                style={{
-                  paddingHorizontal: spacing.md,
-                  paddingBottom: spacing.sm,
-                }}
-              >
-                <BottomSheetTextInput
-                  value={search}
-                  onChangeText={setSearch}
-                  placeholder="Search triggers..."
-                  placeholderTextColor="#52525b"
-                  style={{
-                    backgroundColor: "#2c2c2e",
-                    borderRadius: 10,
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.sm,
-                    color: "#fff",
-                    fontSize: fontSize.sm,
-                  }}
-                />
-              </View>
-              <BottomSheetFlatList
-                data={filtered}
-                keyExtractor={(item: StaticTriggerMeta) => item.id}
-                renderItem={renderListItem}
-                contentContainerStyle={{ paddingBottom: spacing.xl }}
-              />
-            </>
-          )}{" "}
+          {step.kind === "integrations" && renderIntegrationsStep()}
+          {step.kind === "subTriggers" && renderSubTriggersStep()}
+          {step.kind === "config" && renderConfigStep()}
         </BottomSheet.Content>
       </BottomSheet.Portal>
     </BottomSheet>

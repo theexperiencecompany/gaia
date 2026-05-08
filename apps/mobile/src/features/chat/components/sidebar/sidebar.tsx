@@ -11,6 +11,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { useSidebar } from "../../hooks/sidebar-context";
 import { ChatHistory } from "./chat-history";
 import { SidebarFooter } from "./sidebar-footer";
 import { SidebarHeader } from "./sidebar-header";
@@ -51,6 +52,7 @@ const NAV_ITEMS = [
 function SidebarNav() {
   const router = useRouter();
   const pathname = usePathname();
+  const { closeSidebar } = useSidebar();
   const { spacing, fontSize, iconSize } = useResponsive();
 
   const isActive = (matchPrefix: string) => pathname.includes(matchPrefix);
@@ -62,7 +64,10 @@ function SidebarNav() {
         return (
           <Pressable
             key={item.label}
-            onPress={() => router.push(item.route as never)}
+            onPress={() => {
+              closeSidebar();
+              router.push(item.route as never);
+            }}
             style={({ pressed }) => ({
               flexDirection: "row",
               alignItems: "center",

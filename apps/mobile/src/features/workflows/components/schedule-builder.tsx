@@ -1,4 +1,5 @@
 import { Pressable, ScrollView, TextInput, View } from "react-native";
+import { AppIcon, ArrowLeft01Icon, ArrowRight01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -117,7 +118,7 @@ function TimePickerRow({ hour, minute, onChange }: TimePickerRowProps) {
     >
       <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>Time:</Text>
       <Pressable onPress={() => cycleHour(-1)} hitSlop={8}>
-        <Text style={{ color: "#00bbff", fontSize: fontSize.md }}>‹</Text>
+        <AppIcon icon={ArrowLeft01Icon} size={14} color="#00bbff" />
       </Pressable>
       <Text
         style={{
@@ -130,7 +131,7 @@ function TimePickerRow({ hour, minute, onChange }: TimePickerRowProps) {
         {displayH}
       </Text>
       <Pressable onPress={() => cycleHour(1)} hitSlop={8}>
-        <Text style={{ color: "#00bbff", fontSize: fontSize.md }}>›</Text>
+        <AppIcon icon={ArrowRight01Icon} size={14} color="#00bbff" />
       </Pressable>
       <Text style={{ color: "#71717a" }}>:</Text>
       <Pressable onPress={cycleMinute} hitSlop={8}>

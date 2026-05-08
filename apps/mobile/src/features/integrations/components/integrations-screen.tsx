@@ -1,7 +1,9 @@
+import { useNavigation } from "expo-router";
 import { Skeleton, SkeletonGroup } from "heroui-native";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  BackHandler,
   FlatList,
   Pressable,
   RefreshControl,
@@ -105,6 +107,7 @@ function LoadingState() {
 export function IntegrationsScreen() {
   const insets = useSafeAreaInsets();
   const { spacing, fontSize } = useResponsive();
+  const navigation = useNavigation();
 
   const detailSheetRef = useRef<IntegrationDetailSheetRef>(null);
   const createSheetRef = useRef<CreateMCPIntegrationSheetRef>(null);
@@ -118,6 +121,22 @@ export function IntegrationsScreen() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Treat the community sub-view as a virtual back-stack entry: while it's
+  // active, disable the iOS swipe-back gesture and intercept Android's
+  // hardware back so they pop the tab state instead of the whole screen.
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: tab !== "community" });
+  }, [navigation, tab]);
+
+  useEffect(() => {
+    if (tab !== "community") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setTab("all");
+      return true;
+    });
+    return () => sub.remove();
+  }, [tab]);
 
   const availableCategories = useMemo(
     () =>

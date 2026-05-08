@@ -1,3 +1,4 @@
+import { parseRelativeDateLabel } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useCallback, useRef } from "react";
@@ -37,63 +38,6 @@ interface NotificationCardProps {
   isSelected?: boolean;
   onLongPress?: (notificationId: string) => void;
   onSelectToggle?: (notificationId: string) => void;
-}
-
-// Mirrors web's parseDate (apps/web/src/utils/date/dateUtils.ts) closely enough
-// for mobile — short relative for <7d, "13th Apr '25 (3:45 PM)" otherwise.
-function nth(d: number): string {
-  if (d > 3 && d < 21) return "th";
-  switch (d % 10) {
-    case 1:
-      return "st";
-    case 2:
-      return "nd";
-    case 3:
-      return "rd";
-    default:
-      return "th";
-  }
-}
-
-function parseDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const formattedTime = date
-    .toLocaleString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    })
-    .toUpperCase();
-
-  if (diffMs < 7 * 24 * 60 * 60 * 1000) {
-    const seconds = Math.floor(diffMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) {
-      const label = days === 1 ? "1 day" : `${days} days`;
-      return `${label} ago`;
-    }
-    if (hours > 0) {
-      const label = hours === 1 ? "1 hour" : `${hours} hours`;
-      return `${label} ago`;
-    }
-    if (minutes > 0) {
-      const label = minutes === 1 ? "1 min" : `${minutes} mins`;
-      return `${label} ago`;
-    }
-    return "just now";
-  }
-
-  const month = date.toLocaleString(undefined, { month: "short" });
-  const year = date.toLocaleString(undefined, { year: "2-digit" });
-  const day = date.getDate();
-  return `${day}${nth(day)} ${month} '${year} (${formattedTime})`;
 }
 
 interface ActionTone {
@@ -474,7 +418,7 @@ export function NotificationCard({
                     color: "#52525b",
                   }}
                 >
-                  {parseDate(notification.created_at)}
+                  {parseRelativeDateLabel(notification.created_at)}
                 </Text>
                 {isUnread && (
                   <Pressable

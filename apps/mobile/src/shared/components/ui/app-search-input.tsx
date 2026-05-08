@@ -85,8 +85,10 @@ export function AppSearchInput({
           value={value}
           placeholder={placeholder}
           onChangeText={onChangeText}
+          placeholderTextColor="#71717a"
+          style={{ backgroundColor: "rgba(39,39,42,0.30)" }}
           className={cn(
-            "min-h-12 flex-1 rounded-2xl",
+            "min-h-12 flex-1 rounded-2xl border-0 text-white",
             resolvedStartContent ? "pl-9" : "",
             resolvedEndContent ? "pr-9" : "",
             inputClassName,
