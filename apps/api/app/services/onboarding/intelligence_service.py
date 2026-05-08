@@ -14,7 +14,7 @@ Critical path to COMPLETE:
               ↘       ↗
                writing_style (parallel root)
 
-Holo card runs fully independently. Memory ingestion is fire-and-forget.
+Holo card runs fully independently.
 """
 
 import asyncio
@@ -37,11 +37,6 @@ from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.core.lazy_loader import providers
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import users_collection
-from app.helpers.email_helpers import (
-    mark_email_processing_complete,
-    process_email_content,
-    store_emails_to_mem0,
-)
 from app.models.onboarding_models import (
     InboxTriage,
     SocialProfile,
@@ -56,7 +51,6 @@ from app.services.onboarding.first_message_service import generate_first_message
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.post_onboarding_service import (
     save_personalization_data,
-    suggest_workflows_via_rag,
 )
 from app.services.onboarding.social_profile_service import (
     dedup_profiles_by_platform,
@@ -81,17 +75,18 @@ from app.utils.seeding_utils import seed_onboarding_conversation
 class OnboardingStage(str, Enum):
     """Stages emitted over WebSocket during onboarding intelligence.
 
-    Every stage fires exactly once per pipeline run EXCEPT INBOX_SCANNING,
-    which fires multiple times with {"current": n} payloads from the Gmail
-    fetch's on_batch callback so the user sees a live "N emails fetched" counter.
+    The contract per step: at most one *_creating / *_progress / *_analyzing
+    stage carries repeated `status_text` updates while work is in flight,
+    followed by exactly one *_ready stage with the result payload. The
+    frontend scopes each step's live label to its own progress stage so
+    late events from one stage cannot leak into another.
     """
 
     INBOX_SCANNING = "inbox_scanning"  # repeats; carries {status_text}
     WRITING_STYLE_PROGRESS = "writing_style_progress"  # repeats; carries {status_text}
     WRITING_STYLE_READY = "writing_style_ready"
     SOCIAL_PROFILES_READY = "social_profiles_ready"
-    TRIAGE_ANALYZING = "triage_analyzing"  # LLM is processing inbox
-    TRIAGE_ANALYZED = "triage_analyzed"  # found X important threads
+    TRIAGE_ANALYZING = "triage_analyzing"  # repeats; carries {status_text}
     TRIAGE_READY = "triage_ready"
     TODOS_CREATING = "todos_creating"  # about to create todos
     TODOS_READY = "todos_ready"
@@ -115,7 +110,11 @@ async def _emit_stage(
                 "data": {"stage": stage.value, "payload": payload or {}},
             },
         )
-        log.info(f"[intelligence:stage] {stage.value}")
+        status_text = (payload or {}).get("status_text")
+        if status_text:
+            log.info(f"[intelligence:stage] {stage.value} — {status_text}")
+        else:
+            log.info(f"[intelligence:stage] {stage.value}")
     except Exception as e:
         log.warning(f"[intelligence] Failed to emit stage {stage.value}: {e}")
 
@@ -206,6 +205,26 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     pipeline_start = time.monotonic()
     log.info(f"[intelligence] Starting onboarding intelligence for {user_id}")
 
+    # Emit an immediate status before the Mongo + Composio checks so the user
+    # sees activity right away. Without this, the first status_text only lands
+    # after the Composio Gmail check returns (often a few seconds).
+    #
+    # We don't know has_gmail yet, and the two branches render different first
+    # steps (Gmail → inbox_scanning, no-Gmail → todos_creating). Emit to both
+    # so whichever branch the frontend renders picks up its own status.
+    await asyncio.gather(
+        _emit_stage(
+            user_id,
+            OnboardingStage.INBOX_SCANNING,
+            {"status_text": "Getting things ready"},
+        ),
+        _emit_stage(
+            user_id,
+            OnboardingStage.TODOS_CREATING,
+            {"status_text": "Getting things ready"},
+        ),
+    )
+
     user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
     if not user_doc:
         log.error(f"[intelligence] User not found: {user_id}")
@@ -241,18 +260,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     writing_style_future: asyncio.Task[Optional[WritingStyleProfile]] = (
         asyncio.create_task(_run_writing_style(user_id, has_gmail, profession))
     )
-
-    # ── Fire-and-forget memory ingestion ─────────────────────────────────
-    # Kicked off as soon as inbox emails arrive; never awaited by the pipeline.
-    # Hold a reference in _background_tasks so the outer task is not GC'd
-    # before its inner _store task is created.
-    memory_outer_task = asyncio.create_task(
-        _fire_and_forget_memory_ingestion(
-            user_id, name, user_email, inbox_emails_future
-        )
-    )
-    _background_tasks.add(memory_outer_task)
-    memory_outer_task.add_done_callback(_background_tasks.discard)
 
     # ── Derived nodes ────────────────────────────────────────────────────
     triage_future = asyncio.create_task(
@@ -434,7 +441,10 @@ async def _run_writing_style(
         await _emit_stage(
             user_id,
             OnboardingStage.WRITING_STYLE_READY,
-            {"style_summary": result.summary, "example": result.example},
+            {
+                "style_summary": result.summary,
+                "example": result.example.model_dump(),
+            },
         )
     else:
         await _emit_stage(
@@ -443,60 +453,6 @@ async def _run_writing_style(
             {"style_summary": None, "example": None},
         )
     return result
-
-
-# ── Fire-and-forget memory ingestion ─────────────────────────────────────────
-
-
-async def _fire_and_forget_memory_ingestion(
-    user_id: str,
-    user_name: str,
-    user_email: Optional[str],
-    inbox_emails_future: Optional[asyncio.Task[list[dict]]],
-) -> None:
-    """Wait for the shared inbox fetch, then store those emails to Mem0 in a
-    task that is NEVER awaited by the pipeline. Uses the same emails already
-    fetched by _run_inbox_scanning — no second Gmail fetch."""
-    if inbox_emails_future is None:
-        return
-    try:
-        emails = await inbox_emails_future
-    except Exception:
-        return
-    if not emails:
-        return
-
-    async def _store() -> None:
-        try:
-            # Check if already processed (idempotency for ARQ retries)
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
-            if user and user.get("email_memory_processed", False):
-                log.info(
-                    f"[intelligence] User {user_id} memory already processed, skipping"
-                )
-                return
-
-            t0 = time.monotonic()
-            processed, failed = process_email_content(emails)
-            if not processed:
-                log.info(
-                    f"[intelligence] No processable emails for memory ({failed} failed)"
-                )
-                return
-            await store_emails_to_mem0(
-                user_id, processed, user_name, user_email, async_mode=True
-            )
-            await mark_email_processing_complete(user_id, len(processed))
-            log.info(
-                f"[intelligence:timing] memory_ingestion (fire-and-forget): "
-                f"{time.monotonic() - t0:.1f}s ({len(processed)} emails)"
-            )
-        except Exception as e:
-            log.warning(f"[intelligence] Memory ingestion failed: {e}")
-
-    task = asyncio.create_task(_store())
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
 
 
 # ── Derived node wrappers ────────────────────────────────────────────────────
@@ -555,7 +511,7 @@ async def _run_triage(
         n = len(result.important_emails)
         await _emit_stage(
             user_id,
-            OnboardingStage.TRIAGE_ANALYZED,
+            OnboardingStage.TRIAGE_ANALYZING,
             {
                 "status_text": (f"Found {n} important thread{'s' if n != 1 else ''}"),
             },
@@ -713,6 +669,19 @@ async def _run_workflows(
         f"[intelligence:timing] workflows: {time.monotonic() - t0:.1f}s "
         f"({len(workflows)} workflows)"
     )
+
+    try:
+        workflow_ids = [w["id"] for w in workflows if w.get("id")]
+        if workflow_ids:
+            await users_collection.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$set": {"onboarding.suggested_workflows": workflow_ids}},
+            )
+    except Exception as e:
+        log.warning(
+            f"[intelligence] Failed to persist suggested_workflows for {user_id}: {e}"
+        )
+
     n = len(workflows)
     await _emit_stage(
         user_id,
@@ -768,14 +737,13 @@ async def _run_holo_card(
             generate_user_bio(user_id, context_summary, user=user_doc),
         )
         user_bio, bio_status = bio_result
-        workflow_ids = await suggest_workflows_via_rag(user_id, 4)
         await save_personalization_data(
             user_id,
             card_design["house"],
             phrase,
             user_bio,
             bio_status,
-            workflow_ids,
+            [],
             metadata["account_number"],
             metadata["member_since"],
             card_design["overlay_color"],
@@ -824,7 +792,9 @@ async def _persist_profiles(
     update_fields: dict = {}
     if writing_style:
         update_fields["onboarding.writing_style.summary"] = writing_style.summary
-        update_fields["onboarding.writing_style.example"] = writing_style.example
+        update_fields["onboarding.writing_style.example"] = (
+            writing_style.example.model_dump()
+        )
     if triage:
         update_fields["onboarding.triage_summary"] = {
             "total_scanned": triage.total_scanned,

@@ -38,7 +38,7 @@ function MessagesRegionImpl({ state, stage }: MessagesRegionProps) {
     <OnboardingProcessing
       hasGmail={hasGmailDerived(state)}
       completedStages={state.completedStages}
-      statusMessage={state.progressMessage}
+      progressByStage={state.progressByStage}
     />
   ) : null;
 

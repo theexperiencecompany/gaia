@@ -84,33 +84,41 @@ export function useBackendSync(
       [K in OnboardingStage]: (payload: StagePayloads[K]) => void;
     };
 
+    const dispatchProgress = (
+      stage: OnboardingStage,
+      status_text: string | undefined,
+    ): void => {
+      if (!status_text) {
+        console.warn(
+          `[onboarding:ws] ${stage} progress event with no status_text — backend likely stale`,
+        );
+        return;
+      }
+      dispatchRef.current({ type: "progress", stage, message: status_text });
+    };
+
     const handlers: StageHandlers = {
-      inbox_scanning: (p) => {
-        dispatchRef.current({ type: "progress", message: p.status_text });
-      },
-      writing_style_progress: (p) => {
-        dispatchRef.current({ type: "progress", message: p.status_text });
-      },
-      triage_analyzing: (p) => {
-        dispatchRef.current({ type: "progress", message: p.status_text });
-      },
-      triage_analyzed: (p) => {
-        dispatchRef.current({ type: "progress", message: p.status_text });
-      },
-      todos_creating: (p) => {
-        dispatchRef.current({ type: "progress", message: p.status_text });
-      },
-      workflows_creating: (p) => {
-        dispatchRef.current({ type: "progress", message: p.status_text });
-      },
+      inbox_scanning: (p) => dispatchProgress("inbox_scanning", p.status_text),
+      writing_style_progress: (p) =>
+        dispatchProgress("writing_style_progress", p.status_text),
+      triage_analyzing: (p) =>
+        dispatchProgress("triage_analyzing", p.status_text),
+      todos_creating: (p) => dispatchProgress("todos_creating", p.status_text),
+      workflows_creating: (p) =>
+        dispatchProgress("workflows_creating", p.status_text),
       writing_style_ready: (p) => {
+        // Backend emits this stage even when no style could be learned
+        // (no Gmail, insufficient sent emails, LLM failure) so the pipeline
+        // has a definitive completion signal. In those cases style_summary
+        // is null and there's nothing to reveal — store null, not an empty
+        // object, so getStage's truthy check skips revealWriting cleanly.
+        const summary = p.style_summary?.trim();
         dispatchRef.current({
           type: "serverPatch",
           patch: {
-            writing_style: {
-              style_summary: p.style_summary ?? "",
-              example: p.example ?? undefined,
-            },
+            writing_style: summary
+              ? { style_summary: summary, example: p.example ?? null }
+              : null,
           },
         });
       },
@@ -293,6 +301,7 @@ export function useBackendSync(
             };
             if (message.type !== "onboarding_stage") return;
             const envelope = message.data as StageEnvelope;
+            console.debug("[onboarding:ws]", envelope.stage, envelope.payload);
             if (!snapshotResolved) {
               buffer.push(envelope);
               return;

@@ -28,24 +28,19 @@ export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
   const user = useUser();
   const currentQuestion = questions[state.questionIndex];
 
-  // Prefill the name question once with the signed-in user's name. After the
-  // first seed, the user can clear / retype freely without it being refilled.
-  const seededNameRef = useRef(false);
+  // Seed the name input with the signed-in user's name once on mount. The
+  // user owns the field after that — no further updates from this effect.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only seed
   useEffect(() => {
-    if (seededNameRef.current) return;
-    if (currentQuestion?.fieldName !== FIELD_NAMES.NAME) return;
-    if (state.responses[FIELD_NAMES.NAME]) return;
-    if (state.draftText) return;
-    if (!user.name) return;
-    seededNameRef.current = true;
-    dispatch({ type: "draftText", value: user.name });
-  }, [
-    currentQuestion?.fieldName,
-    state.responses,
-    state.draftText,
-    user.name,
-    dispatch,
-  ]);
+    if (
+      currentQuestion?.fieldName === FIELD_NAMES.NAME &&
+      !state.responses[FIELD_NAMES.NAME] &&
+      !state.draftText &&
+      user.name
+    ) {
+      dispatch({ type: "draftText", value: user.name });
+    }
+  }, []);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {

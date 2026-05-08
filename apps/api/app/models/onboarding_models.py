@@ -1,9 +1,39 @@
 from pydantic import BaseModel, Field
 
 
+class WritingStyleExampleBlocks(BaseModel):
+    """
+    Example email broken into discrete blocks. The LLM fills each field
+    independently; consumers (frontend, mail composer) decide how to render.
+    """
+
+    greeting: str = Field(
+        default="",
+        description=(
+            "Greeting line on its own, e.g. 'Hey Sarah,' or 'Hi!'. "
+            "Empty string if the observed style has no greeting habit."
+        ),
+    )
+    body: list[str] = Field(
+        min_length=1,
+        description=(
+            "One string per body paragraph (1-3 typical). Do NOT include greeting "
+            "or sign-off. Do NOT put `\\n` inside a paragraph."
+        ),
+    )
+    signoff: str = Field(
+        default="",
+        description=("Sign-off line, e.g. 'Best,' or 'Thanks,'. Empty string if none."),
+    )
+    name: str = Field(
+        default="",
+        description="Sender name on its own line. Empty string if none.",
+    )
+
+
 class WritingStyleProfile(BaseModel):
     summary: str  # natural language description of their writing style
-    example: str  # one AI-composed example email in their voice, relevant to their profession
+    example: WritingStyleExampleBlocks  # AI-composed example email, structured
     user_edited_summary: str | None = (
         None  # user-edited summary saved during onboarding
     )
@@ -54,22 +84,21 @@ class WritingStyleOutput(BaseModel):
             "how they greet, sign off, sentence length, formality, and any distinctive habits."
         )
     )
-    example: str = Field(
-        min_length=1,
-        description="One short example email (3-6 lines) written in the user's voice, "
-        "relevant to their profession. Must reflect the observed style — "
-        "do not invent traits not seen in the emails. Must not be empty.",
+    example: WritingStyleExampleBlocks = Field(
+        description=(
+            "Example email written in the user's voice, broken into structured blocks. "
+            "Must reflect the observed style — do not invent traits not seen in the emails."
+        ),
     )
 
 
 class WritingStyleExampleOutput(BaseModel):
     """Structured output for regenerating a single example from an edited summary."""
 
-    example: str = Field(
+    example: WritingStyleExampleBlocks = Field(
         description=(
-            "One short example email (3-6 lines) written to match the provided style summary, "
-            "relevant to the user's profession."
-        )
+            "Example email matching the provided style summary, broken into structured blocks."
+        ),
     )
 
 

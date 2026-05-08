@@ -13,9 +13,15 @@ import type { OnboardingStage } from "@/features/onboarding/types/websocket";
 
 const DUMMY_WRITING_STYLE = {
   style_summary:
-    "Opens with 'Hey' or 'Hi [name]', rarely uses formal salutations. Keeps sentences short and punchy — rarely more than 2 clauses. Signs off with 'Cheers' or just their name. Uses lowercase occasionally in casual threads and drops trailing periods on short replies.",
-  example:
-    "Hey Sarah,\n\nJust saw your message — totally agree on pushing the deadline. Let me loop in the design team and get back to you by EOD.\n\nCheers,\nAryan",
+    "Opens with 'Hey' or 'Hi [name]', rarely uses formal salutations. Keeps sentences short and punchy, rarely more than 2 clauses. Signs off with 'Cheers' or just their name. Uses lowercase occasionally in casual threads and drops trailing periods on short replies.",
+  example: {
+    greeting: "Hey Sarah,",
+    body: [
+      "Just saw your message, totally agree on pushing the deadline. Let me loop in the design team and get back to you by EOD.",
+    ],
+    signoff: "Cheers,",
+    name: "Aryan",
+  },
   profession: "Founder",
 };
 
@@ -90,29 +96,43 @@ const GMAIL_STAGES: OnboardingStage[] = [
   "workflows_ready",
 ];
 
-const DEMO_STATUS_BY_STAGE: Record<OnboardingStage, string | undefined> = {
-  inbox_scanning: "Fetched 312 emails",
-  writing_style_progress: "Analyzing tone and phrasing",
-  writing_style_ready: undefined,
-  social_profiles_ready: undefined,
-  triage_analyzing: "Analyzing 312 emails",
-  triage_analyzed: "Found 8 important threads",
-  triage_ready: undefined,
-  todos_creating: "Drafting todos from your inbox",
-  todos_ready: undefined,
-  workflows_creating: "Drafting workflow ideas",
-  workflows_ready: undefined,
-  holo_ready: undefined,
-  complete: undefined,
+// Live progress text emitted by each *_creating/*_progress stage. The
+// completion stage that flips its step ✓ also clears the matching slot —
+// mirroring the reducer's PROGRESS_CLEARED_BY logic so the demo behaves
+// identically to production.
+const PROGRESS_BY_COMPLETION: Partial<
+  Record<OnboardingStage, { stage: OnboardingStage; text: string }>
+> = {
+  inbox_scanning: { stage: "inbox_scanning", text: "Fetched 312 emails" },
+  writing_style_ready: {
+    stage: "writing_style_progress",
+    text: "Analyzing tone and phrasing",
+  },
+  triage_ready: {
+    stage: "triage_analyzing",
+    text: "Found 8 important threads",
+  },
+  todos_ready: {
+    stage: "todos_creating",
+    text: "Drafting todos from your inbox",
+  },
+  workflows_ready: {
+    stage: "workflows_creating",
+    text: "Drafting workflow ideas",
+  },
 };
+
+function initialProgress(): Partial<Record<OnboardingStage, string>> {
+  const first = PROGRESS_BY_COMPLETION[GMAIL_STAGES[0]];
+  return first ? { [first.stage]: first.text } : {};
+}
 
 function ProcessingDemo() {
   const [completedStages, setCompletedStages] = useState<Set<OnboardingStage>>(
     new Set(),
   );
-  const [statusMessage, setStatusMessage] = useState<string | null>(
-    DEMO_STATUS_BY_STAGE.inbox_scanning ?? null,
-  );
+  const [progressByStage, setProgressByStage] =
+    useState<Partial<Record<OnboardingStage, string>>>(initialProgress);
 
   const advance = () => {
     const nextIdx = completedStages.size;
@@ -120,13 +140,20 @@ function ProcessingDemo() {
     const next = GMAIL_STAGES[nextIdx];
     if (!next) return;
     setCompletedStages((prev) => new Set([...prev, next]));
-    const following = GMAIL_STAGES[nextIdx + 1];
-    setStatusMessage((following && DEMO_STATUS_BY_STAGE[following]) ?? null);
+    setProgressByStage((prev) => {
+      const cleared = { ...prev };
+      const completing = PROGRESS_BY_COMPLETION[next];
+      if (completing) delete cleared[completing.stage];
+      const following = GMAIL_STAGES[nextIdx + 1];
+      const seed = following && PROGRESS_BY_COMPLETION[following];
+      if (seed) cleared[seed.stage] = seed.text;
+      return cleared;
+    });
   };
 
   const reset = () => {
     setCompletedStages(new Set());
-    setStatusMessage(DEMO_STATUS_BY_STAGE.inbox_scanning ?? null);
+    setProgressByStage(initialProgress());
   };
 
   return (
@@ -134,7 +161,7 @@ function ProcessingDemo() {
       <div className="flex flex-col gap-4">
         <OnboardingProcessing
           hasGmail
-          statusMessage={statusMessage}
+          progressByStage={progressByStage}
           completedStages={completedStages}
         />
         <div className="flex gap-2">

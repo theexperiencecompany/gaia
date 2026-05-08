@@ -16,13 +16,19 @@ import { AnimatePresence, m } from "motion/react";
 import { useEffect, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { apiService } from "@/lib/api/service";
-import type { WritingStyleResults } from "../../types/websocket";
+import type {
+  WritingStyleExampleBlocks,
+  WritingStyleResults,
+} from "../../types/websocket";
 
 const MIN_LENGTH = 20;
 
 interface WritingStyleRevealCardProps extends WritingStyleResults {
   profession?: string;
 }
+
+const hasExampleContent = (blocks: WritingStyleExampleBlocks | null): boolean =>
+  Boolean(blocks && blocks.body.some((p) => p.trim()));
 
 export function WritingStyleRevealCard({
   style_summary,
@@ -31,17 +37,18 @@ export function WritingStyleRevealCard({
 }: WritingStyleRevealCardProps) {
   const [isEditingSummary, setIsEditingSummary] = useState(false);
   const [summaryValue, setSummaryValue] = useState(style_summary);
-  const [currentExample, setCurrentExample] = useState(example ?? "");
+  const [currentExample, setCurrentExample] =
+    useState<WritingStyleExampleBlocks | null>(example ?? null);
   const [isSaving, setIsSaving] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [touched, setTouched] = useState(false);
 
   // Auto-regenerate example on mount if missing (e.g. old DB records lacking example field)
   useEffect(() => {
-    if (!currentExample && !isRegenerating && summaryValue) {
+    if (!hasExampleContent(currentExample) && !isRegenerating && summaryValue) {
       setIsRegenerating(true);
       apiService
-        .post<{ example: string }>(
+        .post<{ example: WritingStyleExampleBlocks | null }>(
           "/onboarding/writing-style/regenerate-example",
           { edited_summary: summaryValue, profession },
         )
@@ -72,10 +79,12 @@ export function WritingStyleRevealCard({
         edited_summary: summaryValue.trim(),
       });
       setIsRegenerating(true);
-      const res = await apiService.post<{ example: string }>(
-        "/onboarding/writing-style/regenerate-example",
-        { edited_summary: summaryValue.trim(), profession },
-      );
+      const res = await apiService.post<{
+        example: WritingStyleExampleBlocks | null;
+      }>("/onboarding/writing-style/regenerate-example", {
+        edited_summary: summaryValue.trim(),
+        profession,
+      });
       if (res.example) {
         setCurrentExample(res.example);
       }
@@ -168,7 +177,7 @@ export function WritingStyleRevealCard({
           </p>
         </div>
         <AnimatePresence mode="wait">
-          {isRegenerating || !currentExample ? (
+          {isRegenerating || !hasExampleContent(currentExample) ? (
             <m.div
               key="skeleton"
               initial={{ opacity: 0 }}
@@ -182,16 +191,33 @@ export function WritingStyleRevealCard({
               <Skeleton className="h-3 w-3/4 rounded-lg" />
             </m.div>
           ) : (
-            <m.p
+            <m.div
               key="example"
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.25 }}
-              className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap"
+              className="space-y-3 text-sm text-zinc-200 leading-relaxed"
             >
-              {currentExample}
-            </m.p>
+              {currentExample?.greeting.trim() && (
+                <p>{currentExample.greeting}</p>
+              )}
+              {currentExample?.body
+                .filter((p) => p.trim())
+                .map((paragraph, idx) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: paragraphs are rendered immutably from a single LLM response
+                  <p key={idx}>{paragraph}</p>
+                ))}
+              {(currentExample?.signoff.trim() ||
+                currentExample?.name.trim()) && (
+                <div>
+                  {currentExample.signoff.trim() && (
+                    <p>{currentExample.signoff}</p>
+                  )}
+                  {currentExample.name.trim() && <p>{currentExample.name}</p>}
+                </div>
+              )}
+            </m.div>
           )}
         </AnimatePresence>
       </div>

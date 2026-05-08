@@ -38,7 +38,10 @@ export interface PersonalizationData {
     };
   }>;
   // Stage data for reveal card reconstruction on page reload
-  writing_style?: { style_summary: string; example?: string } | null;
+  writing_style?: {
+    style_summary: string;
+    example?: WritingStyleExampleBlocks | null;
+  } | null;
   social_profiles?: Array<{ platform: string; url: string }> | null;
   triage_summary?: {
     total_scanned: number;
@@ -57,9 +60,16 @@ export interface PersonalizationData {
 
 // ── Per-reveal-card payload types (consumed by reveal components) ──────────
 
+export interface WritingStyleExampleBlocks {
+  greeting: string;
+  body: string[];
+  signoff: string;
+  name: string;
+}
+
 export interface WritingStyleResults {
   style_summary: string;
-  example?: string;
+  example?: WritingStyleExampleBlocks | null;
 }
 
 export interface SocialProfileResult {
@@ -113,7 +123,6 @@ export type OnboardingStage =
   | "writing_style_ready"
   | "social_profiles_ready"
   | "triage_analyzing"
-  | "triage_analyzed"
   | "triage_ready"
   | "todos_creating"
   | "todos_ready"
@@ -127,11 +136,10 @@ export interface StagePayloads {
   writing_style_progress: { status_text: string };
   writing_style_ready: {
     style_summary: string | null;
-    example?: string | null;
+    example?: WritingStyleExampleBlocks | null;
   };
   social_profiles_ready: SocialProfilesResults;
   triage_analyzing: { status_text: string };
-  triage_analyzed: { status_text: string };
   triage_ready: TriageResults;
   todos_creating: { status_text: string };
   todos_ready: TodoResults & { status_text?: string };

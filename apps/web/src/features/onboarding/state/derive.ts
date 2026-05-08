@@ -5,8 +5,33 @@
  */
 
 import { FIELD_NAMES, questions } from "../constants";
-import type { PersonalizationData } from "../types/websocket";
+import type { OnboardingStage, PersonalizationData } from "../types/websocket";
 import type { OnboardingState, Stage } from "./types";
+
+/**
+ * After writing-style ack, the still-running pipeline is one of these
+ * stages. Listed in critical-path order — `pickFirst` returns the deepest
+ * stage that currently has a status_text so the user always sees the most
+ * advanced step's live update.
+ */
+const POST_WRITING_PROGRESS_STAGES: readonly OnboardingStage[] = [
+  "workflows_creating",
+  "todos_creating",
+  "triage_analyzing",
+];
+
+/**
+ * Returns the live progress message for the deepest still-running pipeline
+ * stage, or `null` if none have emitted yet. Used by the writing-style
+ * reveal's "looking for things I can help with" waiting block.
+ */
+export function getCurrentProgress(s: OnboardingState): string | null {
+  for (const stage of POST_WRITING_PROGRESS_STAGES) {
+    const value = s.progressByStage[stage];
+    if (value) return value;
+  }
+  return null;
+}
 
 const PIPELINE_RUNNING_STATUSES: ReadonlySet<string> = new Set([
   "pending",

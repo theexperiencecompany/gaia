@@ -12,7 +12,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { ReloadIcon } from "@icons";
+import { RedoIcon } from "@icons";
 import { m } from "motion/react";
 import { memo, useState } from "react";
 
@@ -84,7 +84,7 @@ function OnboardingProgressImpl({
           onPress={() => setConfirmOpen(true)}
           isLoading={isRestarting}
           isDisabled={isRestarting}
-          startContent={!isRestarting && <ReloadIcon size={14} />}
+          startContent={!isRestarting && <RedoIcon size={14} />}
           className="fixed right-3 bottom-3"
           aria-label="Restart onboarding"
         >

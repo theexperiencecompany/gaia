@@ -35,8 +35,16 @@ const SLOW_NOTICE_MS = 30_000;
 
 interface ProcessingStep {
   icon: FC<IconProps>;
+  /** The completion stage that flips this step from active → done. */
   stage: OnboardingStage;
   activeText: string;
+  /**
+   * Stages whose `status_text` updates belong to *this* step. Listed in
+   * priority order — the first slot with a value is shown as the live
+   * sub-message under the step, so a never-cleared earlier stage cannot
+   * outrank a fresher later stage in the same group.
+   */
+  progressFrom: readonly OnboardingStage[];
 }
 
 const GMAIL_STEPS: ProcessingStep[] = [
@@ -44,26 +52,31 @@ const GMAIL_STEPS: ProcessingStep[] = [
     icon: Mail01Icon,
     stage: "inbox_scanning",
     activeText: STEP_SCANNING_INBOX,
+    progressFrom: ["inbox_scanning"],
   },
   {
     icon: Brain01Icon,
     stage: "writing_style_ready",
     activeText: STEP_LEARNING_STYLE,
+    progressFrom: ["writing_style_progress"],
   },
   {
     icon: FilterIcon,
     stage: "triage_ready",
     activeText: STEP_TRIAGING,
+    progressFrom: ["triage_analyzing"],
   },
   {
     icon: CheckListIcon,
     stage: "todos_ready",
     activeText: STEP_CREATING_TODOS,
+    progressFrom: ["todos_creating"],
   },
   {
     icon: ZapIcon,
     stage: "workflows_ready",
     activeText: STEP_CREATING_WORKFLOWS,
+    progressFrom: ["workflows_creating"],
   },
 ];
 
@@ -75,16 +88,19 @@ const NO_GMAIL_STEPS: ProcessingStep[] = [
     icon: CheckListIcon,
     stage: "todos_ready",
     activeText: STEP_CREATING_TODOS,
+    progressFrom: ["todos_creating"],
   },
   {
     icon: ZapIcon,
     stage: "workflows_ready",
     activeText: STEP_CREATING_WORKFLOWS,
+    progressFrom: ["workflows_creating"],
   },
   {
     icon: Brain01Icon,
     stage: "holo_ready",
     activeText: STEP_BUILDING_PROFILE,
+    progressFrom: [],
   },
 ];
 
@@ -92,8 +108,13 @@ interface OnboardingProcessingProps {
   hasGmail: boolean;
   /** Stages that have received a completion event from the backend */
   completedStages?: Set<OnboardingStage>;
-  /** Latest backend-emitted status_text — surfaced under the active step */
-  statusMessage?: string | null;
+  /**
+   * Backend-emitted `status_text` keyed by the stage that emitted it.
+   * Each step displays only the values for its own `progressFrom` stages,
+   * so a late progress event from one stage cannot leak into another's
+   * label.
+   */
+  progressByStage?: Partial<Record<OnboardingStage, string>>;
 }
 
 // Stages whose `inbox_scanning` step is genuinely complete. Writing-style
@@ -107,10 +128,22 @@ const STAGES_AFTER_INBOX_SCAN: OnboardingStage[] = [
   "complete",
 ];
 
+function pickProgressForStep(
+  step: ProcessingStep,
+  progressByStage: Partial<Record<OnboardingStage, string>> | undefined,
+): string | undefined {
+  if (!progressByStage) return undefined;
+  for (const stage of step.progressFrom) {
+    const value = progressByStage[stage];
+    if (value) return value;
+  }
+  return undefined;
+}
+
 function OnboardingProcessingImpl({
   hasGmail,
   completedStages,
-  statusMessage,
+  progressByStage,
 }: OnboardingProcessingProps) {
   const steps = hasGmail ? GMAIL_STEPS : NO_GMAIL_STEPS;
   const [showSlowNotice, setShowSlowNotice] = useState(false);
@@ -154,10 +187,12 @@ function OnboardingProcessingImpl({
           const Icon = step.icon;
           const isDone = isStepDone(i);
           const isActive = i === activeStepIndex && !isDone;
-          // Surface the backend's latest status_text under the active step
-          // — every stage emits one, so the same field works uniformly.
-          const liveMessage =
-            isActive && statusMessage ? statusMessage : undefined;
+          // Each step reads only the status_text emitted by stages in its
+          // own `progressFrom` group. A late event from another stage can
+          // no longer bleed into the wrong step's label.
+          const liveMessage = isActive
+            ? pickProgressForStep(step, progressByStage)
+            : undefined;
 
           return (
             <m.div

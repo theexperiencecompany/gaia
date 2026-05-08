@@ -115,7 +115,8 @@ def format_writing_style_for_prompt(
     summary = writing_style.get("user_edited_summary") or writing_style.get(
         "summary", ""
     )
-    example: str = writing_style.get("example", "")
+    raw_example = writing_style.get("example")
+    example_text = _example_blocks_to_text(raw_example)
 
     if not summary:
         return ""
@@ -125,10 +126,41 @@ def format_writing_style_for_prompt(
         f"  Style: {summary}",
     ]
 
-    if example:
-        lines.append(f'  Example email in their voice:\n    "{example}"')
+    if example_text:
+        lines.append(f'  Example email in their voice:\n    "{example_text}"')
 
     return "\n".join(lines)
+
+
+def _example_blocks_to_text(raw: Any) -> str:
+    """Render structured example blocks (or a legacy string) as a single text block.
+
+    Used only when feeding the example to an LLM prompt. New records store
+    `example` as a dict ({greeting, body[], signoff, name}); legacy records
+    stored it as a string.
+    """
+    if isinstance(raw, str):
+        return raw
+    if not isinstance(raw, dict):
+        return ""
+    sections: list[str] = []
+    greeting = str(raw.get("greeting", "")).strip()
+    if greeting:
+        sections.append(greeting)
+    for paragraph in raw.get("body", []):
+        text = str(paragraph).strip()
+        if text:
+            sections.append(text)
+    signoff_lines: list[str] = []
+    signoff = str(raw.get("signoff", "")).strip()
+    if signoff:
+        signoff_lines.append(signoff)
+    name = str(raw.get("name", "")).strip()
+    if name:
+        signoff_lines.append(name)
+    if signoff_lines:
+        sections.append("\n".join(signoff_lines))
+    return "\n\n".join(sections)
 
 
 def format_user_preferences_for_agent(

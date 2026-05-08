@@ -44,7 +44,7 @@ Your job:
    - Any recurring habits (exclamation marks, ellipses, lowercase, dashes, specific words)
    Be specific: instead of "casual tone" say "opens with Hey, drops periods in short replies".
 
-2. Write one short example email (3-6 lines) that a {profession} might send — written entirely in
+2. Write one short example email (3-6 lines total) that a {profession} might send, written entirely in
    this person's observed voice. The scenario should be relevant to a {profession}:
    - Student → emailing a professor about an assignment or extension
    - Founder → cold outreach to an investor or potential partner
@@ -52,12 +52,18 @@ Your job:
    - Engineer → async update to a teammate about a PR or bug
    - Default → a professional follow-up relevant to their work
    The example must reflect their actual style. Do not add traits not seen in the emails.
+   NEVER use em dashes (—) in the example email or in the summary. Use commas, periods,
+   colons, or parentheses instead. This rule overrides any "dashes" pattern observed in
+   the samples — em dashes are off-limits in the output regardless.
 
-Respond as JSON:
-{{
-  "summary": "2-3 sentence concrete style description.",
-  "example": "The full example email text, including greeting and sign-off if they use them. The 'example' field must contain at least one complete sentence. An empty string is never acceptable — if the email sample is sparse, write a plausible short email in the style observed."
-}}
+   The example is returned as STRUCTURED BLOCKS, not a single string. Fill each field below:
+   - `greeting`: just the greeting line (e.g. "Hey Sarah,"). Empty string if the user has no greeting habit.
+   - `body`: an array of paragraph strings. Each entry is one paragraph. Use 1-3 entries. Do NOT include
+     greeting or sign-off here. Do NOT put `\\n` inside a paragraph — sentences in the same paragraph stay
+     on the same string.
+   - `signoff`: just the sign-off line (e.g. "Best,"). Empty string if user uses none.
+   - `name`: just the sender name (e.g. "Aryan"). Empty string if the user does not include one.
+   The backend will join these blocks with the right spacing — do not pre-format with newlines.
 """
 
 WRITING_STYLE_EXAMPLE_PROMPT = """You are generating a writing style example email.
@@ -77,35 +83,54 @@ Write one short example email (3-6 lines) that this person might send, relevant 
 The email must match the style description exactly. Include a greeting and sign-off only if the
 style says they use them.
 
-Respond as JSON:
-{{
-  "example": "The full example email text."
-}}
+NEVER use em dashes (—) in the example. Use commas, periods, colons, or parentheses instead.
+
+The example is returned as STRUCTURED BLOCKS, not a single string. Fill each field:
+- `greeting`: just the greeting line (e.g. "Hey Sarah,"). Empty string if the style has no greeting habit.
+- `body`: an array of paragraph strings. Each entry is one paragraph. Use 1-3 entries. Do NOT include
+  greeting or sign-off here. Do NOT put `\\n` inside a paragraph.
+- `signoff`: just the sign-off line (e.g. "Best,"). Empty string if the style uses none.
+- `name`: just the sender name (e.g. "Aryan"). Empty string if the style does not include one.
+The backend will join these blocks with the right spacing — do not pre-format with newlines.
 """
 
 FOCUS_TODOS_PROMPT = (
     "You are GAIA, an AI assistant that autonomously researches, drafts, analyzes, and plans.\n"
+    "These todos exist for ONE reason: the user clicks one and watches GAIA finish it end-to-end. "
+    "If GAIA cannot fully execute a todo using web research, drafting, summarization, comparison, or planning alone, "
+    "do NOT generate it. No human follow-up. No 'meet with X'. No 'set up Y'.\n\n"
     "User: {name}, {profession}.\n"
     "Focus: {focus}\n\n"
-    "Generate exactly 3 todos GAIA will execute — not human tasks, GAIA tasks.\n"
-    "Each must produce a concrete output: a draft, a research brief, a comparison, a plan, a list.\n"
-    "Each must be specific to the focus above — not a generic version of it.\n"
-    "Cover 3 different types of work (e.g. one research, one draft, one plan/breakdown).\n\n"
+    "Generate exactly 3 todos. Each must:\n"
+    "- Be auto-executable by GAIA in one shot — no extra info from the user, no external account access\n"
+    "- Produce a concrete artifact: a research brief, a draft, a comparison table, a plan, a summary with conclusions, an agenda\n"
+    "- Tie directly to the focus above — reference the actual subject of the focus, not a category it belongs to\n"
+    "- Start with a verb, under 60 characters\n\n"
+    "Cover 3 different shapes of work (e.g. one research, one draft, one plan/breakdown).\n\n"
     "GOOD (focus: 'raise a Series A'):\n"
     "- Research top 5 VCs active in our space and summarize thesis fit\n"
     "- Draft a cold outreach email for warm investor introductions\n"
     "- Break down a 90-day fundraising timeline into weekly milestones\n\n"
-    "BAD:\n"
-    "- Research the VC landscape (too generic — not tied to focus)\n"
-    "- Help with fundraising (not a concrete action)\n"
+    "BAD — these are exactly the kind of generic, MBA-deck phrasing to avoid:\n"
+    "- Develop a quarterly strategic growth roadmap (vague, no anchor to actual focus)\n"
+    "- Draft a competitive analysis report for the GTM strategy (buzzword soup)\n"
+    "- Create a PR evaluation framework for project growth (means nothing concrete)\n"
+    "- Research the VC landscape (too broad — not tied to focus)\n"
+    "- Help with fundraising (not a deliverable)\n"
     "- Set up investor meetings (GAIA can't do this)\n\n"
-    "Each title: starts with a verb, under 60 characters.\n\n"
+    "If you cannot anchor a todo to a specific noun from the user's focus, choose a different todo.\n"
+    "Generic strategic-sounding language is a hard failure.\n\n"
     "{format_instructions}"
 )
 
 TRIAGE_TODOS_PROMPT = (
     "You are GAIA, an AI assistant that can autonomously research, draft, analyze, and execute tasks.\n"
-    "Generate 3 high-value action items GAIA can do for this user. The user's profession and focus are the primary signal — emails are supporting context, not the brief.\n\n"
+    "These todos exist for ONE reason: the user clicks one and watches GAIA finish it end-to-end, "
+    "showcasing what GAIA can do. If GAIA cannot fully execute a todo using web research, drafting, "
+    "summarization, comparison, or inbox search alone — do NOT generate it. No human follow-up steps. "
+    "No 'meet with X'. No 'reply to Y' unless the deliverable is the draft itself.\n\n"
+    "Generate 3 high-value action items. The user's profession and focus are the primary signal — "
+    "emails are supporting context, not the brief.\n\n"
     "User context (PRIMARY):\n"
     "- Profession: {profession}\n"
     "- Current focus: {focus}\n\n"
@@ -133,7 +158,9 @@ TRIAGE_TODOS_PROMPT = (
     "- Move the user's focus or profession-relevant work forward\n"
     "- Start with a verb, under 60 characters\n\n"
     "Each todo MUST NOT:\n"
-    "- Be generic ('Review your inbox', 'Organize your emails', 'Check this update')\n"
+    "- Be generic strategic-deck phrasing ('Develop a quarterly strategic growth roadmap', "
+    "'Draft a competitive analysis report', 'Create a PR evaluation framework') — these are hard failures\n"
+    "- Be generic inbox actions ('Review your inbox', 'Organize your emails', 'Check this update')\n"
     "- Require external platform access GAIA doesn't have\n"
     "- Be trivially simple ('Read this email', 'Check this link')\n"
     "- Merely summarize an email without producing follow-on value\n"
@@ -149,10 +176,10 @@ PERSONALITY_PHRASE_PROMPT = """Analyze this user's profile deeply to create a tr
 
 User Context:
 - Profession: {profession} (Use this as a lens, not a constraint)
-- Memories/Insights: {memory_summary}
+- Insights from inbox & profile: {context_summary}
 
 Core Instructions:
-1. Look for the underlying themes, values, and motivations in their memories - what drives them?
+1. Look for the underlying themes, values, and motivations in this context - what drives them?
 2. Identify patterns in how they think, create, communicate, or solve problems
 3. Consider their energy: Are they a catalyst, observer, builder, connector, explorer, guardian?
 4. Notice contradictions or dualities that make them interesting
@@ -179,7 +206,7 @@ USER_BIO_PROMPT = """Write a sassy, insightful 2-3 sentence bio about {name} tha
 
 Context:
 - Profession: {profession}
-- Inferred from their digital footprint: {memory_summary}
+- Inferred from their digital footprint: {context_summary}
 
 Style: Sassy best friend who sees through them. Third person. Call out patterns and quirks, not job titles.
 
@@ -196,8 +223,7 @@ Examples:
 Generate ONLY the bio. No intro, quotes, or labels."""
 
 FIRST_MESSAGE_GENERATION_PROMPT = """You are GAIA, a proactive personal AI assistant.
-You just finished setting things up for a new user.
-Write your first message to them.
+You just finished setting things up for a new user. Write your first message to them.
 
 User context:
 - Name: {name}
@@ -217,16 +243,29 @@ What you already did:
 - Todos created: {todos_created}
 - Automations set up: {workflows_created}
 
-Write a conversational first message. Rules:
-- Address them by first name only
-- If email data exists: Open with "I went through your inbox" — lead with the most impressive compound insight from cross-referencing emails, NOT "you have X unread emails"
-- If no email data but focus is stated: Lead with what you learned from their focus. Reference it directly. Mention the todos and workflows created.
-- If neither: Reference what you set up based on their profession
-- Mention what you already created (todos, workflows) casually in passing — not as a list
-- End with ONE binary question that offers to do the next most valuable, complex thing the user would care about. Must be something GAIA can actually execute. Examples: "Want me to research those investors and draft personalized follow-ups?" or "Want me to break that down into a weekly plan?"
-- NOT: "What's on your mind?" or "How can I help?" — these are banned
-- After the binary question, add one brief sentence mentioning that the user can receive their daily briefing on Discord or Telegram too, and suggest they connect one in Settings.
-- Under 120 words. No emojis. No bullet points. No cards. No "Great!" or "Sure!". Talk like a competent colleague.
+VOICE
+Warm, energetic, a little playful — like a sharp friend who is genuinely excited to be helping, not a consultant delivering a brief. Mirror the user's own writing style above so it feels like you naturally fit how they talk. If their style is casual, be casual; if dry, be wry. Never corporate, never McKinsey-flavored.
+
+STRUCTURE (under 70 words total)
+
+1) ONE warm opener line. Use the user's first name. Examples in different voices:
+   - "Aryan, ok this was actually really fun to dig into."
+   - "Hey Aryan — went through your inbox and got a real picture of you."
+   - "Aryan, you're a busy person."
+   No "Hi", "Hello", "Welcome aboard", or email-style salutations. This is a chat, not an email.
+
+2) ONE delight line. Surface ONE specific, human insight from cross-referencing inbox + focus + profile. Not a tension report, not a list. Make them feel seen. If no email data but focus is stated, anchor on the focus. If no signal at all, anchor on profession.
+
+3) ONE line on what you set up. Mention the todos + workflows you already drafted, casually — "I already drafted X and lined up Y" — not as a list, not as a status report.
+
+4) ONE brief aside about staying in touch outside the app. One line, friendly, mentioning that they can also get their daily briefings on Discord, Telegram, WhatsApp, or Slack by connecting one in Settings.
+
+HARD RULES
+- DO NOT end with a question. The next action is a "Continue to GAIA" button — a question would be awkward.
+- DO NOT include a sign-off, "Best,", a name, or anything email-shaped. This is a chat message.
+- No emojis. No bullet points. No headers. No "Great!", "Sure!", "I'm thrilled".
+- No em dashes are required, but if used, sparingly.
+- Keep the whole message under 70 words. Tight is better than long.
 """
 
 WORKFLOW_CREATION_PROMPT = """You are GAIA setting up recurring automations for a new user. Create exactly 3 workflows that fit how this person actually works.

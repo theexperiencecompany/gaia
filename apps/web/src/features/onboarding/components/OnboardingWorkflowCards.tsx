@@ -46,12 +46,14 @@ function OnboardingWorkflowCardsImpl({
 
   const handleCardClick = useCallback(
     async (workflowId: string | undefined) => {
-      if (!workflowId || loadingId) return;
+      if (loadingId) return;
+      if (!workflowId) {
+        console.error("[onboarding] Workflow card clicked with no id");
+        return;
+      }
       setLoadingId(workflowId);
       try {
-        const response = await workflowApi.getWorkflow(workflowId, {
-          silent: true,
-        });
+        const response = await workflowApi.getWorkflow(workflowId);
         setActiveWorkflow(response.workflow);
         setIsOpen(true);
       } catch (err) {

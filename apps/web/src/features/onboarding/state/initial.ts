@@ -8,7 +8,7 @@ export const initialState: OnboardingState = {
 
   server: null,
 
-  progressMessage: null,
+  progressByStage: {},
   completedStages: new Set(),
 
   ackedWritingStyle: false,

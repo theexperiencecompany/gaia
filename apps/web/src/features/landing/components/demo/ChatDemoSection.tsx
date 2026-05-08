@@ -208,11 +208,6 @@ export default function ChatDemoSection() {
         viewport={{ once: true }}
         transition={{ duration: 0.5, ease }}
         className="overflow-hidden rounded-3xl h-[65vh] sm:h-[90vh] w-[95vw] sm:w-[85vw]"
-        style={
-          {
-            "--color-primary-bg": "#111111",
-          } as React.CSSProperties
-        }
       >
         <div
           className="flex h-9 shrink-0 items-center gap-1.5 px-4"

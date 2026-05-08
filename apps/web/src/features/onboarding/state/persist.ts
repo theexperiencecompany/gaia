@@ -1,6 +1,6 @@
 /**
  * sessionStorage persistence for the parts of `OnboardingState` that survive
- * a reload. Server-derived data (snapshot, completedStages, progressMessage)
+ * a reload. Server-derived data (snapshot, completedStages, progressByStage)
  * is intentionally excluded — it's refetched from the backend on rehydrate
  * so we never serve a stale or contradictory snapshot.
  */

@@ -40,6 +40,31 @@ from app.services.onboarding.writing_style_service import (
 router = APIRouter()
 
 
+def _normalize_example_blocks(raw: object) -> dict | None:
+    """
+    Normalize a writing-style example value from Mongo into structured blocks.
+
+    New records store `example` as a dict ({greeting, body, signoff, name});
+    legacy records stored it as a single string. Convert legacy strings into
+    a single-paragraph block so the frontend always receives the same shape.
+    """
+    if isinstance(raw, dict):
+        return {
+            "greeting": str(raw.get("greeting", "")),
+            "body": [str(p) for p in raw.get("body", []) if str(p).strip()],
+            "signoff": str(raw.get("signoff", "")),
+            "name": str(raw.get("name", "")),
+        }
+    if isinstance(raw, str) and raw.strip():
+        return {
+            "greeting": "",
+            "body": [raw.strip()],
+            "signoff": "",
+            "name": "",
+        }
+    return None
+
+
 @router.post("", response_model=OnboardingResponse)
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
@@ -317,6 +342,24 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                 display_bio = "Setting up your profile..."
 
         raw_writing_style = onboarding.get("writing_style")
+        # A writing_style document only counts if it has a usable summary —
+        # an empty `summary` (and no user edit) means the analysis bailed out
+        # (no Gmail, insufficient sent emails, LLM failure). Return null in
+        # that case so the frontend skips the reveal cleanly.
+        writing_style_payload: dict | None = None
+        if raw_writing_style:
+            resolved_summary = (
+                raw_writing_style.get("user_edited_summary")
+                or raw_writing_style.get("summary")
+                or ""
+            ).strip()
+            if resolved_summary:
+                writing_style_payload = {
+                    "style_summary": resolved_summary,
+                    "example": _normalize_example_blocks(
+                        raw_writing_style.get("example")
+                    ),
+                }
         raw_social_profiles = onboarding.get("social_profiles", [])
         triage_summary = onboarding.get("triage_summary")
 
@@ -360,14 +403,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             "first_message_conversation_id": onboarding.get(
                 "first_message_conversation_id"
             ),
-            "writing_style": {
-                "style_summary": raw_writing_style.get(
-                    "user_edited_summary", raw_writing_style.get("summary", "")
-                ),
-                "example": raw_writing_style.get("example", ""),
-            }
-            if raw_writing_style
-            else None,
+            "writing_style": writing_style_payload,
             "social_profiles": [
                 {"platform": p.get("platform", ""), "url": p.get("url", "")}
                 for p in raw_social_profiles
@@ -433,7 +469,8 @@ async def regenerate_writing_style_example(
         )
         if example:
             await save_generated_example(user_id, example)
-        return {"example": example}
+            return {"example": example.model_dump()}
+        return {"example": None}
     except Exception as e:
         log.error(
             f"[onboarding] Failed to regenerate writing style example: {e}",

@@ -15,6 +15,7 @@ import { FIELD_NAMES } from "../../constants";
 import { BOT_BUBBLE_DEFAULTS } from "../../constants/bubbleDefaults";
 import { REVEAL_WRITING_STYLE_INTRO } from "../../constants/messages";
 import { EASE_OUT_QUART } from "../../constants/motion";
+import { getCurrentProgress } from "../../state/derive";
 import type { Action, OnboardingState } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
@@ -37,7 +38,7 @@ export function RevealWritingStyle({ state }: { state: OnboardingState }) {
       <RevealIntroBubble text={REVEAL_WRITING_STYLE_INTRO}>
         <WritingStyleRevealCard
           style_summary={writingStyle.style_summary}
-          example={writingStyle.example ?? undefined}
+          example={writingStyle.example ?? null}
           profession={profession}
         />
       </RevealIntroBubble>
@@ -58,7 +59,7 @@ export function RevealWritingStyle({ state }: { state: OnboardingState }) {
               <div className="mt-2 ml-10.75 flex items-center gap-2">
                 <Spinner size="sm" color="default" />
                 <span className="text-sm text-zinc-500">
-                  {state.progressMessage || "Almost ready"}
+                  {getCurrentProgress(state) ?? "Almost ready"}
                 </span>
               </div>
             </ChatBubbleBot>

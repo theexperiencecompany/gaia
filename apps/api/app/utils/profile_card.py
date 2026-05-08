@@ -194,7 +194,7 @@ async def generate_personality_phrase(
     )
     try:
         prompt = PERSONALITY_PHRASE_PROMPT.format(
-            profession=profession, memory_summary=context_summary
+            profession=profession, context_summary=context_summary
         )
 
         llm = init_llm(preferred_provider="gemini").bind(temperature=1.2, top_k=80)
@@ -256,7 +256,7 @@ async def generate_user_bio(
             return (default_bio, BioStatus.NO_GMAIL)
 
         prompt = USER_BIO_PROMPT.format(
-            name=name, profession=profession, memory_summary=context_summary[:10000]
+            name=name, profession=profession, context_summary=context_summary[:10000]
         )
 
         llm = init_llm(preferred_provider="gemini")

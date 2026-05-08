@@ -1,14 +1,15 @@
 /**
- * `chat` stage. Renders the welcome conversation stream above an inline
- * holo card reveal, plus a free-chat composer. Active once the backend has
- * produced `first_message_conversation_id`.
+ * `chat` stage. Renders the welcome conversation stream followed by the holo
+ * card reveal. The composer is always a "Continue to GAIA" CTA — the onboarding
+ * first message intentionally closes its own loop, so there is no free-chat
+ * input here. Active once the backend has produced `first_message_conversation_id`.
  */
 
 "use client";
 
 import { m } from "motion/react";
 import type { Dispatch } from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import {
@@ -26,7 +27,6 @@ import {
 } from "../../hooks/useOnboardingChat";
 import type { Action, OnboardingState } from "../../state/types";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
-import { OnboardingInput } from "../OnboardingInput";
 import { HoloCardReveal } from "../reveal/HoloCardReveal";
 
 const TYPING_DOT_CLASSES = [
@@ -70,12 +70,6 @@ export function Chat({ state, chat }: Omit<ChatProps, "dispatch">) {
 
   return (
     <m.div className="mt-4 space-y-4" {...MOTION_FADE_UP_LARGE}>
-      {showHolo && state.server && (
-        <div className="my-4">
-          <HoloCardReveal personalizationData={state.server} />
-        </div>
-      )}
-
       {chat.streamMessages.map((msg) => (
         <m.div key={msg.id} {...MOTION_STREAM_MESSAGE}>
           {msg.role === "user" ? (
@@ -122,40 +116,23 @@ export function Chat({ state, chat }: Omit<ChatProps, "dispatch">) {
             </div>
           </m.div>
         )}
+
+      {showHolo && state.server && (
+        <div className="my-4">
+          <HoloCardReveal personalizationData={state.server} />
+        </div>
+      )}
     </m.div>
   );
 }
 
-/** Free-chat composer for the `chat` stage; submits via `chat.sendChatMessage`. */
-export function ChatComposer({ chat }: Omit<ChatProps, "state" | "dispatch">) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleFreeChatSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      const trimmed = chat.chatInputValue.trim();
-      if (!trimmed) return;
-      void chat.sendChatMessage(trimmed);
-    },
-    [chat],
-  );
-
-  if (chat.isTodoExecutionDone) {
-    return (
-      <m.div className="flex justify-center pb-2" {...MOTION_COMPOSER_CTA}>
-        <OnboardingCTAButton href="/c">Continue to GAIA</OnboardingCTAButton>
-      </m.div>
-    );
-  }
-
+/** Composer for the `chat` stage. Always renders the "Continue to GAIA" CTA —
+ *  the onboarding chat stage ends with a closed-loop message (no question), so
+ *  the user's only forward move is into the full chat experience. */
+export function ChatComposer(_props: Omit<ChatProps, "state" | "dispatch">) {
   return (
-    <OnboardingInput
-      mode="freeChat"
-      inputRef={inputRef}
-      freeChatValue={chat.chatInputValue}
-      isSending={chat.isChatSending}
-      onFreeChatChange={chat.setChatInputValue}
-      onFreeChatSubmit={handleFreeChatSubmit}
-    />
+    <m.div className="flex justify-center pb-6" {...MOTION_COMPOSER_CTA}>
+      <OnboardingCTAButton href="/c">Continue to GAIA</OnboardingCTAButton>
+    </m.div>
   );
 }

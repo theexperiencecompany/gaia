@@ -13,6 +13,7 @@ from app.agents.prompts.onboarding_prompts import (
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import users_collection
 from app.models.onboarding_models import (
+    WritingStyleExampleBlocks,
     WritingStyleExampleOutput,
     WritingStyleOutput,
     WritingStyleProfile,
@@ -120,17 +121,12 @@ async def learn_writing_style(
 async def regenerate_example_for_style(
     summary: str,
     profession: str = "",
-) -> str:
+) -> Optional[WritingStyleExampleBlocks]:
     """
     Generate a new example email from an edited writing style summary.
     Called after the user edits their style description on the reveal card.
 
-    Args:
-        summary: The (possibly edited) writing style description
-        profession: The user's profession for scenario relevance
-
-    Returns:
-        A new example email string, or empty string on failure
+    Returns the structured blocks, or None on failure.
     """
     try:
         llm = await providers.aget("gemini_llm")
@@ -152,7 +148,7 @@ async def regenerate_example_for_style(
             f"[writing_style] Failed to regenerate example: {e}",
             exc_info=True,
         )
-        return ""
+        return None
 
 
 async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
@@ -167,10 +163,12 @@ async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
     log.info(f"[writing_style] Saved user-edited summary for {user_id}")
 
 
-async def save_generated_example(user_id: str, example: str) -> None:
-    """Persist a regenerated example email to MongoDB."""
+async def save_generated_example(
+    user_id: str, example: WritingStyleExampleBlocks
+) -> None:
+    """Persist a regenerated example email to MongoDB as structured blocks."""
     await users_collection.update_one(
         {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.writing_style.example": example}},
+        {"$set": {"onboarding.writing_style.example": example.model_dump()}},
     )
     log.info(f"[writing_style] Saved regenerated example for {user_id}")

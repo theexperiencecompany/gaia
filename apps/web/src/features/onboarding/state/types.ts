@@ -37,8 +37,12 @@ export interface OnboardingState {
   /** Latest server-side personalization snapshot (REST + WS-merged). */
   server: PersonalizationData | null;
 
-  /** Live status text from the backend (e.g. "200 emails fetched"). */
-  progressMessage: string | null;
+  /**
+   * Live status text from the backend, scoped per stage so a late
+   * progress event from one stage cannot bleed into the visible label of
+   * another. Keyed by the emitting `OnboardingStage`.
+   */
+  progressByStage: Partial<Record<OnboardingStage, string>>;
   /** Set of pipeline stages that have emitted a completion event. */
   completedStages: Set<OnboardingStage>;
 
@@ -79,8 +83,11 @@ export type Action =
       type: "serverPatch";
       patch: Partial<PersonalizationData>;
     }
-  /** Live status string from the active backend stage. */
-  | { type: "progress"; message: string | null }
+  /**
+   * Live status string emitted by a specific backend stage. Stored under
+   * the stage that emitted it so the UI can scope display per step.
+   */
+  | { type: "progress"; stage: OnboardingStage; message: string }
   /** A backend stage finished — used to drive the processing checklist. */
   | { type: "stageComplete"; stage: OnboardingStage }
   /** User confirmed the writing-style reveal card. */
