@@ -597,7 +597,6 @@
     border-radius: 20px;
   }
 
-  /* Bot messages (from-them style) */
   .imessage-from-them {
     background: #27272a;
     align-self: flex-start;
@@ -611,7 +610,6 @@
     );
   }
 
-  /* User messages (from-me style) */
   .imessage-from-me {
     color: black;
     background: #00bbff;
