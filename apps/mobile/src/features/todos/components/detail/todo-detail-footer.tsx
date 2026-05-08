@@ -1,7 +1,8 @@
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { AppIcon, Delete02Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { impactHaptic } from "@/lib/haptics";
+import { useConfirmDialog } from "@/shared/components/ui/app-confirm-dialog";
 
 interface TodoDetailFooterProps {
   completed: boolean;
@@ -14,18 +15,17 @@ export function TodoDetailFooter({
   onToggleComplete,
   onDelete,
 }: TodoDetailFooterProps) {
-  const confirmDelete = () => {
-    Alert.alert("Delete todo", "Delete this todo? This cannot be undone.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          impactHaptic("medium");
-          onDelete();
-        },
-      },
-    ]);
+  const confirm = useConfirmDialog();
+  const confirmDelete = async () => {
+    const ok = await confirm({
+      title: "Delete todo",
+      message: "Delete this todo? This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    impactHaptic("medium");
+    onDelete();
   };
 
   return (

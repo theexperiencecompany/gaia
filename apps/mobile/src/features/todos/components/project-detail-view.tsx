@@ -1,10 +1,11 @@
 import { FlashList } from "@shopify/flash-list";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useRef } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Add01Icon, AppIcon, Folder02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { useConfirmDialog } from "@/shared/components/ui/app-confirm-dialog";
 import { BackButton } from "@/shared/components/ui/back-button";
 import { todoApi } from "../api/todo-api";
 import { useTodos } from "../hooks/use-todos";
@@ -34,6 +35,7 @@ export function ProjectDetailView({
   allProjects,
 }: ProjectDetailViewProps) {
   const insets = useSafeAreaInsets();
+  const confirm = useConfirmDialog();
   const detailSheetRef = useRef<TodoDetailSheetRef>(null);
   const createSheetRef = useRef<TodoCreateSheetRef>(null);
 
@@ -101,17 +103,17 @@ export function ProjectDetailView({
   );
 
   const handleDelete = useCallback(
-    (todo: Todo) => {
-      Alert.alert("Delete todo", `Delete "${todo.title}"?`, [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => void deleteTodo(todo.id),
-        },
-      ]);
+    async (todo: Todo) => {
+      const ok = await confirm({
+        title: "Delete todo",
+        message: `Delete "${todo.title}"?`,
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
+      void deleteTodo(todo.id);
     },
-    [deleteTodo],
+    [confirm, deleteTodo],
   );
 
   const projectColor = project.color ?? "#a1a1aa";

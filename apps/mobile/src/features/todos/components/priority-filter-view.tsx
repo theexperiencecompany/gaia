@@ -1,9 +1,10 @@
 import { FlashList } from "@shopify/flash-list";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useRef } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
 import { AppIcon, Flag02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { useConfirmDialog } from "@/shared/components/ui/app-confirm-dialog";
 import { todoApi } from "../api/todo-api";
 import { useTodos } from "../hooks/use-todos";
 import type { Todo, TodoUpdate } from "../types/todo-types";
@@ -30,6 +31,7 @@ export function PriorityFilterView({
   priority,
   onTodoPress,
 }: PriorityFilterViewProps) {
+  const confirm = useConfirmDialog();
   const detailSheetRef = useRef<TodoDetailSheetRef>(null);
 
   const {
@@ -96,17 +98,17 @@ export function PriorityFilterView({
   );
 
   const handleDelete = useCallback(
-    (todo: Todo) => {
-      Alert.alert("Delete todo", `Delete "${todo.title}"?`, [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => void deleteTodo(todo.id),
-        },
-      ]);
+    async (todo: Todo) => {
+      const ok = await confirm({
+        title: "Delete todo",
+        message: `Delete "${todo.title}"?`,
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
+      void deleteTodo(todo.id);
     },
-    [deleteTodo],
+    [confirm, deleteTodo],
   );
 
   const renderItem = useCallback(

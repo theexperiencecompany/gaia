@@ -33,6 +33,7 @@ import { ChatProvider } from "@/features/chat/hooks/use-chat-context";
 import { trackScreen } from "@/lib/analytics";
 import { getRouteForDeepLink, parseDeepLink } from "@/lib/deep-links";
 import { QueryProvider } from "@/lib/query-provider";
+import { AppConfirmDialogProvider } from "@/shared/components/ui/app-confirm-dialog";
 import { useAppTheme } from "@/shared/hooks/use-app-theme";
 
 SplashScreen.preventAutoHideAsync();
@@ -145,25 +146,27 @@ export default function RootLayout() {
                 <OfflineBanner />
                 <HeroUINativeProvider>
                   <BottomSheetModalProvider>
-                    <Stack screenOptions={{ headerShown: false }}>
-                      <Stack.Screen
-                        name="(app)"
-                        options={{ headerShown: false }}
-                      />
-                      <Stack.Screen
-                        name="login/index"
-                        options={{ headerShown: false }}
-                      />
-                      <Stack.Screen
-                        name="signup/index"
-                        options={{ headerShown: false }}
-                      />
-                      <Stack.Screen
-                        name="openui-demo/index"
-                        options={{ headerShown: false }}
-                      />
-                    </Stack>
-                    <StatusBar style="auto" />
+                    <AppConfirmDialogProvider>
+                      <Stack screenOptions={{ headerShown: false }}>
+                        <Stack.Screen
+                          name="(app)"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="login/index"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="signup/index"
+                          options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                          name="openui-demo/index"
+                          options={{ headerShown: false }}
+                        />
+                      </Stack>
+                      <StatusBar style="auto" />
+                    </AppConfirmDialogProvider>
                   </BottomSheetModalProvider>
                 </HeroUINativeProvider>
               </GestureHandlerRootView>

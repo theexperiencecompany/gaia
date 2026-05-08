@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
+import { useConfirmDialog } from "@/shared/components/ui/app-confirm-dialog";
 import { todoApi } from "../../api/todo-api";
 import { useProjects } from "../../hooks/use-projects";
 import { useTodos } from "../../hooks/use-todos";
@@ -48,6 +49,7 @@ if (
 const UNDO_HOLD_MS = 5000;
 
 export function TodoListScreen() {
+  const confirm = useConfirmDialog();
   const insets = useSafeAreaInsets();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -171,26 +173,24 @@ export function TodoListScreen() {
     }
   }, [selectedIds, refetch, cancelSelection]);
 
-  const handleBulkDelete = useCallback(() => {
+  const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0) return;
     const n = selectedIds.size;
-    Alert.alert("Delete todos", `Delete ${n} todo${n === 1 ? "" : "s"}?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await todoApi.bulkDelete(Array.from(selectedIds));
-            cancelSelection();
-            void refetch();
-          } catch {
-            Alert.alert("Error", "Failed to delete selected todos.");
-          }
-        },
-      },
-    ]);
-  }, [selectedIds, refetch, cancelSelection]);
+    const ok = await confirm({
+      title: "Delete todos",
+      message: `Delete ${n} todo${n === 1 ? "" : "s"}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await todoApi.bulkDelete(Array.from(selectedIds));
+      cancelSelection();
+      void refetch();
+    } catch {
+      Alert.alert("Error", "Failed to delete selected todos.");
+    }
+  }, [confirm, selectedIds, refetch, cancelSelection]);
 
   const handleBulkPriority = useCallback(
     async (priority: Priority) => {
@@ -252,39 +252,37 @@ export function TodoListScreen() {
   }, []);
 
   const handleTodoDelete = useCallback(
-    (todo: Todo) => {
-      Alert.alert("Delete todo", `Delete "${todo.title}"?`, [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            void deleteTodo(todo.id);
-            showUndo({
-              kind: "delete",
-              message: `Deleted "${todo.title}"`,
-              onUndo: async () => {
-                try {
-                  await todoApi.createTodo({
-                    title: todo.title,
-                    description: todo.description,
-                    labels: todo.labels,
-                    due_date: todo.due_date,
-                    due_date_timezone: todo.due_date_timezone,
-                    priority: todo.priority,
-                    project_id: todo.project_id,
-                  });
-                  void refetch();
-                } catch {
-                  // ignore — best-effort recreate
-                }
-              },
+    async (todo: Todo) => {
+      const ok = await confirm({
+        title: "Delete todo",
+        message: `Delete "${todo.title}"?`,
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
+      void deleteTodo(todo.id);
+      showUndo({
+        kind: "delete",
+        message: `Deleted "${todo.title}"`,
+        onUndo: async () => {
+          try {
+            await todoApi.createTodo({
+              title: todo.title,
+              description: todo.description,
+              labels: todo.labels,
+              due_date: todo.due_date,
+              due_date_timezone: todo.due_date_timezone,
+              priority: todo.priority,
+              project_id: todo.project_id,
             });
-          },
+            void refetch();
+          } catch {
+            // ignore — best-effort recreate
+          }
         },
-      ]);
+      });
     },
-    [deleteTodo, showUndo, refetch],
+    [confirm, deleteTodo, showUndo, refetch],
   );
 
   const handleTodoMenu = useCallback(
