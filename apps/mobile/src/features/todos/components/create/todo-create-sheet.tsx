@@ -1,4 +1,4 @@
-import { parseQuickAdd } from "@gaia/shared";
+import { parseQuickAdd } from "@gaia/shared/utils";
 import {
   forwardRef,
   useCallback,
