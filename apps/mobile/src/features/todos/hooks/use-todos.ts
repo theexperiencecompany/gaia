@@ -45,10 +45,15 @@ function getFiltersForTab(tab: FilterTab): TodoFilters {
       return { due_today: true, completed: false };
     case "upcoming":
       return { due_this_week: true, completed: false };
+    case "overdue":
+      return { overdue: true, completed: false };
+    case "inbox":
+      return { completed: false };
     case "completed":
       return { completed: true };
     default:
-      return { completed: false };
+      // "all" — no completion filter, server returns everything.
+      return {};
   }
 }
 
@@ -62,7 +67,7 @@ export function useTodos(options: UseTodosOptions = {}): UseTodosReturn {
     isLoading: true,
     isRefreshing: false,
     error: null,
-    activeFilter: "all",
+    activeFilter: "today",
   });
 
   const fetchData = useCallback(

@@ -7,5 +7,6 @@ export * from "./openui-actions";
 export * from "./openui-parser";
 export * from "./openui-samples";
 export * from "./playfulThinking";
+export * from "./quickAdd";
 export * from "./similarity";
 export * from "./thinkingParser";

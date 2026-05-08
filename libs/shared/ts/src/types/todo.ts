@@ -27,6 +27,7 @@ export interface Todo {
   workflow_id?: string;
   workflow_categories?: string[];
   starred?: boolean;
+  recurrence?: string;
   created_at: string;
   updated_at: string;
 }
@@ -42,6 +43,7 @@ export interface TodoUpdate {
   completed?: boolean;
   subtasks?: SubTask[];
   workflow_id?: string;
+  recurrence?: string;
 }
 
 export interface TodoFilters {
