@@ -118,7 +118,6 @@ function EditTicketSheet({
               <Chip
                 size="md"
                 variant={draft.type === "support" ? "primary" : "tertiary"}
-                color={draft.type === "support" ? "default" : "default"}
                 onPress={() => setDraft({ ...draft, type: "support" })}
                 animation="disable-all"
               >
@@ -127,7 +126,6 @@ function EditTicketSheet({
               <Chip
                 size="md"
                 variant={draft.type === "feature" ? "primary" : "tertiary"}
-                color={draft.type === "feature" ? "default" : "default"}
                 onPress={() => setDraft({ ...draft, type: "feature" })}
                 animation="disable-all"
               >

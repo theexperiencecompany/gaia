@@ -38,10 +38,12 @@ const nextConfig = {
   },
   serverExternalPackages: ["moment", "moment-timezone"],
   experimental: {
-    // Inline critical CSS via critters so the first paint doesn't wait on a
-    // separate CSS round-trip. Object form (e.g. `{ fonts: true, preload: "swap" }`)
-    // silently no-ops in Next 16.1.6 — stick with the boolean.
-    optimizeCss: true,
+    // optimizeCss disabled: @opennextjs/aws unconditionally cpSyncs
+    // .next/static/css when this is on, but Next 16 + Turbopack does not
+    // emit that directory in this build (no separate CSS chunks), so the
+    // bundle step crashes with ENOENT. Bug exists across @opennextjs/aws
+    // 3.9.16 → main; critters has nothing to inline anyway, so this was
+    // a no-op.
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",

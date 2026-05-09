@@ -108,9 +108,7 @@ function MessageBubble({
           paddingVertical: spacing.sm + 2,
         }}
       >
-        {children ?? (
-          <MarkdownRenderer content={(message ?? "").replace(/\s+$/, "")} />
-        )}
+        {children ?? <MarkdownRenderer content={(message ?? "").trimEnd()} />}
       </View>
     </View>
   );

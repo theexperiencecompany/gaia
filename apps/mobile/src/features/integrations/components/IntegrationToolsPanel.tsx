@@ -23,7 +23,7 @@ function formatToolName(toolName: string): string {
     .replace(/_/g, " ")
     .replace(/-/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase())
-    .replace(/\s+tool$/i, "")
+    .replace(/\s{1,8}tool$/i, "")
     .trim();
 }
 

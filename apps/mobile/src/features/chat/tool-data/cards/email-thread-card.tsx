@@ -80,7 +80,7 @@ function htmlToPlainText(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<br\s{0,8}\/?\s{0,8}>/gi, "\n")
     .replace(/<\/p>/gi, "\n\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")

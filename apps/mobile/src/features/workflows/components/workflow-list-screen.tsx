@@ -3,10 +3,15 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Add01Icon, AppIcon, UserGroupIcon } from "@/components/icons";
+import {
+  Add01Icon,
+  AppIcon,
+  Menu01Icon,
+  UserGroupIcon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { useSidebar } from "@/features/chat/hooks/sidebar-context";
 import { useResponsive } from "@/lib/responsive";
-import { BackButton } from "@/shared/components/ui/back-button";
 import { workflowApi } from "../api/workflow-api";
 import { WORKFLOW_COLORS } from "../constants/colors";
 import { WORKFLOW_COMMUNITY_PAGE_SIZE } from "../constants/timing";
@@ -27,6 +32,7 @@ export function WorkflowListScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { spacing, fontSize } = useResponsive();
+  const { toggleSidebar } = useSidebar();
   const { workflows, isLoading, isRefreshing, error, refetch } = useWorkflows();
   const { workflows: exploreWorkflows } = useExploreWorkflows();
   const [showCreate, setShowCreate] = useState(false);
@@ -199,17 +205,27 @@ export function WorkflowListScreen() {
           gap: spacing.sm,
         }}
       >
-        <BackButton
-          hideWhenCannotGoBack={false}
+        <Pressable
           onPress={() => {
             void Haptics.selectionAsync();
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(app)/(tabs)" as never);
-            }
+            toggleSidebar();
           }}
-        />
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Open menu"
+          style={({ pressed }) => ({
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: pressed
+              ? "rgba(255,255,255,0.10)"
+              : "rgba(63,63,70,0.40)",
+          })}
+        >
+          <AppIcon icon={Menu01Icon} size={18} color="#a1a1aa" />
+        </Pressable>
         <Text
           style={{
             fontSize: fontSize.lg,
