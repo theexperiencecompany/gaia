@@ -1380,7 +1380,7 @@ export function GaugeChartView(props: z.infer<typeof gaugeChartSchema>) {
             </View>
           </View>
           <View
-            className="bg-zinc-700"
+            className="bg-zinc-700/50"
             style={{
               width: 1,
               height: 40,

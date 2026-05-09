@@ -279,7 +279,7 @@ function FileTreeNodeRow({
             numberOfLines={1}
             className={
               isDir
-                ? "text-sm font-medium text-zinc-300 flex-1"
+                ? "text-sm font-medium text-zinc-200 flex-1"
                 : "text-sm text-zinc-400 flex-1"
             }
           >
@@ -287,7 +287,7 @@ function FileTreeNodeRow({
           </Text>
         </View>
         {!isDir && node.size ? (
-          <Text className="text-xs text-zinc-600 ml-2">{node.size}</Text>
+          <Text className="text-xs text-zinc-500 ml-2">{node.size}</Text>
         ) : null}
       </Pressable>
       {isDir && open && hasChildren ? (
@@ -306,9 +306,9 @@ export function DataCardView(props: z.infer<typeof dataCardSchema>) {
     <Card>
       <SectionTitle>{props.title}</SectionTitle>
       <View className="gap-2">
-        {props.fields.map((field) => (
+        {props.fields.map((field, index) => (
           <View
-            key={field.label}
+            key={`${field.label}-${index}`}
             className="rounded-2xl bg-zinc-900 p-3 flex-row items-center justify-between gap-4"
           >
             <SubtleText>{field.label}</SubtleText>
@@ -351,7 +351,7 @@ export function ResultListView(props: z.infer<typeof resultListSchema>) {
               <View className="flex-row items-center gap-1 mt-1.5">
                 <Text
                   numberOfLines={1}
-                  className="text-xs text-zinc-600 flex-1"
+                  className="text-xs text-zinc-500 flex-1"
                 >
                   {item.url}
                 </Text>
@@ -375,7 +375,7 @@ function ComparisonCell({ value }: { value: string }) {
       <AppIcon icon={Cancel01Icon} size={16} color="rgba(248, 113, 113, 0.7)" />
     );
   }
-  return <Text className="text-xs text-zinc-300">{value}</Text>;
+  return <Text className="text-xs text-zinc-200">{value}</Text>;
 }
 
 export function ComparisonTableView(
@@ -388,12 +388,12 @@ export function ComparisonTableView(
         <View className="flex-row border-b border-zinc-800 px-3 py-2.5">
           <View style={{ flex: 0.7 }} />
           <View style={{ flex: 1 }}>
-            <Text className="text-xs font-semibold text-zinc-300">
+            <Text className="text-xs font-semibold text-zinc-200">
               {props.leftLabel}
             </Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text className="text-xs font-semibold text-zinc-300">
+            <Text className="text-xs font-semibold text-zinc-200">
               {props.rightLabel}
             </Text>
           </View>
@@ -510,7 +510,7 @@ export function StatusCardView(props: z.infer<typeof statusCardSchema>) {
         <StatusPill kind={pillKind}>{label}</StatusPill>
       </View>
       {props.message ? (
-        <Text className="text-sm text-zinc-300 mt-1">{props.message}</Text>
+        <Text className="text-sm text-zinc-200 mt-1">{props.message}</Text>
       ) : null}
       {props.detail ? (
         <View className="mt-1">
@@ -547,14 +547,14 @@ export function ActionCardView(props: z.infer<typeof actionCardSchema>) {
             <Pressable
               key={action.value}
               onPress={() => handlePress(action.value)}
-              className="rounded-full bg-zinc-700/60 px-3 py-1.5 active:bg-zinc-700"
+              className="rounded-full bg-zinc-800 px-3 py-1.5 active:bg-zinc-700"
             >
               {({ pressed }) => (
                 <Text
                   className={
                     pressed
                       ? "text-xs font-medium text-zinc-100"
-                      : "text-xs font-medium text-zinc-300"
+                      : "text-xs font-medium text-zinc-200"
                   }
                 >
                   {action.label}
@@ -688,7 +688,7 @@ export function TabsBlockView(props: z.infer<typeof tabsBlockSchema>) {
                 key={tab.label}
                 onPress={() => setActive(idx)}
                 className={`rounded-full px-3 py-1.5 ${
-                  isActive ? "bg-zinc-700" : "bg-transparent"
+                  isActive ? "bg-zinc-800" : "bg-transparent"
                 }`}
               >
                 <Text
@@ -707,7 +707,7 @@ export function TabsBlockView(props: z.infer<typeof tabsBlockSchema>) {
       </View>
       {activeTab ? (
         <View className="rounded-2xl bg-zinc-800/50 p-4">
-          <Text className="text-sm text-zinc-300">{activeTab.content}</Text>
+          <Text className="text-sm text-zinc-200">{activeTab.content}</Text>
         </View>
       ) : null}
     </View>
@@ -951,7 +951,7 @@ export function KbdBlockView(props: z.infer<typeof kbdBlockSchema>) {
               {shortcut.keys.map((key) => (
                 <View
                   key={key}
-                  className="rounded-md bg-zinc-700 px-1.5 py-0.5"
+                  className="rounded-md bg-zinc-800 px-1.5 py-0.5"
                 >
                   <Text className="text-xs font-mono text-zinc-200">{key}</Text>
                 </View>

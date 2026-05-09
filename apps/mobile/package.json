@@ -15,8 +15,8 @@
     "analyze": "expo export --platform ios --source-maps && npx source-map-explorer dist/_expo/static/js/ios/*.js"
   },
   "dependencies": {
+    "@expo-google-fonts/anonymous-pro": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
-    "@expo-google-fonts/roboto-mono": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@gorhom/bottom-sheet": "^5.2.8",
     "@openuidev/react-lang": "0.1.3",

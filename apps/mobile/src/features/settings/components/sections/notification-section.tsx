@@ -1,3 +1,4 @@
+import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
 import { Spinner } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
@@ -9,8 +10,7 @@ import {
   WhatsappIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import type { ChannelPreferences } from "@/features/settings/api/settings-api";
-import { settingsApi } from "@/features/settings/api/settings-api";
+import { inAppNotificationsApi } from "@/features/notifications/api/inapp-notifications-api";
 import { useResponsive } from "@/lib/responsive";
 import { SettingsGroup, SettingsSwitchRow } from "../settings-row";
 
@@ -22,14 +22,13 @@ export function NotificationSection() {
     whatsapp: false,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [updatingChannel, setUpdatingChannel] = useState<
-    "telegram" | "discord" | "whatsapp" | null
-  >(null);
+  const [updatingChannel, setUpdatingChannel] =
+    useState<ChannelPlatform | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
-    settingsApi
+    inAppNotificationsApi
       .getChannelPreferences()
       .then((data) => {
         if (!cancelled) setChannels(data);
@@ -47,12 +46,12 @@ export function NotificationSection() {
   }, []);
 
   const handleToggle = useCallback(
-    async (platform: "telegram" | "discord" | "whatsapp", enabled: boolean) => {
+    async (platform: ChannelPlatform, enabled: boolean) => {
       setUpdatingChannel(platform);
       const previous = channels[platform];
       setChannels((prev) => ({ ...prev, [platform]: enabled }));
       try {
-        await settingsApi.updateChannelPreference(platform, enabled);
+        await inAppNotificationsApi.updateChannelPreference(platform, enabled);
       } catch {
         setChannels((prev) => ({ ...prev, [platform]: previous }));
         Alert.alert("Error", "Failed to update notification preference.");
@@ -83,7 +82,7 @@ export function NotificationSection() {
       <Text
         style={{
           fontSize: fontSize.xs,
-          color: "#8e8e93",
+          color: "#71717a",
           lineHeight: fontSize.xs * 1.5,
         }}
       >
@@ -136,10 +135,8 @@ export function NotificationSection() {
           alignItems: "flex-start",
           gap: spacing.xs,
           backgroundColor: "rgba(22,193,255,0.06)",
-          borderRadius: 10,
+          borderRadius: 12,
           padding: spacing.md,
-          borderWidth: 1,
-          borderColor: "rgba(22,193,255,0.12)",
         }}
       >
         <AppIcon icon={Notification01Icon} size={14} color="#16c1ff" />

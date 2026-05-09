@@ -1,121 +1,393 @@
-import { Image, Linking, View } from "react-native";
-import { ConnectIcon, PlusSignIcon } from "@/components/icons";
+import { useRouter } from "expo-router";
+import { Button, Chip } from "heroui-native";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Pressable, ScrollView, View } from "react-native";
+import {
+  ArrowRight02Icon,
+  ConnectIcon,
+  InformationCircleIcon,
+} from "@/components/icons";
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
 import {
-  ToolCardHeader,
+  CollapsibleCard,
   ToolCardInner,
-  ToolCardShell,
 } from "@/features/chat/tool-data/primitives";
+import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
+import { addPublicIntegration } from "@/features/integrations/api/integrations-api";
+import {
+  BearerTokenSheet,
+  type BearerTokenSheetRef,
+} from "@/features/integrations/components/BearerTokenSheet";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import type { Integration } from "@/features/integrations/types";
 
-// -- Types -------------------------------------------------------------------
-
-export interface IntegrationListItem {
-  id?: string;
+// Mirrors web SuggestedIntegration (apps/web/src/features/integrations/types).
+export interface SuggestedIntegration {
+  id: string;
   name: string;
-  description?: string;
+  description: string;
   category?: string;
   iconUrl?: string | null;
-  slug?: string;
-  connect_url?: string;
-  relevanceScore?: number;
   authType?: string | null;
+  relevanceScore?: number;
+  slug: string;
 }
 
+// Same payload shape as web IntegrationListStreamData, plus optional
+// `integrations` echo that the mobile renderer may merge in.
 export interface IntegrationListData {
   hasSuggestions?: boolean;
   message?: string;
-  suggested?: IntegrationListItem[];
-  integrations?: IntegrationListItem[];
+  suggested?: SuggestedIntegration[];
+  integrations?: SuggestedIntegration[];
 }
 
-// -- Row ---------------------------------------------------------------------
+interface IntegrationListCardProps {
+  data: IntegrationListData;
+  /** Optional override — defaults to useIntegrations().connect */
+  onConnect?: (integrationId: string) => Promise<unknown> | undefined;
+  /** Optional override — defaults to useIntegrations().disconnect */
+  onDisconnect?: (integrationId: string) => Promise<unknown> | undefined;
+}
 
-function IntegrationRow({ item }: { item: IntegrationListItem }) {
-  const connectUrl = item.connect_url;
-  const onPress = connectUrl ? () => Linking.openURL(connectUrl) : undefined;
+// ---------------------------------------------------------------------------
+// SectionHeader — mirrors web AccordionTitle (title + count chip + info icon)
+// ---------------------------------------------------------------------------
+
+interface SectionHeaderProps {
+  title: string;
+  count: number;
+}
+
+function SectionHeader({ title, count }: SectionHeaderProps) {
+  return (
+    <View className="flex-row items-center gap-2 px-3 pt-3 pb-2">
+      <Text className="text-zinc-400 text-xs font-semibold">{title}</Text>
+      <Chip size="sm" variant="soft" color="default" animation="disable-all">
+        <Chip.Label>{String(count)}</Chip.Label>
+      </Chip>
+      <View className="flex-1" />
+      <AppIcon icon={InformationCircleIcon} size={14} color="#71717a" />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// IntegrationRow — connected/available rows. Mirrors web renderIntegration.
+// ---------------------------------------------------------------------------
+
+interface IntegrationRowProps {
+  integration: Integration;
+  onConnect: () => void;
+}
+
+function IntegrationRow({ integration, onConnect }: IntegrationRowProps) {
+  const isConnected = integration.status === "connected";
+  const isAvailable =
+    integration.source === "custom" || !!integration.available;
 
   return (
-    <ToolCardInner dense onPress={onPress}>
-      <View className="flex-row items-center gap-3">
-        {item.iconUrl ? (
-          <Image
-            source={{ uri: item.iconUrl }}
-            style={{ width: 32, height: 32, borderRadius: 8 }}
-            resizeMode="contain"
-          />
-        ) : (
-          <View className="w-8 h-8 rounded-lg bg-zinc-700 items-center justify-center">
-            <AppIcon icon={PlusSignIcon} size={16} color="#00bbff" />
-          </View>
-        )}
-        <View className="flex-1 min-w-0">
-          <Text className="text-zinc-100 text-sm font-medium" numberOfLines={1}>
-            {item.name}
-          </Text>
-          {item.description ? (
-            <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={2}>
-              {item.description}
+    <ToolCardInner dense>
+      <View className="flex-row items-start gap-3">
+        <View className="shrink-0 pt-0.5">
+          {getToolCategoryIcon(
+            integration.id,
+            { size: 20, showBackground: false },
+            integration.iconUrl,
+          )}
+        </View>
+
+        <View className="min-w-0 flex-1">
+          <View className="flex-row items-center gap-2 flex-wrap">
+            <Text className="text-zinc-100 text-sm font-medium">
+              {integration.name}
             </Text>
-          ) : item.category ? (
-            <Text className="text-zinc-500 text-xs mt-0.5" numberOfLines={1}>
-              {item.category}
+            {isConnected ? (
+              <Chip
+                size="sm"
+                variant="soft"
+                color="success"
+                animation="disable-all"
+              >
+                <Chip.Label>Connected</Chip.Label>
+              </Chip>
+            ) : null}
+          </View>
+          {integration.description ? (
+            <Text className="text-zinc-400 text-xs mt-1" numberOfLines={2}>
+              {integration.description}
             </Text>
           ) : null}
         </View>
-        {/* Connect CTA — only shown when a connect_url is available */}
-        {connectUrl ? (
-          <View className="flex-row items-center gap-1 rounded-full bg-primary px-3 py-1">
-            <AppIcon icon={ConnectIcon} size={12} color="#000000" />
-            <Text className="text-black text-xs font-semibold">Connect</Text>
-          </View>
-        ) : (
-          <View className="rounded-full bg-zinc-700 px-3 py-1">
-            <Text className="text-zinc-400 text-xs font-medium">
-              {item.authType ?? "OAuth"}
-            </Text>
-          </View>
-        )}
+
+        {!isConnected && isAvailable ? (
+          <Button size="sm" variant="primary" onPress={onConnect}>
+            <Button.Label>Connect</Button.Label>
+          </Button>
+        ) : null}
       </View>
     </ToolCardInner>
   );
 }
 
-// -- Card --------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// SuggestedRow — discover-more rows. Mirrors web renderSuggested.
+// ---------------------------------------------------------------------------
 
-export function IntegrationListCard({ data }: { data: IntegrationListData }) {
-  const integrations =
-    data.integrations ?? data.suggested ?? ([] as IntegrationListItem[]);
-  const hasItems = integrations.length > 0;
+interface SuggestedRowProps {
+  suggestion: SuggestedIntegration;
+  isAdding: boolean;
+  onAdd: () => void;
+}
+
+function SuggestedRow({ suggestion, isAdding, onAdd }: SuggestedRowProps) {
+  return (
+    <ToolCardInner dense>
+      <View className="flex-row items-start gap-3">
+        <View className="shrink-0 pt-0.5">
+          {getToolCategoryIcon(
+            suggestion.id,
+            { size: 20, showBackground: false },
+            suggestion.iconUrl,
+          )}
+        </View>
+
+        <View className="min-w-0 flex-1">
+          <View className="flex-row items-center gap-2 flex-wrap">
+            <Text className="text-zinc-100 text-sm font-medium">
+              {suggestion.name}
+            </Text>
+            <Chip
+              size="sm"
+              variant="soft"
+              color="accent"
+              animation="disable-all"
+            >
+              <Chip.Label>Community</Chip.Label>
+            </Chip>
+          </View>
+          <Text className="text-zinc-400 text-xs mt-1" numberOfLines={2}>
+            {suggestion.description}
+          </Text>
+        </View>
+
+        <Button
+          size="sm"
+          variant="primary"
+          isDisabled={isAdding}
+          onPress={onAdd}
+        >
+          <Button.Label>{isAdding ? "Adding..." : "Add"}</Button.Label>
+        </Button>
+      </View>
+    </ToolCardInner>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Card
+// ---------------------------------------------------------------------------
+
+export function IntegrationListCard({
+  data,
+  onConnect,
+  onDisconnect: _onDisconnect,
+}: IntegrationListCardProps) {
+  const router = useRouter();
+  const { integrations, connect, refetch } = useIntegrations();
+  const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
+  const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
+
+  const suggestedIntegrations = useMemo<SuggestedIntegration[]>(
+    () => data.suggested ?? [],
+    [data.suggested],
+  );
+
+  const connectedIntegrations = useMemo(
+    () =>
+      integrations
+        .filter((i) => i.status === "connected")
+        .toSorted((a, b) => a.name.localeCompare(b.name)),
+    [integrations],
+  );
+
+  const notConnectedIntegrations = useMemo(
+    () =>
+      integrations
+        .filter((i) => i.status !== "connected")
+        .toSorted((a, b) => a.name.localeCompare(b.name)),
+    [integrations],
+  );
+
+  const handleConnect = useCallback(
+    async (integration: Integration) => {
+      try {
+        if (integration.authType === "bearer") {
+          bearerSheetRef.current?.open({
+            integrationId: integration.id,
+            integrationName: integration.name,
+            iconUrl: integration.iconUrl,
+          });
+          return;
+        }
+        if (onConnect) {
+          await onConnect(integration.id);
+        } else {
+          await connect(integration.id);
+        }
+      } catch (error) {
+        console.error("Failed to connect integration:", error);
+      }
+    },
+    [connect, onConnect],
+  );
+
+  const handleAddSuggested = useCallback(
+    async (suggestion: SuggestedIntegration) => {
+      setAddingIds((prev) => new Set(prev).add(suggestion.id));
+      try {
+        const result = await addPublicIntegration(suggestion.slug);
+        if (result.status === "connected" || result.status === "created") {
+          refetch();
+        }
+      } catch (error) {
+        console.error("Failed to add suggested integration:", error);
+      } finally {
+        setAddingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(suggestion.id);
+          return next;
+        });
+      }
+    },
+    [refetch],
+  );
+
+  const total =
+    integrations.length +
+    (data.hasSuggestions ? suggestedIntegrations.length : 0);
 
   return (
-    <ToolCardShell>
-      <ToolCardHeader
+    <>
+      <CollapsibleCard
         icon={ConnectIcon}
-        title="Integrations"
-        count={hasItems ? integrations.length : undefined}
-      />
+        iconSize={20}
+        title={(open) =>
+          `${open ? "Hide" : "Show"} ${total} Integration${total === 1 ? "" : "s"}`
+        }
+        titleTone="muted"
+      >
+        <View className="gap-2">
+          {data.message ? (
+            <Text className="text-zinc-300 text-sm px-1 mb-1">
+              {data.message}
+            </Text>
+          ) : null}
 
-      {data.message ? (
-        <Text className="text-zinc-300 text-sm mb-3">{data.message}</Text>
-      ) : null}
+          {connectedIntegrations.length > 0 ? (
+            <View className="rounded-2xl bg-zinc-900">
+              <SectionHeader
+                title="Connected"
+                count={connectedIntegrations.length}
+              />
+              <ScrollView
+                style={{ maxHeight: 240 }}
+                showsVerticalScrollIndicator={false}
+              >
+                <View className="px-3 pb-3 gap-2">
+                  {connectedIntegrations.map((i) => (
+                    <IntegrationRow
+                      key={i.id}
+                      integration={i}
+                      onConnect={() => {
+                        void handleConnect(i);
+                      }}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          ) : null}
 
-      {hasItems ? (
-        <View className="gap-1.5">
-          {integrations.map((item, idx) => (
-            <IntegrationRow
-              key={item.id ?? item.slug ?? `${item.name}-${idx}`}
-              item={item}
-            />
-          ))}
+          {suggestedIntegrations.length > 0 ? (
+            <View className="rounded-2xl bg-zinc-900">
+              <SectionHeader
+                title="Discover More"
+                count={suggestedIntegrations.length}
+              />
+              <ScrollView
+                style={{ maxHeight: 240 }}
+                showsVerticalScrollIndicator={false}
+              >
+                <View className="px-3 gap-2">
+                  {suggestedIntegrations.map((s) => (
+                    <SuggestedRow
+                      key={s.id}
+                      suggestion={s}
+                      isAdding={addingIds.has(s.id)}
+                      onAdd={() => {
+                        void handleAddSuggested(s);
+                      }}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+              <Pressable
+                onPress={() => {
+                  // Web links to /marketplace; mobile routes to the
+                  // integrations tab where the marketplace lives.
+                  router.push("/(app)/integrations");
+                }}
+                android_ripple={{ color: "rgba(255,255,255,0.05)" }}
+                className="flex-row items-center justify-center gap-1 py-3"
+              >
+                <Text className="text-primary text-xs font-medium">
+                  Go to Marketplace
+                </Text>
+                <AppIcon icon={ArrowRight02Icon} size={14} color="#00bbff" />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {notConnectedIntegrations.length > 0 ? (
+            <View className="rounded-2xl bg-zinc-900">
+              <SectionHeader
+                title="Available"
+                count={notConnectedIntegrations.length}
+              />
+              <ScrollView
+                style={{ maxHeight: 320 }}
+                showsVerticalScrollIndicator={false}
+              >
+                <View className="px-3 pb-3 gap-2">
+                  {notConnectedIntegrations.map((i) => (
+                    <IntegrationRow
+                      key={i.id}
+                      integration={i}
+                      onConnect={() => {
+                        void handleConnect(i);
+                      }}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {connectedIntegrations.length === 0 &&
+          suggestedIntegrations.length === 0 &&
+          notConnectedIntegrations.length === 0 ? (
+            <ToolCardInner>
+              <Text className="text-zinc-500 text-sm text-center py-2">
+                No integrations available
+              </Text>
+            </ToolCardInner>
+          ) : null}
         </View>
-      ) : (
-        <ToolCardInner>
-          <Text className="text-zinc-500 text-sm text-center py-2">
-            No integrations available
-          </Text>
-        </ToolCardInner>
-      )}
-    </ToolCardShell>
+      </CollapsibleCard>
+
+      <BearerTokenSheet ref={bearerSheetRef} />
+    </>
   );
 }

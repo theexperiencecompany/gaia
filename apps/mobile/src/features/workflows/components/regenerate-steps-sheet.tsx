@@ -1,5 +1,13 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+import * as Haptics from "expo-haptics";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,9 +23,52 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import {
+  AppFilterChipGroup,
+  type AppFilterChipOption,
+} from "@/shared/components/ui/app-filter-chip-group";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { workflowApi } from "../api/workflow-api";
+import { WORKFLOW_REGENERATE_AUTO_CLOSE_MS } from "../constants/timing";
 import type { Workflow } from "../types/workflow-types";
+
+type RegenerateReasonKey =
+  | "too_complex"
+  | "missing_functionality"
+  | "wrong_tools"
+  | "alternative_approach";
+
+interface RegenerateReason {
+  key: RegenerateReasonKey;
+  label: string;
+  prompt: string;
+}
+
+const REGENERATE_REASONS: readonly RegenerateReason[] = [
+  {
+    key: "too_complex",
+    label: "Too Complex",
+    prompt: "The current steps are too complex. Simplify them.",
+  },
+  {
+    key: "missing_functionality",
+    label: "Missing Functionality",
+    prompt: "The current steps are missing key functionality.",
+  },
+  {
+    key: "wrong_tools",
+    label: "Wrong Tools",
+    prompt: "The current steps use the wrong tools. Use different tools.",
+  },
+  {
+    key: "alternative_approach",
+    label: "Alternative Approach",
+    prompt: "Take a fundamentally different approach to solve this.",
+  },
+] as const;
+
+const REGENERATE_REASON_OPTIONS: readonly AppFilterChipOption[] =
+  REGENERATE_REASONS.map((r) => ({ key: r.key, label: r.label }));
 
 export interface RegenerateStepsSheetRef {
   open: (workflow: Workflow) => void;
@@ -35,38 +86,65 @@ export const RegenerateStepsSheet = forwardRef<
   const [isOpen, setIsOpen] = useState(false);
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [instruction, setInstruction] = useState("");
+  const [reasonKey, setReasonKey] = useState<RegenerateReasonKey | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { spacing, fontSize } = useResponsive();
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const snapPoints = useMemo(() => ["55%"], []);
 
+  const clearCloseTimeout = () => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => clearCloseTimeout, []);
+
   useImperativeHandle(ref, () => ({
     open: (wf: Workflow) => {
+      clearCloseTimeout();
       setWorkflow(wf);
       setInstruction("");
+      setReasonKey(null);
       setSuccessMessage(null);
       setIsOpen(true);
     },
     close: () => {
+      clearCloseTimeout();
       setIsOpen(false);
     },
   }));
+
+  const handleSheetChange = (open: boolean) => {
+    if (!open) clearCloseTimeout();
+    setIsOpen(open);
+  };
 
   const handleRegenerate = async () => {
     if (!workflow) return;
     setIsLoading(true);
     setSuccessMessage(null);
     try {
+      const reason = REGENERATE_REASONS.find((r) => r.key === reasonKey);
+      const customText = instruction.trim();
+      const composed = [reason?.prompt, customText]
+        .filter((part): part is string => Boolean(part))
+        .join(" ");
       const response = await workflowApi.regenerateWorkflowSteps(workflow.id, {
-        instruction: instruction.trim() || undefined,
+        instruction: composed.length > 0 ? composed : undefined,
         force_different_tools: true,
       });
       setSuccessMessage("Steps regenerated successfully");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onRegenerated(response.workflow);
-      setTimeout(() => {
+      clearCloseTimeout();
+      closeTimeoutRef.current = setTimeout(() => {
+        closeTimeoutRef.current = null;
         setIsOpen(false);
-      }, 1500);
+      }, WORKFLOW_REGENERATE_AUTO_CLOSE_MS);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to regenerate steps";
@@ -77,7 +155,7 @@ export const RegenerateStepsSheet = forwardRef<
   };
 
   return (
-    <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+    <BottomSheet isOpen={isOpen} onOpenChange={handleSheetChange}>
       <BottomSheet.Portal>
         <BottomSheet.Overlay />
         <BottomSheet.Content
@@ -115,7 +193,7 @@ export const RegenerateStepsSheet = forwardRef<
                 </Text>
               </View>
               <Pressable
-                onPress={() => setIsOpen(false)}
+                onPress={() => handleSheetChange(false)}
                 style={{
                   width: 32,
                   height: 32,
@@ -137,6 +215,27 @@ export const RegenerateStepsSheet = forwardRef<
                 </Text>
               </Text>
             )}
+
+            <View style={{ gap: spacing.sm }}>
+              <Text
+                style={{
+                  fontSize: fontSize.xs,
+                  color: "#8e8e93",
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                }}
+              >
+                Reason (optional)
+              </Text>
+              <AppFilterChipGroup
+                options={REGENERATE_REASON_OPTIONS}
+                selectedKey={reasonKey}
+                onSelect={(key) =>
+                  setReasonKey((key as RegenerateReasonKey | undefined) ?? null)
+                }
+                allowsEmptySelection
+              />
+            </View>
 
             <View style={{ gap: spacing.sm }}>
               <Text

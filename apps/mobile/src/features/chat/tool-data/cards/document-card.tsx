@@ -56,12 +56,12 @@ function getExtPillConfig(ext: string): ExtPillConfig {
         bg: "bg-violet-400/10",
       };
     case "txt":
-      return { label: "Text", color: "text-zinc-400", bg: "bg-zinc-700" };
+      return { label: "Text", color: "text-zinc-400", bg: "bg-zinc-700/50" };
     default:
       return {
         label: ext ? ext.toUpperCase() : "File",
         color: "text-zinc-400",
-        bg: "bg-zinc-700",
+        bg: "bg-zinc-700/50",
       };
   }
 }
@@ -89,7 +89,7 @@ export function DocumentCard({ data }: { data: DocumentData }) {
       <ToolCardInner>
         <View className="flex-row items-center gap-3">
           {/* File icon */}
-          <View className="w-10 h-10 rounded-xl bg-zinc-700 items-center justify-center flex-shrink-0">
+          <View className="w-10 h-10 rounded-xl bg-zinc-800 items-center justify-center flex-shrink-0">
             <AppIcon icon={File01Icon} size={20} color="#00bbff" />
           </View>
 
@@ -104,9 +104,7 @@ export function DocumentCard({ data }: { data: DocumentData }) {
               </Text>
               {!!ext && (
                 <View className={`rounded-full px-2 py-0.5 ${pillConfig.bg}`}>
-                  <Text
-                    className={`text-[10px] font-medium ${pillConfig.color}`}
-                  >
+                  <Text className={`text-xs font-medium ${pillConfig.color}`}>
                     {pillConfig.label}
                   </Text>
                 </View>
@@ -133,7 +131,7 @@ export function DocumentCard({ data }: { data: DocumentData }) {
             <Pressable
               onPress={handleDownload}
               android_ripple={{ color: "rgba(255,255,255,0.08)" }}
-              className="flex-shrink-0 flex-row items-center gap-1.5 bg-zinc-700 rounded-xl px-3 py-2"
+              className="flex-shrink-0 flex-row items-center gap-1.5 bg-zinc-800 rounded-xl px-3 py-2"
             >
               <AppIcon icon={Download02Icon} size={14} color="#00bbff" />
               <Text className="text-xs font-medium text-[#00bbff]">

@@ -20,7 +20,7 @@ function ContactRow({ contact }: { contact: ContactData }) {
     <View className="flex-row items-start gap-4 p-3">
       {/* Name Column — matches web's w-40 fixed */}
       <View className="w-40 shrink-0">
-        <Text className="text-sm font-medium text-zinc-300" numberOfLines={1}>
+        <Text className="text-sm font-medium text-zinc-200" numberOfLines={1}>
           {contact.name}
         </Text>
       </View>
@@ -68,7 +68,7 @@ export function ContactListCard({ data }: { data: ContactData[] }) {
               <View
                 key={contact.email || contact.resource_name || String(index)}
               >
-                {index > 0 && <View className="h-px bg-zinc-700" />}
+                {index > 0 && <View className="h-px bg-zinc-700/50" />}
                 <ContactRow contact={contact} />
               </View>
             ))}

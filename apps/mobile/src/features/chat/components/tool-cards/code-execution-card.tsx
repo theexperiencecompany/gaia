@@ -37,7 +37,7 @@ const COLORS = {
   codeBg: THEME.background,
   codeHeaderBg: THEME.headerBg,
   codeHeaderBorder: THEME.headerBorder,
-  outputBg: "#1a1a2e",
+  outputBg: "#18181b",
   errorBg: "#2d1b1b",
   errorBorder: "#7f1d1d",
   errorText: "#f87171",
@@ -52,7 +52,7 @@ const COLORS = {
 } as const;
 
 const FONT = {
-  mono: "RobotoMono_400Regular",
+  mono: "AnonymousPro_400Regular",
 } as const;
 
 const MAX_VISIBLE_LINES = 10;
@@ -77,9 +77,9 @@ interface CodeExecutionCardProps {
 function StatusBadge({ status }: { status: CodeExecutionData["status"] }) {
   if (status === "running") {
     return (
-      <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-700">
+      <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-700/50">
         <Spinner size="sm" color="accent" />
-        <Text className="text-[10px] font-semibold uppercase text-zinc-300">
+        <Text className="text-xs font-semibold uppercase text-zinc-200">
           Running
         </Text>
       </View>
@@ -94,7 +94,7 @@ function StatusBadge({ status }: { status: CodeExecutionData["status"] }) {
           size={11}
           color={COLORS.successColor}
         />
-        <Text className="text-[10px] font-semibold uppercase text-green-400">
+        <Text className="text-xs font-semibold uppercase text-green-400">
           Success
         </Text>
       </View>
@@ -104,7 +104,7 @@ function StatusBadge({ status }: { status: CodeExecutionData["status"] }) {
   return (
     <View className="flex-row items-center gap-1 px-2.5 py-1 rounded-full bg-red-500/15">
       <AppIcon icon={Cancel01Icon} size={11} color={COLORS.errorColor} />
-      <Text className="text-[10px] font-semibold uppercase text-red-400">
+      <Text className="text-xs font-semibold uppercase text-red-400">
         Error
       </Text>
     </View>
@@ -221,7 +221,7 @@ function CodeSnippet({ code, language }: { code: string; language?: string }) {
     <View
       style={{
         backgroundColor: COLORS.codeBg,
-        borderRadius: 8,
+        borderRadius: 16,
         overflow: "hidden",
       }}
     >
@@ -405,7 +405,7 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
               <View
                 style={{
                   backgroundColor: COLORS.outputBg,
-                  borderRadius: 12,
+                  borderRadius: 16,
                   padding: 10,
                 }}
               >
@@ -438,8 +438,8 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
             </Text>
             <View
               style={{
-                backgroundColor: COLORS.errorBg,
-                borderRadius: 12,
+                backgroundColor: "rgba(239,68,68,0.1)",
+                borderRadius: 16,
                 padding: 10,
               }}
             >

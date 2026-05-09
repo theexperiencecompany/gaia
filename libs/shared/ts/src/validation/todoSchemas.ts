@@ -12,6 +12,7 @@ export const createTodoSchema = z.object({
   priority: z.enum(PRIORITY_VALUES).optional().default("none"),
   labels: z.array(z.string().min(1).max(100)).max(20).optional().default([]),
   projectId: z.string().optional(),
+  recurrence: z.string().max(500).optional(),
 });
 
 export const updateTodoSchema = z.object({
@@ -26,6 +27,7 @@ export const updateTodoSchema = z.object({
   labels: z.array(z.string().min(1).max(100)).max(20).optional(),
   projectId: z.string().optional(),
   completed: z.boolean().optional(),
+  recurrence: z.string().max(500).optional(),
 });
 
 export type CreateTodoInput = z.infer<typeof createTodoSchema>;

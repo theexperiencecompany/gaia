@@ -28,10 +28,6 @@ export interface IconProps {
 type IconName = keyof typeof iconPathData;
 export type GaiaIconComponent = React.ComponentType<IconProps>;
 
-function isClosedPath(d: string): boolean {
-  return /[zZ]/.test(d);
-}
-
 function createIcon(name: IconName) {
   const { viewBox, paths } = iconPathData[name];
   return function GaiaIcon({
@@ -39,7 +35,6 @@ function createIcon(name: IconName) {
     width,
     height,
     color = "#ffffff",
-    strokeWidth = 1.5,
     style,
   }: IconProps) {
     return (
@@ -49,21 +44,10 @@ function createIcon(name: IconName) {
         viewBox={viewBox}
         style={style}
       >
-        {paths.map((d, i) => {
-          const closed = isClosedPath(d);
-          return (
-            <Path
-              // biome-ignore lint/suspicious/noArrayIndexKey: stable path list per icon
-              key={i}
-              d={d}
-              fill={closed ? color : "none"}
-              stroke={closed ? undefined : color}
-              strokeWidth={closed ? undefined : strokeWidth}
-              strokeLinecap={closed ? undefined : "round"}
-              strokeLinejoin={closed ? undefined : "round"}
-            />
-          );
-        })}
+        {paths.map((d, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable path list per icon
+          <Path key={i} d={d} fill={color} />
+        ))}
       </Svg>
     );
   };
@@ -91,9 +75,11 @@ export const ArrowDown02Icon = createIcon("ArrowDown02Icon");
 export const ArrowDownIcon = createIcon("ArrowDownIcon");
 export const ArrowLeft01Icon = createIcon("ArrowLeft01Icon");
 export const ArrowRight01Icon = createIcon("ArrowRight01Icon");
+export const ArrowRight02Icon = createIcon("ArrowRight02Icon");
 export const ArrowUp01Icon = createIcon("ArrowUp01Icon");
 export const ArrowUp02Icon = createIcon("ArrowUp02Icon");
 export const ArrowUpRight01Icon = createIcon("ArrowUpRight01Icon");
+export const Award01Icon = createIcon("Award01Icon");
 export const BarChartIcon = createIcon("BarChartIcon");
 export const BodyPartMuscleIcon = createIcon("BodyPartMuscleIcon");
 export const BookOpen01Icon = createIcon("BookOpen01Icon");
@@ -101,14 +87,20 @@ export const Brain02Icon = createIcon("Brain02Icon");
 export const BrainIcon = createIcon("BrainIcon");
 export const BubbleChatAddIcon = createIcon("BubbleChatAddIcon");
 export const BubbleChatIcon = createIcon("BubbleChatIcon");
+export const Calendar01Icon = createIcon("Calendar01Icon");
 export const Calendar03Icon = createIcon("Calendar03Icon");
+export const CalendarIcon = createIcon("CalendarIcon");
 export const Call02Icon = createIcon("Call02Icon");
 export const Camera01Icon = createIcon("Camera01Icon");
 export const Cancel01Icon = createIcon("Cancel01Icon");
+export const ChartIcon = createIcon("ChartIcon");
+export const ChartIncreaseIcon = createIcon("ChartIncreaseIcon");
 export const ChartLineData01Icon = createIcon("ChartLineData01Icon");
 export const ChartLineData02Icon = createIcon("ChartLineData02Icon");
 export const ChartRingIcon = createIcon("ChartRingIcon");
 export const CheckListIcon = createIcon("CheckListIcon");
+export const CheckmarkBadge01Icon = createIcon("CheckmarkBadge01Icon");
+export const CheckmarkBadge02Icon = createIcon("CheckmarkBadge02Icon");
 export const CheckmarkCircle01Icon = createIcon("CheckmarkCircle01Icon");
 export const CheckmarkCircle02Icon = createIcon("CheckmarkCircle02Icon");
 export const CheckmarkSquare03Icon = createIcon("CheckmarkSquare03Icon");
@@ -131,8 +123,10 @@ export const CreditCardIcon = createIcon("CreditCardIcon");
 export const CustomerSupportIcon = createIcon("CustomerSupportIcon");
 export const Delete01Icon = createIcon("Delete01Icon");
 export const Delete02Icon = createIcon("Delete02Icon");
+export const DashedLineCircleIcon = createIcon("DashedLineCircleIcon");
 export const DiscordIcon = createIcon("DiscordIcon");
 export const DocumentAttachmentIcon = createIcon("DocumentAttachmentIcon");
+export const Download01Icon = createIcon("Download01Icon");
 export const Download02Icon = createIcon("Download02Icon");
 export const Download04Icon = createIcon("Download04Icon");
 export const DropletIcon = createIcon("DropletIcon");
@@ -157,7 +151,9 @@ export const Image02Icon = createIcon("Image02Icon");
 export const InformationCircleIcon = createIcon("InformationCircleIcon");
 export const KeyboardIcon = createIcon("KeyboardIcon");
 export const LayoutGridIcon = createIcon("LayoutGridIcon");
+export const Link01Icon = createIcon("Link01Icon");
 export const LinkBackwardIcon = createIcon("LinkBackwardIcon");
+export const LinkIcon = createIcon("LinkIcon");
 export const LinkSquare01Icon = createIcon("LinkSquare01Icon");
 export const LinkSquare02Icon = createIcon("LinkSquare02Icon");
 export const Loading03Icon = createIcon("Loading03Icon");
@@ -167,9 +163,12 @@ export const MagicWand01Icon = createIcon("MagicWand01Icon");
 export const Mail01Icon = createIcon("Mail01Icon");
 export const MailOpen01Icon = createIcon("MailOpen01Icon");
 export const MailSend01Icon = createIcon("MailSend01Icon");
+export const MapsIcon = createIcon("MapsIcon");
 export const Menu01Icon = createIcon("Menu01Icon");
+export const Moon02Icon = createIcon("Moon02Icon");
 export const MoreVerticalIcon = createIcon("MoreVerticalIcon");
 export const Message01Icon = createIcon("Message01Icon");
+export const MessageIcon = createIcon("MessageIcon");
 export const MessageMultiple01Icon = createIcon("MessageMultiple01Icon");
 export const News01Icon = createIcon("News01Icon");
 export const Notification01Icon = createIcon("Notification01Icon");
@@ -190,6 +189,7 @@ export const Settings01Icon = createIcon("Settings01Icon");
 export const Settings02Icon = createIcon("Settings02Icon");
 export const Share01Icon = createIcon("Share01Icon");
 export const Share08Icon = createIcon("Share08Icon");
+export const ShareIcon = createIcon("ShareIcon");
 export const ShieldUserIcon = createIcon("ShieldUserIcon");
 export const SourceCodeCircleIcon = createIcon("SourceCodeCircleIcon");
 export const SquareArrowUpRight02Icon = createIcon("SquareArrowUpRight02Icon");
@@ -204,6 +204,7 @@ export const ThumbsDownIcon = createIcon("ThumbsDownIcon");
 export const ThumbsUpIcon = createIcon("ThumbsUpIcon");
 export const Tick01Icon = createIcon("Tick01Icon");
 export const Tick02Icon = createIcon("Tick02Icon");
+export const Timer02Icon = createIcon("Timer02Icon");
 export const ToggleOffIcon = createIcon("ToggleOffIcon");
 export const ToggleOnIcon = createIcon("ToggleOnIcon");
 export const ToolsIcon = createIcon("ToolsIcon");
@@ -216,6 +217,7 @@ export const UserCircleIcon = createIcon("UserCircleIcon");
 export const UserGroupIcon = createIcon("UserGroupIcon");
 export const UserIcon = createIcon("UserIcon");
 export const UserSearch01Icon = createIcon("UserSearch01Icon");
+export const VisionIcon = createIcon("VisionIcon");
 export const WhatsappIcon = createIcon("WhatsappIcon");
 export const WorkflowCircle06Icon = createIcon("WorkflowCircle06Icon");
 export const WorkflowSquare10Icon = createIcon("WorkflowSquare10Icon");

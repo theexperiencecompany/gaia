@@ -1,5 +1,7 @@
 import { apiService } from "@/lib/api";
 import type {
+  ChannelPlatform,
+  ChannelPreferences,
   InAppNotificationStatus,
   InAppNotificationsListResponse,
   NotificationActionResponse,
@@ -185,5 +187,28 @@ export const inAppNotificationsApi = {
       "/notifications/preferences",
       prefs,
     );
+  },
+
+  getChannelPreferences: async (): Promise<ChannelPreferences> => {
+    return apiService.get<ChannelPreferences>(
+      "/notifications/preferences/channels",
+    );
+  },
+
+  updateChannelPreference: async (
+    channel: ChannelPlatform,
+    enabled: boolean,
+  ): Promise<ChannelPreferences> => {
+    return apiService.put<ChannelPreferences>(
+      "/notifications/preferences/channels",
+      { [channel]: enabled },
+    );
+  },
+
+  // NOTE: backend endpoint POST /notifications/test does not exist yet.
+  // Web's NotificationsAPI.createTestNotification calls the same path. The
+  // mobile client mirrors the contract so the UI is ready when the API ships.
+  sendTestNotification: async (): Promise<NotificationActionResponse> => {
+    return apiService.post<NotificationActionResponse>("/notifications/test");
   },
 };

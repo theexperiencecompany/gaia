@@ -1,4 +1,5 @@
 import type { ToolDataEntry } from "@gaia/shared/chat";
+import { mergeToolOutputIntoToolData } from "@gaia/shared/chat";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -327,6 +328,20 @@ export function useChat(
               ];
               // Keep the last AI message in sync with accumulated tool data
               // so tool cards render live during streaming.
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  toolData: streamingToolDataRef.current,
+                });
+            },
+            onToolOutput: (output) => {
+              // Backend streams the tool result on a separate event keyed
+              // by tool_call_id; merge it into the matching tool_data entry
+              // (web parity, mirrors useChatStream.handleToolOutput).
+              streamingToolDataRef.current = mergeToolOutputIntoToolData(
+                streamingToolDataRef.current,
+                output,
+              );
               useChatStore
                 .getState()
                 .updateLastAssistantMessage(activeConvIdRef.current!, {

@@ -57,7 +57,7 @@ export interface ChartDisplayData {
 
 const PRIMARY = "#00bbff";
 const _BG_CARD = "#171920";
-const MUTED = "#8e8e93";
+const MUTED = "#71717a";
 const GRID = "rgba(255,255,255,0.08)";
 const CHART_HEIGHT = 180;
 const CHART_WIDTH = 280;
@@ -495,7 +495,7 @@ function DataTable({ data }: { data: ChartData }) {
 
 type ChartViewMode = "chart" | "table";
 
-function ChartItem({ item }: { item: ChartDisplayData }) {
+export function ChartItem({ item }: { item: ChartDisplayData }) {
   const [viewMode, setViewMode] = useState<ChartViewMode>("chart");
   const cd = item.chart_data;
 

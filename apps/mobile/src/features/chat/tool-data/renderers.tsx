@@ -11,14 +11,18 @@ import type {
   WorkflowCreatedData,
   WorkflowDraftData,
 } from "@gaia/shared";
-import { Card, PressableFeedback } from "heroui-native";
-import React, { useCallback, useRef, useState } from "react";
-import { Animated, LayoutAnimation, View } from "react-native";
-import { AppIcon, ArrowDown02Icon } from "@/components/icons";
+import { Card } from "heroui-native";
+import React from "react";
+import { View } from "react-native";
+import { Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { useResponsive } from "@/lib/responsive";
 
 import { EmailComposeCard } from "../components/chat/email-compose-card";
+import {
+  type ToolCallEntry,
+  ToolCallsSection,
+} from "../components/chat/tool-calls-section";
+import { ToolCardHeader, ToolCardShell } from "./primitives";
 import type { EmailComposeData, ToolDataEntry } from "./registry";
 import {
   ArtifactCard,
@@ -33,6 +37,8 @@ import {
   type CalendarOption,
   CalendarOptionsCard,
   CodeExecutionCard,
+  ConnectionStatusCard,
+  type ConnectionStatusData,
   type ContactData,
   ContactListCard,
   DeepResearchCard,
@@ -52,6 +58,7 @@ import {
   type IntegrationConnectionData,
   IntegrationListCard,
   type IntegrationListData,
+  MCPAppCard,
   NotificationCard,
   type NotificationData,
   PeopleSearchCard,
@@ -70,81 +77,6 @@ import {
   WorkflowCreatedCard,
   WorkflowDraftCard,
 } from "./tool-cards";
-
-function getToolDisplayName(toolName: string): string {
-  return toolName
-    .replace(/_data$/, "")
-    .replace(/_options$/, "")
-    .replace(/_results$/, "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (l) => l.toUpperCase());
-}
-
-function CollapsibleToolWrapper({
-  toolName,
-  children,
-}: {
-  toolName: string;
-  children: React.ReactNode;
-}) {
-  const [collapsed, setCollapsed] = useState(false);
-  const chevronAnim = useRef(new Animated.Value(0)).current;
-  const { spacing, fontSize, moderateScale } = useResponsive();
-
-  const toggle = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setCollapsed((prev) => {
-      const next = !prev;
-      Animated.timing(chevronAnim, {
-        toValue: next ? 1 : 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-      return next;
-    });
-  }, [chevronAnim]);
-
-  const chevronRotate = chevronAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "-90deg"],
-  });
-
-  const displayName = getToolDisplayName(toolName);
-
-  return (
-    <View style={{ marginBottom: spacing.xs }}>
-      <PressableFeedback
-        onPress={toggle}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.xs + 2,
-          gap: spacing.xs,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: fontSize.xs,
-            color: "#52525b",
-            fontWeight: "500",
-            flex: 1,
-          }}
-        >
-          {displayName}
-        </Text>
-        <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
-          <AppIcon
-            icon={ArrowDown02Icon}
-            size={moderateScale(12, 0.5)}
-            color="#52525b"
-          />
-        </Animated.View>
-      </PressableFeedback>
-      {!collapsed && children}
-    </View>
-  );
-}
 
 function UnsupportedToolCard({
   toolName,
@@ -360,6 +292,10 @@ const TOOL_RENDERERS: Record<
     <WorkflowCreatedCard key={baseKey} data={data as WorkflowCreatedData} />
   ),
 
+  connection_status_data: (data, baseKey) => (
+    <ConnectionStatusCard key={baseKey} data={data as ConnectionStatusData} />
+  ),
+
   rate_limit_data: (data, baseKey) => (
     <RateLimitCard key={baseKey} data={data as RateLimitData} />
   ),
@@ -383,14 +319,27 @@ const TOOL_RENDERERS: Record<
     );
   },
 
-  memory_data: (_data, baseKey) => (
-    <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
-      <Card.Body className="py-3 px-4">
-        <Text className="text-xs text-muted mb-1">Memory</Text>
-        <Text className="text-foreground text-sm">Memory updated</Text>
-      </Card.Body>
-    </Card>
-  ),
+  memory_data: (data, baseKey) => {
+    const mem = data as Record<string, unknown> | null;
+    const count =
+      mem && typeof mem.count === "number" && mem.count > 0
+        ? mem.count
+        : undefined;
+    return (
+      <ToolCardShell key={baseKey}>
+        <ToolCardHeader
+          icon={Brain02Icon}
+          iconColor="#a78bfa"
+          title="Memory updated"
+          count={count}
+        />
+      </ToolCardShell>
+    );
+  },
+
+  // mcp_app: rendered via MCPAppCard — shows a notice that interactive
+  // rendering is web-only while keeping the result in conversation context.
+  mcp_app: (data, baseKey) => <MCPAppCard key={baseKey} data={data} />,
 
   todo_progress: (data, baseKey) => (
     <TodoProgressCard
@@ -399,10 +348,87 @@ const TOOL_RENDERERS: Record<
       isStreaming
     />
   ),
+
+  // Stacked tool-icons + "Used N tools" collapsible (matches web parity).
+  // Backend may stream this as a single object that should be wrapped, or
+  // as an already-built array.
+  tool_calls_data: (data, baseKey) => {
+    const calls = (Array.isArray(data) ? data : [data]) as ToolCallEntry[];
+    return <ToolCallsSection key={baseKey} tool_calls_data={calls} />;
+  },
 };
 
 interface ToolDataRendererProps {
   toolData?: ToolDataEntry[];
+}
+
+/**
+ * Backend streams `tool_calls_data` as one entry per call, but the UI
+ * should render a single consolidated "Used N tools" section per message
+ * (mirrors apps/web/src/features/chat/components/interface/ChatRenderer.tsx
+ * which dedupes by tool_call_id and merges into one entry). Without this,
+ * multiple "Used 1 tool" headers stack on top of each other.
+ */
+function consolidateToolData(toolData: ToolDataEntry[]): ToolDataEntry[] {
+  const result: ToolDataEntry[] = [];
+  let toolCallsBuffer: Record<string, unknown>[] = [];
+  let firstToolCallsTimestamp: ToolDataEntry["timestamp"] | undefined;
+  // tool_call_id → index inside toolCallsBuffer, so a later streamed entry
+  // (e.g. carrying `output` once execution finishes) can be merged into the
+  // earlier entry instead of being dropped as a duplicate.
+  const idToIndex = new Map<string, number>();
+
+  const flush = () => {
+    if (toolCallsBuffer.length > 0) {
+      result.push({
+        tool_name: "tool_calls_data",
+        data: toolCallsBuffer,
+        timestamp: firstToolCallsTimestamp,
+      });
+      toolCallsBuffer = [];
+      firstToolCallsTimestamp = undefined;
+    }
+  };
+
+  for (const entry of toolData) {
+    if (entry.tool_name === "tool_calls_data") {
+      const calls = Array.isArray(entry.data) ? entry.data : [entry.data];
+      for (const rawCall of calls) {
+        const call = (rawCall ?? {}) as Record<string, unknown>;
+        const id =
+          typeof call.tool_call_id === "string" ? call.tool_call_id : undefined;
+
+        if (id && idToIndex.has(id)) {
+          // Merge new fields onto the existing entry. Prefer the latest
+          // non-empty value for fields that grow over time (status, output,
+          // message). Inputs typically stream complete on the first event,
+          // but we still merge to be defensive.
+          const existingIndex = idToIndex.get(id) as number;
+          const existing = toolCallsBuffer[existingIndex] ?? {};
+          toolCallsBuffer[existingIndex] = {
+            ...existing,
+            ...Object.fromEntries(
+              Object.entries(call).filter(
+                ([, v]) => v !== undefined && v !== "",
+              ),
+            ),
+          };
+          continue;
+        }
+
+        if (id) idToIndex.set(id, toolCallsBuffer.length);
+        toolCallsBuffer.push(call);
+      }
+      if (firstToolCallsTimestamp === undefined) {
+        firstToolCallsTimestamp = entry.timestamp;
+      }
+    } else {
+      flush();
+      result.push(entry);
+    }
+  }
+  flush();
+  return result;
 }
 
 export function ToolDataRenderer({ toolData }: ToolDataRendererProps) {
@@ -410,27 +436,29 @@ export function ToolDataRenderer({ toolData }: ToolDataRendererProps) {
     return null;
   }
 
+  const consolidated = consolidateToolData(toolData);
+
   return (
-    <View className="flex-col">
-      {toolData.map((entry, index) => {
+    <View className="flex-col w-full">
+      {consolidated.map((entry, index) => {
         const toolName = entry.tool_name;
         const renderer = TOOL_RENDERERS[toolName];
         const baseKey = `tool-${toolName}-${entry.timestamp || index}`;
 
-        const rendered = renderer ? (
-          renderer(entry.data, baseKey)
-        ) : (
+        if (renderer) {
+          return (
+            <React.Fragment key={baseKey}>
+              {renderer(entry.data, baseKey)}
+            </React.Fragment>
+          );
+        }
+
+        return (
           <UnsupportedToolCard
             key={baseKey}
             toolName={toolName}
             index={index}
           />
-        );
-
-        return (
-          <CollapsibleToolWrapper key={baseKey} toolName={toolName}>
-            {rendered}
-          </CollapsibleToolWrapper>
         );
       })}
     </View>

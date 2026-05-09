@@ -41,6 +41,17 @@
         {
           "action": "VIEW",
           "data": [
+            {
+              "scheme": "gaia",
+              "host": "integrations",
+              "pathPrefix": "/callback"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        },
+        {
+          "action": "VIEW",
+          "data": [
             { "scheme": "gaia", "host": "chat" },
             { "scheme": "gaia", "host": "todos" },
             { "scheme": "gaia", "host": "notifications" },

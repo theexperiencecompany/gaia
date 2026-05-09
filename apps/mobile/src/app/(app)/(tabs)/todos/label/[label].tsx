@@ -1,15 +1,14 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { Pressable, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppIcon, ArrowLeft01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { LabelChip } from "@/features/todos/components/label-chip";
 import { LabelFilterView } from "@/features/todos/components/label-filter-view";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 
 export default function LabelFilterPage() {
   const { label } = useLocalSearchParams<{ label: string }>();
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { spacing, fontSize } = useResponsive();
 
@@ -30,19 +29,7 @@ export default function LabelFilterPage() {
           gap: spacing.sm,
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-        </Pressable>
+        <BackButton />
 
         <Text
           style={{

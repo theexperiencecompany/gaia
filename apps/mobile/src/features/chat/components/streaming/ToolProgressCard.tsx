@@ -37,12 +37,12 @@ export function ToolProgressCard({
   const { spacing, fontSize, moderateScale } = useResponsive();
   const iconSize = moderateScale(16, 0.5);
 
-  const pulseOpacity = useSharedValue(0.5);
+  const pulseOpacity = useSharedValue(0.6);
   useEffect(() => {
     pulseOpacity.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 600 }),
-        withTiming(0.5, { duration: 600 }),
+        withTiming(0.6, { duration: 600 }),
       ),
       -1,
       false,
@@ -77,7 +77,7 @@ export function ToolProgressCard({
           <AppIcon
             icon={Brain02Icon}
             size={iconSize}
-            color="#a78bfa"
+            color="#a1a1aa"
             strokeWidth={1.5}
           />
         )}

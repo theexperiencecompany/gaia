@@ -27,11 +27,7 @@ export * from "./cards/people-search-card";
 export * from "./cards/rate-limit-card";
 export * from "./cards/reddit-card";
 export * from "./cards/search-results-card";
-export {
-  MCPAppCard,
-  ToolCallsCard,
-  TwitterUsersCard,
-} from "./cards/streaming-meta-cards";
+export { MCPAppCard, ToolCallsCard } from "./cards/streaming-meta-cards";
 export * from "./cards/support-ticket-card";
 export * from "./cards/todo-card";
 export * from "./cards/todo-progress-card";

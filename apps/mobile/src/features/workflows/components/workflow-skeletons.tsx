@@ -106,17 +106,51 @@ export function WorkflowStepSkeleton() {
 }
 
 export function WorkflowDetailSkeleton() {
-  const { spacing } = useResponsive();
+  const { spacing, moderateScale } = useResponsive();
   return (
-    <View style={{ gap: spacing.md, padding: spacing.md }}>
-      <SkeletonBox width="50%" height={20} borderRadius={6} />
+    <View style={{ gap: spacing.lg }}>
+      {/* Hero card: icon + title + chips */}
       <View
-        style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+        style={{
+          backgroundColor: "rgba(39,39,42,0.30)",
+          borderRadius: moderateScale(16, 0.5),
+          padding: spacing.md,
+          gap: spacing.md,
+        }}
       >
-        <SkeletonBox width={40} height={40} borderRadius={12} />
-        <SkeletonBox width="40%" height={14} borderRadius={4} />
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+          }}
+        >
+          <SkeletonBox width={44} height={44} borderRadius={12} />
+          <View style={{ flex: 1, gap: 6 }}>
+            <SkeletonBox width="70%" height={16} borderRadius={6} />
+            <SkeletonBox width="90%" height={12} borderRadius={4} />
+          </View>
+        </View>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <SkeletonBox width={70} height={22} borderRadius={11} />
+          <SkeletonBox width={56} height={22} borderRadius={11} />
+        </View>
       </View>
+
+      {/* Action row */}
       <View style={{ gap: spacing.sm }}>
+        <SkeletonBox width="100%" height={44} borderRadius={14} />
+        <SkeletonBox width="100%" height={36} borderRadius={14} />
+      </View>
+
+      {/* Tabs */}
+      <View style={{ flexDirection: "row", gap: spacing.sm }}>
+        <SkeletonBox width={88} height={32} borderRadius={10} />
+        <SkeletonBox width={88} height={32} borderRadius={10} />
+      </View>
+
+      {/* Steps list placeholder */}
+      <View style={{ gap: spacing.md }}>
         <WorkflowStepSkeleton />
         <WorkflowStepSkeleton />
         <WorkflowStepSkeleton />

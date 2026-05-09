@@ -3,12 +3,10 @@ import type {
   DeepResearchSource,
   EnhancedWebResult,
   ImageResult,
-  NewsResult,
   SearchResults,
-  WebResult,
 } from "@gaia/shared";
 import { useEffect, useState } from "react";
-import { Image, Linking, Pressable, View } from "react-native";
+import { Image, Linking, Pressable, ScrollView, View } from "react-native";
 import Animated, {
   FadeInRight,
   useAnimatedStyle,
@@ -21,58 +19,25 @@ import {
   AppIcon,
   Globe02Icon,
   LinkBackwardIcon,
-  News01Icon,
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
+  FaviconImage,
+  getHostname,
+  NewsResultCard,
   ToolCardHeader,
   ToolCardInner,
   ToolCardShell,
+  WebResultRow,
 } from "@/features/chat/tool-data/primitives";
 
 export type { DeepResearchResults, DeepResearchSource, EnhancedWebResult };
 
 type Tab = "enhanced" | "original" | "metadata";
 
-function getHostname(url?: string): string {
-  if (!url) return "";
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Favicon image with globe fallback
-// ---------------------------------------------------------------------------
-
-function FaviconImage({ url }: { url?: string }) {
-  const [errored, setErrored] = useState(false);
-  const hostname = getHostname(url);
-
-  if (!hostname || errored) {
-    return (
-      <View className="w-4 h-4 rounded-full bg-zinc-700 items-center justify-center">
-        <AppIcon icon={Globe02Icon} size={10} color="#71717a" />
-      </View>
-    );
-  }
-
-  return (
-    <Image
-      source={{
-        uri: `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`,
-      }}
-      style={{ width: 14, height: 14, borderRadius: 7 }}
-      onError={() => setErrored(true)}
-    />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Streaming / running state
+// PulsingDot — running-state status indicator
 // ---------------------------------------------------------------------------
 
 function PulsingDot() {
@@ -101,6 +66,10 @@ function PulsingDot() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Running state
+// ---------------------------------------------------------------------------
+
 interface RunningSourceRowProps {
   source: DeepResearchSource;
 }
@@ -117,11 +86,7 @@ function RunningSourceRow({ source }: RunningSourceRowProps) {
   );
 }
 
-interface DeepResearchRunningCardProps {
-  data: DeepResearchResults;
-}
-
-function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
+function DeepResearchRunningCard({ data }: { data: DeepResearchResults }) {
   const sources = data.sources ?? [];
   const recentSources = sources.slice(-3);
   const totalSources = data.totalSources ?? sources.length;
@@ -153,8 +118,8 @@ function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
               key={`step-${index}-${step.slice(0, 10)}`}
               className="flex-row items-center gap-1.5"
             >
-              <View className="w-1 h-1 rounded-full bg-zinc-600" />
-              <Text className="text-zinc-500 text-[11px]" numberOfLines={1}>
+              <View className="w-1 h-1 rounded-full bg-zinc-500" />
+              <Text className="text-zinc-500 text-xs" numberOfLines={1}>
                 {step}
               </Text>
             </View>
@@ -165,7 +130,7 @@ function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
       {/* Recent sources being visited */}
       {recentSources.length > 0 && (
         <View>
-          <Text className="text-zinc-400 text-[11px] mb-1.5">
+          <Text className="text-zinc-400 text-xs mb-1.5">
             {totalSources > 0
               ? `Visiting sources (${totalSources} found)`
               : "Visiting sources"}
@@ -207,30 +172,37 @@ function DeepResearchErrorCard() {
 
 // ---------------------------------------------------------------------------
 // Enhanced results tab
-// Web: each result shows title (blue, primary link), then LinkBackward icon
-// + hostname below it. Full content is commented out on web — not shown here.
+// Web: each card uses `rounded-2xl bg-zinc-800 p-4` with title (primary,
+// truncated) + LinkBackward icon + hostname row. Full-content rendering is
+// commented out on web — match exactly.
 // ---------------------------------------------------------------------------
 
 function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
   const hostname = getHostname(result.url);
 
   return (
-    <ToolCardInner onPress={() => result.url && Linking.openURL(result.url)}>
-      {/* Title — blue, truncated */}
+    <Pressable
+      onPress={() => result.url && Linking.openURL(result.url)}
+      android_ripple={{ color: "rgba(255,255,255,0.05)", borderless: false }}
+      style={{
+        backgroundColor: "#27272a", // zinc-800
+        borderRadius: 16,
+        padding: 16,
+      }}
+    >
       <Text className="text-[#00bbff] text-sm font-medium" numberOfLines={1}>
         {result.title || hostname || "Untitled"}
       </Text>
 
-      {/* Hostname with link icon */}
       {!!hostname && (
         <View className="flex-row items-center gap-1 mt-1">
-          <AppIcon icon={LinkBackwardIcon} size={12} color="#71717a" />
+          <AppIcon icon={LinkBackwardIcon} size={13} color="#71717a" />
           <Text className="text-zinc-400 text-xs flex-1" numberOfLines={1}>
             {hostname}
           </Text>
         </View>
       )}
-    </ToolCardInner>
+    </Pressable>
   );
 }
 
@@ -248,69 +220,12 @@ function EnhancedResultsSection({ results }: { results: EnhancedWebResult[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Original search tab — web results, images (rotated tiles), news
-// Web: WebResults shows title / content (2 lines) / favicon + hostname
+// Original search tab — mirrors web's nested SearchResultsTabs render.
+// Reuses the shared WebResultRow + NewsResultCard primitives. Image strip
+// is the deep-research-specific overlapping rotated tile pattern matching
+// web's SearchResultsTabs ImageResults.
 // ---------------------------------------------------------------------------
 
-function OriginalWebResultRow({ result }: { result: WebResult }) {
-  const hostname = getHostname(result.url);
-
-  return (
-    <ToolCardInner onPress={() => result.url && Linking.openURL(result.url)}>
-      {/* Title — zinc-100 */}
-      <Text className="text-zinc-100 text-sm font-medium" numberOfLines={1}>
-        {result.title || hostname || "Untitled"}
-      </Text>
-
-      {/* Content snippet — 2 lines, zinc-400 */}
-      {!!result.content && (
-        <Text className="text-zinc-400 text-xs mt-1" numberOfLines={2}>
-          {result.content}
-        </Text>
-      )}
-
-      {/* Favicon + hostname */}
-      {!!hostname && (
-        <View className="flex-row items-center gap-2 mt-1.5">
-          <FaviconImage url={result.url} />
-          <Text className="text-[#00bbff] text-xs flex-1" numberOfLines={1}>
-            {hostname}
-          </Text>
-        </View>
-      )}
-    </ToolCardInner>
-  );
-}
-
-// News row — NewsIcon + title, content snippet, score
-function OriginalNewsResultRow({ article }: { article: NewsResult }) {
-  return (
-    <ToolCardInner onPress={() => article.url && Linking.openURL(article.url)}>
-      <View className="flex-row items-center gap-2">
-        <AppIcon icon={News01Icon} size={16} color="#00bbff" />
-        <Text
-          className="text-[#00bbff] text-sm font-medium flex-1"
-          numberOfLines={1}
-        >
-          {article.title || "Untitled"}
-        </Text>
-      </View>
-      {!!article.content && (
-        <Text className="text-zinc-400 text-xs mt-1" numberOfLines={2}>
-          {article.content}
-        </Text>
-      )}
-      {typeof article.score === "number" && (
-        <Text className="text-zinc-500 text-xs mt-1">
-          Score: {article.score.toFixed(2)}
-        </Text>
-      )}
-    </ToolCardInner>
-  );
-}
-
-// Image strip — rotated overlapping tiles matching the search results card
-// (consistent with web's ImageResults pattern)
 const IMAGE_TILE_SIZE = 96;
 const IMAGE_OVERLAP = -32;
 const MAX_VISIBLE_IMAGES = 4;
@@ -376,7 +291,14 @@ function OriginalImageStrip({ images }: { images: ImageResult[] }) {
   };
 
   return (
-    <View className="flex-row items-center py-2">
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{
+        paddingVertical: 8,
+        alignItems: "center",
+      }}
+    >
       {displayImages.map((url, index) => (
         <ImageTile
           key={`${url}-${startIndex}`}
@@ -407,7 +329,7 @@ function OriginalImageStrip({ images }: { images: ImageResult[] }) {
           </Text>
         </Pressable>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -418,12 +340,23 @@ function OriginalSearchSection({ search }: { search: SearchResults }) {
 
   return (
     <View className="gap-3 pt-3">
+      {/* Web results — list of WebResultRow primitives in a zinc-800 card.
+         Mirrors web's PopoverContent → WebResults but always-open since the
+         popover doesn't translate to mobile inside an already-collapsed
+         accordion. */}
       {webResults.length > 0 && (
-        <View className="gap-2">
+        <View
+          style={{
+            backgroundColor: "#27272a", // zinc-800
+            borderRadius: 16,
+            overflow: "hidden",
+          }}
+        >
           {webResults.map((result, index) => (
-            <OriginalWebResultRow
+            <WebResultRow
               key={result.url || result.title || String(index)}
               result={result}
+              isLast={index === webResults.length - 1}
             />
           ))}
         </View>
@@ -434,7 +367,7 @@ function OriginalSearchSection({ search }: { search: SearchResults }) {
       {newsResults.length > 0 && (
         <View className="gap-2">
           {newsResults.map((article, index) => (
-            <OriginalNewsResultRow
+            <NewsResultCard
               key={article.url || article.title || String(index)}
               article={article}
             />
@@ -447,7 +380,8 @@ function OriginalSearchSection({ search }: { search: SearchResults }) {
 
 // ---------------------------------------------------------------------------
 // Search metadata tab — query / elapsed time / content size
-// Web: "Search Statistics" heading, then label-value rows.
+// Web: "Search Statistics" heading, then label-value rows, all in one
+// rounded-lg bg-zinc-800 card.
 // ---------------------------------------------------------------------------
 
 function MetadataSection({
@@ -462,18 +396,24 @@ function MetadataSection({
     metadata.total_content_size > 0;
 
   return (
-    <ToolCardInner className="mt-3">
-      {/* Section heading — matches web's "Search Statistics" */}
-      <Text className="text-zinc-100 text-sm font-semibold mb-3">
+    <View
+      className="mt-3"
+      style={{
+        backgroundColor: "#27272a", // zinc-800
+        borderRadius: 8,
+        padding: 16,
+      }}
+    >
+      <Text className="text-[#00bbff] text-base font-medium mb-2">
         Search Statistics
       </Text>
 
       <View className="gap-2">
         {!!metadata.query && (
           <View className="flex-row items-center justify-between gap-4">
-            <Text className="text-zinc-400 text-xs">Search Query:</Text>
+            <Text className="text-zinc-400 text-sm">Search Query:</Text>
             <Text
-              className="text-zinc-100 text-xs font-medium flex-1 text-right"
+              className="text-zinc-100 text-sm font-medium flex-1 text-right"
               numberOfLines={1}
             >
               {metadata.query}
@@ -483,8 +423,8 @@ function MetadataSection({
 
         {showElapsed && (
           <View className="flex-row items-center justify-between gap-4">
-            <Text className="text-zinc-400 text-xs">Processing Time:</Text>
-            <Text className="text-zinc-100 text-xs font-medium">
+            <Text className="text-zinc-400 text-sm">Processing Time:</Text>
+            <Text className="text-zinc-100 text-sm font-medium">
               {(metadata.elapsed_time as number).toFixed(2)} seconds
             </Text>
           </View>
@@ -492,22 +432,24 @@ function MetadataSection({
 
         {showContentSize && (
           <View className="flex-row items-center justify-between gap-4">
-            <Text className="text-zinc-400 text-xs">Content Size:</Text>
-            <Text className="text-zinc-100 text-xs font-medium">
+            <Text className="text-zinc-400 text-sm">Content Size:</Text>
+            <Text className="text-zinc-100 text-sm font-medium">
               {((metadata.total_content_size as number) / 1024).toFixed(2)} KB
             </Text>
           </View>
         )}
       </View>
-    </ToolCardInner>
+    </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Completed state
-// Mirrors web: collapsible toggle (Hide/Show Deep research Results) then tabs
-// for Enhanced Results / Original Search / Search Info.
-// Uses Pressable-based accordion + custom tab row — no heroui-native.
+// Completed state — flat (no ToolCardShell). Mirrors web:
+// - Accordion trigger pill ("Hide/Show Deep research Results", bg-white/10)
+// - Tab row when expanded (Enhanced / Original / Search Info)
+// - Each tab content rendered below
+// Matches web's `<Accordion><AccordionItem>` + `<Tabs>` layout, but rolled by
+// hand — heroui-native doesn't ship a Tabs component the mobile app uses.
 // ---------------------------------------------------------------------------
 
 interface TabDef {
@@ -531,6 +473,8 @@ function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
+  if (!hasEnhanced && !hasOriginal && !hasMetadata) return null;
+
   const tabs: TabDef[] = [
     ...(hasEnhanced
       ? [{ key: "enhanced" as Tab, label: "Enhanced Results" }]
@@ -550,21 +494,31 @@ function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
   ];
 
   return (
-    <ToolCardShell>
+    <View style={{ marginHorizontal: 16, marginVertical: 4 }}>
       {/* Accordion trigger — text pill only, no chevron, matches web */}
       <Pressable onPress={() => setIsExpanded((prev) => !prev)}>
-        <View className="rounded-lg bg-white/10 px-3 py-1.5 self-start">
-          <Text className="text-zinc-200 text-sm font-medium">
+        <View
+          style={{
+            backgroundColor: "rgba(255,255,255,0.1)",
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 8,
+            alignSelf: "flex-start",
+          }}
+        >
+          <Text className="text-zinc-100 text-sm font-medium">
             {isExpanded
-              ? "Hide Deep Research Results"
-              : "Show Deep Research Results"}
+              ? "Hide Deep research Results"
+              : "Show Deep research Results"}
           </Text>
         </View>
       </Pressable>
 
       {isExpanded && (
         <>
-          {/* Custom tab row */}
+          {/* Custom tab row — pill style matching web's Tabs color="primary"
+             variant="light": active tab uses primary tint, inactive uses
+             zinc-700 background. */}
           <View className="flex-row gap-1 mt-3 flex-wrap">
             {tabs.map((tab) => {
               const isActive = activeTab === tab.key;
@@ -572,8 +526,17 @@ function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
                 <Pressable
                   key={tab.key}
                   onPress={() => setActiveTab(tab.key)}
-                  className="flex-row items-center gap-1 rounded-lg px-3 py-1.5"
+                  android_ripple={{
+                    color: "rgba(255,255,255,0.05)",
+                    borderless: false,
+                  }}
                   style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
                     backgroundColor: isActive
                       ? "rgba(0,187,255,0.18)"
                       : "rgba(63,63,70,0.4)",
@@ -609,7 +572,7 @@ function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
           )}
         </>
       )}
-    </ToolCardShell>
+    </View>
   );
 }
 

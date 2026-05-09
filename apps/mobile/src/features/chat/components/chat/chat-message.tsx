@@ -5,9 +5,9 @@ import {
 } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo } from "react";
 import { Pressable, View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { AppIcon, Brain02Icon } from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
@@ -17,10 +17,6 @@ import { useResponsive } from "@/lib/responsive";
 import { extractUrls, useLinkPreview } from "../../hooks/use-link-preview";
 import { ToolDataRenderer } from "../../tool-data/renderers";
 import type { Message } from "../../types";
-import {
-  MemoryBottomSheet,
-  type MemoryBottomSheetRef,
-} from "../memory/memory-bottom-sheet";
 import { OpenUIRenderer } from "../openui/OpenUIRenderer";
 import { ImageBubble } from "./image-bubble";
 import { LinkPreviewCard } from "./link-preview-card";
@@ -49,7 +45,10 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
   if (!actions.length) return null;
 
   return (
-    <View className="flex-row flex-wrap gap-2 mt-2 px-4">
+    <View
+      className="flex-row flex-wrap gap-2 mt-2"
+      style={{ paddingLeft: 46, paddingRight: 16 }}
+    >
       {actions.map((action, i) => (
         <Animated.View
           key={action}
@@ -128,23 +127,21 @@ function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
           alignItems: "center",
           alignSelf: "flex-start",
           gap: spacing.xs,
-          backgroundColor: "rgba(99, 102, 241, 0.12)",
+          backgroundColor: "rgba(63, 63, 70, 0.5)",
           borderRadius: moderateScale(12, 0.5),
           paddingHorizontal: spacing.sm + 2,
           paddingVertical: spacing.xs,
-          borderWidth: 1,
-          borderColor: "rgba(99, 102, 241, 0.2)",
         }}
       >
         <AppIcon
           icon={Brain02Icon}
           size={moderateScale(11, 0.5)}
-          color="#818cf8"
+          color="#a1a1aa"
         />
         <Text
           style={{
-            fontSize: fontSize.xs - 1,
-            color: "#818cf8",
+            fontSize: fontSize.xs,
+            color: "#a1a1aa",
             fontWeight: "500",
           }}
         >
@@ -182,7 +179,6 @@ export function ChatMessage({
 }: ChatMessageProps) {
   const isUser = message.isUser;
   const { spacing } = useResponsive();
-  const memorySheetRef = useRef<MemoryBottomSheetRef>(null);
 
   // Strip <thinking> tags from raw text so they are never rendered in the bubble.
   const parsedContent = useMemo(
@@ -226,103 +222,127 @@ export function ChatMessage({
   // ---- User message --------------------------------------------------------
   if (isUser) {
     return (
-      <PressableFeedback
-        onLongPress={handleLongPress}
-        delayLongPress={350}
-        style={{
-          flexDirection: "row",
-          paddingVertical: spacing.sm,
-          alignItems: "flex-end",
-          justifyContent: "flex-end",
-          paddingHorizontal: spacing.md,
-        }}
-      >
-        <View
+      <Animated.View entering={FadeIn.duration(200)}>
+        <PressableFeedback
+          onLongPress={handleLongPress}
+          onPressIn={() =>
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+          }
+          delayLongPress={350}
           style={{
-            flexDirection: "column",
-            gap: spacing.xs,
-            maxWidth: "85%",
+            flexDirection: "row",
+            paddingVertical: spacing.md,
+            alignItems: "flex-end",
+            justifyContent: "flex-end",
+            paddingHorizontal: spacing.md,
           }}
         >
-          {message.replyToMessage && (
-            <MessageReplyQuote
-              replyToMessage={message.replyToMessage}
-              isUserMessage={true}
-            />
-          )}
-          {messageParts.map((part, index) => {
-            const { isEmojiOnly, count } = getEmojiInfo(part);
-            if (isEmojiOnly && messageParts.length === 1) {
-              const emojiSize =
-                count === 1 ? 52 : count === 2 ? 40 : count === 3 ? 32 : null;
-              if (emojiSize) {
-                return (
-                  <Text
-                    key={`${message.id}-${index}`}
-                    style={{
-                      fontSize: emojiSize,
-                      lineHeight: emojiSize + 8,
-                    }}
-                  >
-                    {part}
-                  </Text>
-                );
-              }
-            }
-            return (
-              <MessageBubble
-                key={`${message.id}-${index}`}
-                message={part}
-                variant="sent"
-                grouped={
-                  messageParts.length === 1
-                    ? "none"
-                    : index === 0
-                      ? "first"
-                      : index === messageParts.length - 1
-                        ? "last"
-                        : "middle"
-                }
+          <View
+            style={{
+              flexDirection: "column",
+              gap: spacing.xs,
+              maxWidth: "80%",
+            }}
+          >
+            {message.replyToMessage && (
+              <MessageReplyQuote
+                replyToMessage={message.replyToMessage}
+                isUserMessage={true}
               />
-            );
-          })}
-        </View>
-      </PressableFeedback>
+            )}
+            {messageParts.map((part, index) => {
+              const { isEmojiOnly, count } = getEmojiInfo(part);
+              if (isEmojiOnly && messageParts.length === 1) {
+                const emojiSize =
+                  count === 1 ? 52 : count === 2 ? 40 : count === 3 ? 32 : null;
+                if (emojiSize) {
+                  return (
+                    <Text
+                      key={`${message.id}-${index}`}
+                      style={{
+                        fontSize: emojiSize,
+                        lineHeight: emojiSize + 8,
+                      }}
+                    >
+                      {part}
+                    </Text>
+                  );
+                }
+              }
+              return (
+                <MessageBubble
+                  key={`${message.id}-${index}`}
+                  message={part}
+                  variant="sent"
+                  grouped={
+                    messageParts.length === 1
+                      ? "none"
+                      : index === 0
+                        ? "first"
+                        : index === messageParts.length - 1
+                          ? "last"
+                          : "middle"
+                  }
+                />
+              );
+            })}
+          </View>
+        </PressableFeedback>
+      </Animated.View>
     );
   }
 
   // ---- AI message ----------------------------------------------------------
+  // Don't render an empty wrapper — only render if there's actual content to show
+  const hasAnyContent =
+    messageParts.length > 0 ||
+    isGeneratingImage ||
+    showToolProgress ||
+    showThinkingCard ||
+    showLoadingState ||
+    !!parsedContent.thinking ||
+    !!message.toolData?.length ||
+    !!message.memoryData ||
+    !!message.followUpActions?.length;
+
+  if (!hasAnyContent) return null;
+
   return (
-    <PressableFeedback
-      onLongPress={handleLongPress}
-      delayLongPress={350}
-      style={{
-        flexDirection: "column",
-        paddingVertical: spacing.sm,
-        alignItems: "flex-start",
-        width: "100%",
-      }}
-    >
-      {/* Tool data cards — full width, rendered before message text */}
-      {message.toolData?.length ? (
-        <View style={{ width: "100%", marginBottom: spacing.xs }}>
-          <ToolDataRenderer toolData={message.toolData} />
-        </View>
-      ) : null}
+    <Animated.View entering={FadeIn.duration(200)}>
+      <PressableFeedback
+        onLongPress={handleLongPress}
+        onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+        delayLongPress={350}
+        style={{
+          flexDirection: "column",
+          paddingVertical: spacing.sm,
+          alignItems: "flex-start",
+          width: "100%",
+        }}
+      >
+        {/* Tool data cards — rendered inline before message text, matches
+            web's chat_bubble_container flow (flex column, gap from cards).
+            alignSelf: stretch so the wrapper fills the parent column —
+            ToolCallsSection's expanded Input/Output panels need to span the
+            full chat width, not collapse to icon+title content size. */}
+        {message.toolData?.length ? (
+          <View style={{ paddingHorizontal: spacing.md, alignSelf: "stretch" }}>
+            <ToolDataRenderer toolData={message.toolData} />
+          </View>
+        ) : null}
 
-      {/* Thinking / reasoning bubble (collapsible) */}
-      {parsedContent.thinking ? (
-        <View
-          style={{ paddingHorizontal: spacing.md, marginBottom: spacing.xs }}
-        >
-          <ThinkingBubble thinkingContent={parsedContent.thinking} />
-        </View>
-      ) : null}
+        {/* Thinking / reasoning bubble (collapsible) */}
+        {parsedContent.thinking ? (
+          <View
+            style={{ paddingHorizontal: spacing.md, marginBottom: spacing.xs }}
+          >
+            <ThinkingBubble thinkingContent={parsedContent.thinking} />
+          </View>
+        ) : null}
 
-      {/* Main message content */}
-      <View style={{ width: "100%" }}>
+        {/* Main message content — full width, no avatar (mobile space constraint) */}
         {message.imageData || isGeneratingImage ? (
-          <View style={{ paddingHorizontal: spacing.md }}>
+          <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
             <ImageBubble
               imageData={message.imageData ?? { url: "", prompt: "" }}
               isGenerating={isGeneratingImage}
@@ -332,14 +352,14 @@ export function ChatMessage({
             />
           </View>
         ) : showToolProgress ? (
-          <View style={{ paddingHorizontal: spacing.md }}>
+          <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
             <ToolProgressCard
               toolName={progressToolName}
               progressMessage={progressMessage}
             />
           </View>
         ) : showThinkingCard ? (
-          <View style={{ paddingHorizontal: spacing.md }}>
+          <View style={{ paddingHorizontal: spacing.md, width: "100%" }}>
             <ThinkingCard
               message={
                 loadingMessage !== "Thinking..." ? loadingMessage : undefined
@@ -352,7 +372,7 @@ export function ChatMessage({
               loadingMessage !== "Thinking..." ? loadingMessage : undefined
             }
           />
-        ) : (
+        ) : messageParts.length > 0 ? (
           messageParts.map((part, partIndex) => {
             const segments = parseOpenUISegments(part, !!isLoading);
             const grouped =
@@ -377,7 +397,10 @@ export function ChatMessage({
                 return (
                   <View
                     key={key}
-                    style={{ paddingHorizontal: spacing.md, width: "100%" }}
+                    style={{
+                      paddingHorizontal: spacing.md,
+                      width: "100%",
+                    }}
                   >
                     <OpenUIRenderer
                       code={segment.content}
@@ -397,46 +420,40 @@ export function ChatMessage({
               );
             });
           })
-        )}
-      </View>
+        ) : null}
 
-      {/* Link preview – shown below message content for AI messages */}
-      {!isUser &&
-      !isLoading &&
-      linkPreviewUrls.length > 0 &&
-      linkPreviewData?.length ? (
-        <View style={{ paddingHorizontal: spacing.md, marginTop: spacing.xs }}>
-          <LinkPreviewCard
-            url={linkPreviewData[0].url}
-            title={linkPreviewData[0].title}
-            description={linkPreviewData[0].description}
-            imageUrl={linkPreviewData[0].imageUrl}
-            favicon={linkPreviewData[0].favicon}
-            domain={linkPreviewData[0].domain}
-          />
-        </View>
-      ) : null}
+        {/* Link preview – shown below message content for AI messages */}
+        {!isUser &&
+        !isLoading &&
+        linkPreviewUrls.length > 0 &&
+        linkPreviewData?.length ? (
+          <View
+            style={{ paddingHorizontal: spacing.md, marginTop: spacing.xs }}
+          >
+            <LinkPreviewCard
+              url={linkPreviewData[0].url}
+              title={linkPreviewData[0].title}
+              description={linkPreviewData[0].description}
+              imageUrl={linkPreviewData[0].imageUrl}
+              favicon={linkPreviewData[0].favicon}
+              domain={linkPreviewData[0].domain}
+            />
+          </View>
+        ) : null}
 
-      {/* Memory indicator pill */}
-      {message.memoryData ? (
-        <PressableFeedback
-          onPress={() =>
-            memorySheetRef.current?.open(message.memoryData as MemoryDataShape)
-          }
-        >
+        {/* Memory indicator pill */}
+        {message.memoryData ? (
           <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
-        </PressableFeedback>
-      ) : null}
+        ) : null}
 
-      {/* Follow-up action chips */}
-      {message.followUpActions?.length ? (
-        <FollowUpActions
-          actions={message.followUpActions}
-          onActionPress={onFollowUpAction}
-        />
-      ) : null}
-
-      <MemoryBottomSheet ref={memorySheetRef} />
-    </PressableFeedback>
+        {/* Follow-up action chips */}
+        {message.followUpActions?.length ? (
+          <FollowUpActions
+            actions={message.followUpActions}
+            onActionPress={onFollowUpAction}
+          />
+        ) : null}
+      </PressableFeedback>
+    </Animated.View>
   );
 }

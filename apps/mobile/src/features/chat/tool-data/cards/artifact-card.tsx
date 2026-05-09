@@ -1,305 +1,165 @@
 import type { ArtifactData } from "@gaia/shared";
-import { Linking, View } from "react-native";
+import { Linking, Pressable, View } from "react-native";
 import {
-  type AnyIcon,
   AppIcon,
   CodeIcon,
-  DocumentAttachmentIcon,
-  Download02Icon,
+  Download01Icon,
   File01Icon,
-  FileEmpty02Icon,
-  Image01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  ToolCardHeader,
-  ToolCardInner,
-  ToolCardShell,
-} from "@/features/chat/tool-data/primitives";
 
-// -- File type config (mirrors web FILE_TYPE_CONFIG) --------------------------
+// Ported 1:1 from apps/web/src/features/chat/components/bubbles/bot/FileArtifactSection.tsx
+
+// HeroUI Chip color → mobile pill background + text color.
+// Mirrors the chip variant="flat" tone used in web FILE_TYPE_CONFIG.
+type ChipColor =
+  | "primary"
+  | "secondary"
+  | "success"
+  | "warning"
+  | "danger"
+  | "default";
 
 interface FileTypeConfig {
   label: string;
-  color: string; // text color class
-  bg: string; // pill bg class
-  icon: "code" | "file" | "image" | "pdf";
+  color: ChipColor;
+  icon: "code" | "file";
 }
 
 const FILE_TYPE_CONFIG: Record<string, FileTypeConfig> = {
-  md: {
-    label: "Markdown",
-    color: "text-violet-400",
-    bg: "bg-violet-400/10",
-    icon: "file",
-  },
-  html: {
-    label: "HTML",
-    color: "text-amber-400",
-    bg: "bg-amber-400/10",
-    icon: "code",
-  },
-  htm: {
-    label: "HTML",
-    color: "text-amber-400",
-    bg: "bg-amber-400/10",
-    icon: "code",
-  },
-  txt: {
-    label: "Text",
-    color: "text-zinc-400",
-    bg: "bg-zinc-700",
-    icon: "file",
-  },
-  json: {
-    label: "JSON",
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10",
-    icon: "code",
-  },
-  py: {
-    label: "Python",
-    color: "text-primary",
-    bg: "bg-primary/10",
-    icon: "code",
-  },
-  js: {
-    label: "JavaScript",
-    color: "text-amber-400",
-    bg: "bg-amber-400/10",
-    icon: "code",
-  },
-  ts: {
-    label: "TypeScript",
-    color: "text-primary",
-    bg: "bg-primary/10",
-    icon: "code",
-  },
-  tsx: {
-    label: "TSX",
-    color: "text-primary",
-    bg: "bg-primary/10",
-    icon: "code",
-  },
-  jsx: {
-    label: "JSX",
-    color: "text-amber-400",
-    bg: "bg-amber-400/10",
-    icon: "code",
-  },
-  css: {
-    label: "CSS",
-    color: "text-violet-400",
-    bg: "bg-violet-400/10",
-    icon: "code",
-  },
-  csv: {
-    label: "CSV",
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10",
-    icon: "file",
-  },
-  sql: {
-    label: "SQL",
-    color: "text-primary",
-    bg: "bg-primary/10",
-    icon: "code",
-  },
-  yaml: {
-    label: "YAML",
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10",
-    icon: "code",
-  },
-  yml: {
-    label: "YAML",
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10",
-    icon: "code",
-  },
-  xml: {
-    label: "XML",
-    color: "text-amber-400",
-    bg: "bg-amber-400/10",
-    icon: "code",
-  },
-  sh: {
-    label: "Shell",
-    color: "text-zinc-300",
-    bg: "bg-zinc-700",
-    icon: "code",
-  },
-  pdf: {
-    label: "PDF",
-    color: "text-red-400",
-    bg: "bg-red-400/10",
-    icon: "pdf",
-  },
-  png: {
-    label: "PNG",
-    color: "text-pink-400",
-    bg: "bg-pink-400/10",
-    icon: "image",
-  },
-  jpg: {
-    label: "JPEG",
-    color: "text-pink-400",
-    bg: "bg-pink-400/10",
-    icon: "image",
-  },
-  jpeg: {
-    label: "JPEG",
-    color: "text-pink-400",
-    bg: "bg-pink-400/10",
-    icon: "image",
-  },
-  gif: {
-    label: "GIF",
-    color: "text-pink-400",
-    bg: "bg-pink-400/10",
-    icon: "image",
-  },
-  webp: {
-    label: "WebP",
-    color: "text-pink-400",
-    bg: "bg-pink-400/10",
-    icon: "image",
-  },
-  svg: {
-    label: "SVG",
-    color: "text-pink-400",
-    bg: "bg-pink-400/10",
-    icon: "image",
-  },
+  md: { label: "Markdown", color: "secondary", icon: "file" },
+  html: { label: "HTML", color: "warning", icon: "code" },
+  htm: { label: "HTML", color: "warning", icon: "code" },
+  txt: { label: "Text", color: "default", icon: "file" },
+  json: { label: "JSON", color: "success", icon: "code" },
+  py: { label: "Python", color: "primary", icon: "code" },
+  js: { label: "JavaScript", color: "warning", icon: "code" },
+  ts: { label: "TypeScript", color: "primary", icon: "code" },
+  tsx: { label: "TSX", color: "primary", icon: "code" },
+  jsx: { label: "JSX", color: "warning", icon: "code" },
+  css: { label: "CSS", color: "secondary", icon: "code" },
+  csv: { label: "CSV", color: "success", icon: "file" },
+  tex: { label: "LaTeX", color: "danger", icon: "file" },
+  sql: { label: "SQL", color: "primary", icon: "code" },
+  yaml: { label: "YAML", color: "success", icon: "code" },
+  yml: { label: "YAML", color: "success", icon: "code" },
+  xml: { label: "XML", color: "warning", icon: "code" },
+  sh: { label: "Shell", color: "default", icon: "code" },
 };
 
-function getFileConfig(filename: string, contentType?: string): FileTypeConfig {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  if (FILE_TYPE_CONFIG[ext]) return FILE_TYPE_CONFIG[ext];
+// HeroUI flat-variant chip palette (bg-{color}/20 + text-{color}).
+// Fixed hex values keep the mobile build aligned with the web rendered look
+// without depending on web-only Tailwind tokens.
+const CHIP_PALETTE: Record<ChipColor, { bg: string; text: string }> = {
+  primary: { bg: "rgba(0,187,255,0.2)", text: "#00bbff" },
+  secondary: { bg: "rgba(168,85,247,0.2)", text: "#c084fc" },
+  success: { bg: "rgba(34,197,94,0.2)", text: "#4ade80" },
+  warning: { bg: "rgba(245,158,11,0.2)", text: "#fbbf24" },
+  danger: { bg: "rgba(239,68,68,0.2)", text: "#f87171" },
+  default: { bg: "rgba(63,63,70,0.6)", text: "#e4e4e7" },
+};
 
-  // Fall back on content type
-  const type = (contentType ?? "").toLowerCase();
-  if (type.startsWith("image/")) {
-    return {
-      label: "Image",
-      color: "text-pink-400",
-      bg: "bg-pink-400/10",
-      icon: "image",
-    };
-  }
-  if (type.includes("pdf")) {
-    return {
-      label: "PDF",
-      color: "text-red-400",
-      bg: "bg-red-400/10",
-      icon: "pdf",
-    };
-  }
-
-  return {
-    label: ext.toUpperCase() || "File",
-    color: "text-zinc-400",
-    bg: "bg-zinc-700",
-    icon: "file",
-  };
-}
-
-// -- Helpers ------------------------------------------------------------------
-
-function formatFileSize(bytes?: number): string | undefined {
-  if (bytes === undefined || bytes === null) return undefined;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-function getFileIcon(iconKind: FileTypeConfig["icon"]): AnyIcon {
-  if (iconKind === "image") return Image01Icon;
-  if (iconKind === "pdf") return DocumentAttachmentIcon;
-  if (iconKind === "code") return CodeIcon;
-  return FileEmpty02Icon;
-}
-
-// -- File row -----------------------------------------------------------------
-
-function FileRow({ file }: { file: ArtifactData }) {
-  const config = getFileConfig(file.filename ?? "", file.content_type);
-  const icon = getFileIcon(config.icon);
-  const size = formatFileSize(file.size_bytes);
-  const hasUrl = Boolean(file.path);
-
-  const onPress = hasUrl ? () => Linking.openURL(file.path) : undefined;
-
+function getFileConfig(filename: string): FileTypeConfig {
+  const ext = filename.split(".").pop()?.toLowerCase() || "";
   return (
-    <ToolCardInner dense onPress={onPress}>
-      <View className="flex-row items-center gap-3">
-        {/* File type icon — square container, matches web shrink-0 pattern */}
-        <View className="w-8 h-8 rounded-lg bg-zinc-700 items-center justify-center shrink-0">
-          <AppIcon icon={icon} size={16} color="#00bbff" />
-        </View>
-
-        <View className="flex-1 min-w-0">
-          {/* File type chip + filename row (mirrors web layout) */}
-          <View className="flex-row items-center gap-2 mb-0.5 flex-wrap">
-            <View className={`rounded-full px-2 py-0.5 ${config.bg}`}>
-              <Text className={`text-[10px] font-medium ${config.color}`}>
-                {config.label}
-              </Text>
-            </View>
-            <Text
-              className="text-zinc-100 text-sm font-medium flex-shrink"
-              numberOfLines={1}
-            >
-              {file.filename ?? "Untitled"}
-            </Text>
-          </View>
-          <Text className="text-zinc-400 text-xs" numberOfLines={1}>
-            {[size, hasUrl ? "Tap to open" : undefined]
-              .filter((s): s is string => !!s)
-              .join(" · ")}
-          </Text>
-        </View>
-
-        {/* Open + Download actions — mirrors web's Open button + Download icon */}
-        {hasUrl ? (
-          <View className="flex-row items-center gap-2 shrink-0">
-            <View
-              className="rounded-lg px-2.5 py-1 items-center justify-center"
-              style={{ backgroundColor: "rgba(0,187,255,0.15)" }}
-            >
-              <Text className="text-primary text-xs font-semibold">Open</Text>
-            </View>
-            <AppIcon icon={Download02Icon} size={16} color="#71717a" />
-          </View>
-        ) : null}
-      </View>
-    </ToolCardInner>
+    FILE_TYPE_CONFIG[ext] || {
+      label: ext.toUpperCase() || "File",
+      color: "default",
+      icon: "file",
+    }
   );
 }
 
-// -- Card ---------------------------------------------------------------------
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
-export function ArtifactCard({ data }: { data: ArtifactData[] }) {
-  const files = Array.isArray(data) ? data : [data];
+function ArtifactRow({ artifact }: { artifact: ArtifactData }) {
+  const config = getFileConfig(artifact.filename);
+  const Icon = config.icon === "code" ? CodeIcon : File01Icon;
+  const chipPalette = CHIP_PALETTE[config.color];
+
+  // Mobile cannot stream blobs to disk like web; both Open and Download
+  // fall through to Linking.openURL so the artifact still resolves if the
+  // backend exposes a public URL.
+  const open = () => {
+    if (artifact.path) Linking.openURL(artifact.path).catch(() => undefined);
+  };
 
   return (
-    <ToolCardShell>
-      <ToolCardHeader icon={File01Icon} title="Files" count={files.length} />
-      {files.length === 0 ? (
-        <Text className="text-zinc-500 text-sm">No files</Text>
-      ) : (
-        <View className="gap-1.5">
-          {files.map((file, idx) => (
-            <FileRow
-              key={`${file.path ?? "file"}-${file.filename ?? idx}`}
-              file={file}
-            />
-          ))}
+    // Mirrors web `border border-zinc-700/80 bg-zinc-900/70` standalone card.
+    <Pressable
+      onPress={open}
+      className="rounded-2xl border border-zinc-700 bg-zinc-900 p-3.5"
+      android_ripple={{ color: "rgba(255,255,255,0.05)" }}
+    >
+      <View className="flex-row items-center justify-between gap-3">
+        {/* Left: icon + chip + filename + size */}
+        <View className="flex-1 min-w-0 flex-row items-center gap-2.5">
+          <AppIcon icon={Icon} size={20} color="#00bbff" />
+
+          <View className="flex-1 min-w-0">
+            <View className="mb-1 flex-row items-center gap-2.5">
+              <View
+                className="rounded-full px-2 py-0.5"
+                style={{ backgroundColor: chipPalette.bg }}
+              >
+                <Text
+                  className="text-xs font-medium"
+                  style={{ color: chipPalette.text }}
+                >
+                  {config.label}
+                </Text>
+              </View>
+              <Text
+                className="flex-1 text-sm font-medium text-white"
+                numberOfLines={1}
+              >
+                {artifact.filename}
+              </Text>
+            </View>
+
+            <Text className="text-xs text-zinc-400" numberOfLines={1}>
+              {formatSize(artifact.size_bytes)} · Tap to open
+            </Text>
+          </View>
         </View>
-      )}
-    </ToolCardShell>
+
+        {/* Right: Open button + Download icon */}
+        <View className="flex-row items-center gap-2 shrink-0">
+          <Pressable
+            onPress={open}
+            className="rounded-lg bg-zinc-800 px-2.5 py-1"
+          >
+            <Text className="text-xs font-medium text-zinc-200">Open</Text>
+          </Pressable>
+          <Pressable
+            onPress={open}
+            hitSlop={8}
+            accessibilityLabel="Download artifact"
+          >
+            <AppIcon icon={Download01Icon} size={16} color="#d4d4d8" />
+          </Pressable>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+export function ArtifactCard({ data }: { data: ArtifactData[] }) {
+  const artifacts = Array.isArray(data) ? data : [data];
+
+  if (artifacts.length === 0) return null;
+
+  // Mirrors web `mt-3 flex flex-col gap-2` wrapper; mx-4 my-1 keeps the cards
+  // aligned with other mobile tool renderers in the chat stream.
+  return (
+    <View className="mx-4 my-1 gap-2">
+      {artifacts.map((artifact, index) => (
+        <ArtifactRow key={`${artifact.path}-${index}`} artifact={artifact} />
+      ))}
+    </View>
   );
 }

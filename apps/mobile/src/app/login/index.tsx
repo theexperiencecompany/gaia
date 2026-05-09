@@ -1,6 +1,5 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Alert } from "react-native";
 import { fetchUserInfo, startOAuthFlow } from "@/features/auth/api/auth-api";
 import { AuthScreen } from "@/features/auth/components/auth-screen";
 import { useAuth } from "@/features/auth/hooks/use-auth";
@@ -13,8 +12,10 @@ export default function LoginScreen() {
   const router = useRouter();
   const { refreshAuth } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleLogin = async () => {
+    setErrorMessage(null);
     setIsLoading(true);
     try {
       const token = await startOAuthFlow();
@@ -24,13 +25,10 @@ export default function LoginScreen() {
       await refreshAuth();
       router.replace("/");
     } catch (error) {
-      console.error("Login error:", error);
-      Alert.alert(
-        "Login Failed",
+      setErrorMessage(
         error instanceof Error
           ? error.message
           : "An unexpected error occurred. Please try again.",
-        [{ text: "OK" }],
       );
     } finally {
       setIsLoading(false);
@@ -44,6 +42,7 @@ export default function LoginScreen() {
       footerQuestion="Don't have an account?"
       footerLinkLabel="Sign up"
       isLoading={isLoading}
+      errorMessage={errorMessage}
       onSubmit={() => void handleLogin()}
       onFooterLinkPress={() => router.push("/signup")}
     />

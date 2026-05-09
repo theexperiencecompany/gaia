@@ -1,138 +1,159 @@
+import { Button, Chip } from "heroui-native";
 import { useCallback, useRef } from "react";
-import { Pressable, View } from "react-native";
-import {
-  AlertCircleIcon,
-  CheckmarkCircle02Icon,
-  ConnectIcon,
-} from "@/components/icons";
+import { View } from "react-native";
+import { AlertCircleIcon, ConnectIcon } from "@/components/icons";
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
-import { ToolCardShell } from "@/features/chat/tool-data/primitives";
+import { CollapsibleCard } from "@/features/chat/tool-data/primitives";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
-import { connectIntegration } from "@/features/integrations/api/integrations-api";
 import {
   BearerTokenSheet,
   type BearerTokenSheetRef,
 } from "@/features/integrations/components/BearerTokenSheet";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
+// Web-aligned shape: server payload only carries integration_id + message.
+// All visual fields (name, description, status, available, authType) are
+// resolved from the live integrations list, mirroring web's
+// IntegrationConnectionPrompt behaviour.
 export interface IntegrationConnectionData {
-  // API sends integration_id; integration_name is a fallback for older payloads
-  integration_id?: string;
+  integration_id: string;
+  message: string;
+  // Optional fields tolerated for backward compat with older payloads
   integration_name?: string;
-  message?: string;
-  connect_url?: string;
-  auth_type?: "oauth" | "bearer" | "none";
   icon_url?: string;
-  description?: string;
-  // Status field — when present indicates current connection state
-  status?: "connected" | "disconnected" | "error";
+  connect_url?: string;
 }
 
-function formatIntegrationName(id?: string): string {
-  if (!id) return "Integration";
-  return id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+interface IntegrationConnectionCardProps {
+  data: IntegrationConnectionData;
+  /** Optional override — defaults to useIntegrations().connect */
+  onConnect?: (integrationId: string) => Promise<unknown> | undefined;
 }
 
 export function IntegrationConnectionCard({
   data,
-}: {
-  data: IntegrationConnectionData;
-}) {
+  onConnect,
+}: IntegrationConnectionCardProps) {
+  const { integration_id, message } = data;
+  const { integrations, connect } = useIntegrations();
   const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
 
-  const integrationId = data.integration_id ?? data.integration_name ?? "";
-  const displayName =
-    data.integration_name ?? formatIntegrationName(data.integration_id);
-  const authType = data.auth_type ?? "oauth";
-  const isConnected = data.status === "connected";
+  const integration = integrations.find((i) => i.id === integration_id);
 
-  const icon = integrationId
-    ? getToolCategoryIcon(integrationId, {
-        size: 20,
-        showBackground: false,
-      })
-    : null;
-
-  const handleConnect = useCallback(() => {
-    if (authType === "bearer") {
-      bearerSheetRef.current?.open({
-        integrationId,
-        integrationName: displayName,
-        iconUrl: data.icon_url,
-      });
-    } else {
-      void connectIntegration(integrationId);
+  const handleConnect = useCallback(async () => {
+    if (!integration) return;
+    try {
+      if (integration.authType === "bearer") {
+        bearerSheetRef.current?.open({
+          integrationId: integration.id,
+          integrationName: integration.name,
+          iconUrl: integration.iconUrl,
+        });
+        return;
+      }
+      if (onConnect) {
+        await onConnect(integration.id);
+      } else {
+        await connect(integration.id);
+      }
+    } catch (error) {
+      console.error("Failed to connect integration:", error);
     }
-  }, [authType, integrationId, displayName, data.icon_url]);
+  }, [connect, integration, onConnect]);
+
+  // Match web: silent null when integration not in the list yet.
+  if (!integration) {
+    return null;
+  }
+
+  const isConnected = integration.status === "connected";
+  const isAvailable =
+    integration.source === "custom" || !!integration.available;
+
+  const headerIcon = getToolCategoryIcon(integration_id, {
+    size: 20,
+    showBackground: false,
+  });
 
   return (
-    <ToolCardShell>
-      {/* Header: icon + name + connection status badge */}
-      <View className="flex-row items-start gap-3 mb-3">
-        <View className="w-9 h-9 rounded-xl bg-zinc-700 items-center justify-center shrink-0">
-          {icon ?? <AppIcon icon={ConnectIcon} size={18} color="#a1a1aa" />}
-        </View>
+    <>
+      <CollapsibleCard
+        customIcon={headerIcon ?? undefined}
+        icon={headerIcon ? undefined : ConnectIcon}
+        iconSize={20}
+        title={(open) => `${open ? "Hide" : "Show"} 1 Integration Required`}
+        titleTone="muted"
+      >
+        <View className="rounded-2xl bg-zinc-900 p-3">
+          {/* Header — icon + name + status chip + description */}
+          <View className="flex-row items-start gap-3">
+            <View className="shrink-0 pt-0.5">
+              {getToolCategoryIcon(integration_id, {
+                size: 22,
+                showBackground: false,
+              })}
+            </View>
 
-        <View className="flex-1">
-          <View className="flex-row items-center gap-2 flex-wrap">
-            <Text className="text-zinc-100 text-sm font-semibold">
-              {displayName}
-            </Text>
-            {isConnected ? (
-              /* Connected badge — green, matches web Chip color="success" */
-              <View className="flex-row items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5">
-                <AppIcon
-                  icon={CheckmarkCircle02Icon}
-                  size={10}
-                  color="#22c55e"
-                />
-                <Text className="text-green-400 text-[11px] font-medium">
-                  Connected
+            <View className="min-w-0 flex-1 gap-1">
+              <View className="flex-row items-center gap-2 flex-wrap">
+                <Text className="text-zinc-100 text-sm font-medium">
+                  {integration.name}
                 </Text>
+                {isConnected ? (
+                  <Chip
+                    size="sm"
+                    variant="soft"
+                    color="success"
+                    animation="disable-all"
+                  >
+                    <Chip.Label>Connected</Chip.Label>
+                  </Chip>
+                ) : (
+                  <Chip
+                    size="sm"
+                    variant="soft"
+                    color="warning"
+                    animation="disable-all"
+                  >
+                    <Chip.Label>Not Connected</Chip.Label>
+                  </Chip>
+                )}
               </View>
-            ) : (
-              /* Not Connected badge — amber/warning, matches web Chip color="warning" */
-              <View className="rounded-full bg-amber-400/10 px-2 py-0.5">
-                <Text className="text-amber-400 text-[11px] font-medium">
-                  Not Connected
-                </Text>
-              </View>
-            )}
+
+              <Text className="text-zinc-400 text-xs" numberOfLines={3}>
+                {integration.description}
+              </Text>
+            </View>
           </View>
-          {data.description ? (
-            <Text className="text-zinc-400 text-xs mt-0.5" numberOfLines={2}>
-              {data.description}
-            </Text>
-          ) : (
-            <Text className="text-zinc-500 text-xs mt-0.5">
-              This requires {displayName} to be connected
-            </Text>
-          )}
-        </View>
-      </View>
 
-      {/* Warning message — only shown when not connected, matches web layout */}
-      {!isConnected && data.message ? (
-        <View className="flex-row items-start gap-2 rounded-xl bg-amber-400/5 p-3 mb-3">
-          <AppIcon icon={AlertCircleIcon} size={14} color="#fbbf24" />
-          <Text className="text-amber-400 text-xs flex-1 leading-[18px]">
-            {data.message}
-          </Text>
-        </View>
-      ) : null}
+          {/* Warning + Connect — only when not connected and available */}
+          {!isConnected && isAvailable ? (
+            <View className="mt-3 gap-2">
+              <View className="flex-row items-start gap-2 rounded-xl bg-amber-400/10 p-3">
+                <View className="pt-0.5">
+                  <AppIcon icon={AlertCircleIcon} size={16} color="#facc15" />
+                </View>
+                <Text className="text-amber-300 text-xs flex-1 leading-[18px]">
+                  {message}
+                </Text>
+              </View>
 
-      {/* Connect button — only shown when not connected */}
-      {!isConnected ? (
-        <Pressable
-          onPress={handleConnect}
-          className="rounded-xl bg-primary items-center justify-center py-2.5"
-          android_ripple={{ color: "rgba(0,0,0,0.1)" }}
-        >
-          <Text className="text-black text-sm font-semibold">Connect</Text>
-        </Pressable>
-      ) : null}
+              <Button
+                size="sm"
+                variant="primary"
+                onPress={() => {
+                  void handleConnect();
+                }}
+              >
+                <Button.Label>Connect</Button.Label>
+              </Button>
+            </View>
+          ) : null}
+        </View>
+      </CollapsibleCard>
 
       <BearerTokenSheet ref={bearerSheetRef} />
-    </ToolCardShell>
+    </>
   );
 }

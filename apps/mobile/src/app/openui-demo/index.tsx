@@ -1,10 +1,10 @@
 import { OPENUI_SAMPLES, type OpenUISample } from "@gaia/shared/utils";
-import { Stack, useRouter } from "expo-router";
-import { Pressable, ScrollView, View } from "react-native";
+import { Stack } from "expo-router";
+import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppIcon, ArrowLeft01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { OpenUIRenderer } from "@/features/chat/components/openui/OpenUIRenderer";
+import { BackButton } from "@/shared/components/ui/back-button";
 
 function SampleBlock({ sample }: { sample: OpenUISample }) {
   return (
@@ -18,7 +18,6 @@ function SampleBlock({ sample }: { sample: OpenUISample }) {
 }
 
 export default function OpenUIDemoScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const groups = OPENUI_SAMPLES.reduce<Record<string, OpenUISample[]>>(
@@ -45,13 +44,7 @@ export default function OpenUIDemoScreen() {
           gap: 12,
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={12}
-          style={{ padding: 4 }}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={22} color="#e4e4e7" />
-        </Pressable>
+        <BackButton />
         <View style={{ flex: 1 }}>
           <Text className="text-lg font-semibold text-zinc-100">
             OpenUI Gallery

@@ -227,7 +227,7 @@ export default function TodoModal({
     if (commands.labels && commands.labels.length > 0) {
       // Avoid duplicate labels
       const uniqueLabels = [
-        ...new Set([...formData.labels, ...commands.labels]),
+        ...new Set([...(formData.labels ?? []), ...commands.labels]),
       ];
       updateField("labels", uniqueLabels);
     }
@@ -321,12 +321,12 @@ export default function TodoModal({
 
                 {/* Fields Row with Chips */}
                 <TodoFieldsRow
-                  priority={formData.priority}
+                  priority={formData.priority ?? Priority.NONE}
                   projectId={formData.project_id}
                   projects={projects}
                   dueDate={formData.due_date}
                   dueDateTimezone={formData.due_date_timezone}
-                  labels={formData.labels}
+                  labels={formData.labels ?? []}
                   onPriorityChange={(priority) =>
                     updateField("priority", priority)
                   }

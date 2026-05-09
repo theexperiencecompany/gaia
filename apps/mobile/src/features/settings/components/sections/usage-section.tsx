@@ -27,7 +27,7 @@ function UsageBar({ title, period }: UsageBarProps) {
     <View style={{ gap: spacing.xs }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
         <Text style={{ fontSize: fontSize.sm }}>{title}</Text>
-        <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
+        <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
           {period.used} / {period.limit}
         </Text>
       </View>
@@ -104,7 +104,7 @@ export function UsageSection() {
           padding: spacing.lg,
         }}
       >
-        <Text style={{ color: "#8e8e93", textAlign: "center" }}>
+        <Text style={{ color: "#71717a", textAlign: "center" }}>
           No usage data available.
         </Text>
       </View>
@@ -124,13 +124,13 @@ export function UsageSection() {
       }}
     >
       {/* Plan badge */}
-      <Card variant="secondary" className="rounded-3xl bg-surface">
-        <Card.Body className="flex-row items-center justify-between px-5 py-5">
+      <Card variant="secondary" className="rounded-2xl bg-surface">
+        <Card.Body className="flex-row items-center justify-between px-4 py-4">
           <View>
             <Text
               style={{
                 fontSize: fontSize.xs,
-                color: "#8e8e93",
+                color: "#71717a",
                 textTransform: "uppercase",
                 letterSpacing: 1,
               }}
@@ -172,10 +172,10 @@ export function UsageSection() {
         })}
       </View>
 
-      <Card variant="secondary" className="rounded-3xl bg-surface">
-        <Card.Body className="gap-5 px-5 py-5">
+      <Card variant="secondary" className="rounded-2xl bg-surface">
+        <Card.Body className="gap-5 px-4 py-4">
           {featureEntries.length === 0 ? (
-            <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
+            <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
               No feature usage data.
             </Text>
           ) : (
@@ -195,15 +195,15 @@ export function UsageSection() {
           <Text
             style={{
               fontSize: fontSize.xs,
-              color: "#8e8e93",
+              color: "#71717a",
               textTransform: "uppercase",
               letterSpacing: 1,
             }}
           >
             Token Usage
           </Text>
-          <Card variant="secondary" className="rounded-3xl bg-surface">
-            <Card.Body className="gap-4 px-5 py-5">
+          <Card variant="secondary" className="rounded-2xl bg-surface">
+            <Card.Body className="gap-4 px-4 py-4">
               {Object.entries(summary.token_usage).map(([key, tok]) => {
                 const period = tok.periods[periodKey];
                 if (!period) return null;
@@ -217,7 +217,7 @@ export function UsageSection() {
                       }}
                     >
                       <Text style={{ fontSize: fontSize.sm }}>{tok.title}</Text>
-                      <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
+                      <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
                         {period.total_tokens.toLocaleString()} /{" "}
                         {period.limit.toLocaleString()}
                       </Text>

@@ -1,130 +1,99 @@
-import { Avatar, Spinner } from "heroui-native";
-import { useEffect, useRef } from "react";
-import { Animated, View } from "react-native";
+import { useEffect } from "react";
+import { View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { Text } from "@/components/ui/text";
-import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { useResponsive } from "@/lib/responsive";
-
-const GaiaLogo = require("@shared/assets/logo/gaia.png");
 
 interface LoadingIndicatorProps {
   progress?: string;
-  toolCategory?: string;
-  toolIconUrl?: string | null;
 }
 
-export function LoadingIndicator({
-  progress,
-  toolCategory,
-  toolIconUrl,
-}: LoadingIndicatorProps) {
-  const { spacing, fontSize, moderateScale } = useResponsive();
-  const avatarSize = moderateScale(24, 0.5);
-
-  // Spinning GAIA logo animation
-  const spinAnim = useRef(new Animated.Value(0)).current;
-
+function PulseDot({ delayMs }: { delayMs: number }) {
+  const opacity = useSharedValue(0.3);
   useEffect(() => {
-    const spin = Animated.loop(
-      Animated.timing(spinAnim, {
-        toValue: 1,
-        duration: 2000,
-        useNativeDriver: true,
-      }),
+    opacity.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 400 }),
+          withTiming(0.3, { duration: 400 }),
+        ),
+        -1,
+        false,
+      ),
     );
-    spin.start();
-    return () => spin.stop();
-  }, [spinAnim]);
+  }, [opacity, delayMs]);
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+  return (
+    <Animated.View
+      style={[
+        style,
+        {
+          width: 6,
+          height: 6,
+          borderRadius: 3,
+          backgroundColor: "#a1a1aa",
+          marginLeft: delayMs > 0 ? 4 : 0,
+        },
+      ]}
+    />
+  );
+}
 
-  const spinInterpolate = spinAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
-  });
+export function LoadingIndicator({ progress }: LoadingIndicatorProps) {
+  const { spacing, fontSize } = useResponsive();
 
-  // Slide-up text animation
-  const textTranslateY = useRef(new Animated.Value(8)).current;
-  const textOpacity = useRef(new Animated.Value(0)).current;
+  const translateY = useSharedValue(8);
+  const opacity = useSharedValue(0);
 
   useEffect(() => {
-    textTranslateY.setValue(8);
-    textOpacity.setValue(0);
-    Animated.parallel([
-      Animated.timing(textTranslateY, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(textOpacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [progress]);
+    translateY.value = 8;
+    opacity.value = 0;
+    translateY.value = withTiming(0, { duration: 200 });
+    opacity.value = withTiming(1, { duration: 200 });
+  }, [progress, translateY, opacity]);
 
-  const toolIconElement = toolCategory
-    ? getToolCategoryIcon(
-        toolCategory,
-        { size: moderateScale(16, 0.5), showBackground: true, pulsating: true },
-        toolIconUrl,
-      )
-    : null;
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    opacity: opacity.value,
+  }));
 
   return (
     <View
       style={{
         flexDirection: "row",
-        alignItems: "flex-start",
+        alignItems: "center",
         gap: spacing.sm,
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.sm,
       }}
     >
-      <Animated.View style={{ transform: [{ rotate: spinInterpolate }] }}>
-        <Avatar
-          alt="Gaia"
-          size="sm"
-          color="default"
-          style={{ width: avatarSize, height: avatarSize }}
-        >
-          <Avatar.Image source={GaiaLogo} />
-          <Avatar.Fallback>G</Avatar.Fallback>
-        </Avatar>
-      </Animated.View>
-
-      <View
-        style={{
-          flexDirection: "column",
-          gap: spacing.xs,
-          paddingTop: 2,
-        }}
-      >
-        {progress ? (
-          <Animated.View
-            style={{
-              transform: [{ translateY: textTranslateY }],
-              opacity: textOpacity,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: fontSize.xs,
-                color: "#71717a",
-                fontWeight: "500",
-              }}
-              numberOfLines={1}
-            >
-              {progress}
-            </Text>
-          </Animated.View>
-        ) : null}
-
-        {toolIconElement ? (
-          toolIconElement
-        ) : (
-          <Spinner size="sm" color="default" />
-        )}
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <PulseDot delayMs={0} />
+        <PulseDot delayMs={150} />
+        <PulseDot delayMs={300} />
       </View>
+      <Animated.View style={animatedStyle}>
+        <Text
+          style={{
+            fontSize: fontSize.sm,
+            color: "#71717a",
+            fontWeight: "500",
+          }}
+          numberOfLines={1}
+        >
+          {progress ?? "Thinking..."}
+        </Text>
+      </Animated.View>
     </View>
   );
 }

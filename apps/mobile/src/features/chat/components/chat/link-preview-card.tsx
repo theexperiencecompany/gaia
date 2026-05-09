@@ -52,11 +52,9 @@ export function LinkPreviewCard({
     >
       <Card
         style={{
-          borderRadius: moderateScale(12, 0.5),
+          borderRadius: 16,
           overflow: "hidden",
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.08)",
-          backgroundColor: "rgba(255,255,255,0.04)",
+          backgroundColor: "#1e1e1e",
         }}
       >
         {imageUrl ? (
@@ -64,7 +62,7 @@ export function LinkPreviewCard({
             source={{ uri: imageUrl }}
             style={{
               width: "100%",
-              height: moderateScale(140, 0.5),
+              aspectRatio: 16 / 9,
             }}
             contentFit="cover"
           />
@@ -97,7 +95,7 @@ export function LinkPreviewCard({
             <Text
               style={{
                 fontSize: fontSize.xs,
-                color: "#8e8e93",
+                color: "#71717a",
                 flexShrink: 1,
               }}
               numberOfLines={1}
@@ -123,7 +121,7 @@ export function LinkPreviewCard({
             <Text
               style={{
                 fontSize: fontSize.xs,
-                color: "#8e8e93",
+                color: "#71717a",
                 lineHeight: fontSize.xs * 1.4,
               }}
               numberOfLines={2}
@@ -131,16 +129,6 @@ export function LinkPreviewCard({
               {description}
             </Text>
           ) : null}
-
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#00bbff",
-              marginTop: spacing.xs,
-            }}
-          >
-            Open
-          </Text>
         </Card.Body>
       </Card>
     </PressableFeedback>

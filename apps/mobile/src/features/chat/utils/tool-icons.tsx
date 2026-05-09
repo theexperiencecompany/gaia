@@ -3,6 +3,7 @@ import { getGaiaIcon, ToolsIcon } from "@icons";
 import type React from "react";
 import { useEffect, useRef } from "react";
 import { Animated, Image, View } from "react-native";
+import { INTEGRATION_LOGOS } from "@/features/integrations/constants/logos";
 
 export type { ToolIconConfig };
 
@@ -73,9 +74,17 @@ export function getToolCategoryIcon(
 ): React.ReactElement | null {
   const { size = 16, showBackground = true, pulsating = false } = iconProps;
 
-  const resolvedIconUrl = iconProps.iconUrl ?? iconUrl;
-
   const config = getToolIconConfig(category);
+
+  // For image-based icons (integrations), fall back to the bundled
+  // INTEGRATION_LOGOS map when the API doesn't return an icon URL — mirrors
+  // web's getIconPath() so registry tools (icon_url=null) still render the
+  // correct integration logo.
+  const integrationLogoFallback =
+    config?.isImage && config.icon ? INTEGRATION_LOGOS[config.icon] : undefined;
+
+  const resolvedIconUrl =
+    iconProps.iconUrl ?? iconUrl ?? integrationLogoFallback;
 
   if (!config) {
     if (resolvedIconUrl) {

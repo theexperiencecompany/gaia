@@ -1,4 +1,4 @@
-import type { ToolDataEntry } from "@gaia/shared/chat";
+import type { StreamToolOutput, ToolDataEntry } from "@gaia/shared/chat";
 import { parseChatStreamEvent } from "@gaia/shared/chat";
 import { createSSEConnection, type SSEEvent } from "@/lib/sse-client";
 import type {
@@ -22,6 +22,14 @@ export interface StreamCallbacks {
   onFollowUpActions?: (actions: string[]) => void;
   /** Called for each tool_data entry received during streaming. */
   onToolData?: (entry: ToolDataEntry) => void;
+  /**
+   * Called when the backend emits a tool_output event — the actual result
+   * string for a tool call, keyed by tool_call_id. Mirrors web's
+   * handleToolOutput; the consumer is expected to merge `output` into the
+   * matching tool_data entry (use mergeToolOutputIntoToolData from
+   * @gaia/shared/chat).
+   */
+  onToolOutput?: (output: StreamToolOutput) => void;
   onImageGenerationStarted?: (prompt: string) => void;
   onImageData?: (data: ImageData) => void;
   onDone: () => void;
@@ -180,10 +188,16 @@ export async function fetchChatStream(
             continue;
           }
 
-          if (
-            parsed.type === "tool_output" ||
-            parsed.type === "todo_progress"
-          ) {
+          if (parsed.type === "tool_output") {
+            // Web parity — the backend emits tool execution results on a
+            // separate event keyed by tool_call_id. Hand it to the caller so
+            // it can merge `output` into the matching tool_data entry
+            // (mergeToolOutputIntoToolData from @gaia/shared/chat).
+            callbacks.onToolOutput?.(parsed.output);
+            continue;
+          }
+
+          if (parsed.type === "todo_progress") {
             continue;
           }
 

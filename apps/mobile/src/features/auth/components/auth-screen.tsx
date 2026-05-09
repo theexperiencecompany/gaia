@@ -7,7 +7,9 @@ import {
   StatusBar,
   View,
 } from "react-native";
+import Animated, { FadeInDown, FadeOutUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Alert01Icon, AppIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -32,6 +34,7 @@ interface AuthScreenProps {
   footerQuestion: string;
   footerLinkLabel: string;
   isLoading: boolean;
+  errorMessage?: string | null;
   onSubmit: () => void;
   onFooterLinkPress: () => void;
 }
@@ -42,13 +45,14 @@ export function AuthScreen({
   footerQuestion,
   footerLinkLabel,
   isLoading,
+  errorMessage,
   onSubmit,
   onFooterLinkPress,
 }: AuthScreenProps) {
   const { spacing, fontSize, moderateScale } = useResponsive();
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#060a14" }}>
+    <View style={{ flex: 1, backgroundColor: "#111111" }}>
       <StatusBar
         barStyle="light-content"
         backgroundColor="transparent"
@@ -130,8 +134,36 @@ export function AuthScreen({
             </View>
           </View>
 
-          {/* Bottom section — button + footer */}
+          {/* Bottom section — error banner + button + footer */}
           <View style={{ gap: spacing.md }}>
+            {errorMessage ? (
+              <Animated.View
+                key={errorMessage}
+                entering={FadeInDown.duration(200)}
+                exiting={FadeOutUp.duration(150)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.sm,
+                  backgroundColor: "rgba(239,68,68,0.12)",
+                  borderRadius: 12,
+                  paddingVertical: spacing.sm,
+                  paddingHorizontal: spacing.md,
+                }}
+              >
+                <AppIcon icon={Alert01Icon} size={18} color="#f87171" />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: fontSize.sm,
+                    color: "#fca5a5",
+                    lineHeight: fontSize.sm * 1.4,
+                  }}
+                >
+                  {errorMessage}
+                </Text>
+              </Animated.View>
+            ) : null}
             {/* Google sign-in button */}
             <Pressable
               onPress={onSubmit}
@@ -204,7 +236,7 @@ export function AuthScreen({
                 <Text
                   style={{
                     fontSize: fontSize.sm,
-                    color: "#38bdf8",
+                    color: "#00bbff",
                     fontWeight: "600",
                   }}
                 >

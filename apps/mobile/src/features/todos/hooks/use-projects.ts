@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { todoApi } from "../api/todo-api";
+import { useCallback, useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useTodoStore } from "../store/todo-store";
 import type { Project } from "../types/todo-types";
 
 interface ProjectCreate {
@@ -14,108 +15,57 @@ interface ProjectUpdate {
   description?: string;
 }
 
-interface UseProjectsState {
-  projects: Project[];
-  isLoading: boolean;
-  isRefreshing: boolean;
-  error: string | null;
-}
-
-interface UseProjectsReturn extends UseProjectsState {
-  refetch: () => Promise<void>;
-  createProject: (data: ProjectCreate) => Promise<Project>;
-  updateProject: (id: string, data: ProjectUpdate) => Promise<Project>;
-  deleteProject: (id: string) => Promise<void>;
-  getTodoCount: (projectId: string) => number;
-}
-
-export function useProjects(): UseProjectsReturn {
-  const [state, setState] = useState<UseProjectsState>({
-    projects: [],
-    isLoading: true,
-    isRefreshing: false,
-    error: null,
-  });
-
-  const fetchProjects = useCallback(async (isRefresh = false) => {
-    setState((prev) => ({
-      ...prev,
-      isLoading: !isRefresh,
-      isRefreshing: isRefresh,
-      error: null,
-    }));
-
-    try {
-      const projects = await todoApi.getAllProjects();
-      setState((prev) => ({
-        ...prev,
-        projects,
-        isLoading: false,
-        isRefreshing: false,
-      }));
-    } catch (err) {
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        isRefreshing: false,
-        error: err instanceof Error ? err.message : "Failed to load projects",
-      }));
-    }
-  }, []);
+/**
+ * React hook over the shared todo store, scoped to projects.
+ *
+ * Loads projects on mount and exposes CRUD + a `getTodoCount` helper that
+ * reads from the project's denormalized `todo_count` field.
+ */
+export function useProjects() {
+  const {
+    projects,
+    initialLoading,
+    error,
+    loadProjects,
+    createProject,
+    updateProject,
+    deleteProject,
+  } = useTodoStore(
+    useShallow((state) => ({
+      projects: state.projects,
+      initialLoading: state.initialLoading,
+      error: state.error,
+      loadProjects: state.loadProjects,
+      createProject: state.createProject,
+      updateProject: state.updateProject,
+      deleteProject: state.deleteProject,
+    })),
+  );
 
   useEffect(() => {
-    void fetchProjects();
-  }, [fetchProjects]);
+    void loadProjects();
+  }, [loadProjects]);
 
   const refetch = useCallback(async () => {
-    await fetchProjects(true);
-  }, [fetchProjects]);
-
-  const createProject = useCallback(
-    async (data: ProjectCreate): Promise<Project> => {
-      const project = await todoApi.createProject(data);
-      setState((prev) => ({
-        ...prev,
-        projects: [...prev.projects, project],
-      }));
-      return project;
-    },
-    [],
-  );
-
-  const updateProject = useCallback(
-    async (id: string, data: ProjectUpdate): Promise<Project> => {
-      const updated = await todoApi.updateProject(id, data);
-      setState((prev) => ({
-        ...prev,
-        projects: prev.projects.map((p) => (p.id === id ? updated : p)),
-      }));
-      return updated;
-    },
-    [],
-  );
-
-  const deleteProject = useCallback(async (id: string): Promise<void> => {
-    await todoApi.deleteProject(id);
-    setState((prev) => ({
-      ...prev,
-      projects: prev.projects.filter((p) => p.id !== id),
-    }));
-  }, []);
+    await loadProjects();
+  }, [loadProjects]);
 
   const getTodoCount = useCallback(
     (projectId: string): number => {
-      const project = state.projects.find((p) => p.id === projectId);
+      const project = projects.find((p: Project) => p.id === projectId);
       return project?.todo_count ?? 0;
     },
-    [state.projects],
+    [projects],
   );
 
   return {
-    ...state,
+    projects,
+    isLoading: initialLoading,
+    isRefreshing: false,
+    error,
     refetch,
-    createProject,
-    updateProject,
+    createProject: (data: ProjectCreate) => createProject(data),
+    updateProject: (id: string, data: ProjectUpdate) => updateProject(id, data),
     deleteProject,
     getTodoCount,
   };

@@ -1,5 +1,8 @@
 import type { WorkflowCreatedData, WorkflowDraftData } from "@gaia/shared";
-import { View } from "react-native";
+import { useRouter } from "expo-router";
+import { Button, Chip } from "heroui-native";
+import { useCallback } from "react";
+import { Pressable, View } from "react-native";
 import {
   AppIcon,
   Calendar03Icon,
@@ -10,95 +13,79 @@ import {
   PencilEdit01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import {
-  ToolCardInner,
-  ToolCardShell,
-} from "@/features/chat/tool-data/primitives";
+import { cronToHumanReadable } from "@/features/workflows/utils/cronUtils";
 
-// -- Helpers -----------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Trigger display — mirrors web getTriggerDisplay() in WorkflowDraftCard /
+// WorkflowCreatedCard. Same color tokens, same icon mapping.
+// ---------------------------------------------------------------------------
 
 interface TriggerDisplay {
   label: string;
   icon: React.ReactNode;
-  badgeColor: string;
-  badgeBg: string;
+  textColor: string;
+  bgClass: string;
+}
+
+function formatIntegrationLabel(slug?: string | null): string {
+  if (!slug) return "Integration";
+  return slug
+    .split("_")
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function getTriggerDisplay(
   type?: string,
-  cron?: string,
-  slug?: string,
+  cron?: string | null,
+  slug?: string | null,
 ): TriggerDisplay {
   switch (type) {
     case "manual":
       return {
         label: "Manual",
         icon: <AppIcon icon={FlashIcon} size={12} color="#a1a1aa" />,
-        badgeColor: "#a1a1aa",
-        badgeBg: "bg-zinc-700/50",
+        textColor: "#d4d4d8",
+        bgClass: "bg-zinc-700/50",
       };
     case "scheduled":
       return {
-        label: cron ? formatCron(cron) : "Scheduled",
+        label: cron ? cronToHumanReadable(cron) : "Scheduled",
         icon: <AppIcon icon={Clock01Icon} size={12} color="#00bbff" />,
-        badgeColor: "#00bbff",
-        badgeBg: "bg-[#00bbff]/15",
+        textColor: "#00bbff",
+        bgClass: "bg-[#00bbff]/15",
       };
-    case "integration": {
-      const name =
-        slug
-          ?.split("_")
-          .slice(0, 2)
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-          .join(" ") ?? "Integration";
+    case "integration":
       return {
-        label: name,
+        label: formatIntegrationLabel(slug),
         icon: <AppIcon icon={Calendar03Icon} size={12} color="#a78bfa" />,
-        badgeColor: "#a78bfa",
-        badgeBg: "bg-purple-500/15",
+        textColor: "#c4b5fd",
+        bgClass: "bg-purple-500/15",
       };
-    }
     default:
       return {
         label: "Unknown",
         icon: <AppIcon icon={FlashIcon} size={12} color="#a1a1aa" />,
-        badgeColor: "#a1a1aa",
-        badgeBg: "bg-zinc-700/50",
+        textColor: "#d4d4d8",
+        bgClass: "bg-zinc-700/50",
       };
   }
 }
 
-/** Very simple human-readable cron label (matches web's getScheduleDescription intent). */
-function formatCron(cron: string): string {
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length < 5) return "Scheduled";
-  const [min, hour, dom, , dow] = parts;
-  if (dom === "*" && dow === "*") {
-    if (hour === "*") return `Every ${min === "*" ? "minute" : `${min} min`}`;
-    const h = Number(hour);
-    const period = h >= 12 ? "PM" : "AM";
-    const h12 = h % 12 === 0 ? 12 : h % 12;
-    return `Daily at ${h12}:${min.padStart(2, "0")} ${period}`;
-  }
-  if (dom === "*" && dow !== "*") {
-    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const dayName = days[Number(dow)] ?? dow;
-    return `Weekly on ${dayName}`;
-  }
-  return "Scheduled";
-}
+// ---------------------------------------------------------------------------
+// TriggerChip — visual parity with web's HeroUI <Chip> in flat variant.
+// ---------------------------------------------------------------------------
 
-// -- Badge -------------------------------------------------------------------
-
-function TriggerBadge({ display }: { display: TriggerDisplay }) {
+function TriggerChip({ display }: { display: TriggerDisplay }) {
   return (
     <View
-      className={`flex-row items-center gap-1.5 px-2.5 py-1 rounded-full ${display.badgeBg}`}
+      className={`flex-row items-center gap-1.5 self-start rounded-full px-2.5 py-1 ${display.bgClass}`}
     >
       {display.icon}
       <Text
         className="text-xs font-medium"
-        style={{ color: display.badgeColor }}
+        style={{ color: display.textColor }}
       >
         {display.label}
       </Text>
@@ -106,156 +93,190 @@ function TriggerBadge({ display }: { display: TriggerDisplay }) {
   );
 }
 
-function StatusBadge({
-  label,
-  color,
-  bg,
-}: {
-  label: string;
-  color: string;
-  bg: string;
-}) {
-  return (
-    <View className={`px-2.5 py-1 rounded-full ${bg}`}>
-      <Text className="text-xs font-semibold" style={{ color }}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
-// -- Draft card --------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// WorkflowDraftCard — port of apps/web/src/features/workflows/components/
+// WorkflowDraftCard.tsx
+//
+// Web uses a dashed warning border + absolutely-positioned "Draft" chip.
+// Mobile keeps the same layout: warning-tinted shell, prominent FlowIcon
+// avatar, trigger chip on the right of the header, description, and a
+// "Review & Create" primary button. Tap navigates to the workflows screen
+// (mobile parity for the web modal flow).
+// ---------------------------------------------------------------------------
 
 export function WorkflowDraftCard({ data }: { data: WorkflowDraftData }) {
-  const title = data.suggested_title ?? "Workflow Draft";
-  const description = data.suggested_description;
+  const router = useRouter();
   const trigger = getTriggerDisplay(
     data.trigger_type,
-    data.cron_expression ?? undefined,
-    data.trigger_slug ?? undefined,
+    data.cron_expression,
+    data.trigger_slug,
   );
 
+  const handleOpen = useCallback(() => {
+    router.push("/(app)/workflows");
+  }, [router]);
+
   return (
-    <ToolCardShell>
-      {/* Header */}
-      <View className="flex-row items-start justify-between gap-3 mb-3">
-        <View className="flex-row items-center gap-3 flex-1 min-w-0">
-          <View className="w-10 h-10 rounded-xl bg-[#00bbff]/15 items-center justify-center shrink-0">
+    <Pressable
+      onPress={handleOpen}
+      android_ripple={{ color: "rgba(255,255,255,0.05)" }}
+      className="mx-4 my-1 rounded-2xl bg-zinc-800 p-4"
+    >
+      {/* Dashed warning ring — matches web's border-dashed border-warning/40 */}
+      <View className="absolute inset-0 rounded-2xl border border-dashed border-amber-500/40" />
+
+      {/* "Draft" badge — top-right pill */}
+      <View className="absolute -top-2 right-3 self-start rounded-full bg-amber-500/20 px-2 py-0.5">
+        <Text className="text-[11px] font-semibold text-amber-400">Draft</Text>
+      </View>
+
+      {/* Header: icon + title block + trigger chip */}
+      <View className="flex-row items-start justify-between gap-3">
+        <View className="flex-1 flex-row items-center gap-3">
+          <View className="size-10 shrink-0 items-center justify-center rounded-xl bg-[#00bbff]/15">
             <AppIcon icon={FlowIcon} size={20} color="#00bbff" />
           </View>
-          <View className="flex-1 min-w-0">
+          <View className="flex-1">
             <Text
-              className="text-base font-semibold text-zinc-100 leading-tight"
+              className="text-base font-semibold leading-tight text-zinc-100"
               numberOfLines={2}
             >
-              {title}
+              {data.suggested_title}
             </Text>
-            <Text className="text-xs mt-0.5" style={{ color: "#f59e0b99" }}>
+            <Text className="mt-0.5 text-xs text-amber-400/80">
               Review to create workflow
             </Text>
           </View>
         </View>
-        <StatusBadge label="Draft" color="#f59e0b" bg="bg-amber-500/15" />
+        <View className="shrink-0">
+          <TriggerChip display={trigger} />
+        </View>
       </View>
 
       {/* Description */}
-      {!!description && (
+      {data.suggested_description ? (
         <Text
-          className="text-xs leading-relaxed text-zinc-400 mb-3"
+          className="mt-3 text-xs leading-relaxed text-zinc-400"
           numberOfLines={2}
         >
-          {description}
+          {data.suggested_description}
         </Text>
-      )}
+      ) : null}
 
-      {/* Integration note */}
-      {data.trigger_type === "integration" && (
-        <Text className="text-xs text-zinc-500 mb-3">
+      {/* Integration setup hint */}
+      {data.trigger_type === "integration" ? (
+        <Text className="mt-2 text-xs text-zinc-500">
           Configure trigger settings to complete setup
         </Text>
-      )}
+      ) : null}
 
-      {/* Trigger chip */}
-      <View className="mb-3">
-        <TriggerBadge display={trigger} />
+      {/* CTA — Review & Create */}
+      <View className="mt-4">
+        <Button size="sm" variant="primary" onPress={handleOpen}>
+          <View className="flex-row items-center gap-1.5">
+            <AppIcon icon={PencilEdit01Icon} size={14} color="#000000" />
+            <Button.Label>Review & Create</Button.Label>
+          </View>
+        </Button>
       </View>
-
-      {/* Review & Create button */}
-      <ToolCardInner>
-        <View className="flex-row items-center justify-center gap-2">
-          <AppIcon icon={PencilEdit01Icon} size={14} color="#00bbff" />
-          <Text className="text-sm font-medium text-[#00bbff]">
-            Review &amp; Create
-          </Text>
-        </View>
-      </ToolCardInner>
-    </ToolCardShell>
+    </Pressable>
   );
 }
 
-// -- Created card ------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// WorkflowCreatedCard — port of apps/web/src/features/workflows/components/
+// WorkflowCreatedCard.tsx
+//
+// Web uses a soft outline + success-tinted icon avatar + "Created" chip.
+// Mobile mirrors that: success-green icon, "Created" chip on the right,
+// description, trigger chip on its own row, and a "View & Edit" button.
+// Tap navigates to /workflows/[id].
+// ---------------------------------------------------------------------------
 
 export function WorkflowCreatedCard({ data }: { data: WorkflowCreatedData }) {
-  const title = data.title ?? "Workflow";
-  const description = data.description;
+  const router = useRouter();
   const trigger = getTriggerDisplay(
     data.trigger_config?.type,
-    data.trigger_config?.cron_expression ?? undefined,
-    data.trigger_config?.trigger_name ?? undefined,
+    data.trigger_config?.cron_expression,
+    data.trigger_config?.trigger_name,
   );
 
+  const handleOpen = useCallback(() => {
+    if (!data.id) {
+      router.push("/(app)/workflows");
+      return;
+    }
+    router.push({
+      pathname: "/(app)/workflows/[id]",
+      params: { id: data.id },
+    });
+  }, [router, data.id]);
+
   return (
-    <ToolCardShell>
-      {/* Header */}
-      <View className="flex-row items-start justify-between gap-3 mb-3">
-        <View className="flex-row items-center gap-3 flex-1 min-w-0">
-          <View className="w-10 h-10 rounded-xl bg-emerald-500/15 items-center justify-center shrink-0">
+    <Pressable
+      onPress={handleOpen}
+      android_ripple={{ color: "rgba(255,255,255,0.05)" }}
+      className="mx-4 my-1 rounded-2xl bg-zinc-800 p-4"
+    >
+      {/* Subtle outline — matches web's outline-1 outline-zinc-800/50 */}
+      <View className="absolute inset-0 rounded-2xl border border-zinc-700/40" />
+
+      {/* Header: success icon + title block + Created chip */}
+      <View className="flex-row items-start justify-between gap-3">
+        <View className="flex-1 flex-row items-center gap-3">
+          <View className="size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15">
             <AppIcon icon={FlowIcon} size={20} color="#10b981" />
           </View>
-          <View className="flex-1 min-w-0">
+          <View className="flex-1">
             <Text
-              className="text-base font-semibold text-zinc-100 leading-tight"
+              className="text-base font-semibold leading-tight text-zinc-100"
               numberOfLines={2}
             >
-              {title}
+              {data.title}
             </Text>
-            <Text className="text-xs text-zinc-500 mt-0.5">
+            <Text className="mt-0.5 text-xs text-zinc-500">
               Workflow Created
             </Text>
           </View>
         </View>
-        <View className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 shrink-0">
-          <AppIcon icon={CheckmarkCircle02Icon} size={12} color="#10b981" />
-          <Text className="text-xs font-semibold text-emerald-400">
-            Created
-          </Text>
-        </View>
+        <Chip
+          size="sm"
+          variant="soft"
+          color="success"
+          animation="disable-all"
+          className="shrink-0"
+        >
+          <View className="flex-row items-center gap-1">
+            <AppIcon icon={CheckmarkCircle02Icon} size={12} color="#10b981" />
+            <Chip.Label>Created</Chip.Label>
+          </View>
+        </Chip>
       </View>
 
       {/* Description */}
-      {!!description && (
+      {data.description ? (
         <Text
-          className="text-xs leading-relaxed text-zinc-400 mb-3"
+          className="mt-3 text-xs leading-relaxed text-zinc-400"
           numberOfLines={2}
         >
-          {description}
+          {data.description}
         </Text>
-      )}
+      ) : null}
 
-      {/* Trigger chip */}
-      <View className="mb-3">
-        <TriggerBadge display={trigger} />
+      {/* Trigger chip on its own row — matches web's third row */}
+      <View className="mt-3">
+        <TriggerChip display={trigger} />
       </View>
 
-      {/* View & Edit button */}
-      <ToolCardInner>
-        <View className="flex-row items-center justify-center gap-2">
-          <AppIcon icon={PencilEdit01Icon} size={14} color="#00bbff" />
-          <Text className="text-sm font-medium text-[#00bbff]">
-            View &amp; Edit
-          </Text>
-        </View>
-      </ToolCardInner>
-    </ToolCardShell>
+      {/* CTA — View & Edit */}
+      <View className="mt-4">
+        <Button size="sm" variant="primary" onPress={handleOpen}>
+          <View className="flex-row items-center gap-1.5">
+            <AppIcon icon={PencilEdit01Icon} size={14} color="#000000" />
+            <Button.Label>View & Edit</Button.Label>
+          </View>
+        </Button>
+      </View>
+    </Pressable>
   );
 }

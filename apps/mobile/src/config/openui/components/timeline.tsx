@@ -388,7 +388,7 @@ export function StepsView(props: z.infer<typeof stepsSchema>) {
           const titleColor =
             status === "pending" ? "text-zinc-500" : "text-zinc-100";
           const descriptionColor =
-            status === "pending" ? "text-zinc-600" : "text-zinc-400";
+            status === "pending" ? "text-zinc-500" : "text-zinc-400";
 
           return (
             <View

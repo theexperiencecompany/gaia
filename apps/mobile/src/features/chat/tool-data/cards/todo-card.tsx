@@ -295,7 +295,7 @@ function TodoItemRow({ todo }: { todo: TodoItem }) {
                     className={`text-xs ${
                       subtask.completed
                         ? "text-zinc-500 line-through"
-                        : "text-zinc-300"
+                        : "text-zinc-200"
                     }`}
                   >
                     {subtask.title}
@@ -418,7 +418,7 @@ export function TodoCard({ data }: { data: TodoData }) {
       <ToolCardShell>
         <View className="items-center py-2">
           <AppIcon icon={CheckmarkCircle02Icon} size={32} color="#52525b" />
-          <Text className="mt-2 text-sm text-zinc-300">No tasks found</Text>
+          <Text className="mt-2 text-sm text-zinc-200">No tasks found</Text>
           {data.message && (
             <Text className="text-xs text-zinc-500 mt-1">{data.message}</Text>
           )}

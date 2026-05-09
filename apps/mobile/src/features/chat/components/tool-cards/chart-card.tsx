@@ -22,8 +22,8 @@ const COLORS = {
   text: "#e4e4e7",
   barTrack: "#27272a",
   tableBorder: "#27272a",
-  tableHeaderBg: "#1e1e2e",
-  fallbackBg: "#1e1e2e",
+  tableHeaderBg: "#27272a",
+  fallbackBg: "#18181b",
 } as const;
 
 // -- Default palette for unlabeled data points --------------------------------
@@ -206,7 +206,7 @@ function DataTable({
       <View
         style={{
           flexDirection: "row",
-          backgroundColor: "#1c1c1e",
+          backgroundColor: "#27272a",
           paddingHorizontal: 10,
           paddingVertical: 6,
         }}
@@ -321,7 +321,7 @@ function DataTable({
             alignItems: "center",
             paddingHorizontal: 10,
             paddingVertical: 7,
-            backgroundColor: "#1c1c1e",
+            backgroundColor: "#27272a",
           }}
         >
           <Text
@@ -374,7 +374,7 @@ function LineChartNote({
     <View
       style={{
         backgroundColor: COLORS.fallbackBg,
-        borderRadius: 8,
+        borderRadius: 16,
         padding: 10,
         flexDirection: "row",
         alignItems: "center",
@@ -401,7 +401,7 @@ function PieLegend({ data }: { data: ChartDataPoint[] }) {
     <View
       style={{
         backgroundColor: COLORS.fallbackBg,
-        borderRadius: 8,
+        borderRadius: 16,
         padding: 10,
         marginBottom: 8,
         gap: 4,
@@ -511,7 +511,7 @@ export function ChartCard({ toolData }: ChartCardProps) {
     return (
       <ToolCardShell>
         <View className="flex-row items-center gap-3">
-          <View className="w-8 h-8 rounded-full bg-zinc-700 items-center justify-center">
+          <View className="w-8 h-8 rounded-full bg-zinc-800 items-center justify-center">
             <ChartTypeIcon type={type} />
           </View>
           <Text className="text-sm text-zinc-500">No chart data available</Text>

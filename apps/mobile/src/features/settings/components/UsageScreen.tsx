@@ -1,4 +1,3 @@
-import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -8,11 +7,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  AppIcon,
-  ArrowLeft01Icon,
-  ChartLineData02Icon,
-} from "@/components/icons";
+import { AppIcon, ChartLineData02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type {
   UsageHistoryEntry,
@@ -20,6 +15,7 @@ import type {
 } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 
 // ─── Color tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -27,7 +23,7 @@ const C = {
   sectionBg: "#171920",
   divider: "rgba(255,255,255,0.06)",
   text: "#ffffff",
-  textMuted: "#8e8e93",
+  textMuted: "#71717a",
   textSubtle: "#5a5a5e",
   primary: "#00bbff",
   primaryBg: "rgba(0,187,255,0.15)",
@@ -696,7 +692,6 @@ function HistoryList({ history }: HistoryListProps) {
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function UsageScreen() {
-  const router = useRouter();
   const { spacing, fontSize } = useResponsive();
   const insets = useSafeAreaInsets();
 
@@ -757,19 +752,7 @@ export default function UsageScreen() {
           alignItems: "center",
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={18} color={C.text} />
-        </Pressable>
+        <BackButton />
         <Text
           style={{
             marginLeft: spacing.md,
