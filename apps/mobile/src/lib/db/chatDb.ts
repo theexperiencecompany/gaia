@@ -9,7 +9,6 @@ const MAX_MESSAGES_PER_CONVERSATION = 200;
 
 interface MessagesEntry {
   messages: SerializedMessage[];
-  timestamp: number;
 }
 
 // Serialized form — Date fields are stored as ISO strings for JSON round-trip
@@ -43,7 +42,6 @@ export const chatDb = {
       const limited = messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
       const entry: MessagesEntry = {
         messages: limited.map(serializeMessage),
-        timestamp: Date.now(),
       };
       await AsyncStorage.setItem(
         `${MESSAGES_PREFIX}${conversationId}`,
@@ -69,22 +67,32 @@ export const chatDb = {
   },
 
   /**
-   * Returns the timestamp (ms since epoch) of when messages were last saved
-   * for the given conversation, or null if nothing is cached.
+   * Reads every persisted conversation's messages in a single multiGet call.
+   * Used to eagerly hydrate the React Query cache at app launch so opening
+   * any cached chat is instant (web parity with IndexedDB hydration).
    */
-  getMessagesTimestamp: async (
-    conversationId: string,
-  ): Promise<number | null> => {
+  getAllMessages: async (): Promise<Map<string, Message[]>> => {
+    const result = new Map<string, Message[]>();
     try {
-      const raw = await AsyncStorage.getItem(
-        `${MESSAGES_PREFIX}${conversationId}`,
-      );
-      if (!raw) return null;
-      const entry = JSON.parse(raw) as MessagesEntry;
-      return entry.timestamp ?? null;
-    } catch {
-      return null;
+      const keys = await AsyncStorage.getAllKeys();
+      const messageKeys = keys.filter((k) => k.startsWith(MESSAGES_PREFIX));
+      if (messageKeys.length === 0) return result;
+
+      const entries = await AsyncStorage.multiGet(messageKeys);
+      for (const [key, raw] of entries) {
+        if (!raw) continue;
+        try {
+          const entry = JSON.parse(raw) as MessagesEntry;
+          const conversationId = key.slice(MESSAGES_PREFIX.length);
+          result.set(conversationId, entry.messages.map(deserializeMessage));
+        } catch {
+          // Skip corrupt entries — next save overwrites them.
+        }
+      }
+    } catch (error) {
+      console.warn("[chatDb] Failed to get all messages:", error);
     }
+    return result;
   },
 
   saveConversations: async (conversations: Conversation[]): Promise<void> => {

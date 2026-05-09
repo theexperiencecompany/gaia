@@ -41,7 +41,13 @@ async function fetchConversationsList(): Promise<Conversation[]> {
   const data = await apiService.get<ConversationsResponse>(
     "/conversations?page=1&limit=100",
   );
-  return (data.conversations || []).map(normalizeConversation);
+  const conversations = (data.conversations || []).map(normalizeConversation);
+  // Persist so the next launch can render the list instantly from
+  // AsyncStorage while a fresh fetch runs in the background.
+  chatDb.saveConversations(conversations).catch((err) => {
+    console.warn("[queries] Failed to persist conversations:", err);
+  });
+  return conversations;
 }
 
 export const chatKeys = {
@@ -51,26 +57,15 @@ export const chatKeys = {
   messages: (id: string) => [...chatKeys.all, "messages", id] as const,
 };
 
-const MESSAGE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-async function fetchMessagesWithCache(
+async function fetchMessagesFromApi(
   conversationId: string,
 ): Promise<Message[]> {
-  // Check AsyncStorage first — if we have recent messages, return them
-  // immediately and avoid an API round-trip.
-  const cachedTimestamp = await chatDb.getMessagesTimestamp(conversationId);
-  const isCacheValid =
-    cachedTimestamp !== null &&
-    Date.now() - cachedTimestamp < MESSAGE_CACHE_TTL_MS;
-
-  if (isCacheValid) {
-    const cached = await chatDb.getMessages(conversationId);
-    if (cached.length > 0) {
-      return cached;
-    }
-  }
-
-  // Cache miss or expired — fetch from API and persist to AsyncStorage.
+  // Always hit the API — instant render is handled by the React Query cache
+  // (pre-warmed from AsyncStorage in ChatProvider). This call is the
+  // background-revalidation half of stale-while-revalidate: cached messages
+  // stay on screen while we fetch, and React Query swaps them in seamlessly
+  // once fresh data lands. The new messages are persisted so the next launch
+  // hydrates from the latest snapshot.
   const messages = await chatApi.fetchMessages(conversationId);
   if (messages.length > 0) {
     chatDb.saveMessages(conversationId, messages).catch((err) => {
@@ -86,7 +81,7 @@ async function fetchMessagesWithCache(
 export function useConversationQuery(conversationId: string | null) {
   return useQuery({
     queryKey: chatKeys.messages(conversationId!),
-    queryFn: () => fetchMessagesWithCache(conversationId!),
+    queryFn: () => fetchMessagesFromApi(conversationId!),
     enabled: !!conversationId && !conversationId.startsWith("temp-"),
     staleTime: 5 * 60 * 1000,
   });
