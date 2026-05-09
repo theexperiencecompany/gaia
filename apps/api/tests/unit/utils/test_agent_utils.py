@@ -96,12 +96,12 @@ class TestResolveHandoffDisplayName:
 
     @pytest.mark.asyncio
     async def test_platform_integration_name(self) -> None:
-        mock_integration = MagicMock()
-        mock_integration.name = "Google Calendar"
+        mock_subagent = MagicMock()
+        mock_subagent.name = "Google Calendar"
 
         with patch(
-            "app.utils.agent_utils.get_integration_by_id",
-            return_value=mock_integration,
+            "app.utils.agent_utils.get_subagent_by_id",
+            return_value=mock_subagent,
         ):
             result = await _resolve_handoff_display_name("googlecalendar")
 
@@ -111,7 +111,7 @@ class TestResolveHandoffDisplayName:
     async def test_custom_integration_from_db(self) -> None:
         with (
             patch(
-                "app.utils.agent_utils.get_integration_by_id",
+                "app.utils.agent_utils.get_subagent_by_id",
                 return_value=None,
             ),
             patch(
@@ -128,7 +128,7 @@ class TestResolveHandoffDisplayName:
     async def test_fallback_to_title_case(self) -> None:
         with (
             patch(
-                "app.utils.agent_utils.get_integration_by_id",
+                "app.utils.agent_utils.get_subagent_by_id",
                 return_value=None,
             ),
             patch(

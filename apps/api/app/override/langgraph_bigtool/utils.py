@@ -21,6 +21,8 @@ class State(_BigtoolState):
     """Extended state with todos channel for agent task management."""
 
     todos: Annotated[list, _replace_todos]
+    intent: str | None
+    integration_usernames: dict[str, str]
 
 
 class RetrieveToolsResult(TypedDict):

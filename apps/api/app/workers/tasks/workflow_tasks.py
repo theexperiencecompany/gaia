@@ -204,6 +204,8 @@ async def execute_workflow_by_id(
     Execute a workflow by ID with proper execution count tracking.
     """
     async with wide_task("execute_workflow_by_id", workflow_id=workflow_id):
+        actual_fire_utc = datetime.now(timezone.utc)
+        log.set(actual_fire_utc=actual_fire_utc.isoformat())
         log.info(f"Processing workflow execution: {workflow_id}")
 
         scheduler = WorkflowScheduler()
@@ -235,6 +237,21 @@ async def execute_workflow_by_id(
                     steps_count=len(workflow.steps),
                 )
             )
+
+            scheduled_at = getattr(workflow, "scheduled_at", None)
+            if isinstance(scheduled_at, datetime):
+                if scheduled_at.tzinfo is None:
+                    scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+                drift = int((actual_fire_utc - scheduled_at).total_seconds())
+                log.set(
+                    scheduled_at_utc=scheduled_at.isoformat(),
+                    drift_from_scheduled_seconds=drift,
+                )
+                if abs(drift) > 300:
+                    log.warning(
+                        f"Workflow {workflow_id} fired {drift}s off schedule "
+                        f"(positive = late, negative = early)",
+                    )
 
             # Create execution record at start
             execution = await create_execution(

@@ -3,9 +3,12 @@ Clean workflow service for GAIA workflow system.
 Handles CRUD operations and execution coordination.
 """
 
+import secrets
 import uuid
 from datetime import datetime, timezone
 from typing import Any, List, Optional
+
+from pymongo.errors import DuplicateKeyError
 
 from shared.py.wide_events import log
 from shared.py.utils.slugify import slugify
@@ -24,6 +27,11 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
 )
 from app.services.workflow.trigger_service import TriggerService
+from app.utils.creator import (
+    SYSTEM_CREATOR_NAME,
+    creator_lookup_stage,
+    format_creator,
+)
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import (
     ensure_trigger_config_object,
@@ -37,25 +45,75 @@ from .scheduler import workflow_scheduler
 from .validators import WorkflowValidator
 
 
+_SLUG_SUFFIX_LEN = 6
+_SLUG_MAX_RETRIES = 5
+
+
+def _slug_suffix() -> str:
+    return secrets.token_hex(_SLUG_SUFFIX_LEN // 2)
+
+
 async def generate_unique_workflow_slug(
     title: str, exclude_id: Optional[str] = None
 ) -> str:
-    """Generate a slug from title, appending a numeric suffix if taken."""
-    base = slugify(title)
-    if not base:
-        base = "workflow"
+    """Generate a slug from the title, suffixed with a short random hex token.
 
-    candidate = base
-    suffix = 1
-    while True:
+    The 6-char suffix makes collisions vanishingly unlikely (1 in 16M per public
+    workflow). The DB has a partial-unique index on slug for is_public=true,
+    so a true collision throws DuplicateKeyError at write time and the caller
+    is expected to retry.
+    """
+    base = slugify(title) or "workflow"
+
+    for _ in range(_SLUG_MAX_RETRIES):
+        candidate = f"{base}-{_slug_suffix()}"
         query: dict = {"slug": candidate, "is_public": True}
         if exclude_id:
             query["_id"] = {"$ne": exclude_id}
-        existing = await workflows_collection.find_one(query)
-        if not existing:
+        if not await workflows_collection.find_one(query):
             return candidate
-        candidate = f"{base}-{suffix}"
-        suffix += 1
+
+    raise RuntimeError(
+        f"Failed to find unique slug for '{title}' after {_SLUG_MAX_RETRIES} retries"
+    )
+
+
+async def ensure_public_workflow_slug(workflow_doc: dict) -> dict:
+    """Lazily backfill a slug on a legacy public workflow that's missing one.
+
+    Mutates and returns the same doc. No-op when the workflow is private or
+    already has a slug. Persists the new slug to Mongo.
+    """
+    if not workflow_doc.get("is_public") or workflow_doc.get("slug"):
+        return workflow_doc
+
+    workflow_id = workflow_doc.get("_id") or workflow_doc.get("id")
+    if not workflow_id:
+        return workflow_doc
+
+    title = workflow_doc.get("title", "")
+
+    for _ in range(_SLUG_MAX_RETRIES):
+        slug = await generate_unique_workflow_slug(title, exclude_id=workflow_id)
+        try:
+            result = await workflows_collection.update_one(
+                {"_id": workflow_id, "$or": [{"slug": None}, {"slug": ""}]},
+                {"$set": {"slug": slug}},
+            )
+            if result.matched_count:
+                workflow_doc["slug"] = slug
+            else:
+                # Someone else won the race — re-read the persisted slug.
+                fresh = await workflows_collection.find_one(
+                    {"_id": workflow_id}, {"slug": 1}
+                )
+                if fresh and fresh.get("slug"):
+                    workflow_doc["slug"] = fresh["slug"]
+            return workflow_doc
+        except DuplicateKeyError:
+            continue
+
+    return workflow_doc
 
 
 class WorkflowService:
@@ -134,6 +192,20 @@ class WorkflowService:
                 trigger_config.timezone = timezone_to_use
                 if trigger_config.cron_expression:
                     trigger_config.update_next_run(user_timezone=timezone_to_use)
+                log.set(
+                    trigger_type=str(trigger_config.type),
+                    trigger_name=trigger_config.trigger_name,
+                    cron_expression=trigger_config.cron_expression,
+                    trigger_timezone=trigger_config.timezone,
+                    next_run_utc=trigger_config.next_run.isoformat()
+                    if trigger_config.next_run
+                    else None,
+                )
+            else:
+                log.set(
+                    trigger_type=str(trigger_config.type),
+                    trigger_name=trigger_config.trigger_name,
+                )
 
             # Use provided steps or initialize empty list for generation
             workflow_steps = request.steps if request.steps else []
@@ -152,10 +224,11 @@ class WorkflowService:
                 is_system_workflow=request.is_system_workflow,
                 source_integration=request.source_integration,
                 system_workflow_key=request.system_workflow_key,
+                selected_integrations=request.selected_integrations,
             )
 
-            # Insert into database
-            workflow_dict = workflow.model_dump(mode="json")
+            # creator is hydration-only on response; never persist it.
+            workflow_dict = workflow.model_dump(mode="json", exclude={"creator"})
             workflow_dict["_id"] = workflow_dict["id"]
 
             if workflow_dict.get("is_public") and not workflow_dict.get("slug"):
@@ -260,7 +333,11 @@ class WorkflowService:
             if not request.steps:
                 # Generate steps
                 if request.generate_immediately:
-                    await WorkflowService._generate_workflow_steps(workflow.id, user_id)
+                    await WorkflowService._generate_workflow_steps(
+                        workflow.id,
+                        user_id,
+                        selected_integrations=request.selected_integrations,
+                    )
                     # Fetch the updated workflow with generated steps
                     updated_workflow = await WorkflowService.get_workflow(
                         workflow.id, user_id
@@ -323,7 +400,8 @@ class WorkflowService:
             if not workflow_doc:
                 return None
 
-            # Transform document with trigger_config handling
+            await ensure_public_workflow_slug(workflow_doc)
+
             transformed_doc = transform_workflow_document(workflow_doc)
             return Workflow(**transformed_doc)
 
@@ -799,31 +877,38 @@ class WorkflowService:
         user_id: str,
         regeneration_reason: Optional[str] = None,
         force_different_tools: bool = True,
+        selected_integrations: Optional[List[str]] = None,
     ) -> Optional[Workflow]:
         """Regenerate steps for an existing workflow."""
         try:
-            # Get the existing workflow
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not workflow:
                 return None
 
-            # Generate new steps using the existing title and description
+            effective_slugs = (
+                selected_integrations
+                if selected_integrations is not None
+                else workflow.selected_integrations
+            )
+
             steps_data = await WorkflowGenerationService.generate_steps_with_llm(
                 workflow.effective_prompt,
                 workflow.title,
                 workflow.trigger_config,
                 description=workflow.description,
+                selected_integrations=effective_slugs,
             )
 
-            # Update workflow with new steps
+            update_set: dict[str, Any] = {
+                "steps": steps_data,
+                "updated_at": datetime.now(timezone.utc),
+            }
+            if selected_integrations is not None:
+                update_set["selected_integrations"] = selected_integrations
+
             result = await workflows_collection.find_one_and_update(
                 {"_id": workflow_id, "user_id": user_id},
-                {
-                    "$set": {
-                        "steps": steps_data,
-                        "updated_at": datetime.now(timezone.utc),
-                    }
-                },
+                {"$set": update_set},
                 return_document=True,
             )
 
@@ -904,30 +989,7 @@ class WorkflowService:
                 {"$sort": {"created_at": -1}},
                 {"$skip": offset},
                 {"$limit": limit},
-                {
-                    "$lookup": {
-                        "from": "users",
-                        "let": {"creator_id": "$created_by"},
-                        "pipeline": [
-                            {
-                                "$match": {
-                                    "$expr": {
-                                        "$eq": ["$_id", {"$toObjectId": "$$creator_id"}]
-                                    }
-                                }
-                            },
-                            {
-                                "$project": {
-                                    "name": 1,
-                                    "email": 1,
-                                    "picture": 1,
-                                    "_id": 0,
-                                }
-                            },
-                        ],
-                        "as": "creator_info",
-                    }
-                },
+                creator_lookup_stage(),
                 {
                     "$project": {
                         "_id": 1,
@@ -966,11 +1028,7 @@ class WorkflowService:
 
             formatted_workflows = []
             for workflow in workflows:
-                creator_info = (
-                    workflow.get("creator_info", [{}])[0]
-                    if workflow.get("creator_info")
-                    else {}
-                )
+                await ensure_public_workflow_slug(workflow)
 
                 # Normalize steps to use 'category' field (handle legacy 'tool_category')
                 raw_steps = workflow.get("steps", [])
@@ -995,11 +1053,7 @@ class WorkflowService:
                     "prompt": workflow.get("prompt"),
                     "steps": normalized_steps,
                     "created_at": workflow["created_at"],
-                    "creator": {
-                        "id": workflow.get("created_by"),
-                        "name": creator_info.get("name", "Unknown"),
-                        "avatar": creator_info.get("picture"),
-                    },
+                    "creator": format_creator(workflow),
                 }
                 formatted_workflows.append(formatted_workflow)
 
@@ -1044,11 +1098,7 @@ class WorkflowService:
             # Format workflows with creator information
             formatted_workflows = []
             for workflow in workflows:
-                creator_info = (
-                    workflow.get("creator_info", [{}])[0]
-                    if workflow.get("creator_info")
-                    else {}
-                )
+                await ensure_public_workflow_slug(workflow)
 
                 # Normalize steps to use 'category' field (handle legacy 'tool_category')
                 raw_steps = workflow.get("steps", [])
@@ -1075,11 +1125,9 @@ class WorkflowService:
                     "created_at": workflow["created_at"],
                     "categories": workflow.get("use_case_categories", ["featured"]),
                     "total_executions": workflow.get("total_executions", 0),
-                    "creator": {
-                        "id": workflow.get("created_by"),
-                        "name": creator_info.get("name", "GAIA Team"),
-                        "avatar": creator_info.get("picture"),
-                    },
+                    "creator": format_creator(
+                        workflow, default_name=SYSTEM_CREATOR_NAME
+                    ),
                 }
                 formatted_workflows.append(formatted_workflow)
 
@@ -1090,7 +1138,11 @@ class WorkflowService:
             raise
 
     @staticmethod
-    async def _generate_workflow_steps(workflow_id: str, user_id: str) -> None:
+    async def _generate_workflow_steps(
+        workflow_id: str,
+        user_id: str,
+        selected_integrations: Optional[List[str]] = None,
+    ) -> None:
         """Generate workflow steps using LLM with structured output."""
         try:
             await workflows_collection.find_one_and_update(
@@ -1109,6 +1161,7 @@ class WorkflowService:
                 workflow.title,
                 workflow.trigger_config,
                 description=workflow.description,
+                selected_integrations=selected_integrations,
             )
 
             await workflows_collection.find_one_and_update(

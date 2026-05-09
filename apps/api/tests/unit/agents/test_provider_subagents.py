@@ -7,6 +7,24 @@ import pytest
 
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
+from app.models.subagent_models import Subagent
+
+
+@pytest.fixture(autouse=True)
+def _clear_user_subagent_cache():
+    """Reset the in-memory per-user subagent graph cache between tests.
+
+    ``create_subagent_for_user`` memoises compiled graphs in a module-level
+    dict keyed by ``(integration_id, user_id)`` so repeat handoffs skip the
+    expensive rebuild. Tests deliberately simulate failure/success modes for
+    the same key, so the cache must be wiped between tests or the second
+    test would read the first test's cached MagicMock.
+    """
+    from app.agents.core.subagents import provider_subagents as _ps
+
+    _ps._USER_SUBAGENT_CACHE.clear()
+    yield
+    _ps._USER_SUBAGENT_CACHE.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +87,27 @@ def _make_integration(
     )
 
 
+def _make_subagent(
+    integration_id: str = "test_int",
+    managed_by: str = "composio",
+    mcp_config: MCPConfig | None = None,
+    provider: str = "test_provider",
+    subagent_config: SubAgentConfig | None = None,
+) -> Subagent:
+    """Build a real `Subagent` for tests. The new `create_subagent`/registration
+    APIs accept `Subagent` directly, so tests should pass real instances."""
+    if subagent_config is None:
+        subagent_config = _make_subagent_config()
+    return Subagent(
+        id=integration_id,
+        name="Test Integration",
+        provider=provider,
+        managed_by=managed_by,  # type: ignore[arg-type]
+        config=subagent_config,
+        mcp_config=mcp_config,
+    )
+
+
 # Shared mock patches
 _BASE_PATCHES = {
     "app.agents.core.subagents.provider_subagents.init_llm": MagicMock(
@@ -84,42 +123,14 @@ _BASE_PATCHES = {
 
 @pytest.mark.unit
 class TestCreateSubagent:
-    async def test_raises_when_integration_not_found(self):
-        from app.agents.core.subagents.provider_subagents import create_subagent
-
-        with patch(
-            "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-            return_value=None,
-        ):
-            with pytest.raises(ValueError, match="not found"):
-                await create_subagent("nonexistent")
-
-    async def test_raises_when_no_subagent_config(self):
-        from app.agents.core.subagents.provider_subagents import create_subagent
-
-        # Build a mock integration that reports subagent_config as None
-        mock_integration = MagicMock()
-        mock_integration.subagent_config = None
-
-        with patch(
-            "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-            return_value=mock_integration,
-        ):
-            with pytest.raises(ValueError, match="not found"):
-                await create_subagent("test_int")
-
     async def test_internal_integration(self):
         from app.agents.core.subagents.provider_subagents import create_subagent
 
-        integration = _make_integration(managed_by="internal")
+        subagent = _make_subagent(managed_by="internal")
         mock_graph = MagicMock()
         mock_registry = AsyncMock()
 
         with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-                return_value=integration,
-            ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_tool_registry",
                 new_callable=AsyncMock,
@@ -135,7 +146,7 @@ class TestCreateSubagent:
                 return_value=mock_graph,
             ),
         ):
-            result = await create_subagent("test_int")
+            result = await create_subagent(subagent)
 
         assert result is mock_graph
 
@@ -143,10 +154,9 @@ class TestCreateSubagent:
         from app.agents.core.subagents.provider_subagents import create_subagent
 
         mcp_config = MCPConfig(server_url="https://example.com", requires_auth=False)
-        integration = _make_integration(
+        subagent = _make_subagent(
             managed_by="mcp",
             mcp_config=mcp_config,
-            composio_config=None,
         )
         mock_graph = MagicMock()
         mock_tools = [MagicMock()]
@@ -160,10 +170,6 @@ class TestCreateSubagent:
         mock_mcp_client.connect = AsyncMock(return_value=mock_tools)
 
         with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-                return_value=integration,
-            ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_tool_registry",
                 new_callable=AsyncMock,
@@ -184,7 +190,7 @@ class TestCreateSubagent:
                 return_value=mock_graph,
             ),
         ):
-            result = await create_subagent("test_int")
+            result = await create_subagent(subagent)
 
         assert result is mock_graph
         mock_mcp_client.connect.assert_called_once_with("test_int")
@@ -194,19 +200,14 @@ class TestCreateSubagent:
         from app.agents.core.subagents.provider_subagents import create_subagent
 
         mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        integration = _make_integration(
+        subagent = _make_subagent(
             managed_by="mcp",
             mcp_config=mcp_config,
-            composio_config=None,
         )
         mock_registry = AsyncMock()
         mock_registry._categories = {}
 
         with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-                return_value=integration,
-            ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_tool_registry",
                 new_callable=AsyncMock,
@@ -214,26 +215,21 @@ class TestCreateSubagent:
             ),
         ):
             with pytest.raises(ValueError, match="requires authentication"):
-                await create_subagent("test_int")
+                await create_subagent(subagent)
 
     async def test_mcp_category_already_registered(self):
         from app.agents.core.subagents.provider_subagents import create_subagent
 
         mcp_config = MCPConfig(server_url="https://example.com", requires_auth=False)
-        integration = _make_integration(
+        subagent = _make_subagent(
             managed_by="mcp",
             mcp_config=mcp_config,
-            composio_config=None,
         )
         mock_graph = MagicMock()
         mock_registry = AsyncMock()
         mock_registry._categories = {"test_int": MagicMock()}
 
         with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-                return_value=integration,
-            ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_tool_registry",
                 new_callable=AsyncMock,
@@ -249,14 +245,17 @@ class TestCreateSubagent:
                 return_value=mock_graph,
             ),
         ):
-            result = await create_subagent("test_int")
+            result = await create_subagent(subagent)
 
         assert result is mock_graph
 
     async def test_composio_integration(self):
         from app.agents.core.subagents.provider_subagents import create_subagent
 
+        # Composio branch still looks up the OAuthIntegration to read
+        # composio_config — Subagent intentionally does not carry it.
         integration = _make_integration(managed_by="composio")
+        subagent = _make_subagent(managed_by="composio")
         mock_graph = MagicMock()
         mock_registry = AsyncMock()
         mock_registry.register_provider_tools = AsyncMock()
@@ -281,10 +280,33 @@ class TestCreateSubagent:
                 return_value=mock_graph,
             ),
         ):
-            result = await create_subagent("test_int")
+            result = await create_subagent(subagent)
 
         assert result is mock_graph
         mock_registry.register_provider_tools.assert_called_once()
+
+    async def test_composio_without_oauth_integration_raises(self):
+        # A builtin Subagent declaring managed_by="composio" but with no
+        # matching OAuthIntegration must fail loudly instead of silently
+        # producing a tool-less agent.
+        from app.agents.core.subagents.provider_subagents import create_subagent
+
+        subagent = _make_subagent(managed_by="composio")
+        mock_registry = AsyncMock()
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
+                return_value=None,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+        ):
+            with pytest.raises(ValueError, match="no matching OAuth integration"):
+                await create_subagent(subagent)
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +325,7 @@ class TestCreateSubagentForUser:
 
         with (
             patch(
-                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
+                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
                 return_value=None,
             ),
             patch(
@@ -317,31 +339,15 @@ class TestCreateSubagentForUser:
         mock_custom.assert_called_once_with("custom_abc", "user_123")
         assert result is mock_graph
 
-    async def test_returns_none_when_no_subagent_config(self):
-        from app.agents.core.subagents.provider_subagents import (
-            create_subagent_for_user,
-        )
-
-        mock_integration = MagicMock()
-        mock_integration.subagent_config = None
-
-        with patch(
-            "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-            return_value=mock_integration,
-        ):
-            result = await create_subagent_for_user("test_int", "user_123")
-
-        assert result is None
-
     async def test_returns_none_when_not_mcp(self):
         from app.agents.core.subagents.provider_subagents import (
             create_subagent_for_user,
         )
 
-        integration = _make_integration(managed_by="composio")
+        subagent = _make_subagent(managed_by="composio")
         with patch(
-            "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-            return_value=integration,
+            "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
+            return_value=subagent,
         ):
             result = await create_subagent_for_user("test_int", "user_123")
 
@@ -353,10 +359,9 @@ class TestCreateSubagentForUser:
         )
 
         mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        integration = _make_integration(
+        subagent = _make_subagent(
             managed_by="mcp",
             mcp_config=mcp_config,
-            composio_config=None,
         )
         mock_graph = MagicMock()
         mock_tools = [MagicMock()]
@@ -372,8 +377,8 @@ class TestCreateSubagentForUser:
 
         with (
             patch(
-                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-                return_value=integration,
+                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_tool_registry",
@@ -408,10 +413,9 @@ class TestCreateSubagentForUser:
         )
 
         mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        integration = _make_integration(
+        subagent = _make_subagent(
             managed_by="mcp",
             mcp_config=mcp_config,
-            composio_config=None,
         )
 
         mock_registry = AsyncMock()
@@ -423,8 +427,8 @@ class TestCreateSubagentForUser:
 
         with (
             patch(
-                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-                return_value=integration,
+                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_tool_registry",
@@ -447,10 +451,9 @@ class TestCreateSubagentForUser:
         )
 
         mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        integration = _make_integration(
+        subagent = _make_subagent(
             managed_by="mcp",
             mcp_config=mcp_config,
-            composio_config=None,
         )
 
         mock_registry = AsyncMock()
@@ -462,8 +465,8 @@ class TestCreateSubagentForUser:
 
         with (
             patch(
-                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-                return_value=integration,
+                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_tool_registry",
@@ -486,10 +489,9 @@ class TestCreateSubagentForUser:
         )
 
         mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        integration = _make_integration(
+        subagent = _make_subagent(
             managed_by="mcp",
             mcp_config=mcp_config,
-            composio_config=None,
         )
         mock_graph = MagicMock()
 
@@ -498,8 +500,8 @@ class TestCreateSubagentForUser:
 
         with (
             patch(
-                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-                return_value=integration,
+                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
+                return_value=subagent,
             ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_tool_registry",
@@ -854,15 +856,12 @@ class TestRegisterSubagentProviders:
             register_subagent_providers,
         )
 
-        integration = _make_integration(
-            managed_by="composio",
-            subagent_config=_make_subagent_config(has_subagent=True),
-        )
+        subagent = _make_subagent(managed_by="composio")
 
         with (
             patch(
-                "app.agents.core.subagents.provider_subagents.OAUTH_INTEGRATIONS",
-                [integration],
+                "app.agents.core.subagents.provider_subagents.all_subagents",
+                return_value=(subagent,),
             ),
             patch(
                 "app.agents.core.subagents.provider_subagents.providers"
@@ -873,65 +872,21 @@ class TestRegisterSubagentProviders:
         assert count == 1
         mock_providers.register.assert_called_once()
 
-    def test_skips_no_subagent_config(self):
-        from app.agents.core.subagents.provider_subagents import (
-            register_subagent_providers,
-        )
-
-        integration = MagicMock(spec=OAuthIntegration)
-        integration.subagent_config = None
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.OAUTH_INTEGRATIONS",
-                [integration],
-            ),
-            patch(
-                "app.agents.core.subagents.provider_subagents.providers"
-            ) as mock_providers,
-        ):
-            count = register_subagent_providers()
-
-        assert count == 0
-        mock_providers.register.assert_not_called()
-
-    def test_skips_has_subagent_false(self):
-        from app.agents.core.subagents.provider_subagents import (
-            register_subagent_providers,
-        )
-
-        integration = _make_integration(
-            subagent_config=_make_subagent_config(has_subagent=False),
-        )
-
-        with (
-            patch(
-                "app.agents.core.subagents.provider_subagents.OAUTH_INTEGRATIONS",
-                [integration],
-            ),
-            patch("app.agents.core.subagents.provider_subagents.providers"),
-        ):
-            count = register_subagent_providers()
-
-        assert count == 0
-
     def test_skips_auth_required_mcp(self):
         from app.agents.core.subagents.provider_subagents import (
             register_subagent_providers,
         )
 
         mcp_config = MCPConfig(server_url="https://example.com", requires_auth=True)
-        integration = _make_integration(
+        subagent = _make_subagent(
             managed_by="mcp",
             mcp_config=mcp_config,
-            composio_config=None,
-            subagent_config=_make_subagent_config(has_subagent=True),
         )
 
         with (
             patch(
-                "app.agents.core.subagents.provider_subagents.OAUTH_INTEGRATIONS",
-                [integration],
+                "app.agents.core.subagents.provider_subagents.all_subagents",
+                return_value=(subagent,),
             ),
             patch("app.agents.core.subagents.provider_subagents.providers"),
         ):
@@ -944,13 +899,13 @@ class TestRegisterSubagentProviders:
             register_subagent_providers,
         )
 
-        int1 = _make_integration(
+        sa1 = _make_subagent(
             integration_id="int1",
             subagent_config=_make_subagent_config(
                 has_subagent=True, agent_name="agent_1"
             ),
         )
-        int2 = _make_integration(
+        sa2 = _make_subagent(
             integration_id="int2",
             subagent_config=_make_subagent_config(
                 has_subagent=True, agent_name="agent_2"
@@ -959,8 +914,8 @@ class TestRegisterSubagentProviders:
 
         with (
             patch(
-                "app.agents.core.subagents.provider_subagents.OAUTH_INTEGRATIONS",
-                [int1, int2],
+                "app.agents.core.subagents.provider_subagents.all_subagents",
+                return_value=(sa1, sa2),
             ),
             patch("app.agents.core.subagents.provider_subagents.providers"),
         ):

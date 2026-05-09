@@ -30,11 +30,13 @@ def _make_model(
     *,
     pricing_per_1k_input_tokens: Optional[float] = 0.01,
     pricing_per_1k_output_tokens: Optional[float] = 0.03,
+    pricing_per_1k_cached_input_tokens: Optional[float] = None,
 ) -> MagicMock:
     """Create a mock ModelConfig with optional pricing attributes."""
     model = MagicMock()
     model.pricing_per_1k_input_tokens = pricing_per_1k_input_tokens
     model.pricing_per_1k_output_tokens = pricing_per_1k_output_tokens
+    model.pricing_per_1k_cached_input_tokens = pricing_per_1k_cached_input_tokens
     return model
 
 
@@ -104,7 +106,12 @@ class TestGetModelPricing:
 
         result = await get_model_pricing("gpt-4o")
 
-        assert result == ModelPricing(input_cost_per_1k=0.01, output_cost_per_1k=0.03)
+        # cached defaults to 25% of input when not set in DB
+        assert result == ModelPricing(
+            input_cost_per_1k=0.01,
+            output_cost_per_1k=0.03,
+            cached_input_cost_per_1k=0.0025,
+        )
         mock_get_model.assert_awaited_once_with("gpt-4o")
 
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
@@ -175,13 +182,19 @@ class TestGetModelPricing:
         model = MagicMock()
         model.pricing_per_1k_input_tokens = 1  # int
         model.pricing_per_1k_output_tokens = 2  # int
+        model.pricing_per_1k_cached_input_tokens = None
         mock_get_model.return_value = model
 
         result = await get_model_pricing("model-x")
 
-        assert result == ModelPricing(input_cost_per_1k=1.0, output_cost_per_1k=2.0)
+        assert result == ModelPricing(
+            input_cost_per_1k=1.0,
+            output_cost_per_1k=2.0,
+            cached_input_cost_per_1k=0.25,  # 25% of input
+        )
         assert isinstance(result.input_cost_per_1k, float)
         assert isinstance(result.output_cost_per_1k, float)
+        assert isinstance(result.cached_input_cost_per_1k, float)
 
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
     async def test_zero_pricing_is_valid(self, mock_get_model: AsyncMock) -> None:
@@ -194,7 +207,11 @@ class TestGetModelPricing:
 
         result = await get_model_pricing("free-model")
 
-        assert result == ModelPricing(input_cost_per_1k=0.0, output_cost_per_1k=0.0)
+        assert result == ModelPricing(
+            input_cost_per_1k=0.0,
+            output_cost_per_1k=0.0,
+            cached_input_cost_per_1k=0.0,
+        )
 
     @patch("app.config.model_pricing.get_model_by_id", new_callable=AsyncMock)
     async def test_model_without_pricing_attributes_returns_default(
@@ -324,7 +341,76 @@ class TestCalculateTokenCost:
             "any-model", input_tokens=100, output_tokens=50
         )
 
-        assert set(result.keys()) == {"input_cost", "output_cost", "total_cost"}
+        assert set(result.keys()) == {
+            "input_cost",
+            "cached_input_cost",
+            "output_cost",
+            "total_cost",
+        }
+
+    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
+    async def test_cached_tokens_billed_at_discounted_rate(
+        self, mock_pricing: AsyncMock
+    ) -> None:
+        """Cached tokens are billed at ``cached_input_cost_per_1k``, not free."""
+        mock_pricing.return_value = ModelPricing(
+            input_cost_per_1k=0.10,
+            output_cost_per_1k=0.40,
+            cached_input_cost_per_1k=0.025,
+        )
+
+        result = await calculate_token_cost(
+            "gemini-3.1-flash-lite-preview",
+            input_tokens=15000,
+            output_tokens=100,
+            cached_tokens=12000,
+        )
+
+        # uncached input: (15000 - 12000) / 1000 * 0.10 = 0.30
+        # cached input:   12000 / 1000 * 0.025          = 0.30
+        # output:         100 / 1000 * 0.40             = 0.04
+        assert result["input_cost"] == pytest.approx(0.30)
+        assert result["cached_input_cost"] == pytest.approx(0.30)
+        assert result["output_cost"] == pytest.approx(0.04)
+        assert result["total_cost"] == pytest.approx(0.64)
+
+    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
+    async def test_cached_tokens_default_zero_billed_as_full(
+        self, mock_pricing: AsyncMock
+    ) -> None:
+        """When ``cached_tokens`` is omitted, all input is billed at full rate."""
+        mock_pricing.return_value = ModelPricing(
+            input_cost_per_1k=0.10,
+            output_cost_per_1k=0.40,
+            cached_input_cost_per_1k=0.025,
+        )
+
+        result = await calculate_token_cost(
+            "gemini-3.1-flash-lite-preview",
+            input_tokens=15000,
+            output_tokens=100,
+        )
+
+        assert result["input_cost"] == pytest.approx(1.5)
+        assert result["cached_input_cost"] == pytest.approx(0.0)
+        assert result["total_cost"] == pytest.approx(1.54)
+
+    @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
+    async def test_cached_clamped_to_input(self, mock_pricing: AsyncMock) -> None:
+        """If a buggy caller passes cached > input, clamp instead of crashing."""
+        mock_pricing.return_value = ModelPricing(
+            input_cost_per_1k=0.10,
+            output_cost_per_1k=0.40,
+            cached_input_cost_per_1k=0.025,
+        )
+
+        result = await calculate_token_cost(
+            "m", input_tokens=1000, output_tokens=0, cached_tokens=9999
+        )
+
+        # cached clamped to 1000, uncached = 0
+        assert result["input_cost"] == pytest.approx(0.0)
+        assert result["cached_input_cost"] == pytest.approx(0.025)
 
     @patch("app.config.model_pricing.get_model_pricing", new_callable=AsyncMock)
     async def test_total_equals_sum_of_parts(self, mock_pricing: AsyncMock) -> None:

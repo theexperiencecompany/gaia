@@ -363,6 +363,8 @@ async def handle_oauth_connection(
         log.warning(f"Failed to invalidate OAuth status cache: {e}")
 
     # Update user_integrations status in MongoDB
+    # The @CacheInvalidator on update_user_integration_status invalidates
+    # `tools:user:{user_id}:*` and `tool_namespaces:{user_id}` automatically.
     try:
         await update_user_integration_status(
             user_id, integration_config.id, INTEGRATION_STATUS_CONNECTED

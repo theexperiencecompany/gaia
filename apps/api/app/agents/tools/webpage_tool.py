@@ -15,6 +15,10 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
+_NO_URLS_RETRIEVED_MSG = (
+    "Search failed — no URLs were retrieved. Do NOT fabricate any URLs or results."
+)
+
 
 @tool
 @with_rate_limiting("webpage_fetch")
@@ -130,9 +134,23 @@ async def web_search_tool(
         )
 
         # Return the raw search results for the LLM to use
+        # Include explicit URL list so the LLM has a ground-truth set and cannot hallucinate
+        real_urls = [r.get("url", "") for r in web_results if r.get("url")]
         return {
             **search_results,
-            "instructions": "Don't repeat the search results, just summarise them, don't show the images in markdown either. These results will be shown on the frontend in an appropriate manner",
+            "real_urls_from_search": real_urls,
+            "integrity_note": (
+                f"Search query: '{query_text}'. "
+                f"Found {len(web_results)} real results. "
+                "Only reference URLs listed in `real_urls_from_search` or in the `web` results. "
+                "NEVER invent or fabricate URLs. If no results were found, say so clearly."
+            ),
+            "instructions": (
+                "Summarise the search results — do not repeat them verbatim. "
+                "Do not show images in markdown. "
+                "Only mention URLs that appear in the search results. "
+                "These results will be shown on the frontend in an appropriate manner."
+            ),
         }
 
     except (asyncio.TimeoutError, ConnectionError) as e:
@@ -140,18 +158,24 @@ async def web_search_tool(
         return {
             "formatted_text": "\n\nConnection timed out during web search. Please try again later.",
             "error": str(e),
+            "real_urls_from_search": [],
+            "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except ValueError as e:
         log.error(f"Value error in web search: {e}", exc_info=True)
         return {
             "formatted_text": "\n\nInvalid search parameters. Please try a different query.",
             "error": str(e),
+            "real_urls_from_search": [],
+            "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
     except Exception as e:
         log.error(f"Unexpected error in web search: {e}", exc_info=True)
         return {
             "formatted_text": "\n\nError performing web search. Please try again later.",
             "error": str(e),
+            "real_urls_from_search": [],
+            "integrity_note": _NO_URLS_RETRIEVED_MSG,
         }
 
 

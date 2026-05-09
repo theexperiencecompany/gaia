@@ -295,15 +295,34 @@ When creating implementation plans, store them in `.agents/plans/` directory. Th
 
 **Never create `.md` files** outside of `.agents/plans/` (gitignored) unless explicitly asked. Do not create `REVIEW.md`, `CONSISTENCY_REPORT.md`, `ANALYSIS.md`, spec files, or any other agent-generated documentation in the source tree. Planning and review artifacts belong only in `.agents/plans/` and only when absolutely necessary.
 
+## Worktrees
+
+We use **worktrunk** (`wt`) on top of `git worktree` to manage parallel branches. Worktrees live as siblings of the primary repo: `~/Projects/GAIA/gaia-<sanitized-branch>` (e.g. branch `feature/auth` → `~/Projects/GAIA/gaia-feature-auth`). The original checkout at `~/Projects/GAIA/gaia` is the **primary worktree** and the only place that owns real `node_modules`, `.venv`, and `.env*` files. Common commands: `wt switch --create <branch>`, `wt switch <branch>`, `wt list`, `wt remove`, `wt prune`. Full reference: [internal-docs → Worktrees](https://github.com/theexperiencecompany/gaia/blob/develop/internal-docs/docs/getting-started/worktrees.mdx).
+
+### Worktree install rules
+
+`node_modules/`, `.venv/`, and `.env*` files in any `gaia-<branch>` sibling are **symlinks pointing at primary** (`~/Projects/GAIA/gaia`). Edits to `.env*` from any worktree apply to primary's file — that's intentional, secrets live in one place. Three rules:
+
+1. **No trailing-slash `rm` on a symlinked dir.** `rm -rf node_modules/` (with the `/`) follows the symlink and recursively deletes primary's directory through it. Always `rm node_modules` (no flags, no slash) when removing a symlink.
+2. **No concurrent installs.** Two `pnpm install` / `mise run setup` / `uv sync` running at once corrupt the shared `node_modules`/`.venv`. Sequential only.
+3. **`mise run setup` runs in primary.** Full setups walk every workspace package; do them from `~/Projects/GAIA/gaia` so the install state matches a known branch.
+
+**`pnpm add some-pkg` from a worktree is fine** — that's the standard way to add a dep to a feature branch. pnpm reads the branch's `package.json` + lockfile, downloads the package, writes it into primary's `node_modules` via the symlink, and updates the worktree's lockfile. Commit the lockfile diff on the feature branch.
+
+If a worktree needs fully isolated installs (corrupted state, conflicting versions): `rm node_modules` (the symlink), then `pnpm install`. To rejoin the shared pool: `rm -rf node_modules && wt re-share`.
+
+Full reference: [internal-docs → Worktrees](https://github.com/theexperiencecompany/gaia/blob/develop/internal-docs/docs/getting-started/worktrees.mdx).
+
 ## Git Conventions
 
 - **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
 - **`develop` is the base branch, not `master`.** All feature branches are created from and merged into `develop`. When comparing branches, analyzing diffs, or creating PRs, always use `develop` as the base — not `master` or `main`.
 - **NEVER merge pull requests.** Do not run `gh pr merge`, do not call any GitHub API merge endpoint, and do not take any action that merges a PR into any branch. PRs are merged by the team — not by Claude. This is an absolute rule with no exceptions.
 - Work is **not complete until `git push` succeeds.** Always push before ending a session.
-- Session close sequence (mandatory when code changed):
+- **Never use `git pull --rebase` or `git rebase` when pulling/merging `origin/develop`.** Always use plain `git merge` — rebase inverts conflict markers (HEAD vs incoming) and causes confusion. Session close sequence (mandatory when code changed):
   ```bash
-  git pull --rebase
+  git fetch origin
+  git merge origin/develop  # if syncing with develop; plain merge, no rebase
   git push
   git status  # must show "up to date with origin"
   ```

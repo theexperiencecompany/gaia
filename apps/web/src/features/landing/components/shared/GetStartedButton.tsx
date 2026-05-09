@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { ChevronRight } from "@/components/shared/icons";
+import type { ReactNode } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
+import { Link } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 export default function GetStartedButton({
@@ -10,20 +10,22 @@ export default function GetStartedButton({
   text = "Get Started",
   btnColor = "#00bbff",
   classname = "text-black!",
+  href = "/signup",
 }: {
   small_text?: boolean;
-  text?: string;
+  text?: ReactNode;
   btnColor?: string;
   classname?: string;
+  href?: string;
 }) {
   return (
     <div
       className="relative z-2 flex flex-col items-center gap-4 group"
       style={{ willChange: "auto" }}
     >
-      <Link href={"/signup"}>
+      <Link href={href}>
         <RaisedButton
-          className={`rounded-xl px-1 ${classname} before:rounded-xl hover:pl-2 duration-400 ease-out group shadow-black`}
+          className={`rounded-xl ${classname} before:rounded-xl duration-400 ease-out group shadow-black hover:scale-110`}
           color={btnColor}
           onClick={() => {
             trackEvent(ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED, {
@@ -32,14 +34,7 @@ export default function GetStartedButton({
             });
           }}
         >
-          <span className="group-hover:translate-x-1 translate-x-3 transition ease-out duration-300">
-            {text}
-          </span>
-          <ChevronRight
-            width={19}
-            height={19}
-            className="group-hover:translate-x-0 transition translate-x-9 ease-out duration-300"
-          />
+          <span className="px-3">{text}</span>
         </RaisedButton>
       </Link>
 

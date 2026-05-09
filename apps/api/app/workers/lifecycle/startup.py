@@ -42,7 +42,9 @@ async def startup(ctx: dict):
         start_metrics_server(metrics_port)
         log.info("arq_worker_metrics_server_started", port=metrics_port)
     except OSError as exc:
-        log.warning("arq_worker_metrics_server_failed", port=metrics_port, error=str(exc))
+        log.warning(
+            "arq_worker_metrics_server_failed", port=metrics_port, error=str(exc)
+        )
 
     # Use unified startup function - handles provider registration, eager init, and auto-init
     await unified_startup("arq_worker")

@@ -28,6 +28,6 @@ runs:
       run: pnpm install --frozen-lockfile --prefer-offline
 
     - name: Set NX_CLOUD_ACCESS_TOKEN
-      if: inputs.nx-cloud-access-token != ''
+      if: false # Nx Cloud plan exceeded — restore condition to re-enable: inputs.nx-cloud-access-token != ''
       shell: bash
       run: echo "NX_CLOUD_ACCESS_TOKEN=${{ inputs.nx-cloud-access-token }}" >> "$GITHUB_ENV"

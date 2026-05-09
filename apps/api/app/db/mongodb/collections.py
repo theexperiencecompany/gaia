@@ -103,7 +103,6 @@ _COLLECTION_MAPPINGS = {
     "waitlist_collection": "waitlist",
     "mail_collection": "mail",
     "blog_collection": "blog",
-    "team_collection": "team",
     "search_urls_collection": "search_urls",
     "files_collection": "files",
     "notifications_collection": "notifications",

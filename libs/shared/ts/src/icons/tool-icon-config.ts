@@ -37,6 +37,7 @@ export function normalizeCategoryName(name: string): string {
 export const iconAliases: Record<string, string> = {
   calendar: "googlecalendar",
   planner: "plan_tasks",
+  gaia_knowledge_guide: "gaia",
 };
 
 export const toolIconConfigs: Record<string, ToolIconConfig> = {

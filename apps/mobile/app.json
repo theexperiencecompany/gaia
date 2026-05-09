@@ -16,6 +16,7 @@
     },
     "android": {
       "package": "io.heygaia.gaiamobile",
+      "newArchEnabled": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
@@ -36,7 +37,10 @@
               "pathPrefix": "/callback"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         },
         {
           "action": "VIEW",
@@ -58,7 +62,10 @@
             { "scheme": "gaia", "host": "settings" },
             { "scheme": "gaia", "host": "integrations" }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -84,7 +91,9 @@
         {
           "icon": "./assets/icons/gaialogo.png",
           "color": "#ffffff",
-          "sounds": ["./assets/sound/uwu.mp3"],
+          "sounds": [
+            "./assets/sound/uwu.mp3"
+          ],
           "defaultChannel": "gaia_channel"
         }
       ]
@@ -98,9 +107,9 @@
         "root": "./src/app"
       },
       "eas": {
-        "projectId": "d40e3b70-3315-4212-9f89-c3efb7f1ef85"
+        "projectId": "15038dfe-abcf-4ac3-92d8-9a4854b29dd1"
       }
     },
-    "owner": "aryanranderiya"
+    "owner": "gaiamobile"
   }
 }

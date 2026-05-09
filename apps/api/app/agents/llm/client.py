@@ -1,5 +1,11 @@
 from typing import Any, Dict, List, Optional, Sequence
 
+from google.api_core.exceptions import (
+    DeadlineExceeded,
+    InternalServerError,
+    ResourceExhausted,
+    ServiceUnavailable,
+)
 from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.llm import (
@@ -14,11 +20,41 @@ from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
 from langchain_core.messages import BaseMessage
-from langchain_core.runnables import RunnableConfig
+from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from typing_extensions import TypedDict
+
+
+# Exception types we retry at the LLM layer. All of these are transient /
+# infrastructure errors that are safe to retry and tend to succeed on a
+# second attempt. ``ResourceExhausted`` covers 429 from the provider's own
+# quota (distinct from the application-level rate limiter which raises
+# ``LangChainRateLimitException`` and must NOT be retried).
+_LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    ResourceExhausted,
+    ServiceUnavailable,
+    DeadlineExceeded,
+    InternalServerError,
+    ConnectionError,
+    TimeoutError,
+)
+
+
+def _wrap_with_retry(llm: Runnable, *, attempts: int = 3) -> Runnable:
+    """Return ``llm`` unchanged.
+
+    We deliberately do NOT call ``llm.with_retry(...)`` here. It returns a
+    ``RunnableRetry`` wrapper that does not expose ``bind_tools``, which
+    breaks LangGraph's bigtool agent builder. Retry semantics for transient
+    provider errors belong on the agent NODE via ``RetryPolicy`` — see the
+    ``retry_policy`` wiring in the graph builder. The exception tuple above
+    stays here so the node-level policy can import it.
+    """
+    del attempts  # retained for signature compat
+    return llm
+
 
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
@@ -65,7 +101,7 @@ def init_openai_llm():
 )
 def init_gemini_llm():
     """Initialize Gemini LLM with default model."""
-    return ChatGoogleGenerativeAI(
+    llm = ChatGoogleGenerativeAI(
         model=PROVIDER_MODELS["gemini"],
         temperature=0.1,
         streaming=True,
@@ -74,6 +110,7 @@ def init_gemini_llm():
             id="model_name", name="Model", description="Which model to use"
         ),
     )
+    return _wrap_with_retry(llm)
 
 
 @lazy_provider(

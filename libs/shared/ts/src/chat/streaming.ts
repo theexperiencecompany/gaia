@@ -1,5 +1,3 @@
-import type { TodoProgressSnapshot } from "./types";
-
 // SSE event types for structured streaming
 export enum SSEEventType {
   Content = "content",
@@ -207,6 +205,9 @@ export interface StreamToolOutput {
   tool_call_id: string;
   output: string;
 }
+
+import type { TodoProgressSnapshot } from "./types";
+export type { TodoProgressSnapshot };
 
 type JsonObject = Record<string, unknown>;
 

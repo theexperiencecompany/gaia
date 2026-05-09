@@ -1,11 +1,11 @@
-import { Input, PressableFeedback, TextField } from "heroui-native";
+import { PressableFeedback, TextField } from "heroui-native";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 import { AppIcon, Cancel01Icon, Search01Icon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 type TextFieldRootProps = React.ComponentProps<typeof TextField>;
-type InputProps = React.ComponentProps<typeof Input>;
+type InputProps = React.ComponentProps<typeof TextField.Input>;
 
 export interface AppSearchInputProps
   extends Omit<InputProps, "children" | "className"> {
@@ -80,7 +80,7 @@ export function AppSearchInput({
         {resolvedStartContent ? (
           <View className="absolute left-3 z-10">{resolvedStartContent}</View>
         ) : null}
-        <Input
+        <TextField.Input
           {...inputProps}
           value={value}
           placeholder={placeholder}

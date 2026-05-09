@@ -1,5 +1,18 @@
-"""Unit tests for app.agents.core.messages — construct_langchain_messages."""
+"""Unit tests for app.agents.core.messages — construct_langchain_messages.
 
+After the caching optimisation work, the message-construction contract is:
+
+    [static_main_prompt, dynamic_context_message, human_task]
+
+The static main prompt is byte-identical across users/channels. Everything
+per-user/per-turn (user name, memories, platform restrictions, OpenUI
+availability) lives in the dynamic-context message built by
+``build_dynamic_context_message``. These tests exercise the orchestration —
+they patch ``create_system_message`` and ``build_dynamic_context_message``
+and verify the assembled message list.
+"""
+
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -14,33 +27,32 @@ from app.models.message_models import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Fixtures & helpers
-# ---------------------------------------------------------------------------
-
 SYSTEM_MSG = SystemMessage(content="System prompt here")
-MEMORY_MSG = SystemMessage(content="Memory context", memory_message=True)
+DYNAMIC_MSG = SystemMessage(
+    content="Dynamic context",
+    additional_kwargs={"dynamic_context": True, "memory_message": True},
+)
 
 
 def _patches(
-    system_msg=SYSTEM_MSG,
-    memory_msg=MEMORY_MSG,
+    system_msg: SystemMessage = SYSTEM_MSG,
+    dynamic_msg: SystemMessage = DYNAMIC_MSG,
     workflow_msg: str = "Workflow exec",
     calendar_msg: str = "Calendar context",
     tool_msg: str = "Tool selection",
     reply_msg: str = "Reply context\n\noriginal",
     files_str: str = "",
-):
-    """Create a dict of context-manager patches for message_helpers functions."""
+) -> dict[str, Any]:
+    """Bundle context-manager patches for the helpers `construct_langchain_messages` calls."""
     return {
         "create_system": patch(
             "app.agents.core.messages.create_system_message",
             return_value=system_msg,
         ),
-        "get_memory": patch(
-            "app.agents.core.messages.get_memory_message",
+        "build_dynamic": patch(
+            "app.agents.core.messages.build_dynamic_context_message",
             new_callable=AsyncMock,
-            return_value=memory_msg,
+            return_value=dynamic_msg,
         ),
         "format_workflow": patch(
             "app.agents.core.messages.format_workflow_execution_message",
@@ -66,147 +78,96 @@ def _patches(
     }
 
 
-# ---------------------------------------------------------------------------
-# Basic construction
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unit
 class TestConstructLangchainMessages:
-    """Core tests for construct_langchain_messages."""
+    """Exercise the [static, dynamic, human] assembly."""
 
     @pytest.mark.asyncio
-    async def test_basic_user_message(self):
-        """Minimal call: system + human message."""
+    async def test_basic_user_message(self) -> None:
+        """Shape is [static, dynamic_context, time_msg, human_task].
+
+        The time HumanMessage is split off from the task so minute ticks
+        don't invalidate the ``system_instruction`` prefix.
+        """
         p = _patches()
-        with p["create_system"], p["get_memory"], p["format_files"]:
+        with p["create_system"], p["build_dynamic"], p["format_files"]:
             result = await construct_langchain_messages(
                 messages=[{"role": "user", "content": "Hi there"}],
             )
 
-        assert len(result) == 2
+        assert len(result) == 4
         assert isinstance(result[0], SystemMessage)
-        assert isinstance(result[1], HumanMessage)
-        assert result[1].content == "Hi there"
+        assert isinstance(result[1], SystemMessage)
+        assert result[1].additional_kwargs.get("dynamic_context") is True
+        # Third is the current-time HumanMessage.
+        assert isinstance(result[2], HumanMessage)
+        assert result[2].additional_kwargs.get("time_context") is True
+        # Fourth is the actual user task.
+        assert isinstance(result[3], HumanMessage)
+        assert result[3].content == "Hi there"
 
     @pytest.mark.asyncio
-    async def test_system_message_created_with_user_name(self):
+    async def test_create_system_receives_agent_type_and_source(self) -> None:
         p = _patches()
-        with p["create_system"] as mock_sys, p["get_memory"], p["format_files"]:
-            await construct_langchain_messages(
-                messages=[{"role": "user", "content": "Hello"}],
-                user_name="Alice",
-                user_id="uid-1",
-            )
-
-        mock_sys.assert_called_once_with("uid-1", "Alice", "comms")
-
-    @pytest.mark.asyncio
-    async def test_agent_type_passed_to_system_message(self):
-        p = _patches()
-        with p["create_system"] as mock_sys, p["get_memory"], p["format_files"]:
+        with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
             await construct_langchain_messages(
                 messages=[{"role": "user", "content": "Hello"}],
                 agent_type="executor",
+                source="web",
             )
-
         mock_sys.assert_called_once()
-        assert mock_sys.call_args[0][2] == "executor"
-
-
-# ---------------------------------------------------------------------------
-# Memory retrieval
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestMemoryRetrieval:
-    """Tests for memory message inclusion."""
+        kwargs = mock_sys.call_args.kwargs
+        assert kwargs["agent_type"] == "executor"
+        assert kwargs["source"] == "web"
 
     @pytest.mark.asyncio
-    async def test_memory_included_when_user_id_and_query(self):
-        p = _patches()
-        with p["create_system"], p["get_memory"] as mock_mem, p["format_files"]:
-            result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "weather"}],
-                user_id="uid-1",
-                query="weather",
-            )
-
-        mock_mem.assert_awaited_once()
-        # system + memory + human = 3
-        assert len(result) == 3
-        assert result[1] is MEMORY_MSG
-
-    @pytest.mark.asyncio
-    async def test_memory_skipped_when_no_user_id(self):
-        p = _patches()
-        with p["create_system"], p["get_memory"] as mock_mem, p["format_files"]:
-            result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "weather"}],
-                query="weather",
-            )
-
-        mock_mem.assert_not_awaited()
-        assert len(result) == 2
-
-    @pytest.mark.asyncio
-    async def test_memory_skipped_when_no_query(self):
-        p = _patches()
-        with p["create_system"], p["get_memory"] as mock_mem, p["format_files"]:
-            result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hello"}],
-                user_id="uid-1",
-            )
-
-        mock_mem.assert_not_awaited()
-        assert len(result) == 2
-
-    @pytest.mark.asyncio
-    async def test_memory_none_not_appended(self):
-        """If get_memory_message returns None, it should not be in the list."""
-        p = _patches(memory_msg=None)
-        with p["create_system"], p["get_memory"], p["format_files"]:
-            result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "hello"}],
-                user_id="uid-1",
-                query="hello",
-            )
-
-        # Only system + human
-        assert len(result) == 2
-
-    @pytest.mark.asyncio
-    async def test_memory_receives_user_dict_timezone(self):
+    async def test_dynamic_message_receives_user_and_source(self) -> None:
         p = _patches()
         user_dict = {
             "timezone": "Asia/Kolkata",
             "onboarding": {"preferences": {"tone": "formal"}},
         }
-        with p["create_system"], p["get_memory"] as mock_mem, p["format_files"]:
+        with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
             await construct_langchain_messages(
                 messages=[{"role": "user", "content": "hi"}],
                 user_id="uid-1",
-                query="hi",
+                user_name="Alice",
                 user_dict=user_dict,
+                query="hi",
+                agent_type="comms",
+                source="whatsapp",
             )
 
-        kwargs = mock_mem.call_args.kwargs
+        kwargs = mock_dyn.call_args.kwargs
+        assert kwargs["user_id"] == "uid-1"
+        assert kwargs["user_name"] == "Alice"
         assert kwargs["user_timezone"] == "Asia/Kolkata"
         assert kwargs["user_preferences"] == {"tone": "formal"}
+        assert kwargs["query"] == "hi"
+        assert kwargs["source"] == "whatsapp"
 
-
-# ---------------------------------------------------------------------------
-# Content priority: workflow > calendar > tool > user message
-# ---------------------------------------------------------------------------
+    @pytest.mark.asyncio
+    async def test_source_passed_to_static_prompt_selector(self) -> None:
+        """The per-channel static prompt is selected via the ``source`` kwarg
+        on ``create_system_message``. Different sources must produce different
+        static prompts (OpenUI on web, platform restrictions on WhatsApp).
+        """
+        p = _patches()
+        with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}],
+                agent_type="comms",
+                source="telegram",
+            )
+        assert mock_sys.call_args.kwargs["source"] == "telegram"
 
 
 @pytest.mark.unit
 class TestContentPriority:
-    """Tests for the priority logic in content selection."""
+    """Workflow > calendar > tool selection > raw user message."""
 
     @pytest.mark.asyncio
-    async def test_workflow_takes_priority(self):
+    async def test_workflow_takes_priority(self) -> None:
         workflow = SelectedWorkflowData(
             id="wf-1",
             title="Test WF",
@@ -216,7 +177,7 @@ class TestContentPriority:
         p = _patches(workflow_msg="WORKFLOW OUTPUT")
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_workflow"] as mock_wf,
             p["format_calendar"],
             p["format_tool"],
@@ -232,7 +193,7 @@ class TestContentPriority:
         assert result[-1].content == "WORKFLOW OUTPUT"
 
     @pytest.mark.asyncio
-    async def test_calendar_when_no_workflow(self):
+    async def test_calendar_when_no_workflow(self) -> None:
         cal_event = SelectedCalendarEventData(
             id="e-1",
             summary="Meeting",
@@ -243,7 +204,7 @@ class TestContentPriority:
         p = _patches(calendar_msg="CALENDAR OUTPUT")
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_calendar"] as mock_cal,
             p["format_tool"],
             p["format_files"],
@@ -257,11 +218,11 @@ class TestContentPriority:
         assert result[-1].content == "CALENDAR OUTPUT"
 
     @pytest.mark.asyncio
-    async def test_tool_selection_when_no_workflow_or_calendar(self):
+    async def test_tool_selection_when_no_workflow_or_calendar(self) -> None:
         p = _patches(tool_msg="TOOL OUTPUT")
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_tool"] as mock_tool,
             p["format_files"],
         ):
@@ -274,11 +235,11 @@ class TestContentPriority:
         assert result[-1].content == "TOOL OUTPUT"
 
     @pytest.mark.asyncio
-    async def test_tool_category_passed(self):
+    async def test_tool_category_passed(self) -> None:
         p = _patches(tool_msg="TOOL OUTPUT")
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_tool"] as mock_tool,
             p["format_files"],
         ):
@@ -293,10 +254,9 @@ class TestContentPriority:
         assert args[2] == "search"
 
     @pytest.mark.asyncio
-    async def test_user_content_fallback(self):
-        """When no workflow/calendar/tool, the user message content is used."""
+    async def test_user_content_fallback(self) -> None:
         p = _patches()
-        with p["create_system"], p["get_memory"], p["format_files"]:
+        with p["create_system"], p["build_dynamic"], p["format_files"]:
             result = await construct_langchain_messages(
                 messages=[{"role": "user", "content": "plain text"}],
             )
@@ -304,58 +264,45 @@ class TestContentPriority:
         assert result[-1].content == "plain text"
 
 
-# ---------------------------------------------------------------------------
-# Edge cases for user content extraction
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unit
 class TestUserContentExtraction:
-    """Tests for extracting user content from messages list."""
+    """User content edge cases."""
 
     @pytest.mark.asyncio
-    async def test_last_message_not_user_gives_empty_content(self):
-        """If last message is not role=user, content is empty and should raise."""
+    async def test_last_message_not_user_gives_empty_content(self) -> None:
         p = _patches()
-        with p["create_system"], p["get_memory"], p["format_files"]:
+        with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message"):
                 await construct_langchain_messages(
                     messages=[{"role": "assistant", "content": "Hi"}],
                 )
 
     @pytest.mark.asyncio
-    async def test_empty_messages_list_raises(self):
+    async def test_empty_messages_list_raises(self) -> None:
         p = _patches()
-        with p["create_system"], p["get_memory"], p["format_files"]:
+        with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message"):
                 await construct_langchain_messages(messages=[])
 
     @pytest.mark.asyncio
-    async def test_whitespace_only_content_raises(self):
+    async def test_whitespace_only_content_raises(self) -> None:
         p = _patches()
-        with p["create_system"], p["get_memory"], p["format_files"]:
+        with p["create_system"], p["build_dynamic"], p["format_files"]:
             with pytest.raises(ValueError, match="No human message"):
                 await construct_langchain_messages(
                     messages=[{"role": "user", "content": "   "}],
                 )
 
 
-# ---------------------------------------------------------------------------
-# Reply-to-message context
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unit
 class TestReplyContext:
-    """Tests for reply_to_message injection."""
-
     @pytest.mark.asyncio
-    async def test_reply_context_added(self):
+    async def test_reply_context_added(self) -> None:
         reply = ReplyToMessageData(id="msg-1", content="original msg", role="user")
         p = _patches(reply_msg="[reply context]\n\nuser content")
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_reply"] as mock_reply,
             p["format_files"],
         ):
@@ -368,11 +315,11 @@ class TestReplyContext:
         assert result[-1].content == "[reply context]\n\nuser content"
 
     @pytest.mark.asyncio
-    async def test_no_reply_context_without_data(self):
+    async def test_no_reply_context_without_data(self) -> None:
         p = _patches()
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_reply"] as mock_reply,
             p["format_files"],
         ):
@@ -383,24 +330,17 @@ class TestReplyContext:
         mock_reply.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# File context
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unit
 class TestFileContext:
-    """Tests for file context appending."""
-
     @pytest.mark.asyncio
-    async def test_files_appended_to_content(self):
+    async def test_files_appended_to_content(self) -> None:
         files_data = [
             FileData(fileId="f1", url="https://example.com/f1", filename="test.txt"),
         ]
         p = _patches(files_str="Uploaded Files:\n- Name: test.txt Id: f1")
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_files"] as mock_files,
         ):
             result = await construct_langchain_messages(
@@ -414,11 +354,11 @@ class TestFileContext:
         assert result[-1].content.startswith("check this")
 
     @pytest.mark.asyncio
-    async def test_no_files_when_ids_empty(self):
+    async def test_no_files_when_ids_empty(self) -> None:
         p = _patches()
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_files"] as mock_files,
         ):
             result = await construct_langchain_messages(
@@ -430,12 +370,11 @@ class TestFileContext:
         assert result[-1].content == "hello"
 
     @pytest.mark.asyncio
-    async def test_files_empty_string_not_appended(self):
-        """If format_files_list returns empty string, nothing is appended."""
+    async def test_files_empty_string_not_appended(self) -> None:
         p = _patches(files_str="")
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_files"],
         ):
             result = await construct_langchain_messages(
@@ -446,12 +385,11 @@ class TestFileContext:
         assert result[-1].content == "hello"
 
     @pytest.mark.asyncio
-    async def test_no_files_when_ids_none(self):
-        """When currently_uploaded_file_ids is None (default), no files context."""
+    async def test_no_files_when_ids_none(self) -> None:
         p = _patches()
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_files"] as mock_files,
         ):
             await construct_langchain_messages(
@@ -462,17 +400,10 @@ class TestFileContext:
         mock_files.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# Trigger context
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unit
 class TestTriggerContext:
-    """Tests for trigger_context passing to workflow formatter."""
-
     @pytest.mark.asyncio
-    async def test_trigger_context_passed_to_workflow(self):
+    async def test_trigger_context_passed_to_workflow(self) -> None:
         workflow = SelectedWorkflowData(
             id="wf-1",
             title="Email WF",
@@ -483,7 +414,7 @@ class TestTriggerContext:
         p = _patches()
         with (
             p["create_system"],
-            p["get_memory"],
+            p["build_dynamic"],
             p["format_workflow"] as mock_wf,
             p["format_files"],
         ):
@@ -495,4 +426,4 @@ class TestTriggerContext:
             )
 
         call_args = mock_wf.call_args
-        assert call_args[0][2] == trigger  # third positional arg
+        assert call_args[0][2] == trigger

@@ -8,7 +8,14 @@ from datetime import timezone as dt_timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from shared.py.wide_events import log
 from app.models.scheduler_models import BaseScheduledTask
@@ -213,6 +220,10 @@ class Workflow(BaseScheduledTask):
     )
     last_executed_at: Optional[datetime] = Field(default=None)
 
+    @field_serializer("last_executed_at")
+    def serialize_last_executed_at(self, value: Optional[datetime]) -> Optional[str]:
+        return value.isoformat() if value is not None else None
+
     # Community features
     is_public: bool = Field(
         default=False,
@@ -269,6 +280,16 @@ class Workflow(BaseScheduledTask):
             "Stable identifier linking this document back to its definition in code. "
             "Used for reset-to-default and idempotency. e.g. 'gmail:email_intelligence'."
         ),
+    )
+
+    selected_integrations: Optional[List[str]] = Field(
+        default=None,
+        description="Integration slugs the user picked to bias step generation.",
+    )
+
+    creator: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Creator info hydrated for public workflow lookups.",
     )
 
     def __init__(self, **data):
@@ -354,6 +375,10 @@ class CreateWorkflowRequest(BaseModel):
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
     )
+    selected_integrations: Optional[List[str]] = Field(
+        default=None,
+        description="Integration slugs selected by the user to hint step generation.",
+    )
 
     # System workflow fields — set by provisioner, not by regular API users
     is_system_workflow: bool = Field(
@@ -393,6 +418,7 @@ class UpdateWorkflowRequest(BaseModel):
     steps: Optional[List[WorkflowStep]] = Field(default=None)
     trigger_config: Optional[TriggerConfig] = Field(default=None)
     activated: Optional[bool] = Field(default=None)
+    selected_integrations: Optional[List[str]] = Field(default=None)
 
     @field_validator("title", "prompt")
     @classmethod
@@ -463,6 +489,10 @@ class RegenerateStepsRequest(BaseModel):
     force_different_tools: bool = Field(
         default=False, description="Force the use of different tools"
     )
+    selected_integrations: Optional[List[str]] = Field(
+        default=None,
+        description="Integration slugs to bias regeneration; falls back to persisted selection.",
+    )
 
 
 class PublishWorkflowRequest(BaseModel):
@@ -491,6 +521,9 @@ class PublishWorkflowResponse(BaseModel):
 
     message: str = Field(description="Success message")
     workflow_id: str = Field(description="ID of the published workflow")
+    slug: Optional[str] = Field(
+        default=None, description="Public URL slug for the workflow"
+    )
 
 
 class GenerateWorkflowPromptRequest(BaseModel):
@@ -500,6 +533,10 @@ class GenerateWorkflowPromptRequest(BaseModel):
     description: Optional[str] = None
     trigger_config: Optional[Dict[str, Any]] = None
     existing_prompt: Optional[str] = None  # non-empty → improve mode
+    selected_integrations: Optional[List[str]] = Field(
+        default=None,
+        description="Integration slugs the user picked, used to bias the suggestion.",
+    )
 
 
 class SuggestedTrigger(BaseModel):

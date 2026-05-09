@@ -1,16 +1,48 @@
 """Memory service layer for handling all memory operations with latest Mem0 API."""
 
+import hashlib
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
 from app.agents.memory.client import memory_client_manager
+from app.constants.cache import MEMORY_SEARCH_CACHE_TTL
+from app.decorators.caching import Cacheable, CacheInvalidator
 from shared.py.wide_events import log
 from app.models.memory_models import (
     MemoryEntry,
     MemoryRelation,
     MemorySearchResult,
 )
+
+
+def _memory_search_cache_key(
+    func_name: str,
+    *args: Any,
+    **kwargs: Any,
+) -> str:
+    """Cache key generator for MemoryService.search_memories.
+
+    Bound method — first positional arg is ``self``. We deliberately ignore
+    it so the key is stable across process restarts (instance repr contains
+    a memory address). Key shape:
+        user:{user_id}:memories:{sha256(query|limit|threshold)[:16]}
+    """
+    # args layout: (self, query, user_id, limit=5, threshold=None)
+    # but callers mix positional/kwargs. Pull by name first.
+    query = kwargs.get("query", args[1] if len(args) > 1 else "")
+    user_id = kwargs.get("user_id", args[2] if len(args) > 2 else None)
+    limit = kwargs.get("limit", args[3] if len(args) > 3 else 5)
+    threshold = kwargs.get("threshold", args[4] if len(args) > 4 else None)
+
+    if not user_id:
+        # Falls back to a namespaced, non-colliding key — the method will
+        # early-return empty results anyway.
+        return "user:anonymous:memories:noop"
+
+    payload = f"{query}|{limit}|{threshold}"
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    return f"user:{user_id}:memories:{digest}"
 
 
 class MemoryService:
@@ -284,6 +316,7 @@ class MemoryService:
 
         return parsed_relations
 
+    @CacheInvalidator(key_patterns=["user:{user_id}:memories:*"])
     async def store_memory(
         self,
         message: str,
@@ -394,6 +427,7 @@ class MemoryService:
             self.logger.error(f"Error storing memory for user {user_id}: {e}")
             return None
 
+    @CacheInvalidator(key_patterns=["user:{user_id}:memories:*"])
     async def store_memory_batch(
         self,
         messages: List[Dict[str, str]],
@@ -512,6 +546,11 @@ class MemoryService:
             )
             return False
 
+    @Cacheable(
+        key_generator=_memory_search_cache_key,
+        ttl=MEMORY_SEARCH_CACHE_TTL,
+        model=MemorySearchResult,
+    )
     async def search_memories(
         self,
         query: str,
@@ -600,7 +639,21 @@ class MemoryService:
             )
 
         except Exception as e:
-            self.logger.error(f"Error searching memories for user {user_id}: {e}")
+            # Mem0 returns 429 / 5xx during quota or upstream blips. We already
+            # swallow the failure and return an empty result, so this is not a
+            # user-facing error and must NOT bump the request's wide-event
+            # outcome to "failed". Demote transient HTTP errors to warning;
+            # everything else stays as error so genuine bugs still surface.
+            msg = str(e)
+            transient = any(
+                s in msg for s in ("429", "Too Many Requests", "503", "502", "504")
+            )
+            if transient:
+                self.logger.warning(
+                    f"Transient mem0 error searching memories for user {user_id}: {e}"
+                )
+            else:
+                self.logger.error(f"Error searching memories for user {user_id}: {e}")
             return MemorySearchResult()
 
     async def search_agent_memories(
@@ -725,6 +778,7 @@ class MemoryService:
             self.logger.error(f"Error retrieving all memories for user {user_id}: {e}")
             return MemorySearchResult()
 
+    @CacheInvalidator(key_patterns=["user:{user_id}:memories:*"])
     async def delete_memory(self, memory_id: str, user_id: Optional[str]) -> bool:
         """
         Delete a specific memory using Mem0 v2 API.
@@ -755,6 +809,7 @@ class MemoryService:
             )
             return False
 
+    @CacheInvalidator(key_patterns=["user:{user_id}:memories:*"])
     async def delete_all_memories(self, user_id: Optional[str]) -> bool:
         """
         Delete all memories for a user using Mem0 v2 API.

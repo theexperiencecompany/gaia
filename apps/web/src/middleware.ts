@@ -11,6 +11,11 @@ import { routing } from "./i18n/routing";
 // classic `middleware.ts` defaults to edge runtime — exactly what the CF
 // adapter requires. Keep this file name until OpenNext ships native proxy
 // support.
+//
+// `next-llms-txt`'s middleware-side path matching was dropped because it
+// calls `process.cwd()` at module load and reads files off disk, which
+// breaks on edge. The /llms.txt URL is still served by the route handler at
+// `src/app/llms.txt/route.ts`.
 
 const translatedPrefixes = [
   "/learn",
@@ -39,6 +44,8 @@ export default function middleware(request: NextRequest) {
   if (isTranslatedRoute(request.nextUrl.pathname)) {
     return intlMiddleware(request);
   }
+  // For non-translated routes: still run middleware (needed for [locale]
+  // routing) but force default locale — no locale prefix in URL.
   return intlMiddlewareDefaultOnly(request);
 }
 

@@ -2,11 +2,13 @@
 
 from typing import Any, Dict, List
 
-import httpx
 from composio import Composio
 
 from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
+from app.services.composio.proxy_client import proxy_request_sync
+
+HUBSPOT_TOOLKIT = "HUBSPOT"
 
 
 def register_hubspot_custom_tools(composio: Composio) -> List[str]:
@@ -23,45 +25,41 @@ def register_hubspot_custom_tools(composio: Composio) -> List[str]:
         Zero required parameters. Returns current CRM state for situational awareness.
         """
         log.set(tool={"integration": "hubspot", "action": "gather_context"})
-        token = auth_credentials.get("access_token")
-        if not token:
-            raise ValueError("Missing access_token in auth_credentials")
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }
+        user_id = auth_credentials.get("user_id")
+        if not user_id:
+            raise ValueError("Missing user_id in auth_credentials")
 
         contacts: List[Dict[str, Any]] = []
         try:
-            resp = httpx.get(
-                "https://api.hubapi.com/crm/v3/objects/contacts",
-                headers=headers,
-                params={
+            data = proxy_request_sync(
+                user_id=user_id,
+                toolkit=HUBSPOT_TOOLKIT,
+                endpoint="https://api.hubapi.com/crm/v3/objects/contacts",
+                method="GET",
+                query={
                     "limit": 10,
                     "properties": "firstname,lastname,email,hs_lead_status",
                     "sort": "-createdate",
                 },
-                timeout=15,
-            )
-            resp.raise_for_status()
-            contacts = resp.json().get("results", [])
+            ) or {}
+            contacts = data.get("results", [])
         except Exception as e:
             log.debug(f"HubSpot contacts fetch failed: {e}")
 
         deals: List[Dict[str, Any]] = []
         try:
-            resp = httpx.get(
-                "https://api.hubapi.com/crm/v3/objects/deals",
-                headers=headers,
-                params={
+            data = proxy_request_sync(
+                user_id=user_id,
+                toolkit=HUBSPOT_TOOLKIT,
+                endpoint="https://api.hubapi.com/crm/v3/objects/deals",
+                method="GET",
+                query={
                     "limit": 10,
                     "properties": "dealname,amount,dealstage,closedate",
                     "sort": "-createdate",
                 },
-                timeout=15,
-            )
-            resp.raise_for_status()
-            deals = resp.json().get("results", [])
+            ) or {}
+            deals = data.get("results", [])
         except Exception as e:
             log.debug(f"HubSpot deals fetch failed: {e}")
 

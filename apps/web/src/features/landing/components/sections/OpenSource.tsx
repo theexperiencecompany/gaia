@@ -175,6 +175,15 @@ export default function OpenSource() {
             </RaisedButton>
           </Link>
         </div>
+        <p className="text-sm text-zinc-500 text-center pt-4">
+          Considering self-hosted alternatives?{" "}
+          <Link
+            href="/compare/openclaw"
+            className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200 transition-colors"
+          >
+            GAIA vs OpenClaw.
+          </Link>
+        </p>
       </div>
     </div>
   );

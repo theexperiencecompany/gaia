@@ -270,7 +270,7 @@ class WebSocketManager {
     };
 
     this.ws.onerror = (event: Event) => {
-      console.warn("[WebSocketManager] Connection error:", event);
+      console.error("[WebSocketManager] Connection error:", event);
       this.notifyError(new Error("WebSocket connection error"));
     };
 
@@ -301,7 +301,7 @@ class WebSocketManager {
       this.reconnectAttempts >= this.maxReconnectAttempts
     ) {
       if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        console.warn(
+        console.error(
           "[WebSocketManager] Max reconnection attempts reached:",
           this.maxReconnectAttempts,
         );

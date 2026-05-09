@@ -8,7 +8,7 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Cancel01Icon, PencilEdit01Icon, PlusSignIcon } from "@icons";
 import DOMPurify from "dompurify";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
@@ -32,6 +32,26 @@ const emailComposeSchema = z.object({
 
 const emailValidationSchema = z.string().email("Invalid email address");
 
+function HtmlEmailBody({ html }: { html: string }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!hostRef.current) return;
+    const shadowRoot =
+      hostRef.current.shadowRoot ||
+      hostRef.current.attachShadow({ mode: "open" });
+    shadowRoot.innerHTML = "";
+    const wrapper = document.createElement("div");
+    wrapper.style.font = "inherit";
+    wrapper.style.color = "inherit";
+    wrapper.style.lineHeight = "1.5";
+    wrapper.innerHTML = DOMPurify.sanitize(html, { ADD_ATTR: ["target"] });
+    shadowRoot.appendChild(wrapper);
+  }, [html]);
+
+  return <div ref={hostRef} />;
+}
+
 interface EmailData {
   to: string[];
   subject: string;
@@ -40,7 +60,6 @@ interface EmailData {
   thread_id?: string;
   bcc?: string[];
   cc?: string[];
-  is_html?: boolean;
 }
 
 interface EmailComposeCardProps {
@@ -52,17 +71,26 @@ function EditEmailModal({
   isOpen,
   onClose,
   onSave,
-  editData,
-  setEditData,
+  initialData,
   errors,
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onSave: () => void;
-  editData: EmailData;
-  setEditData: React.Dispatch<React.SetStateAction<EmailData>>;
+  onSave: (draft: { subject: string; body: string }) => void;
+  initialData: EmailData;
   errors: Record<string, string>;
 }) {
+  const [draft, setDraft] = useState({
+    subject: initialData.subject,
+    body: initialData.body,
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      setDraft({ subject: initialData.subject, body: initialData.body });
+    }
+  }, [isOpen, initialData.subject, initialData.body]);
+
   return (
     <Modal isOpen={isOpen} onOpenChange={onClose} size="2xl">
       <ModalContent className="w-full max-w-md">
@@ -73,9 +101,9 @@ function EditEmailModal({
             <Input
               label="Subject"
               placeholder="Subject"
-              value={editData.subject}
+              value={draft.subject}
               onChange={(e) =>
-                setEditData({ ...editData, subject: e.target.value })
+                setDraft((d) => ({ ...d, subject: e.target.value }))
               }
               isInvalid={!!errors.subject}
               errorMessage={errors.subject}
@@ -87,9 +115,9 @@ function EditEmailModal({
             <Textarea
               label="Message"
               placeholder="Your message"
-              value={editData.body}
+              value={draft.body}
               onChange={(e) =>
-                setEditData({ ...editData, body: e.target.value })
+                setDraft((d) => ({ ...d, body: e.target.value }))
               }
               minRows={5}
               maxRows={8}
@@ -111,7 +139,7 @@ function EditEmailModal({
             <Button
               color="primary"
               size="sm"
-              onPress={onSave}
+              onPress={() => onSave(draft)}
               className="h-7 px-3 text-xs font-medium"
             >
               Save
@@ -273,12 +301,12 @@ export default function EmailComposeCard({
     else setSelectedEmails([]);
   }, [emailData.to]);
 
-  const validateForm = () => {
+  const validateForm = (data: { subject: string; body: string }) => {
     try {
       emailComposeSchema.parse({
         to: selectedEmails,
-        subject: editData.subject,
-        body: editData.body,
+        subject: data.subject,
+        body: data.body,
       });
 
       setErrors({});
@@ -316,7 +344,7 @@ export default function EmailComposeCard({
       return;
     }
 
-    if (!validateForm()) {
+    if (!validateForm({ subject: editData.subject, body: editData.body })) {
       toast.error("Please fix the validation errors");
       return;
     }
@@ -339,7 +367,6 @@ export default function EmailComposeCard({
         formData.append("to", selectedEmails.join(", "));
         formData.append("subject", editData.subject);
         formData.append("body", editData.body);
-        formData.append("is_html", String(emailData.is_html || false));
         if (emailData.bcc && emailData.bcc.length > 0) {
           formData.append("bcc", emailData.bcc.join(", "));
         }
@@ -360,18 +387,18 @@ export default function EmailComposeCard({
     }
   };
 
-  const handleSave = () => {
-    if (!validateForm()) {
+  const handleSave = (draft: { subject: string; body: string }) => {
+    if (!validateForm(draft)) {
       toast.error("Please fix the validation errors");
       return;
     }
 
-    const updatedData = {
-      ...editData,
+    setEditData((prev) => ({
+      ...prev,
+      subject: draft.subject,
+      body: draft.body,
       to: selectedEmails,
-    };
-
-    setEditData(updatedData);
+    }));
     setIsEditModalOpen(false);
     toast.success("Email updated successfully!");
   };
@@ -487,7 +514,7 @@ export default function EmailComposeCard({
           </div>
           <Separator className="my-1.5 bg-zinc-700" />
 
-          <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-zinc-200">
+          <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
             <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
               <Button
                 variant="light"
@@ -498,15 +525,7 @@ export default function EmailComposeCard({
                 <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
               </Button>
             </div>
-            {emailData.is_html ? (
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(editData.body),
-                }}
-              />
-            ) : (
-              editData.body
-            )}
+            <HtmlEmailBody html={editData.body} />
           </ScrollShadow>
         </div>
         <div className="flex justify-end px-6 pb-5">
@@ -531,8 +550,7 @@ export default function EmailComposeCard({
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
         onSave={handleSave}
-        editData={editData}
-        setEditData={setEditData}
+        initialData={editData}
         errors={errors}
       />
 

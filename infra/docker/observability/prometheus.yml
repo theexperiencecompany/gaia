@@ -6,7 +6,7 @@ scrape_configs:
   - job_name: gaia-api
     # Bearer token must match METRICS_TOKEN in the API's environment.
     authorization:
-      credentials_file: /etc/prometheus/metrics_token
+      credentials_file: /run/secrets/gaia_metrics_token
     static_configs:
       - targets: ["gaia-backend:80"]
     metrics_path: /metrics
@@ -23,18 +23,24 @@ scrape_configs:
     static_configs:
       - targets: ["rabbitmq:15692"]
 
-  - job_name: cadvisor
-    scrape_interval: 15s
-    static_configs:
-      - targets: ["cadvisor:8080"]
-
   - job_name: arq_worker
     static_configs:
       - targets: ["arq_worker:9100"]
 
+  # node_exporter — single replica on the overlay network. Scrapes go through
+  # overlay DNS (`node_exporter:9100`) so the exporter never binds to the host.
+  # If we ever scale to multiple swarm nodes, switch this back to
+  # `dockerswarm_sd_configs` + host-published port with a firewall restricting
+  # port 9100 to the manager's internal IP.
   - job_name: node
     static_configs:
       - targets: ["node_exporter:9100"]
+
+  # cadvisor — single replica on the overlay network. Same scaling note as node.
+  - job_name: cadvisor
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["cadvisor:8080"]
 
   # Blackbox HTTP probes for services without native Prometheus metrics
   - job_name: chromadb

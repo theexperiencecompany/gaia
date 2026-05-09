@@ -2,13 +2,14 @@
 
 from typing import Any, Dict, List
 
-import httpx
+from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
+from app.services.composio.proxy_client import proxy_request_sync
+from app.utils.errors import AppError
 from composio import Composio
 
-_http_client = httpx.Client(timeout=30)
-
 MAPS_API_BASE = "https://maps.googleapis.com/maps/api"
+MAPS_TOOLKIT = "GOOGLE_MAPS"
 
 
 def register_google_maps_custom_tools(composio: Composio) -> List[str]:
@@ -22,36 +23,31 @@ def register_google_maps_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Confirms API access and returns available capabilities.
         """
-        token = auth_credentials.get("access_token")
-        api_key = auth_credentials.get("api_key", "")
+        user_id = auth_credentials.get("user_id")
+        if not user_id:
+            raise AppError(
+                message="Missing user_id in auth_credentials",
+                why="CUSTOM_GATHER_CONTEXT requires a user-scoped auth context",
+                status_code=500,
+            )
 
-        if not token and not api_key:
-            raise ValueError("Missing access_token or api_key in auth_credentials")
-
-        # Use whichever auth method is available
-        params: Dict[str, str] = {}
-        headers: Dict[str, str] = {"Accept": "application/json"}
-
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        if api_key:
-            params["key"] = api_key
-
-        # Test geocoding API with a known location to confirm connectivity
-        geocode_resp = _http_client.get(
-            f"{MAPS_API_BASE}/geocode/json",
-            headers=headers,
-            params={**params, "address": "New York, NY", "result_type": "locality"},
-        )
-
-        connected = geocode_resp.status_code == 200
-        status = "ok"
-        if connected:
-            data = geocode_resp.json()
+        try:
+            data = proxy_request_sync(
+                user_id=user_id,
+                toolkit=MAPS_TOOLKIT,
+                endpoint=f"{MAPS_API_BASE}/geocode/json",
+                method="GET",
+                query={"address": "New York, NY", "result_type": "locality"},
+            ) or {}
             status = data.get("status", "UNKNOWN")
+            connected = status == "OK"
+        except Exception as e:
+            log.debug(f"Google Maps integration failed: {e}")
+            status = "ERROR"
+            connected = False
 
         return {
-            "api_connected": connected and status == "OK",
+            "api_connected": connected,
             "status": status,
             "available_services": [
                 "geocoding",

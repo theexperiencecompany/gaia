@@ -347,7 +347,7 @@ export default async function IntegrationPage({ params }: Props) {
     },
   ]);
 
-  const comparisonSlug = getComparison(slug) ? slug : undefined;
+  const comparisonSlug = (await getComparison(slug)) ? slug : undefined;
 
   return (
     <>

@@ -122,13 +122,26 @@ class CalendarTriggerHandler(TriggerHandler):
                     config["include_all_day"] = starting_soon_data.include_all_day
             configs.append(config)
 
+        log.set(
+            trigger_name=trigger_name,
+            composio_slug=composio_slug,
+            calendar_count=len(calendar_ids),
+            minutes_before_start=(
+                trigger_data.minutes_before_start
+                if isinstance(trigger_data, CalendarEventStartingSoonConfig)
+                else None
+            ),
+        )
+
         # Use the base class helper for parallel registration with rollback
-        return await self._register_triggers_parallel(
+        trigger_ids = await self._register_triggers_parallel(
             user_id=user_id,
             trigger_name=trigger_name,
             configs=configs,
             composio_slug=composio_slug,
         )
+        log.set(composio_trigger_ids=trigger_ids, trigger_ids_count=len(trigger_ids))
+        return trigger_ids
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]

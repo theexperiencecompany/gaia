@@ -31,7 +31,6 @@ import {
   WorkflowCircle06Icon,
   ZapIcon,
 } from "@icons";
-import * as m from "motion/react-m";
 import Image from "next/image";
 import {
   getIconPath,
@@ -227,18 +226,8 @@ export const getToolCategoryIcon = (
       );
       return showBackground ? (
         <div className="relative rounded-lg p-1">
-          <m.div
-            className="absolute inset-0 rounded-lg bg-zinc-700"
-            animate={pulsating ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 1 }}
-            transition={
-              pulsating
-                ? {
-                    duration: 2,
-                    repeat: Number.POSITIVE_INFINITY,
-                    ease: "easeInOut",
-                  }
-                : undefined
-            }
+          <div
+            className={`absolute inset-0 rounded-lg bg-zinc-700 ${pulsating ? "animate-pulse" : ""}`}
           />
           <div className="relative">{iconElement}</div>
         </div>
@@ -275,18 +264,10 @@ export const getToolCategoryIcon = (
   const shouldShowBackground = showBackground && !(iconOnly && config.isImage);
   return shouldShowBackground ? (
     <div className="relative rounded-lg p-1">
-      <m.div
-        className={`absolute inset-0 rounded-lg ${config.bgColor}`}
-        animate={pulsating ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 1 }}
-        transition={
-          pulsating
-            ? {
-                duration: 2,
-                repeat: Number.POSITIVE_INFINITY,
-                ease: "easeInOut",
-              }
-            : undefined
-        }
+      <div
+        className={`absolute inset-0 rounded-lg ${config.bgColor} ${
+          pulsating ? "animate-pulse" : ""
+        }`}
       />
       <div className="relative">{iconElement}</div>
     </div>

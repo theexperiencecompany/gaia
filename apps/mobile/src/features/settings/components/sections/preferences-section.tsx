@@ -1,4 +1,4 @@
-import { Button, Card, Chip, Input, Spinner, TextField } from "heroui-native";
+import { Button, Card, Chip, Spinner, TextField } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
@@ -165,7 +165,7 @@ export function PreferencesSection() {
 
           <SectionHeader>Custom Instructions</SectionHeader>
           <TextField>
-            <Input
+            <TextField.Input
               value={customInstructions}
               onChangeText={setCustomInstructions}
               placeholder="Tell GAIA how you'd like it to respond…"

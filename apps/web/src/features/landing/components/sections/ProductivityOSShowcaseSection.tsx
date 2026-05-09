@@ -9,7 +9,7 @@ import {
 import { AnimatePresence, useInView } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DemoCalendarView from "../demo/calendar-demo/DemoCalendarView";
 import DemoChatHeader from "../demo/DemoChatHeader";
 import DemoSidebar from "../demo/DemoSidebar";
@@ -22,7 +22,6 @@ import ShowcaseSectionLayout from "./ShowcaseSectionLayout";
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const DURATION = 5000; // ms per feature
-const TICK = 50; // interval tick in ms
 
 // ─── Features ─────────────────────────────────────────────────────────────────
 
@@ -68,7 +67,14 @@ const FEATURES: Array<{
 
 // ─── Demo Window ──────────────────────────────────────────────────────────────
 
-function ProductivityOSDemo({
+const MemoDemoSidebar = memo(DemoSidebar);
+const MemoDemoChatHeader = memo(DemoChatHeader);
+const MemoDemoDashboardView = memo(DemoDashboardView);
+const MemoDemoCalendarView = memo(DemoCalendarView);
+const MemoDemoTodosView = memo(DemoTodosView);
+const MemoDemoWorkflowsView = memo(DemoWorkflowsView);
+
+const ProductivityOSDemo = memo(function ProductivityOSDemo({
   activePage,
   onPageChange,
 }: {
@@ -77,55 +83,71 @@ function ProductivityOSDemo({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarOpen((o) => !o);
+  }, []);
+
+  const handleNotificationsClick = useCallback(() => {}, []);
+
+  const activePageContent = useMemo(() => {
+    switch (activePage) {
+      case "dashboard":
+        return (
+          <div className="flex-1 overflow-y-auto">
+            <MemoDemoDashboardView />
+          </div>
+        );
+      case "calendar":
+        return (
+          <div className="flex flex-1 overflow-hidden">
+            <MemoDemoCalendarView />
+          </div>
+        );
+      case "todos":
+        return (
+          <div className="flex flex-1 overflow-hidden">
+            <MemoDemoTodosView />
+          </div>
+        );
+      case "workflows":
+        return (
+          <div className="flex-1 overflow-y-auto">
+            <MemoDemoWorkflowsView />
+          </div>
+        );
+      default:
+        return null;
+    }
+  }, [activePage]);
+
   return (
     <div className="overflow-hidden rounded-2xl" style={{ height: "600px" }}>
       {/* App shell */}
       <div className="flex h-full" style={{ backgroundColor: "#111111" }}>
-        <DemoSidebar
+        <MemoDemoSidebar
           open={sidebarOpen}
           activePage={activePage}
           onPageChange={onPageChange}
         />
 
         <div className="relative flex min-w-0 flex-1 flex-col">
-          <DemoChatHeader
+          <MemoDemoChatHeader
             sidebarOpen={sidebarOpen}
             activePage={activePage}
-            onToggleSidebar={() => setSidebarOpen((o) => !o)}
-            onNotificationsClick={() => {}}
+            onToggleSidebar={handleToggleSidebar}
+            onNotificationsClick={handleNotificationsClick}
           />
 
-          <div className="flex flex-1 overflow-hidden">
-            {activePage === "dashboard" && (
-              <div className="flex-1 overflow-y-auto">
-                <DemoDashboardView />
-              </div>
-            )}
-            {activePage === "calendar" && (
-              <div className="flex flex-1 overflow-hidden">
-                <DemoCalendarView />
-              </div>
-            )}
-            {activePage === "todos" && (
-              <div className="flex flex-1 overflow-hidden">
-                <DemoTodosView />
-              </div>
-            )}
-            {activePage === "workflows" && (
-              <div className="flex-1 overflow-y-auto">
-                <DemoWorkflowsView />
-              </div>
-            )}
-          </div>
+          <div className="flex flex-1 overflow-hidden">{activePageContent}</div>
         </div>
       </div>
     </div>
   );
-}
+});
 
 // ─── Right Sidebar ────────────────────────────────────────────────────────────
 
-function ProductivityOSSidebar({
+const ProductivityOSSidebar = memo(function ProductivityOSSidebar({
   activePage,
   progress,
   onPageChange,
@@ -177,8 +199,11 @@ function ProductivityOSSidebar({
             {isActive && (
               <div className="mt-3 h-[2px] w-full overflow-hidden rounded-full bg-white/6">
                 <div
-                  className="h-full rounded-full bg-primary transition-none"
-                  style={{ width: `${progress}%` }}
+                  className="h-full rounded-full bg-primary"
+                  style={{
+                    width: `${progress}%`,
+                    transition: `width ${DURATION}ms linear`,
+                  }}
                 />
               </div>
             )}
@@ -205,7 +230,7 @@ function ProductivityOSSidebar({
       })}
     </div>
   );
-}
+});
 
 // ─── Section ──────────────────────────────────────────────────────────────────
 
@@ -215,56 +240,61 @@ export default function ProductivityOSShowcaseSection() {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { once: true, amount: 0.2 });
 
-  // Refs for mutable state — avoids stale closures in the interval
-  const stateRef = useRef({ activePage: "dashboard" as DemoPage, elapsed: 0 });
-
-  const handlePageChange = (page: DemoPage) => {
-    stateRef.current.activePage = page;
-    stateRef.current.elapsed = 0;
+  const handlePageChange = useCallback((page: DemoPage) => {
     setActivePage(page);
     setProgress(0);
-  };
+  }, []);
 
   useEffect(() => {
-    // Only start the interval when the section is in view
     if (!isInView) return;
 
-    const interval = setInterval(() => {
-      stateRef.current.elapsed += TICK;
-      const p = Math.min((stateRef.current.elapsed / DURATION) * 100, 100);
-      setProgress(p);
+    const timeout = setTimeout(() => {
+      const currentIdx = FEATURES.findIndex((f) => f.id === activePage);
+      const nextPage = FEATURES[(currentIdx + 1) % FEATURES.length].id;
+      setActivePage(nextPage);
+      setProgress(0);
+    }, DURATION);
 
-      if (stateRef.current.elapsed >= DURATION) {
-        stateRef.current.elapsed = 0;
-        const currentIdx = FEATURES.findIndex(
-          (f) => f.id === stateRef.current.activePage,
-        );
-        const nextPage = FEATURES[(currentIdx + 1) % FEATURES.length].id;
-        stateRef.current.activePage = nextPage;
-        setActivePage(nextPage);
-        setProgress(0);
-      }
-    }, TICK);
+    return () => clearTimeout(timeout);
+  }, [activePage, isInView]);
 
-    return () => clearInterval(interval);
-  }, [isInView]);
+  useEffect(() => {
+    if (!isInView) {
+      setProgress(0);
+      return;
+    }
+
+    setProgress(0);
+    const raf = requestAnimationFrame(() => setProgress(100));
+    return () => cancelAnimationFrame(raf);
+  }, [activePage, isInView]);
+
+  const demoComponent = useMemo(
+    () => (
+      <ProductivityOSDemo
+        activePage={activePage}
+        onPageChange={handlePageChange}
+      />
+    ),
+    [activePage, handlePageChange],
+  );
+
+  const sidebarContent = useMemo(
+    () => (
+      <ProductivityOSSidebar
+        activePage={activePage}
+        progress={progress}
+        onPageChange={handlePageChange}
+      />
+    ),
+    [activePage, handlePageChange, progress],
+  );
 
   return (
     <div ref={containerRef} className="min-h-screen flex items-center">
       <ShowcaseSectionLayout
-        DemoComponent={
-          <ProductivityOSDemo
-            activePage={activePage}
-            onPageChange={handlePageChange}
-          />
-        }
-        SidebarContent={
-          <ProductivityOSSidebar
-            activePage={activePage}
-            progress={progress}
-            onPageChange={handlePageChange}
-          />
-        }
+        DemoComponent={demoComponent}
+        SidebarContent={sidebarContent}
         containerClassName="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-6 sm:px-4"
         sidebarClassName="flex w-full flex-col justify-center lg:w-[28%]"
       />

@@ -1,4 +1,5 @@
 import { Chip } from "@heroui/chip";
+import type { ReactNode } from "react";
 
 export default function LargeHeader({
   chipText,
@@ -7,10 +8,10 @@ export default function LargeHeader({
   chipText2,
   centered = false,
 }: {
-  chipText?: string;
-  chipText2?: string;
-  headingText: string;
-  subHeadingText?: string;
+  chipText?: ReactNode;
+  chipText2?: ReactNode;
+  headingText: ReactNode;
+  subHeadingText?: ReactNode;
   centered?: boolean;
 }) {
   return (
@@ -31,7 +32,7 @@ export default function LargeHeader({
         )}
       </div>
       <h2
-        className={`relative z-2 my-2 flex gap-4 text-4xl font-medium sm:text-5xl md:text-7xl ${centered ? "items-center justify-center" : "items-start justify-start"} font-serif!`}
+        className={`relative z-2 my-2 text-4xl font-medium sm:text-5xl md:text-7xl ${centered ? "text-center" : "text-left"} font-serif!`}
       >
         {headingText}
       </h2>

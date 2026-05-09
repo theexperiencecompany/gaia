@@ -19,6 +19,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agents.llm.client import (
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
+    _LLM_RETRYABLE_EXCEPTIONS,
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
@@ -617,6 +618,35 @@ class TestConstants:
         sorted_keys = sorted(PROVIDER_PRIORITY.keys())
         providers_in_order = [PROVIDER_PRIORITY[k] for k in sorted_keys]
         assert providers_in_order == ["gemini", "openai", "openrouter"]
+
+    def test_retryable_exceptions_contains_expected_types(self) -> None:
+        from google.api_core.exceptions import (
+            DeadlineExceeded,
+            InternalServerError,
+            ResourceExhausted,
+            ServiceUnavailable,
+        )
+
+        expected = {
+            ResourceExhausted,
+            ServiceUnavailable,
+            DeadlineExceeded,
+            InternalServerError,
+            ConnectionError,
+            TimeoutError,
+        }
+        actual = set(_LLM_RETRYABLE_EXCEPTIONS)
+        assert actual == expected
+
+    def test_retryable_exceptions_isinstance_check(self) -> None:
+        from google.api_core.exceptions import ResourceExhausted
+
+        exc = ResourceExhausted("rate limited")
+        assert isinstance(exc, _LLM_RETRYABLE_EXCEPTIONS)
+
+    def test_non_retryable_exception_not_in_tuple(self) -> None:
+        assert not isinstance(ValueError("bad"), _LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(KeyError("missing"), _LLM_RETRYABLE_EXCEPTIONS)
 
 
 # ---------------------------------------------------------------------------

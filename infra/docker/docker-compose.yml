@@ -331,6 +331,7 @@ services:
   loki:
     image: grafana/loki:3.3.2
     container_name: loki
+    profiles: ["observability", "all"]
     ports:
       - "${LOKI_HOST_PORT:-3100}:3100"
     volumes:
@@ -351,6 +352,7 @@ services:
   promtail:
     image: grafana/promtail:3.3.2
     container_name: promtail
+    profiles: ["observability", "all"]
     user: root
     # Prevent log feedback loop — Promtail's own stdout must not be captured by
     # Docker, or JSON parse errors spiral into tens of GB of disk usage.
@@ -377,6 +379,7 @@ services:
   grafana:
     image: grafana/grafana:11.4.0
     container_name: grafana
+    profiles: ["observability", "all"]
     ports:
       - "${GRAFANA_HOST_PORT:-4000}:3000"
     volumes:

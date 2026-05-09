@@ -13,6 +13,8 @@ Index Strategy:
 import asyncio
 from typing import Dict, List
 
+from pymongo.errors import OperationFailure
+
 from shared.py.wide_events import log
 from app.helpers.integration_helpers import generate_unique_integration_slug
 from app.db.mongodb.collections import (
@@ -464,6 +466,14 @@ async def create_reminder_indexes():
 async def create_workflow_indexes():
     """Create indexes for workflows collection for optimal query performance."""
     try:
+        # Drop the old non-unique slug index if present so the partial-unique
+        # replacement below can take over. Mongo error code 27 = IndexNotFound.
+        try:
+            await workflows_collection.drop_index("slug_public_idx")
+        except OperationFailure as e:
+            if e.code != 27:
+                raise
+
         # Create all workflow indexes concurrently
         await asyncio.gather(
             # Primary compound index for user workflows with sorting (most critical)
@@ -536,13 +546,24 @@ async def create_workflow_indexes():
                 unique=True,
                 partialFilterExpression={"system_workflow_key": {"$type": 2}},
             ),
-            # Compound index for slug-based public workflow lookups
-            workflows_collection.create_index(
-                [("slug", 1), ("is_public", 1)],
-                sparse=True,
-                name="slug_public_idx",
-            ),
         )
+
+        # Partial-unique index on slug for public workflows. Built outside
+        # the gather so a pre-existing duplicate (legacy data) only logs a
+        # warning instead of crashing startup — operators can de-dup and
+        # restart to reapply.
+        try:
+            await workflows_collection.create_index(
+                [("slug", 1)],
+                unique=True,
+                partialFilterExpression={"is_public": True, "slug": {"$type": 2}},
+                name="slug_public_unique_idx",
+            )
+        except OperationFailure as e:
+            log.warning(
+                f"Failed to create slug_public_unique_idx: {e}. "
+                "Likely duplicate public slugs in workflows; de-dup and restart."
+            )
 
     except Exception as e:
         log.error(f"Error creating workflow indexes: {str(e)}")

@@ -154,7 +154,10 @@ class TestTrackSignup:
         assert set_props["signup_method"] == "workos"
 
         # Verify capture event name
-        assert mock_posthog.capture.call_args.kwargs.get("event") == AnalyticsEvents.USER_SIGNED_UP
+        assert (
+            mock_posthog.capture.call_args.kwargs.get("event")
+            == AnalyticsEvents.USER_SIGNED_UP
+        )
 
     def test_default_signup_method(self, mock_posthog):
         track_signup("user1", "user@example.com")

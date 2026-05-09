@@ -1,8 +1,44 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
+import asyncio
+from datetime import datetime, timezone as dt_timezone
+from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 from shared.py.wide_events import log
+
+from app.db.mongodb.collections import users_collection
+
+_TIMEZONE_BACKFILL_TASKS: set[asyncio.Task[Any]] = set()
+
+
+def _is_valid_iana_or_offset(tz: str) -> bool:
+    """Cheap validation: accept IANA names or ±HH:MM offsets; reject garbage."""
+    if not tz:
+        return False
+    if tz.startswith(("+", "-")) and len(tz) == 6 and tz[3] == ":":
+        return True
+    try:
+        ZoneInfo(tz)
+        return True
+    except (ZoneInfoNotFoundError, ValueError):
+        return False
+
+
+async def _backfill_user_timezone(user_id: str, tz: str) -> None:
+    """Fire-and-forget write-through of the browser-reported timezone."""
+    try:
+        await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"timezone": tz, "updated_at": datetime.now(dt_timezone.utc)}},
+        )
+        log.info(
+            "Backfilled user.timezone from x-timezone header",
+            user_id=user_id,
+            timezone=tz,
+        )
+    except Exception as e:
+        log.warning(f"Failed to backfill user.timezone for {user_id}: {e}")
 
 
 async def get_current_user(request: Request):
@@ -123,30 +159,56 @@ def get_user_timezone(
 
 async def get_user_timezone_from_preferences(
     user: dict = Depends(get_current_user),
+    x_timezone: str = Header(
+        default="", alias="x-timezone", description="Browser timezone fallback"
+    ),
 ) -> str:
     """
-    Get the user's timezone from their stored preferences.
-    Falls back to UTC if no timezone is set.
+    Resolve the user's timezone with three-tier priority:
 
-    Args:
-        user: User data from get_current_user dependency
+      1. `user.timezone` stored in Mongo (set during onboarding)
+      2. `x-timezone` request header (browser-reported IANA zone)
+      3. UTC (last resort)
 
-    Returns:
-        User's timezone string (e.g., 'America/New_York', 'UTC')
+    Emits the wide-event field `timezone_source` so every request makes
+    it visible which branch was used. When we fall through to the header,
+    fire-and-forget a backfill so the Mongo doc is populated for next time.
     """
+    user_id = user.get("user_id")
+
     try:
-        # Only check the root level timezone field
-        timezone = user.get("timezone")
-        log.debug(f"User timezone from user.timezone: {timezone}")
+        stored_tz = (user.get("timezone") or "").strip()
+        if stored_tz:
+            log.set(timezone_source="user_profile", user_timezone=stored_tz)
+            return stored_tz
 
-        if timezone and timezone.strip():
-            log.debug(f"Using user's stored timezone: {timezone}")
-            return timezone.strip()
+        header_tz = (x_timezone or "").strip()
+        if (
+            header_tz
+            and header_tz.upper() != "UTC"
+            and _is_valid_iana_or_offset(header_tz)
+        ):
+            log.set(timezone_source="x_timezone_header", user_timezone=header_tz)
+            log.warning(
+                "user.timezone missing; using x-timezone header fallback",
+                user_id=user_id,
+                header_timezone=header_tz,
+            )
+            if user_id:
+                task = asyncio.create_task(_backfill_user_timezone(user_id, header_tz))
+                _TIMEZONE_BACKFILL_TASKS.add(task)
+                task.add_done_callback(_TIMEZONE_BACKFILL_TASKS.discard)
+            return header_tz
 
-        # Fallback to UTC
-        log.debug("No user timezone found, falling back to UTC")
+        log.set(timezone_source="fallback_utc", user_timezone="UTC")
+        log.warning(
+            "user.timezone missing and no valid x-timezone header; falling back to UTC",
+            user_id=user_id,
+            header_value=header_tz or None,
+        )
         return "UTC"
 
     except Exception as e:
-        log.warning(f"Error getting user timezone from preferences: {e}")
+        log.warning(f"Error resolving user timezone: {e}", user_id=user_id)
+        log.set(timezone_source="fallback_utc", user_timezone="UTC")
         return "UTC"

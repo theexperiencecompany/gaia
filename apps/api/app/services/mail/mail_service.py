@@ -81,7 +81,6 @@ async def send_email(
     subject: str,
     body: str,
     thread_id: Optional[str] = None,
-    is_html: bool = False,
     extra_recipients: List[str] = [],
     cc_list: Optional[List[str]] = None,
     bcc_list: Optional[List[str]] = None,
@@ -94,13 +93,16 @@ async def send_email(
     GMAIL_REPLY_TO_THREAD (when thread_id is provided) to handle both
     new emails and thread replies appropriately.
 
+    Body content is always delivered as HTML — Markdown inputs are converted
+    transparently by the Composio before-hook so Gmail renders formatting
+    instead of literal ``**`` / ``###`` characters.
+
     Args:
         user_id: User ID for Composio authentication
         to: Primary recipient email address
         subject: Email subject
-        body: Email body content
+        body: Email body content (Markdown or HTML; converted if needed)
         thread_id: Optional thread ID - if provided, uses GMAIL_REPLY_TO_THREAD
-        is_html: Whether the body is HTML content
         extra_recipients: Additional recipient email addresses
         cc_list: Optional list of CC recipients
         bcc_list: Optional list of BCC recipients
@@ -123,13 +125,15 @@ async def send_email(
         tool_name = "GMAIL_REPLY_TO_THREAD" if is_reply else "GMAIL_SEND_EMAIL"
         body_param = "message_body" if is_reply else "body"
 
-        # Build parameters
+        # Build parameters. The Composio before-hook (gmail_compose_before_hook)
+        # normalises body → HTML and sets is_html=True for every compose tool,
+        # so callers can hand us either Markdown or HTML and Gmail will render
+        # consistently.
         parameters: Dict[str, Any] = {
             "recipient_email": to,
             "extra_recipients": extra_recipients,
             body_param: body,
             "subject": subject,
-            "is_html": is_html,
         }
 
         # Add thread_id for replies
@@ -673,20 +677,21 @@ async def create_draft(
     to_list: List[str],
     subject: str,
     body: str,
-    is_html: bool = False,
     cc_list: Optional[List[str]] = None,
     bcc_list: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Create a new Gmail draft using Composio Gmail tool.
 
+    Body content is always sent as HTML — the Composio before-hook converts
+    Markdown inputs transparently.
+
     Args:
         user_id: User ID for Composio authentication
         sender: Email address of the sender
         to_list: Email addresses of recipients
         subject: Email subject
-        body: Email body
-        is_html: Whether the body is HTML content
+        body: Email body (Markdown or HTML; converted if needed)
         cc_list: Email addresses for CC
         bcc_list: Email addresses for BCC
 
@@ -706,8 +711,6 @@ async def create_draft(
             parameters["cc"] = cc_list
         if bcc_list:
             parameters["bcc"] = bcc_list
-        if is_html:
-            parameters["html"] = True
 
         result = await invoke_gmail_tool(
             user_id, "GMAIL_CREATE_EMAIL_DRAFT", parameters
@@ -802,12 +805,14 @@ async def update_draft(
     to_list: List[str],
     subject: str,
     body: str,
-    is_html: bool = False,
     cc_list: Optional[List[str]] = None,
     bcc_list: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Update an existing Gmail draft.
+
+    Body content is always sent as HTML — the Composio before-hook converts
+    Markdown inputs transparently.
 
     Args:
         user_id: User ID for Composio authentication
@@ -815,8 +820,7 @@ async def update_draft(
         sender: Email address of the sender
         to_list: Email addresses of recipients
         subject: Email subject
-        body: Email body
-        is_html: Whether the body is HTML content
+        body: Email body (Markdown or HTML; converted if needed)
         cc_list: Email addresses for CC
         bcc_list: Email addresses for BCC
 

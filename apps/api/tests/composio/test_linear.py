@@ -44,7 +44,7 @@ from app.models.linear_models import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-AUTH = {"access_token": "test_linear_token"}
+AUTH = {"user_id": "test_linear_user"}
 EXECUTE_REQUEST = MagicMock()  # not used by any of the current tools
 
 

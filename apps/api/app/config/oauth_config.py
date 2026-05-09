@@ -2015,20 +2015,6 @@ def get_integration_by_config(auth_config_id: str) -> Optional[OAuthIntegration]
     )
 
 
-@cache
-def get_subagent_integrations() -> List[OAuthIntegration]:
-    """Get all platform integrations that have subagent configurations.
-
-    Returns:
-        List of OAuthIntegration objects with has_subagent=True
-    """
-    return [
-        integration
-        for integration in OAUTH_INTEGRATIONS
-        if integration.subagent_config and integration.subagent_config.has_subagent
-    ]
-
-
 def get_memory_extraction_prompt(integration_id: str) -> Optional[str]:
     """Get the memory extraction prompt for a specific integration.
 

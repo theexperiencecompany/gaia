@@ -26,14 +26,11 @@ Create a new email draft.
 - `cc`: CC recipients
 - `bcc`: BCC recipients
 - `thread_id`: Reply within existing thread
-- `is_html`: Set `true` only when the user explicitly wants HTML email formatting
 
 **Body formatting:**
-- Always draft beautiful, readable emails.
-- Default to plain text email body unless the user explicitly asks for HTML.
-- For plain text (`is_html=false`), use clear multi-line formatting with short paragraphs and blank lines between sections so the draft is easy to scan.
-- If using HTML, provide a safe HTML fragment (no `<html>`/`<head>`/`<body>`). Stick to: `p`, `br`, `strong`, `em`, `ul/ol/li`, `a`.
-- Do not rely on automatic Markdown conversion.
+- Write the body as Markdown. The backend converts it to HTML before Gmail sends, so `**bold**`, `### headings`, `- lists`, and `[links](url)` all render correctly in the recipient's inbox.
+- Draft beautiful, readable emails: short paragraphs, blank lines between sections, meaningful subject lines.
+- Do not emit raw HTML (`<p>`, `<div>`, etc.) — write Markdown and let the pipeline handle it.
 
 **Signature:**
 - Use the user's proper name from context (`User Name:`) in the sign-off.

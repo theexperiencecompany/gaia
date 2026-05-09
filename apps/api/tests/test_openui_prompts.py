@@ -40,20 +40,35 @@ def test_instructions_contains_all_component_names():
     from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 
     components = [
-        "DataCard",
-        "ResultList",
-        "ComparisonTable",
-        "StatusCard",
-        "ActionCard",
-        "TagGroup",
+        # Layout containers
+        "Stack",
+        "Card",
+        "Grid",
+        "Row",
+        "Column",
+        "Separator",
+        # Primitives
+        "TextContent",
+        "CardHeader",
+        "Tag",
+        "TagBlock",
+        "Callout",
+        "Stat",
+        "Col",
+        "Table",
+        "Button",
+        "Buttons",
+        "Progress",
+        "Avatar",
+        "Checkbox",
+        "Radio",
+        # Layout & data
+        "CopyableContent",
         "FileTree",
         "Accordion",
         "TabsBlock",
-        "ProgressList",
-        "StatRow",
-        "SelectableList",
-        "AvatarList",
-        "KbdBlock",
+        "KbdRow",
+        # Analytics
         "BarChart",
         "LineChart",
         "AreaChart",
@@ -61,19 +76,19 @@ def test_instructions_contains_all_component_names():
         "ScatterChart",
         "RadarChart",
         "GaugeChart",
-        "ImageBlock",
+        # Content
         "ImageGallery",
         "VideoBlock",
         "AudioPlayer",
         "MapBlock",
-        "CalendarMini",
         "NumberTicker",
         "Carousel",
-        "TreeView",
+        # Timeline
         "Timeline",
-        "AlertBanner",
         "Steps",
+        # Code
         "CodeDiff",
+        # Documents
         "TextDocument",
     ]
     for name in components:

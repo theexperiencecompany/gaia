@@ -2,6 +2,7 @@
 
 import { Chip } from "@heroui/chip";
 import { Tick02Icon } from "@icons";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { useEffect } from "react";
@@ -30,6 +31,10 @@ interface PricingCardProps {
   isCurrentPlan?: boolean;
   hasActiveSubscription?: boolean;
   isPro?: boolean;
+  isEnterprise?: boolean;
+  priceLabel?: string; // override price display (e.g. "Custom")
+  ctaLabel?: string;
+  ctaHref?: string; // overrides dodo flow when provided
 }
 
 export function PricingCard({
@@ -45,6 +50,10 @@ export function PricingCard({
   isCurrentPlan,
   hasActiveSubscription,
   isPro = false,
+  isEnterprise = false,
+  priceLabel,
+  ctaLabel,
+  ctaHref,
 }: PricingCardProps) {
   const formatUSDPrice = (amountInCents: number) => {
     if (amountInCents === 0) return "$0";
@@ -90,6 +99,11 @@ export function PricingCard({
       is_free_plan: price === 0,
     });
 
+    if (ctaHref) {
+      router.push(ctaHref);
+      return;
+    }
+
     if (price === 0) {
       if (user) router.push("/c");
       else router.push("/signup");
@@ -123,6 +137,7 @@ export function PricingCard({
   };
 
   const getButtonText = () => {
+    if (ctaLabel) return ctaLabel;
     if (isCreatingSubscription) return "Creating subscription...";
     if (isCurrentPlan && hasActiveSubscription) return "Current Plan";
     if (hasActiveSubscription && !isCurrentPlan) return "Switch Plan";
@@ -130,12 +145,20 @@ export function PricingCard({
     return "Get GAIA Pro";
   };
 
-  const isFree = price === 0;
+  const isFree = price === 0 && !isEnterprise;
+
+  const planImage = isEnterprise
+    ? "/images/pricing/enterprise.webp"
+    : isPro
+      ? "/images/pricing/pro.webp"
+      : isFree
+        ? "/images/pricing/free.webp"
+        : null;
 
   return (
     <div
       className={[
-        "flex h-full w-full flex-col rounded-3xl",
+        "flex h-full w-full flex-col overflow-hidden rounded-3xl",
         "bg-zinc-800/50 backdrop-blur-lg",
         className,
       ]
@@ -171,25 +194,41 @@ export function PricingCard({
         </p>
       </div>
 
+      {planImage && (
+        <div className="px-6 pb-5">
+          <div className="relative h-40 w-full overflow-hidden rounded-2xl">
+            <Image
+              src={planImage}
+              alt={`${title} plan`}
+              fill
+              sizes="(max-width: 640px) 100vw, 33vw"
+              className="object-cover hover:scale-125 transition duration-300"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Price */}
       <div className="px-6 pb-5">
         <div className="flex items-baseline gap-2">
-          {originalDisplayPrice && !durationIsMonth && (
+          {originalDisplayPrice && !durationIsMonth && !priceLabel && (
             <span className="text-2xl font-normal text-zinc-500 line-through">
               {originalDisplayPrice}
             </span>
           )}
           <span className="text-5xl font-semibold tracking-tight">
-            {monthlyEquivalent ?? displayPrice}
+            {priceLabel ?? monthlyEquivalent ?? displayPrice}
           </span>
         </div>
         {/* Always render this line so height stays consistent */}
         <p className="mt-1 text-sm text-zinc-400 font-normal">
-          {price > 0
-            ? monthlyEquivalent
-              ? `/ mo, billed ${displayPrice} / year`
-              : "/ per month"
-            : "\u00A0"}
+          {isEnterprise
+            ? "Tailored pricing"
+            : price > 0
+              ? monthlyEquivalent
+                ? `/ mo, billed ${displayPrice} / year`
+                : "/ per month"
+              : "\u00A0"}
         </p>
       </div>
 
@@ -201,8 +240,8 @@ export function PricingCard({
           </div>
         )}
         <RaisedButton
-          className={`w-full ${isFree ? "text-zinc-400!" : "text-black!"}`}
-          color={isFree ? "#2a2a2a" : "#00bbff"}
+          className={`w-full ${isFree ? "text-zinc-400!" : isEnterprise ? "text-black!" : "text-black!"}`}
+          color={isFree ? "#2a2a2a" : isEnterprise ? "#fa4b00" : "#00bbff"}
           onClick={handleGetStarted}
           disabled={
             isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
@@ -211,9 +250,11 @@ export function PricingCard({
           {getButtonText()}
         </RaisedButton>
         <p className="mt-2 text-center text-xs text-zinc-500 font-light">
-          {isFree
-            ? "No credit card required"
-            : "Cancel anytime · Secure payment"}
+          {isEnterprise
+            ? "Reply within 24 hours"
+            : isFree
+              ? "No credit card required"
+              : "Cancel anytime · Secure payment"}
         </p>
       </div>
 
@@ -242,7 +283,7 @@ export function PricingCard({
                 <FeatureIcon
                   height="15"
                   width="15"
-                  className={`mt-0.5 shrink-0 ${isPro ? "text-primary" : "text-zinc-500"}`}
+                  className={`mt-0.5 shrink-0 ${isPro || isEnterprise ? "text-primary" : "text-zinc-500"}`}
                 />
                 <span className="text-zinc-300">{featureText}</span>
               </div>

@@ -61,10 +61,11 @@ Environment variables are resolved in this order (first value wins):
 
 `loadConfig()` in `libs/shared/ts/src/bots/config/index.ts` handles this. It is called inside `BaseBotAdapter.boot()`, not in the constructor. No `--require dotenv` flags are needed — dotenv is loaded explicitly in code.
 
-After all sources are exhausted, three vars are validated as required:
+After all sources are exhausted, four vars are validated as required:
 - `GAIA_API_URL` — backend API URL
 - `GAIA_BOT_API_KEY` — shared secret (must match backend's `BOT_API_KEY`)
 - `GAIA_FRONTEND_URL` — web app URL for auth redirects
+- `BOT_LOG_HASH_SECRET` — HMAC-SHA256 key (min 32 chars) for hashing PII in logs. Generate with `openssl rand -hex 32`.
 
 If any are missing, the process throws and exits.
 
