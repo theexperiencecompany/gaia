@@ -37,10 +37,7 @@
               "pathPrefix": "/callback"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         },
         {
           "action": "VIEW",
@@ -62,10 +59,7 @@
             { "scheme": "gaia", "host": "settings" },
             { "scheme": "gaia", "host": "integrations" }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },
@@ -91,9 +85,7 @@
         {
           "icon": "./assets/icons/gaialogo.png",
           "color": "#ffffff",
-          "sounds": [
-            "./assets/sound/uwu.mp3"
-          ],
+          "sounds": ["./assets/sound/uwu.mp3"],
           "defaultChannel": "gaia_channel"
         }
       ]

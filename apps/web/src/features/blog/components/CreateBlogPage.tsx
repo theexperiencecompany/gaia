@@ -55,7 +55,6 @@ export default function CreateBlogPage() {
     setValue,
     formState: { errors },
   } = useForm<BlogFormData>({
-    // @ts-expect-error: @hookform/resolvers@5.2.2 types lag zod >= 4.3; runtime is fine
     resolver: zodResolver(blogSchema),
     defaultValues: {
       date: new Date().toISOString().split("T")[0],

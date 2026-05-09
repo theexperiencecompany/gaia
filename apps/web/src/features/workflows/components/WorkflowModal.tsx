@@ -110,7 +110,6 @@ export default function WorkflowModal({
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
-    // @ts-expect-error: @hookform/resolvers@5.2.2 types lag zod >= 4.3; runtime is fine
     resolver: zodResolver(workflowFormSchema),
     defaultValues: getDefaultFormValues(),
   });
