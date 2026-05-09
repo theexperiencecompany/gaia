@@ -5,12 +5,11 @@ import {
   AppIcon,
   ArrowDown02Icon,
   Cancel01Icon,
-  Folder02Icon,
+  Menu01Icon,
+  Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { selectionHaptic } from "@/lib/haptics";
-import { AppSearchInput } from "@/shared/components/ui/app-search-input";
-import { BackButton } from "@/shared/components/ui/back-button";
 import { TODO_FILTER_DESCRIPTORS } from "../../constants";
 import type { FilterTab, SortOption, TodoCounts } from "../../types/todo-types";
 
@@ -18,28 +17,27 @@ interface TodoListHeaderProps {
   activeFilter: FilterTab;
   onFilterChange: (filter: FilterTab) => void;
   counts: TodoCounts | null;
-  searchValue: string;
-  onSearchChange: (value: string) => void;
   onAddTodo: () => void;
-  onOpenProjects: () => void;
+  onOpenDrawer: () => void;
+  onOpenSearch: () => void;
   activeSort: SortOption | null;
   onOpenSort: () => void;
   onClearSort: () => void;
 }
 
 /**
- * Sticky list header — title row + search + filter chips + sort affordance.
- * Used by `TodoListScreen`. The multi-select header morph is rendered by
- * `TodoBulkActionBar` instead.
+ * Sticky list header — title row + filter chips + sort affordance.
+ * Search lives in the bottom-sheet `TodoSearchSheet` opened from the
+ * search icon. Projects/labels/priorities live in the shared app sidebar
+ * (`SidebarContent` → `TodoSidebarSection`), not in the header.
  */
 export function TodoListHeader({
   activeFilter,
   onFilterChange,
   counts,
-  searchValue,
-  onSearchChange,
   onAddTodo,
-  onOpenProjects,
+  onOpenDrawer,
+  onOpenSearch,
   activeSort,
   onOpenSort,
   onClearSort,
@@ -49,7 +47,7 @@ export function TodoListHeader({
   return (
     <View
       style={{
-        backgroundColor: "#0a0a0a",
+        backgroundColor: "#111111",
         paddingTop: insets.top + 6,
         paddingBottom: 8,
       }}
@@ -63,36 +61,57 @@ export function TodoListHeader({
           paddingBottom: 10,
         }}
       >
-        <BackButton />
+        <Pressable
+          onPress={onOpenDrawer}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Open menu"
+          style={({ pressed }) => ({
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: pressed
+              ? "rgba(255,255,255,0.10)"
+              : "rgba(63,63,70,0.40)",
+          })}
+        >
+          <AppIcon icon={Menu01Icon} size={18} color="#a1a1aa" />
+        </Pressable>
         <Text
           style={{
             fontSize: 22,
             fontWeight: "600",
             color: "#fafafa",
             flex: 1,
-            marginLeft: 8,
+            marginLeft: 4,
           }}
         >
-          Todos
+          Tasks
         </Text>
         <Pressable
-          onPress={onOpenProjects}
+          onPress={onOpenSearch}
           hitSlop={8}
-          accessibilityLabel="Browse projects"
-          style={{
+          accessibilityRole="button"
+          accessibilityLabel="Search tasks"
+          style={({ pressed }) => ({
             width: 36,
             height: 36,
             borderRadius: 18,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "rgba(63,63,70,0.40)",
-          }}
+            backgroundColor: pressed
+              ? "rgba(255,255,255,0.10)"
+              : "rgba(63,63,70,0.40)",
+          })}
         >
-          <AppIcon icon={Folder02Icon} size={18} color="#a1a1aa" />
+          <AppIcon icon={Search01Icon} size={18} color="#a1a1aa" />
         </Pressable>
         <Pressable
           onPress={onAddTodo}
           hitSlop={8}
+          accessibilityRole="button"
           accessibilityLabel="Add todo"
           style={{
             width: 36,
@@ -105,14 +124,6 @@ export function TodoListHeader({
         >
           <AppIcon icon={Add01Icon} size={18} color="#0a0a0a" />
         </Pressable>
-      </View>
-
-      <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
-        <AppSearchInput
-          value={searchValue}
-          onChangeText={onSearchChange}
-          placeholder="Search todos"
-        />
       </View>
 
       <ScrollView

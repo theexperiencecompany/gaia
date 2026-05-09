@@ -403,16 +403,27 @@ function ChatItem({
           style={{
             flexDirection: "row",
             alignItems: "center",
-            paddingHorizontal: spacing.md,
+            paddingHorizontal: 12,
             paddingVertical: spacing.sm + 2,
             gap: spacing.sm,
-            backgroundColor: isActive
-              ? "rgba(255,255,255,0.05)"
-              : "transparent",
-            borderRadius: 12,
-            marginHorizontal: spacing.xs,
+            backgroundColor: isActive ? "rgba(0,187,255,0.10)" : "transparent",
+            borderRadius: 10,
+            marginHorizontal: 12,
+            overflow: "hidden",
           }}
         >
+          {isActive ? (
+            <View
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 3,
+                backgroundColor: "#00bbff",
+              }}
+            />
+          ) : null}
           {isStreaming && <StreamingDot />}
           {!isStreaming && item.is_unread && (
             <View
@@ -436,12 +447,12 @@ function ChatItem({
             query={searchQuery}
             baseStyle={{
               fontSize: fontSize.md,
-              color: item.is_unread
+              color: isActive
                 ? "#ffffff"
-                : isActive
-                  ? "#d4d4d8"
+                : item.is_unread
+                  ? "#ffffff"
                   : "#a1a1aa",
-              fontWeight: item.is_unread ? "400" : "300",
+              fontWeight: isActive ? "600" : item.is_unread ? "400" : "300",
               flex: 1,
             }}
             numberOfLines={1}

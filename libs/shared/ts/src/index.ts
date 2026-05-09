@@ -13,6 +13,7 @@ export * from "./bots";
 export * from "./chat";
 export * from "./cli";
 export * from "./hooks";
+export * from "./todos";
 export * from "./tool-utils";
 export * from "./types";
 export * from "./utils";

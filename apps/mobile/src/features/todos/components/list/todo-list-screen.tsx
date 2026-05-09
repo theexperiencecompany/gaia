@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
+import { useSidebar } from "@/features/chat/hooks/sidebar-context";
 import { useConfirmDialog } from "@/shared/components/ui/app-confirm-dialog";
 import { todoApi } from "../../api/todo-api";
 import { useProjects } from "../../hooks/use-projects";
@@ -27,12 +28,14 @@ import {
 } from "../create/todo-create-sheet";
 import type { TodoDetailSheetRef } from "../detail/todo-detail-sheet";
 import { TodoDetailSheet } from "../detail/todo-detail-sheet";
-import type { ProjectListSheetRef } from "../project-list-sheet";
-import { ProjectListSheet } from "../project-list-sheet";
 import {
   SnoozeActionSheet,
   type SnoozeActionSheetRef,
 } from "../sheets/snooze-action-sheet";
+import {
+  TodoSearchSheet,
+  type TodoSearchSheetRef,
+} from "../sheets/todo-search-sheet";
 import { SortPickerSheet, type SortPickerSheetRef } from "../sort-picker-sheet";
 import { TodoBulkActionBar } from "./todo-bulk-action-bar";
 import { TodoListHeader } from "./todo-list-header";
@@ -51,10 +54,9 @@ const UNDO_HOLD_MS = 5000;
 export function TodoListScreen() {
   const confirm = useConfirmDialog();
   const insets = useSafeAreaInsets();
+  const { toggleSidebar } = useSidebar();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeSort, setActiveSort] = useState<SortOption | null>(null);
   const [undo, setUndo] = useState<UndoState | null>(null);
   // Hold the currently snoozed todo so the snooze sheet can apply to it
@@ -64,16 +66,9 @@ export function TodoListScreen() {
 
   const detailSheetRef = useRef<TodoDetailSheetRef>(null);
   const createSheetRef = useRef<TodoCreateSheetRef>(null);
-  const projectListSheetRef = useRef<ProjectListSheetRef>(null);
   const snoozeSheetRef = useRef<SnoozeActionSheetRef>(null);
   const sortSheetRef = useRef<SortPickerSheetRef>(null);
-
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-    }, 300);
-    return () => clearTimeout(handle);
-  }, [searchQuery]);
+  const searchSheetRef = useRef<TodoSearchSheetRef>(null);
 
   const {
     todos,
@@ -89,14 +84,9 @@ export function TodoListScreen() {
     updateTodo,
     toggleComplete,
     deleteTodo,
-  } = useTodos({ search: debouncedSearch || undefined });
+  } = useTodos();
 
-  const {
-    projects: managedProjects,
-    createProject,
-    deleteProject,
-    refetch: refetchProjects,
-  } = useProjects();
+  const { projects: managedProjects, refetch: refetchProjects } = useProjects();
 
   useFocusEffect(
     useCallback(() => {
@@ -165,7 +155,7 @@ export function TodoListScreen() {
   const handleBulkComplete = useCallback(async () => {
     if (selectedIds.size === 0) return;
     try {
-      await todoApi.bulkComplete(Array.from(selectedIds));
+      await todoApi.bulkCompleteTodos(Array.from(selectedIds));
       cancelSelection();
       void refetch();
     } catch {
@@ -184,7 +174,7 @@ export function TodoListScreen() {
     });
     if (!ok) return;
     try {
-      await todoApi.bulkDelete(Array.from(selectedIds));
+      await todoApi.bulkDeleteTodos(Array.from(selectedIds));
       cancelSelection();
       void refetch();
     } catch {
@@ -345,22 +335,21 @@ export function TodoListScreen() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
+    <View style={{ flex: 1, backgroundColor: "#111111" }}>
       {!selectionMode ? (
         <TodoListHeader
           activeFilter={activeFilter}
           onFilterChange={setActiveFilter}
           counts={counts}
-          searchValue={searchQuery}
-          onSearchChange={setSearchQuery}
           onAddTodo={() => createSheetRef.current?.open()}
-          onOpenProjects={() => projectListSheetRef.current?.open()}
+          onOpenDrawer={toggleSidebar}
+          onOpenSearch={() => searchSheetRef.current?.open()}
           activeSort={activeSort}
           onOpenSort={() => sortSheetRef.current?.open()}
           onClearSort={() => setActiveSort(null)}
         />
       ) : (
-        <View style={{ paddingTop: insets.top, backgroundColor: "#0a0a0a" }} />
+        <View style={{ paddingTop: insets.top, backgroundColor: "#111111" }} />
       )}
 
       {error ? (
@@ -397,7 +386,7 @@ export function TodoListScreen() {
           filter={activeFilter}
           isLoading={isLoading}
           isRefreshing={isRefreshing}
-          isSearchEmpty={debouncedSearch.length > 0}
+          isSearchEmpty={false}
           onRefresh={() => void refetch()}
           onToggleComplete={toggleComplete}
           onTodoPress={handleTodoPress}
@@ -443,17 +432,6 @@ export function TodoListScreen() {
         onDeleteSubtask={handleDeleteSubtask}
       />
 
-      <ProjectListSheet
-        ref={projectListSheetRef}
-        projects={managedProjects}
-        onCreateProject={async (data) => {
-          await createProject(data);
-        }}
-        onDeleteProject={async (id) => {
-          await deleteProject(id);
-        }}
-      />
-
       <SortPickerSheet
         ref={sortSheetRef}
         activeSort={activeSort}
@@ -462,6 +440,11 @@ export function TodoListScreen() {
       />
 
       <SnoozeActionSheet ref={snoozeSheetRef} onPick={handleSnoozePicked} />
+
+      <TodoSearchSheet
+        ref={searchSheetRef}
+        onSelect={(todo) => detailSheetRef.current?.open(todo)}
+      />
 
       <TodoUndoToast undo={undo} onDismiss={dismissUndo} />
     </View>

@@ -1,7 +1,12 @@
 import { Image } from "expo-image";
 import { PressableFeedback } from "heroui-native";
 import { TextInput, View } from "react-native";
-import { AppIcon, Cancel01Icon, Search01Icon } from "@/components/icons";
+import {
+  AppIcon,
+  Cancel01Icon,
+  PencilEdit02Icon,
+  Search01Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -10,25 +15,29 @@ const GaiaLogo = require("@shared/assets/logo/logo.svg");
 interface SidebarHeaderProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  onNewChat?: () => void;
 }
+
+const SECTION_PADDING = 12;
 
 export function SidebarHeader({
   searchQuery,
   onSearchChange,
+  onNewChat,
 }: SidebarHeaderProps) {
   const { spacing, fontSize, iconSize } = useResponsive();
 
   return (
     <View>
-      {/* Top bar: wordmark only (web parity) */}
+      {/* Brand row: logo + wordmark + new chat button */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: spacing.md,
+          paddingHorizontal: SECTION_PADDING,
           paddingTop: spacing.md,
           paddingBottom: spacing.sm,
-          gap: 8,
+          gap: 10,
         }}
       >
         <Image
@@ -42,16 +51,20 @@ export function SidebarHeader({
             fontWeight: "600",
             color: "#e4e4e7",
             letterSpacing: 0.2,
+            flex: 1,
           }}
         >
           GAIA
         </Text>
+        <PressableFeedback onPress={onNewChat} hitSlop={8}>
+          <AppIcon icon={PencilEdit02Icon} size={iconSize.md} color="#a1a1aa" />
+        </PressableFeedback>
       </View>
 
-      {/* Search input */}
+      {/* Search input — edge-to-edge with same horizontal padding as other sections */}
       <View
         style={{
-          paddingHorizontal: spacing.md,
+          paddingHorizontal: SECTION_PADDING,
           paddingBottom: spacing.sm,
         }}
       >
@@ -65,7 +78,7 @@ export function SidebarHeader({
               fontSize: fontSize.md,
               color: "#e4e4e7",
               backgroundColor: "#27272a",
-              borderRadius: 8,
+              borderRadius: 10,
               paddingHorizontal: spacing.md,
               paddingVertical: spacing.sm,
               paddingLeft: spacing.xl,
@@ -76,7 +89,7 @@ export function SidebarHeader({
           <View
             style={{
               position: "absolute",
-              left: spacing.sm + 4,
+              left: spacing.sm + 2,
               top: 0,
               bottom: 0,
               justifyContent: "center",

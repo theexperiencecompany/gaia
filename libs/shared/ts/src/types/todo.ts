@@ -88,3 +88,52 @@ export interface TodoListResponse {
   data: Todo[];
   meta: PaginationMeta;
 }
+
+export enum WorkflowStatus {
+  NOT_STARTED = "not_started",
+  GENERATING = "generating",
+  COMPLETED = "completed",
+  FAILED = "failed",
+}
+
+export interface TodoCounts {
+  inbox: number;
+  today: number;
+  upcoming: number;
+  completed: number;
+  overdue: number;
+}
+
+export interface TodoCreate {
+  title: string;
+  description?: string;
+  labels?: string[];
+  due_date?: string;
+  due_date_timezone?: string;
+  priority?: Priority;
+  project_id?: string;
+  subtasks?: SubTask[];
+  recurrence?: string;
+}
+
+export interface ProjectCreate {
+  name: string;
+  description?: string;
+  color?: string;
+}
+
+export interface ProjectUpdate {
+  name?: string;
+  description?: string;
+  color?: string;
+}
+
+export interface BulkMoveRequest {
+  todo_ids: string[];
+  project_id: string;
+}
+
+export interface TodoLabel {
+  name: string;
+  count: number;
+}

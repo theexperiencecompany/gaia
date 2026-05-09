@@ -11,6 +11,7 @@ import type {
 import { TodoDetailFields } from "./todo-detail-fields";
 import { TodoDetailFooter } from "./todo-detail-footer";
 import { TodoDetailSubtasks } from "./todo-detail-subtasks";
+import { TodoWorkflowSection } from "./todo-workflow-section";
 
 export interface TodoDetailSheetRef {
   open: (todo: Todo) => void;
@@ -214,6 +215,9 @@ export const TodoDetailSheet = forwardRef<
                     onToggle={handleToggleSubtask}
                     onDelete={handleDeleteSubtask}
                   />
+                  {!todo.id.startsWith("optimistic-") ? (
+                    <TodoWorkflowSection todoId={todo.id} />
+                  ) : null}
                 </BottomSheetScrollView>
                 <TodoDetailFooter
                   completed={todo.completed}

@@ -38,7 +38,7 @@ export interface UseModalFormReturn<T> {
   updateField: (field: keyof T, value: T[keyof T]) => void;
 }
 
-export function useModalForm<T extends Record<string, unknown>, R = void>({
+export function useModalForm<T extends object, R = void>({
   initialData,
   onSubmit,
   validate,

@@ -6,6 +6,7 @@ import { SidebarProvider } from "@/features/chat/hooks/sidebar-context";
 import { NotificationProvider } from "@/features/notifications/components/notification-provider";
 import { getOnboardingStatus } from "@/features/onboarding/api/onboarding-api";
 import { wsManager } from "@/lib/websocket-client";
+import { AppShell } from "@/shared/components/layouts/app-shell";
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -67,7 +68,7 @@ export default function AppLayout() {
   return (
     <NotificationProvider>
       <SidebarProvider>
-        <View className="flex-1 bg-background">
+        <AppShell>
           <Stack
             screenOptions={{
               headerShown: false,
@@ -151,7 +152,7 @@ export default function AppLayout() {
               options={{ animation: "fade" }}
             />
           </Stack>
-        </View>
+        </AppShell>
       </SidebarProvider>
     </NotificationProvider>
   );
