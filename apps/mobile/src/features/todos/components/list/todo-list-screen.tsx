@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
-import { useSidebar } from "@/features/chat/hooks/sidebar-context";
 import { useConfirmDialog } from "@/shared/components/ui/app-confirm-dialog";
 import { todoApi } from "../../api/todo-api";
 import { useProjects } from "../../hooks/use-projects";
@@ -54,7 +53,6 @@ const UNDO_HOLD_MS = 5000;
 export function TodoListScreen() {
   const confirm = useConfirmDialog();
   const insets = useSafeAreaInsets();
-  const { toggleSidebar } = useSidebar();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeSort, setActiveSort] = useState<SortOption | null>(null);
@@ -342,7 +340,6 @@ export function TodoListScreen() {
           onFilterChange={setActiveFilter}
           counts={counts}
           onAddTodo={() => createSheetRef.current?.open()}
-          onOpenDrawer={toggleSidebar}
           onOpenSearch={() => searchSheetRef.current?.open()}
           activeSort={activeSort}
           onOpenSort={() => sortSheetRef.current?.open()}

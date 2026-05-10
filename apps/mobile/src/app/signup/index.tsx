@@ -19,6 +19,7 @@ export default function SignUpScreen() {
     setIsLoading(true);
     try {
       const token = await startOAuthFlow();
+      if (!token) return; // User aborted — silently stop without an error
       await storeAuthToken(token);
       const userInfo = await fetchUserInfo(token);
       await storeUserInfo(userInfo);

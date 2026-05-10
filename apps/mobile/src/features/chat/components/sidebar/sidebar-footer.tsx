@@ -3,6 +3,7 @@ import { ActivityIndicator, Image, Pressable, View } from "react-native";
 import { AppIcon, ArrowRight01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
+import { useSidebar } from "@/features/chat/hooks/sidebar-context";
 import { useResponsive } from "@/lib/responsive";
 
 const AVATAR_BG = "#27272a";
@@ -11,7 +12,13 @@ const AVATAR_ACCENT = "#00bbff";
 export function SidebarFooter() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const { closeSidebar } = useSidebar();
   const { spacing, fontSize, iconSize } = useResponsive();
+
+  const handleOpenSettings = () => {
+    closeSidebar();
+    router.push("/(app)/settings");
+  };
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -40,7 +47,7 @@ export function SidebarFooter() {
 
   return (
     <Pressable
-      onPress={() => router.push("/(app)/settings")}
+      onPress={handleOpenSettings}
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",

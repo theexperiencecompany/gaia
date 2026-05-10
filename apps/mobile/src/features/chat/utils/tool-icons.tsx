@@ -1,8 +1,9 @@
 import { getToolIconConfig, type ToolIconConfig } from "@gaia/shared/icons";
 import { getGaiaIcon, ToolsIcon } from "@icons";
+import { Image } from "expo-image";
 import type React from "react";
 import { useEffect, useRef } from "react";
-import { Animated, Image, View } from "react-native";
+import { Animated, View } from "react-native";
 import { INTEGRATION_LOGOS } from "@/features/integrations/constants/logos";
 
 export type { ToolIconConfig };
@@ -92,7 +93,7 @@ export function getToolCategoryIcon(
         <Image
           source={{ uri: resolvedIconUrl }}
           style={{ width: size, height: size }}
-          resizeMode="contain"
+          contentFit="contain"
         />
       );
       if (!showBackground) return iconElement;
@@ -112,7 +113,7 @@ export function getToolCategoryIcon(
         <Image
           source={{ uri: resolvedIconUrl }}
           style={{ width: size, height: size }}
-          resizeMode="contain"
+          contentFit="contain"
         />
       );
       if (!showBackground) return iconElement;

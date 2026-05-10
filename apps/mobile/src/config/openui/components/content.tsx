@@ -1,7 +1,8 @@
 import { defineComponent, useTriggerAction } from "@openuidev/react-lang";
-import { Audio, ResizeMode, Video } from "expo-av";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { Image } from "expo-image";
 import * as Linking from "expo-linking";
+import { useVideoPlayer, VideoView } from "expo-video";
 import React from "react";
 import {
   Dimensions,
@@ -386,6 +387,7 @@ function getEmbedUrl(src: string): string | null {
 
 export function VideoBlockView(props: z.infer<typeof videoBlockSchema>) {
   const embedUrl = React.useMemo(() => getEmbedUrl(props.src), [props.src]);
+  const player = useVideoPlayer(embedUrl ? null : props.src);
 
   return (
     <View className="w-full">
@@ -402,12 +404,11 @@ export function VideoBlockView(props: z.infer<typeof videoBlockSchema>) {
             domStorageEnabled
           />
         ) : (
-          <Video
-            source={{ uri: props.src }}
+          <VideoView
+            player={player}
             style={{ width: "100%", height: "100%" }}
-            resizeMode={ResizeMode.CONTAIN}
-            useNativeControls
-            posterSource={props.poster ? { uri: props.poster } : undefined}
+            contentFit="contain"
+            nativeControls
           />
         )}
       </View>
@@ -421,59 +422,24 @@ export function VideoBlockView(props: z.infer<typeof videoBlockSchema>) {
 }
 
 export function AudioPlayerView(props: z.infer<typeof audioPlayerSchema>) {
-  const soundRef = React.useRef<Audio.Sound | null>(null);
-  const [isPlaying, setIsPlaying] = React.useState(false);
-  const [position, setPosition] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
-  const [isLoaded, setIsLoaded] = React.useState(false);
+  const player = useAudioPlayer({ uri: props.src });
+  const status = useAudioPlayerStatus(player);
+  const isPlaying = status.playing;
+  const isLoaded = status.isLoaded;
+  const position = status.currentTime;
+  const duration = status.duration;
 
-  React.useEffect(() => {
-    let active = true;
-    const load = async () => {
-      try {
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: props.src },
-          { shouldPlay: false },
-          (status) => {
-            if (!active || !status.isLoaded) return;
-            setPosition(status.positionMillis ?? 0);
-            setDuration(status.durationMillis ?? 0);
-            setIsPlaying(status.isPlaying ?? false);
-          },
-        );
-        if (!active) {
-          await sound.unloadAsync();
-          return;
-        }
-        soundRef.current = sound;
-        setIsLoaded(true);
-      } catch {
-        setIsLoaded(false);
-      }
-    };
-    load();
-    return () => {
-      active = false;
-      const s = soundRef.current;
-      soundRef.current = null;
-      if (s) {
-        s.unloadAsync().catch(() => undefined);
-      }
-    };
-  }, [props.src]);
-
-  const toggle = React.useCallback(async () => {
-    const sound = soundRef.current;
-    if (!sound) return;
+  const toggle = React.useCallback(() => {
+    if (!isLoaded) return;
     if (isPlaying) {
-      await sound.pauseAsync();
+      player.pause();
     } else {
       if (duration > 0 && position >= duration) {
-        await sound.setPositionAsync(0);
+        player.seekTo(0);
       }
-      await sound.playAsync();
+      player.play();
     }
-  }, [isPlaying, position, duration]);
+  }, [player, isLoaded, isPlaying, position, duration]);
 
   const progress =
     duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
@@ -556,10 +522,10 @@ export function AudioPlayerView(props: z.infer<typeof audioPlayerSchema>) {
             }}
           >
             <Text className="text-xs text-zinc-500 font-mono tabular-nums">
-              {formatTime(position / 1000)}
+              {formatTime(position)}
             </Text>
             <Text className="text-xs text-zinc-500 font-mono tabular-nums">
-              {formatTime(duration / 1000)}
+              {formatTime(duration)}
             </Text>
           </View>
         </View>

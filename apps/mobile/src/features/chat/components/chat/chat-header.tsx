@@ -5,7 +5,6 @@ import { Pressable, TextInput, View } from "react-native";
 import Animated, { ZoomIn } from "react-native-reanimated";
 import {
   Cancel01Icon,
-  Menu01Icon,
   Notification01Icon,
   PencilEdit02Icon,
   Tick01Icon,
@@ -15,6 +14,7 @@ import type { Conversation } from "@/features/chat/types";
 import { useInappNotifications } from "@/features/notifications/hooks/use-inapp-notifications";
 import { impactHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
+import { SidebarMenuButton } from "@/shared/components/sidebar-menu-button";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi } from "../../api/chat-api";
 import { chatKeys, useConversationsQuery } from "../../api/queries";
@@ -22,11 +22,10 @@ import { chatKeys, useConversationsQuery } from "../../api/queries";
 const TITLE_MAX_LENGTH = 200;
 
 interface ChatHeaderProps {
-  onMenuPress: () => void;
   onNewChatPress: () => void;
 }
 
-export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
+export function ChatHeader({ onNewChatPress }: ChatHeaderProps) {
   const { spacing, iconSize, moderateScale, fontSize } = useResponsive();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -137,16 +136,7 @@ export function ChatHeader({ onMenuPress, onNewChatPress }: ChatHeaderProps) {
           </View>
         </Pressable>
       ) : (
-        <Pressable
-          onPress={() => {
-            impactHaptic("light");
-            onMenuPress();
-          }}
-        >
-          <View style={{ padding: moderateScale(4, 0.5) }}>
-            <Menu01Icon size={iconSize.md} color="#a1a1aa" />
-          </View>
-        </Pressable>
+        <SidebarMenuButton />
       )}
 
       <View

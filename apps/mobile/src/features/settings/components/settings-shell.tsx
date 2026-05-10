@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
+import { Button, Dialog } from "heroui-native";
 import { useState } from "react";
-import { Alert, Image, Pressable, ScrollView, View } from "react-native";
+import { Image, Pressable, ScrollView, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -108,19 +109,22 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const { spacing, fontSize } = useResponsive();
+  const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const handleSignOut = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: async () => {
-          await signOut();
-          router.replace("/login");
-        },
-      },
-    ]);
+    setSignOutDialogOpen(true);
+  };
+
+  const confirmSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut();
+      setSignOutDialogOpen(false);
+      router.replace("/login");
+    } finally {
+      setIsSigningOut(false);
+    }
   };
 
   const getInitials = (name?: string) => {
@@ -318,6 +322,61 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
       </SettingsGroup>
 
       <View style={{ height: spacing.lg }} />
+
+      <Dialog
+        isOpen={signOutDialogOpen}
+        onOpenChange={(open) => {
+          if (!isSigningOut) setSignOutDialogOpen(open);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay />
+          <Dialog.Content
+            style={{
+              width: "88%",
+              maxWidth: 400,
+              backgroundColor: "#1c1c1e",
+              padding: spacing.lg,
+              borderRadius: 16,
+            }}
+          >
+            <Dialog.Title style={{ color: "#f4f4f5", fontWeight: "600" }}>
+              Sign out
+            </Dialog.Title>
+            <Dialog.Description
+              style={{ color: "#a1a1aa", marginTop: spacing.xs }}
+            >
+              You'll need to sign in again to access your account.
+            </Dialog.Description>
+            <View
+              style={{
+                flexDirection: "row",
+                gap: spacing.sm,
+                marginTop: spacing.md,
+              }}
+            >
+              <Button
+                variant="ghost"
+                onPress={() => setSignOutDialogOpen(false)}
+                isDisabled={isSigningOut}
+                style={{ flex: 1 }}
+              >
+                <Button.Label>Cancel</Button.Label>
+              </Button>
+              <Button
+                variant="danger"
+                onPress={() => void confirmSignOut()}
+                isDisabled={isSigningOut}
+                style={{ flex: 1 }}
+              >
+                <Button.Label>
+                  {isSigningOut ? "Signing out..." : "Sign out"}
+                </Button.Label>
+              </Button>
+            </View>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog>
     </ScrollView>
   );
 }

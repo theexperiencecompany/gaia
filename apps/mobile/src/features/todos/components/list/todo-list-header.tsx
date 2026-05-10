@@ -5,11 +5,11 @@ import {
   AppIcon,
   ArrowDown02Icon,
   Cancel01Icon,
-  Menu01Icon,
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { selectionHaptic } from "@/lib/haptics";
+import { SidebarMenuButton } from "@/shared/components/sidebar-menu-button";
 import { TODO_FILTER_DESCRIPTORS } from "../../constants";
 import type { FilterTab, SortOption, TodoCounts } from "../../types/todo-types";
 
@@ -18,7 +18,6 @@ interface TodoListHeaderProps {
   onFilterChange: (filter: FilterTab) => void;
   counts: TodoCounts | null;
   onAddTodo: () => void;
-  onOpenDrawer: () => void;
   onOpenSearch: () => void;
   activeSort: SortOption | null;
   onOpenSort: () => void;
@@ -36,7 +35,6 @@ export function TodoListHeader({
   onFilterChange,
   counts,
   onAddTodo,
-  onOpenDrawer,
   onOpenSearch,
   activeSort,
   onOpenSort,
@@ -61,24 +59,7 @@ export function TodoListHeader({
           paddingBottom: 10,
         }}
       >
-        <Pressable
-          onPress={onOpenDrawer}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Open menu"
-          style={({ pressed }) => ({
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: pressed
-              ? "rgba(255,255,255,0.10)"
-              : "rgba(63,63,70,0.40)",
-          })}
-        >
-          <AppIcon icon={Menu01Icon} size={18} color="#a1a1aa" />
-        </Pressable>
+        <SidebarMenuButton />
         <Text
           style={{
             fontSize: 22,

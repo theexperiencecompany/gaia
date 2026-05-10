@@ -18,7 +18,7 @@ interface ChatLayoutProps {
  */
 export function ChatLayout({ children, background }: ChatLayoutProps) {
   const { setActiveChatId, clearActiveMessages } = useChatContext();
-  const { toggleSidebar, closeSidebar } = useSidebar();
+  const { closeSidebar } = useSidebar();
   const router = useRouter();
 
   const handleNewChat = useCallback(() => {
@@ -45,10 +45,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
       )}
 
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <ChatHeader
-          onMenuPress={toggleSidebar}
-          onNewChatPress={handleNewChat}
-        />
+        <ChatHeader onNewChatPress={handleNewChat} />
 
         <View style={{ flex: 1 }}>{children}</View>
       </SafeAreaView>

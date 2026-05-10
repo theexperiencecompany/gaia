@@ -15,12 +15,11 @@ import {
   AppIcon,
   ArrowRight01Icon,
   ConnectIcon,
-  Menu01Icon,
   PlusSignIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { useSidebar } from "@/features/chat/hooks/sidebar-context";
 import { useResponsive } from "@/lib/responsive";
+import { SidebarMenuButton } from "@/shared/components/sidebar-menu-button";
 import { AppEmptyStateCard } from "@/shared/components/ui/app-empty-state-card";
 import { AppSearchInput } from "@/shared/components/ui/app-search-input";
 import { BackButton } from "@/shared/components/ui/back-button";
@@ -115,7 +114,6 @@ export function IntegrationsScreen() {
   const createSheetRef = useRef<CreateMCPIntegrationSheetRef>(null);
   const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
 
-  const { toggleSidebar } = useSidebar();
   const { integrations, isLoading, refetch, connect, disconnect } =
     useIntegrations();
 
@@ -495,24 +493,7 @@ export function IntegrationsScreen() {
           {tab === "community" ? (
             <BackButton onPress={() => setTab("all")} />
           ) : (
-            <Pressable
-              onPress={toggleSidebar}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Open menu"
-              style={({ pressed }) => ({
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: pressed
-                  ? "rgba(255,255,255,0.10)"
-                  : "rgba(63,63,70,0.40)",
-              })}
-            >
-              <AppIcon icon={Menu01Icon} size={18} color="#a1a1aa" />
-            </Pressable>
+            <SidebarMenuButton />
           )}
 
           <Text
