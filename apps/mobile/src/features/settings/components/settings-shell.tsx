@@ -111,17 +111,27 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
   const { spacing, fontSize } = useResponsive();
   const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const handleSignOut = () => {
+    setSignOutError(null);
     setSignOutDialogOpen(true);
   };
 
   const confirmSignOut = async () => {
     setIsSigningOut(true);
+    setSignOutError(null);
     try {
       await signOut();
       setSignOutDialogOpen(false);
       router.replace("/login");
+    } catch (error) {
+      console.error("Sign out failed:", error);
+      setSignOutError(
+        error instanceof Error
+          ? error.message
+          : "Failed to sign out. Please try again.",
+      );
     } finally {
       setIsSigningOut(false);
     }
@@ -348,6 +358,17 @@ function SettingsMenu({ onSelect }: SettingsMenuProps) {
             >
               You'll need to sign in again to access your account.
             </Dialog.Description>
+            {signOutError ? (
+              <Text
+                style={{
+                  color: "#f87171",
+                  fontSize: 13,
+                  marginTop: spacing.sm,
+                }}
+              >
+                {signOutError}
+              </Text>
+            ) : null}
             <View
               style={{
                 flexDirection: "row",

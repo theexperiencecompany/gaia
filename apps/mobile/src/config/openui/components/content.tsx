@@ -385,9 +385,20 @@ function getEmbedUrl(src: string): string | null {
   return null;
 }
 
+function NativeVideo({ src }: { src: string }) {
+  const player = useVideoPlayer(src);
+  return (
+    <VideoView
+      player={player}
+      style={{ width: "100%", height: "100%" }}
+      contentFit="contain"
+      nativeControls
+    />
+  );
+}
+
 export function VideoBlockView(props: z.infer<typeof videoBlockSchema>) {
   const embedUrl = React.useMemo(() => getEmbedUrl(props.src), [props.src]);
-  const player = useVideoPlayer(embedUrl ? null : props.src);
 
   return (
     <View className="w-full">
@@ -404,12 +415,7 @@ export function VideoBlockView(props: z.infer<typeof videoBlockSchema>) {
             domStorageEnabled
           />
         ) : (
-          <VideoView
-            player={player}
-            style={{ width: "100%", height: "100%" }}
-            contentFit="contain"
-            nativeControls
-          />
+          <NativeVideo src={props.src} />
         )}
       </View>
       {props.title ? (

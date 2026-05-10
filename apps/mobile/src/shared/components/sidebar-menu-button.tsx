@@ -19,7 +19,7 @@ export function SidebarMenuButton() {
       }}
       hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
       accessibilityRole="button"
-      accessibilityLabel="Open menu"
+      accessibilityLabel="Toggle menu"
       style={({ pressed }) => ({
         width: 44,
         height: 44,
