@@ -21,7 +21,6 @@ from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
 )
-from app.agents.core.nodes.check_executor_inbox import check_executor_inbox
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.core.store import get_tools_store
@@ -31,7 +30,6 @@ from app.agents.tools.core.tool_runtime_config import (
     build_provider_parent_tool_runtime_config,
 )
 from app.agents.tools.memory_tools import search_memory
-from app.agents.tools.message_executor_tool import message_executor as message_executor_tool
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.vfs_tools import vfs_cmd, vfs_read
 from shared.py.wide_events import log
@@ -110,9 +108,6 @@ class SubAgentFactory:
         scoped_tool_dict[fetch_webpages.name] = fetch_webpages
         scoped_tool_dict[deep_research.name] = deep_research
 
-        # Add message_executor so provider subagents can report progress to the executor
-        scoped_tool_dict[message_executor_tool.name] = message_executor_tool
-
         # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
         # all parent tools, not just the provider's scoped tools.
         # The provider agent itself uses scoped_tool_dict for its own tool access,
@@ -152,7 +147,6 @@ class SubAgentFactory:
                 cast(HookType, filter_messages_node),
                 manage_system_prompts_node,
                 todo_hook,
-                cast(HookType, check_executor_inbox),
             ],
             "end_graph_hooks": [memory_node],
         }

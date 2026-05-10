@@ -2,20 +2,20 @@
 
 When the executor dispatches subagents with handoff(background=True), it
 can continue with other work and then call wait_for_subagents() to block
-until all background subagents have pushed their results to executor_inbox.
+until all background subagents have finished and stored their results.
 
 Results are returned directly in the tool response so the executor can
 formulate its final answer without needing a separate hook invocation.
 """
 
 import asyncio
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.agents.core.background.inbox import (
-    get_executor_inbox,
+    drain_bg_subagent_results,
     get_pending_subagents,
 )
 from shared.py.wide_events import log
@@ -43,78 +43,32 @@ async def wait_for_subagents(
     if not stream_id:
         return "No active stream — cannot wait for subagents."
 
-    pending = get_pending_subagents(stream_id)
-    queue = get_executor_inbox(stream_id)
-
-    if pending == 0 and (queue is None or queue.empty()):
-        return "No background subagents pending."
-
-    if queue is None:
-        return "Executor inbox not available."
-
+    deadline = asyncio.get_running_loop().time() + timeout
     log.info(
-        f"wait_for_subagents: waiting for {pending} subagent(s) on stream {stream_id}"
+        f"wait_for_subagents: waiting for {get_pending_subagents(stream_id)} "
+        f"subagent(s) on stream {stream_id}"
     )
 
-    results: list[str] = []
-    deadline = asyncio.get_running_loop().time() + timeout
-
-    while True:
-        remaining = deadline - asyncio.get_running_loop().time()
-        if remaining <= 0:
+    # Poll until count hits zero or deadline passes. Subagents append their
+    # result to _bg_subagent_results BEFORE decrementing, so a count of zero
+    # guarantees all results are visible.
+    while get_pending_subagents(stream_id) > 0:
+        if asyncio.get_running_loop().time() >= deadline:
             log.warning(f"wait_for_subagents: timed out after {timeout}s")
             break
+        await asyncio.sleep(0.1)
 
-        try:
-            item = await asyncio.wait_for(queue.get(), timeout=min(remaining, 5.0))
-        except asyncio.TimeoutError:
-            # No item arrived — check if all subagents are done
-            if get_pending_subagents(stream_id) == 0:
-                await asyncio.sleep(0)
-                _drain_remaining(queue, results)
-                break
-            continue
-
-        agent = item.get("agent", "subagent")
-        message = item.get("message", "")
-        msg_type = item.get("type", "")
-
-        if msg_type == "subagent_result":
-            results.append(f"[{agent} result]\n{message}")
-        elif msg_type == "subagent_update":
-            results.append(f"[{agent} update]\n{message}")
-
-        # All subagents done — yield once so any in-flight put() calls from
-        # tasks that decremented before we read their item can complete,
-        # then non-blocking drain to collect any late arrivals.
-        if get_pending_subagents(stream_id) == 0:
-            await asyncio.sleep(0)
-            _drain_remaining(queue, results)
-            break
+    results = drain_bg_subagent_results(stream_id)
 
     if not results:
-        return "Timed out waiting for background subagents — no results received."
+        return "No background subagent results to collect."
 
     log.info(
         f"wait_for_subagents: collected {len(results)} result(s) for stream {stream_id}"
     )
-    return "\n\n---\n\n".join(results)
-
-
-def _drain_remaining(queue: asyncio.Queue[Any], results: list[str]) -> None:
-    """Non-blocking drain of any remaining items already in the queue."""
-    while True:
-        try:
-            item = queue.get_nowait()
-            agent = item.get("agent", "subagent")
-            message = item.get("message", "")
-            msg_type = item.get("type", "")
-            if msg_type == "subagent_result":
-                results.append(f"[{agent} result]\n{message}")
-            elif msg_type == "subagent_update":
-                results.append(f"[{agent} update]\n{message}")
-        except asyncio.QueueEmpty:
-            break
+    return "\n\n---\n\n".join(
+        f"[{item['agent']} result]\n{item['message']}" for item in results
+    )
 
 
 tools = [wait_for_subagents]

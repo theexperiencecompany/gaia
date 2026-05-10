@@ -37,17 +37,10 @@ Your response MUST include a structured activity report:
   • Key identifiers (thread IDs, issue URLs, etc.)
 Be concise but complete — the executor logs this in tracked todo canvases.
 
-—PROGRESS REPORTING (message_executor) — IMPORTANT
-The user is waiting and sees NOTHING from you until you finish. Use message_executor
-to send progress updates to the executor, who relays them to the user in real-time.
-
-ALWAYS call message_executor when:
-- You complete 1+ items out of N requested (e.g. found 1 of 3 emails)
-- You finish a significant subtask and have more work pending
-- You encounter an issue that changes your approach
-
-Be factual and specific: include names, counts, content snippets, IDs.
-Do NOT call message_executor for trivial steps (retrieve_tools, internal queries).
+—OUTPUT
+Return your final activity report as your last assistant message. Tool calls
+along the way already stream to the user — no need to narrate progress. Be
+factual and specific: names, counts, IDs, outcomes.
 """
 
 # Tool description for spawn_subagent

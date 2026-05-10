@@ -1,99 +1,66 @@
-"""In-process inbox queues for inter-agent communication.
+"""In-process orchestration state for background executor + subagents.
 
-Each active stream gets one queue per layer. The notify_* tools look up
-the queue by stream_id (from configurable) and push messages.
-Notifier loops or pre-model hooks drain the queue on the receiving side.
+Despite the legacy filename, this module no longer holds inter-agent
+inbox queues — those were removed when the internal messaging system
+was ripped out (Claude Code-style: agents don't push messages into
+each other's prompt context). What remains is per-stream orchestration
+state needed to coordinate background tasks with the chat stream and
+the SSE/WebSocket layer.
 
 Module-level dicts are intentionally in-process (not Redis) because
-asyncio.Queue cannot cross process boundaries. The executor:busy Redis
-key handles cross-process safety for multi-worker deployments.
+asyncio primitives cannot cross process boundaries. The
+executor:busy Redis key handles cross-process safety for multi-worker
+deployments.
 """
 
 import asyncio
-import logging
 from typing import Any, Optional
 
-_log = logging.getLogger(__name__)
-
-# stream_id → asyncio.Queue
-_comms_inboxes: dict[str, asyncio.Queue[Any]] = {}
-_executor_inboxes: dict[str, asyncio.Queue[Any]] = {}
-
-# Streams for which call_executor successfully spawned a background task.
-# Set synchronously in call_executor (before the asyncio.Task starts) so
-# chat_service can reliably detect whether THIS stream needs a notifier —
-# as opposed to checking the per-conversation Redis lock which stays set
-# for the lifetime of the executor and would mislead concurrent streams.
+# ── Per-stream "executor was spawned" flag ─────────────────────────
+# Distinguishes "executor running for THIS stream" from "executor running
+# for some other stream in the same conversation" so concurrent streams
+# don't erroneously wait for an executor that will never report to them.
 _executor_spawned_streams: set[str] = set()
 
 
-# ── Comms Inbox (executor pushes, comms notifier reads) ─────────────
+def mark_executor_spawned(stream_id: str) -> None:
+    """Record that call_executor spawned a background task for this stream."""
+    _executor_spawned_streams.add(stream_id)
 
 
-def register_comms_inbox(stream_id: str) -> asyncio.Queue:
-    """Create and register a comms inbox queue for this stream.
-
-    If a stale queue exists for this stream_id (e.g. a retried request while
-    a previous background task is still running), drain and discard it to
-    prevent old messages from reaching the new notifier.
-    """
-    existing = _comms_inboxes.get(stream_id)
-    if existing is not None and not existing.empty():
-        _log.warning(
-            "register_comms_inbox: stale non-empty queue for stream %s — draining",
-            stream_id,
-        )
-        while True:
-            try:
-                existing.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-    queue: asyncio.Queue = asyncio.Queue()
-    _comms_inboxes[stream_id] = queue
-    return queue
+def was_executor_spawned(stream_id: str) -> bool:
+    """Return True if call_executor successfully spawned for this stream."""
+    return stream_id in _executor_spawned_streams
 
 
-def get_comms_inbox(stream_id: str) -> Optional[asyncio.Queue[Any]]:
-    """Return the comms inbox for a stream, or None."""
-    return _comms_inboxes.get(stream_id)
+def deregister_executor_spawned(stream_id: str) -> None:
+    """Remove the spawned flag. Safe to call multiple times."""
+    _executor_spawned_streams.discard(stream_id)
 
 
-def deregister_comms_inbox(stream_id: str) -> None:
-    """Remove the comms inbox. Safe to call multiple times."""
-    _comms_inboxes.pop(stream_id, None)
+# ── Executor done events ────────────────────────────────────────────
+# Live chat streams need to know when the background executor finishes
+# so they can publish [DONE] and close the SSE connection. The executor
+# sets this event in its finally block.
+
+_executor_done_events: dict[str, asyncio.Event] = {}
 
 
-# ── Executor Inbox (subagents push, executor pre_model_hook reads) ──
-# Keyed by stream_id for subagent → executor messaging.
-# Also keyed by task_id so comms can target a running executor run.
-
-_executor_inboxes_by_task_id: dict[str, asyncio.Queue[Any]] = {}
-
-
-def register_executor_inbox(stream_id: str, task_id: Optional[str] = None) -> asyncio.Queue[Any]:
-    """Create and register an executor inbox queue for this stream (and optionally task_id)."""
-    queue: asyncio.Queue[Any] = asyncio.Queue()
-    _executor_inboxes[stream_id] = queue
-    if task_id:
-        _executor_inboxes_by_task_id[task_id] = queue
-    return queue
+def register_executor_done_event(stream_id: str) -> asyncio.Event:
+    """Create and register the executor-done event for this stream."""
+    event = asyncio.Event()
+    _executor_done_events[stream_id] = event
+    return event
 
 
-def get_executor_inbox(stream_id: str) -> Optional[asyncio.Queue[Any]]:
-    """Return the executor inbox for a stream, or None."""
-    return _executor_inboxes.get(stream_id)
+def get_executor_done_event(stream_id: str) -> Optional[asyncio.Event]:
+    """Return the executor-done event, or None if not registered."""
+    return _executor_done_events.get(stream_id)
 
 
-def get_executor_inbox_by_task_id(task_id: str) -> Optional[asyncio.Queue[Any]]:
-    """Return the executor inbox by task_id (for comms → executor messaging), or None."""
-    return _executor_inboxes_by_task_id.get(task_id)
-
-
-def deregister_executor_inbox(stream_id: str, task_id: Optional[str] = None) -> None:
-    """Remove the executor inbox. Safe to call multiple times."""
-    _executor_inboxes.pop(stream_id, None)
-    if task_id:
-        _executor_inboxes_by_task_id.pop(task_id, None)
+def deregister_executor_done_event(stream_id: str) -> None:
+    """Remove the executor-done event. Safe to call multiple times."""
+    _executor_done_events.pop(stream_id, None)
 
 
 # ── Pending background subagent counter ─────────────────────────────
@@ -126,57 +93,37 @@ def deregister_pending_subagents(stream_id: str) -> None:
     _pending_bg_subagents.pop(stream_id, None)
 
 
-# ── Per-stream executor-spawned flag ────────────────────────────────
-# Distinguishes "executor running for THIS stream" from "executor running
-# for some other stream in the same conversation" so concurrent streams
-# don't erroneously start a notifier that will never receive messages.
+# ── Background subagent results ─────────────────────────────────────
+# Background subagents (handoff with background=True) run independently
+# and write their final result text here, keyed by stream_id. The
+# wait_for_subagents tool drains this dict to return collected results
+# to the executor. Replaces the previous executor-inbox push pattern.
+
+_bg_subagent_results: dict[str, list[dict[str, str]]] = {}
 
 
-def mark_executor_spawned(stream_id: str) -> None:
-    """Record that call_executor spawned a background task for this stream."""
-    _executor_spawned_streams.add(stream_id)
+def append_bg_subagent_result(stream_id: str, agent: str, result: str) -> None:
+    """Append a background subagent's final result for this stream."""
+    _bg_subagent_results.setdefault(stream_id, []).append(
+        {"agent": agent, "message": result}
+    )
 
 
-def was_executor_spawned(stream_id: str) -> bool:
-    """Return True if call_executor successfully spawned for this stream."""
-    return stream_id in _executor_spawned_streams
+def drain_bg_subagent_results(stream_id: str) -> list[dict[str, str]]:
+    """Return and clear all collected background subagent results for this stream."""
+    return _bg_subagent_results.pop(stream_id, [])
 
 
-def deregister_executor_spawned(stream_id: str) -> None:
-    """Remove the spawned flag. Safe to call multiple times."""
-    _executor_spawned_streams.discard(stream_id)
-
-
-# ── Subagent Inbox (executor pushes, subagent pre_model_hook reads) ──
-# Keyed by subagent thread_id (e.g., "gmail_executor_<conv_id>").
-# Registered by handoff() before subagent starts; deregistered on completion.
-
-_subagent_inboxes: dict[str, asyncio.Queue[Any]] = {}
-
-
-def register_subagent_inbox(subagent_thread_id: str) -> asyncio.Queue[Any]:
-    """Create and register an inbox queue for a subagent."""
-    queue: asyncio.Queue[Any] = asyncio.Queue()
-    _subagent_inboxes[subagent_thread_id] = queue
-    return queue
-
-
-def get_subagent_inbox(subagent_thread_id: str) -> Optional[asyncio.Queue[Any]]:
-    """Return the subagent inbox, or None if not registered."""
-    return _subagent_inboxes.get(subagent_thread_id)
-
-
-def deregister_subagent_inbox(subagent_thread_id: str) -> None:
-    """Remove the subagent inbox. Safe to call multiple times."""
-    _subagent_inboxes.pop(subagent_thread_id, None)
+def deregister_bg_subagent_results(stream_id: str) -> None:
+    """Drop any uncollected background subagent results. Safe to call multiple times."""
+    _bg_subagent_results.pop(stream_id, None)
 
 
 # ── Executor tool event collector ────────────────────────────────────
-# make_redis_stream_writer appends raw tool event dicts here so
-# chat_service can capture executor tool_data / tool_output /
-# todo_progress for MongoDB persistence after run_comms_notifier returns.
-# The events are ALREADY published to the SSE stream by the writer —
-# the collector only captures them for the save path, not re-publishing.
+# make_redis_stream_writer appends raw tool event dicts here so the
+# executor's finalize step can persist accumulated tool_data on the
+# bot message it saves. Events are ALREADY published to the SSE stream
+# by the writer — the collector only captures them for the save path.
 
 _executor_tool_event_collectors: dict[str, list[dict[str, Any]]] = {}
 

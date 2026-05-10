@@ -16,12 +16,7 @@ from datetime import datetime
 from typing import Annotated, Optional
 from uuid import uuid4
 
-from app.agents.core.background.inbox import (
-    deregister_subagent_inbox,
-    get_executor_inbox,
-    increment_pending_subagents,
-    register_subagent_inbox,
-)
+from app.agents.core.background.inbox import increment_pending_subagents
 from app.agents.core.background.subagent_runner import run_subagent_background
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.subagent_helpers import (
@@ -573,42 +568,25 @@ async def handoff(
 
         integration_metadata = await _build_integration_metadata(is_custom, int_id)
 
-        # Register subagent inbox so the executor can send messages to this
-        # subagent via message_subagent while it runs. Key matches what
-        # message_subagent constructs: f"{int_id}_{executor_thread_id}".
-        register_subagent_inbox(subagent_thread_id)
-
         # Background mode: spawn subagent as asyncio task and return immediately.
         # Caller must use wait_for_subagents() to collect results.
         #
-        # Requires stream_id to be propagated into the executor configurable.
-        # If stream_id is missing, background dispatch is impossible because
-        # there is no executor inbox to route subagent results through.
+        # Requires stream_id to be propagated into the executor configurable so
+        # the result can be routed back via _bg_subagent_results[stream_id].
         if background:
-            executor_inbox = get_executor_inbox(stream_id) if stream_id else None
-            if not executor_inbox:
-                fallback_reason = (
-                    "stream_id is None (not propagated into executor configurable)"
-                    if not stream_id
-                    else f"no executor inbox registered for stream_id={stream_id!r}"
-                )
+            if not stream_id:
                 log.warning(
-                    f"handoff background=True but cannot dispatch: {fallback_reason}; "
+                    "handoff background=True but stream_id is missing — "
                     "falling back to blocking execution"
                 )
-                fallback_prefix = (
-                    "[WARNING: background handoff fell back to blocking"
-                    f" — {fallback_reason}] "
-                )
-                # Deregister inbox since we are falling back to blocking (runner
-                # will not deregister it in this case).
-                deregister_subagent_inbox(subagent_thread_id)
                 blocking_result = await _run_blocking_handoff(
                     ctx, integration_metadata, agent_name, int_id
                 )
-                return f"{fallback_prefix}{blocking_result}"
-            # stream_id is guaranteed non-None here: executor_inbox is only
-            # returned when stream_id is truthy (guard on line above).
+                return (
+                    "[WARNING: background handoff fell back to blocking — "
+                    "stream_id not propagated into executor configurable] "
+                    f"{blocking_result}"
+                )
             sid: str = str(stream_id)
             bg_sa_id = str(uuid4())
             bg_display, bg_icon, bg_cat = _resolve_display_metadata(
@@ -619,8 +597,6 @@ async def handoff(
                 run_subagent_background(
                     ctx=ctx,
                     stream_id=sid,
-                    executor_inbox=executor_inbox,
-                    subagent_thread_id=subagent_thread_id,
                     integration_metadata=integration_metadata,
                     subagent_id=bg_sa_id,
                     display_name=bg_display,
@@ -639,14 +615,9 @@ async def handoff(
             )
 
         # Blocking (default): execute synchronously and return result.
-        # Deregister inbox after completion — the executor is blocked here so
-        # message_subagent can only be called before/after (not during) this call.
-        try:
-            return await _run_blocking_handoff(
-                ctx, integration_metadata, agent_name, int_id
-            )
-        finally:
-            deregister_subagent_inbox(subagent_thread_id)
+        return await _run_blocking_handoff(
+            ctx, integration_metadata, agent_name, int_id
+        )
 
     except Exception as e:
         log.error(f"Error in handoff to {subagent_id}: {e}", exc_info=True)

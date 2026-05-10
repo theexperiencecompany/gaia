@@ -1,20 +1,22 @@
 """Background subagent coroutine for non-blocking handoff execution.
 
 Spawned by handoff(background=True) via asyncio.create_task(). Runs the
-subagent graph, pushes the final result to executor_inbox, and decrements
-the pending subagent counter.
+subagent graph, appends the final result to the per-stream
+_bg_subagent_results bucket, and decrements the pending subagent counter.
 
 The executor calls wait_for_subagents() to block until all background
-subagents complete and collect their results.
+subagents complete and to collect their results.
 """
 
-import asyncio
 import time
-from typing import Any, Optional
+from typing import Optional
 
 from shared.py.wide_events import log
 
-from app.agents.core.background.inbox import decrement_pending_subagents, deregister_subagent_inbox
+from app.agents.core.background.inbox import (
+    append_bg_subagent_result,
+    decrement_pending_subagents,
+)
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -30,23 +32,20 @@ from app.utils.agent_utils import (
 async def run_subagent_background(
     ctx: SubagentExecutionContext,
     stream_id: str,
-    executor_inbox: asyncio.Queue[Any],
-    subagent_thread_id: Optional[str] = None,
     integration_metadata: Optional[IntegrationMetadata] = None,
     subagent_id: Optional[str] = None,
     display_name: Optional[str] = None,
     tool_category: Optional[str] = None,
     icon_url: Optional[str] = None,
 ) -> None:
-    """Run a provider subagent in the background and push result to executor_inbox.
+    """Run a provider subagent in the background and store its result.
 
     Designed for asyncio.create_task(). Never raises — all exceptions
-    caught and routed to executor_inbox as subagent_result errors.
+    caught and stored as the subagent's result text.
 
     Args:
         ctx: Fully prepared SubagentExecutionContext.
         stream_id: Active SSE stream ID for tool event publishing.
-        executor_inbox: Queue to push result for the executor to read.
         integration_metadata: Optional icon/name metadata for tool events.
     """
     try:
@@ -86,25 +85,17 @@ async def run_subagent_background(
         log.info(
             f"Background subagent {ctx.agent_name} completed for stream {stream_id}"
         )
-        await executor_inbox.put(
-            {
-                "type": "subagent_result",
-                "message": result,
-                "agent": ctx.agent_name,
-            }
-        )
+        append_bg_subagent_result(stream_id, ctx.agent_name, result)
     except Exception as e:
         log.error(
             f"Background subagent {ctx.agent_name} failed for stream {stream_id}: {e}"
         )
-        await executor_inbox.put(
-            {
-                "type": "subagent_result",
-                "message": f"Error from {ctx.agent_name}: {str(e)}",
-                "agent": ctx.agent_name,
-            }
+        append_bg_subagent_result(
+            stream_id,
+            ctx.agent_name,
+            f"Error from {ctx.agent_name}: {str(e)}",
         )
     finally:
+        # Decrement AFTER appending the result so any wait_for_subagents
+        # that wakes up on the count change always sees the result.
         decrement_pending_subagents(stream_id)
-        if subagent_thread_id:
-            deregister_subagent_inbox(subagent_thread_id)

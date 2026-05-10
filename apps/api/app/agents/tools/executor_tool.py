@@ -1,8 +1,9 @@
 """Executor tools for comms agent: delegate tasks and cancel running tasks.
 
 Non-blocking: spawns executor as a background asyncio task and returns
-immediately. The executor delivers its result as a NEW bot message via
-WebSocket when it completes (see _deliver_bg_notification).
+immediately. The executor saves its terminal text as a new bot message
+in MongoDB and pushes it via WebSocket when it completes — see
+run_executor_background.
 """
 
 import asyncio
@@ -140,8 +141,8 @@ async def call_executor(
     (creating todos, checking calendar, sending emails, searching, etc.)
     or when you need context from your capabilities.
 
-    The executor runs in the background. You will receive progress updates
-    and the final result via [EXECUTOR_UPDATE] and [EXECUTOR_RESULT] messages.
+    The executor runs in the background and posts its result to the
+    conversation as a new bot message when it completes.
     """
     configurable = config.get("configurable", {})
     conversation_id = configurable.get("thread_id", "")

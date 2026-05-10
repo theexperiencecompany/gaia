@@ -1,32 +1,31 @@
 """Background executor coroutine.
 
-Spawned by call_executor tool via asyncio.create_task(). Runs the executor
-agent graph with a Redis stream writer for tool events, then pushes a
-sentinel to the comms inbox (SSE stream can close) and delivers the
-executor result by invoking the comms graph, which generates a notification
-and naturally updates the conversation checkpoint.
+Spawned by call_executor tool via asyncio.create_task(). Runs the
+executor agent graph with a Redis stream writer for tool events. When
+the executor finishes, its terminal text is handed to the comms agent
+as INTERNAL CONTEXT (SystemMessage with an [EXECUTOR_RESULT] prefix);
+comms then generates the user-facing message in its own voice and that
+message is saved + WS-broadcast.
 
 The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
 import asyncio
-import json
 from datetime import datetime, timezone
+import json
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import SystemMessage
 from langsmith import traceable
 from shared.py.wide_events import log
 
 from app.agents.core.background.inbox import (
-    deregister_executor_inbox,
     deregister_tool_event_collector,
-    get_comms_inbox,
+    get_executor_done_event,
     get_tool_event_collector,
     mark_executor_spawned,
-    register_executor_inbox,
     register_tool_event_collector,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
@@ -51,44 +50,47 @@ _queued_executor_tasks: set[asyncio.Task] = set()
 
 
 async def _invoke_comms_graph(
-    result: str,
+    result_text: str,
     msg_type: str,
     conversation_id: str,
     user: dict,
 ) -> str:
-    """Invoke comms graph with executor result; return natural notification text.
-    Returns empty string if the graph is unavailable or raises.
+    """Invoke the comms graph silently with the executor result as internal context.
+
+    The result is injected as a SystemMessage with a stable prefix so comms
+    treats it as ground-truth internal data (not a user turn). Comms applies
+    its voice/persona and returns the user-facing text. The graph's
+    checkpoint is updated naturally — no manual aupdate_state.
+
+    Returns the comms-generated text, or an empty string on failure.
     """
-    prefix_map = {
-        "final": "[EXECUTOR_RESULT]",
-        "error": "[EXECUTOR_ERROR]",
-        "progress": "[EXECUTOR_PROGRESS]",
-    }
-    prefix = prefix_map.get(msg_type, "[EXECUTOR_RESULT]")
+    prefix = "[EXECUTOR_ERROR]" if msg_type == "error" else "[EXECUTOR_RESULT]"
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
-        if comms_graph:
-            config = build_agent_config(
-                conversation_id=conversation_id,
-                user=user,
-                user_time=datetime.now(timezone.utc),
-                agent_name="comms_agent",
-            )
-            initial_state = {
-                "messages": [
-                    HumanMessage(
-                        content=f"{prefix}\n{result}",
-                        name="background_executor",
-                    )
-                ],
-            }
-            notification_text, _ = await execute_graph_silent(
-                comms_graph, initial_state, config
-            )
-            return notification_text
+        if not comms_graph:
+            log.warning("_invoke_comms_graph: comms_agent graph unavailable")
+            return ""
+        config = build_agent_config(
+            conversation_id=conversation_id,
+            user=user,
+            user_time=datetime.now(timezone.utc),
+            agent_name="comms_agent",
+        )
+        initial_state = {
+            "messages": [
+                SystemMessage(
+                    content=f"{prefix}\n{result_text}",
+                    name="background_executor",
+                ),
+            ],
+        }
+        notification_text, _ = await execute_graph_silent(
+            comms_graph, initial_state, config
+        )
+        return notification_text
     except Exception as e:
         log.error(f"_invoke_comms_graph: failed: {e}")
-    return ""
+        return ""
 
 
 async def _lookup_user_message_content(
@@ -111,42 +113,13 @@ async def _lookup_user_message_content(
     return ""
 
 
-async def _send_ws_notification(
-    user_id: str,
-    ws_event: Dict[str, Any],
-) -> bool:
-    """Deliver ws_event to user via direct send, falling back to broadcast.
-    Returns True if delivery succeeded on any attempt.
-    """
-    for attempt in range(2):
-        try:
-            if user_id in websocket_manager.connections:
-                disconnected: set = set()
-                for ws in websocket_manager.connections[user_id]:
-                    try:
-                        await ws.send_json(ws_event)
-                        return True
-                    except Exception:
-                        disconnected.add(ws)
-                for ws in disconnected:
-                    websocket_manager.connections[user_id].discard(ws)
-            await websocket_manager.broadcast_to_user(user_id, ws_event)
-            return True
-        except Exception as ws_err:
-            log.warning(
-                f"_send_ws_notification: attempt {attempt + 1} failed "
-                f"for user {user_id}: {ws_err}"
-            )
-            if attempt == 0:
-                await asyncio.sleep(0.5)
-    return False
-
-
 def _collect_queued_tool_events(
     stream_id: str,
 ) -> Optional[List[Dict[str, Any]]]:
     """Drain the tool event collector for a queued stream into a tool_data list.
-    Only called for queued tasks — live tasks have tool_data on the comms ack message.
+
+    Only called for queued tasks — live tasks already have tool_data on the
+    comms ack message (attached by chat_service after the executor finishes).
     """
     collector = get_tool_event_collector(stream_id)
     if not collector:
@@ -179,9 +152,24 @@ def _collect_queued_tool_events(
     return accumulated.get("tool_data") or None
 
 
+async def _broadcast_message(user_id: str, ws_event: Dict[str, Any]) -> None:
+    """Best-effort WebSocket broadcast with one retry."""
+    for attempt in range(2):
+        try:
+            await websocket_manager.broadcast_to_user(user_id, ws_event)
+            return
+        except Exception as ws_err:
+            log.warning(
+                f"_broadcast_message: attempt {attempt + 1} failed "
+                f"for user {user_id}: {ws_err}"
+            )
+            if attempt == 0:
+                await asyncio.sleep(0.5)
+
+
 @traceable(name="bg_notification_delivery", run_type="chain")
 async def _deliver_bg_notification(
-    result: str,
+    result_text: str,
     msg_type: str,
     conversation_id: str,
     user: dict,
@@ -189,52 +177,47 @@ async def _deliver_bg_notification(
     user_message_id: Optional[str] = None,
     tool_data: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
-    """Invoke the comms graph with the executor result, save as NEW message, push via WebSocket.
+    """Run comms once with the executor result, then save + WS-push the message.
 
-    This is the unified delivery path for both live and queued executor results.
-    The notification is always a standalone bot message — never appended to an
-    existing message. The frontend receives it via WebSocket and inserts a new bubble.
-
-    The comms graph is invoked with the executor result as a HumanMessage so
-    the agent generates a natural response with full conversation context. The
-    checkpoint is updated naturally through normal graph execution.
+    Comms is invoked silently — no SSE stream. Its generated text becomes the
+    user-visible bot message. The executor's terminal text is NOT shown to the
+    user directly; it's internal context for comms.
 
     Args:
-        result: Executor result text (or error message).
-        msg_type: "final" or "error" — controls the prefix shown to comms LLM.
+        result_text: Executor's terminal text (or error message).
+        msg_type: "final" or "error" — selects the [EXECUTOR_RESULT/ERROR] prefix.
         conversation_id: Conversation to save the new bot message into.
         user: User dict with user_id, email, name.
         task_id: Optional unique identifier for this executor task.
         user_message_id: Optional ID of the user message that triggered this task,
                          used for reply-to linking.
-        tool_data: Optional tool_data entries to include (for queued tasks where
-                   no SSE stream carried them to the frontend live).
+        tool_data: Optional tool_data entries (only set for queued tasks where
+                   no live SSE consumer attached them to a comms ack message).
     """
-    # Invoke comms graph with executor result — generates a natural response
-    # and updates the checkpoint in one shot.
-    notification_text = await _invoke_comms_graph(result, msg_type, conversation_id, user)
+    user_id = user.get("user_id", "")
 
-    # Fallback to raw executor result if graph fails
+    notification_text = await _invoke_comms_graph(
+        result_text, msg_type, conversation_id, user
+    )
+    # If comms is unavailable, fall back to the raw executor text rather than
+    # dropping the message entirely.
     if not notification_text:
-        notification_text = result
+        notification_text = result_text
 
-    # Build and save NEW bot message
-    bot_message_id = str(uuid4())
     bot_message = MessageModel(
         type="bot",
         response=notification_text,
         date=datetime.now(timezone.utc).isoformat(),
     )
-    bot_message.message_id = bot_message_id
-
-    # Attach tool_data for queued tasks (live tasks have it on the comms ack message)
+    bot_message.message_id = str(uuid4())
     if tool_data:
         bot_message.tool_data = tool_data  # type: ignore[assignment]
 
-    # Attach reply-to-message data so frontend can link notification to original message
     user_msg_content = ""
     if user_message_id:
-        user_msg_content = await _lookup_user_message_content(conversation_id, user_message_id)
+        user_msg_content = await _lookup_user_message_content(
+            conversation_id, user_message_id
+        )
         bot_message.replyToMessage = ReplyToMessageData(
             id=user_message_id,
             content=user_msg_content,
@@ -253,36 +236,33 @@ async def _deliver_bg_notification(
         log.error(f"_deliver_bg_notification: failed to save message: {e}")
         return
 
-    # Push via WebSocket — conversation-scoped payload.
-    user_id = user.get("user_id", "")
-    message_payload: Dict[str, Any] = {
+    ws_payload: Dict[str, Any] = {
         "type": "bot",
         "response": notification_text,
-        "message_id": bot_message_id,
+        "message_id": bot_message.message_id,
         "date": bot_message.date,
     }
     if tool_data:
-        message_payload["tool_data"] = tool_data
+        ws_payload["tool_data"] = tool_data
     if task_id:
-        message_payload["task_id"] = task_id
+        ws_payload["task_id"] = task_id
     if user_message_id:
-        message_payload["replyToMessage"] = {
+        ws_payload["replyToMessage"] = {
             "id": user_message_id,
             "content": user_msg_content,
             "role": "user",
         }
-
-    ws_event = {
-        "type": "conversation.new_message",
-        "conversation_id": conversation_id,
-        "message": message_payload,
-    }
-
-    ws_delivered = await _send_ws_notification(user_id, ws_event)
-
+    await _broadcast_message(
+        user_id,
+        {
+            "type": "conversation.new_message",
+            "conversation_id": conversation_id,
+            "message": ws_payload,
+        },
+    )
     log.info(
-        f"_deliver_bg_notification: delivered message {bot_message_id} "
-        f"(task_id={task_id}, ws={ws_delivered}) for conversation {conversation_id}"
+        f"_deliver_bg_notification: delivered message {bot_message.message_id} "
+        f"(task_id={task_id}) for conversation {conversation_id}"
     )
 
 
@@ -296,38 +276,27 @@ async def run_executor_background(
     task_id: Optional[str] = None,
     user_message_id: Optional[str] = None,
 ) -> None:
-    """Run executor agent in background, then deliver result as a NEW message.
+    """Run executor agent in background and hand its result to comms for delivery.
 
     Designed for asyncio.create_task(). Never raises — all exceptions
-    caught and handled.
+    caught and routed through comms as an [EXECUTOR_ERROR] message.
 
-    When executor completes, _deliver_bg_notification invokes the comms
-    graph with the result, saves the generated response to MongoDB, and
-    pushes it via WebSocket. The checkpoint is updated naturally.
-
-    Args:
-        task: Task string from comms to executor.
-        configurable: RunnableConfig.configurable dict.
-        user_time: User's local time.
-        stream_id: Stream ID for tool event collection.
-        conversation_id: Conversation ID used as the Redis lock key.
-        task_id: Unique ID for this executor task (for tracking/correlation).
-        user_message_id: ID of the user message that triggered this task.
+    Tool events stream live to the SSE consumer during execution. When
+    execution finishes:
+      1. The executor-done event is set so any waiting chat stream can
+         close the SSE.
+      2. _deliver_bg_notification invokes comms with the executor result
+         as internal context and posts the user-facing message via WS.
     """
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     result_text = ""
     result_type = "final"
 
-    # Reconstruct user dict from configurable
     user: dict = {
         "user_id": configurable.get("user_id", ""),
         "email": configurable.get("user_email", ""),
         "name": configurable.get("user_name", ""),
     }
-
-    # Register executor inbox for subagent → executor and comms → executor communication.
-    # Keyed by both stream_id (for subagents) and task_id (for comms agent targeting).
-    register_executor_inbox(stream_id, task_id=task_id)
 
     try:
         ctx, error = await prepare_executor_execution(
@@ -346,75 +315,59 @@ async def run_executor_background(
         writer = make_redis_stream_writer(stream_id)
         result_text = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
 
-        log.info(f"Background executor completed (task_id={task_id}) for stream {stream_id}")
+        log.info(
+            f"Background executor completed (task_id={task_id}) for stream {stream_id}"
+        )
 
     except Exception as e:
         log.error(f"Background executor failed for stream {stream_id}: {e}")
         result_text = str(e)
         result_type = "error"
     finally:
-        # Release lock and signal SSE stream that tool events are done
         await redis_cache.delete(lock_key)
-        deregister_executor_inbox(stream_id, task_id=task_id)
 
-        # Push result + sentinel to comms_inbox so _run_chat_stream can:
-        # 1. Read the result for SSE notification delivery
-        # 2. Close SSE on sentinel
-        inbox = get_comms_inbox(stream_id)
-        if inbox:
-            try:
-                if result_text:
-                    await inbox.put({"type": result_type, "message": result_text})
-                await inbox.put(None)  # sentinel
-            except Exception as inbox_err:
-                log.error(f"Failed to push result/sentinel to comms inbox: {inbox_err}")
+        was_cancelled = bool(stream_id) and await StreamManager.is_cancelled(stream_id)
+        is_queued = stream_id.startswith("queued_")
 
-        # Skip notification if the executor was cancelled by the user.
-        # The cancel_executor tool already released the lock and informed
-        # the user — delivering a partial result would be confusing.
-        was_cancelled = stream_id and await StreamManager.is_cancelled(stream_id)
+        # Signal SSE consumer that tool events are done so it can drain the
+        # collector into the comms ack and publish [DONE]. Comms re-narration
+        # runs below in parallel — it doesn't touch the SSE stream.
+        done_event = get_executor_done_event(stream_id)
+        if done_event is not None:
+            done_event.set()
+
         if was_cancelled:
             log.info(
                 f"Skipping notification for cancelled executor "
                 f"(task_id={task_id}, stream={stream_id})"
             )
 
-        # Deliver notification as a NEW bot message for non-cancelled paths.
-        # Invokes comms graph (checkpoint updated naturally), saves to
-        # MongoDB, and pushes via WebSocket.
         if result_text and not was_cancelled:
-            collected_tool_data: Optional[List[Dict[str, Any]]] = None
-            # Only attach tool_data to the notification for queued tasks — live streaming
-            # tasks already have tool_data saved on the comms ack message by chat_service.
-            # inbox is None only for queued tasks; live tasks always have an inbox.
-            if inbox is None:
-                collected_tool_data = _collect_queued_tool_events(stream_id)
-
+            # Live tasks: tool_data lives on the comms ack message (attached
+            # by chat_service after executor_done.set()). Queued tasks have
+            # no live SSE consumer, so we attach tool_data to the comms-
+            # generated message instead.
+            queued_tool_data = _collect_queued_tool_events(stream_id) if is_queued else None
             try:
                 await _deliver_bg_notification(
-                    result=result_text,
+                    result_text=result_text,
                     msg_type=result_type,
                     conversation_id=conversation_id,
                     user=user,
                     task_id=task_id,
                     user_message_id=user_message_id,
-                    tool_data=collected_tool_data,
+                    tool_data=queued_tool_data,
                 )
             except Exception as e:
                 log.error(f"Background notification delivery failed: {e}")
 
-        # Clean up tool event collector for this stream
-        deregister_tool_event_collector(stream_id)
+        if is_queued:
+            deregister_tool_event_collector(stream_id)
 
-        # For queued tasks: inbox is None, so chat_service never calls complete_stream.
-        # Publish [DONE] chunk first so fetchEventSource sets doneReceived=true and
-        # does not retry the connection. Then publish DONE_SIGNAL to close the generator.
-        if inbox is None and not was_cancelled:
+        if is_queued and not was_cancelled:
             await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
             await StreamManager.complete_stream(stream_id)
 
-        # Process next queued task if one exists.
-        # Skip if cancelled — cancel_executor already cleared the queue.
         if not was_cancelled:
             await _process_next_queued_task(conversation_id)
 
@@ -449,33 +402,22 @@ async def _process_next_queued_task(conversation_id: str) -> None:
         datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
     )
 
-    # New stream_id for this queued task — registered in Redis so the frontend
-    # can subscribe to it via GET /stream/{stream_id}.
     queued_stream_id = f"queued_{uuid4()}"
     user_id: str = configurable.get("user_id", "")
 
-    # Re-acquire the lock before spawning (same pattern as call_executor).
-    # Store "stream_id:task_id" so cancel_executor can target by task_id.
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     await redis_cache.set(lock_key, f"{queued_stream_id}:{task_id}", ttl=1800)
 
-    # Mark spawned so any concurrent chat_service check is correct
     mark_executor_spawned(queued_stream_id)
-
-    # Register tool event collector for the queued task so tool_data is captured
+    # Queued runs have no chat_service to register the collector for them.
     register_tool_event_collector(queued_stream_id)
 
-    # Register stream in Redis — required for GET /stream/{stream_id} ownership check
-    # and so the pub/sub channel exists before the frontend subscribes.
     await StreamManager.start_stream(
         stream_id=queued_stream_id,
         conversation_id=conversation_id,
         user_id=user_id,
     )
 
-    # Notify frontend: open a new SSE connection to stream tool events live.
-    # Emitted BEFORE spawning the background task so the frontend can subscribe
-    # before the first tool event is published.
     if user_id:
         await websocket_manager.broadcast_to_user(
             user_id,
@@ -487,8 +429,6 @@ async def _process_next_queued_task(conversation_id: str) -> None:
             },
         )
 
-    # Update stream_id in configurable so message_comms/message_executor
-    # don't try to push to the now-closed original stream
     configurable = {**configurable, "stream_id": queued_stream_id}
 
     bg_task = asyncio.create_task(

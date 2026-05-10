@@ -8,7 +8,7 @@ Used by:
 - execute_graph_streaming() in agent_helpers.py (main agent)
 - execute_subagent_stream() in subagent_runner.py (subagents via handoff/executor)
 - call_subagent() in subagent_runner.py (direct subagent calls for testing)
-- chat_service.py and comms_notifier.py (SSE chunk processing)
+- chat_service.py (SSE chunk processing)
 """
 
 import asyncio

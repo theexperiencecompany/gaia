@@ -12,14 +12,14 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from app.agents.core.agent import call_agent
-from app.agents.core.background.executor_runner import _deliver_bg_notification
 from app.agents.core.background.inbox import (
-    deregister_comms_inbox,
-    deregister_executor_inbox,
+    deregister_bg_subagent_results,
+    deregister_executor_done_event,
     deregister_executor_spawned,
     deregister_pending_subagents,
     deregister_tool_event_collector,
-    register_comms_inbox,
+    get_tool_event_collector,
+    register_executor_done_event,
     register_tool_event_collector,
     was_executor_spawned,
 )
@@ -114,13 +114,15 @@ async def _run_chat_stream(
     is_cancelled = False
     _saved = False  # tracks whether _save_conversation_async already ran
 
-    # Register comms inbox — executor pushes sentinel (None) here when done.
-    # We wait on it to keep SSE open for executor tool events.
-    comms_inbox = register_comms_inbox(stream_id)
-    # Register tool event collector — make_redis_stream_writer appends
-    # executor tool events here so we can update the bot message with
-    # tool_data after the executor completes.
-    executor_tool_events = register_tool_event_collector(stream_id)
+    # Register the executor-done event so we can keep the SSE stream open
+    # while the background executor produces tool events, then publish [DONE]
+    # once it finishes. Comms re-narration + WS push of the user-facing
+    # message happens independently in the executor's finally block.
+    executor_done = register_executor_done_event(stream_id)
+    # Register the tool event collector so make_redis_stream_writer can
+    # append executor tool events. After executor finishes we drain this
+    # list and attach it to the comms ack message's tool_data.
+    register_tool_event_collector(stream_id)
 
     try:
         description_task = _start_description_task(
@@ -240,66 +242,23 @@ async def _run_chat_stream(
         )
         _saved = True
 
-        # ── Wait for executor tool events to finish ───────────────────────
-        # The SSE stream stays open so the frontend receives live tool
-        # events (progress cards, tool_data). When the executor pushes
-        # the sentinel, we update the saved bot message with accumulated
-        # tool_data, then send [DONE].
-        executor_spawned = was_executor_spawned(stream_id)
-        if not is_cancelled and executor_spawned:
+        # ── Wait for the executor to finish ───────────────────────────────
+        # The SSE stream stays open while the background executor produces
+        # tool events so the frontend renders them live. Once the executor
+        # signals done, drain its tool events into the comms ack message's
+        # tool_data, then close the SSE. Comms re-narration runs separately
+        # in the executor's finally block and is delivered via WebSocket.
+        if not is_cancelled and was_executor_spawned(stream_id):
             log.info(f"Waiting for executor completion for stream {stream_id}")
-            while True:
-                item = await comms_inbox.get()
-                if item is None:
-                    break
+            try:
+                await asyncio.wait_for(executor_done.wait(), timeout=1800)
+            except asyncio.TimeoutError:
+                log.warning(
+                    f"Timed out waiting for executor on stream {stream_id} — "
+                    "publishing [DONE] anyway"
+                )
 
-                # Deliver progress notifications via WebSocket as they arrive.
-                # Fire-and-forget so we don't block the inbox drain loop.
-                if item.get("type") == "progress" and item.get("message"):
-                    asyncio.create_task(
-                        _deliver_bg_notification(
-                            result=item["message"],
-                            msg_type="progress",
-                            conversation_id=conversation_id,
-                            user=user,
-                        )
-                    )
-
-            # Update the saved bot message with executor tool_data.
-            # Build a temporary tool_data dict from executor events so we can run
-            # reconstruct_subagent_groups (same as the main-graph save path).
-            executor_accumulated: Dict[str, Any] = {"tool_data": []}
-            executor_outputs: Dict[str, str] = {}
-            for evt in executor_tool_events:
-                if "tool_data" in evt:
-                    executor_accumulated["tool_data"].append(evt["tool_data"])
-                if "tool_output" in evt:
-                    out = evt["tool_output"]
-                    tid = out.get("tool_call_id")
-                    val = out.get("output")
-                    if tid and val:
-                        executor_outputs[tid] = val
-                if "subagent_start" in evt:
-                    executor_accumulated.setdefault("subagent_starts", {})[
-                        evt["subagent_start"]["subagent_id"]
-                    ] = evt["subagent_start"]
-                if "subagent_end" in evt:
-                    executor_accumulated.setdefault("subagent_ends", {})[
-                        evt["subagent_end"]["subagent_id"]
-                    ] = evt["subagent_end"]
-
-            # Merge outputs into flat tool_calls_data entries before reconstruction
-            for entry in executor_accumulated["tool_data"]:
-                if entry.get("tool_name") == "tool_calls_data":
-                    data = entry.get("data", {})
-                    if isinstance(data, dict):
-                        tcid = data.get("tool_call_id")
-                        if tcid and tcid in executor_outputs:
-                            data["output"] = executor_outputs[tcid]
-
-            reconstruct_subagent_groups(executor_accumulated)
-            executor_td = executor_accumulated.get("tool_data", [])
-
+            executor_td = _accumulate_executor_tool_data(stream_id)
             if executor_td:
                 try:
                     await conversations_collection.update_one(
@@ -316,11 +275,6 @@ async def _run_chat_stream(
                     )
                 except Exception as e:
                     log.error(f"Failed to update bot message tool_data: {e}")
-
-        # Notification delivery is handled by the executor's finally block
-        # via _deliver_bg_notification (WebSocket → NEW bot message in MongoDB).
-        # This ensures the notification is a separate real message with its
-        # own timeline position, not appended to the comms ack bubble.
 
         # Await description task if still pending
         if description_task:
@@ -347,11 +301,11 @@ async def _run_chat_stream(
         )
         await stream_manager.set_error(stream_id, str(e))
     finally:
-        deregister_comms_inbox(stream_id)
-        deregister_executor_inbox(stream_id)
+        deregister_executor_done_event(stream_id)
+        deregister_tool_event_collector(stream_id)
         deregister_pending_subagents(stream_id)
         deregister_executor_spawned(stream_id)
-        deregister_tool_event_collector(stream_id)
+        deregister_bg_subagent_results(stream_id)
 
         if not _saved:
             # Error path: save as fallback. recover_stream_state / merge /
@@ -486,6 +440,45 @@ async def _save_conversation_async(
         ),
         user=user,
     )
+
+
+def _accumulate_executor_tool_data(stream_id: str) -> List[Dict[str, Any]]:
+    """Drain the executor tool event collector into a flat tool_data list.
+
+    Mirrors the comms-graph accumulation path: tool_calls_data outputs are
+    merged in, subagent start/end pairs are grouped via reconstruct_subagent_groups.
+    """
+    collector = get_tool_event_collector(stream_id)
+    if not collector:
+        return []
+    accumulated: Dict[str, Any] = {"tool_data": []}
+    outputs: Dict[str, str] = {}
+    for evt in collector:
+        if "tool_data" in evt:
+            accumulated["tool_data"].append(evt["tool_data"])
+        if "tool_output" in evt:
+            out = evt["tool_output"]
+            tid = out.get("tool_call_id")
+            val = out.get("output")
+            if tid and val:
+                outputs[tid] = val
+        if "subagent_start" in evt:
+            accumulated.setdefault("subagent_starts", {})[
+                evt["subagent_start"]["subagent_id"]
+            ] = evt["subagent_start"]
+        if "subagent_end" in evt:
+            accumulated.setdefault("subagent_ends", {})[
+                evt["subagent_end"]["subagent_id"]
+            ] = evt["subagent_end"]
+    for entry in accumulated["tool_data"]:
+        if entry.get("tool_name") == "tool_calls_data":
+            data = entry.get("data", {})
+            if isinstance(data, dict):
+                tcid = data.get("tool_call_id")
+                if tcid and tcid in outputs:
+                    data["output"] = outputs[tcid]
+    reconstruct_subagent_groups(accumulated)
+    return accumulated.get("tool_data", [])
 
 
 async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) -> None:
