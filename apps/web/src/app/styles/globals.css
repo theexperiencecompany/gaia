@@ -1095,3 +1095,17 @@
   animation: chat-bubble-pop 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
   transform-origin: bottom;
 }
+
+/* Landing bots-showcase typing-indicator dots */
+@keyframes chat-demo-typing {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 0.9;
+  }
+}

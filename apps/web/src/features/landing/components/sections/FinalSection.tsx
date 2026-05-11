@@ -13,6 +13,7 @@ import {
 } from "@/components/shared/icons";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import {
+  getNextTimeOfDay,
   getTimeOfDay,
   isDarkTimeOfDay,
   type TimeOfDay,
@@ -21,8 +22,6 @@ import {
 import GetStartedButton from "../shared/GetStartedButton";
 import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 import { TimeOfDayToggle } from "../shared/TimeOfDayToggle";
-
-const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
 
 const SWISS_KID_WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
   morning: {
@@ -125,20 +124,14 @@ export default function FinalSection({
     const next = internalClickCount + 1;
     setInternalClickCount(next);
     if (next % 3 === 0) {
-      setInternalTimeOfDay((prev) => {
-        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
-        return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
-      });
+      setInternalTimeOfDay((prev) => getNextTimeOfDay(prev));
     }
   };
 
   const handleTimeChange =
     onTimeChange ??
     (() => {
-      setInternalTimeOfDay((prev) => {
-        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
-        return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
-      });
+      setInternalTimeOfDay((prev) => getNextTimeOfDay(prev));
     });
 
   const wallpaper = SWISS_KID_WALLPAPERS[timeOfDay];
@@ -158,7 +151,7 @@ export default function FinalSection({
   }, []);
 
   return (
-    <div className="relative z-1 m-0! flex min-h-screen w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
+    <div className="relative m-0! flex min-h-screen w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       {shouldPreloadOthers && (
         <div
           aria-hidden="true"
@@ -174,7 +167,7 @@ export default function FinalSection({
                 width={1920}
                 height={1080}
                 sizes="100vw"
-                priority
+                loading="eager"
               />
             ))}
         </div>

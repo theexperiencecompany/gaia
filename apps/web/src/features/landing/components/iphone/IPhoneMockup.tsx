@@ -63,7 +63,11 @@ export function IPhoneMockup({
         "shadow-[0_50px_100px_-20px_rgba(0,0,0,0.35),0_30px_60px_-30px_rgba(0,0,0,0.4),inset_0_0_0_1px_rgba(255,255,255,0.04)]",
         className,
       )}
-      style={{ width: 390, height: 815 }}
+      style={{
+        width: 390,
+        maxWidth: "100%",
+        aspectRatio: "390 / 815",
+      }}
       aria-label="iPhone mockup"
       role="img"
     >
@@ -80,12 +84,10 @@ export function IPhoneMockup({
 
       <div
         className={cn(
-          "relative flex flex-col overflow-hidden rounded-[46px]",
+          "relative flex h-full w-full flex-col overflow-hidden rounded-[46px]",
           screenClassName,
         )}
         style={{
-          width: 370,
-          height: 795,
           background: screenBackground ?? "#ffffff",
         }}
       >
@@ -345,19 +347,19 @@ function isDarkColor(color?: string): boolean {
         .split("")
         .map((ch) => ch + ch)
         .join("");
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
+    const r = Number.parseInt(h.slice(0, 2), 16);
+    const g = Number.parseInt(h.slice(2, 4), 16);
+    const b = Number.parseInt(h.slice(4, 6), 16);
     const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-    return yiq < 140;
+    return yiq < 128;
   }
   const rgb = c.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
   if (rgb) {
-    const r = +rgb[1];
-    const g = +rgb[2];
-    const b = +rgb[3];
+    const r = Number.parseInt(rgb[1], 10);
+    const g = Number.parseInt(rgb[2], 10);
+    const b = Number.parseInt(rgb[3], 10);
     const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-    return yiq < 140;
+    return yiq < 128;
   }
   return false;
 }

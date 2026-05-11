@@ -112,6 +112,10 @@ export function ChatDemo({
           className={className}
         />
       );
+    default: {
+      const _exhaustiveCheck: never = platform;
+      throw new Error(`Unhandled ChatPlatform: ${_exhaustiveCheck}`);
+    }
   }
 }
 
@@ -1839,12 +1843,6 @@ function TypingDots({ color }: { color: string }) {
           }}
         />
       ))}
-      <style>{`
-        @keyframes chat-demo-typing {
-          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-          30% { transform: translateY(-3px); opacity: 0.9; }
-        }
-      `}</style>
     </span>
   );
 }

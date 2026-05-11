@@ -84,7 +84,7 @@ export default function HeroImage({
                 width={1920}
                 height={1080}
                 sizes="100vw"
-                priority
+                loading="eager"
               />
             ))}
         </div>

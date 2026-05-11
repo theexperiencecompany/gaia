@@ -9,12 +9,11 @@ import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider
 import { TimeOfDayToggle } from "@/features/landing/components/shared/TimeOfDayToggle";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import {
+  getNextTimeOfDay,
   getTimeOfDay,
   isDarkTimeOfDay,
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
-
-const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
 
 function SectionLoader() {
   return (
@@ -103,18 +102,12 @@ export default function LandingPageClient({
     const next = clickCount + 1;
     setClickCount(next);
     if (next % 3 === 0) {
-      setTimeOfDay((prev) => {
-        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
-        return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
-      });
+      setTimeOfDay((prev) => getNextTimeOfDay(prev));
     }
   };
 
   const handleTimeChange = useCallback(() => {
-    setTimeOfDay((prev) => {
-      const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
-      return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
-    });
+    setTimeOfDay((prev) => getNextTimeOfDay(prev));
   }, []);
 
   useEffect(() => {
@@ -137,7 +130,7 @@ export default function LandingPageClient({
           <HeroImage timeOfDay={timeOfDay} />
         </div>
 
-        <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
+        <section className="relative flex min-h-screen w-full flex-col items-center justify-center">
           <HeroSection
             isDark={isDark}
             onTextClick={handleTextClick}

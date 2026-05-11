@@ -745,35 +745,45 @@ function PrimaryCTA({
     );
   }
 
-  const button = (
-    <RaisedButton
-      color="#00bbff"
-      className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
-    >
-      <span className="flex items-center gap-2">
-        {iconSrc && (
-          <Image
-            src={iconSrc}
-            alt=""
-            width={28}
-            height={28}
-            aria-hidden
-            className="h-7 w-7 shrink-0 rounded"
-          />
-        )}
-        {action.label}
-        <CircleArrowRight02Icon size={18} />
-      </span>
-    </RaisedButton>
+  const buttonContent = (
+    <span className="flex items-center gap-2">
+      {iconSrc && (
+        <Image
+          src={iconSrc}
+          alt=""
+          width={28}
+          height={28}
+          aria-hidden
+          className="h-7 w-7 shrink-0 rounded"
+        />
+      )}
+      {action.label}
+      <CircleArrowRight02Icon size={18} />
+    </span>
   );
 
   if (action.external) {
     return (
-      <a href={action.href} target="_blank" rel="noreferrer">
-        {button}
-      </a>
+      <RaisedButton
+        color="#00bbff"
+        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+        onClick={() =>
+          window.open(action.href, "_blank", "noopener,noreferrer")
+        }
+      >
+        {buttonContent}
+      </RaisedButton>
     );
   }
 
-  return <Link href={action.href}>{button}</Link>;
+  return (
+    <Link href={action.href}>
+      <RaisedButton
+        color="#00bbff"
+        className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
+      >
+        {buttonContent}
+      </RaisedButton>
+    </Link>
+  );
 }
