@@ -1,0 +1,8 @@
+<system_instruction>
+The user has attached these files. Read them before proceeding.
+- /Users/aryan/Projects/GAIA/gaia/.conductor/chicago/.context/attachments/Fix errors instructions.md (61 B)
+</system_instruction>
+
+
+
+Fix the failing CI actions. I've attached the failure logs.
