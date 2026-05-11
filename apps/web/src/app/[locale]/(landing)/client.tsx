@@ -2,10 +2,11 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
+import { TimeOfDayToggle } from "@/features/landing/components/shared/TimeOfDayToggle";
 import type { LatestRelease } from "@/features/landing/utils/getLatestRelease";
 import {
   getTimeOfDay,
@@ -109,6 +110,13 @@ export default function LandingPageClient({
     }
   };
 
+  const handleTimeChange = useCallback(() => {
+    setTimeOfDay((prev) => {
+      const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
+      return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
+    });
+  }, []);
+
   useEffect(() => {
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setTimeOfDay(getTimeOfDay(userTimezone));
@@ -135,6 +143,9 @@ export default function LandingPageClient({
             onTextClick={handleTextClick}
             latestRelease={latestRelease}
           />
+          <div className="absolute bottom-6 right-6 z-30">
+            <TimeOfDayToggle timeOfDay={timeOfDay} onPress={handleTimeChange} />
+          </div>
         </section>
 
         <section className="relative z-20 w-full py-16 sm:py-12 mb-12 sm:mb-16">
@@ -165,12 +176,13 @@ export default function LandingPageClient({
         <div>
           {/* Capabilities — what GAIA does */}
           <TiredBoringAssistants />
-          <WorkflowSection />
-          <UseCasesSectionLanding />
-          <TodoShowcaseSection />
 
           {/* Reach — where you can use it */}
           <BotsShowcaseSection />
+
+          <WorkflowSection />
+          <UseCasesSectionLanding />
+          <TodoShowcaseSection />
 
           {/* Decision — how it stacks up, trust, price */}
           <ComparisonGrid />
@@ -188,6 +200,7 @@ export default function LandingPageClient({
             timeOfDay={timeOfDay}
             isDark={isDark}
             onTextClick={handleTextClick}
+            onTimeChange={handleTimeChange}
           />
         </div>
       </div>

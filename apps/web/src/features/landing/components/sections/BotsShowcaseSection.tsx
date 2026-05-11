@@ -1,10 +1,11 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { CircleArrowRight02Icon } from "@icons";
+import { CircleArrowRight02Icon, SquareLockIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { Link } from "@/i18n/navigation";
@@ -37,13 +38,27 @@ interface DemoConfig {
 interface Platform {
   id: ChatPlatform;
   name: string;
-  icon: string;
+  icon: string | ReactNode;
+  comingSoon?: boolean;
   primaryAction: ActionLink;
   phone: PhoneConfig;
   demo: DemoConfig;
 }
 
 const AVATAR_ARYAN = "/aryan-avatar.webp";
+
+function IMessageChipIcon({ size = 20 }: { size?: number }) {
+  return (
+    // biome-ignore lint/a11y/noSvgWithoutTitle: decorative brand icon, hidden from a11y tree
+    <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden>
+      <rect width="20" height="20" rx="4.5" fill="#25D057" />
+      <path
+        d="M10 3.8C6.63 3.8 3.9 6.22 3.9 9.2c0 1.67.84 3.16 2.16 4.16-.04.58-.29 1.54-1.21 2.24 0 0 1.78.06 3.2-1.05.59.15 1.2.25 1.87.25 3.37 0 6.1-2.42 6.1-5.4S13.37 3.8 10 3.8z"
+        fill="white"
+      />
+    </svg>
+  );
+}
 
 const PLATFORMS: Platform[] = [
   {
@@ -218,6 +233,39 @@ const PLATFORMS: Platform[] = [
       ],
     },
   },
+  {
+    id: "imessage",
+    name: "iMessage",
+    icon: <IMessageChipIcon />,
+    comingSoon: true,
+    primaryAction: { label: "Coming Soon", href: "" },
+    phone: { screenBackground: "#FFFFFF" },
+    demo: {
+      title: "GAIA",
+      messages: [
+        {
+          from: "me",
+          text: "reschedule my 3pm to tomorrow same time",
+          time: "2:58 PM",
+          status: "read",
+        },
+        {
+          from: "them",
+          text: "done. rescheduled and invite updated",
+        },
+        {
+          from: "me",
+          text: "also add a note to call sarah before it",
+          time: "3:04 PM",
+          status: "read",
+        },
+        {
+          from: "them",
+          text: "added. anything else?",
+        },
+      ],
+    },
+  },
 ];
 
 export default function BotsShowcaseSection() {
@@ -246,7 +294,8 @@ export default function BotsShowcaseSection() {
           isFloating={isCtaFloating}
           action={active.primaryAction}
           actionKey={active.id}
-          iconSrc={active.icon}
+          iconSrc={typeof active.icon === "string" ? active.icon : undefined}
+          comingSoon={active.comingSoon}
         />
       </div>
     </section>
@@ -258,11 +307,13 @@ function FloatingCTA({
   action,
   actionKey,
   iconSrc,
+  comingSoon,
 }: {
   isFloating: boolean;
   action: ActionLink;
   actionKey: string;
-  iconSrc: string;
+  iconSrc: string | undefined;
+  comingSoon?: boolean;
 }) {
   // Reserve the static-flow slot so the layout never jumps when the button
   // pops out of the flow into a fixed position. The CTA is rendered twice:
@@ -278,6 +329,7 @@ function FloatingCTA({
           actionKey={actionKey}
           action={action}
           iconSrc={iconSrc}
+          comingSoon={comingSoon}
         />
       </div>
 
@@ -296,6 +348,7 @@ function FloatingCTA({
                 actionKey={actionKey}
                 action={action}
                 iconSrc={iconSrc}
+                comingSoon={comingSoon}
               />
             </div>
           </m.div>
@@ -309,10 +362,12 @@ function PlatformCTASwitcher({
   actionKey,
   action,
   iconSrc,
+  comingSoon,
 }: {
   actionKey: string;
   action: ActionLink;
-  iconSrc: string;
+  iconSrc: string | undefined;
+  comingSoon?: boolean;
 }) {
   return (
     <AnimatePresence mode="wait" initial={false}>
@@ -323,7 +378,7 @@ function PlatformCTASwitcher({
         exit={{ opacity: 0, y: -4 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
       >
-        <PrimaryCTA action={action} iconSrc={iconSrc} />
+        <PrimaryCTA action={action} iconSrc={iconSrc} comingSoon={comingSoon} />
       </m.div>
     </AnimatePresence>
   );
@@ -445,14 +500,23 @@ function PlatformChips({
             onClick={() => onSelect(p.id)}
             className="cursor-pointer select-none"
             startContent={
-              <Image
-                src={p.icon}
-                alt=""
-                width={20}
-                height={20}
-                className="h-5 w-5 shrink-0 rounded"
-                aria-hidden
-              />
+              typeof p.icon === "string" ? (
+                <Image
+                  src={p.icon}
+                  alt=""
+                  width={20}
+                  height={20}
+                  className="h-5 w-5 shrink-0 rounded"
+                  aria-hidden
+                />
+              ) : (
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center"
+                  aria-hidden
+                >
+                  {p.icon}
+                </span>
+              )
             }
           >
             {p.name}
@@ -510,24 +574,45 @@ function PhoneFrame({
 function PrimaryCTA({
   action,
   iconSrc,
+  comingSoon,
 }: {
   action: ActionLink;
-  iconSrc: string;
+  iconSrc: string | undefined;
+  comingSoon?: boolean;
 }) {
+  if (comingSoon) {
+    return (
+      <RaisedButton
+        color="#52525B"
+        className="h-10 cursor-not-allowed rounded-full pr-4 pl-3 before:rounded-full"
+        tabIndex={-1}
+        aria-disabled="true"
+        onClick={(e) => e.preventDefault()}
+      >
+        <span className="flex items-center gap-2">
+          <SquareLockIcon size={18} />
+          Coming Soon
+        </span>
+      </RaisedButton>
+    );
+  }
+
   const button = (
     <RaisedButton
       color="#00bbff"
       className="text-black! h-10 rounded-full pr-4 pl-1.5 before:rounded-full"
     >
       <span className="flex items-center gap-2">
-        <Image
-          src={iconSrc}
-          alt=""
-          width={28}
-          height={28}
-          aria-hidden
-          className="h-7 w-7 shrink-0 rounded"
-        />
+        {iconSrc && (
+          <Image
+            src={iconSrc}
+            alt=""
+            width={28}
+            height={28}
+            aria-hidden
+            className="h-7 w-7 shrink-0 rounded"
+          />
+        )}
         {action.label}
         <CircleArrowRight02Icon size={18} />
       </span>

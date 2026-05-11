@@ -292,16 +292,13 @@ export default function ChatDemoSection() {
     const observer = new IntersectionObserver(
       ([entry]) => {
         const visible = entry.isIntersecting;
+        setIsInView(visible);
         if (activePage === "chats") {
-          setIsInView(visible);
           if (visible) {
             runAnimation(activeCaseRef.current);
           } else {
             clearAll();
           }
-        } else {
-          setIsInView(false);
-          clearAll();
         }
       },
       { threshold: 0.2 },
@@ -472,7 +469,7 @@ export default function ChatDemoSection() {
 
       {/* Demo window */}
       <div
-        className={`overflow-hidden rounded-3xl h-[65vh] sm:h-[72vh] w-[95vw] sm:w-[85vw] ${isInView ? "animate-in fade-in slide-in-from-bottom-6 zoom-in-95 duration-500" : "opacity-0"}`}
+        className={`overflow-hidden rounded-3xl h-[600px] sm:h-[720px] w-[95vw] sm:w-[85vw] ${isInView ? "animate-in fade-in slide-in-from-bottom-6 zoom-in-95 duration-500" : "opacity-0"}`}
         style={
           {
             "--color-primary-bg": "#111111",

@@ -1,3 +1,5 @@
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import Image from "next/image";
 import { useEffect, useRef } from "react";
 import type { TimeOfDay } from "@/features/landing/utils/timeOfDay";
@@ -63,29 +65,33 @@ export default function HeroImage({
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent opacity-50" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 
-        {/* <ProgressiveImage
-          webpSrc={wallpaper.webp}
-          pngSrc={wallpaper.png}
-          alt="wallpaper"
-          className="object-cover"
-          shouldHaveInitialFade={true}
-      /> */}
-        <Image
-          src={wallpaper.webp}
-          alt={`png`}
-          width={1920}
-          height={1080}
-          sizes={"100vw"}
-          priority
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            position: "absolute",
-            top: 0,
-            left: 0,
-          }}
-        />
+        <AnimatePresence initial={false}>
+          <m.div
+            key={timeOfDay}
+            className="absolute inset-0 h-full w-full"
+            initial={{ clipPath: "inset(0 0 0 100%)" }}
+            animate={{ clipPath: "inset(0 0 0 0%)" }}
+            exit={{ clipPath: "inset(0 0 0 0%)" }}
+            transition={{ duration: 1.1, ease: [0.65, 0, 0.35, 1] }}
+          >
+            <Image
+              src={wallpaper.webp}
+              alt="Hero wallpaper"
+              width={1920}
+              height={1080}
+              sizes="100vw"
+              priority
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                position: "absolute",
+                top: 0,
+                left: 0,
+              }}
+            />
+          </m.div>
+        </AnimatePresence>
       </div>
     </div>
   );

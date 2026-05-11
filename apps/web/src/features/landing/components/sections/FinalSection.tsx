@@ -1,6 +1,8 @@
 "use client";
 
 import { Tooltip } from "@heroui/tooltip";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -18,6 +20,9 @@ import {
 
 import { SplitTextBlur } from "../hero/SplitTextBlur";
 import GetStartedButton from "../shared/GetStartedButton";
+import { TimeOfDayToggle } from "../shared/TimeOfDayToggle";
+
+const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
 
 const SWISS_KID_WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
   morning: {
@@ -99,11 +104,13 @@ export default function FinalSection({
   timeOfDay: timeOfDayProp,
   isDark: isDarkProp,
   onTextClick,
+  onTimeChange,
 }: {
   showSocials?: boolean;
   timeOfDay?: TimeOfDay;
   isDark?: boolean;
   onTextClick?: () => void;
+  onTimeChange?: () => void;
 }) {
   const [internalTimeOfDay, setInternalTimeOfDay] = useState<TimeOfDay>(() =>
     getTimeOfDay(),
@@ -113,8 +120,6 @@ export default function FinalSection({
   const timeOfDay = timeOfDayProp ?? internalTimeOfDay;
   const isDark =
     isDarkProp !== undefined ? isDarkProp : isDarkTimeOfDay(timeOfDay);
-
-  const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
 
   const handleInternalClick = () => {
     const next = internalClickCount + 1;
@@ -127,22 +132,43 @@ export default function FinalSection({
     }
   };
 
+  const handleTimeChange =
+    onTimeChange ??
+    (() => {
+      setInternalTimeOfDay((prev) => {
+        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
+        return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
+      });
+    });
+
   const wallpaper = SWISS_KID_WALLPAPERS[timeOfDay];
 
   return (
     <div className="relative z-1 m-0! flex min-h-screen w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
-      <div className="absolute bottom-0 left-0 right-0 z-0">
-        <ProgressiveImage
-          webpSrc={wallpaper.webp}
-          pngSrc={wallpaper.png}
-          alt="Wallpaper"
-          className="object-cover object-bottom"
-          shouldHaveInitialFade={true}
-          priority={false}
-        />
+      <div className="absolute bottom-6 right-6 z-30">
+        <TimeOfDayToggle timeOfDay={timeOfDay} onPress={handleTimeChange} />
       </div>
+      <AnimatePresence initial={false}>
+        <m.div
+          key={timeOfDay}
+          className="absolute bottom-0 left-0 right-0 z-0"
+          initial={{ clipPath: "inset(0 0 0 100%)" }}
+          animate={{ clipPath: "inset(0 0 0 0%)" }}
+          exit={{ clipPath: "inset(0 0 0 0%)" }}
+          transition={{ duration: 1.1, ease: [0.65, 0, 0.35, 1] }}
+        >
+          <ProgressiveImage
+            webpSrc={wallpaper.webp}
+            pngSrc={wallpaper.png}
+            alt="Wallpaper"
+            className="object-cover object-bottom"
+            shouldHaveInitialFade={true}
+            priority={false}
+          />
+        </m.div>
+      </AnimatePresence>
 
       <div
         className={`relative z-20 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
