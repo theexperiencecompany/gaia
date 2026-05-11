@@ -1,0 +1,130 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "3a2603c7b530",
+  "session_id": "65004518-efd2-4d4e-bf7b-7169163ba9c3",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-11T10:55:08.948095Z",
+  "branch": "landing-platform-chat-demo",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "apps/web/public/aryan-avatar.webp",
+    "apps/web/public/gaia-glow.webp",
+    "apps/web/public/telegram-doodle.png",
+    "apps/web/public/whatsapp-doodle.png",
+    "apps/web/src/app/styles/globals.css",
+    "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",
+    "apps/web/src/features/landing/components/iphone/IPhoneMockup.tsx",
+    "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e3c400785f0c",
+  "token_usage": {
+    "input_tokens": 704,
+    "cache_creation_tokens": 1548708,
+    "cache_read_tokens": 128848165,
+    "output_tokens": 183651,
+    "api_call_count": 484
+  },
+  "session_metrics": {
+    "turn_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-11T10:55:08.827426Z",
+    "agent_lines": 2863,
+    "agent_removed": 1019,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2863,
+    "total_lines_changed": 3882,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2632,
+      "agent_lines_removed": 1042
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2644,
+      "agent_lines_removed": 1030
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2644,
+      "agent_lines_removed": 1030
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2731,
+      "agent_lines_removed": 1040
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2736,
+      "agent_lines_removed": 1040
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2736,
+      "agent_lines_removed": 1040
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2781,
+      "agent_lines_removed": 1028
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2799,
+      "agent_lines_removed": 1025
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2799,
+      "agent_lines_removed": 1025
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2798,
+      "agent_lines_removed": 1025
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2819,
+      "agent_lines_removed": 1024
+    }
+  ]
+}

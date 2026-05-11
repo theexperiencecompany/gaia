@@ -1,0 +1,81 @@
+<system_instruction>
+You are working inside Conductor, a Mac app that lets the user run many coding agents in parallel.
+Your work should take place in the /Users/aryan/Projects/GAIA/gaia/.conductor/chicago directory (unless otherwise directed), which has been set up for you to work in.
+Each workspace has a .context directory (gitignored) where you can save files to collaborate with other agents.
+DO NOT EVER read or write files at /Users/aryan/Projects/GAIA/gaia.
+The target branch for this workspace is origin/develop. Use this for actions like diffing (`git diff origin/develop...`) or creating PRs (`gh pr create --base develop`).
+
+Do not rename the current branch unless the user explicitly tells you to do so.
+
+By default, the user will only see the last message that you send before stopping. Include all essential information in the last message. The intermediate messages will be collapsed and accessible by the user but not displayed by default.
+
+If the user asks you to work on several unrelated tasks, you can suggest they start new workspaces.
+Sometimes the user might send you a message they meant to send in a different workspace or a different chat. If something doesn't make sense in the context of your work, just ask. 
+If the user asks for help with Conductor, you can ask them to go to "Help -> Send Feedback" to get in touch with our team.
+</system_instruction>
+
+see the iphone chat mockup and chat demo's for slack telegram whatsapp discord and imessage in GAIA/gaia-ui. basically there's a section in the landing page for all the social media platforms. how about replace the section on the landing page with that component. but ensure on the top there's the different platform chips, where clicking on them changes the platform. and below the iphone demo theres the button to go to each paltform basically the primary button that is currently on the right side. ensure it is consistent styling. fits entirely the whole section in 100vh and looks clean and checks and all pass properly
+
+---
+
+<task-notification>
+<task-id>bfdr4y8k4</task-id>
+<summary>Monitor event: "wait for chicago dev ready"</summary>
+<event>- Local:         http://localhost:3000
+[32m[1m✓[22m[39m Ready in 2.8s</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bmovdwwvs</task-id>
+<summary>Monitor event: "wait dev clean restart"</summary>
+<event>- Local:         http://localhost:3000
+[32m[1m✓[22m[39m Ready in 1410ms</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>biktcl2vm</task-id>
+<summary>Monitor event: "wait dev ready after deep clean"</summary>
+<event>- Local:         http://localhost:3000
+[32m[1m✓[22m[39m Ready in 1450ms</event>
+</task-notification>
+
+---
+
+each message bubble doesn't animate and now the width is fucked please fix that
+
+---
+
+each message bubble doesn't animate and now the width is fucked of each bubble please fix that
+
+---
+
+<task-notification>
+<task-id>bnotm3wpy</task-id>
+<summary>Monitor event: "wait dev ready"</summary>
+<event>- Local:         http://localhost:3000
+[32m[1m✓[22m[39m Ready in 1364ms</event>
+</task-notification>
+
+---
+
+when changing the chip, ensure the entire iphone doesnt re animate only the inside should
+
+---
+
+move the button starting offset a bit below like the scroll threshold for button to be visible, and make it nicely fade instead of popping. ensure its z index is higher than the blur stack. increase size of the glow.  then the gaia image and my image, download locally, optimise to webp and use it. and the button is a bit fucked too like the user scrolls until the comparison table yet the button is still at the bottom of the screen instead of being in its normal place how sticky behaviour is. create tasks for all of these
+
+---
+
+reduce offset for button to be visible
+
+---
+
+slightly reduce the px of the button
+
+---
+
+ensure loading text animation comes, and then the text bubbles come
