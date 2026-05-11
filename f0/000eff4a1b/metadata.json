@@ -3,7 +3,7 @@
   "checkpoint_id": "f0000eff4a1b",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 1,
+  "checkpoints_count": 5,
   "files_touched": [
     ".agents/skills/adapt/SKILL.md",
     ".agents/skills/animate/SKILL.md",
@@ -1736,13 +1736,19 @@
       "transcript": "/f0/000eff4a1b/0/full.jsonl",
       "content_hash": "/f0/000eff4a1b/0/content_hash.txt",
       "prompt": "/f0/000eff4a1b/0/prompt.txt"
+    },
+    {
+      "metadata": "/f0/000eff4a1b/1/metadata.json",
+      "transcript": "/f0/000eff4a1b/1/full.jsonl",
+      "content_hash": "/f0/000eff4a1b/1/content_hash.txt",
+      "prompt": "/f0/000eff4a1b/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 50,
-    "cache_creation_tokens": 121704,
-    "cache_read_tokens": 2717650,
-    "output_tokens": 25947,
-    "api_call_count": 35
+    "input_tokens": 455,
+    "cache_creation_tokens": 1444322,
+    "cache_read_tokens": 86931993,
+    "output_tokens": 160142,
+    "api_call_count": 345
   }
 }
