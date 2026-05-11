@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "ab433a452642",
+  "strategy": "manual-commit",
+  "branch": "landing-platform-chat-demo",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(landing)/client.tsx",
+    "apps/web/src/app/styles/globals.css",
+    "apps/web/src/features/landing/components/demo/ChatDemoSection.tsx",
+    "apps/web/src/features/landing/components/hero/HeroImage.tsx",
+    "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",
+    "apps/web/src/features/landing/components/iphone/IPhoneMockup.tsx",
+    "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx",
+    "apps/web/src/features/landing/components/sections/FinalSection.tsx",
+    "apps/web/src/features/landing/utils/timeOfDay.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ab/433a452642/0/metadata.json",
+      "transcript": "/ab/433a452642/0/full.jsonl",
+      "content_hash": "/ab/433a452642/0/content_hash.txt",
+      "prompt": "/ab/433a452642/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 91,
+    "cache_creation_tokens": 243827,
+    "cache_read_tokens": 9363943,
+    "output_tokens": 44326,
+    "api_call_count": 76
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "ab433a452642",
+  "session_id": "10e0436b-db6a-4ec8-b5e7-6027aff5e859",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-11T14:20:02.475199Z",
+  "branch": "landing-platform-chat-demo",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/features/landing/components/iphone/IPhoneMockup.tsx",
+    "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx",
+    "apps/web/src/app/styles/globals.css",
+    "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",
+    "apps/web/src/features/landing/components/demo/ChatDemoSection.tsx",
+    "apps/web/src/features/landing/components/hero/HeroImage.tsx",
+    "apps/web/src/features/landing/components/sections/FinalSection.tsx",
+    "apps/web/src/features/landing/utils/timeOfDay.ts",
+    "apps/web/src/app/[locale]/(landing)/client.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "411dc81534b6",
+  "token_usage": {
+    "input_tokens": 91,
+    "cache_creation_tokens": 243827,
+    "cache_read_tokens": 9363943,
+    "output_tokens": 44326,
+    "api_call_count": 76
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-11T14:20:02.46055Z",
+    "agent_lines": 95,
+    "agent_removed": 67,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 95,
+    "total_lines_changed": 162,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".context/attachments/Fix errors instructions.md": 2
+      }
+    }
+  ]
+}
