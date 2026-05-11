@@ -1,0 +1,88 @@
+<task-notification>
+<task-id>blx5yj3p7</task-id>
+<tool-use-id>toolu_01FtjjQRGyXJsoFUMtAjQwr5</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-aryan-Projects-GAIA-gaia-onboarding-revamp/49658cc7-4812-4706-8cc3-3ad6e2774ac4/tasks/blx5yj3p7.output</output-file>
+<status>completed</status>
+<summary>Background command "regenerate lockfile" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+i keep getting fucking HMR issues Runtime Error
+
+
+
+Module [project]/apps/web/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript) was instantiated because it was required from module [project]/apps/web/src/features/auth/components/LoginModal.tsx [app-client] (ecmascript), but the module factory is not available. It might have been deleted in an HMR update.
+src/features/auth/components/LoginModal.tsx (36:25) @ module evaluation
+
+
+  34 | };
+  35 |
+> 36 | export default function LoginModal() {
+     |                         ^
+  37 |   const isOpen = useLoginModal();
+  38 |   const { setLoginModalOpen } = useLoginModalActions();
+  39 |   const pathname = usePathname();
+Call Stack
+20
+
+Show 15 ignore-listed frame(s)
+module evaluation
+.next/dev/static/chunks/apps_web_src_features_auth_99ed06d6._.js (26:218)
+module evaluation
+src/features/auth/components/LoginModal.tsx (36:25)
+<unknown>
+
+---
+
+clea clear cache
+
+---
+
+Module [project]/apps/web/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript) was instantiated because it was required from module [project]/apps/web/src/features/auth/components/LoginModal.tsx [app-client] (ecmascript), but the module factory is not available. It might have been deleted in an HMR update.
+src/features/auth/components/LoginModal.tsx (36:25) @ module evaluation
+
+
+  34 | };
+  35 |
+> 36 | export default function LoginModal() {
+     |                         ^
+  37 |   const isOpen = useLoginModal();
+  38 |   const { setLoginModalOpen } = useLoginModalActions();
+  39 |   const pathname = usePathname();
+Call Stack
+20
+
+Show 15 ignore-listed frame(s)
+module evaluation
+.next/dev/static/chunks/apps_web_src_features_auth_99ed06d6._.js (26:218)
+module evaluation
+src/features/auth/components/LoginModal.tsx (36:25)
+<unknown>
+.next/dev/static/chunks/_ff8cab11._.js (70:16) lmao same thing please help me out real quick see what we're fucking up
+
+---
+
+Runtime Error
+
+
+
+You have rendered a `motion` component within a `LazyMotion` component. This will break tree shaking. Import and render a `m` component instead.. For more information and steps for solving, visit https://motion.dev/troubleshooting/lazy-strict-mode
+src/components/ui/Toaster.tsx (14:5) @ Toaster
+
+
+  12 | export function Toaster({ position = "top-right" }: ToasterProps) {
+  13 |   return (
+> 14 |     <SileoToaster
+     |     ^
+  15 |       position={position}
+  16 |       options={{
+  17 |         fill: "#262626",
+Call Stack
+27
+
+Show 24 ignore-listed frame(s)
+Toaster
+src/components/ui/Toaster.tsx (14:5)
+ProvidersLayout
+src/layouts/ProvidersLayout.tsx (55:11) help with this'
