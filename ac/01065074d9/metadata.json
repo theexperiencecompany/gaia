@@ -3,7 +3,7 @@
   "checkpoint_id": "ac01065074d9",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 31,
+  "checkpoints_count": 33,
   "files_touched": [
     "apps/api/app/agents/llm/chatbot.py",
     "apps/api/app/agents/llm/client.py",
@@ -76,13 +76,19 @@
       "transcript": "/ac/01065074d9/6/full.jsonl",
       "content_hash": "/ac/01065074d9/6/content_hash.txt",
       "prompt": "/ac/01065074d9/6/prompt.txt"
+    },
+    {
+      "metadata": "/ac/01065074d9/7/metadata.json",
+      "transcript": "/ac/01065074d9/7/full.jsonl",
+      "content_hash": "/ac/01065074d9/7/content_hash.txt",
+      "prompt": "/ac/01065074d9/7/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 678,
-    "cache_creation_tokens": 1377907,
-    "cache_read_tokens": 74795686,
-    "output_tokens": 236255,
-    "api_call_count": 424
+    "input_tokens": 770,
+    "cache_creation_tokens": 1535002,
+    "cache_read_tokens": 80980530,
+    "output_tokens": 257067,
+    "api_call_count": 491
   }
 }

@@ -1,0 +1,81 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "ac01065074d9",
+  "session_id": "bd28a95e-6db2-4441-afbd-f7ed967b8afa",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-11T21:30:24.279353Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/api/app/agents/llm/chatbot.py",
+    "apps/api/app/agents/llm/client.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/api/app/services/onboarding/onboarding_service.py",
+    "apps/api/app/services/onboarding/writing_style_service.py",
+    "apps/api/app/services/workflow/generation_service.py",
+    "apps/api/app/utils/composio_hooks/gmail_hooks.py",
+    "apps/web/src/features/onboarding/components/OnboardingProgress.tsx",
+    "apps/web/src/features/onboarding/state/derive.ts",
+    "apps/web/src/layouts/ProvidersLayout.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "58408d8c84de",
+  "token_usage": {
+    "input_tokens": 92,
+    "cache_creation_tokens": 157095,
+    "cache_read_tokens": 6184844,
+    "output_tokens": 20812,
+    "api_call_count": 67
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-11T21:30:24.268297Z",
+    "agent_lines": 61,
+    "agent_removed": 110,
+    "human_added": 329,
+    "human_modified": 105,
+    "human_removed": 0,
+    "total_committed": 495,
+    "total_lines_changed": 814,
+    "agent_percentage": 21.007371007371006,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 392,
+      "user_lines_removed": 105,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/app/agents/llm/chatbot.py": 1,
+        "apps/api/app/services/onboarding/intelligence_service.py": 268,
+        "apps/api/app/services/onboarding/writing_style_service.py": 51,
+        "apps/api/app/services/workflow/generation_service.py": 1,
+        "apps/api/app/utils/composio_hooks/gmail_hooks.py": 8,
+        "apps/web/src/features/onboarding/state/derive.ts": 59,
+        "apps/web/src/layouts/ProvidersLayout.tsx": 4
+      },
+      "user_removed_per_file": {
+        "apps/api/app/agents/llm/chatbot.py": 1,
+        "apps/api/app/agents/llm/client.py": 35,
+        "apps/api/app/services/onboarding/intelligence_service.py": 29,
+        "apps/api/app/services/onboarding/writing_style_service.py": 8,
+        "apps/api/app/services/workflow/generation_service.py": 1,
+        "apps/api/app/utils/composio_hooks/gmail_hooks.py": 5,
+        "apps/web/src/features/onboarding/state/derive.ts": 25,
+        "apps/web/src/layouts/ProvidersLayout.tsx": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 392,
+      "agent_lines_removed": 105
+    }
+  ]
+}

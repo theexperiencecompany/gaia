@@ -1,0 +1,5 @@
+in onboarding, restart onboarding, does it disconnect the integration the user connected? what does it do? what else should it do?
+
+---
+
+it should clear all of this i guess yeah and in the modal show that it disconnects user logins too
