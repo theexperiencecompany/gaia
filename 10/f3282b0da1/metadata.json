@@ -3,7 +3,7 @@
   "checkpoint_id": "10f3282b0da1",
   "strategy": "manual-commit",
   "branch": "landing-platform-chat-demo",
-  "checkpoints_count": 6,
+  "checkpoints_count": 8,
   "files_touched": [
     "apps/web/src/app/[locale]/(landing)/client.tsx",
     "apps/web/src/features/landing/components/demo/ChatDemoSection.tsx",
@@ -30,13 +30,19 @@
       "transcript": "/10/f3282b0da1/2/full.jsonl",
       "content_hash": "/10/f3282b0da1/2/content_hash.txt",
       "prompt": "/10/f3282b0da1/2/prompt.txt"
+    },
+    {
+      "metadata": "/10/f3282b0da1/3/metadata.json",
+      "transcript": "/10/f3282b0da1/3/full.jsonl",
+      "content_hash": "/10/f3282b0da1/3/content_hash.txt",
+      "prompt": "/10/f3282b0da1/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 222,
-    "cache_creation_tokens": 274552,
-    "cache_read_tokens": 3166918,
-    "output_tokens": 40047,
-    "api_call_count": 52
+    "input_tokens": 295,
+    "cache_creation_tokens": 479427,
+    "cache_read_tokens": 9245495,
+    "output_tokens": 68328,
+    "api_call_count": 117
   }
 }
