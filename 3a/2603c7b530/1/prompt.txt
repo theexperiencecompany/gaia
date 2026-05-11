@@ -79,3 +79,7 @@ slightly reduce the px of the button
 ---
 
 ensure loading text animation comes, and then the text bubbles come
+
+---
+
+in the bottom buttons for install, ensure you add logo in the button left and does each section transitionbetween them?
