@@ -19,3 +19,7 @@ i want to component dedupe, but the chat-ui package won't be for everyone only w
 ---
 
 do it all smartly the todotypes do it smartly too. and tell me the implications of doing it this way before starting. like what happens for poeple using chatui package what happens to internal developers and people using this monorepo?
+
+---
+
+yes please do all of tis. please create tasks for all of these. asure every single component is migrated now perfeclty. please proceed.
