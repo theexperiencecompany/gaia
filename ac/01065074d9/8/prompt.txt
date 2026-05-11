@@ -1,0 +1,5 @@
+there are 2 different types of toasts for sysetm workflow's generated  after connecing gmail. help me consolidate it. and help me not show the action button if the user is on the onboarding route
+
+---
+
+any other toasts related to system generated workflows?
