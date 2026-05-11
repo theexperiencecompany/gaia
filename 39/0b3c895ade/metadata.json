@@ -3,7 +3,7 @@
   "checkpoint_id": "390b3c895ade",
   "strategy": "manual-commit",
   "branch": "landing-platform-chat-demo",
-  "checkpoints_count": 5,
+  "checkpoints_count": 9,
   "files_touched": [
     "apps/web/src/app/[locale]/(landing)/client.tsx",
     "apps/web/src/features/landing/components/hero/HeroImage.tsx",
@@ -29,13 +29,19 @@
       "transcript": "/39/0b3c895ade/1/full.jsonl",
       "content_hash": "/39/0b3c895ade/1/content_hash.txt",
       "prompt": "/39/0b3c895ade/1/prompt.txt"
+    },
+    {
+      "metadata": "/39/0b3c895ade/2/metadata.json",
+      "transcript": "/39/0b3c895ade/2/full.jsonl",
+      "content_hash": "/39/0b3c895ade/2/content_hash.txt",
+      "prompt": "/39/0b3c895ade/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 54,
-    "cache_creation_tokens": 151324,
-    "cache_read_tokens": 2410845,
-    "output_tokens": 20064,
-    "api_call_count": 41
+    "input_tokens": 122,
+    "cache_creation_tokens": 231784,
+    "cache_read_tokens": 8761403,
+    "output_tokens": 73698,
+    "api_call_count": 79
   }
 }

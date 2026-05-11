@@ -1,0 +1,13 @@
+switching it isnt clean like whole image turns black then its revealed slowly
+
+---
+
+now there's just no transition lol
+
+---
+
+canu make it transition faster, and make it curved? instead of straight line? circular curve into the transition
+
+---
+
+this isn't as seamless when the image hasn't loaded yet then it still shows black for some reason, and make the transition a bit faster and the button in hero section bottom right ensure z index like 1002
