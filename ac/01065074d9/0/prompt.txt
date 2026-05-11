@@ -1,0 +1,21 @@
+because it seems like even if user writing style step doesnt happen properly, it still proceeds to the end of continue to gaia without even showing writing style or workflow. i think some work needs to be done to surface content to the user sequentially deterministically with the stae machine?
+
+---
+
+sure create a plan i guess but i don't want to over complicate it way too much
+
+---
+
+can u review the plan? like what are we fucking up? is this even the right approach in terms of code quality and clean code?
+
+---
+
+what the fuck are you doing then if you didnt even explore whats currently going on? please explore and revamp the entire plan bro
+
+---
+
+continue
+
+---
+
+anything left?
