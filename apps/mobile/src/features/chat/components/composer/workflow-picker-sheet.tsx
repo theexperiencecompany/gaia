@@ -2,6 +2,7 @@ import {
   BottomSheetFlatList,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { Spinner } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -9,7 +10,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import {
   AppIcon,
   Cancel01Icon,
@@ -83,7 +84,7 @@ export const WorkflowPickerSheet = forwardRef<
           style={{
             width: 32,
             height: 32,
-            borderRadius: 8,
+            borderRadius: 12,
             backgroundColor: "#27272a",
             alignItems: "center",
             justifyContent: "center",
@@ -102,7 +103,7 @@ export const WorkflowPickerSheet = forwardRef<
             style={{
               fontSize: fontSize.sm,
               color: "#e4e4e7",
-              fontWeight: "400",
+              fontWeight: "500",
             }}
             numberOfLines={1}
           >
@@ -125,18 +126,16 @@ export const WorkflowPickerSheet = forwardRef<
         {item.activated && (
           <View
             style={{
-              backgroundColor: "#27272a",
+              backgroundColor: "rgba(52,211,153,0.1)",
               paddingHorizontal: spacing.sm,
               paddingVertical: 2,
               borderRadius: 10,
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.06)",
             }}
           >
             <Text
               style={{
                 fontSize: fontSize.xs,
-                color: "#71717a",
+                color: "#34d399",
               }}
             >
               Active
@@ -157,7 +156,10 @@ export const WorkflowPickerSheet = forwardRef<
           enableDynamicSizing={false}
           enablePanDownToClose
           backgroundStyle={{ backgroundColor: "#141414" }}
-          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
+          handleIndicatorStyle={{
+            backgroundColor: "rgba(255,255,255,0.25)",
+            width: 36,
+          }}
           keyboardBehavior="interactive"
           keyboardBlurBehavior="restore"
         >
@@ -186,12 +188,12 @@ export const WorkflowPickerSheet = forwardRef<
                 width: 32,
                 height: 32,
                 borderRadius: 16,
-                backgroundColor: "rgba(142,142,147,0.1)",
+                backgroundColor: "rgba(161,161,170,0.1)",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
+              <AppIcon icon={Cancel01Icon} size={18} color="#71717a" />
             </Pressable>
           </View>
 
@@ -209,10 +211,10 @@ export const WorkflowPickerSheet = forwardRef<
                 borderRadius: 12,
                 paddingHorizontal: spacing.sm + 2,
                 paddingVertical: spacing.sm,
-                backgroundColor: "rgba(142,142,147,0.1)",
+                backgroundColor: "rgba(161,161,170,0.1)",
               }}
             >
-              <AppIcon icon={Search01Icon} size={18} color="#8e8e93" />
+              <AppIcon icon={Search01Icon} size={18} color="#71717a" />
               <BottomSheetTextInput
                 style={{
                   flex: 1,
@@ -222,7 +224,7 @@ export const WorkflowPickerSheet = forwardRef<
                   padding: 0,
                 }}
                 placeholder="Search workflows..."
-                placeholderTextColor="#6b6b6b"
+                placeholderTextColor="#71717a"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
               />
@@ -239,10 +241,10 @@ export const WorkflowPickerSheet = forwardRef<
                 paddingVertical: 32,
               }}
             >
-              <ActivityIndicator size="large" color="#8e8e93" />
+              <Spinner size="lg" color="default" />
               <Text
                 style={{
-                  color: "#6b6b6b",
+                  color: "#71717a",
                   fontSize: fontSize.sm,
                   marginTop: spacing.sm,
                 }}

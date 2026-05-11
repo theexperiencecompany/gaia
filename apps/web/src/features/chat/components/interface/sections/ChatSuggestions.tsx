@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { UndoIcon } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import type React from "react";
 import { useCallback, useMemo, useState } from "react";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
@@ -52,7 +52,6 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
     trackEvent(ANALYTICS_EVENTS.CHAT_SUGGESTION_SHUFFLED, {
       current_suggestion_ids: currentSuggestions.map((w) => w.id),
     });
-
     const currentIds = new Set(currentSuggestions.map((w) => w.id));
 
     // Filter out currently displayed workflows

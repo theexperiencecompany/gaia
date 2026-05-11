@@ -8,7 +8,7 @@
 
 "use client";
 
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import { memo, useCallback, useState } from "react";
 import { workflowApi } from "@/features/workflows/api/workflowApi";

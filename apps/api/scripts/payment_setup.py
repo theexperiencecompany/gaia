@@ -7,7 +7,7 @@ This script sets up subscription plans in the database using Dodo product IDs.
 IMPORTANT: Run this script from the correct directory!
 
 1. If running locally:
-    cd /path/to/your/gaia/backend
+    cd /path/to/your/gaia/apps/api
     python scripts/payment_setup.py --monthly-product-id <id> --yearly-product-id <id>
 
 2. If running inside Docker container:
@@ -71,9 +71,10 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 
+from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
+
 from app.config.settings import settings  # noqa: E402
 from app.models.payment_models import PlanDB  # noqa: E402
-from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 
 
 async def cleanup_old_indexes(collection):
@@ -161,6 +162,23 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
                 "Advanced memory features",
                 "Priority support",
                 "Private Discord access",
+            ],
+            "is_active": True,
+        },
+        {
+            # Enterprise — lead capture only, no Dodo product.
+            "dodo_product_id": "",
+            "name": "Enterprise",
+            "description": "For teams ready to roll GAIA out to every employee.",
+            "amount": 0,  # Custom pricing, frontend shows 'Custom' label.
+            "currency": "USD",
+            "duration": "monthly",
+            "max_users": 0,  # 0 == unlimited, contact sales
+            "features": [
+                "Self host or private cloud deployment",
+                "SSO, SCIM provisioning, audit logs",
+                "Custom integrations built for your stack",
+                "Dedicated solutions engineer and SLA",
             ],
             "is_active": True,
         },

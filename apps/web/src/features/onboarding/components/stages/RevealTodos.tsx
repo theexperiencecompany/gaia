@@ -8,7 +8,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useCallback } from "react";
 import { REVEAL_TODOS_INTRO } from "../../constants/messages";

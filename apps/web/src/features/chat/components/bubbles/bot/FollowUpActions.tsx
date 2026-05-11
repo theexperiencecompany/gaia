@@ -1,5 +1,5 @@
 import { Button } from "@heroui/button";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 
 import { useAppendToInput } from "@/stores/composerStore";
 

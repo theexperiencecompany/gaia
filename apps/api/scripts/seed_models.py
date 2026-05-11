@@ -80,6 +80,7 @@ def get_models_configuration() -> List[Dict[str, Any]]:
             "is_default": True,
             "pricing_per_1k_input_tokens": 0.0001,
             "pricing_per_1k_output_tokens": 0.0004,
+            "pricing_per_1k_cached_input_tokens": 0.000025,
         },
         # Google Gemini 3 Models (preview - latest generation)
         # {
@@ -99,6 +100,7 @@ def get_models_configuration() -> List[Dict[str, Any]]:
         #     "is_default": False,
         #     "pricing_per_1k_input_tokens": 0.0005,
         #     "pricing_per_1k_output_tokens": 0.003,
+        #     "pricing_per_1k_cached_input_tokens": 0.000125,
         # },
         # {
         #     "model_id": "gemini-3-pro",
@@ -117,6 +119,7 @@ def get_models_configuration() -> List[Dict[str, Any]]:
         #     "is_default": False,
         #     "pricing_per_1k_input_tokens": 0.002,
         #     "pricing_per_1k_output_tokens": 0.012,
+        #     "pricing_per_1k_cached_input_tokens": 0.0005,
         # },
         # Grok Models (via OpenRouter)
         # {

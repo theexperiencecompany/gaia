@@ -1,6 +1,7 @@
 import bundleAnalyzer from "@next/bundle-analyzer";
 import createMDX from "@next/mdx";
 import { withSentryConfig } from "@sentry/nextjs";
+import fs from "fs";
 import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -9,6 +10,21 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// When this checkout is a worktrunk worktree, `apps/web/node_modules` is a
+// symlink to the primary worktree's directory (sibling of this repo). The
+// default Turbopack root (`../..`, the repo root) considers that an out-of-root
+// symlink and refuses to dev. Bump the root one level up — to the parent of
+// the repo — so the symlink target stays inside it. Non-worktree checkouts
+// (CI, fresh clones, anyone not using `wt`) have a real `node_modules`
+// directory, so this codepath never triggers and behavior is unchanged.
+const webNodeModules = path.join(__dirname, "node_modules");
+const isWorktreeWithSharedDeps =
+  fs.existsSync(webNodeModules) &&
+  fs.lstatSync(webNodeModules).isSymbolicLink();
+const turbopackRoot = isWorktreeWithSharedDeps
+  ? path.join(__dirname, "../../..")
+  : path.join(__dirname, "../..");
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -28,30 +44,86 @@ const nextConfig = {
   // Enable standalone output for Electron desktop app bundling
   // This creates a minimal production server with all dependencies
   output: "standalone",
-  // Explicitly set turbopack workspace root to silence inference warning
+  // Explicitly set turbopack workspace root to silence inference warning.
+  // Resolved above as `turbopackRoot` to handle worktrunk worktrees correctly.
   turbopack: {
-    root: path.join(__dirname, "../.."),
+    root: turbopackRoot,
     // Change the value here to swap the entire icon variant across the app
+    // node:* aliases rewrite Node built-in specifiers to their bare form so
+    // Turbopack does not emit chunks named `[externals]_node:foo_*.js` — the
+    // colon is illegal on NTFS and breaks `next build` on Windows during
+    // standalone output tracing (breaks the Electron Windows installer).
+    // See: https://github.com/vercel/next.js/discussions/86194
+    // and:  https://nextjs-forum.com/post/1471409705514569798
     resolveAlias: {
       "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
+      // Stub out unused heavy deps (mirrors the webpack hook below). Webpack's
+      // `alias: false` doesn't exist for Turbopack — we point to a tiny empty
+      // module that exports a no-op proxy.
+      cytoscape: "./scripts/empty-module.mjs",
+      "cytoscape-cose-bilkent": "./scripts/empty-module.mjs",
+      "cytoscape-fcose": "./scripts/empty-module.mjs",
+      "node:inspector": "inspector",
+      "node:fs": "fs",
+      "node:fs/promises": "fs/promises",
+      "node:path": "path",
+      "node:stream": "stream",
+      "node:stream/web": "stream/web",
+      "node:url": "url",
+      "node:util": "util",
+      "node:crypto": "crypto",
+      "node:buffer": "buffer",
+      "node:os": "os",
+      "node:child_process": "child_process",
+      "node:http": "http",
+      "node:https": "https",
+      "node:net": "net",
+      "node:tls": "tls",
+      "node:zlib": "zlib",
+      "node:events": "events",
+      "node:async_hooks": "async_hooks",
+      "node:assert": "assert",
+      "node:querystring": "querystring",
+      "node:worker_threads": "worker_threads",
+      "node:process": "process",
+      "node:perf_hooks": "perf_hooks",
+      "node:diagnostics_channel": "diagnostics_channel",
     },
   },
   serverExternalPackages: ["moment", "moment-timezone"],
   experimental: {
+    // optimizeCss disabled: @opennextjs/aws unconditionally cpSyncs
+    // .next/static/css when this is on, but Next 16 + Turbopack does not
+    // emit that directory in this build (no separate CSS chunks), so the
+    // bundle step crashes with ENOENT. Bug exists across @opennextjs/aws
+    // 3.9.16 → main; critters has nothing to inline anyway, so this was
+    // a no-op.
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
       "cytoscape",
       "@theexperiencecompany/gaia-icons/solid-rounded",
-      // "@heroui/*",
+      "@heroui/button",
+      "@heroui/chip",
+      "@heroui/modal",
+      "@heroui/system",
+      "@heroui/tooltip",
+      "@heroui/select",
+      "@heroui/scroll-shadow",
+      "@heroui/react",
+      "@heroui/skeleton",
+      "@heroui/spinner",
       "lucide-react",
       "@radix-ui/react-icons",
+      "@radix-ui/react-visually-hidden",
       "date-fns",
       "lodash",
       "motion/react",
+      "motion",
+      "schema-dts",
     ],
   },
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
     // Exclude cytoscape from bundle since it's not used (both client and server)
     config.resolve.alias = {
       ...config.resolve.alias,
@@ -62,6 +134,31 @@ const nextConfig = {
     // Alias @icons to the active icon variant — change here to swap the entire set
     config.resolve.alias["@icons"] =
       "@theexperiencecompany/gaia-icons/solid-rounded";
+
+    // Keep gaia-icons out of the eager/initial landing chunk.
+    // By default, modules reachable from >= 2 chunks get hoisted into a shared
+    // common chunk — that's how ~137 icons ended up on the critical path even
+    // though most are only referenced by dynamically-imported below-the-fold
+    // sections. Scoping this cache group to `chunks: "async"` means icons
+    // shared across async sections consolidate into a single async gaia-icons
+    // chunk that loads with the first async section, while the handful of
+    // icons reachable from initial code (Navbar) stay inlined in the main
+    // chunk.
+    if (!isServer && config.optimization?.splitChunks) {
+      const splitChunks = config.optimization.splitChunks;
+      splitChunks.cacheGroups = {
+        ...splitChunks.cacheGroups,
+        gaiaIcons: {
+          test: /[\\/]node_modules[\\/]@theexperiencecompany[\\/]gaia-icons[\\/]/,
+          name: "gaia-icons-async",
+          chunks: "async",
+          priority: 40,
+          reuseExistingChunk: true,
+          enforce: true,
+        },
+      };
+    }
+
     return config;
   },
   images: {
@@ -168,7 +265,10 @@ export default withSentryConfig(
   // side errors will fail.
   // tunnelRoute: "/monitoring",
 
-  // Disable auto-instrumentation to prevent @sentry/node-core + OpenTelemetry from leaking into the bundle
+  // Sentry's autoInstrument* flags are only honored under `webpack:` and are
+  // explicitly "Not supported with Turbopack" per the deprecation warning.
+  // We rely on bundleSizeOptimizations.excludeTracing/PerformanceMonitoring
+  // instead (those work for both bundlers).
   webpack: {
     autoInstrumentServerFunctions: false,
     autoInstrumentMiddleware: false,
@@ -178,11 +278,18 @@ export default withSentryConfig(
     },
   },
 
-  // Strip unused Sentry features from the client bundle
+  // Strip unused Sentry features from the bundle.
+  // - excludeTracing kills the @opentelemetry + @sentry/node-core + protobuf
+  //   tracing chunk (~1.5 MB raw on the server). Server-side Sentry is not
+  //   initialized in this app (sentry.server.config.ts is intentionally empty)
+  //   so dropping the tracing pipeline is safe.
+  // - excludePerformanceMonitoring drops the rest of the perf SDK.
   bundleSizeOptimizations: {
     excludeDebugStatements: true,
     excludeReplayShadowDom: true,
     excludeReplayIframe: true,
     excludeReplayWorker: true,
+    excludeTracing: true,
+    excludePerformanceMonitoring: true,
   },
 });

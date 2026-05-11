@@ -3,7 +3,6 @@ import { forwardRef, useImperativeHandle, useState } from "react";
 import { Pressable, View } from "react-native";
 import { AppIcon, Folder02Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type { Project } from "../types/todo-types";
 
@@ -23,7 +22,6 @@ export const ProjectPickerSheet = forwardRef<
   ProjectPickerSheetProps
 >(({ projects, selectedProjectId, onSelect }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
-  const { spacing, fontSize } = useResponsive();
 
   useImperativeHandle(ref, () => ({
     open: () => setIsOpen(true),
@@ -43,132 +41,132 @@ export const ProjectPickerSheet = forwardRef<
           snapPoints={["40%", "70%"]}
           enableDynamicSizing={false}
           enablePanDownToClose
-          backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+          backgroundStyle={{ backgroundColor: "#18181b" }}
           handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
         >
           <BottomSheetScrollView
             contentContainerStyle={{
-              paddingHorizontal: spacing.md,
+              paddingHorizontal: 16,
               paddingBottom: 40,
             }}
           >
-            {/* Header */}
             <View
               style={{
-                paddingVertical: spacing.md,
-                borderBottomWidth: 1,
-                borderBottomColor: "rgba(255,255,255,0.07)",
-                marginBottom: spacing.xs,
+                paddingVertical: 14,
+                marginBottom: 6,
               }}
             >
               <Text
                 style={{
-                  fontSize: fontSize.lg,
+                  fontSize: 17,
                   fontWeight: "600",
                   color: "#f4f4f5",
                   textAlign: "center",
                 }}
               >
-                Select Project
+                Select project
               </Text>
             </View>
 
-            {/* No project option */}
-            <Pressable
-              onPress={() => handleSelect(undefined)}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.md,
-                paddingVertical: spacing.md,
-                paddingHorizontal: spacing.sm,
-                borderRadius: 12,
-                backgroundColor: pressed
-                  ? "rgba(255,255,255,0.05)"
-                  : "transparent",
-              })}
+            <View
+              className="bg-zinc-800/30 rounded-2xl"
+              style={{ paddingHorizontal: 6, paddingVertical: 4 }}
             >
-              <View
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  backgroundColor: "rgba(255,255,255,0.05)",
+              <Pressable
+                onPress={() => handleSelect(undefined)}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
                   alignItems: "center",
-                  justifyContent: "center",
-                }}
+                  gap: 12,
+                  paddingVertical: 12,
+                  paddingHorizontal: 8,
+                  borderRadius: 12,
+                  backgroundColor: pressed
+                    ? "rgba(63,63,70,0.5)"
+                    : "transparent",
+                })}
               >
-                <AppIcon icon={Folder02Icon} size={16} color="#52525b" />
-              </View>
-              <Text
-                style={{
-                  flex: 1,
-                  fontSize: fontSize.base,
-                  color:
-                    selectedProjectId === undefined ? "#16c1ff" : "#a1a1aa",
-                  fontWeight: selectedProjectId === undefined ? "600" : "400",
-                }}
-              >
-                No Project
-              </Text>
-              {selectedProjectId === undefined && (
-                <AppIcon icon={Tick02Icon} size={16} color="#16c1ff" />
-              )}
-            </Pressable>
-
-            {/* Project list */}
-            {projects.map((project) => {
-              const color = project.color ?? "#71717a";
-              const isSelected = selectedProjectId === project.id;
-              return (
-                <Pressable
-                  key={project.id}
-                  onPress={() => handleSelect(project.id)}
-                  style={({ pressed }) => ({
-                    flexDirection: "row",
+                <View
+                  className="bg-zinc-800/60"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 10,
                     alignItems: "center",
-                    gap: spacing.md,
-                    paddingVertical: spacing.md,
-                    paddingHorizontal: spacing.sm,
-                    borderRadius: 12,
-                    backgroundColor: pressed
-                      ? "rgba(255,255,255,0.05)"
-                      : "transparent",
-                  })}
+                    justifyContent: "center",
+                  }}
                 >
-                  <View
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      backgroundColor: `${color}20`,
+                  <AppIcon icon={Folder02Icon} size={14} color="#71717a" />
+                </View>
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: 15,
+                    color:
+                      selectedProjectId === undefined ? "#00bbff" : "#d4d4d8",
+                    fontWeight: selectedProjectId === undefined ? "600" : "400",
+                  }}
+                >
+                  No project
+                </Text>
+                {selectedProjectId === undefined ? (
+                  <AppIcon icon={Tick02Icon} size={16} color="#00bbff" />
+                ) : null}
+              </Pressable>
+
+              {projects.map((project) => {
+                const color = project.color ?? "#71717a";
+                const isSelected = selectedProjectId === project.id;
+                return (
+                  <Pressable
+                    key={project.id}
+                    onPress={() => handleSelect(project.id)}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
                       alignItems: "center",
-                      justifyContent: "center",
-                      borderWidth: 1,
-                      borderColor: `${color}35`,
-                    }}
+                      gap: 12,
+                      paddingVertical: 12,
+                      paddingHorizontal: 8,
+                      borderRadius: 12,
+                      backgroundColor: pressed
+                        ? "rgba(63,63,70,0.5)"
+                        : "transparent",
+                    })}
                   >
-                    <AppIcon icon={Folder02Icon} size={16} color={color} />
-                  </View>
-                  <Text
-                    style={{
-                      flex: 1,
-                      fontSize: fontSize.base,
-                      color: isSelected ? color : "#e4e4e7",
-                      fontWeight: isSelected ? "600" : "400",
-                    }}
-                  >
-                    {project.name}
-                  </Text>
-                  {isSelected && (
-                    <AppIcon icon={Tick02Icon} size={16} color={color} />
-                  )}
-                </Pressable>
-              );
-            })}
+                    <View
+                      className="bg-zinc-800/60"
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 10,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <AppIcon icon={Folder02Icon} size={14} color={color} />
+                    </View>
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontSize: 15,
+                        color: isSelected ? color : "#e4e4e7",
+                        fontWeight: isSelected ? "600" : "400",
+                      }}
+                    >
+                      {project.name}
+                    </Text>
+                    {isSelected ? (
+                      <AppIcon icon={Tick02Icon} size={16} color={color} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
           </BottomSheetScrollView>
         </BottomSheet.Content>
       </BottomSheet.Portal>
     </BottomSheet>
   );
 });
+
+ProjectPickerSheet.displayName = "ProjectPickerSheet";

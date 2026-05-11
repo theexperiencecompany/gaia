@@ -72,7 +72,6 @@ def extract_event_dates(calendar_options: List[Dict[str, Any]]) -> Set[str]:
 
 def fetch_same_day_events(
     event_dates: Set[str],
-    access_token: str,
     user_id: str,
 ) -> List[Dict[str, Any]]:
     """
@@ -80,8 +79,8 @@ def fetch_same_day_events(
 
     Args:
         event_dates: Set of date strings in YYYY-MM-DD format
-        access_token: Google OAuth access token
-        user_id: The user ID
+        user_id: The user ID — used by Composio's proxy to resolve the user's
+            connected calendar account
 
     Returns:
         List of events across all specified dates
@@ -96,7 +95,6 @@ def fetch_same_day_events(
             time_max = f"{event_date}T23:59:59Z"
 
             events_response = get_calendar_events(
-                access_token=access_token,
                 user_id=user_id,
                 time_min=time_min,
                 time_max=time_max,

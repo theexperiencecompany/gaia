@@ -1,8 +1,16 @@
-import { Button, Card, Chip, PressableFeedback } from "heroui-native";
+import type {
+  RedditCommentCreatedData,
+  RedditCommentData,
+  RedditData,
+  RedditPostCreatedData,
+  RedditPostData,
+  RedditSearchData,
+} from "@gaia/shared";
 import { useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import {
   AppIcon,
+  ArrowRight01Icon,
   ArrowUp02Icon,
   BubbleChatIcon,
   CheckmarkCircle02Icon,
@@ -10,70 +18,15 @@ import {
   UserCircle02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardInner,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 const REDDIT_ORANGE = "#FF4500";
 
-// Reddit "alien" logo as an SVG-free inline representation using text
-// We use the brand color + "r/" prefix styling to match the web implementation
-
-export interface RedditPostData {
-  id?: string;
-  title?: string;
-  author?: string;
-  subreddit?: string;
-  score?: number;
-  upvote_ratio?: number;
-  num_comments?: number;
-  created_utc?: number;
-  selftext?: string;
-  url?: string;
-  permalink?: string;
-  is_self?: boolean;
-  link_flair_text?: string;
-}
-
-export interface RedditCommentData {
-  id?: string;
-  author?: string;
-  body?: string;
-  score?: number;
-  created_utc?: number;
-  permalink?: string;
-  is_submitter?: boolean;
-}
-
-export interface RedditSearchData {
-  id?: string;
-  title?: string;
-  author?: string;
-  subreddit?: string;
-  score?: number;
-  num_comments?: number;
-  created_utc?: number;
-  permalink?: string;
-  url?: string;
-  selftext?: string;
-}
-
-export interface RedditPostCreatedData {
-  id?: string;
-  url?: string;
-  message?: string;
-  permalink?: string;
-}
-
-export interface RedditCommentCreatedData {
-  id?: string;
-  message?: string;
-  permalink?: string;
-}
-
-export type RedditData =
-  | { type: "search"; posts: RedditSearchData[] }
-  | { type: "post"; post: RedditPostData }
-  | { type: "comments"; comments: RedditCommentData[] }
-  | { type: "post_created"; data: RedditPostCreatedData }
-  | { type: "comment_created"; data: RedditCommentCreatedData };
+// -- Helpers -----------------------------------------------------------------
 
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp * 1000);
@@ -99,26 +52,22 @@ function openRedditLink(permalink?: string, url?: string) {
   if (link) Linking.openURL(link);
 }
 
-// --- Sub-components ---
+// -- Reddit icon (orange circle with "r/") -----------------------------------
 
-function RedditHeader() {
+function RedditIconBadge() {
   return (
-    <View className="flex-row items-center gap-2 mb-3">
-      <View
-        className="w-6 h-6 rounded-full items-center justify-center"
-        style={{ backgroundColor: REDDIT_ORANGE }}
-      >
-        <Text
-          className="text-white font-bold"
-          style={{ fontSize: 11, lineHeight: 14 }}
-        >
-          r/
-        </Text>
-      </View>
-      <Text className="text-xs text-muted font-medium">Reddit</Text>
+    <View
+      className="w-8 h-8 rounded-full items-center justify-center"
+      style={{ backgroundColor: REDDIT_ORANGE }}
+    >
+      <Text className="text-white font-bold" style={{ fontSize: 11 }}>
+        r/
+      </Text>
     </View>
   );
 }
+
+// -- Shared sub-components ---------------------------------------------------
 
 function PostMeta({
   subreddit,
@@ -132,25 +81,25 @@ function PostMeta({
   return (
     <View className="flex-row items-center gap-1.5 flex-wrap mb-1">
       {subreddit && (
-        <Chip
-          size="sm"
-          variant="secondary"
-          color="default"
-          animation="disable-all"
+        <Text
+          className="text-xs font-semibold"
+          style={{ color: REDDIT_ORANGE }}
         >
-          <Chip.Label style={{ color: REDDIT_ORANGE }}>{subreddit}</Chip.Label>
-        </Chip>
+          {subreddit}
+        </Text>
       )}
       {author && (
         <>
-          <Text className="text-xs text-muted">•</Text>
-          <Text className="text-xs text-muted">u/{author}</Text>
+          <Text className="text-xs text-zinc-500">·</Text>
+          <Text className="text-xs text-zinc-500">u/{author}</Text>
         </>
       )}
       {createdUtc !== undefined && (
         <>
-          <Text className="text-xs text-muted">•</Text>
-          <Text className="text-xs text-muted">{formatTime(createdUtc)}</Text>
+          <Text className="text-xs text-zinc-500">·</Text>
+          <Text className="text-xs text-zinc-500">
+            {formatTime(createdUtc)}
+          </Text>
         </>
       )}
     </View>
@@ -161,16 +110,27 @@ function PostStats({
   score,
   upvoteRatio,
   numComments,
+  /** Web uses larger icons + text in the post detail footer (h-4 w-4 / text-sm)
+   *  versus the more compact search-row footer (h-3.5 w-3.5 / text-xs). */
+  size = "compact",
 }: {
   score?: number;
   upvoteRatio?: number;
   numComments?: number;
+  size?: "compact" | "regular";
 }) {
+  const isRegular = size === "regular";
+  // ArrowUp02 — web ships width/height 18 in every reddit card variant
+  const commentIconSize = isRegular ? 16 : 14;
+  const commentTextClass = isRegular
+    ? "text-sm text-zinc-400"
+    : "text-xs text-zinc-400";
+
   return (
-    <View className="flex-row items-center gap-4 mt-2">
+    <View className="flex-row items-center gap-4">
       {score !== undefined && (
-        <View className="flex-row items-center gap-1">
-          <AppIcon icon={ArrowUp02Icon} size={16} color={REDDIT_ORANGE} />
+        <View className="flex-row items-center gap-1.5">
+          <AppIcon icon={ArrowUp02Icon} size={18} color={REDDIT_ORANGE} />
           <Text
             className="text-sm font-medium"
             style={{ color: REDDIT_ORANGE }}
@@ -178,25 +138,41 @@ function PostStats({
             {formatNumber(score)}
           </Text>
           {upvoteRatio !== undefined && (
-            <Text className="text-xs text-muted">
+            <Text className="text-xs text-zinc-500">
               ({Math.round(upvoteRatio * 100)}%)
             </Text>
           )}
         </View>
       )}
       {numComments !== undefined && (
-        <View className="flex-row items-center gap-1">
-          <AppIcon icon={BubbleChatIcon} size={14} color="#8e8e93" />
-          <Text className="text-xs text-muted">
-            {formatNumber(numComments)}
-          </Text>
+        <View className="flex-row items-center gap-1.5">
+          <AppIcon
+            icon={BubbleChatIcon}
+            size={commentIconSize}
+            color="#a1a1aa"
+          />
+          <Text className={commentTextClass}>{formatNumber(numComments)}</Text>
         </View>
       )}
     </View>
   );
 }
 
-// --- Search view ---
+// -- Divider -----------------------------------------------------------------
+
+function InnerDivider() {
+  return (
+    <View
+      style={{
+        height: 1,
+        backgroundColor: "rgba(255,255,255,0.07)",
+        marginVertical: 8,
+      }}
+    />
+  );
+}
+
+// --- Search view ------------------------------------------------------------
 
 function SearchView({ posts }: { posts: RedditSearchData[] }) {
   const [expanded, setExpanded] = useState(false);
@@ -205,55 +181,41 @@ function SearchView({ posts }: { posts: RedditSearchData[] }) {
 
   return (
     <>
-      <View className="flex-row items-center justify-between mb-2">
-        <Chip
-          size="sm"
-          variant="secondary"
-          color="default"
-          animation="disable-all"
-        >
-          <Chip.Label>
-            {posts.length} post{posts.length !== 1 ? "s" : ""}
-          </Chip.Label>
-        </Chip>
-      </View>
+      <Text className="text-zinc-500 text-xs mb-2">
+        {posts.length} post{posts.length !== 1 ? "s" : ""}
+      </Text>
 
-      <View className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+      <View className="gap-1.5">
         {preview.map((post, index) => (
-          <View key={post.id ?? post.title ?? String(index)}>
-            <PressableFeedback
-              onPress={() => openRedditLink(post.permalink, post.url)}
+          <ToolCardInner
+            key={post.id ?? post.title ?? String(index)}
+            dense
+            onPress={() => openRedditLink(post.permalink, post.url)}
+          >
+            <PostMeta
+              subreddit={post.subreddit}
+              author={post.author}
+              createdUtc={post.created_utc}
+            />
+            {/* Title — white (zinc-100) to match web's text-white */}
+            <Text
+              className="text-sm font-medium text-zinc-100 leading-snug"
+              numberOfLines={2}
             >
-              <View className="p-3">
-                <PostMeta
-                  subreddit={post.subreddit}
-                  author={post.author}
-                  createdUtc={post.created_utc}
-                />
-                <Text
-                  className="text-sm font-medium text-foreground"
-                  numberOfLines={2}
-                >
-                  {post.title}
-                </Text>
-                {post.selftext ? (
-                  <Text className="text-xs text-muted mt-1" numberOfLines={2}>
-                    {post.selftext}
-                  </Text>
-                ) : null}
-                <PostStats score={post.score} numComments={post.num_comments} />
-              </View>
-            </PressableFeedback>
-            {index < preview.length - 1 && (
-              <View
-                style={{
-                  height: 1,
-                  backgroundColor: "rgba(255,255,255,0.07)",
-                  marginVertical: 4,
-                }}
-              />
-            )}
-          </View>
+              {post.title}
+            </Text>
+            {post.selftext ? (
+              <Text
+                className="text-xs text-zinc-400 mt-1 leading-relaxed"
+                numberOfLines={2}
+              >
+                {post.selftext}
+              </Text>
+            ) : null}
+            <View className="mt-2">
+              <PostStats score={post.score} numComments={post.num_comments} />
+            </View>
+          </ToolCardInner>
         ))}
       </View>
 
@@ -274,48 +236,44 @@ function SearchView({ posts }: { posts: RedditSearchData[] }) {
   );
 }
 
-// --- Post view ---
+// --- Post view --------------------------------------------------------------
 
 function PostView({ post }: { post: RedditPostData }) {
   const [expanded, setExpanded] = useState(false);
   const hasBody = !!(post.selftext && post.selftext.length > 0);
-  const hasFlair = !!post.link_flair_text;
 
   return (
-    <View className="rounded-xl bg-white/5 border border-white/10 p-3">
+    <ToolCardInner>
       <PostMeta
         subreddit={post.subreddit}
         author={post.author}
         createdUtc={post.created_utc}
       />
+
       <View className="flex-row items-start gap-2">
         <Pressable
           onPress={() => openRedditLink(post.permalink, post.url)}
           className="flex-1 active:opacity-70"
         >
-          <Text className="text-base font-semibold text-foreground leading-snug">
+          {/* Title — text-base font-semibold to match web */}
+          <Text className="text-base font-semibold text-zinc-100 leading-snug">
             {post.title}
           </Text>
         </Pressable>
-        {hasFlair && (
-          <Chip
-            size="sm"
-            variant="secondary"
-            color="default"
-            animation="disable-all"
-            className="flex-shrink-0"
-          >
-            <Chip.Label className="text-blue-300">
+        {post.link_flair_text ? (
+          <View className="flex-shrink-0 rounded-full px-2 py-0.5 bg-blue-900/30">
+            <Text className="text-blue-300 text-xs">
               {post.link_flair_text}
-            </Chip.Label>
-          </Chip>
-        )}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
+      {/* Self-text body — gray-300 on web maps to zinc-300 */}
       {hasBody && (
         <>
           <Text
-            className="text-sm text-muted mt-2 leading-relaxed"
+            className="text-sm text-zinc-400 mt-2 leading-relaxed"
             numberOfLines={expanded ? undefined : 3}
           >
             {post.selftext}
@@ -334,6 +292,7 @@ function PostView({ post }: { post: RedditPostData }) {
         </>
       )}
 
+      {/* External link */}
       {!post.is_self && post.url && (
         <Pressable
           onPress={() => post.url && Linking.openURL(post.url)}
@@ -346,33 +305,31 @@ function PostView({ post }: { post: RedditPostData }) {
         </Pressable>
       )}
 
-      <View
-        style={{
-          height: 1,
-          backgroundColor: "rgba(255,255,255,0.07)",
-          marginVertical: 4,
-        }}
-      />
+      <InnerDivider />
 
-      <View className="flex-row items-center justify-between mt-1">
+      {/* Footer: stats + view link.
+         Web uses the larger footer here (text-sm + h-4 icons) compared to the
+         compact search-row footer. Match by passing size="regular". */}
+      <View className="flex-row items-center justify-between">
         <PostStats
           score={post.score}
           upvoteRatio={post.upvote_ratio}
           numComments={post.num_comments}
+          size="regular"
         />
-        <Button
-          size="sm"
-          variant="ghost"
+        <Pressable
           onPress={() => openRedditLink(post.permalink, post.url)}
+          className="flex-row items-center gap-1 active:opacity-70"
         >
-          <Button.Label className="text-muted">View on Reddit →</Button.Label>
-        </Button>
+          <Text className="text-xs text-zinc-400">View on Reddit</Text>
+          <AppIcon icon={ArrowRight01Icon} size={12} color="#a1a1aa" />
+        </Pressable>
       </View>
-    </View>
+    </ToolCardInner>
   );
 }
 
-// --- Comments view ---
+// --- Comments view ----------------------------------------------------------
 
 function CommentsView({ comments }: { comments: RedditCommentData[] }) {
   const [expanded, setExpanded] = useState(false);
@@ -381,61 +338,54 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
 
   return (
     <>
-      <View className="flex-row items-center justify-between mb-2">
-        <Chip
-          size="sm"
-          variant="secondary"
-          color="default"
-          animation="disable-all"
-        >
-          <Chip.Label>
-            {comments.length} comment{comments.length !== 1 ? "s" : ""}
-          </Chip.Label>
-        </Chip>
-      </View>
+      <Text className="text-zinc-500 text-xs mb-2">
+        {comments.length} comment{comments.length !== 1 ? "s" : ""}
+      </Text>
 
-      <View className="gap-2">
+      <View className="gap-1.5">
         {preview.map((comment, index) => (
-          <View
-            key={comment.id ?? String(index)}
-            className="rounded-xl border border-white/10 bg-white/5 p-3"
-          >
-            {/* Author & meta */}
+          <ToolCardInner key={comment.id ?? String(index)} dense>
+            {/* Author & meta row.
+               Web: UserCircle02 h-3.5 w-3.5 (14), u/author text-xs font-medium
+               (blue-400 if OP / gray-300 otherwise), OP badge bg-blue-900/40
+               text-blue-400 px-1.5 py-0.5 text-[10px], time text-gray-500. */}
             <View className="flex-row items-center justify-between mb-2">
-              <View className="flex-row items-center gap-1.5">
-                <AppIcon icon={UserCircle02Icon} size={14} color="#8e8e93" />
+              <View className="flex-row items-center gap-1.5 flex-1 min-w-0">
+                <AppIcon icon={UserCircle02Icon} size={14} color="#a1a1aa" />
                 <Text
                   className="text-xs font-medium"
                   style={{
-                    color: comment.is_submitter ? "#60A5FA" : "#d1d5db",
+                    color: comment.is_submitter ? "#60A5FA" : "#d4d4d8",
                   }}
+                  numberOfLines={1}
                 >
                   u/{comment.author}
                 </Text>
                 {comment.is_submitter && (
-                  <Chip
-                    size="sm"
-                    variant="secondary"
-                    color="default"
-                    animation="disable-all"
-                  >
-                    <Chip.Label className="text-blue-400">OP</Chip.Label>
-                  </Chip>
+                  <View className="bg-blue-900/40 rounded px-1.5 py-0.5">
+                    <Text
+                      className="text-blue-400 font-medium"
+                      style={{ fontSize: 10 }}
+                    >
+                      OP
+                    </Text>
+                  </View>
                 )}
                 {comment.created_utc !== undefined && (
                   <>
-                    <Text className="text-xs text-muted">•</Text>
-                    <Text className="text-xs text-muted">
+                    <Text className="text-xs text-zinc-500">·</Text>
+                    <Text className="text-xs text-zinc-500">
                       {formatTime(comment.created_utc)}
                     </Text>
                   </>
                 )}
               </View>
+              {/* Score — web ships ArrowUp02 width/height 18 with text-xs */}
               {comment.score !== undefined && (
-                <View className="flex-row items-center gap-1">
+                <View className="flex-row items-center gap-1 ml-2">
                   <AppIcon
                     icon={ArrowUp02Icon}
-                    size={14}
+                    size={18}
                     color={REDDIT_ORANGE}
                   />
                   <Text
@@ -448,38 +398,37 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
               )}
             </View>
 
-            {/* Body */}
-            <Text className="text-sm text-foreground/90 leading-relaxed">
+            {/* Comment body — text-gray-200 on web → zinc-200 */}
+            <Text className="text-sm text-zinc-200 leading-relaxed">
               {comment.body}
             </Text>
 
-            {/* Link */}
+            {/* View on Reddit link */}
             {comment.permalink && (
               <>
-                <View
-                  style={{
-                    height: 1,
-                    backgroundColor: "rgba(255,255,255,0.07)",
-                    marginVertical: 4,
-                  }}
-                />
+                <InnerDivider />
                 <Pressable
                   onPress={() =>
                     comment.permalink &&
                     Linking.openURL(`https://reddit.com${comment.permalink}`)
                   }
-                  className="active:opacity-70"
+                  className="flex-row items-center gap-1 active:opacity-70"
                 >
                   <Text
                     className="text-xs font-medium"
                     style={{ color: REDDIT_ORANGE }}
                   >
-                    View on Reddit →
+                    View on Reddit
                   </Text>
+                  <AppIcon
+                    icon={ArrowRight01Icon}
+                    size={12}
+                    color={REDDIT_ORANGE}
+                  />
                 </Pressable>
               </>
             )}
-          </View>
+          </ToolCardInner>
         ))}
       </View>
 
@@ -500,7 +449,7 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
   );
 }
 
-// --- Created view ---
+// --- Created view -----------------------------------------------------------
 
 function CreatedView({
   type,
@@ -514,82 +463,81 @@ function CreatedView({
   const url = isPost ? (itemData as RedditPostCreatedData).url : undefined;
 
   return (
-    <View className="rounded-xl bg-white/5 border border-white/10 p-3">
+    <ToolCardInner>
+      {/* Success header row with "Just now" badge */}
       <View className="flex-row items-center gap-2 mb-2">
         <AppIcon icon={CheckmarkCircle02Icon} size={18} color="#4ade80" />
-        <Text className="text-sm font-semibold text-green-400">
+        <Text className="text-sm font-semibold text-green-400 flex-1">
           {isPost
             ? "Post Created Successfully!"
             : "Comment Posted Successfully!"}
         </Text>
+        {/* "Just now" badge — matches web Chip */}
+        <View className="rounded-full px-2 py-0.5 bg-green-900/30">
+          <Text className="text-green-300 text-xs">Just now</Text>
+        </View>
       </View>
 
+      {/* Message body */}
       {itemData.message && (
-        <Text className="text-sm text-muted mb-2">{itemData.message}</Text>
+        <Text className="text-sm text-zinc-400 mb-2">{itemData.message}</Text>
       )}
 
+      {/* ID */}
       {itemData.id && (
-        <Text className="text-xs text-muted mb-2">
-          ID:{" "}
-          <Text className="font-mono text-foreground/70">{itemData.id}</Text>
+        <Text className="text-xs text-zinc-500 mb-2">
+          ID: <Text className="font-mono text-zinc-200">{itemData.id}</Text>
         </Text>
       )}
 
-      <View
-        style={{
-          height: 1,
-          backgroundColor: "rgba(255,255,255,0.07)",
-          marginVertical: 4,
-        }}
-      />
+      <InnerDivider />
 
-      <View className="flex-row items-center justify-between">
-        {(permalink || url) && (
-          <Pressable
-            onPress={() => openRedditLink(permalink, url)}
-            className="flex-row items-center gap-1.5 active:opacity-70"
-          >
-            <Text
-              className="text-xs font-medium"
-              style={{ color: REDDIT_ORANGE }}
-            >
-              View on Reddit
-            </Text>
-            <AppIcon icon={LinkSquare02Icon} size={12} color={REDDIT_ORANGE} />
-          </Pressable>
-        )}
-        <Chip
-          size="sm"
-          variant="secondary"
-          color="success"
-          animation="disable-all"
-          className="ml-auto"
+      {/* View on Reddit */}
+      {(permalink || url) && (
+        <Pressable
+          onPress={() => openRedditLink(permalink, url)}
+          className="flex-row items-center gap-1.5 active:opacity-70"
         >
-          <Chip.Label>Just now</Chip.Label>
-        </Chip>
-      </View>
-    </View>
+          <Text
+            className="text-xs font-medium"
+            style={{ color: REDDIT_ORANGE }}
+          >
+            View on Reddit
+          </Text>
+          <AppIcon icon={LinkSquare02Icon} size={13} color={REDDIT_ORANGE} />
+        </Pressable>
+      )}
+    </ToolCardInner>
   );
 }
 
-// --- Main card ---
+// --- Main card --------------------------------------------------------------
 
 export function RedditCard({ data }: { data: RedditData }) {
+  const subtitle =
+    data.type === "search"
+      ? `${data.posts?.length ?? 0} post${(data.posts?.length ?? 0) !== 1 ? "s" : ""}`
+      : data.type === "comments"
+        ? `${data.comments?.length ?? 0} comment${(data.comments?.length ?? 0) !== 1 ? "s" : ""}`
+        : undefined;
+
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        <RedditHeader />
+    <ToolCardShell>
+      <ToolCardHeader
+        title="Reddit"
+        subtitle={subtitle}
+        trailing={<RedditIconBadge />}
+      />
 
-        {data.type === "search" && <SearchView posts={data.posts} />}
+      {data.type === "search" && <SearchView posts={data.posts} />}
 
-        {data.type === "post" && <PostView post={data.post} />}
+      {data.type === "post" && <PostView post={data.post} />}
 
-        {data.type === "comments" && <CommentsView comments={data.comments} />}
+      {data.type === "comments" && <CommentsView comments={data.comments} />}
 
-        {(data.type === "post_created" || data.type === "comment_created") && (
-          <CreatedView type={data.type} data={data.data} />
-        )}
-      </Card.Body>
-    </Card>
+      {(data.type === "post_created" || data.type === "comment_created") && (
+        <CreatedView type={data.type} data={data.data} />
+      )}
+    </ToolCardShell>
   );
 }

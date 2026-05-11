@@ -77,7 +77,17 @@ const bots: BotCardProps[] = [
     name: "WhatsApp",
     description:
       "Talk to GAIA on the app already on your phone. Ask questions, delegate tasks — no new accounts, no new habits.",
-    badge: { label: "Coming Soon", color: "secondary" },
+    badge: { label: "Beta", color: "success" },
+    primaryAction: {
+      label: "Start Chatting",
+      href: "https://wa.me/12762088737",
+      external: true,
+    },
+    secondaryAction: {
+      label: "Join Community",
+      href: "https://whatsapp.heygaia.io",
+      external: true,
+    },
   },
 ];
 

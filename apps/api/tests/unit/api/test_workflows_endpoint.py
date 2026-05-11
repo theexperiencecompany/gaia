@@ -47,6 +47,23 @@ _GEN_SLUG = "app.api.v1.endpoints.workflows.generate_unique_workflow_slug"
 _RESET_DEFAULT = "app.api.v1.endpoints.workflows.reset_system_workflow_to_default"
 
 
+def _async_iter(items: list):
+    """Return a Mongo-cursor-shaped async iterator over the given items."""
+
+    class _Cursor:
+        def __init__(self, docs):
+            self._docs = list(docs)
+
+        def __aiter__(self):
+            return self._gen()
+
+        async def _gen(self):
+            for d in self._docs:
+                yield d
+
+    return _Cursor(items)
+
+
 def _make_workflow(**overrides) -> Workflow:
     """Build a real Workflow Pydantic model instance for service mock returns."""
     base: dict = {
@@ -754,12 +771,12 @@ class TestGetPublicWorkflow:
             "trigger_config": {"type": "manual", "enabled": True},
             "activated": True,
             "is_public": True,
+            "creator_info": [{"name": "Test User", "picture": None}],
         }
         with (
             patch(
-                f"{_WF_COLLECTION}.find_one",
-                new_callable=AsyncMock,
-                return_value=mock_doc,
+                f"{_WF_COLLECTION}.aggregate",
+                return_value=_async_iter([mock_doc]),
             ),
             patch(
                 "app.api.v1.endpoints.workflows.transform_workflow_document",
@@ -771,16 +788,9 @@ class TestGetPublicWorkflow:
         assert response.status_code == 200
 
     async def test_get_public_workflow_not_found_returns_404(self, client: AsyncClient):
-        with (
-            patch(
-                f"{_WF_COLLECTION}.find_one",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "app.api.v1.endpoints.workflows.parse_workflow_slug",
-                return_value=None,
-            ),
+        with patch(
+            f"{_WF_COLLECTION}.aggregate",
+            return_value=_async_iter([]),
         ):
             response = await client.get(f"{BASE_URL}/public/nonexistent-slug")
 

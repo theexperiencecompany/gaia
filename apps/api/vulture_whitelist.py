@@ -1,3 +1,5 @@
+# ruff: noqa: F821
+# mypy: ignore-errors
 # Vulture whitelist — known false positives.
 #
 # Generated with: vulture app/ --make-whitelist
@@ -299,12 +301,6 @@ tags  # unused variable (app/models/support_models.py:86)
 SupportRequestUpdate  # unused class (app/models/support_models.py:95)
 tags  # unused variable (app/models/support_models.py:100)
 support_request  # unused variable (app/models/support_models.py:110)
-avatar  # unused variable (app/models/team_models.py:9)
-linkedin  # unused variable (app/models/team_models.py:10)
-twitter  # unused variable (app/models/team_models.py:11)
-avatar  # unused variable (app/models/team_models.py:21)
-linkedin  # unused variable (app/models/team_models.py:22)
-twitter  # unused variable (app/models/team_models.py:23)
 LOW  # unused variable (app/models/todo_models.py:11)
 ProjectModel  # unused class (app/models/todo_models.py:128)
 is_default  # unused variable (app/models/todo_models.py:150)
@@ -467,7 +463,6 @@ CUSTOM_DELETE_REACTION  # unused function (app/agents/tools/integrations/linkedi
 CUSTOM_GET_POST_REACTIONS  # unused function (app/agents/tools/integrations/linkedin_tool.py:321)
 CUSTOM_GATHER_CONTEXT  # unused function (app/agents/tools/integrations/linkedin_tool.py:365)
 CUSTOM_GATHER_CONTEXT  # unused function (app/agents/tools/integrations/microsoft_teams_tool.py:15)
-CUSTOM_CREATE_TEST_PAGE  # unused function (app/agents/tools/integrations/notion_tool.py:305)
 CUSTOM_GATHER_CONTEXT  # unused function (app/agents/tools/integrations/notion_tool.py:368)
 CUSTOM_GATHER_CONTEXT  # unused function (app/agents/tools/integrations/reddit_tool.py:15)
 CUSTOM_GATHER_CONTEXT  # unused function (app/agents/tools/integrations/slack_tool.py:16)

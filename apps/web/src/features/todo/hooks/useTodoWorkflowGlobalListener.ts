@@ -38,7 +38,7 @@ function applyWorkflowToStore(todoId: string, workflow: Workflow) {
       [todoId]: {
         has_workflow: true,
         is_generating: false,
-        workflow,
+        workflow: workflow as never,
         cachedAt: Date.now(),
       },
     },

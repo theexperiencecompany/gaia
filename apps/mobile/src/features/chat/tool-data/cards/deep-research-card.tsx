@@ -1,7 +1,14 @@
-import { Card, Chip, PressableFeedback } from "heroui-native";
+import type {
+  DeepResearchResults,
+  DeepResearchSource,
+  EnhancedWebResult,
+  ImageResult,
+  SearchResults,
+} from "@gaia/shared";
 import { useEffect, useState } from "react";
-import { Image, Linking, View } from "react-native";
+import { Image, Linking, Pressable, ScrollView, View } from "react-native";
 import Animated, {
+  FadeInRight,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -9,103 +16,28 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import {
-  type AnyIcon,
   AppIcon,
-  ArrowUpRight01Icon,
   Globe02Icon,
-  InformationCircleIcon,
-  LinkSquare01Icon,
+  LinkBackwardIcon,
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  FaviconImage,
+  getHostname,
+  NewsResultCard,
+  ToolCardHeader,
+  ToolCardInner,
+  ToolCardShell,
+  WebResultRow,
+} from "@/features/chat/tool-data/primitives";
 
-export interface WebResult {
-  title?: string;
-  url?: string;
-  content?: string;
-  score?: number;
-  raw_content?: string;
-  favicon?: string;
-}
-
-export interface EnhancedWebResult extends WebResult {
-  full_content?: string;
-  screenshot_url?: string;
-}
-
-export interface SearchResults {
-  web?: WebResult[];
-  images?: string[];
-  news?: Array<{ title?: string; url?: string; content?: string }>;
-  answer?: string;
-  query?: string;
-}
-
-export interface DeepResearchSource {
-  url: string;
-  title: string;
-  snippet?: string;
-}
-
-export interface DeepResearchResults {
-  /** Present when streaming / running */
-  status?: "running" | "complete" | "error";
-  progress?: string;
-  subSteps?: string[];
-  sources?: DeepResearchSource[];
-  totalSources?: number;
-
-  /** Present when complete */
-  original_search?: SearchResults;
-  enhanced_results?: EnhancedWebResult[];
-  screenshots_taken?: boolean;
-  metadata?: {
-    total_content_size?: number;
-    elapsed_time?: number;
-    query?: string;
-  };
-}
+export type { DeepResearchResults, DeepResearchSource, EnhancedWebResult };
 
 type Tab = "enhanced" | "original" | "metadata";
 
-function getHostname(url?: string): string {
-  if (!url) return "";
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return url;
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Shared sub-components
-// ---------------------------------------------------------------------------
-
-function FaviconImage({ url }: { url?: string }) {
-  const [errored, setErrored] = useState(false);
-  const hostname = getHostname(url);
-
-  if (!hostname || errored) {
-    return (
-      <View className="w-4 h-4 rounded-full bg-white/10 items-center justify-center">
-        <AppIcon icon={Globe02Icon} size={10} color="#8e8e93" />
-      </View>
-    );
-  }
-
-  return (
-    <Image
-      source={{
-        uri: `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`,
-      }}
-      style={{ width: 14, height: 14, borderRadius: 7 }}
-      onError={() => setErrored(true)}
-    />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Streaming / running state
+// PulsingDot — running-state status indicator
 // ---------------------------------------------------------------------------
 
 function PulsingDot() {
@@ -134,6 +66,10 @@ function PulsingDot() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Running state
+// ---------------------------------------------------------------------------
+
 interface RunningSourceRowProps {
   source: DeepResearchSource;
 }
@@ -141,23 +77,16 @@ interface RunningSourceRowProps {
 function RunningSourceRow({ source }: RunningSourceRowProps) {
   const hostname = getHostname(source.url);
   return (
-    <PressableFeedback
-      onPress={() => Linking.openURL(source.url)}
-      className="flex-row items-center gap-2 py-1.5"
-    >
+    <View className="flex-row items-center gap-2">
       <FaviconImage url={source.url} />
-      <Text className="text-xs text-muted flex-1" numberOfLines={1}>
+      <Text className="text-zinc-400 text-xs flex-1" numberOfLines={1}>
         {hostname || source.title}
       </Text>
-    </PressableFeedback>
+    </View>
   );
 }
 
-interface DeepResearchRunningCardProps {
-  data: DeepResearchResults;
-}
-
-function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
+function DeepResearchRunningCard({ data }: { data: DeepResearchResults }) {
   const sources = data.sources ?? [];
   const recentSources = sources.slice(-3);
   const totalSources = data.totalSources ?? sources.length;
@@ -166,72 +95,60 @@ function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
     data.progress ?? subSteps[subSteps.length - 1] ?? "Researching...";
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <View className="w-5 h-5 rounded-md bg-[#00bbff]/15 items-center justify-center">
-            <AppIcon icon={Search01Icon} size={12} color="#00bbff" />
-          </View>
-          <Text className="text-xs font-medium text-[#00bbff]">
-            Deep Research
-          </Text>
-          <View className="ml-auto">
-            <PulsingDot />
-          </View>
-        </View>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={Search01Icon}
+        title="Deep Research"
+        trailing={<PulsingDot />}
+      />
 
-        {/* Current step */}
-        <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
-          <Text className="text-xs text-muted mb-0.5">Current step</Text>
-          <Text className="text-sm text-foreground" numberOfLines={2}>
-            {latestStep}
-          </Text>
-        </View>
+      {/* Current step */}
+      <ToolCardInner dense className="mb-3">
+        <Text className="text-zinc-500 text-xs mb-0.5">Current step</Text>
+        <Text className="text-zinc-100 text-sm" numberOfLines={2}>
+          {latestStep}
+        </Text>
+      </ToolCardInner>
 
-        {/* Sub-steps history */}
-        {subSteps.length > 1 && (
-          <View className="mb-3 gap-1">
-            {subSteps.slice(0, -1).map((step, index) => (
-              <View
-                key={`step-${index}-${step.slice(0, 10)}`}
-                className="flex-row items-center gap-1.5"
+      {/* Sub-steps history */}
+      {subSteps.length > 1 && (
+        <View className="mb-3 gap-1">
+          {subSteps.slice(0, -1).map((step, index) => (
+            <View
+              key={`step-${index}-${step.slice(0, 10)}`}
+              className="flex-row items-center gap-1.5"
+            >
+              <View className="w-1 h-1 rounded-full bg-zinc-500" />
+              <Text className="text-zinc-500 text-xs" numberOfLines={1}>
+                {step}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Recent sources being visited */}
+      {recentSources.length > 0 && (
+        <View>
+          <Text className="text-zinc-400 text-xs mb-1.5">
+            {totalSources > 0
+              ? `Visiting sources (${totalSources} found)`
+              : "Visiting sources"}
+          </Text>
+          <View className="gap-1.5">
+            {recentSources.map((source, index) => (
+              <ToolCardInner
+                key={source.url || `src-${index}`}
+                dense
+                onPress={() => source.url && Linking.openURL(source.url)}
               >
-                <View className="w-1 h-1 rounded-full bg-white/30" />
-                <Text className="text-[11px] text-muted" numberOfLines={1}>
-                  {step}
-                </Text>
-              </View>
+                <RunningSourceRow source={source} />
+              </ToolCardInner>
             ))}
           </View>
-        )}
-
-        {/* Recent sources being visited */}
-        {recentSources.length > 0 && (
-          <View>
-            <Text className="text-[11px] text-muted mb-1">
-              {totalSources > 0
-                ? `Visiting sources (${totalSources} found)`
-                : "Visiting sources"}
-            </Text>
-            <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
-              {recentSources.map((source, index) => (
-                <View
-                  key={source.url || `src-${index}`}
-                  className={
-                    index < recentSources.length - 1
-                      ? "border-b border-white/8"
-                      : ""
-                  }
-                >
-                  <RunningSourceRow source={source} />
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-      </Card.Body>
-    </Card>
+        </View>
+      )}
+    </ToolCardShell>
   );
 }
 
@@ -241,340 +158,421 @@ function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
 
 function DeepResearchErrorCard() {
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        <View className="flex-row items-center gap-2">
-          <AppIcon icon={Search01Icon} size={14} color="#f87171" />
-          <Text className="text-xs text-[#f87171]">Deep Research</Text>
-        </View>
-        <Text className="text-sm text-muted mt-1.5">
-          Research encountered an error.
-        </Text>
-      </Card.Body>
-    </Card>
+    <ToolCardShell>
+      <View className="flex-row items-center gap-2">
+        <AppIcon icon={Search01Icon} size={14} color="#f87171" />
+        <Text className="text-[#f87171] text-xs">Deep Research</Text>
+      </View>
+      <Text className="text-zinc-400 text-sm mt-1.5">
+        Research encountered an error.
+      </Text>
+    </ToolCardShell>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Completed state (original implementation, preserved)
+// Enhanced results tab
+// Web: each card uses `rounded-2xl bg-zinc-800 p-4` with title (primary,
+// truncated) + LinkBackward icon + hostname row. Full-content rendering is
+// commented out on web — match exactly.
 // ---------------------------------------------------------------------------
 
 function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
-  const [showFull, setShowFull] = useState(false);
   const hostname = getHostname(result.url);
-  const hasFullContent = !!result.full_content;
 
   return (
-    <View className="py-3 border-b border-white/8">
-      <PressableFeedback
-        onPress={() => result.url && Linking.openURL(result.url)}
-      >
-        <Text className="text-sm font-medium text-[#00bbff]" numberOfLines={2}>
-          {result.title || hostname || "Untitled"}
-        </Text>
-      </PressableFeedback>
+    <Pressable
+      onPress={() => result.url && Linking.openURL(result.url)}
+      android_ripple={{ color: "rgba(255,255,255,0.05)", borderless: false }}
+      style={{
+        backgroundColor: "#27272a", // zinc-800
+        borderRadius: 16,
+        padding: 16,
+      }}
+    >
+      <Text className="text-[#00bbff] text-sm font-medium" numberOfLines={1}>
+        {result.title || hostname || "Untitled"}
+      </Text>
 
-      <View className="flex-row items-center gap-1.5 mt-1">
-        <FaviconImage url={result.url} />
-        <PressableFeedback
-          onPress={() => result.url && Linking.openURL(result.url)}
-          className="flex-row items-center gap-1"
-        >
-          <Text className="text-[11px] text-muted" numberOfLines={1}>
+      {!!hostname && (
+        <View className="flex-row items-center gap-1 mt-1">
+          <AppIcon icon={LinkBackwardIcon} size={13} color="#71717a" />
+          <Text className="text-zinc-400 text-xs flex-1" numberOfLines={1}>
             {hostname}
-          </Text>
-          <AppIcon icon={ArrowUpRight01Icon} size={10} color="#8e8e93" />
-        </PressableFeedback>
-      </View>
-
-      {!!result.content && (
-        <Text
-          className="text-xs text-muted leading-4 mt-1.5"
-          numberOfLines={showFull ? undefined : 3}
-        >
-          {result.content}
-        </Text>
-      )}
-
-      {hasFullContent && (
-        <PressableFeedback
-          onPress={() => setShowFull((prev) => !prev)}
-          className="mt-1.5"
-        >
-          <Text className="text-[11px] text-[#00bbff] font-medium">
-            {showFull ? "Show less" : "Show full content"}
-          </Text>
-        </PressableFeedback>
-      )}
-
-      {showFull && !!result.full_content && (
-        <View className="rounded-lg bg-black/25 p-2.5 mt-2">
-          <Text className="text-xs text-foreground leading-4">
-            {result.full_content}
           </Text>
         </View>
       )}
-    </View>
+    </Pressable>
   );
 }
 
 function EnhancedResultsSection({ results }: { results: EnhancedWebResult[] }) {
   return (
-    <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
+    <View className="gap-2 pt-3">
       {results.map((result, index) => (
-        <View
+        <EnhancedResultRow
           key={result.url || result.title || String(index)}
-          className={index === results.length - 1 ? "border-b-0" : ""}
-        >
-          <EnhancedResultRow result={result} />
-        </View>
+          result={result}
+        />
       ))}
     </View>
   );
 }
 
-function OriginalSearchSection({ search }: { search: SearchResults }) {
-  const webResults = search.web ?? [];
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? webResults : webResults.slice(0, 3);
+// ---------------------------------------------------------------------------
+// Original search tab — mirrors web's nested SearchResultsTabs render.
+// Reuses the shared WebResultRow + NewsResultCard primitives. Image strip
+// is the deep-research-specific overlapping rotated tile pattern matching
+// web's SearchResultsTabs ImageResults.
+// ---------------------------------------------------------------------------
+
+const IMAGE_TILE_SIZE = 96;
+const IMAGE_OVERLAP = -32;
+const MAX_VISIBLE_IMAGES = 4;
+
+function ImageTile({
+  url,
+  index,
+  total,
+}: {
+  url: string;
+  index: number;
+  total: number;
+}) {
+  const rotation = total > 1 ? (index % 2 === 0 ? "6deg" : "-6deg") : "0deg";
 
   return (
-    <View>
-      {!!search.query && (
-        <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
-          <Text className="text-xs text-muted mb-0.5">Query</Text>
-          <Text className="text-sm text-foreground font-medium">
-            "{search.query}"
-          </Text>
-        </View>
-      )}
+    <Animated.View
+      entering={FadeInRight.delay(index * 60).duration(150)}
+      style={{
+        transform: [{ rotate: rotation }],
+        zIndex: index,
+        marginLeft: index === 0 ? 0 : IMAGE_OVERLAP,
+      }}
+    >
+      <Pressable onPress={() => Linking.openURL(url)}>
+        <Image
+          source={{ uri: url }}
+          style={{
+            width: IMAGE_TILE_SIZE,
+            height: IMAGE_TILE_SIZE,
+            borderRadius: 14,
+            backgroundColor: "#27272a",
+          }}
+          resizeMode="cover"
+        />
+      </Pressable>
+    </Animated.View>
+  );
+}
 
-      {!!search.answer && (
-        <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
-          <Text className="text-xs text-muted mb-0.5">Answer</Text>
-          <Text className="text-sm text-foreground" numberOfLines={4}>
-            {search.answer}
-          </Text>
-        </View>
-      )}
+function OriginalImageStrip({ images }: { images: ImageResult[] }) {
+  const validUrls = images.filter(
+    (img): img is string => typeof img === "string" && img.length > 0,
+  );
+  const [startIndex, setStartIndex] = useState(0);
 
-      {visible.length > 0 && (
-        <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
-          {visible.map((result, index) => (
-            <PressableFeedback
+  if (validUrls.length === 0) return null;
+
+  const displayImages = validUrls.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_IMAGES,
+  );
+  const remaining = validUrls.length - (startIndex + MAX_VISIBLE_IMAGES);
+  const nextBatchCount =
+    remaining > 0
+      ? remaining
+      : Math.min(MAX_VISIBLE_IMAGES, validUrls.length - MAX_VISIBLE_IMAGES);
+  const showCycleButton = validUrls.length > MAX_VISIBLE_IMAGES;
+
+  const cycleNext = () => {
+    const next = startIndex + MAX_VISIBLE_IMAGES;
+    setStartIndex(next >= validUrls.length ? 0 : next);
+  };
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{
+        paddingVertical: 8,
+        alignItems: "center",
+      }}
+    >
+      {displayImages.map((url, index) => (
+        <ImageTile
+          key={`${url}-${startIndex}`}
+          url={url}
+          index={index}
+          total={displayImages.length}
+        />
+      ))}
+      {showCycleButton && (
+        <Pressable
+          onPress={cycleNext}
+          style={{
+            marginLeft: IMAGE_OVERLAP,
+            zIndex: displayImages.length,
+            width: IMAGE_TILE_SIZE,
+            height: IMAGE_TILE_SIZE,
+            borderRadius: 14,
+            backgroundColor: "rgba(39,39,42,0.85)",
+            alignItems: "center",
+            justifyContent: "center",
+            transform: [
+              { rotate: displayImages.length % 2 === 0 ? "6deg" : "-6deg" },
+            ],
+          }}
+        >
+          <Text className="text-zinc-100 text-sm font-semibold">
+            +{nextBatchCount}
+          </Text>
+        </Pressable>
+      )}
+    </ScrollView>
+  );
+}
+
+function OriginalSearchSection({ search }: { search: SearchResults }) {
+  const webResults = search.web ?? [];
+  const imageResults = search.images ?? [];
+  const newsResults = search.news ?? [];
+
+  return (
+    <View className="gap-3 pt-3">
+      {/* Web results — list of WebResultRow primitives in a zinc-800 card.
+         Mirrors web's PopoverContent → WebResults but always-open since the
+         popover doesn't translate to mobile inside an already-collapsed
+         accordion. */}
+      {webResults.length > 0 && (
+        <View
+          style={{
+            backgroundColor: "#27272a", // zinc-800
+            borderRadius: 16,
+            overflow: "hidden",
+          }}
+        >
+          {webResults.map((result, index) => (
+            <WebResultRow
               key={result.url || result.title || String(index)}
-              onPress={() => result.url && Linking.openURL(result.url)}
-              className={`py-3 ${index < visible.length - 1 ? "border-b border-white/8" : ""}`}
-            >
-              <View className="flex-row items-start gap-2.5">
-                <View className="mt-0.5">
-                  <FaviconImage url={result.url} />
-                </View>
-                <View className="flex-1 gap-0.5">
-                  <Text
-                    className="text-sm font-medium text-foreground"
-                    numberOfLines={2}
-                  >
-                    {result.title || getHostname(result.url) || "Untitled"}
-                  </Text>
-                  {!!result.content && (
-                    <Text
-                      className="text-xs text-muted leading-4"
-                      numberOfLines={2}
-                    >
-                      {result.content}
-                    </Text>
-                  )}
-                  {!!result.url && (
-                    <Text
-                      className="text-[11px] text-[#00bbff] mt-0.5"
-                      numberOfLines={1}
-                    >
-                      {getHostname(result.url)}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            </PressableFeedback>
+              result={result}
+              isLast={index === webResults.length - 1}
+            />
           ))}
         </View>
       )}
 
-      {webResults.length > 3 && (
-        <PressableFeedback
-          onPress={() => setExpanded((prev) => !prev)}
-          className="mt-2 py-1.5 items-center"
-        >
-          <Text className="text-xs text-[#00bbff] font-medium">
-            {expanded ? "Show less" : `Show all ${webResults.length} results`}
-          </Text>
-        </PressableFeedback>
+      {imageResults.length > 0 && <OriginalImageStrip images={imageResults} />}
+
+      {newsResults.length > 0 && (
+        <View className="gap-2">
+          {newsResults.map((article, index) => (
+            <NewsResultCard
+              key={article.url || article.title || String(index)}
+              article={article}
+            />
+          ))}
+        </View>
       )}
     </View>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Search metadata tab — query / elapsed time / content size
+// Web: "Search Statistics" heading, then label-value rows, all in one
+// rounded-lg bg-zinc-800 card.
+// ---------------------------------------------------------------------------
 
 function MetadataSection({
   metadata,
 }: {
   metadata: NonNullable<DeepResearchResults["metadata"]>;
 }) {
+  const showElapsed =
+    typeof metadata.elapsed_time === "number" && metadata.elapsed_time > 0;
+  const showContentSize =
+    typeof metadata.total_content_size === "number" &&
+    metadata.total_content_size > 0;
+
   return (
-    <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-3 gap-2.5">
-      <Text className="text-xs text-muted font-medium">Search Statistics</Text>
+    <View
+      className="mt-3"
+      style={{
+        backgroundColor: "#27272a", // zinc-800
+        borderRadius: 8,
+        padding: 16,
+      }}
+    >
+      <Text className="text-[#00bbff] text-base font-medium mb-2">
+        Search Statistics
+      </Text>
 
-      {!!metadata.query && (
-        <View className="flex-row items-center justify-between">
-          <Text className="text-xs text-muted">Search query</Text>
-          <Text
-            className="text-xs text-foreground font-medium flex-shrink ml-4"
-            numberOfLines={1}
-          >
-            {metadata.query}
-          </Text>
-        </View>
-      )}
+      <View className="gap-2">
+        {!!metadata.query && (
+          <View className="flex-row items-center justify-between gap-4">
+            <Text className="text-zinc-400 text-sm">Search Query:</Text>
+            <Text
+              className="text-zinc-100 text-sm font-medium flex-1 text-right"
+              numberOfLines={1}
+            >
+              {metadata.query}
+            </Text>
+          </View>
+        )}
 
-      {typeof metadata.elapsed_time === "number" && (
-        <View className="flex-row items-center justify-between">
-          <Text className="text-xs text-muted">Processing time</Text>
-          <Text className="text-xs text-foreground font-medium">
-            {metadata.elapsed_time.toFixed(2)}s
-          </Text>
-        </View>
-      )}
+        {showElapsed && (
+          <View className="flex-row items-center justify-between gap-4">
+            <Text className="text-zinc-400 text-sm">Processing Time:</Text>
+            <Text className="text-zinc-100 text-sm font-medium">
+              {(metadata.elapsed_time as number).toFixed(2)} seconds
+            </Text>
+          </View>
+        )}
 
-      {typeof metadata.total_content_size === "number" && (
-        <View className="flex-row items-center justify-between">
-          <Text className="text-xs text-muted">Content size</Text>
-          <Text className="text-xs text-foreground font-medium">
-            {(metadata.total_content_size / 1024).toFixed(2)} KB
-          </Text>
-        </View>
-      )}
+        {showContentSize && (
+          <View className="flex-row items-center justify-between gap-4">
+            <Text className="text-zinc-400 text-sm">Content Size:</Text>
+            <Text className="text-zinc-100 text-sm font-medium">
+              {((metadata.total_content_size as number) / 1024).toFixed(2)} KB
+            </Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
-const TABS: { key: Tab; label: string; icon: AnyIcon }[] = [
-  { key: "enhanced", label: "Enhanced", icon: LinkSquare01Icon },
-  { key: "original", label: "Original", icon: Search01Icon },
-  { key: "metadata", label: "Info", icon: InformationCircleIcon },
-];
+// ---------------------------------------------------------------------------
+// Completed state — flat (no ToolCardShell). Mirrors web:
+// - Accordion trigger pill ("Hide/Show Deep research Results", bg-white/10)
+// - Tab row when expanded (Enhanced / Original / Search Info)
+// - Each tab content rendered below
+// Matches web's `<Accordion><AccordionItem>` + `<Tabs>` layout, but rolled by
+// hand — heroui-native doesn't ship a Tabs component the mobile app uses.
+// ---------------------------------------------------------------------------
+
+interface TabDef {
+  key: Tab;
+  label: string;
+  icon?: typeof Search01Icon;
+}
 
 function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
-  const [expanded, setExpanded] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>("enhanced");
-
   const hasEnhanced =
     !!data.enhanced_results && data.enhanced_results.length > 0;
   const hasOriginal = !!data.original_search;
   const hasMetadata = !!data.metadata;
 
-  const visibleTabs = TABS.filter(({ key }) => {
-    if (key === "enhanced") return hasEnhanced;
-    if (key === "original") return hasOriginal;
-    if (key === "metadata") return hasMetadata;
-    return false;
-  });
+  const initialTab: Tab = hasEnhanced
+    ? "enhanced"
+    : hasOriginal
+      ? "original"
+      : "metadata";
 
-  const resolvedTab: Tab =
-    visibleTabs.find((t) => t.key === activeTab)?.key ??
-    visibleTabs[0]?.key ??
-    "enhanced";
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
-  // Derive summary counts
-  const sourcesCount =
-    data.sources?.length ??
-    data.enhanced_results?.length ??
-    data.original_search?.web?.length ??
-    0;
+  if (!hasEnhanced && !hasOriginal && !hasMetadata) return null;
+
+  const tabs: TabDef[] = [
+    ...(hasEnhanced
+      ? [{ key: "enhanced" as Tab, label: "Enhanced Results" }]
+      : []),
+    ...(hasOriginal
+      ? [
+          {
+            key: "original" as Tab,
+            label: "Original Search",
+            icon: Search01Icon,
+          },
+        ]
+      : []),
+    ...(hasMetadata
+      ? [{ key: "metadata" as Tab, label: "Search Info", icon: Globe02Icon }]
+      : []),
+  ];
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <PressableFeedback onPress={() => setExpanded((prev) => !prev)}>
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-2">
-              <AppIcon icon={Search01Icon} size={14} color="#8e8e93" />
-              <Text className="text-xs text-muted">Deep Research</Text>
-            </View>
-            <Chip
-              size="sm"
-              variant="secondary"
-              color="default"
-              animation="disable-all"
-            >
-              <Chip.Label>
-                {expanded ? "Hide results" : "Show results"}
-              </Chip.Label>
-            </Chip>
-          </View>
-        </PressableFeedback>
+    <View style={{ marginHorizontal: 16, marginVertical: 4 }}>
+      {/* Accordion trigger — text pill only, no chevron, matches web */}
+      <Pressable onPress={() => setIsExpanded((prev) => !prev)}>
+        <View
+          style={{
+            backgroundColor: "rgba(255,255,255,0.1)",
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 8,
+            alignSelf: "flex-start",
+          }}
+        >
+          <Text className="text-zinc-100 text-sm font-medium">
+            {isExpanded
+              ? "Hide Deep research Results"
+              : "Show Deep research Results"}
+          </Text>
+        </View>
+      </Pressable>
 
-        {/* Summary stats */}
-        {(hasEnhanced || hasOriginal) && (
-          <View className="flex-row gap-3 mt-2.5">
-            {sourcesCount > 0 && (
-              <View className="flex-row items-center gap-1">
-                <AppIcon icon={Globe02Icon} size={11} color="#8e8e93" />
-                <Text className="text-[11px] text-muted">
-                  Researched {sourcesCount} source
-                  {sourcesCount !== 1 ? "s" : ""}
-                </Text>
-              </View>
-            )}
-            {typeof data.metadata?.elapsed_time === "number" && (
-              <Text className="text-[11px] text-muted">
-                {data.metadata.elapsed_time.toFixed(1)}s
-              </Text>
-            )}
+      {isExpanded && (
+        <>
+          {/* Custom tab row — pill style matching web's Tabs color="primary"
+             variant="light": active tab uses primary tint, inactive uses
+             zinc-700 background. */}
+          <View className="flex-row gap-1 mt-3 flex-wrap">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <Pressable
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  android_ripple={{
+                    color: "rgba(255,255,255,0.05)",
+                    borderless: false,
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    backgroundColor: isActive
+                      ? "rgba(0,187,255,0.18)"
+                      : "rgba(63,63,70,0.4)",
+                  }}
+                >
+                  {tab.icon && (
+                    <AppIcon
+                      icon={tab.icon}
+                      size={13}
+                      color={isActive ? "#00bbff" : "#a1a1aa"}
+                    />
+                  )}
+                  <Text
+                    className="text-xs font-medium"
+                    style={{ color: isActive ? "#00bbff" : "#a1a1aa" }}
+                  >
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-        )}
 
-        {/* Expanded content */}
-        {expanded && (
-          <View className="mt-3">
-            {/* Tab bar */}
-            {visibleTabs.length > 1 && (
-              <View className="flex-row gap-1.5 mb-3">
-                {visibleTabs.map(({ key, label, icon }) => {
-                  const isActive = resolvedTab === key;
-                  return (
-                    <Chip
-                      key={key}
-                      onPress={() => setActiveTab(key)}
-                      variant={isActive ? "primary" : "secondary"}
-                      color={isActive ? "accent" : "default"}
-                      className={isActive ? "" : "bg-white/5"}
-                    >
-                      <AppIcon
-                        icon={icon}
-                        size={12}
-                        color={isActive ? "#00bbff" : "#8e8e93"}
-                      />
-                      <Chip.Label>{label}</Chip.Label>
-                    </Chip>
-                  );
-                })}
-              </View>
-            )}
-
-            {/* Tab content */}
-            {resolvedTab === "enhanced" && hasEnhanced && (
-              <EnhancedResultsSection results={data.enhanced_results!} />
-            )}
-            {resolvedTab === "original" && hasOriginal && (
-              <OriginalSearchSection search={data.original_search!} />
-            )}
-            {resolvedTab === "metadata" && hasMetadata && (
-              <MetadataSection metadata={data.metadata!} />
-            )}
-          </View>
-        )}
-      </Card.Body>
-    </Card>
+          {/* Tab content */}
+          {activeTab === "enhanced" && hasEnhanced && data.enhanced_results && (
+            <EnhancedResultsSection results={data.enhanced_results} />
+          )}
+          {activeTab === "original" && hasOriginal && data.original_search && (
+            <OriginalSearchSection search={data.original_search} />
+          )}
+          {activeTab === "metadata" && hasMetadata && data.metadata && (
+            <MetadataSection metadata={data.metadata} />
+          )}
+        </>
+      )}
+    </View>
   );
 }
 

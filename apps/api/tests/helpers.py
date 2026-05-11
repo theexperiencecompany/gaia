@@ -1,11 +1,35 @@
 """Shared test utilities for GAIA API tests."""
 
+import os
+import re
 from typing import Any
 
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, BaseMessage
+
+
+def worker_redis_url(base_url: str) -> str:
+    """Return a Redis URL with a per-xdist-worker DB number.
+
+    Offsets from the base DB configured in the URL so ``redis://.../8``
+    becomes ``/8`` on gw0 and ``/9`` on gw1.  This preserves any DB
+    isolation already configured by the caller while still giving each
+    xdist worker its own logical database so ``flushdb()`` teardown
+    cannot wipe another worker's in-flight keys.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    try:
+        worker_num = int(worker.removeprefix("gw"))
+    except ValueError:
+        worker_num = 0
+    match = re.search(r"/(\d+)$", base_url)
+    base_db = int(match.group(1)) if match else 0
+    db = (base_db + worker_num) % 16
+    if match:
+        return re.sub(r"/\d+$", f"/{db}", base_url)
+    return base_url.rstrip("/") + f"/{db}"
 
 
 class BindableToolsFakeModel(FakeMessagesListChatModel):

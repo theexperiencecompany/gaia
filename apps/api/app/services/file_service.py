@@ -19,6 +19,7 @@ from app.models.files_models import DocumentSummaryModel
 from app.models.message_models import FileData
 from app.utils.embedding_utils import search_documents_by_similarity
 from app.utils.file_utils import generate_file_summary
+from app.utils.upload_validation import validate_upload
 from fastapi import HTTPException, UploadFile
 from langchain_core.documents import Document
 
@@ -32,6 +33,7 @@ async def upload_file_service(
     file: UploadFile,
     user_id: str,
     conversation_id: Optional[str] = None,
+    content_length: int | None = None,
 ) -> dict:
     """
     Upload a file to Cloudinary, generate embeddings, and store metadata in MongoDB and ChromaDB.
@@ -39,55 +41,45 @@ async def upload_file_service(
         file (UploadFile): The file to upload
         user_id (str): The ID of the user uploading the file
         conversation_id (str, optional): The conversation ID to associate with the file
+        content_length (int | None): Request Content-Length header, for pre-flight size rejection
     Returns:
         dict: File metadata including file_id and url
     Raises:
         HTTPException: If file upload fails
     """
-    if not file.filename:
-        log.error("Missing filename in file upload")
-        raise HTTPException(
-            status_code=400, detail="Invalid file name. Filename is required."
-        )
-    if not file.content_type:
-        log.error("Missing content_type in file upload")
-        raise HTTPException(
-            status_code=400, detail="Invalid file type. Content type is required."
-        )
+    content, normalized_content_type, resource_type = await validate_upload(
+        file=file, content_length=content_length
+    )
 
     file_id = str(uuid.uuid4())
-    public_id = f"file_{file_id}_{file.filename.replace(' ', '_')}"
+    # validate_upload() guarantees filename is present — narrow the type here
+    # without asserting (bandit B101).
+    filename = file.filename or ""
+    public_id = f"file_{file_id}_{filename.replace(' ', '_')}"
     log.set(
         service="file_service",
         operation="upload",
         user_id=user_id,
-        filename=file.filename,
-        content_type=file.content_type,
+        filename=filename,
+        content_type=normalized_content_type,
         file_id=file_id,
     )
 
     try:
-        content = await file.read()
-
         file_size = len(content)
-        if file_size > 10 * 1024 * 1024:
-            log.error("File size exceeds the 10 MB limit")
-            raise HTTPException(
-                status_code=400, detail="File size exceeds the 10 MB limit"
-            )
 
         cloudinary_task = asyncio.to_thread(
             cloudinary.uploader.upload,
             io.BytesIO(content),
-            resource_type="auto",
+            resource_type=resource_type,
             public_id=public_id,
             overwrite=True,
         )
 
         summary_task = generate_file_summary(
             file_content=content,
-            content_type=file.content_type,
-            filename=file.filename,
+            content_type=normalized_content_type,
+            filename=filename,
         )
 
         upload_result, summary_result = await asyncio.gather(
@@ -107,8 +99,8 @@ async def upload_file_service(
         current_time = datetime.now(timezone.utc)
         file_metadata = {
             "file_id": file_id,
-            "filename": file.filename,
-            "type": file.content_type,
+            "filename": filename,
+            "type": normalized_content_type,
             "size": file_size,
             "url": file_url,
             "public_id": public_id,
@@ -127,8 +119,8 @@ async def upload_file_service(
             _store_in_chromadb(
                 file_id=file_id,
                 user_id=user_id,
-                filename=file.filename,
-                content_type=file.content_type,
+                filename=filename,
+                content_type=normalized_content_type,
                 conversation_id=conversation_id,
                 file_description=summary_result,
             ),
@@ -137,9 +129,9 @@ async def upload_file_service(
         return {
             "file_id": file_id,
             "url": file_url,
-            "filename": file.filename,
+            "filename": filename,
             "description": summary,
-            "type": file.content_type,
+            "type": normalized_content_type,
         }
 
     except HTTPException:

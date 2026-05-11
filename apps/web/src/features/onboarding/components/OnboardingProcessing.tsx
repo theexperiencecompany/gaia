@@ -18,7 +18,8 @@ import {
   Mail01Icon,
   ZapIcon,
 } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { type FC, memo, useEffect, useState } from "react";
 import {
   STEP_BUILDING_PROFILE,

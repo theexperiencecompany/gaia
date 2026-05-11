@@ -34,18 +34,24 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
   store.setStep("Prerequisites");
   store.setStatus("Checking system requirements...");
 
-  if (!(await runBasePrerequisiteChecks(store))) return;
+  if (!(await runBasePrerequisiteChecks(store))) {
+    return;
+  }
 
   // Port check
   const portOverrides = await runPortChecks(store);
-  if (portOverrides === null) return;
+  if (portOverrides === null) {
+    return;
+  }
 
   // 3. Setup Mode
   const setupMode = await selectSetupMode(store);
 
   if (setupMode === "developer") {
     const developerPrereqs = await runDeveloperPrerequisiteChecks(store);
-    if (!developerPrereqs) return;
+    if (!developerPrereqs) {
+      return;
+    }
   }
 
   // 4. Environment Setup
@@ -80,7 +86,9 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
     portOverrides,
     logHandler,
   );
-  if (!ok) return;
+  if (!ok) {
+    return;
+  }
 
   await delay(1000);
 

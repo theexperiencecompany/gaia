@@ -1,7 +1,8 @@
 "use client";
 
 import { Download01Icon } from "@icons";
-import { m, useInView } from "motion/react";
+import { useInView } from "motion/react";
+import * as m from "motion/react-m";
 import { useRef } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 

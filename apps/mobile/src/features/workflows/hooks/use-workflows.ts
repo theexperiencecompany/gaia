@@ -77,8 +77,10 @@ export function useWorkflows(): UseWorkflowsReturn {
     };
   }, [fetchWorkflows]);
 
+  const refetch = useCallback(() => fetchWorkflows(true), [fetchWorkflows]);
+
   return {
     ...state,
-    refetch: () => fetchWorkflows(true),
+    refetch,
   };
 }

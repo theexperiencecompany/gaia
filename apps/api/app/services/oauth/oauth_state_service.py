@@ -39,7 +39,7 @@ async def create_oauth_state(
     log.set(auth={"user_id": user_id, "provider": integration_id})
 
     # Validate redirect path - only allow safe paths
-    if not _is_safe_redirect_path(redirect_path):
+    if not is_safe_redirect_path(redirect_path):
         log.warning(
             f"Unsafe redirect path rejected for user {user_id}: {redirect_path}"
         )
@@ -128,7 +128,7 @@ async def validate_and_consume_oauth_state(
         return None
 
 
-def _is_safe_redirect_path(path: str) -> bool:
+def is_safe_redirect_path(path: str) -> bool:
     """
     Validate that a redirect path is safe.
 
@@ -140,7 +140,7 @@ def _is_safe_redirect_path(path: str) -> bool:
 
     Security checks:
         - No absolute URLs (must be relative paths)
-        - No protocol-relative URLs (//example.com)
+        - No protocol-relative URLs (//example.com or /\\example.com)
         - Must start with /
         - No javascript: or data: URLs
         - No path traversal attempts
@@ -152,10 +152,16 @@ def _is_safe_redirect_path(path: str) -> bool:
     if not path.startswith("/"):
         return False
 
+    # Reject backslashes — some browsers normalize `\` to `/`,
+    # making `/\evil.com` behave like a protocol-relative URL.
+    if "\\" in path:
+        return False
+
     lower_path = path.lower()
 
-    # Must not contain // anywhere (protocol-relative or absolute URL indicator)
-    if "//" in path:
+    # Must not contain // anywhere (protocol-relative or absolute URL indicator).
+    # Also reject the URL-encoded form which downstream layers may decode.
+    if "//" in path or "%2f%2f" in lower_path or "%5c" in lower_path:
         return False
 
     # Must not contain any URL protocols (http:, https:, ftp:, etc.)

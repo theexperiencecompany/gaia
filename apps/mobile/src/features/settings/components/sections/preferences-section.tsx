@@ -28,7 +28,7 @@ function SectionHeader({ children }: { children: string }) {
     <Text
       style={{
         fontSize: fontSize.xs,
-        color: "#8e8e93",
+        color: "#71717a",
         textTransform: "uppercase",
         letterSpacing: 1,
         marginBottom: spacing.xs,
@@ -119,8 +119,8 @@ export function PreferencesSection() {
       }}
     >
       {/* Profession */}
-      <Card variant="secondary" className="rounded-3xl bg-surface">
-        <Card.Body className="gap-5 px-5 py-5">
+      <Card variant="secondary" className="rounded-2xl bg-surface">
+        <Card.Body className="gap-5 px-4 py-4">
           <SectionHeader>Profession</SectionHeader>
           <View
             style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}
@@ -178,7 +178,7 @@ export function PreferencesSection() {
           <SectionHeader>Timezone</SectionHeader>
           <Card variant="secondary" className="rounded-2xl bg-secondary">
             <Card.Body className="px-4 py-4">
-              <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
+              <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
                 {timezone}
               </Text>
             </Card.Body>

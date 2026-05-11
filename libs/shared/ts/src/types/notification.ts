@@ -76,3 +76,16 @@ export interface PlatformLink {
 export interface PlatformLinksResponse {
   platform_links: Record<string, PlatformLink>;
 }
+
+export type ChannelPlatform = "telegram" | "discord" | "whatsapp";
+
+export interface ChannelPreferences {
+  telegram: boolean;
+  discord: boolean;
+  whatsapp: boolean;
+}
+
+export interface QuietHours {
+  from: string;
+  to: string;
+}

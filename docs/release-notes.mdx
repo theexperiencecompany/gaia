@@ -4,17 +4,106 @@ description: "What's new in GAIA. Features, improvements, and fixes across all p
 rss: true
 ---
 
+<Frame>
+  <img src="/images/changelog/release-notes-hero.png" alt="GAIA release notes" />
+</Frame>
+
+<Update label="Apr 5, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+# WhatsApp Bot, MCP Apps Builder & Deep Research
+
+## [API v0.17.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.17.0)
+
+### Features
+- **WhatsApp Bot Integration**: Connect GAIA to WhatsApp so you can chat with your agent directly from your phone's messaging app. See [bots overview](/bots/overview) for setup details.
+- **MCP Apps Builder**: Build and run custom [MCP-powered apps](/guides/adding-mcp-integrations) inside GAIA conversations, letting agents render interactive UI components on the fly.
+- **Deep Research Tool**: Agents can now perform multi-step web research with source citations. Free-tier users get search fallbacks so everyone benefits.
+- **Artifacts**: Agents can generate and display rich content like documents, tables, and code in a dedicated panel alongside the conversation.
+- **Calendar Attendees and Google Meet**: Create calendar events with attendees and auto-generate Google Meet links, all from a single prompt.
+- **Custom Integration Context**: Integrations can now pull in relevant context automatically, giving agents better awareness when using your connected tools.
+- **Streaming Calendar Data**: Calendar information now streams to the frontend in real time, so you see results as they arrive instead of waiting for a full response.
+
+### Improvements
+- **Native Marketplace Integrations**: The [marketplace](/guides/marketplace) now highlights native integrations with dedicated cards, making them easier to discover and connect.
+
+### Bug Fixes
+- **Billing Address Country**: You can now edit the billing address country on the payments page.
+- **Backend Stability**: Resolved an issue that could cause brief service interruptions under heavy load.
+- **Web Crawl Reliability**: Improved timeout handling and batching when agents crawl web pages, reducing failures on large sites.
+- **MCP Connection Recovery**: MCP connections now automatically refresh expired tokens and display clear status messages when re-authentication is needed.
+- **Research Tool Caching**: Fixed caching and validation in the research tool so repeated queries return consistent results.
+
+### Performance
+- **Todos Performance**: Faster loading and smoother interactions across the [tasks and todos](/guides/tasks-todos) experience.
+
+---
+
+
+## [Web v0.18.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.18.0)
+
+### Features
+- **MCP Apps Builder**: Build and preview MCP-powered mini-apps directly in the chat interface.
+- **Artifacts Panel**: View agent-generated documents, code, and tables in a dedicated side panel.
+- **Workflow Toast Actions**: Workflow completion toasts now include an "Open" button so you can jump straight to the result.
+- **Status Banner**: A new banner alerts you to service status changes and scheduled maintenance.
+
+### Improvements
+- **Pricing Page Redesign**: Updated pricing page with clearer plan comparisons and streamlined checkout.
+- **Integration Sorting**: Integrations are now sorted more intuitively when searching in the marketplace.
+- **UI Animations and Responsiveness**: Smoother transitions and improved layout across screen sizes.
+
+### Bug Fixes
+- **Billing Address Country**: Country field on the billing address form is now editable.
+- **Todo Sidebar**: Fixed an issue where the sidebar would not close after deleting the last todo in a filtered view.
+- **Toast Overflow**: Long toast notification titles no longer overflow their container.
+
+### Performance
+- **Todos UX**: Significant speed improvements to the [tasks and todos](/guides/tasks-todos) view, including faster filtering and smoother animations.
+- **Frontend Load Times**: Reduced initial bundle size for faster page loads across the app.
+
+---
+
+
+## [Desktop v0.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.3.0)
+
+### Features
+- **Artifacts Support**: The [desktop app](/guides/desktop-app) now supports the new artifacts panel for viewing agent-generated content.
+
+### Bug Fixes
+- **Server URL Handling**: Fixed an edge case where the app could fail to connect when running outside the packaged environment.
+
+---
+
+
+## [Mobile v0.5.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.5.0)
+
+### Features
+- **WhatsApp Integration**: Chat with GAIA on WhatsApp, bringing your agent to your favorite messaging app.
+
+### Performance
+- **Todos Performance**: Faster task loading and smoother scrolling in the mobile todos view.
+
+---
+
+
+## [Bots v1.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.3.0)
+
+### Features
+- **WhatsApp Bot**: GAIA is now available on WhatsApp in addition to [Discord](/bots/discord), [Slack](/bots/slack), and [Telegram](/bots/telegram).
+
+---
+
+
+## [CLI v0.3.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.3.0)
+
+### Improvements
+- **Dependency Updates**: Updated internal dependencies for improved stability.
+
+</Update>
 
 <Update label="Feb 27, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
 
 # System Workflows, Agent Skills & Desktop Auto-Updates
-
-## [v0.2.0](https://github.com/theexperiencecompany/gaia/releases/tag/v0.2.0)
-
-First stable monorepo release. Marks the transition from the beta series to a stable baseline, encompassing the launch of the CLI, bots, and desktop app alongside the API, web, and mobile improvements shipped across all preceding release cycles.
-
----
-
 
 ## [API v0.16.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.16.0)
 

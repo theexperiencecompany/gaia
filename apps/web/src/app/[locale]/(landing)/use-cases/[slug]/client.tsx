@@ -1,8 +1,7 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
-import { UserCircle02Icon } from "@icons";
-import { PlayIcon } from "@theexperiencecompany/gaia-icons/solid-standard";
+import { PlayIcon, UserCircle02Icon } from "@icons";
 import Image from "next/image";
 import { useTransition } from "react";
 import { wallpapers } from "@/config/wallpapers";
@@ -18,6 +17,7 @@ import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "@/features/workflows/triggers/utils";
+import { resolveCreatorAvatar } from "@/features/workflows/utils/creator";
 import type { UseCase } from "@/types/features/workflowTypes";
 
 interface UseCaseDetailClientProps {
@@ -94,7 +94,7 @@ export default function UseCaseDetailClient({
 
   // Prepare common data
   const title = "title" in data ? data.title : "";
-  const currentSlug = useCase?.slug || communityWorkflow?.id || slug;
+  const currentSlug = useCase?.slug ?? communityWorkflow?.slug ?? slug;
 
   // Prepare breadcrumbs
   const breadcrumbs = [
@@ -120,9 +120,12 @@ export default function UseCaseDetailClient({
       : communityWorkflow
         ? "GAIA Team"
         : null;
-  const creatorAvatar = hasCreatorObject
-    ? communityWorkflow.creator?.avatar
-    : undefined;
+  const creatorRecord = hasCreatorObject
+    ? communityWorkflow.creator
+    : communityWorkflow?.created_by
+      ? { id: communityWorkflow.created_by }
+      : null;
+  const creatorAvatar = resolveCreatorAvatar(creatorRecord);
   const showCreator = !!communityWorkflow && !!creatorName;
 
   // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList

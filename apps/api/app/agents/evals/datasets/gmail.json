@@ -139,10 +139,10 @@
       "metadata": { "difficulty": "medium" }
     },
     {
-      "input": "compose email to team@company.com with HTML formatting including bold heading and bullet points",
-      "expected_output": "Create email with HTML body containing bold text and list elements, set is_html=True.",
-      "context": "User wants HTML formatted email",
-      "tags": ["email", "create", "html", "detailed"],
+      "input": "compose email to team@company.com with a bold heading and bullet points",
+      "expected_output": "Create a Gmail draft with a Markdown body containing a bold heading and a bulleted list. The backend converts Markdown to HTML before sending.",
+      "context": "User wants a formatted email body",
+      "tags": ["email", "create", "formatting", "detailed"],
       "metadata": { "difficulty": "medium" }
     },
     {

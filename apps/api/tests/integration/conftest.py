@@ -17,6 +17,7 @@ from typing_extensions import Annotated
 
 from app.db.redis import redis_cache
 from tests.factories import make_config, make_user
+from tests.helpers import worker_redis_url
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
@@ -121,15 +122,19 @@ async def real_redis(monkeypatch):
     When USE_REAL_SERVICES=1 (Dagger CI), Redis is guaranteed to be running
     and connection failures are fatal. Otherwise, the test is skipped if
     Redis is not reachable so local runs without Docker still work.
+
+    Each xdist worker uses its own Redis DB so parallel tests cannot wipe
+    each other's keys during ``flushdb()`` teardown.
     """
-    client = Redis.from_url(_REDIS_URL, decode_responses=True)
+    url = worker_redis_url(_REDIS_URL)
+    client = Redis.from_url(url, decode_responses=True)
     try:
         await client.ping()
     except (ConnectionError, OSError, Exception):
         await client.aclose()
         if _USE_REAL_SERVICES:
             raise  # In CI with real services, Redis must be running
-        pytest.skip("Redis not available at " + _REDIS_URL)
+        pytest.skip("Redis not available")
 
     monkeypatch.setattr(redis_cache, "redis", client)
 

@@ -85,7 +85,7 @@
         "projects": ["api"],
         "projectsRelationship": "independent",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p api",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p api --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },
@@ -96,13 +96,15 @@
       "bots": {
         "projects": [
           "bot-discord",
+
           "bot-slack",
+
           "bot-telegram",
           "bot-whatsapp"
         ],
         "projectsRelationship": "fixed",
         "docker": {
-          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp",
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p bot-discord,bot-slack,bot-telegram,bot-whatsapp --skipNxCache",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },

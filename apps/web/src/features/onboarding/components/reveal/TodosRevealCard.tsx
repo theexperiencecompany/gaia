@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckmarkCircle02Icon } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import type { TodoResults } from "../../types/websocket";
 
 type TodosRevealCardProps = TodoResults;

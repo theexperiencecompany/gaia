@@ -106,6 +106,59 @@ export function isOverdue(date: string | Date): boolean {
   return toDate(date).getTime() < Date.now();
 }
 
+export type DueChipTone =
+  | "completed"
+  | "overdue"
+  | "today"
+  | "tomorrow"
+  | "soon"
+  | "later";
+
+/**
+ * Classify a todo's due-date chip into a semantic tone bucket.
+ *
+ * Rules (in order):
+ * - completed → always "completed" regardless of date.
+ * - past calendar day → "overdue".
+ * - same calendar day as `now` → "today".
+ * - next calendar day → "tomorrow".
+ * - within the next 3 calendar days (incl. tomorrow) → "soon".
+ * - everything else (further in the future) → "later".
+ *
+ * The comparison uses calendar-day boundaries in the device-local timezone,
+ * so a due date with any time on the same day still resolves to "today".
+ */
+export function getDueChipTone(
+  date: string | Date | null | undefined,
+  completed: boolean,
+): DueChipTone {
+  if (completed) return "completed";
+  if (!date) return "later";
+
+  const due = toDate(date);
+  if (Number.isNaN(due.getTime())) return "later";
+
+  const now = new Date();
+  const startOfNow = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const startOfDue = new Date(
+    due.getFullYear(),
+    due.getMonth(),
+    due.getDate(),
+  ).getTime();
+
+  const diffDays = Math.round((startOfDue - startOfNow) / DAY_MS);
+
+  if (diffDays < 0) return "overdue";
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "tomorrow";
+  if (diffDays <= 3) return "soon";
+  return "later";
+}
+
 const CRON_WEEKDAYS = [
   "Sunday",
   "Monday",
@@ -144,6 +197,72 @@ function formatTime(hour: string, minute: string): string {
  * Convert a 5-field cron expression into a human-readable description.
  * Handles common patterns; falls back to the raw expression for complex cases.
  */
+/**
+ * Mirror of web's `parseDate` (apps/web/src/utils/date/dateUtils.ts):
+ * - Short relative time for differences under 7 days (e.g. "3 mins ago",
+ *   "1 hour ago", "2 days ago", or "just now").
+ * - Full date with day suffix and time for older entries
+ *   (e.g. "13th Apr '25 (3:45 PM)").
+ *
+ * Returns an empty string for invalid input.
+ */
+export function parseRelativeDateLabel(value: string | Date): string {
+  const date = toDate(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+
+  const formattedTime = date
+    .toLocaleString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+    .toUpperCase();
+
+  if (diffMs < 7 * DAY_MS) {
+    const seconds = Math.floor(diffMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) {
+      const label = days === 1 ? "1 day" : `${days} days`;
+      return `${label} ago`;
+    }
+    if (hours > 0) {
+      const label = hours === 1 ? "1 hour" : `${hours} hours`;
+      return `${label} ago`;
+    }
+    if (minutes > 0) {
+      const label = minutes === 1 ? "1 min" : `${minutes} mins`;
+      return `${label} ago`;
+    }
+    return "just now";
+  }
+
+  const month = date.toLocaleString(undefined, { month: "short" });
+  const year = date.toLocaleString(undefined, { year: "2-digit" });
+  const day = date.getDate();
+  const suffix = ordinalSuffix(day);
+  return `${day}${suffix} ${month} '${year} (${formattedTime})`;
+}
+
+function ordinalSuffix(d: number): string {
+  if (d > 3 && d < 21) return "th";
+  switch (d % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
 export function parseCronToHuman(cron: string): string {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return cron;

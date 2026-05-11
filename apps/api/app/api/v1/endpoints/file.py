@@ -17,6 +17,7 @@ from fastapi import (
     Depends,
     File,
     Form,
+    Header,
     HTTPException,
     UploadFile,
     status,
@@ -30,6 +31,7 @@ router = APIRouter()
 async def upload_file_endpoint(
     file: UploadFile = File(...),
     conversation_id: str = Form(None),
+    content_length: int | None = Header(default=None, alias="content-length"),
     user: dict = Depends(get_current_user),
 ):
     """
@@ -41,6 +43,7 @@ async def upload_file_endpoint(
     Args:
         file: The file to upload
         conversation_id: Optional ID of conversation to associate with the file
+        content_length: HTTP Content-Length header, used to reject oversize uploads pre-flight
         user: The authenticated user information
 
     Returns:
@@ -48,13 +51,16 @@ async def upload_file_endpoint(
     """
     user_id = user.get("user_id", None)
     if not user_id:
-        return {"error": "User ID is required"}
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
+        )
 
     try:
         result = await upload_file_service(
             file=file,
             user_id=user_id,
             conversation_id=conversation_id,
+            content_length=content_length,
         )
 
         log.set(
@@ -72,6 +78,9 @@ async def upload_file_endpoint(
             message="File uploaded successfully",
             type=result.get("type", "file"),
         )
+    except HTTPException:
+        # Preserve 4xx from validation (413 oversize, 415 bad type, 400 bad filename, etc.)
+        raise
     except Exception as e:
         log.error(f"Error uploading file: {str(e)}")
         raise HTTPException(

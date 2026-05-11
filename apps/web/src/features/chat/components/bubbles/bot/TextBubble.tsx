@@ -14,6 +14,12 @@ function getTypedData<K extends ToolName>(
 
 import { Chip } from "@heroui/chip";
 import { Alert01Icon } from "@icons";
+import {
+  parseOpenUISegments,
+  splitByBreaksPreservingFences,
+  splitMessageByBreaks,
+} from "@shared/utils";
+import dynamic from "next/dynamic";
 import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
@@ -35,12 +41,7 @@ import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubbl
 import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
 import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
-import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import {
-  parseOpenUISegments,
-  splitByBreaksPreservingFences,
-} from "@/features/chat/utils/openUIParser";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations/components/IntegrationListSection";
 import type {
@@ -98,7 +99,11 @@ import type {
 } from "@/types/features/twitterTypes";
 import type { WeatherData } from "@/types/features/weatherTypes";
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
-import OpenUIRenderer from "../../interface/OpenUIRenderer";
+
+const OpenUIRenderer = dynamic(() => import("../../interface/OpenUIRenderer"), {
+  ssr: false,
+});
+
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
 import CalendarEventSection from "./CalendarEventSection";

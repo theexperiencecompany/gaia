@@ -5,7 +5,6 @@ import { useRouter } from "expo-router";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Animated,
   Keyboard,
   KeyboardAvoidingView,
   LayoutAnimation,
@@ -15,16 +14,24 @@ import {
   UIManager,
   View,
 } from "react-native";
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/lib/responsive";
 import type { Message } from "../../api/chat-api";
-import {
-  branchConversation,
-  deleteMessage,
-  pinMessage,
-} from "../../api/chat-api";
+import { pinMessage } from "../../api/chat-api";
 import { useChat } from "../../hooks/use-chat";
 import { useChatContext } from "../../hooks/use-chat-context";
+import {
+  useComposerStore,
+  usePendingPrompt,
+} from "../../stores/composer-store";
 import type { ReplyToMessageData } from "../../types";
 import type { AttachmentFile } from "../composer/attachment-preview";
 import { Composer } from "../composer/composer";
@@ -42,37 +49,64 @@ import { ScrollToBottomButton } from "./scroll-to-bottom";
 // Loading skeleton shown while fetching an existing conversation
 // ---------------------------------------------------------------------------
 
-function MessageSkeleton() {
-  const { spacing, moderateScale } = useResponsive();
-  const opacity = useRef(new Animated.Value(0.3)).current;
+function SkeletonBar({
+  width,
+  mt,
+  delayMs,
+  barHeight,
+  borderRadius,
+}: {
+  width: number | `${number}%`;
+  mt: number;
+  delayMs: number;
+  barHeight: number;
+  borderRadius: number;
+}) {
+  const opacity = useSharedValue(0.3);
 
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 0.7,
-          duration: 700,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.3,
-          duration: 700,
-          useNativeDriver: true,
-        }),
-      ]),
-    ).start();
-  }, [opacity]);
+    opacity.value = withDelay(
+      delayMs,
+      withRepeat(
+        withSequence(
+          withTiming(0.7, { duration: 700 }),
+          withTiming(0.3, { duration: 700 }),
+        ),
+        -1,
+      ),
+    );
+  }, [opacity, delayMs]);
 
-  const bar = (width: number | `${number}%`, mt = 0) => (
-    <Animated.View
-      style={{
-        height: moderateScale(12, 0.5),
-        width,
-        borderRadius: moderateScale(6, 0.5),
-        backgroundColor: "rgba(255,255,255,0.12)",
-        marginTop: mt,
-        opacity,
-      }}
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <Reanimated.View
+      style={[
+        {
+          height: barHeight,
+          width,
+          borderRadius,
+          backgroundColor: "rgba(255,255,255,0.12)",
+          marginTop: mt,
+        },
+        animatedStyle,
+      ]}
+    />
+  );
+}
+
+function MessageSkeleton() {
+  const { spacing, moderateScale } = useResponsive();
+  const barH = moderateScale(12, 0.5);
+  const br = moderateScale(6, 0.5);
+
+  const bar = (width: number | `${number}%`, mt: number, delayMs: number) => (
+    <SkeletonBar
+      width={width}
+      mt={mt}
+      delayMs={delayMs}
+      barHeight={barH}
+      borderRadius={br}
     />
   );
 
@@ -81,9 +115,9 @@ function MessageSkeleton() {
       style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}
     >
       <View style={{ maxWidth: "80%", marginBottom: spacing.md }}>
-        {bar("90%")}
-        {bar("75%", spacing.xs)}
-        {bar("60%", spacing.xs)}
+        {bar("90%", 0, 0)}
+        {bar("75%", spacing.xs, 100)}
+        {bar("60%", spacing.xs, 200)}
       </View>
       <View
         style={{
@@ -92,12 +126,12 @@ function MessageSkeleton() {
           marginBottom: spacing.md,
         }}
       >
-        {bar("100%")}
-        {bar("80%", spacing.xs)}
+        {bar("100%", 0, 300)}
+        {bar("80%", spacing.xs, 400)}
       </View>
       <View style={{ maxWidth: "85%" }}>
-        {bar("85%")}
-        {bar("70%", spacing.xs)}
+        {bar("85%", 0, 500)}
+        {bar("70%", spacing.xs, 600)}
       </View>
     </View>
   );
@@ -116,6 +150,8 @@ function getDateKey(date: Date): string {
 function buildListItems(messages: Message[]): ListItem[] {
   const items: ListItem[] = [];
   let lastDateKey: string | null = null;
+  const todayKey = getDateKey(new Date());
+  const seenDateKeys = new Set<string>();
 
   for (const message of messages) {
     const msgDate = new Date(message.timestamp);
@@ -127,10 +163,16 @@ function buildListItems(messages: Message[]): ListItem[] {
         date: message.timestamp.toISOString(),
         id: `date-${dateKey}`,
       });
+      seenDateKeys.add(dateKey);
       lastDateKey = dateKey;
     }
 
     items.push({ type: "message", data: message });
+  }
+
+  // Hide "Today" separator when it's the only date group — adds no value
+  if (seenDateKeys.size === 1 && seenDateKeys.has(todayKey)) {
+    return items.filter((i) => i.type !== "date-separator");
   }
 
   return items;
@@ -150,6 +192,7 @@ export function ChatScreenContent({
     isTyping,
     isLoading,
     progress,
+    progressToolName,
     flatListRef,
     sendMessage,
     cancelStream,
@@ -163,6 +206,16 @@ export function ChatScreenContent({
   const insets = useSafeAreaInsets();
 
   const [inputValue, setInputValue] = useState("");
+  const pendingPrompt = usePendingPrompt();
+  const consumePendingPrompt = useComposerStore(
+    (state) => state.consumePendingPrompt,
+  );
+  useEffect(() => {
+    if (pendingPrompt) {
+      setInputValue(pendingPrompt);
+      consumePendingPrompt();
+    }
+  }, [pendingPrompt, consumePendingPrompt]);
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState(() =>
     getRelevantThinkingMessage(""),
@@ -187,6 +240,15 @@ export function ChatScreenContent({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isAtBottomRef = useRef(true);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
+
+  // Clear input state when switching conversations
+  useEffect(() => {
+    setInputValue("");
+    setReplyingTo(null);
+    setSelectedTool(null);
+    setSelectedWorkflow(null);
+  }, [activeChatId]);
 
   useEffect(() => {
     if (isTyping && !progress) {
@@ -219,7 +281,10 @@ export function ChatScreenContent({
 
     const keyboardWillShow = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      () => {
+      (e) => {
+        if (Platform.OS === "android") {
+          setAndroidKeyboardHeight(e.endCoordinates.height);
+        }
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setTimeout(() => scrollToBottom(), 50);
       },
@@ -228,6 +293,9 @@ export function ChatScreenContent({
     const keyboardWillHide = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
       () => {
+        if (Platform.OS === "android") {
+          setAndroidKeyboardHeight(0);
+        }
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       },
     );
@@ -266,35 +334,11 @@ export function ChatScreenContent({
     [activeChatId],
   );
 
-  const handleActionDelete = useCallback(
-    async (messageId: string, conversationId: string) => {
-      await deleteMessage(conversationId, messageId);
-      await refetch();
-    },
-    [refetch],
-  );
-
   const handleActionPin = useCallback(
     async (messageId: string, conversationId: string) => {
       await pinMessage(conversationId, messageId);
     },
     [],
-  );
-
-  const handleActionRetry = useCallback(
-    (messageId: string, _conversationId: string) => {
-      const msg = messages.find((m) => m.id === messageId);
-      if (msg) {
-        void sendMessage(msg.text, {
-          replyToMessage: null,
-          selectedWorkflow: null,
-          selectedTool: null,
-          toolCategory: null,
-          attachments: [],
-        });
-      }
-    },
-    [messages, sendMessage],
   );
 
   const handleActionReply = useCallback(
@@ -305,37 +349,6 @@ export function ChatScreenContent({
       }
     },
     [messages, handleReply],
-  );
-
-  const handleActionRegenerate = useCallback(
-    (messageId: string, _conversationId: string) => {
-      const msgIndex = messages.findIndex((m) => m.id === messageId);
-      if (msgIndex === -1) return;
-      for (let i = msgIndex - 1; i >= 0; i--) {
-        const candidate = messages[i];
-        if (candidate.isUser) {
-          void sendMessage(candidate.text, {
-            replyToMessage: null,
-            selectedWorkflow: null,
-            selectedTool: null,
-            toolCategory: null,
-            attachments: [],
-          });
-          return;
-        }
-      }
-    },
-    [messages, sendMessage],
-  );
-
-  const handleActionBranch = useCallback(
-    async (messageId: string, conversationId: string) => {
-      const newConvId = await branchConversation(conversationId, messageId);
-      if (newConvId) {
-        router.push(`/(app)/c/${newConvId}`);
-      }
-    },
-    [router],
   );
 
   const handleSend = useCallback(
@@ -397,13 +410,13 @@ export function ChatScreenContent({
 
       if (command === "help") {
         setInputValue(
-          "Available commands: /new, /clear, /help, /model, /workflows, /integrations, /notifications, /settings",
+          "Available commands: /new, /clear, /help, /workflows, /integrations, /notifications, /settings",
         );
         return true;
       }
 
       if (command === "integrations") {
-        router.push("/(app)/(tabs)/integrations");
+        router.push("/(app)/integrations");
         return true;
       }
 
@@ -422,7 +435,6 @@ export function ChatScreenContent({
         return true;
       }
 
-      // /model is handled by the composer's model picker directly
       return false;
     },
     [clearActiveMessages, router, setActiveChatId],
@@ -480,8 +492,11 @@ export function ChatScreenContent({
           onFollowUpAction={handleFollowUpAction}
           onReply={handleReply}
           onLongPress={handleLongPressMessage}
-          isLoading={showLoading}
+          isLoading={isLastMessage && isTyping}
+          isLastMessage={isLastMessage}
           loadingMessage={showLoading ? displayMessage : undefined}
+          progressToolName={showLoading ? progressToolName : null}
+          progressMessage={showLoading ? progress : null}
         />
       );
     },
@@ -492,6 +507,8 @@ export function ChatScreenContent({
       handleReply,
       isTyping,
       messages,
+      progress,
+      progressToolName,
     ],
   );
 
@@ -505,20 +522,31 @@ export function ChatScreenContent({
   const showSkeleton =
     isLoading && !isTyping && !!activeChatId && messages.length === 0;
 
+  // Breathing space between top of soft keyboard and bottom of composer pill.
+  const KEYBOARD_GAP = 10;
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={0}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 56 - KEYBOARD_GAP : 0}
     >
-      <View style={{ flex: 1 }}>
+      <View
+        style={{
+          flex: 1,
+          paddingBottom:
+            Platform.OS === "android" && androidKeyboardHeight > 0
+              ? androidKeyboardHeight + KEYBOARD_GAP
+              : 0,
+        }}
+      >
         {showSkeleton ? (
           <View style={{ flex: 1 }}>
             <MessageSkeleton />
           </View>
         ) : showEmptyState ? (
           <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
-            <EmptyChatState onSuggestionPress={handleFollowUpAction} />
+            <EmptyChatState />
           </Pressable>
         ) : (
           <View style={{ flex: 1 }}>
@@ -533,12 +561,14 @@ export function ChatScreenContent({
                 messages[messages.length - 1]?.text,
                 isTyping,
                 displayMessage,
+                progress,
+                progressToolName,
               ]}
               contentContainerStyle={{
                 paddingTop: spacing.md,
                 paddingBottom: spacing.md,
               }}
-              showsVerticalScrollIndicator
+              showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               onScroll={handleScroll}
@@ -566,8 +596,8 @@ export function ChatScreenContent({
         <View
           style={{
             paddingHorizontal: spacing.sm,
-            paddingTop: spacing.sm,
-            paddingBottom: insets.bottom + spacing.xs,
+            paddingTop: spacing.xs,
+            paddingBottom: insets.bottom,
           }}
         >
           <Composer
@@ -592,18 +622,10 @@ export function ChatScreenContent({
       <MessageActionSheet
         ref={actionSheetRef}
         config={actionConfig}
-        onDelete={(messageId, conversationId) => {
-          void handleActionDelete(messageId, conversationId);
-        }}
         onPin={(messageId, conversationId) => {
           void handleActionPin(messageId, conversationId);
         }}
-        onRetry={handleActionRetry}
         onReply={handleActionReply}
-        onRegenerate={handleActionRegenerate}
-        onBranch={(messageId, conversationId) => {
-          void handleActionBranch(messageId, conversationId);
-        }}
       />
     </KeyboardAvoidingView>
   );

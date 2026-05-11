@@ -1,6 +1,7 @@
 "use client";
 
 import { useDrag } from "@use-gesture/react";
+import nextDynamic from "next/dynamic";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import HeaderManager from "@/components/layout/headers/HeaderManager";
 import StatusBanner from "@/components/layout/StatusBanner";
@@ -10,9 +11,6 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
 import { useUser } from "@/features/auth/hooks/useUser";
-import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
-import { GlobalPricingModal } from "@/features/pricing/components/GlobalPricingModal";
-import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
@@ -23,6 +21,30 @@ import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
 
 export const dynamic = "force-dynamic";
+
+const HoloCardModal = nextDynamic(
+  () => import("@/features/onboarding/components/HoloCardModal"),
+  { ssr: false },
+);
+const GlobalPricingModal = nextDynamic(
+  () =>
+    import("@/features/pricing/components/GlobalPricingModal").then((m) => ({
+      default: m.GlobalPricingModal,
+    })),
+  { ssr: false },
+);
+const CommandMenu = nextDynamic(
+  () => import("@/features/search/components/CommandMenu"),
+  { ssr: false },
+);
+
+const WhatsNewModal = nextDynamic(
+  () =>
+    import("@/features/whats-new/components/WhatsNewModal").then((m) => ({
+      default: m.WhatsNewModal,
+    })),
+  { ssr: false },
+);
 
 const HeaderSidebarTrigger = () => {
   return (
@@ -144,6 +166,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
 
           {/* Global Pricing Modal */}
           <GlobalPricingModal />
+
+          {/* What's New Modal */}
+          <WhatsNewModal />
 
           {/* Global Command Menu */}
           <CommandMenu

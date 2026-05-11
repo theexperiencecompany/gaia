@@ -34,13 +34,47 @@ export interface ButtonProps
   color?: string; // Add color prop for custom colors
 }
 
+// Detect if a color is essentially black or white so we can swap to a flat
+// treatment for those two cases only. Every other color keeps the existing
+// glossy raised look untouched.
+type FlatMode = "black" | "white" | null;
+
+const getFlatMode = (color: string | undefined): FlatMode => {
+  if (!color) return null;
+  const rgb = parseColor(color);
+  if (!rgb) return null;
+  const { r, g, b } = rgb;
+  if (r < 24 && g < 24 && b < 24) return "black";
+  if (r > 232 && g > 232 && b > 232) return "white";
+  return null;
+};
+
+// Inline-style overrides for black + white flat modes. Inline styles are used
+// instead of Tailwind classes so the existing glossy treatment (bg-primary,
+// dark:bg-zinc-500, ::before overlay, shadow-md) can be neutralised in one
+// place without fighting cva specificity or class-detection edge cases.
+const FLAT_BLACK_STYLE: React.CSSProperties = {
+  background: "linear-gradient(to bottom, #444, #000)",
+  borderColor: "#111113",
+  color: "#ffffff",
+  boxShadow: "none",
+};
+
+const FLAT_WHITE_STYLE: React.CSSProperties = {
+  background: "#ffffff",
+  borderColor: "rgba(0, 0, 0, 0.18)",
+  color: "#18181b",
+  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.08)",
+};
+
 const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, color, style = {}, ...props }, ref) => {
     const Comp = "button";
+    const mode = getFlatMode(color);
 
-    // Generate dynamic styles based on the color prop
+    // Custom-color glossy treatment (untouched legacy path).
     const dynamicStyles = React.useMemo(() => {
-      if (!color) return {};
+      if (!color || mode) return {};
 
       try {
         const rgb = parseColor(color);
@@ -48,13 +82,13 @@ const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
         const luminance = getLuminance(rgb);
         const textColor = getContrastColor(luminance);
-        const borderOpacity = 0.5; // High elevation border opacity
+        const borderOpacity = 0.5;
         const hoverOpacity = 0.9;
-        const whiteBorderOpacity = 0.6; // High elevation white border opacity
-        const whiteGradientOpacity = 0.3; // High elevation white gradient opacity
-        const shadowOpacity = 0.2; // Shadow opacity
-        const shadowSpread = "0px"; // Shadow spread
-        const shadowBlur = "5px"; // Shadow blur
+        const whiteBorderOpacity = 0.6;
+        const whiteGradientOpacity = 0.3;
+        const shadowOpacity = 0.2;
+        const shadowSpread = "0px";
+        const shadowBlur = "5px";
 
         return {
           backgroundColor: color,
@@ -71,12 +105,28 @@ const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
         console.error("Error processing color:", e);
         return {};
       }
-    }, [color]);
+    }, [color, mode]);
 
-    // Dynamically generate classes based on if we have a custom color
+    // For flat modes, hide the ::before glossy overlay and remove the dark
+    // theme bg/text override that ships in the cva base, while keeping size
+    // utilities + caller overrides.
+    const flatNeutraliserClass = mode
+      ? "before:hidden hover:scale-[0.98] hover:bg-transparent dark:bg-transparent dark:text-inherit"
+      : "";
+
+    const flatStyle: React.CSSProperties = mode
+      ? mode === "black"
+        ? FLAT_BLACK_STYLE
+        : FLAT_WHITE_STYLE
+      : {};
+
+    // flatNeutraliserClass goes BEFORE the cva/className output so caller-
+    // provided classes (e.g. a custom `hover:scale-*`) win the merge.
     const computedClassName = cn(
+      flatNeutraliserClass,
       raisedButtonVariants({ variant, size, className }),
-      color &&
+      !mode &&
+        color &&
         "hover:bg-[color:var(--hover-bg)] before:border-[color:var(--border)] before:from-[color:var(--gradient)] hover:opacity-80 overflow-hidden",
     );
 
@@ -87,6 +137,7 @@ const RaisedButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
         style={{
           ...style,
           ...dynamicStyles,
+          ...flatStyle,
         }}
         {...props}
       />

@@ -9,6 +9,9 @@ Each handler implements its own `process_event()` method which handles:
 - Queuing workflow execution via WorkflowQueueService
 """
 
+import asyncio
+from typing import Any
+
 from shared.py.wide_events import log
 from app.db.redis import redis_cache
 from app.models.webhook_models import ComposioWebhookEvent
@@ -18,14 +21,43 @@ from fastapi import APIRouter, Request
 
 router = APIRouter()
 
+# Prevent GC of fire-and-forget tasks
+_webhook_tasks: set[asyncio.Task[Any]] = set()
+
+# Background tasks are cancelled after this many seconds to prevent indefinite hangs.
+_WEBHOOK_TASK_TIMEOUT: float = 120.0
+
+
+async def _process_webhook_event(
+    handler: Any, event_data: ComposioWebhookEvent
+) -> None:
+    """Background task: find matching workflows and queue them."""
+    try:
+        await asyncio.wait_for(
+            handler.process_event(
+                event_type=event_data.type,
+                trigger_id=event_data.trigger_id,
+                user_id=event_data.user_id,
+                data=event_data.data,
+            ),
+            timeout=_WEBHOOK_TASK_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        log.error(
+            f"Webhook background processing timed out after {_WEBHOOK_TASK_TIMEOUT}s "
+            f"for {event_data.type}"
+        )
+    except Exception as e:
+        log.error(f"Webhook background processing failed for {event_data.type}: {e}")
+
 
 @router.post("/webhook/composio")
-async def webhook_composio(request: Request):
+async def webhook_composio(request: Request) -> dict[str, str]:
     """Handle incoming Composio webhooks.
 
     Routes events to the appropriate handler based on event type.
-    Each handler manages its own workflow matching and execution logic
-    via its `process_event()` method.
+    Returns 200 immediately; workflow matching and queueing happen
+    in a fire-and-forget background task.
     """
     await verify_composio_webhook_signature(request)
 
@@ -62,15 +94,10 @@ async def webhook_composio(request: Request):
         log.debug(f"Unhandled webhook type: {event_data.type}")
         return {"status": "success", "message": "Webhook received"}
 
-    # Delegate all processing to the handler
-    # Each handler decides how to find workflows and execute them:
-    # - Default: find_workflows by trigger_id + WorkflowQueueService
-    # - Gmail: queries by user_id instead of trigger_id
-    result = await handler.process_event(
-        event_type=event_data.type,
-        trigger_id=event_data.trigger_id,
-        user_id=event_data.user_id,
-        data=event_data.data,
-    )
-    log.set(operation="webhook_received", outcome="success")
-    return result
+    # Fire-and-forget: return 200 immediately, process in background
+    task = asyncio.create_task(_process_webhook_event(handler, event_data))
+    _webhook_tasks.add(task)
+    task.add_done_callback(_webhook_tasks.discard)
+
+    log.set(operation="webhook_accepted", outcome="success")
+    return {"status": "success", "message": "Webhook accepted"}

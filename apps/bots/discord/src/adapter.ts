@@ -20,6 +20,7 @@
 import {
   BaseBotAdapter,
   type BotCommand,
+  createBotLogger,
   formatBotError,
   handleStreamingChat,
   type PlatformName,
@@ -165,11 +166,13 @@ const STATUS_ROTATION_INTERVAL_MS = 3 * 60 * 1000;
  */
 export class DiscordAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "discord";
+  protected readonly defaultServerPort = 3200;
   private client!: Client;
   private token!: string;
   private dmWelcomeSent = new Set<string>();
   private statusRotationTimer: ReturnType<typeof setInterval> | null = null;
   private statusIndex = Math.floor(Math.random() * ROTATING_STATUSES.length);
+  private readonly adapterLogger = createBotLogger("discord", "adapter");
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -213,7 +216,10 @@ export class DiscordAdapter extends BaseBotAdapter {
    */
   protected async registerEvents(): Promise<void> {
     this.client.once(Events.ClientReady, (c) => {
-      console.log(`Discord bot ready as ${c.user.tag}`);
+      this.adapterLogger.info("client_ready", {
+        bot_tag: c.user.tag,
+        bot_id: c.user.id,
+      });
       this.startStatusRotation(c.user);
     });
 
@@ -232,7 +238,11 @@ export class DiscordAdapter extends BaseBotAdapter {
         try {
           await message.fetch();
         } catch (error) {
-          console.error("Failed to fetch partial message:", error);
+          this.adapterLogger.error(
+            "partial_message_fetch_failed",
+            { message_id: message.id },
+            error,
+          );
           return;
         }
       }
@@ -309,6 +319,11 @@ export class DiscordAdapter extends BaseBotAdapter {
     interaction: ChatInputCommandInteraction,
   ): Promise<void> {
     const name = interaction.commandName;
+    this.adapterLogger.info("slash_command_received", {
+      command: name,
+      user_id: interaction.user.id,
+      channel_id: interaction.channelId,
+    });
 
     if (name === "gaia") {
       await this.handleGaiaInteraction(interaction);
@@ -359,11 +374,27 @@ export class DiscordAdapter extends BaseBotAdapter {
         };
       },
       async (authUrl: string) => {
-        const content = `Please authenticate first: ${authUrl}`;
-        if (isFirstMessage) {
-          await interaction.editReply({ content });
-        } else if (lastFollowUp) {
-          await lastFollowUp.edit({ content });
+        const publicContent =
+          "To use GAIA, please authenticate first — check your DMs for the link.";
+        const publicContentFallback =
+          "To use GAIA, please authenticate first — an ephemeral link has been sent above.";
+        try {
+          await interaction.user.send(
+            `Please authenticate with GAIA: ${authUrl}`,
+          );
+          if (isFirstMessage) {
+            await interaction.editReply({ content: publicContent });
+          } else if (lastFollowUp) {
+            await lastFollowUp.edit({ content: publicContent });
+          }
+        } catch {
+          await interaction.followUp({
+            content: `Please authenticate with GAIA: ${authUrl}`,
+            ephemeral: true,
+          });
+          if (isFirstMessage) {
+            await interaction.editReply({ content: publicContentFallback });
+          }
         }
       },
       async (errMsg: string) => {
@@ -374,6 +405,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         }
       },
       STREAMING_DEFAULTS.discord,
+      this.analytics,
     );
   }
 
@@ -385,6 +417,11 @@ export class DiscordAdapter extends BaseBotAdapter {
     interaction: MessageContextMenuCommandInteraction,
   ): Promise<void> {
     const name = interaction.commandName;
+    this.adapterLogger.info("context_menu_received", {
+      command: name,
+      user_id: interaction.user.id,
+      channel_id: interaction.channelId,
+    });
     const content = interaction.targetMessage.content;
     const userId = interaction.user.id;
     const channelId = interaction.channelId;
@@ -420,15 +457,27 @@ export class DiscordAdapter extends BaseBotAdapter {
           };
         },
         async (authUrl: string) => {
-          await interaction.editReply({
-            content: `Please link your GAIA account first: ${authUrl}`,
-          });
-          replied = true;
+          try {
+            await interaction.editReply({
+              content: `Please link your GAIA account first: ${authUrl}`,
+            });
+            replied = true;
+          } catch {
+            try {
+              await interaction.user.send(
+                `Please link your GAIA account to use GAIA: ${authUrl}`,
+              );
+              replied = true;
+            } catch {
+              // both deliveries failed — leave replied false so error callback can run
+            }
+          }
         },
         async (err: string) => {
           if (!replied) await interaction.editReply({ content: err });
         },
         STREAMING_DEFAULTS.discord,
+        this.analytics,
       );
       return;
     }
@@ -458,15 +507,27 @@ export class DiscordAdapter extends BaseBotAdapter {
           };
         },
         async (authUrl: string) => {
-          await interaction.editReply({
-            content: `Please link your GAIA account first: ${authUrl}`,
-          });
-          replied = true;
+          try {
+            await interaction.editReply({
+              content: `Please link your GAIA account first: ${authUrl}`,
+            });
+            replied = true;
+          } catch {
+            try {
+              await interaction.user.send(
+                `Please link your GAIA account to use GAIA: ${authUrl}`,
+              );
+              replied = true;
+            } catch {
+              // both deliveries failed — leave replied false so error callback can run
+            }
+          }
         },
         async (err: string) => {
           if (!replied) await interaction.editReply({ content: err });
         },
         STREAMING_DEFAULTS.discord,
+        this.analytics,
       );
     }
   }
@@ -563,10 +624,19 @@ export class DiscordAdapter extends BaseBotAdapter {
           }
         },
         STREAMING_DEFAULTS.discord,
+        this.analytics,
       );
 
       clearTyping();
     } catch (error) {
+      this.adapterLogger.error(
+        "dm_message_processing_failed",
+        {
+          user_id: userId,
+          channel_id: message.channelId,
+        },
+        error,
+      );
       await send(formatBotError(error));
     }
   }
@@ -717,26 +787,39 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         async (authUrl: string) => {
           clearTyping();
+          let dmSent = false;
           try {
-            await message.reply({
-              content: `Please link your GAIA account to use me here: ${authUrl}`,
-            });
-          } catch {
-            // Ephemeral replies unsupported on some message types — fall back publicly
-            await sendOrEdit(
-              `Please link your GAIA account: ${authUrl}\n\n_This link is for you only — don't share it._`,
+            await message.author.send(
+              `Please link your GAIA account to use me here: ${authUrl}`,
             );
+            dmSent = true;
+          } catch {
+            // DM failed — public message below will instruct the user
           }
+          await send(
+            dmSent
+              ? "To use GAIA here, please link your account — check your DMs for the link."
+              : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
+          );
         },
         async (errMsg: string) => {
           clearTyping();
           await sendOrEdit(errMsg);
         },
         STREAMING_DEFAULTS.discord,
+        this.analytics,
       );
 
       clearTyping();
     } catch (error) {
+      this.adapterLogger.error(
+        "mention_message_processing_failed",
+        {
+          user_id: message.author.id,
+          channel_id: message.channelId,
+        },
+        error,
+      );
       await send(formatBotError(error));
     }
   }

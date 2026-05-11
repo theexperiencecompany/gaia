@@ -9,8 +9,13 @@ from pydantic import BaseModel
 
 # ── Performance tuning ───────────────────────────────────────────────────────
 
-MAX_WORKERS = 8
 PROVIDER_TIMEOUT_SECONDS = 30
+
+# Dedicated pool for provider context fetching — isolated from the default
+# asyncio thread pool so that slow Composio calls don't starve async I/O.
+# max_workers=4: limits concurrent Composio provider calls per process.
+# Do NOT use this pool as the outer run_in_executor target — see context_tool.py.
+_CONTEXT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ctx-fetch")
 
 
 # ── Composio tool executor ───────────────────────────────────────────────────
@@ -83,19 +88,21 @@ def fetch_all_providers(
             return provider, None
 
     results: Dict[str, Any] = {}
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(fetch_one, p): p for p in providers}
-        for future in futures:
-            try:
-                provider, data = future.result(timeout=PROVIDER_TIMEOUT_SECONDS)
-                if data is not None:
-                    results[provider] = data
-            except FuturesTimeout:
-                provider = futures[future]
-                log.warning(f"Provider {provider} timed out")
-            except Exception as e:
-                provider = futures[future]
-                log.error(f"Unexpected error for {provider}: {e}")
+    # Use the module-level dedicated pool instead of creating a new one per call.
+    # This prevents unbounded thread creation under concurrent agent sessions
+    # and isolates context-fetching threads from the default asyncio pool.
+    futures = {_CONTEXT_EXECUTOR.submit(fetch_one, p): p for p in providers}
+    for future in futures:
+        try:
+            provider, data = future.result(timeout=PROVIDER_TIMEOUT_SECONDS)
+            if data is not None:
+                results[provider] = data
+        except FuturesTimeout:
+            provider = futures[future]
+            log.warning(f"Provider {provider} timed out")
+        except Exception as e:
+            provider = futures[future]
+            log.error(f"Unexpected error for {provider}: {e}")
     return results
 
 

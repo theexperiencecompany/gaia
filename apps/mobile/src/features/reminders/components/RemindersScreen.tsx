@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -9,13 +9,10 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  Add01Icon,
-  ArrowLeft01Icon,
-  Notification01Icon,
-} from "@/components/icons";
+import { Add01Icon, Notification01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 import { useReminders } from "../hooks/use-reminders";
 import { CreateReminderSheet } from "./CreateReminderSheet";
 import { ReminderCard } from "./ReminderCard";
@@ -71,7 +68,6 @@ function EmptyState() {
 }
 
 export function RemindersScreen() {
-  const router = useRouter();
   const { spacing, fontSize } = useResponsive();
   const insets = useSafeAreaInsets();
   const [showCreate, setShowCreate] = useState(false);
@@ -138,20 +134,7 @@ export function RemindersScreen() {
           alignItems: "center",
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={10}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <ArrowLeft01Icon size={18} color="#e8ebef" />
-        </Pressable>
+        <BackButton />
 
         <Text
           style={{

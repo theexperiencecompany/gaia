@@ -106,6 +106,22 @@ vi.mock("@gaia/shared", () => {
 
   return {
     BaseBotAdapter,
+    createBotLogger: vi.fn(() => ({
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    })),
+    hashLogIdentifier: vi.fn((value: string | number | undefined | null) => {
+      if (value === undefined || value === null) return undefined;
+      return `h_${String(value)}`;
+    }),
+    sanitizeErrorForLog: vi.fn((error: unknown) => {
+      if (error instanceof Error) {
+        return { error_name: error.name, error_message: error.message };
+      }
+      return { error_name: "Unknown", error_message: String(error) };
+    }),
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
@@ -271,6 +287,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "telegram" }),
+      undefined,
     );
   });
 
@@ -325,6 +342,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
+      undefined,
     );
   });
 
@@ -532,6 +550,7 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "telegram" }),
+      undefined,
     );
   });
 
@@ -983,6 +1002,7 @@ describe("TelegramAdapter - /gaia command", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
+      undefined,
     );
   });
 });

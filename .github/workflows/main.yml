@@ -17,11 +17,12 @@ concurrency:
 
 env:
   DAGGER_VERSION: "0.20.3"
+  NX_NO_CLOUD: "true"
 
 jobs:
   # --- Detect affected projects -------------------------------------------
   detect:
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
@@ -55,16 +56,10 @@ jobs:
         with:
           main-branch-name: develop
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
+      - uses: ./.github/actions/setup-node-pnpm
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - name: Validate release manifest
+        run: node scripts/ci/validate-release-manifest.mjs
 
       - name: Detect affected projects
         id: affected
@@ -93,43 +88,36 @@ jobs:
   static-python:
     needs: [detect]
     if: needs.detect.outputs.has_python == 'true'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
       - run: pip install --break-system-packages uv
       - name: Sync Python deps
         run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Restore mypy cache
+        uses: actions/cache@v4
+        with:
+          path: apps/api/.mypy_cache
+          key: mypy-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}-${{ hashFiles('apps/api/app/**/*.py') }}
+          restore-keys: |
+            mypy-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}-
+            mypy-${{ runner.os }}-
       - name: Ruff lint
         run: npx nx run-many -t lint -p ${{ needs.detect.outputs.python_projects }} --parallel=3
       - name: mypy
-        working-directory: apps/api
-        run: uv run mypy app --ignore-missing-imports
+        run: npx nx run-many -t type-check -p ${{ needs.detect.outputs.python_projects }} --parallel=3
 
   # --- Static checks: TypeScript (runner-native) --------------------------
   static-typescript:
     needs: [detect]
     if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Biome lint
         run: npx nx run-many -t lint -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
       - name: TypeScript type-check
@@ -139,18 +127,11 @@ jobs:
   build:
     needs: [detect]
     if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Build
         run: npx nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
@@ -160,39 +141,48 @@ jobs:
   test-python:
     needs: [detect]
     if: needs.detect.outputs.has_python == 'true'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # Blacksmith NVMe layer cache persists the Dagger engine image (~1GB) and
-      # the gaia-ci-base image across runs. After first run, both pull near-instantly.
-      - uses: useblacksmith/setup-docker-builder@v1
+      - uses: docker/setup-buildx-action@v3
+      - name: Install Dagger CLI
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh \
+            | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
+          sudo mv ./bin/dagger /usr/local/bin/dagger
+          dagger version
       - name: Run Python tests
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: ${{ env.DAGGER_VERSION }}
-          dagger-flags: "--silent"
-          call: test-python
         timeout-minutes: 18
+        env:
+          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        run: |
+          set +e
+          dagger --silent call test-python 2>&1 | tee /tmp/dagger-test.log
+          CODE=$?
+          if [ "$CODE" -ne 0 ]; then
+            # Dagger's session cleanup sometimes times out after tests succeed.
+            # Only ignore the failure if the sole error is the shutdown timeout
+            # and pytest reported no failures.
+            if grep -q "cleanup failed" /tmp/dagger-test.log \
+               && ! grep -qE "([[:space:]][0-9]+ (failed|errors?)|INTERNALERROR|Interrupted:|Required test coverage of .* not reached)" /tmp/dagger-test.log; then
+              echo "Tests passed. Ignoring Dagger session cleanup timeout."
+              exit 0
+            fi
+            exit "$CODE"
+          fi
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
     needs: [detect]
     if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Run TypeScript tests
         run: npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
@@ -202,18 +192,11 @@ jobs:
   dead-code:
     needs: [detect]
     if: needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
       - run: pip install --break-system-packages vulture
       - name: Dead code check
         shell: bash
@@ -221,22 +204,55 @@ jobs:
           export PATH="/home/runner/.local/bin:$PATH"
           bash scripts/dead-code-check.sh
 
-  # --- Release validation (runner-native, always) -------------------------
-  release-validation:
+  # --- Changelog sync check (always) --------------------------------------
+  changelog-sync:
     needs: [detect]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
       - uses: actions/setup-node@v4
         with:
           node-version: "22.15.1"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - run: node scripts/ci/validate-release-manifest.mjs
+      - name: Regenerate changelog sub-pages
+        run: node docs/scripts/generate-changelog-pages.js
+      - name: Open fix PR if generated files are out of date
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if [ -z "$(git status --porcelain --untracked-files=all docs/release-notes/)" ]; then
+            echo "Changelog sub-pages are up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TARGET="$TARGET_REF"
+          FIX_BRANCH="fix/changelog-sync-${TARGET//\//-}"
+
+          git checkout -B "$FIX_BRANCH"
+          git add docs/release-notes/
+          git commit -m "chore(docs): regenerate changelog sub-pages"
+          git push --force origin "$FIX_BRANCH"
+
+          EXISTING_PR=$(gh pr list --head "$FIX_BRANCH" --base "$TARGET" --json url --jq '.[0].url')
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --base "$TARGET" \
+              --head "$FIX_BRANCH" \
+              --title "chore(docs): regenerate changelog sub-pages" \
+              --body "$(printf 'Changelog sub-pages were out of date on \`%s\`.\n\nThis PR was created automatically by the \`changelog-sync\` CI job. Merge it to fix the failing check.' "$TARGET")"
+          else
+            echo "Fix PR already open: $EXISTING_PR"
+          fi
+
+          echo "::error::Changelog sub-pages were out of date. A fix PR has been opened automatically — merge it to unblock CI."
+          exit 1
 
   # --- Trivy scan (non-blocking) ------------------------------------------
   trivy-scan:
@@ -246,7 +262,7 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: aquasecurity/trivy-action@master
+      - uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: "fs"
           severity: "CRITICAL,HIGH"
@@ -257,57 +273,73 @@ jobs:
   coverage:
     needs: [detect]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.detect.outputs.has_python == 'true'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: useblacksmith/setup-docker-builder@v1
+      - uses: docker/setup-buildx-action@v3
+      - name: Install Dagger CLI
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh \
+            | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
+          sudo mv ./bin/dagger /usr/local/bin/dagger
+          dagger version
       - name: Run coverage
-        uses: dagger/dagger-for-github@v8.4.1
-        with:
-          version: ${{ env.DAGGER_VERSION }}
-          dagger-flags: "--silent"
-          call: test-python-coverage
         timeout-minutes: 28
+        env:
+          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        run: |
+          set +e
+          dagger --silent call test-python-coverage 2>&1 | tee /tmp/dagger-coverage.log
+          CODE=$?
+          if [ "$CODE" -ne 0 ]; then
+            if grep -q "cleanup failed" /tmp/dagger-coverage.log \
+               && ! grep -qE "([[:space:]][0-9]+ (failed|errors?)|INTERNALERROR|Interrupted:|Required test coverage of .* not reached)" /tmp/dagger-coverage.log; then
+              echo "Coverage passed. Ignoring Dagger session cleanup timeout."
+              exit 0
+            fi
+            exit "$CODE"
+          fi
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     if: always()
     needs:
+      - detect
       - static-python
       - static-typescript
       - build
       - test-python
       - test-typescript
       - dead-code
-      - release-validation
+      # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # trivy-scan deliberately excluded (non-blocking)
       # coverage deliberately excluded (master-only, non-blocking)
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Evaluate results
         run: |
           echo "Job results:"
+          echo "  detect:             ${{ needs.detect.result }}"
           echo "  static-python:      ${{ needs.static-python.result }}"
           echo "  static-typescript:  ${{ needs.static-typescript.result }}"
           echo "  build:              ${{ needs.build.result }}"
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
           echo "  dead-code:          ${{ needs.dead-code.result }}"
-          echo "  release-validation: ${{ needs.release-validation.result }}"
 
           for r in \
+            "${{ needs.detect.result }}" \
             "${{ needs.static-python.result }}" \
             "${{ needs.static-typescript.result }}" \
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-typescript.result }}" \
-            "${{ needs.dead-code.result }}" \
-            "${{ needs.release-validation.result }}"; do
+            "${{ needs.dead-code.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job result: $r"
               exit 1
@@ -316,8 +348,12 @@ jobs:
           echo "All required jobs passed or were skipped."
 
   # --- Trigger Docker build (master only) ---------------------------------
+  # always() is required to suppress the implicit success() check, which walks
+  # the transitive needs graph and returns false when any ancestor lane
+  # (e.g. static-typescript / build / test-typescript on a Python-only change)
+  # was skipped — even though quality-gate itself succeeded.
   trigger-build:
     needs: [quality-gate]
-    if: github.ref == 'refs/heads/master'
+    if: ${{ always() && needs.quality-gate.result == 'success' && github.ref == 'refs/heads/master' }}
     uses: ./.github/workflows/build.yml
     secrets: inherit # pragma: allowlist secret

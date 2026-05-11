@@ -3,7 +3,8 @@ import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Cancel01Icon, GridIcon, SearchIcon } from "@icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
@@ -36,13 +37,13 @@ interface VirtualizedItemProps {
   item: VirtualItemType;
   selectedIndex: number;
   selectedCategory: string;
-  openedViaButton: boolean;
-  searchQuery: string;
   onSelect: (match: SlashCommandMatch) => void;
   onClose: () => void;
   measureElement: (element: HTMLElement | null) => void;
   categoryDisplayMap: Record<string, { displayName: string; iconUrl?: string }>;
   onIntegrationClick?: (integrationId: string) => void;
+  openedViaButton?: boolean;
+  searchQuery?: string;
 }
 
 const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
@@ -50,13 +51,13 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
   item,
   selectedIndex,
   selectedCategory,
-  openedViaButton,
-  searchQuery,
   onSelect,
   onClose,
   measureElement,
   categoryDisplayMap,
   onIntegrationClick,
+  openedViaButton,
+  searchQuery,
 }) => {
   const baseStyle = {
     transform: `translateY(${virtualRow.start}px)`,
@@ -252,7 +253,6 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
       category,
       previous_category: selectedCategory,
     });
-
     if (onCategoryChange) {
       onCategoryChange(category);
     } else {
@@ -655,13 +655,13 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                       item={item}
                       selectedIndex={selectedIndex}
                       selectedCategory={selectedCategory}
-                      openedViaButton={openedViaButton}
-                      searchQuery={searchQuery}
                       onSelect={onSelect}
                       onClose={onClose}
                       measureElement={rowVirtualizer.measureElement}
                       categoryDisplayMap={categoryDisplayMap}
                       onIntegrationClick={onIntegrationClick}
+                      openedViaButton={openedViaButton}
+                      searchQuery={searchQuery}
                     />
                   );
                 })}

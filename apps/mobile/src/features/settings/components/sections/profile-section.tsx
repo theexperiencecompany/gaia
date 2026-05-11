@@ -24,12 +24,12 @@ import { settingsApi } from "@/features/settings/api/settings-api";
 import { useResponsive } from "@/lib/responsive";
 
 const C = {
-  bg: "#1c1c1e",
+  bg: "#18181b",
   surface: "#1a1c21",
   primary: "#00bbff",
   primaryBg: "rgba(0,187,255,0.15)",
   text: "#ffffff",
-  textMuted: "#8e8e93",
+  textMuted: "#71717a",
   textSubtle: "#5a5a5e",
   divider: "rgba(255,255,255,0.06)",
 };
@@ -263,8 +263,6 @@ export function ProfileSection() {
             padding: spacing.md,
             flexDirection: "row",
             justifyContent: "space-around",
-            borderWidth: 1,
-            borderColor: C.divider,
           }}
         >
           <View style={{ alignItems: "center" }}>
@@ -325,8 +323,6 @@ export function ProfileSection() {
           flexDirection: "row",
           alignItems: "center",
           gap: spacing.sm,
-          borderWidth: 1,
-          borderColor: "rgba(0,187,255,0.2)",
         }}
       >
         <View

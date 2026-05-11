@@ -1,6 +1,6 @@
 {
   "name": "@heygaia/cli",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "CLI tool for setting up and managing GAIA",
   "type": "module",
   "bin": {
@@ -60,6 +60,7 @@
     "esbuild": "latest",
     "tsx": "latest",
     "typescript": "^5.9.2",
+    "vite": "^7.3.2",
     "vitest": "^4.0.15"
   }
 }

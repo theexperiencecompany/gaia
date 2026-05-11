@@ -1,252 +1,466 @@
-import { Button, Card, Chip, PressableFeedback } from "heroui-native";
-import { View } from "react-native";
-import {
-  AppIcon,
-  Calendar03Icon,
-  CheckmarkCircle01Icon,
-  Clock01Icon,
-} from "@/components/icons";
+import { Button } from "heroui-native";
+import { useState } from "react";
+import { ScrollView, View } from "react-native";
+import { AppIcon, Calendar03Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
 // -- Types --------------------------------------------------------------------
 
+export interface CalendarOptionAttendee {
+  email?: string;
+  displayName?: string;
+}
+
+export interface SameDayEvent {
+  id?: string;
+  summary?: string;
+  start?: { date?: string; dateTime?: string };
+  end?: { date?: string; dateTime?: string };
+  description?: string;
+  location?: string;
+  background_color?: string;
+  calendarTitle?: string;
+}
+
 export interface CalendarOption {
+  summary?: string;
   title?: string;
+  description?: string;
   start?: string;
   end?: string;
+  is_all_day?: boolean;
   location?: string;
-  description?: string;
-  attendees?: Array<{ email?: string; displayName?: string }>;
+  attendees?: Array<CalendarOptionAttendee | string>;
   background_color?: string;
+  calendar_id?: string;
   calendar_name?: string;
+  same_day_events?: SameDayEvent[];
 }
+
+type EventStatus = "idle" | "loading" | "completed";
 
 interface CalendarOptionsCardProps {
   data: CalendarOption[];
-  onSelect?: (index: number) => void;
-  selectedIndex?: number;
+  onAdd?: (event: CalendarOption, index: number) => Promise<void>;
+  onAddAll?: (events: CalendarOption[]) => Promise<void>;
 }
 
-// -- Helpers ------------------------------------------------------------------
+// -- Date formatting ----------------------------------------------------------
 
-function formatTimeRange(start?: string, end?: string): string {
-  if (!start) return "";
-  const startDate = new Date(start);
-  if (Number.isNaN(startDate.getTime())) return start;
-  const dateStr = startDate.toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
+function formatDateWithRelative(dateString: string): string {
+  const date = new Date(dateString);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  const compareDate = new Date(date);
+  compareDate.setHours(0, 0, 0, 0);
+
+  const fullDate = date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
     day: "numeric",
   });
-  const startTime = startDate.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  if (!end) return `${dateStr}, ${startTime}`;
-  const endDate = new Date(end);
-  if (Number.isNaN(endDate.getTime())) return `${dateStr}, ${startTime}`;
-  const endTime = endDate.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${dateStr}, ${startTime} – ${endTime}`;
+
+  if (compareDate.getTime() === today.getTime()) return `${fullDate} (Today)`;
+  if (compareDate.getTime() === tomorrow.getTime())
+    return `${fullDate} (Tomorrow)`;
+  if (compareDate.getTime() === yesterday.getTime())
+    return `${fullDate} (Yesterday)`;
+  return fullDate;
 }
 
-// -- Option row ---------------------------------------------------------------
+function formatTimeRange(startTime: string, endTime: string): string {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
 
-interface OptionRowProps {
-  event: CalendarOption;
-  index: number;
-  isSelected: boolean;
-  onSelect?: (index: number) => void;
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return startTime;
+  }
+
+  const formatTimeString = (date: Date): string => {
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? "PM" : "AM";
+    const hour12 = hours % 12 || 12;
+    const minuteStr = minutes.toString().padStart(2, "0");
+    if (minutes === 0) return `${hour12} ${ampm}`;
+    return `${hour12}:${minuteStr} ${ampm}`;
+  };
+
+  const startStr = formatTimeString(start);
+  const endStr = formatTimeString(end);
+
+  if (start.getHours() < 12 && end.getHours() >= 12) {
+    return `${startStr} – ${endStr}`;
+  }
+  if (start.getHours() >= 12 && end.getHours() >= 12) {
+    return `${startStr.replace(" PM", "")} – ${endStr}`;
+  }
+  if (start.getHours() < 12 && end.getHours() < 12) {
+    return `${startStr.replace(" AM", "")} – ${endStr}`;
+  }
+  return `${startStr} – ${endStr}`;
 }
 
-function OptionRow({ event, index, isSelected, onSelect }: OptionRowProps) {
-  const timeRange = formatTimeRange(event.start, event.end);
-  const attendeeCount = event.attendees?.length ?? 0;
+function formatSingleTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+// -- Event-time helpers -------------------------------------------------------
+
+function getOptionDisplayTime(option: CalendarOption): string {
+  if (option.start && option.end) {
+    if (option.start.includes("T") && option.end.includes("T")) {
+      return formatTimeRange(option.start, option.end);
+    }
+    return option.is_all_day ? "All day" : option.start;
+  }
+  if (option.start) {
+    if (option.start.includes("T")) return formatSingleTime(option.start);
+    return "All day";
+  }
+  return "Time TBD";
+}
+
+function getSameDayDisplayTime(event: SameDayEvent): string {
+  const startDt = event.start?.dateTime;
+  const endDt = event.end?.dateTime;
+  if (startDt && endDt) return formatTimeRange(startDt, endDt);
+  if (event.start?.date) return "All day";
+  return "No time";
+}
+
+function getOptionSortKey(option: CalendarOption): number {
+  const raw = option.start;
+  if (!raw) return 0;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function getSameDaySortKey(event: SameDayEvent): number {
+  const raw = event.start?.dateTime ?? event.start?.date;
+  if (!raw) return 0;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function bucketDate(input: string): string {
+  const t = new Date(input);
+  if (Number.isNaN(t.getTime())) return new Date().toISOString().slice(0, 10);
+  return t.toISOString().slice(0, 10);
+}
+
+// -- Grouping -----------------------------------------------------------------
+
+interface GroupedEntry {
+  type: "option" | "sameDay";
+  option?: CalendarOption;
+  optionIndex?: number;
+  sameDay?: SameDayEvent;
+  sortKey: number;
+}
+
+function groupEventsByDate(
+  options: CalendarOption[],
+  sameDayEvents: SameDayEvent[],
+): Record<string, GroupedEntry[]> {
+  const grouped: Record<string, GroupedEntry[]> = {};
+
+  for (const event of sameDayEvents) {
+    const raw =
+      event.start?.dateTime ?? event.start?.date ?? new Date().toISOString();
+    const dateKey = bucketDate(raw);
+    if (!grouped[dateKey]) grouped[dateKey] = [];
+    grouped[dateKey].push({
+      type: "sameDay",
+      sameDay: event,
+      sortKey: getSameDaySortKey(event),
+    });
+  }
+
+  options.forEach((option, index) => {
+    const raw = option.start ?? new Date().toISOString();
+    const dateKey = bucketDate(raw);
+    if (!grouped[dateKey]) grouped[dateKey] = [];
+    grouped[dateKey].push({
+      type: "option",
+      option,
+      optionIndex: index,
+      sortKey: getOptionSortKey(option),
+    });
+  });
+
+  for (const day of Object.values(grouped)) {
+    day.sort((a, b) => a.sortKey - b.sortKey);
+  }
+
+  return grouped;
+}
+
+// -- Same-day event row -------------------------------------------------------
+
+function SameDayRow({ event }: { event: SameDayEvent }) {
   const eventColor = event.background_color ?? "#00bbff";
-
-  const handlePress = () => onSelect?.(index);
+  const timeStr = getSameDayDisplayTime(event);
 
   return (
-    <PressableFeedback onPress={handlePress}>
-      <View
-        className="py-3 px-4"
-        style={isSelected ? { backgroundColor: `${eventColor}10` } : undefined}
-      >
-        <View className="flex-row items-start gap-3">
-          {/* Icon */}
-          <View
-            className="w-9 h-9 rounded-xl items-center justify-center flex-shrink-0"
-            style={{
-              backgroundColor: isSelected
-                ? `${eventColor}25`
-                : "rgba(255,255,255,0.06)",
-            }}
-          >
-            <AppIcon
-              icon={isSelected ? CheckmarkCircle01Icon : Calendar03Icon}
-              size={18}
-              color={isSelected ? eventColor : "#8e8e93"}
-            />
-          </View>
-
-          {/* Info */}
-          <View className="flex-1 min-w-0">
-            <Text
-              className="text-sm font-medium text-foreground mb-0.5"
-              numberOfLines={1}
-            >
-              {event.title ?? "Untitled Event"}
-            </Text>
-
-            {timeRange ? (
-              <View className="flex-row items-center gap-1 mb-0.5">
-                <AppIcon icon={Clock01Icon} size={11} color="#8e8e93" />
-                <Text className="text-muted text-xs">{timeRange}</Text>
-              </View>
-            ) : null}
-
-            {event.location ? (
-              <Text className="text-muted text-xs mb-0.5" numberOfLines={1}>
-                {event.location}
+    <View
+      className="relative flex-row items-start gap-2 rounded-lg p-3 pl-5"
+      style={{ backgroundColor: `${eventColor}20` }}
+    >
+      <View className="absolute top-0 bottom-0 left-1 items-center justify-center">
+        <View
+          className="w-1 rounded-full"
+          style={{ height: "80%", backgroundColor: eventColor }}
+        />
+      </View>
+      <View className="flex-1 min-w-0">
+        <Text className="text-base text-foreground" numberOfLines={1}>
+          {event.summary ?? "Untitled Event"}
+        </Text>
+        <View className="mt-1 flex-row items-center gap-2">
+          <Text className="text-xs text-muted">{timeStr}</Text>
+          {event.calendarTitle ? (
+            <>
+              <View
+                style={{
+                  width: 3,
+                  height: 3,
+                  borderRadius: 1.5,
+                  backgroundColor: "#71717a",
+                }}
+              />
+              <Text className="text-xs text-muted" numberOfLines={1}>
+                {event.calendarTitle}
               </Text>
-            ) : null}
-
-            {event.description ? (
-              <Text
-                className="text-muted text-xs mb-1 leading-4"
-                numberOfLines={2}
-              >
-                {event.description}
-              </Text>
-            ) : null}
-
-            {attendeeCount > 0 ? (
-              <Text className="text-muted text-xs mb-1.5">
-                {attendeeCount} attendee{attendeeCount !== 1 ? "s" : ""}
-              </Text>
-            ) : null}
-
-            {event.calendar_name ? (
-              <Chip
-                size="sm"
-                variant="soft"
-                className="self-start mb-1"
-                animation="disable-all"
-              >
-                <Chip.Label>{event.calendar_name}</Chip.Label>
-              </Chip>
-            ) : null}
-          </View>
-
-          {/* Selected badge */}
-          {isSelected ? (
-            <Chip
-              size="sm"
-              variant="soft"
-              className="flex-shrink-0"
-              animation="disable-all"
-            >
-              <Chip.Label>Selected</Chip.Label>
-            </Chip>
+            </>
           ) : null}
         </View>
-
-        {/* Select button (only shown when not selected) */}
-        {!isSelected ? (
-          <View className="mt-2 ml-12">
-            <Button
-              variant="secondary"
-              size="sm"
-              className="self-start rounded-xl"
-              onPress={handlePress}
-            >
-              <AppIcon icon={Calendar03Icon} size={12} color="#00bbff" />
-              <Button.Label>Select this time</Button.Label>
-            </Button>
-          </View>
-        ) : null}
       </View>
-    </PressableFeedback>
+    </View>
+  );
+}
+
+// -- Option (new event) row ---------------------------------------------------
+
+interface OptionRowProps {
+  option: CalendarOption;
+  status: EventStatus;
+  onAdd: () => void;
+}
+
+function OptionRow({ option, status, onAdd }: OptionRowProps) {
+  const eventColor = option.background_color ?? "#00bbff";
+  const summary = option.summary ?? option.title ?? "Untitled Event";
+  const description = option.description;
+  const timeStr = getOptionDisplayTime(option);
+  const isCompleted = status === "completed";
+  const isLoading = status === "loading";
+
+  return (
+    <View
+      className="relative flex-row items-end gap-2 rounded-lg p-3 pl-5 pr-2"
+      style={{
+        backgroundColor: `${eventColor}20`,
+        opacity: isCompleted ? 0.5 : 1,
+      }}
+    >
+      <View className="absolute top-0 bottom-0 left-1 items-center justify-center">
+        <View
+          className="w-1 rounded-full"
+          style={{ height: "80%", backgroundColor: eventColor }}
+        />
+      </View>
+
+      {/* Info */}
+      <View className="flex-1 min-w-0">
+        <Text className="text-base text-foreground" numberOfLines={2}>
+          {summary}
+        </Text>
+        {description ? (
+          <Text className="mt-1 text-xs text-muted" numberOfLines={2}>
+            {description}
+          </Text>
+        ) : null}
+        <View className="mt-1 flex-row items-center gap-2">
+          <Text className="text-xs text-muted">{timeStr}</Text>
+        </View>
+      </View>
+
+      {/* Action button */}
+      <Button
+        size="sm"
+        variant={isCompleted ? "secondary" : "primary"}
+        isDisabled={isCompleted || isLoading}
+        onPress={onAdd}
+        className="flex-shrink-0 rounded-xl"
+      >
+        {isCompleted ? (
+          <>
+            <AppIcon icon={Tick02Icon} size={14} color="#22c55e" />
+            <Button.Label>Added</Button.Label>
+          </>
+        ) : (
+          <Button.Label>{isLoading ? "Adding…" : "Confirm"}</Button.Label>
+        )}
+      </Button>
+    </View>
   );
 }
 
 // -- Calendar options card ----------------------------------------------------
 
+const MAX_VISIBLE_HEIGHT = 400;
+
 export function CalendarOptionsCard({
   data,
-  onSelect,
-  selectedIndex,
+  onAdd,
+  onAddAll,
 }: CalendarOptionsCardProps) {
+  const [statuses, setStatuses] = useState<Record<number, EventStatus>>({});
+  const [isAddingAll, setIsAddingAll] = useState(false);
+
+  const sameDayEvents = data[0]?.same_day_events ?? [];
+  const validOptions = data.every(
+    (option) => (option.summary ?? option.title) !== undefined,
+  );
+
+  if (!validOptions) {
+    return (
+      <View className="mx-4 my-2 w-full max-w-md rounded-3xl bg-zinc-800 p-4">
+        <Text className="text-sm text-red-500">
+          Error: Could not add Calendar event. Please try again later.
+        </Text>
+      </View>
+    );
+  }
+
+  const eventsByDate = groupEventsByDate(data, sameDayEvents);
+  const allCompleted = data.every((_, idx) => statuses[idx] === "completed");
+  const someCompleted = data.some((_, idx) => statuses[idx] === "completed");
+
+  const handleAdd = async (
+    option: CalendarOption,
+    index: number,
+  ): Promise<void> => {
+    if (!onAdd) return;
+    setStatuses((prev) => ({ ...prev, [index]: "loading" }));
+    try {
+      await onAdd(option, index);
+      setStatuses((prev) => ({ ...prev, [index]: "completed" }));
+    } catch {
+      setStatuses((prev) => ({ ...prev, [index]: "idle" }));
+    }
+  };
+
+  const handleAddAll = async (): Promise<void> => {
+    if (!onAddAll) return;
+    setIsAddingAll(true);
+    try {
+      const pending = data.filter((_, idx) => statuses[idx] !== "completed");
+      await onAddAll(pending);
+      const next: Record<number, EventStatus> = { ...statuses };
+      data.forEach((_, idx) => {
+        next[idx] = "completed";
+      });
+      setStatuses(next);
+    } catch {
+      // no-op
+    } finally {
+      setIsAddingAll(false);
+    }
+  };
+
   return (
-    <Card
-      variant="secondary"
-      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
-      animation="disable-all"
-    >
-      {/* Header */}
-      <Card.Header className="px-4 py-3 pb-0">
-        <View className="flex-row items-center gap-2">
-          <View className="w-7 h-7 rounded-xl bg-primary/15 items-center justify-center">
-            <AppIcon icon={Calendar03Icon} size={14} color="#00bbff" />
-          </View>
-          <View className="flex-1 min-w-0">
-            <Card.Title>Proposed Times</Card.Title>
-            <Card.Description>Choose a time slot to schedule</Card.Description>
-          </View>
-          <Chip
-            size="sm"
-            variant="soft"
-            color="default"
-            animation="disable-all"
-          >
-            <Chip.Label>
-              {data.length} option{data.length !== 1 ? "s" : ""}
-            </Chip.Label>
-          </Chip>
-        </View>
-      </Card.Header>
-
-      <Card.Body className="p-0">
-        <View
-          style={{
-            height: 1,
-            backgroundColor: "rgba(255,255,255,0.07)",
-            marginTop: 12,
-          }}
-        />
-
-        {data.length === 0 ? (
-          <View className="px-4 py-3">
-            <Text className="text-muted text-sm">No options available</Text>
-          </View>
-        ) : (
-          data.map((event, index) => {
-            const key = `${event.title ?? "option"}-${index}`;
-            const isSelected = selectedIndex === index;
-            return (
-              <View key={key}>
-                {index > 0 && (
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: "rgba(255,255,255,0.07)",
-                      marginHorizontal: 16,
-                    }}
-                  />
-                )}
-                <OptionRow
-                  event={event}
-                  index={index}
-                  isSelected={isSelected}
-                  onSelect={onSelect}
-                />
+    <View className="mx-4 my-2 w-full max-w-md rounded-3xl bg-zinc-800 p-4">
+      <ScrollView
+        style={{ maxHeight: MAX_VISIBLE_HEIGHT }}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="gap-3">
+          {Object.entries(eventsByDate).map(([dateKey, entries]) => (
+            <View key={dateKey} className="gap-3">
+              {/* Date divider */}
+              <View className="flex-row items-center">
+                <View className="flex-1 h-px bg-zinc-700" />
+                <Text className="px-3 text-xs text-zinc-500">
+                  {formatDateWithRelative(dateKey)}
+                </Text>
+                <View className="flex-1 h-px bg-zinc-700" />
               </View>
-            );
-          })
-        )}
-      </Card.Body>
-    </Card>
+
+              {/* Events */}
+              <View className="gap-2">
+                {entries.map((entry, idx) => {
+                  if (entry.type === "sameDay" && entry.sameDay) {
+                    return (
+                      <SameDayRow
+                        key={`same-${entry.sameDay.id ?? idx}`}
+                        event={entry.sameDay}
+                      />
+                    );
+                  }
+                  if (
+                    entry.type === "option" &&
+                    entry.option &&
+                    entry.optionIndex !== undefined
+                  ) {
+                    const status = statuses[entry.optionIndex] ?? "idle";
+                    return (
+                      <OptionRow
+                        key={`opt-${entry.optionIndex}`}
+                        option={entry.option}
+                        status={status}
+                        onAdd={() =>
+                          void handleAdd(entry.option!, entry.optionIndex!)
+                        }
+                      />
+                    );
+                  }
+                  return null;
+                })}
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Bulk add footer */}
+      {data.length > 1 ? (
+        <Button
+          variant={allCompleted ? "secondary" : "primary"}
+          isDisabled={allCompleted || isAddingAll}
+          onPress={() => void handleAddAll()}
+          className="mt-3 w-full rounded-xl"
+        >
+          {allCompleted ? (
+            <>
+              <AppIcon icon={Tick02Icon} size={16} color="#22c55e" />
+              <Button.Label>All Added</Button.Label>
+            </>
+          ) : (
+            <>
+              <AppIcon icon={Calendar03Icon} size={16} color="#ffffff" />
+              <Button.Label>
+                {someCompleted ? "Add Remaining" : "Add All Events"}
+              </Button.Label>
+            </>
+          )}
+        </Button>
+      ) : null}
+    </View>
   );
 }

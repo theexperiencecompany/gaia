@@ -43,7 +43,7 @@ export function AppEmptyStateCard({
       {...cardProps}
       variant={variant}
       animation={animation}
-      className={cn("rounded-3xl", className)}
+      className={cn("rounded-2xl", className)}
     >
       <Card.Body
         className={cn(
@@ -54,7 +54,7 @@ export function AppEmptyStateCard({
         {icon}
         <Card.Title className="text-center">{title}</Card.Title>
         {description ? (
-          <Card.Description className="text-center">
+          <Card.Description className="text-center text-zinc-400">
             {description}
           </Card.Description>
         ) : null}

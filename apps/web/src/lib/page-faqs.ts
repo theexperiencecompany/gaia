@@ -8,29 +8,44 @@ import type { FAQItem } from "./faq";
 
 export const homepageFAQs: FAQItem[] = [
   {
-    question: "What is GAIA AI assistant?",
+    question: "How is GAIA different from Claude Cowork?",
     answer:
-      "GAIA is an open-source personal AI assistant that proactively manages your email, calendar, tasks, and workflows across 50+ integrated tools. Unlike reactive chatbots like ChatGPT or Siri, GAIA monitors your digital life 24/7 and takes action before you ask, such as triaging your inbox, scheduling meetings, and creating tasks from emails automatically.",
+      "Claude Cowork runs on your desktop. You install it and give it tasks to run on your laptop. It can't do anything without a prompt. It can't be messaged from WhatsApp or Slack. Close your laptop and it stops. GAIA runs in the cloud. You text it from WhatsApp, Telegram, Slack, Discord or the web. It also watches your inbox and calendar on its own so it can surface things before you ask.",
+  },
+  {
+    question: "How is GAIA different from OpenClaw?",
+    answer:
+      "OpenClaw is a kit. You run your own agent on your own machine with your own credentials and then figure out what to build. Fun for developers. A security headache for everyone else. GAIA is the finished product. It's cloud hosted with 50+ integrations wired up and workflows that work from day one.",
+  },
+  {
+    question: "What is GAIA?",
+    answer:
+      "GAIA is an open source personal assistant that watches your inbox calendar and tools and takes action before you ask. It triages email schedules meetings turns messages into tasks and runs workflows across 50+ integrations. Unlike ChatGPT or Siri which wait for a prompt GAIA acts on its own.",
   },
   {
     question: "How is GAIA different from ChatGPT or other AI assistants?",
     answer:
-      "ChatGPT, Claude, and Gemini are conversational AIs that wait for your prompts. GAIA is a proactive productivity operating system that autonomously manages your work. It connects to 50+ tools (Gmail, Slack, Notion, GitHub, etc.), creates and executes tasks, automates multi-step workflows, and maintains persistent memory that learns your work patterns over time.",
+      "ChatGPT Claude and Gemini wait for you to ask a question. GAIA watches your inbox calendar and tools and acts before you ask. It connects to 50+ apps like Gmail Slack Notion and GitHub remembers your preferences across sessions and runs multi step workflows you describe in plain English.",
   },
   {
     question: "Is GAIA free to use?",
     answer:
-      "Yes. GAIA offers a free tier with core features including email automation, calendar management, and task organization. Pro plans start at $20/month with higher usage limits and priority support. You can also self-host GAIA entirely free on your own infrastructure for complete data ownership.",
+      "Yes. The free tier covers email automation calendar management and task organization. Pro starts at $20 a month for higher usage limits and priority support. You can also self host the whole thing for zero cost on your own infrastructure.",
   },
   {
     question: "What integrations does GAIA support?",
     answer:
-      "GAIA supports 50+ integrations including Gmail, Google Calendar, Google Docs, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello, Microsoft Teams, HubSpot, Twitter, LinkedIn, and more. You can also build custom integrations through the Model Context Protocol (MCP) and the community marketplace.",
+      "50+ including Gmail Google Calendar Google Docs Slack Notion GitHub Linear Todoist Asana ClickUp Trello Microsoft Teams HubSpot Twitter and LinkedIn. You can also build custom integrations via the Model Context Protocol and the community marketplace.",
   },
   {
     question: "Is GAIA open source?",
     answer:
-      "Yes. GAIA is fully open source, meaning you can inspect every line of code, contribute to development, and self-host the entire system on your own infrastructure. Your data is never used for model training, and self-hosting gives you complete control over your information.",
+      "Yes. Every line of code is inspectable. You can contribute or self host the entire system on your own infrastructure. Your data is never used for training.",
+  },
+  {
+    question: "Is my data used to train AI models?",
+    answer:
+      "No. Your data is yours. We never train on it and never share it with model providers for training. If that still feels uncomfortable you can self host GAIA and keep everything on your own infrastructure.",
   },
 ];
 

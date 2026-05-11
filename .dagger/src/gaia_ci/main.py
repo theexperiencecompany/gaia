@@ -53,32 +53,78 @@ class GaiaCi:
     # ── Environment ──────────────────────────────────────────────
 
     @function
-    def ci_env(self, source: Source) -> dagger.Container:
-        """Create a full CI environment by building the base image from the Dockerfile.
+    def base_image(self) -> dagger.Container:
+        """Build the CI base image using SDK-native calls for optimal layer caching.
 
-        The base image (infra/docker/ci-base.Dockerfile) ships Node 22,
-        Python 3.12, pnpm, and uv pre-installed. Dagger layer-caches
-        the build so subsequent runs skip the apt-get + pip install chain.
+        Each with_exec() becomes an individually cacheable layer in Dagger's
+        content-addressable cache. Unlike docker_build(), these layers are
+        eligible for remote caching via Dagger Cloud without any special config.
+        """
+        return (
+            dag.container()
+            .from_("node:22.15.1-bookworm-slim")
+            .with_exec(
+                [
+                    "sh",
+                    "-c",
+                    "apt-get update"
+                    " && apt-get install -y --no-install-recommends"
+                    " python3 python3-pip python3-venv python3-dev"
+                    " git curl build-essential libpq-dev"
+                    " && apt-get clean"
+                    " && rm -rf /var/lib/apt/lists/*",
+                ]
+            )
+            .with_exec(
+                [
+                    "sh",
+                    "-c",
+                    "corepack enable && corepack prepare pnpm@10.17.1 --activate",
+                ]
+            )
+            .with_exec(["pip", "install", "--break-system-packages", "uv"])
+        )
+
+    @function
+    def ci_env(self, source: Source) -> dagger.Container:
+        """Create a full CI environment with dependency installation.
+
+        Dependency install layers are separated from source copy: lockfiles
+        are mounted first so pnpm/uv install layers are cache-stable when
+        only application code changes. The full source is mounted afterwards.
         """
         pnpm_cache = dag.cache_volume("pnpm-store")
         uv_cache = dag.cache_volume("uv-cache")
         nx_cache = dag.cache_volume("nx-cache")
         next_cache = dag.cache_volume("next-cache")
         pip_cache = dag.cache_volume("pip-cache")
-        base = source.directory("infra/docker").docker_build(
-            dockerfile="ci-base.Dockerfile",
-        )
-        return (
-            base
-            # Mount caches
-            .with_mounted_cache("/root/.local/share/pnpm/store", pnpm_cache)
+
+        base = self.base_image()
+
+        # Step 1: Mount only lockfiles and install dependencies.
+        # This layer is invalidated only when lockfiles change, not on every
+        # source code change -- a critical optimization for cache hit rate.
+        with_deps = (
+            base.with_mounted_cache("/root/.local/share/pnpm/store", pnpm_cache)
             .with_mounted_cache("/root/.cache/uv", uv_cache)
             .with_mounted_cache("/root/.cache/pip", pip_cache)
-            .with_mounted_cache("/app/.nx/cache", nx_cache)
-            .with_mounted_cache("/app/apps/web/.next/cache", next_cache)
-            # Copy source and install deps
-            .with_directory("/app", source)
             .with_workdir("/app")
+            .with_file("/app/package.json", source.file("package.json"))
+            .with_file("/app/pnpm-lock.yaml", source.file("pnpm-lock.yaml"))
+            .with_file("/app/pnpm-workspace.yaml", source.file("pnpm-workspace.yaml"))
+            .with_file("/app/uv.lock", source.file("uv.lock"))
+            .with_file("/app/pyproject.toml", source.file("pyproject.toml"))
+            # Mount all workspace config files and the shared lib source.
+            # Globs ensure new workspace members are picked up automatically.
+            .with_directory(
+                "/app",
+                source,
+                include=[
+                    "**/package.json",
+                    "**/pyproject.toml",
+                    "libs/**",
+                ],
+            )
             .with_exec(["pnpm", "install", "--frozen-lockfile"])
             .with_exec(
                 [
@@ -93,6 +139,14 @@ class GaiaCi:
                     "dev",
                 ]
             )
+        )
+
+        # Step 2: Layer the full source on top of the cached dependency layer.
+        return (
+            with_deps.with_mounted_cache("/app/.nx/cache", nx_cache)
+            .with_mounted_cache("/app/apps/web/.next/cache", next_cache)
+            .with_directory("/app", source)
+            .with_workdir("/app")
         )
 
     # ── Individual checks ────────────────────────────────────────
@@ -151,6 +205,7 @@ class GaiaCi:
                 [
                     "uv",
                     "run",
+                    "--frozen",
                     "pytest",
                     "-n",
                     "auto",
@@ -173,6 +228,7 @@ class GaiaCi:
                 [
                     "uv",
                     "run",
+                    "--frozen",
                     "pytest",
                     "-n",
                     "auto",
@@ -239,9 +295,13 @@ class GaiaCi:
 
     @function
     def redis_service(self) -> dagger.Service:
-        """Start a Redis 7 service container."""
+        """Start a Redis 7 service container with 32 databases for xdist worker isolation."""
         return (
-            dag.container().from_("redis:7-alpine").with_exposed_port(6379).as_service()
+            dag.container()
+            .from_("redis:7-alpine")
+            .with_exposed_port(6379)
+            .with_exec(["redis-server", "--databases", "32"])
+            .as_service()
         )
 
     @function

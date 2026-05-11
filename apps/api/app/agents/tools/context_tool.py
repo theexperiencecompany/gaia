@@ -48,7 +48,11 @@ async def gather_context(
         providers, user_id, PROVIDER_TOOLS, tool_namespace
     )
 
-    # Fetch in parallel (sync function run in executor to avoid blocking event loop)
+    # Fetch in parallel (sync function run in executor to avoid blocking event loop).
+    # Use None (default asyncio thread pool) for the outer call.
+    # fetch_all_providers internally uses _CONTEXT_EXECUTOR for parallel provider calls.
+    # Passing _CONTEXT_EXECUTOR here would cause a pool-within-pool deadlock when
+    # max_workers=4 concurrent agent sessions each hold a thread waiting for subtasks.
     loop = asyncio.get_running_loop()
     context_results = await loop.run_in_executor(
         None,

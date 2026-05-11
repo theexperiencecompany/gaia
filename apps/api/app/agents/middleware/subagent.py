@@ -14,11 +14,10 @@ from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
 )
-from app.agents.tools.core.retrieval import (
-    get_retrieve_tools_function,
-)
+from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from shared.py.wide_events import log
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -255,6 +254,14 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
             if not response.tool_calls:
                 return str(response.content) if response.content else "Task completed."
+
+            for tc in response.tool_calls:
+                if tc["name"] == FINISH_TASK_NAME:
+                    args = tc.get("args", {})
+                    result = args.get("result")
+                    if result is None:
+                        return "Task completed."
+                    return str(result)
 
             regular_calls: list[ToolCall] = []
             for tc in response.tool_calls:

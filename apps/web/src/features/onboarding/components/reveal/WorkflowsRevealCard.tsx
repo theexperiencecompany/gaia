@@ -1,7 +1,7 @@
 "use client";
 
 import { ZapIcon } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import type { WorkflowResults } from "../../types/websocket";
 
 type WorkflowsRevealCardProps = WorkflowResults;

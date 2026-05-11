@@ -42,12 +42,11 @@ export const GridSection = ({
   const { connectIntegration } = useIntegrations();
 
   const handleConnect = async (integrationId: string) => {
-    trackEvent(ANALYTICS_EVENTS.CHAT_GRID_INTEGRATION_CONNECT_CLICKED, {
-      integration_id: integrationId,
-      source: "new_chat_grid",
-    });
-
     try {
+      trackEvent(ANALYTICS_EVENTS.CHAT_GRID_INTEGRATION_CONNECT_CLICKED, {
+        integration_id: integrationId,
+        source: "new_chat_grid",
+      });
       await connectIntegration(integrationId);
     } catch (error) {
       console.error("Failed to connect integration:", error);

@@ -6,7 +6,7 @@
 
 "use client";
 
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";

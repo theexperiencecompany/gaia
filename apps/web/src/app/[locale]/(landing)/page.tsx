@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 
 import LandingPageClient from "@/app/[locale]/(landing)/client";
 import JsonLd from "@/components/seo/JsonLd";
-import { getTimeOfDay } from "@/features/landing/utils/timeOfDay";
+import { getLatestRelease } from "@/features/landing/utils/getLatestRelease";
+import {
+  getTimeOfDay,
+  type TimeOfDay,
+} from "@/features/landing/utils/timeOfDay";
 import { homepageFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
@@ -13,6 +17,14 @@ import {
   generateWebSiteSchema,
   siteConfig,
 } from "@/lib/seo";
+
+// Preload paths mirror WALLPAPERS in HeroImage.tsx — keep in sync.
+const HERO_WALLPAPER_PATHS: Record<TimeOfDay, string> = {
+  morning: "/images/wallpapers/swiss_morning.webp",
+  day: "/images/wallpapers/swiss.webp",
+  evening: "/images/wallpapers/swiss_evening.webp",
+  night: "/images/wallpapers/swiss_night.webp",
+};
 
 export const metadata: Metadata = generatePageMetadata({
   title: siteConfig.name,
@@ -33,6 +45,7 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default function LandingPage() {
   const initialTimeOfDay = getTimeOfDay();
+  const latestRelease = getLatestRelease();
   const organizationSchema = generateOrganizationSchema();
   const websiteSchema = generateWebSiteSchema();
   const webPageSchema = generateWebPageSchema(
@@ -48,6 +61,15 @@ export default function LandingPage() {
 
   return (
     <>
+      {/* Preload the initial hero wallpaper so it starts fetching before JS runs.
+          HeroImage renders inside a "use client" component, so Next.js may not
+          emit a preload link via the Image component's SSR path. */}
+      <link
+        rel="preload"
+        as="image"
+        href={HERO_WALLPAPER_PATHS[initialTimeOfDay]}
+        fetchPriority="high"
+      />
       <JsonLd
         data={[
           organizationSchema,
@@ -57,7 +79,10 @@ export default function LandingPage() {
           faqSchema,
         ]}
       />
-      <LandingPageClient initialTimeOfDay={initialTimeOfDay} />
+      <LandingPageClient
+        initialTimeOfDay={initialTimeOfDay}
+        latestRelease={latestRelease}
+      />
     </>
   );
 }

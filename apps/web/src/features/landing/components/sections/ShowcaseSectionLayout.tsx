@@ -2,6 +2,8 @@
 
 import type React from "react";
 
+import { SoftBlurInBlock, TextSoftBlurIn } from "../shared/TextSoftBlurIn";
+
 interface ShowcaseSectionLayoutProps {
   header?: string;
   subheader?: string;
@@ -23,14 +25,15 @@ export default function ShowcaseSectionLayout({
     <div className={containerClassName}>
       {/* Header — optional */}
       {header && (
-        <div className="mb-5 text-xl font-light text-primary sm:text-2xl text-center lg:text-left">
+        <SoftBlurInBlock className="mb-5 text-xl font-light text-primary sm:text-2xl text-center lg:text-left">
           {header}
-        </div>
+        </SoftBlurInBlock>
       )}
       {subheader && (
-        <div className="mb-8 font-serif text-4xl font-normal sm:text-5xl text-center lg:text-left">
-          {subheader}
-        </div>
+        <TextSoftBlurIn
+          text={subheader}
+          className="mb-8 font-serif text-4xl font-normal sm:text-5xl text-center lg:text-left"
+        />
       )}
 
       {/* 70/30 split */}

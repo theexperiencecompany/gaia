@@ -72,22 +72,19 @@ A tool can only be in ONE path. Adding it to `tool_fields` (Python) automaticall
 
 ## 4. Styling Contract
 
-All OpenUI components must follow the same card contract as native tool cards:
+All OpenUI components follow a lightweight card-less design - render clean, unboxed components that blend with the chat bubble. No heavy outer wrappers.
 
 | Role                  | Exact Tailwind Classes                          |
 |---|---|
-| Outer card container  | `rounded-2xl bg-zinc-800 p-4`                   |
-| Inner row / item      | `rounded-2xl bg-zinc-900 p-3`                   |
-| Section header        | `text-sm font-semibold text-zinc-100 mb-3`      |
+| Outer container (when needed) | `rounded-2xl bg-zinc-800` — never `rounded-xl`, `rounded-3xl`, or any other radius. Padding is per-component (typical: `p-3` or `p-4`; charts can use `p-2`). |
+| Inner content block   | `rounded-2xl bg-zinc-900 p-3` (only when needed) |
+| Section header        | `text-sm font-semibold text-zinc-100` (no mb margin) |
 | Item title            | `text-sm font-medium text-zinc-200`             |
 | Secondary text        | `text-xs text-zinc-400`                         |
 | Item spacing          | `space-y-2`                                     |
 | Width                 | `w-full min-w-fit max-w-lg` (or `max-w-xl`)     |
-| Borders               | NONE — never `border-`, `ring-`, `outline-`     |
-| Status: success       | `bg-emerald-400/10 text-emerald-400`            |
-| Status: warning       | `bg-amber-400/10 text-amber-400`                |
-| Status: error/danger  | `bg-red-400/10 text-red-400`                    |
-| Status: info          | `bg-blue-400/10 text-blue-400`                  |
+| Borders and outer    | REMOVE - no outer `bg-zinc-800 p-4` wrappers   |
+| Status colors        | Use HeroUI `Chip` components with status colors |
 
 ---
 
@@ -111,8 +108,10 @@ Example: `root = MyComponent("Title", [{"label": "k", "value": "v"}])`
 ```typescript
 export function MyComponentView(props: z.infer<typeof myComponentSchema>) {
   return (
-    <div className="rounded-2xl bg-zinc-800 p-4 w-full min-w-fit max-w-lg">
-      <p className="text-sm font-semibold text-zinc-100 mb-3">{props.title}</p>
+    <div className="w-full min-w-fit max-w-lg space-y-2">
+      {props.title && (
+        <p className="text-sm font-semibold text-zinc-100">{props.title}</p>
+      )}
       <div className="space-y-2">
         {props.items.map((item, i) => (
           <div key={i} className="rounded-2xl bg-zinc-900 p-3">

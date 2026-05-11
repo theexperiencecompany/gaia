@@ -8,7 +8,6 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import {
-  ArrowRight01Icon,
   BookBookmark02Icon,
   BookOpen02Icon,
   BubbleChatQuestionIcon,
@@ -20,6 +19,7 @@ import {
   Layers01Icon,
   Logout02Icon,
   MapsIcon,
+  PackageOpenIcon,
   QuillWrite01Icon,
   Settings01Icon,
 } from "@icons";
@@ -32,10 +32,12 @@ import {
   ConfirmActionDialog,
 } from "@/components/shared/ConfirmActionDialog";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { Github } from "@/components/shared/icons";
+import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
+import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
+import { useReleases } from "@/features/whats-new/hooks/useReleases";
 import {
   type PlatformInfo,
   usePlatformDetection,
@@ -58,6 +60,7 @@ interface MenuItem {
   external?: boolean;
   hasSubmenu?: boolean;
   iconColor?: string;
+  badge?: React.ReactNode;
   customClassNames?: {
     title?: string;
   };
@@ -75,9 +78,9 @@ export default function SettingsMenu({
 
   const discordLink = getLinkByLabel("Discord");
   const whatsappLink = getLinkByLabel("WhatsApp");
-  const twitterLink = getLinkByLabel("Twitter");
   const docsLink = getLinkByLabel("Documentation");
   const githubLink = getLinkByLabel("GitHub");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [supportModalOpen, setSupportModalOpen] = useState(false);
   const [supportModalType, setSupportModalType] = useState<
     string | undefined
@@ -85,7 +88,9 @@ export default function SettingsMenu({
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const { unseen: unseenReleases } = useReleases();
 
+  const whatsNewMenu = useNestedMenu();
   const resourcesMenu = useNestedMenu();
   const supportMenu = useNestedMenu();
   const downloadMenu = useNestedMenu();
@@ -180,7 +185,6 @@ export default function SettingsMenu({
   }));
 
   const socialMediaColorMap: Record<string, string> = {
-    twitter: "#1da1f2",
     discord: "#5865F2",
     whatsapp: "#25d366",
   };
@@ -194,7 +198,6 @@ export default function SettingsMenu({
       const linkMap: Record<string, string | undefined> = {
         discord: discordLink?.href,
         whatsapp: whatsappLink?.href,
-        twitter: twitterLink?.href,
         documentation: docsLink?.href,
       };
       const url = linkMap[item.key];
@@ -222,13 +225,11 @@ export default function SettingsMenu({
           },
         ]),
     {
-      title: "Settings",
+      title: undefined,
       showDivider: true,
       items: [
         ...settingsPageItems.filter((item) =>
-          ["profile", "preferences", "memory", "linked-accounts"].includes(
-            item.key,
-          ),
+          ["memory", "linked-accounts"].includes(item.key),
         ),
         {
           key: "keyboard_shortcuts",
@@ -247,6 +248,16 @@ export default function SettingsMenu({
       title: undefined,
       showDivider: false,
       items: [
+        {
+          key: "whats-new",
+          label: "What's new",
+          icon: PackageOpenIcon,
+          hasSubmenu: true,
+          badge:
+            unseenReleases.length > 0 ? (
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            ) : undefined,
+        },
         {
           key: "download",
           label: `Download for ${currentPlatform.isMobile ? "Desktop" : currentPlatform.shortName.split(" ")[0]}`,
@@ -288,7 +299,11 @@ export default function SettingsMenu({
         placement="right"
         className="bg-secondary-bg text-foreground dark shadow-xl"
         offset={21}
-        onOpenChange={onOpenChange}
+        isOpen={isMenuOpen}
+        onOpenChange={(open) => {
+          setIsMenuOpen(open);
+          onOpenChange?.(open);
+        }}
       >
         <DropdownTrigger>{children}</DropdownTrigger>
         <DropdownMenu aria-label="Settings Menu" variant="faded">
@@ -304,14 +319,16 @@ export default function SettingsMenu({
                 const iconColor =
                   item.iconColor || socialMediaColorMap[item.key];
 
-                // Handle nested menus (Download, Resources, and Support)
+                // Handle nested menus (What's new, Download, Resources, Support)
                 if (item.hasSubmenu) {
                   const menu =
-                    item.key === "download"
-                      ? downloadMenu
-                      : item.key === "resources"
-                        ? resourcesMenu
-                        : supportMenu;
+                    item.key === "whats-new"
+                      ? whatsNewMenu
+                      : item.key === "download"
+                        ? downloadMenu
+                        : item.key === "resources"
+                          ? resourcesMenu
+                          : supportMenu;
 
                   return (
                     <DropdownItem
@@ -323,7 +340,10 @@ export default function SettingsMenu({
                       className="text-zinc-400 transition hover:text-white"
                       startContent={Icon && <Icon className={iconClasses} />}
                       endContent={
-                        <ArrowRight01Icon className="h-4 w-4 text-zinc-500" />
+                        <div className="flex items-center gap-1.5">
+                          {item.badge}
+                          <ChevronRight className="h-4 w-4 text-zinc-500" />
+                        </div>
                       }
                     >
                       {item.label}
@@ -359,6 +379,21 @@ export default function SettingsMenu({
           ))}
         </DropdownMenu>
       </Dropdown>
+
+      <NestedMenuTooltip
+        isOpen={whatsNewMenu.isOpen}
+        onOpenChange={whatsNewMenu.setIsOpen}
+        itemRef={whatsNewMenu.itemRef}
+        customContent={
+          <WhatsNewTimelineMenu
+            onClose={() => {
+              whatsNewMenu.setIsOpen(false);
+              setIsMenuOpen(false);
+              onOpenChange?.(false);
+            }}
+          />
+        }
+      />
 
       <NestedMenuTooltip
         isOpen={resourcesMenu.isOpen}

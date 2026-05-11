@@ -28,6 +28,7 @@ import {
 import AddMemoryModal from "@/features/memory/components/AddMemoryModal";
 import MemoryGraph from "@/features/memory/components/MemoryGraph";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 export interface MemoryManagementProps {
@@ -91,6 +92,9 @@ export default function MemoryManagement({
 
         if (response.success) {
           toast.success("Memory deleted");
+          trackEvent(ANALYTICS_EVENTS.MEMORY_ITEM_DELETED, {
+            memory_id: memoryId,
+          });
           fetchMemories();
         } else {
           toast.error(response.message || "Failed to delete memory");
@@ -123,6 +127,9 @@ export default function MemoryManagement({
 
       if (response.success) {
         toast.success(response.message || "All memories cleared");
+        trackEvent(ANALYTICS_EVENTS.MEMORY_CLEARED, {
+          memory_count: memories.length,
+        });
         setMemories([]);
         setRelations([]);
       } else {
@@ -134,7 +141,7 @@ export default function MemoryManagement({
     } finally {
       setIsClearing(false);
     }
-  }, [confirm]);
+  }, [confirm, memories.length]);
 
   const handleExport = useCallback(() => {
     const exportType = Array.from(selectedExportType)[0];

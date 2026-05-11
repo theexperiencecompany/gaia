@@ -7,45 +7,65 @@ export interface FAQItem {
 
 export const faqData: FAQItem[] = [
   {
+    question: "How is GAIA different from Claude Cowork?",
+    answer:
+      "Claude Cowork runs on your desktop. You install it and give it tasks to run on your laptop. It can't do anything without a prompt. It can't be messaged from WhatsApp or Slack. Close your laptop and it stops. GAIA runs in the cloud. You text it from WhatsApp Telegram Slack Discord or the web. It also watches your inbox and calendar on its own so it can surface things before you ask.",
+  },
+  {
+    question: "How is GAIA different from OpenClaw?",
+    answer:
+      "OpenClaw is a kit. You run your own agent on your own machine with your own credentials and then figure out what to build. Fun for developers. A security headache for everyone else. GAIA is the finished product. It's cloud hosted with 50+ integrations wired up and workflows that work from day one.",
+  },
+  {
     question: "Is this just another chatbot like ChatGPT?",
     answer:
-      "No. ChatGPT and other assistants are reactive - they wait for you to ask questions. GAIA is proactive - it watches your emails, calendar, and notifications to automatically draft replies, schedule meetings, create documents, set reminders, and handle tasks before you even think about them. It's like having a human assistant who actually does the work.",
+      "No. ChatGPT waits for you to ask. GAIA watches your inbox calendar and tools and acts before you ask. It drafts replies schedules meetings creates docs and closes tasks on its own. Think of it less as a chatbot and more as a teammate who actually does the work.",
   },
   {
     question: "Who is GAIA for?",
     answer:
-      "GAIA is designed for anyone drowning in digital overwhelm. Students love it for automatically turning assignment emails into complete project setups with docs, deadlines, and research. Professionals use it to escape the endless cycle of email management and meeting coordination. Entrepreneurs rely on it to juggle multiple projects without losing focus on strategy. Whether you're a busy knowledge worker or someone managing complex workflows, GAIA is perfect if you want an AI that actually does the work instead of just chatting about it.",
+      "Anyone who spends too much time managing their digital life. Students use GAIA to turn assignment emails into full project setups with docs and deadlines. Professionals use it to get out from under the email and meeting grind. Founders use it to keep multiple projects moving without dropping context. If you want an assistant that does the work instead of talking about the work GAIA is for you.",
   },
   {
-    question: "What can GAIA actually do for me day-to-day?",
+    question: "What can GAIA actually do for me day to day?",
     answer:
-      "GAIA automates your entire digital workflow: manages your Gmail and calendar, creates Google Docs and Sheets, handles goal tracking and to-dos, controls your browser for research tasks, processes assignment emails into complete project setups, and integrates with tools like Linear, GitHub, Todoist, and WhatsApp. When you get a college assignment email, GAIA automatically creates docs, sets deadlines, does research, and organizes everything - turning hours of setup into minutes.",
+      "GAIA runs your digital workflow. It handles Gmail and Google Calendar. It creates docs and sheets. It tracks goals and todos. It does research. It connects to Linear GitHub Todoist WhatsApp and 50+ other tools. Get an assignment email and GAIA spins up a doc sets deadlines does the research and organises everything. Hours of setup become minutes.",
   },
   {
     question: "Is my personal data safe with GAIA?",
     answer:
-      "Absolutely. We never train on your data or sell it to third parties - period. You can self-host GAIA completely (you control everything) or use our cloud version where your data stays encrypted and isolated. We're also open-source, so you can inspect every line of code. Your information stays yours, always.",
+      "Yes. We never train on your data and we never sell it. You can use our cloud where your data stays encrypted and isolated or you can self host the whole thing on your own infrastructure. GAIA is open source so every line of code that touches your data is inspectable.",
+  },
+  {
+    question: "Is my data used to train AI models?",
+    answer:
+      "No. Your data is yours. We do not train on it and we do not share it with model providers for training. If that still feels uncomfortable you can self host GAIA and route everything through your own infrastructure.",
+  },
+  {
+    question: "How does GAIA learn my preferences?",
+    answer:
+      "GAIA keeps persistent memory across conversations. It picks up your work style your important people your recurring patterns and the way you write. Over time it drafts replies that sound like you and surfaces the things you actually care about. You can see and edit what it remembers at any time.",
   },
   {
     question:
-      "How is this different from Siri, Google Assistant, or existing AI tools?",
+      "How is this different from Siri Google Assistant or existing AI tools?",
     answer:
-      "Traditional assistants are glorified voice search that forget you exist between conversations. GAIA remembers everything about you - your work style, preferences, relationships, and goals - and gets smarter over time. It creates custom workflows, connects all your apps, and handles multi-step automation. Think less 'smart speaker' and more 'digital teammate who knows you personally.'",
+      "Voice assistants are basically search with a microphone. They forget you exist between questions. GAIA remembers everything about you. Your work your relationships your goals. It connects your apps runs multi step workflows and gets sharper the longer you use it. Less smart speaker more digital teammate who knows you personally.",
   },
   {
     question: "Do I need to be technical to use this?",
     answer:
-      "Not at all. GAIA works through natural conversation - just text it like you would a friend. You can start immediately with our web version or self-host with our guided installer. No coding required. Just say 'Help me plan mom's visit next month' and GAIA handles research, scheduling, document creation, and reminders automatically.",
+      "No. Text GAIA like you would a friend. Start on the web or self host with a guided installer. No coding. Just say help me plan mum's visit next month and GAIA handles the research the scheduling the doc and the reminders.",
   },
   {
     question: "Is GAIA free?",
     answer:
-      "GAIA starts completely free with core features that handle email automation, calendar management, and task organization. Pro plans begin at $30/month and unlock higher usage limits, and priority support. For maximum privacy and control, you can self-host GAIA entirely free on your own infrastructure - no ongoing costs, complete data ownership.",
+      "Yes there is a free tier that covers email automation calendar management and todos. Pro starts at $20 a month for higher limits and priority support. Enterprise is available for teams that need SSO custom integrations and dedicated support. You can also self host the whole thing for zero cost on your own infrastructure.",
   },
   {
     question: "Can I talk to customer support?",
     answer:
-      "Yes! We pride ourselves on genuine human support. Email support@heygaia.io for technical issues or reach our founder Aryan directly at aryan@heygaia.io - he personally reads every email. We also have active Discord and WhatsApp communities where you can get help from both our team and other users. Response time is typically 24-48 hours, often much faster.",
+      "Yes. Email support@heygaia.io or reach our founder Aryan directly at aryan@heygaia.io. He reads every email. We also run active Discord and WhatsApp communities. Most replies go out in 24 to 48 hours often faster.",
   },
 ];
 

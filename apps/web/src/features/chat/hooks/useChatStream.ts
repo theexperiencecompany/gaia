@@ -4,17 +4,13 @@ import {
   parseChatStreamEvent,
   upsertTodoProgressToolData,
 } from "@shared/chat";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
-import {
-  ANALYTICS_EVENTS,
-  trackConversationCreated,
-  trackEvent,
-} from "@/lib/analytics";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
 import { toast } from "@/lib/toast";
@@ -56,6 +52,14 @@ export const useChatStream = () => {
       description: null as string | null,
     },
   });
+
+  // Keep refs.current.convoMessages in sync with the latest value from the store.
+  // Without this, refs.current.convoMessages is permanently stale after mount —
+  // it captures the initial value (often []) and never updates, so the API receives
+  // wrong conversation history on every message after the first.
+  useEffect(() => {
+    refs.current.convoMessages = convoMessages;
+  }, [convoMessages]);
 
   // Reset all stream-related state
   const resetStreamState = () => {
@@ -111,7 +115,10 @@ export const useChatStream = () => {
         await db.putConversation(newConversation);
 
         // Track new conversation creation
-        trackConversationCreated({ conversationId, source: "chat" });
+        trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_CREATED, {
+          conversationId,
+          source: "chat",
+        });
       } catch (error) {
         console.error("Failed to save conversation to IndexedDB:", error);
       }
@@ -334,12 +341,6 @@ export const useChatStream = () => {
       stream_id,
     } = data;
 
-    console.log(
-      "[useChatStream] handleNewConversation:",
-      conversation_id,
-      "desc:",
-      conversation_description,
-    );
     refs.current.newConversation.id = conversation_id;
     refs.current.newConversation.description = conversation_description;
 
@@ -430,7 +431,9 @@ export const useChatStream = () => {
   }) => {
     const { user_message_id, bot_message_id, stream_id } = data;
     const conversationId = useChatStore.getState().activeConversationId;
-    if (!conversationId) return;
+    if (!conversationId) {
+      return;
+    }
 
     // Set stream_id for backend cancellation support
     if (stream_id) {
@@ -646,7 +649,10 @@ export const useChatStream = () => {
             stream_id: parsed.stream_id,
           };
 
-          if (data.conversation_id) {
+          if (
+            data.conversation_id &&
+            !useChatStore.getState().activeConversationId
+          ) {
             await handleNewConversation({
               conversation_id: data.conversation_id,
               conversation_description: data.conversation_description,
@@ -662,12 +668,16 @@ export const useChatStream = () => {
             data.bot_message_id &&
             !refs.current.newConversation.id
           ) {
+            // Now properly pass the args
             await handleExistingConversationMessages({
-              user_message_id: data.user_message_id,
-              bot_message_id: data.bot_message_id,
-              stream_id: data.stream_id,
+              user_message_id: parsed.user_message_id as string,
+              bot_message_id: parsed.bot_message_id as string,
+              stream_id: parsed.stream_id as string,
             });
           }
+        }
+
+        if (parsed.type === "token_usage") {
           continue;
         }
 

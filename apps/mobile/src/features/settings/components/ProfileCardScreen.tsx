@@ -1,5 +1,4 @@
 import * as Clipboard from "expo-clipboard";
-import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,12 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  AppIcon,
-  ArrowLeft01Icon,
-  Copy01Icon,
-  Share01Icon,
-} from "@/components/icons";
+import { AppIcon, Copy01Icon, Share01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type {
   HoloCardColors,
@@ -25,15 +19,16 @@ import type {
 } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
 import { useResponsive } from "@/lib/responsive";
+import { BackButton } from "@/shared/components/ui/back-button";
 
 // ─── Color tokens ─────────────────────────────────────────────────────────────
 const C = {
-  bg: "#0b0c0f",
+  bg: "#111111",
   cardBg: "#131416",
   surface: "#1a1c21",
   divider: "rgba(255,255,255,0.06)",
   text: "#ffffff",
-  textMuted: "#8e8e93",
+  textMuted: "#71717a",
   textSubtle: "#5a5a5e",
   primary: "#00bbff",
   primaryBg: "rgba(0,187,255,0.15)",
@@ -317,7 +312,6 @@ function ProfileCard({ profile, stats, accentColors }: ProfileCardProps) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export function ProfileCardScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { spacing, fontSize } = useResponsive();
 
@@ -434,19 +428,7 @@ export function ProfileCardScreen() {
           alignItems: "center",
         }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <AppIcon icon={ArrowLeft01Icon} size={18} color={C.text} />
-        </Pressable>
+        <BackButton />
         <Text
           style={{
             marginLeft: spacing.md,

@@ -142,6 +142,24 @@ export const workflowApi = {
     return apiService.get<TriggerSchema[]>("/triggers/schema");
   },
 
+  getTriggerOptions: async (
+    integrationId: string,
+    triggerSlug: string,
+    fieldName: string,
+    queryParams?: Record<string, string | number | boolean>,
+  ): Promise<{ value: string; label: string }[]> => {
+    const params: Record<string, string | number | boolean> = {
+      integration_id: integrationId,
+      trigger_slug: triggerSlug,
+      field_name: fieldName,
+      ...(queryParams ?? {}),
+    };
+    const response = await apiService.get<{
+      options: { value: string; label: string }[];
+    }>(`/triggers/options${buildQueryString(params)}`);
+    return response?.options ?? [];
+  },
+
   generatePrompt: async (params: {
     title?: string;
     description?: string;

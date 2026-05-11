@@ -2,8 +2,13 @@ import asyncio
 import time
 from typing import Annotated, Any, Dict, List, Optional
 
-from shared.py.wide_events import log
 from app.constants.cache import ONE_HOUR_TTL
+from app.constants.search import (
+    CRAWL4AI_PAGE_TIMEOUT_MS,
+    DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
+    DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,
+    DEEP_RESEARCH_FALLBACK_SEMAPHORE_COUNT,
+)
 from app.db.redis import get_cache, set_cache
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.research_tool_docs import (
@@ -11,19 +16,17 @@ from app.templates.docstrings.research_tool_docs import (
     RESEARCH_INSTRUCTIONS,
 )
 from app.utils.chat_utils import get_user_id_from_config
+from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
 from app.utils.research_utils import (
     build_research_cache_key,
     decompose_research_queries,
     rank_and_deduplicate_urls,
 )
-from app.utils.search_utils import (
-    fetch_with_crawl4ai,
-    fetch_with_httpx,
-    search_with_duckduckgo,
-)
+from app.utils.search_utils import fetch_with_httpx, search_with_duckduckgo
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
+from shared.py.wide_events import log
 
 
 @tool
@@ -102,30 +105,55 @@ async def deep_research(
         successful_searches = sum(
             1 for r in search_results if isinstance(r, dict) and r.get("results")
         )
+        total_raw_urls = sum(
+            len(r.get("results", []))
+            for r in search_results
+            if isinstance(r, dict) and r.get("results")
+        )
         writer(
             {
-                "progress": f"{successful_searches}/{len(sub_queries)} searches returned results"
+                "progress": (
+                    f"{successful_searches}/{len(sub_queries)} searches returned results "
+                    f"({total_raw_urls} total URLs before deduplication)"
+                )
             }
         )
 
         # ── Phase 3: Deduplicate + rank URLs ────────────────────────────────
         ranked_urls = rank_and_deduplicate_urls(search_results, max_urls=max_sources)
+        found_urls = [u["url"] for u in ranked_urls]
         writer(
             {
-                "progress": f"Found {len(ranked_urls)} unique sources — fetching full content..."
+                "progress": f"Found {len(ranked_urls)} unique sources — fetching full content...",
+                "found_urls": found_urls,
             }
         )
 
         if not ranked_urls:
             return {
-                "error": "No sources found for the given query. Try broadening your search.",
+                "error": (
+                    "Search returned no results for the given query. "
+                    "No URLs were found — do not fabricate links. "
+                    "Try broadening the search or inform the user that no sources were found."
+                ),
                 "query": query,
+                "searched_queries": sub_queries,
+                "source_count": 0,
                 "data": None,
             }
 
-        # ── Phase 4: Parallel page fetches (bounded concurrency) ────────────
-        # Fallback chain per URL: crawl4ai → httpx+BS4 → snippet
-        semaphore = asyncio.Semaphore(5)
+        # ── Phase 4: Batch crawl4ai fetch + bounded fallback fetches ─────────
+        writer({"progress": "Fetching sources..."})
+        urls_to_fetch = [u["url"] for u in ranked_urls]
+        crawl4ai_contents, crawl4ai_errors = await batch_fetch_with_crawl4ai(
+            urls_to_fetch,
+            page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
+            total_timeout_seconds=DEEP_RESEARCH_CRAWL4AI_BATCH_TIMEOUT_SECONDS,
+            semaphore_count=DEEP_RESEARCH_CRAWL4AI_SEMAPHORE_COUNT,
+            context_name="crawl4ai",
+        )
+
+        semaphore = asyncio.Semaphore(DEEP_RESEARCH_FALLBACK_SEMAPHORE_COUNT)
         fetch_counter = 0
         total_urls = len(ranked_urls)
 
@@ -135,16 +163,19 @@ async def deep_research(
                 url = url_info["url"]
                 errors: list[str] = []
 
-                # Tier 1: crawl4ai (free, no API key, handles JS)
-                try:
-                    content = await fetch_with_crawl4ai(url)
+                batch_content = crawl4ai_contents.get(url)
+                if batch_content and batch_content.strip():
                     fetch_counter += 1
                     writer(
                         {"progress": f"Fetched source {fetch_counter}/{total_urls}..."}
                     )
-                    return {**url_info, "content": content, "fetch_error": None}
-                except Exception as e:
-                    errors.append(f"crawl4ai: {e}")
+                    return {**url_info, "content": batch_content, "fetch_error": None}
+
+                crawl_error = crawl4ai_errors.get(url)
+                if crawl_error:
+                    errors.append(f"crawl4ai: {crawl_error}")
+                else:
+                    errors.append("crawl4ai: returned no content")
 
                 # Tier 2: httpx + BeautifulSoup (always available)
                 try:
@@ -190,6 +221,8 @@ async def deep_research(
         )
 
         # ── Build result ─────────────────────────────────────────────────────
+        # Include the authoritative list of real URLs so the LLM cannot fabricate others
+        authoritative_urls = [s["url"] for s in valid_sources]
         result: Dict[str, Any] = {
             "query": query,
             "scope": scope,
@@ -197,9 +230,15 @@ async def deep_research(
             "sub_queries": sub_queries,
             "sources": valid_sources,
             "source_count": len(valid_sources),
+            "authoritative_urls": authoritative_urls,
             "depth": depth,
             "elapsed_seconds": elapsed,
+            "failed_sources": failed_count,
             "error": None,
+            "integrity_note": (
+                "All URLs in `sources` and `authoritative_urls` were returned by real search "
+                "queries. Only cite URLs from this list — never invent or guess URLs."
+            ),
         }
 
         # Only cache when we have content — avoid masking transient fetch failures

@@ -1,4 +1,5 @@
-import { AnimatePresence, m, useInView } from "motion/react";
+import { AnimatePresence, useInView } from "motion/react";
+import * as m from "motion/react-m";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";

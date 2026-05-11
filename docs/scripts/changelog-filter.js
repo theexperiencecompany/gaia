@@ -18,8 +18,10 @@
   }
 
   function isChangelogPage() {
-    return window.location.pathname.includes("release-notes") ||
-      window.location.pathname.includes("changelog");
+    // Only run the interactive filter bar on the main release notes page.
+    // Sub-pages (e.g. /release-notes/api) use a React component for filtering.
+    var path = window.location.pathname.replace(/\/$/, "");
+    return path.endsWith("/release-notes") || path === "/release-notes";
   }
 
   function getBgColor() {

@@ -95,6 +95,12 @@ def mock_track_signup():
 
 
 @pytest.fixture
+def mock_track_login():
+    with patch("app.services.oauth.oauth_service.track_login") as mock_tl:
+        yield mock_tl
+
+
+@pytest.fixture
 def mock_send_welcome_email():
     with patch(
         "app.services.oauth.oauth_service.send_welcome_email",
@@ -182,7 +188,9 @@ class TestStoreUserInfo:
             await store_user_info("Test", None, "https://pic.example.com/pic.jpg")
         assert exc_info.value.status_code == 400
 
-    async def test_updates_existing_user_with_picture(self, mock_users_collection):
+    async def test_updates_existing_user_with_picture(
+        self, mock_users_collection, mock_track_login
+    ):
         oid = ObjectId()
         existing_user = {
             "_id": oid,
@@ -197,7 +205,7 @@ class TestStoreUserInfo:
             "Alice Updated", "alice@test.com", "https://new-pic.example.com/new.jpg"
         )
 
-        assert result == oid
+        assert result == (oid, False)
         mock_users_collection.update_one.assert_awaited_once()
         call_args = mock_users_collection.update_one.call_args
         update_data = call_args[0][1]["$set"]
@@ -206,7 +214,7 @@ class TestStoreUserInfo:
         assert "updated_at" in update_data
 
     async def test_updates_existing_user_without_picture_keeps_existing(
-        self, mock_users_collection
+        self, mock_users_collection, mock_track_login
     ):
         oid = ObjectId()
         existing_user = {
@@ -220,14 +228,14 @@ class TestStoreUserInfo:
 
         result = await store_user_info("Alice Updated", "alice@test.com", None)
 
-        assert result == oid
+        assert result == (oid, False)
         call_args = mock_users_collection.update_one.call_args
         update_data = call_args[0][1]["$set"]
         # Should NOT set picture when no new URL provided and user has existing pic
         assert "picture" not in update_data
 
     async def test_updates_existing_user_without_picture_sets_empty_when_no_existing(
-        self, mock_users_collection
+        self, mock_users_collection, mock_track_login
     ):
         oid = ObjectId()
         existing_user = {
@@ -241,7 +249,7 @@ class TestStoreUserInfo:
 
         result = await store_user_info("Alice Updated", "alice@test.com", None)
 
-        assert result == oid
+        assert result == (oid, False)
         call_args = mock_users_collection.update_one.call_args
         update_data = call_args[0][1]["$set"]
         assert update_data["picture"] == ""
@@ -263,7 +271,7 @@ class TestStoreUserInfo:
             "Bob", "bob@test.com", "https://pic.example.com/bob.jpg"
         )
 
-        assert result == inserted_id
+        assert result == (inserted_id, True)
         call_args = mock_users_collection.insert_one.call_args
         user_data = call_args[0][0]
         assert user_data["name"] == "Bob"
@@ -287,7 +295,7 @@ class TestStoreUserInfo:
 
         result = await store_user_info("Bob", "bob@test.com", None)
 
-        assert result == inserted_id
+        assert result == (inserted_id, True)
         call_args = mock_users_collection.insert_one.call_args
         user_data = call_args[0][0]
         assert user_data["picture"] == ""
@@ -360,7 +368,7 @@ class TestStoreUserInfo:
 
         # Should not raise
         result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == mock_result.inserted_id
+        assert result == (mock_result.inserted_id, True)
 
     async def test_new_user_welcome_email_failure_does_not_raise(
         self,
@@ -376,7 +384,7 @@ class TestStoreUserInfo:
         mock_send_welcome_email.side_effect = Exception("SMTP error")
 
         result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == mock_result.inserted_id
+        assert result == (mock_result.inserted_id, True)
 
     async def test_new_user_resend_failure_does_not_raise(
         self,
@@ -392,7 +400,7 @@ class TestStoreUserInfo:
         mock_add_contact_to_resend.side_effect = Exception("Resend API error")
 
         result = await store_user_info("Bob", "bob@test.com", None)
-        assert result == mock_result.inserted_id
+        assert result == (mock_result.inserted_id, True)
 
 
 # ---------------------------------------------------------------------------

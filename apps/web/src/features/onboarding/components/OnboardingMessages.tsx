@@ -5,7 +5,7 @@
  * bot bubble. No state, no effects.
  */
 
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { memo, type ReactNode } from "react";
 
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";

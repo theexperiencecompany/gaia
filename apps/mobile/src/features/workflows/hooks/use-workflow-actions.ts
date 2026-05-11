@@ -118,10 +118,8 @@ export function useWorkflowActions(): UseWorkflowActionsReturn {
       try {
         const response = await workflowApi.executeWorkflow(id);
         return { execution_id: response.execution_id };
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to execute workflow";
-        setActionError(message);
+      } catch {
+        setActionError("Couldn't run workflow. Please try again.");
         return null;
       } finally {
         setIsExecuting(false);

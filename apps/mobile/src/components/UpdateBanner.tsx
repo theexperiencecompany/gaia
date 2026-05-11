@@ -18,7 +18,7 @@ export function UpdateBanner() {
         left: 0,
         right: 0,
         zIndex: 9999,
-        backgroundColor: "#0ea5e9",
+        backgroundColor: "#00bbff",
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
@@ -27,7 +27,7 @@ export function UpdateBanner() {
       }}
     >
       <Text
-        style={{ flex: 1, fontSize: 13, fontWeight: "500", color: "#ffffff" }}
+        style={{ flex: 1, fontSize: 13, fontWeight: "500", color: "#000000" }}
       >
         An update is available
       </Text>
@@ -47,9 +47,7 @@ export function UpdateBanner() {
           accessibilityLabel="Dismiss update"
           style={{ paddingHorizontal: 8, paddingVertical: 4 }}
         >
-          <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
-            Later
-          </Text>
+          <Text style={{ fontSize: 12, color: "rgba(0,0,0,0.7)" }}>Later</Text>
         </PressableFeedback>
       </View>
     </View>

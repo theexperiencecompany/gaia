@@ -63,14 +63,17 @@ class ApplyLabelRequest(BaseModel):
 
 
 class DraftRequest(BaseModel):
-    """Request model for creating or updating a draft email."""
+    """Request model for creating or updating a draft email.
+
+    ``body`` may be Markdown or HTML — the Composio Gmail hook converts
+    Markdown to HTML before sending, so callers never need to choose.
+    """
 
     to: List[str]
     subject: str
     body: str
     cc: Optional[List[str]] = None
     bcc: Optional[List[str]] = None
-    is_html: Optional[bool] = False
 
 
 class EmailWebhookMessage(BaseModel):

@@ -1,0 +1,134 @@
+{
+  "name": "Instruction Following",
+  "description": "Tests precise execution of user instructions including format constraints, conditional logic, negation handling, priority ordering, tone/persona instructions, multi-constraint satisfaction, and output structure requirements.",
+  "version": "1.0.0",
+  "eval_type": "instruction_following",
+  "items": [
+    {
+      "input": "list my top 3 priorities for today in bullet points",
+      "expected_output": "Should return exactly 3 items in bullet point format. Should not return 4 or more items. Should not use numbered lists or paragraphs.",
+      "context": "Simple format and count constraint. Tests basic instruction adherence.",
+      "tags": ["format", "count", "bullets"],
+      "metadata": { "difficulty": "easy", "category": "format-constraint" }
+    },
+    {
+      "input": "give me a summary of my day but keep it under 50 words",
+      "expected_output": "Should provide a meaningful summary that is strictly under 50 words. Should not pad to reach a minimum or exceed the limit. Word count should be verifiable.",
+      "context": "Word count constraint. Tests adherence to explicit length limits.",
+      "tags": ["length", "word-count", "summary"],
+      "metadata": { "difficulty": "easy", "category": "length-constraint" }
+    },
+    {
+      "input": "show me my tasks sorted by due date, earliest first",
+      "expected_output": "Should retrieve tasks and present them ordered by due date ascending. Tasks without due dates should be grouped at the end. The ordering must be correct.",
+      "context": "Simple ordering constraint. Tests correct sorting behavior.",
+      "tags": ["ordering", "date-sort", "tasks"],
+      "metadata": { "difficulty": "easy", "category": "ordering" }
+    },
+    {
+      "input": "send a casual message to the team saying we're pushing the deadline to next friday. keep it chill",
+      "expected_output": "Should compose a message with informal, relaxed tone. Should not use formal business language or stiff phrasing. Should convey the deadline change clearly despite the casual tone.",
+      "context": "Tone constraint (casual). Tests ability to match requested communication style.",
+      "tags": ["tone", "casual", "message"],
+      "metadata": { "difficulty": "easy", "category": "tone" }
+    },
+    {
+      "input": "reply to that email very formally. like old school business letter formal",
+      "expected_output": "Should compose a reply using formal business language: proper salutations, complete sentences, formal closing. Should not use contractions, slang, or casual phrasing. The formality level should match traditional business correspondence.",
+      "context": "Tone constraint (formal). Tests ability to shift to a very specific register.",
+      "tags": ["tone", "formal", "email"],
+      "metadata": { "difficulty": "easy", "category": "tone" }
+    },
+    {
+      "input": "show me everything on my calendar this week except anything with Bob in it",
+      "expected_output": "Should retrieve calendar events for the current week and explicitly filter out any events that include Bob as an attendee or in the event title. Should not accidentally include Bob-related events.",
+      "context": "Exclusion constraint. Tests negation handling in queries.",
+      "tags": ["negation", "exclusion", "calendar", "filter"],
+      "metadata": { "difficulty": "medium", "category": "negation" }
+    },
+    {
+      "input": "if its before 5pm schedule the call for today, otherwise put it on tomorrow morning at 9",
+      "expected_output": "Should use the pinned time from context (2:30pm) to evaluate the conditional. Since 2:30pm is before 5pm, should schedule the call for today. Should confirm it chose the 'today' branch and reference the current time.",
+      "context": "Conditional instruction based on current time. Tests conditional logic execution. current_time: 14:30, timezone: America/New_York",
+      "tags": ["conditional", "time-based", "calendar"],
+      "metadata": { "difficulty": "medium", "category": "conditional" }
+    },
+    {
+      "input": "write a 3-bullet summary of the project status. no jargon, my manager isnt technical. include the deadline",
+      "expected_output": "Should produce exactly 3 bullet points. Language must be non-technical and jargon-free. One of the bullets must mention the deadline. Should not use acronyms or technical terms without explanation.",
+      "context": "Multi-constraint output: count (3), audience (non-technical), required content (deadline). Tests simultaneous constraint satisfaction.",
+      "tags": ["multi-constraint", "bullets", "audience", "jargon-free"],
+      "metadata": { "difficulty": "medium", "category": "multi-constraint" }
+    },
+    {
+      "input": "list my incomplete tasks for this week but put the most urgent ones first and group them by project",
+      "expected_output": "Should retrieve incomplete tasks for the current week, group them by project, and within each project group sort by urgency (most urgent first). The dual-level organization (grouped + sorted within groups) must be correct.",
+      "context": "Compound ordering: group by one dimension, sort by another within groups. Tests complex organizational instructions.",
+      "tags": ["ordering", "grouping", "tasks", "compound"],
+      "metadata": { "difficulty": "medium", "category": "compound-ordering" }
+    },
+    {
+      "input": "draft a message to the client. be apologetic but dont admit fault. acknowledge the delay but frame it as us being thorough",
+      "expected_output": "Should write a message that conveys regret about the delay without explicitly admitting the team caused it. Should reframe the delay as quality assurance or thoroughness. The tone must be apologetic without being groveling, and the framing should be believable.",
+      "context": "Nuanced tone instruction with contradictory-seeming constraints (apologize but don't admit fault). Tests subtle communication requirements.",
+      "tags": ["tone", "nuance", "diplomatic", "client-communication"],
+      "metadata": { "difficulty": "medium", "category": "nuanced-tone" }
+    },
+    {
+      "input": "respond to this in spanish please. and use the formal usted form not tu",
+      "expected_output": "Should compose the response entirely in Spanish using the formal 'usted' conjugation throughout. Should not mix in 'tu' forms. Grammar and formality level should be consistent.",
+      "context": "Language constraint with specific formality register. Tests language switching and register awareness.",
+      "tags": ["language", "spanish", "formality", "usted"],
+      "metadata": { "difficulty": "medium", "category": "language-constraint" }
+    },
+    {
+      "input": "give me a numbered list of action items from that meeting. only include things assigned to me, skip anything that's already done, and put them in alphabetical order",
+      "expected_output": "Should produce a numbered list (not bullets). Should filter to only user-assigned items. Should exclude completed items. Should sort alphabetically. All four constraints must be satisfied simultaneously.",
+      "context": "Four simultaneous constraints: format (numbered), filter (assigned to user), exclusion (done items), sort (alphabetical). Tests multi-constraint adherence.",
+      "tags": ["multi-constraint", "numbered", "filter", "alphabetical"],
+      "metadata": { "difficulty": "medium", "category": "multi-constraint" }
+    },
+    {
+      "input": "send the report to everyone on the team EXCEPT lisa and mark. and cc my boss. subject line should be exactly 'Q1 Report - Final' with no changes",
+      "expected_output": "Should compose an email to all team members excluding Lisa and Mark, CC the user's boss, with the exact subject line 'Q1 Report - Final'. Should not paraphrase or modify the subject line. Should confirm the exclusions.",
+      "context": "Multiple precise constraints: recipient exclusion, CC inclusion, exact subject text. Tests literal instruction following.",
+      "tags": ["exact-text", "exclusion", "email", "multi-constraint"],
+      "metadata": { "difficulty": "hard", "category": "precise-execution" }
+    },
+    {
+      "input": "rewrite this message but make it shorter, more direct, remove the part about the budget, add a line about the new timeline, keep the friendly tone, and format it as 2 short paragraphs",
+      "expected_output": "Should produce a rewritten message that satisfies all six constraints: (1) shorter than original, (2) more direct language, (3) budget section removed, (4) new timeline info added, (5) friendly tone preserved, (6) exactly 2 paragraphs. Missing any single constraint is a failure.",
+      "context": "Six simultaneous editing constraints. Tests ability to track and satisfy many requirements at once.",
+      "tags": ["rewrite", "multi-constraint", "editing", "format"],
+      "metadata": { "difficulty": "hard", "category": "complex-rewrite" }
+    },
+    {
+      "input": "create 5 todo items for the website redesign project. each should be a concrete task not a vague goal. estimate hours for each. total should not exceed 40 hours. order by dependency - things that block other things go first",
+      "expected_output": "Should create exactly 5 todos. Each must be a specific, actionable task (not vague like 'improve design'). Each must have an hour estimate. Total hours must be 40 or less. Items must be ordered by dependency chain. All five constraints must hold.",
+      "context": "Creative task with mathematical and logical constraints. Tests structured output generation under multiple constraints.",
+      "tags": ["creative", "constraints", "math", "dependency", "todos"],
+      "metadata": { "difficulty": "hard", "category": "constrained-creation" }
+    },
+    {
+      "input": "return my schedule for tomorrow as JSON. keys should be 'time' in 24hr format, 'title', 'duration_minutes', and 'location'. array of objects. nothing else in the response just the json",
+      "expected_output": "Should return only valid JSON with no surrounding text, markdown code fences, or explanation. Each object must have exactly the four specified keys with correct types (24-hour time string, title string, integer minutes, location string). No additional keys.",
+      "context": "Strict output structure requirement with format-only response. Tests machine-readable output generation.",
+      "tags": ["json", "structured-output", "strict-format", "no-prose"],
+      "metadata": { "difficulty": "hard", "category": "structured-output" }
+    },
+    {
+      "input": "I want you to do three things but in this exact order and confirm each one before moving to the next: 1) check if im free at 2pm tomorrow 2) if yes book a meeting called 'Design Review' 3) then send an invite to the design team. do NOT do step 2 if step 1 says im busy and do NOT do step 3 without confirming step 2 worked",
+      "expected_output": "Should execute sequentially with confirmation at each step. Must check availability first. Must stop and report if not available (not proceed to step 2). Must confirm meeting creation before sending invites. Must not batch or parallelize the steps. Each gate must be respected.",
+      "context": "Sequential execution with explicit gates and conditional stops. Tests step-by-step execution discipline.",
+      "tags": ["sequential", "conditional", "confirmation-gates", "multi-step"],
+      "metadata": { "difficulty": "hard", "category": "sequential-execution" }
+    },
+    {
+      "input": "write up the meeting notes. use past tense. third person only, dont say 'I' or 'we'. start each section with a bold header. max 200 words total. include an action items section at the end",
+      "expected_output": "Should produce meeting notes entirely in past tense and third person (no first person pronouns). Each section must have a bold header. Total word count must not exceed 200. Must end with an action items section. All five constraints must be met.",
+      "context": "Writing task with grammatical, structural, and length constraints. Tests sustained constraint adherence across a longer output.",
+      "tags": ["writing", "tense", "person", "format", "length", "multi-constraint"],
+      "metadata": { "difficulty": "hard", "category": "constrained-writing" }
+    }
+  ]
+}

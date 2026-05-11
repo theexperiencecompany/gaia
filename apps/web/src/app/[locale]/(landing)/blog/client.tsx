@@ -2,6 +2,7 @@
 
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import Image from "next/image";
+import { useEffect } from "react";
 import type { Article, BreadcrumbList, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
@@ -12,6 +13,7 @@ import TableOfContents from "@/features/blog/components/TableOfContents";
 import { parseHeadings } from "@/features/blog/utils/parseHeadings";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { BlogPost, BlogPostMeta } from "@/lib/blog";
 
 interface BlogPostClientProps {
@@ -27,6 +29,15 @@ export default function BlogPostClient({
   structuredData,
   breadcrumbSchema,
 }: BlogPostClientProps) {
+  useEffect(() => {
+    if (blog?.slug) {
+      trackEvent(ANALYTICS_EVENTS.BLOG_ARTICLE_VIEWED, {
+        slug: blog.slug,
+        title: blog.title,
+      });
+    }
+  }, [blog?.slug]);
+
   if (!blog) {
     return (
       <div className="flex h-screen items-center justify-center text-medium font-medium text-foreground-500">

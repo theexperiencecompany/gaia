@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
-
 import JsonLd from "@/components/seo/JsonLd";
 import type { AlternativeData } from "@/features/alternatives/data/alternativesData";
-import {
-  getAllAlternatives,
-  getAlternativesByCategory,
-} from "@/features/alternatives/data/alternativesData";
+import { getAllAlternatives } from "@/features/alternatives/data/alternativesData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { Link } from "@/i18n/navigation";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -104,8 +100,16 @@ function AlternativeCard({ alt }: { readonly alt: AlternativeData }) {
   );
 }
 
-export default function AlternativesHubPage() {
-  const allAlternatives = getAllAlternatives();
+export default async function AlternativesHubPage() {
+  const allAlternatives = await getAllAlternatives();
+  // Pre-group by category since getAlternativesByCategory is now async — avoids
+  // awaiting inside JSX render.
+  const byCategory = new Map<string, typeof allAlternatives>();
+  for (const alt of allAlternatives) {
+    const list = byCategory.get(alt.category) ?? [];
+    list.push(alt);
+    byCategory.set(alt.category, list);
+  }
 
   const webPageSchema = generateWebPageSchema(
     "Best Alternatives to Popular Productivity Tools",
@@ -148,7 +152,7 @@ export default function AlternativesHubPage() {
 
         <div className="space-y-16">
           {CATEGORY_ORDER.map((category) => {
-            const items = getAlternativesByCategory(category);
+            const items = byCategory.get(category) ?? [];
             if (items.length === 0) return null;
 
             return (

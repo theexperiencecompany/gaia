@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.4.0...mobile-v0.5.0) (2026-04-05)
+
+
+### Features
+
+* **analytics:** add PostHog analytics to bots and CLI ([8d799ef](https://github.com/theexperiencecompany/gaia/commit/8d799ef56f0f789f9ceb660ae0f6ab2eb01bb518))
+* **ci:** Dagger integration test overhaul — real-service tests + CI hardening ([#591](https://github.com/theexperiencecompany/gaia/issues/591)) ([7736c39](https://github.com/theexperiencecompany/gaia/commit/7736c3957b73b51e9e47291836c61a6f03e750bd))
+* **whatsapp:** integrate WhatsApp via Kapso ([#581](https://github.com/theexperiencecompany/gaia/issues/581)) ([c870d16](https://github.com/theexperiencecompany/gaia/commit/c870d16ef63cc103c6ce465cf029f17b449c91a3))
+
+
+### Performance Improvements
+
+* remove barrel exports for faster HMR and build times ([#569](https://github.com/theexperiencecompany/gaia/issues/569)) ([70388ff](https://github.com/theexperiencecompany/gaia/commit/70388ffb681f6910e11dfae8d005825ceee4285e))
+* **todos:** Comprehensive performance and UX improvements ([#566](https://github.com/theexperiencecompany/gaia/issues/566)) ([cf5f7d4](https://github.com/theexperiencecompany/gaia/commit/cf5f7d49665da38ebf014efae6c24237df8e3121))
+
 ## [0.4.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.3.0...mobile-v0.4.0) (2026-02-27)
 
 

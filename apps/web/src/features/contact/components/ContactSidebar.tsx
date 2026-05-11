@@ -1,4 +1,9 @@
-import { Mail01Icon, SquareLock01Icon, WavingHand01Icon } from "@icons";
+import {
+  Calendar01Icon,
+  Mail01Icon,
+  SquareLock01Icon,
+  WavingHand01Icon,
+} from "@icons";
 import {
   DiscordIcon,
   Github,
@@ -23,6 +28,12 @@ const emailLinks = [
     href: "mailto:security@heygaia.io",
     label: "security@heygaia.io",
     Icon: SquareLock01Icon,
+  },
+  {
+    href: "https://cal.com/aryanranderiya",
+    label: "Book a call",
+    Icon: Calendar01Icon,
+    external: true,
   },
 ];
 
@@ -69,11 +80,14 @@ export default function ContactSidebar() {
         >
           Get in Touch
         </h3>
-        {emailLinks.map(({ href, label, Icon }) => (
+        {emailLinks.map(({ href, label, Icon, external }) => (
           <a
             key={label}
             href={href}
             className="text-muted-foreground inline-flex items-center gap-2 text-foreground-500 hover:underline"
+            {...(external
+              ? { target: "_blank", rel: "noopener noreferrer" }
+              : {})}
           >
             <Icon className="size-5" aria-hidden="true" />
             {label}

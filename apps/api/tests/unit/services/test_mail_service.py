@@ -844,7 +844,10 @@ class TestCreateDraft:
         assert params["cc"] == ["cc@example.com"]
         assert params["bcc"] == ["bcc@example.com"]
 
-    async def test_sets_html_flag_when_is_html_true(self, mock_invoke_gmail_tool):
+    async def test_passes_body_through_without_html_flag(self, mock_invoke_gmail_tool):
+        """``is_html`` no longer exists on the service — bodies are converted
+        to HTML by the Composio before-hook, so the service just forwards
+        whatever body it was given and never sets an html param itself."""
         mock_invoke_gmail_tool.return_value = {"successful": True}
 
         await create_draft(
@@ -853,11 +856,12 @@ class TestCreateDraft:
             to_list=["bob@example.com"],
             subject="Hi",
             body="<b>HTML</b>",
-            is_html=True,
         )
 
         params = mock_invoke_gmail_tool.call_args[0][2]
-        assert params.get("html") is True
+        assert params["body"] == "<b>HTML</b>"
+        assert "html" not in params
+        assert "is_html" not in params
 
     async def test_returns_error_dict_on_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("quota exceeded")

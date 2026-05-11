@@ -38,6 +38,7 @@ Usage:
     await stream_manager.cancel_stream(stream_id)
 """
 
+import asyncio
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -180,6 +181,7 @@ class StreamManager:
         cls,
         stream_id: str,
         keepalive_interval: float = 15,
+        start_event: Optional[asyncio.Event] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Subscribe to stream channel and yield chunks.
@@ -191,6 +193,7 @@ class StreamManager:
         Args:
             stream_id: Stream identifier
             keepalive_interval: Seconds between keepalive comments when idle
+            start_event: asyncio.Event to set once subscribed to Redis
 
         Yields:
             SSE-formatted chunks from the background streaming task,
@@ -198,6 +201,8 @@ class StreamManager:
         """
         if not redis_cache.redis:
             log.error("Redis not available for stream subscription")
+            if start_event and not start_event.is_set():
+                start_event.set()
             return
 
         pubsub = redis_cache.redis.pubsub()
@@ -207,6 +212,10 @@ class StreamManager:
         try:
             await pubsub.subscribe(channel)
             log.debug(f"Subscribed to stream channel: {channel}")
+
+            # Allow the background task to start publishing
+            if start_event and not start_event.is_set():
+                start_event.set()
 
             while True:
                 # get_message returns None on timeout instead of cancelling

@@ -31,7 +31,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           color: "default" as const,
           bgColor: "bg-zinc-700/50",
         };
-      case "scheduled": {
+      case "schedule": {
         const cronLabel = draft.cron_expression
           ? getScheduleDescription(draft.cron_expression)
           : "Scheduled";

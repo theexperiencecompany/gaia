@@ -1,4 +1,6 @@
 export type {
+  ChannelPlatform,
+  ChannelPreferences,
   InAppNotification,
   InAppNotificationContent,
   NotificationAction as InAppNotificationAction,
@@ -8,6 +10,7 @@ export type {
   NotificationStatus,
   PlatformLink,
   PlatformLinksResponse,
+  QuietHours,
 } from "@gaia/shared/types";
 export {
   NotificationActionStyle as InAppNotificationActionStyle,
@@ -40,4 +43,5 @@ export interface NotificationCategoryPreferences {
 export interface NotificationPreferences {
   global: NotificationCategoryPreferences;
   categories: Record<string, NotificationCategoryPreferences>;
+  quiet_hours?: import("@gaia/shared/types").QuietHours | null;
 }

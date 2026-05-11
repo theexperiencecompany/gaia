@@ -7,7 +7,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { RETRY_LABEL, SUBMISSION_ERROR_MSG } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";

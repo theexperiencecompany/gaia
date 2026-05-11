@@ -47,6 +47,19 @@ icon: "icon-name"   # optional, Font Awesome icon slug
 
 Page paths in `docs.json` are **relative and extensionless** (e.g., `"developers/introduction"` maps to `developers/introduction.mdx`).
 
+## Images
+
+**Always use `<Frame>` for images.** Do not use markdown image syntax (`![alt](src)`). Use absolute paths from the project root.
+
+```mdx
+<Frame>
+  <img src="/images/screenshots/example.webp" alt="Descriptive alt text" />
+</Frame>
+```
+
+- No relative paths (`../images/` or `./images/`) — always use absolute (`/images/...`)
+- Every image must have a meaningful `alt` attribute (not generic like "image")
+
 ## Mintlify Reference
 
 When making component changes or adding new Mintlify components, fetch the official docs:

@@ -9,6 +9,7 @@ import {
   Mail01Icon,
   ZapIcon,
 } from "@icons";
+import { getSimpleTimeGreeting } from "@shared/utils";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
@@ -19,7 +20,6 @@ import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
-import { getSimpleTimeGreeting } from "@/utils/greetingUtils";
 
 function DashboardComposer() {
   const router = useRouter();

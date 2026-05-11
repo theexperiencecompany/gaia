@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { del } from "idb-keyval";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
-import { ANALYTICS_EVENTS, resetUser, trackEvent } from "@/lib/analytics";
+import { resetUser } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
 import { authApi } from "../api/authApi";
 
@@ -78,19 +78,16 @@ export const useLogout = () => {
   }, [queryClient]);
 
   const logout = useCallback(async () => {
-    // Track logout event before clearing storage (so we still have user context)
-    trackEvent(ANALYTICS_EVENTS.USER_LOGGED_OUT);
-
-    await clearAllStorage();
-
-    // Reset PostHog user identity
-    resetUser();
-
     try {
       await authApi.logout();
     } catch (error) {
       console.error("Logout API error:", error);
     }
+
+    await clearAllStorage();
+
+    // Reset PostHog user identity after logout request completes
+    resetUser();
 
     // Redirection will be handled by the authApi.logout method
     // but in case it doesn't (for example, if there's no logout_url),

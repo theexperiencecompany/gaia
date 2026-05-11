@@ -6,7 +6,7 @@
 
 "use client";
 
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import type { ReactNode } from "react";
 import { MOTION_COMPOSER_CTA } from "../constants/motion";
 

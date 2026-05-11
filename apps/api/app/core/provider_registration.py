@@ -31,6 +31,7 @@ from typing import Literal
 
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
+from app.agents.core.subagents.registry import all_subagents
 from app.agents.llm.client import register_llm_providers
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
@@ -75,6 +76,45 @@ def setup_warnings() -> None:
     """Set up common warning filters."""
     warnings.filterwarnings(
         "ignore", category=PydanticDeprecatedSince20, module="langchain_core.tools.base"
+    )
+
+
+async def warmup_subagent_graphs() -> None:
+    """Pre-warm compiled subagent graphs at startup.
+
+    The first handoff() in each worker process otherwise pays a cold-start
+    cost to build the subagent graph. Walking every subagent registered on
+    the provider registry here pushes that cost to startup where it's
+    amortised across all future requests.
+    """
+    subagents = list(all_subagents())
+    if not subagents:
+        log.info("No subagents to pre-warm")
+        return
+
+    agent_names = [
+        sa.config.agent_name for sa in subagents if sa.config and sa.config.agent_name
+    ]
+
+    async def _warm(name: str) -> bool:
+        try:
+            await providers.aget(name)
+            return True
+        except Exception as e:
+            log.warning(f"Subagent graph pre-warm failed for {name}: {e}")
+            return False
+
+    results = await asyncio.gather(*(_warm(n) for n in agent_names))
+    succeeded = sum(1 for ok in results if ok)
+    failed = len(agent_names) - succeeded
+    log.info(f"Subagent graphs pre-warmed: {succeeded}/{len(agent_names)} succeeded")
+    log.set(
+        subagent_warmup={
+            "total": len(agent_names),
+            "succeeded": succeeded,
+            "failed": failed,
+            "names": agent_names,
+        }
     )
 
 
@@ -236,6 +276,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         )
     )
     startup_services.append((warmup_tools_cache, "tools_cache_warmup"))
+    startup_services.append((warmup_subagent_graphs, "subagent_graph_warmup"))
 
     # FastAPI with hot reloading disabled: start serving quickly,
     # warm up in background.

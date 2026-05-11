@@ -9,6 +9,7 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.trigger_config import TriggerConfig
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import LangchainProvider
+from app.services.composio.proxy_client import invalidate_connected_account_cache
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
@@ -340,7 +341,6 @@ class ComposioService:
             ]
 
             if not active_accounts:
-                # No active account to delete - treat as success (idempotent disconnect)
                 log.info(
                     f"No active connected account found for {provider} and user {user_id}, nothing to delete"
                 )
@@ -374,6 +374,17 @@ class ComposioService:
                 f"Error deleting connected account for {provider} and user {user_id}: {e}"
             )
             raise
+        finally:
+            # Always flush the proxy connected_account_id cache: on success the
+            # cached ID is gone, on partial failure it may now be invalid, and
+            # on the idempotent no-op path a previous session may have cached
+            # an ID revoked outside this code path. Skipping invalidation when
+            # gather() raises would leave stale IDs in memory for up to the
+            # full TTL.
+            if config.toolkit:
+                invalidate_connected_account_cache(
+                    user_id=user_id, toolkit=config.toolkit
+                )
 
     async def handle_subscribe_trigger(
         self, user_id: str, triggers: list[TriggerConfig]

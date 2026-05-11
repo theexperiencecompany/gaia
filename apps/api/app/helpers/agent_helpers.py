@@ -14,11 +14,10 @@ from typing import AsyncGenerator, Optional
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from langsmith import traceable
-from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
+from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.oauth_config import OAUTH_INTEGRATIONS
 from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import (
@@ -142,18 +141,15 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
     clean_id, _ = parse_subagent_id(subagent_id)
     clean_id = clean_id.lower()
 
-    # Check platform integrations first (in-memory, no caching needed)
-    for integ in OAUTH_INTEGRATIONS:
-        if integ.id.lower() == clean_id or (
-            integ.short_name and integ.short_name.lower() == clean_id
-        ):
-            if integ.subagent_config and integ.subagent_config.has_subagent:
-                log.set(integration_type="platform")
-                return {
-                    "icon_url": None,  # Platform integrations use category-based icons
-                    "integration_id": integ.id,
-                    "integration_name": integ.name,
-                }
+    # Check platform/builtin subagents first (in-memory, no caching needed)
+    subagent = get_subagent_by_id(clean_id)
+    if subagent:
+        log.set(integration_type="platform")
+        return {
+            "icon_url": None,  # Platform/builtin subagents use category-based icons
+            "integration_id": subagent.id,
+            "integration_name": subagent.name,
+        }
 
     # Check Redis cache for custom integrations
     cache_key = f"{HANDOFF_METADATA_CACHE_PREFIX}:{clean_id}"
@@ -271,10 +267,14 @@ def build_agent_config(
 
     callbacks: list[BaseCallbackHandler] = []
 
-    # Add OpikTracer in production, or in development only if configured
-    # This prevents cluttered error logs when Opik isn't set up locally
+    # Add OpikTracer in production, or in development only if configured.
+    # Import is deferred to avoid paying the cost when Opik is unused and to
+    # sidestep import-time litellm shadowing (crawl4ai installs unclecode-litellm
+    # which conflicts with the real litellm at module load time).
     is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
     if settings.ENV == "production" or is_opik_configured:
+        from opik.integrations.langchain import OpikTracer  # noqa: PLC0415
+
         callbacks.append(
             OpikTracer(
                 tags=["langchain", settings.ENV],
@@ -320,6 +320,8 @@ def build_agent_config(
 
     # Cherry-pick specific keys from base_configurable if provided
     # Only inherit model config and user context, not LangChain internal state
+    pinned_memories = None
+    pinned_skills = None
     if base_configurable:
         # Inherit model config from parent if not overridden
         provider_name = base_configurable.get("provider", provider_name)
@@ -330,6 +332,10 @@ def build_agent_config(
         subagent_id = subagent_id or base_configurable.get("subagent_id")
         vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
         source = source or base_configurable.get("conversation_source")
+        # Pass pre-fetched memory/skills sections through to avoid repeat
+        # ChromaDB lookups on the subagent side.
+        pinned_memories = base_configurable.get("__pinned_memories__")
+        pinned_skills = base_configurable.get("__pinned_skills__")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -347,6 +353,8 @@ def build_agent_config(
         "subagent_id": subagent_id,
         "vfs_session_id": vfs_session_id,
         "conversation_source": source,
+        "__pinned_memories__": pinned_memories,
+        "__pinned_skills__": pinned_skills,
     }
 
     config = {
@@ -386,10 +394,12 @@ def build_initial_state(
     """
     state = {
         "query": request.message,
+        "intent": request.message,
         "messages": history,
         "current_datetime": datetime.now(timezone.utc).isoformat(),
         "mem0_user_id": user_id,
         "conversation_id": conversation_id,
+        "integration_usernames": {},
         "selected_tool": request.selectedTool,
         "selected_workflow": request.selectedWorkflow,
         "selected_calendar_event": request.selectedCalendarEvent,

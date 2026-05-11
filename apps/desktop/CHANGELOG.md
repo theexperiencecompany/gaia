@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.2.0...desktop-v0.3.0) (2026-04-05)
+
+
+### Features
+
+* added support for artifacts ([#547](https://github.com/theexperiencecompany/gaia/issues/547)) ([bf95597](https://github.com/theexperiencecompany/gaia/commit/bf95597efedb2ab1dd9f87ee9d5c9e4df13aaaff))
+* **analytics:** add PostHog analytics to bots and CLI ([8d799ef](https://github.com/theexperiencecompany/gaia/commit/8d799ef56f0f789f9ceb660ae0f6ab2eb01bb518))
+* **ci:** Dagger integration test overhaul — real-service tests + CI hardening ([#591](https://github.com/theexperiencecompany/gaia/issues/591)) ([7736c39](https://github.com/theexperiencecompany/gaia/commit/7736c3957b73b51e9e47291836c61a6f03e750bd))
+
+
+### Bug Fixes
+
+* **ci:** enhance release workflows to preserve latest desktop release; update package.json for electron-builder to prevent auto-publishing ([c875193](https://github.com/theexperiencecompany/gaia/commit/c875193342cd7ba103b73663c4c6d63e466e212f))
+* update getServerUrl to handle non-packaged app environment ([4ef68f9](https://github.com/theexperiencecompany/gaia/commit/4ef68f94f55c8c1bf6771c8ff5375cec825786e9))
+
+
+### Performance Improvements
+
+* remove barrel exports for faster HMR and build times ([#569](https://github.com/theexperiencecompany/gaia/issues/569)) ([70388ff](https://github.com/theexperiencecompany/gaia/commit/70388ffb681f6910e11dfae8d005825ceee4285e))
+
 ## [0.2.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.1.1...desktop-v0.2.0) (2026-02-27)
 
 

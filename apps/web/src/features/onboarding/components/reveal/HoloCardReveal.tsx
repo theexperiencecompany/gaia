@@ -8,7 +8,7 @@
 
 import { Skeleton } from "@heroui/skeleton";
 import confetti from "canvas-confetti";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { useState } from "react";
 
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";

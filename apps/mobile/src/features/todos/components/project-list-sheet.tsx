@@ -1,7 +1,7 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import {
   Add01Icon,
   AppIcon,
@@ -10,6 +10,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { useConfirmDialog } from "@/shared/components/ui/app-confirm-dialog";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type { Project } from "../types/todo-types";
 import { CreateProjectModal } from "./create-project-modal";
@@ -33,6 +34,7 @@ export const ProjectListSheet = forwardRef<
   const router = useRouter();
   const { spacing, fontSize } = useResponsive();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const confirm = useConfirmDialog();
 
   useImperativeHandle(ref, () => ({
     open: () => setIsOpen(true),
@@ -48,21 +50,17 @@ export const ProjectListSheet = forwardRef<
   );
 
   const handleDeletePress = useCallback(
-    (project: Project) => {
-      Alert.alert(
-        "Delete Project",
-        `Are you sure you want to delete "${project.name}"? Todos in this project will not be deleted.`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: () => void onDeleteProject(project.id),
-          },
-        ],
-      );
+    async (project: Project) => {
+      const ok = await confirm({
+        title: "Delete project",
+        message: `Delete "${project.name}"? Todos in this project will not be deleted.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (!ok) return;
+      void onDeleteProject(project.id);
     },
-    [onDeleteProject],
+    [confirm, onDeleteProject],
   );
 
   const handleCreated = useCallback(

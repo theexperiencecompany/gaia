@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 interface MenuItem {
   iconElement?: ReactElement;
@@ -10,14 +10,16 @@ interface MenuItem {
   label: string;
   icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   action: () => void;
+  badge?: ReactElement;
 }
 
 interface NestedMenuTooltipProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   itemRef: HTMLElement | null;
-  menuItems: MenuItem[];
+  menuItems?: MenuItem[];
   iconClasses?: string;
+  customContent?: ReactNode;
 }
 
 export function NestedMenuTooltip({
@@ -26,6 +28,7 @@ export function NestedMenuTooltip({
   itemRef,
   menuItems,
   iconClasses = "w-[18px] h-[18px]",
+  customContent,
 }: NestedMenuTooltipProps) {
   if (!itemRef) return null;
 
@@ -44,34 +47,38 @@ export function NestedMenuTooltip({
       }}
       content={
         <div
-          className="flex flex-col p-1"
           onMouseEnter={() => onOpenChange(true)}
           onMouseLeave={() => onOpenChange(false)}
         >
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const iconContent = item.iconElement ? (
-              item.iconElement
-            ) : Icon ? (
-              <Icon className={iconClasses} />
-            ) : null;
+          {customContent ?? (
+            <div className="flex flex-col p-1">
+              {menuItems?.map((item) => {
+                const Icon = item.icon;
+                const iconContent = item.iconElement ? (
+                  item.iconElement
+                ) : Icon ? (
+                  <Icon className={iconClasses} />
+                ) : null;
 
-            return (
-              <Button
-                key={item.key}
-                variant="light"
-                size="sm"
-                className="justify-start text-sm text-zinc-400 transition hover:text-white"
-                onPress={() => {
-                  item.action();
-                  onOpenChange(false);
-                }}
-                startContent={iconContent}
-              >
-                {item.label}
-              </Button>
-            );
-          })}
+                return (
+                  <Button
+                    key={item.key}
+                    variant="light"
+                    size="sm"
+                    className="justify-start text-sm text-zinc-400 transition hover:text-white"
+                    onPress={() => {
+                      item.action();
+                      onOpenChange(false);
+                    }}
+                    startContent={iconContent}
+                    endContent={item.badge}
+                  >
+                    {item.label}
+                  </Button>
+                );
+              })}
+            </div>
+          )}
         </div>
       }
     >

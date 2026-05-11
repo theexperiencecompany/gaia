@@ -13,7 +13,7 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { RedoIcon } from "@icons";
-import { m } from "motion/react";
+import * as m from "motion/react-m";
 import { memo, useState } from "react";
 
 interface OnboardingProgressProps {

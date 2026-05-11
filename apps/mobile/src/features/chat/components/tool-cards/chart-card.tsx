@@ -1,4 +1,3 @@
-import { Card, Chip } from "heroui-native";
 import { useMemo } from "react";
 import { ScrollView, View } from "react-native";
 import {
@@ -8,6 +7,10 @@ import {
   PieChart01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 // -- Constants ----------------------------------------------------------------
 
@@ -19,8 +22,8 @@ const COLORS = {
   text: "#e4e4e7",
   barTrack: "#27272a",
   tableBorder: "#27272a",
-  tableHeaderBg: "#1e1e2e",
-  fallbackBg: "#1e1e2e",
+  tableHeaderBg: "#27272a",
+  fallbackBg: "#18181b",
 } as const;
 
 // -- Default palette for unlabeled data points --------------------------------
@@ -194,21 +197,18 @@ function DataTable({
   return (
     <View
       style={{
-        borderRadius: 8,
+        borderRadius: 12,
         overflow: "hidden",
-        borderWidth: 1,
-        borderColor: COLORS.tableBorder,
+        backgroundColor: "#18181b",
       }}
     >
       {/* Table header */}
       <View
         style={{
           flexDirection: "row",
-          backgroundColor: COLORS.tableHeaderBg,
+          backgroundColor: "#27272a",
           paddingHorizontal: 10,
           paddingVertical: 6,
-          borderBottomWidth: 1,
-          borderBottomColor: COLORS.tableBorder,
         }}
       >
         <Text
@@ -265,8 +265,8 @@ function DataTable({
               alignItems: "center",
               paddingHorizontal: 10,
               paddingVertical: 7,
-              borderBottomWidth: idx < data.length - 1 ? 1 : 0,
-              borderBottomColor: COLORS.tableBorder,
+              backgroundColor:
+                idx % 2 !== 0 ? "rgba(255,255,255,0.03)" : "transparent",
             }}
           >
             {/* Color swatch */}
@@ -321,9 +321,7 @@ function DataTable({
             alignItems: "center",
             paddingHorizontal: 10,
             paddingVertical: 7,
-            backgroundColor: COLORS.tableHeaderBg,
-            borderTopWidth: 1,
-            borderTopColor: COLORS.tableBorder,
+            backgroundColor: "#27272a",
           }}
         >
           <Text
@@ -376,7 +374,7 @@ function LineChartNote({
     <View
       style={{
         backgroundColor: COLORS.fallbackBg,
-        borderRadius: 8,
+        borderRadius: 16,
         padding: 10,
         flexDirection: "row",
         alignItems: "center",
@@ -403,7 +401,7 @@ function PieLegend({ data }: { data: ChartDataPoint[] }) {
     <View
       style={{
         backgroundColor: COLORS.fallbackBg,
-        borderRadius: 8,
+        borderRadius: 16,
         padding: 10,
         marginBottom: 8,
         gap: 4,
@@ -502,15 +500,23 @@ function ChartTypeIcon({ type }: { type: ChartData["type"] }) {
 export function ChartCard({ toolData }: ChartCardProps) {
   const { type, title, data, xLabel, yLabel } = toolData;
 
+  const chartTypeIcon =
+    type === "bar"
+      ? BarChartIcon
+      : type === "line"
+        ? ChartLineData01Icon
+        : PieChart01Icon;
+
   if (!data || data.length === 0) {
     return (
-      <Card variant="secondary" className="mx-4 my-1 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-3 px-4 items-center">
-          <Text style={{ fontSize: 13, color: COLORS.muted }}>
-            No chart data available
-          </Text>
-        </Card.Body>
-      </Card>
+      <ToolCardShell>
+        <View className="flex-row items-center gap-3">
+          <View className="w-8 h-8 rounded-full bg-zinc-800 items-center justify-center">
+            <ChartTypeIcon type={type} />
+          </View>
+          <Text className="text-sm text-zinc-500">No chart data available</Text>
+        </View>
+      </ToolCardShell>
     );
   }
 
@@ -523,58 +529,37 @@ export function ChartCard({ toolData }: ChartCardProps) {
         : "Pie Chart");
 
   return (
-    <Card variant="secondary" className="mx-4 my-1 rounded-2xl bg-[#171920]">
-      {/* Header */}
-      <Card.Header className="flex-row items-center gap-2 px-4 pt-3 pb-2 border-b border-white/8">
-        <View
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            backgroundColor: "rgba(96,165,250,0.12)",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ChartTypeIcon type={type} />
-        </View>
-        <Card.Title className="text-sm font-semibold flex-1" numberOfLines={1}>
-          {chartTitle}
-        </Card.Title>
-        <Chip variant="soft" color="default" size="sm">
-          <Chip.Label>
-            {data.length} {data.length === 1 ? "item" : "items"}
-          </Chip.Label>
-        </Chip>
-      </Card.Header>
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={chartTypeIcon}
+        title={chartTitle}
+        subtitle={`${data.length} ${data.length === 1 ? "item" : "items"}`}
+      />
 
-      {/* Body */}
-      <Card.Body className="p-0">
-        <ScrollView
-          style={{ maxHeight: 420 }}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ padding: 14, gap: 10 }}
-        >
-          {type === "bar" && (
-            <BarChart data={data} xLabel={xLabel} yLabel={yLabel} />
-          )}
+      <ScrollView
+        style={{ maxHeight: 420 }}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ gap: 10 }}
+      >
+        {type === "bar" && (
+          <BarChart data={data} xLabel={xLabel} yLabel={yLabel} />
+        )}
 
-          {type === "line" && (
-            <>
-              <LineChartNote xLabel={xLabel} yLabel={yLabel} />
-              <DataTable data={data} type="line" />
-            </>
-          )}
+        {type === "line" && (
+          <>
+            <LineChartNote xLabel={xLabel} yLabel={yLabel} />
+            <DataTable data={data} type="line" />
+          </>
+        )}
 
-          {type === "pie" && (
-            <>
-              <PieLegend data={data} />
-              <DataTable data={data} type="pie" />
-            </>
-          )}
-        </ScrollView>
-      </Card.Body>
-    </Card>
+        {type === "pie" && (
+          <>
+            <PieLegend data={data} />
+            <DataTable data={data} type="pie" />
+          </>
+        )}
+      </ScrollView>
+    </ToolCardShell>
   );
 }

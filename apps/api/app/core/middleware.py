@@ -11,6 +11,7 @@ from app.api.v1.middleware import (
     ProfilingMiddleware,
     WorkOSAuthMiddleware,
 )
+from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
 from app.api.v1.middleware.rate_limiter import limiter
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from fastapi import FastAPI, Request
@@ -64,6 +65,10 @@ def configure_middleware(app: FastAPI) -> None:
 
     # Add logging middleware
     app.add_middleware(LoggingMiddleware)
+
+    # Add request timeout middleware (inside CORS so CORS headers always present,
+    # outside Logging so timeouts are logged)
+    app.add_middleware(RequestTimeoutMiddleware)
 
     # Configure CORS
     app.add_middleware(

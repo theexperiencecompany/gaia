@@ -4,7 +4,6 @@ import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternative
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
-import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
@@ -129,14 +128,32 @@ async function getExploreWorkflowPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   try {
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
+
     const limit = isDevelopment() ? 50 : 1000;
-    const exploreResp = await workflowApi.getExploreWorkflows(limit, 0);
-    return exploreResp.workflows.map((wc) => ({
-      url: `${baseUrl}/use-cases/${wc.id}`,
-      lastModified: new Date(wc.created_at),
-      changeFrequency: "weekly" as const,
-      priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
-    }));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    let response: Response;
+    try {
+      response = await fetch(
+        `${apiBaseUrl}/workflows/explore?limit=${limit}&offset=0`,
+        { next: { revalidate: 3600 }, signal: controller.signal },
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    return (data.workflows || []).map(
+      (wc: { slug: string; created_at: string; categories?: string[] }) => ({
+        url: `${baseUrl}/use-cases/${wc.slug}`,
+        lastModified: new Date(wc.created_at),
+        changeFrequency: "weekly" as const,
+        priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
+      }),
+    );
   } catch (error) {
     console.error("Error fetching explore workflows for sitemap:", error);
     return [];
@@ -150,31 +167,61 @@ async function getCommunityWorkflowPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   try {
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
+
     if (isDevelopment()) {
-      const communityResponse = await workflowApi.getCommunityWorkflows(50, 0);
-      return communityResponse.workflows.map((workflow) => ({
-        url: `${baseUrl}/use-cases/${workflow.id}`,
-        lastModified: new Date(workflow.created_at),
-        changeFrequency: "weekly" as const,
-        priority: 0.6,
-      }));
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      let response: Response;
+      try {
+        response = await fetch(
+          `${apiBaseUrl}/workflows/community?limit=50&offset=0`,
+          { next: { revalidate: 3600 }, signal: controller.signal },
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!response.ok) return [];
+      const data = await response.json();
+      return (data.workflows || []).map(
+        (workflow: { slug: string; created_at: string }) => ({
+          url: `${baseUrl}/use-cases/${workflow.slug}`,
+          lastModified: new Date(workflow.created_at),
+          changeFrequency: "weekly" as const,
+          priority: 0.6,
+        }),
+      );
     }
 
-    const allWorkflows = await fetchAllPaginated(async (limit, offset) => {
-      const resp = await workflowApi.getCommunityWorkflows(limit, offset);
-      return {
-        items: resp.workflows,
-        total: resp.total || 0,
-        hasMore: resp.workflows.length === limit,
-      };
-    }, 100);
+    const allWorkflows: Array<{ slug: string; created_at: string }> =
+      await fetchAllPaginated(async (limit, offset) => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        let response: Response;
+        try {
+          response = await fetch(
+            `${apiBaseUrl}/workflows/community?limit=${limit}&offset=${offset}`,
+            { next: { revalidate: 3600 }, signal: controller.signal },
+          );
+        } finally {
+          clearTimeout(timeout);
+        }
+        if (!response.ok) return { items: [], total: 0, hasMore: false };
+        const data = await response.json();
+        return {
+          items: data.workflows || [],
+          total: data.total || 0,
+          hasMore: data.workflows?.length === limit,
+        };
+      }, 100);
 
     console.log(
       `[Sitemap] Generated ${allWorkflows.length} community workflow pages`,
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${baseUrl}/use-cases/${workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.slug}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,
@@ -196,10 +243,17 @@ async function getIntegrationPages(
     if (!apiBaseUrl) return [];
 
     if (isDevelopment()) {
-      const response = await fetch(
-        `${apiBaseUrl}/integrations/community?limit=50`,
-        { next: { revalidate: 3600 } },
-      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      let response: Response;
+      try {
+        response = await fetch(
+          `${apiBaseUrl}/integrations/community?limit=50`,
+          { next: { revalidate: 3600 }, signal: controller.signal },
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
       if (response.ok) {
         const data = await response.json();
         return (data.integrations || []).map(
@@ -225,10 +279,17 @@ async function getIntegrationPages(
       publishedAt?: string;
       createdAt?: string;
     }> = await fetchAllPaginated(async (limit, offset) => {
-      const response = await fetch(
-        `${apiBaseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
-        { next: { revalidate: 3600 } },
-      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      let response: Response;
+      try {
+        response = await fetch(
+          `${apiBaseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
+          { next: { revalidate: 3600 }, signal: controller.signal },
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
       if (!response.ok) return { items: [], total: 0, hasMore: false };
 
       const data = await response.json();
@@ -266,8 +327,10 @@ async function getIntegrationPages(
 /**
  * Comparison pages (GAIA vs competitors)
  */
-function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllComparisonSlugs();
+async function getComparisonPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllComparisonSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/compare/${slug}`,
     lastModified: BUILD_DATE,
@@ -300,7 +363,7 @@ async function getPersonaPages(
     const { getAllPersonaSlugs } = await import(
       "@/features/personas/data/personasData"
     );
-    const slugs = getAllPersonaSlugs();
+    const slugs = await getAllPersonaSlugs();
     return slugs.map((slug) => ({
       url: `${baseUrl}/for/${slug}`,
       lastModified: BUILD_DATE,
@@ -316,8 +379,10 @@ async function getPersonaPages(
 /**
  * Glossary term pages (AI/productivity concepts)
  */
-function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllGlossaryTermSlugs();
+async function getGlossaryPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllGlossaryTermSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/learn/${slug}`,
     lastModified: BUILD_DATE,
@@ -329,8 +394,10 @@ function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
 /**
  * Alternative-to pages (GAIA as alternative to competitors)
  */
-function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllAlternativeSlugs();
+async function getAlternativePages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const slugs = await getAllAlternativeSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/alternative-to/${slug}`,
     lastModified: BUILD_DATE,
@@ -342,8 +409,10 @@ function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
 /**
  * Integration combo pages ([toolA] + [toolB] automation)
  */
-function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
-  const allCombos = getAllCombos();
+async function getIntegrationComboPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  const allCombos = await getAllCombos();
   return allCombos
     .filter((c) => !c.canonicalSlug)
     .map((combo) => ({
@@ -388,15 +457,17 @@ export async function getSitemapEntries(
     case SITEMAP_IDS.INTEGRATIONS:
       return getIntegrationPages(baseUrl);
     case SITEMAP_IDS.COMPARISONS:
-      return withLocaleUrls(getComparisonPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getComparisonPages(baseUrl), baseUrl);
     case SITEMAP_IDS.PERSONAS:
       return withLocaleUrls(await getPersonaPages(baseUrl), baseUrl);
     case SITEMAP_IDS.GLOSSARY:
-      return withLocaleUrls(getGlossaryPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getGlossaryPages(baseUrl), baseUrl);
     case SITEMAP_IDS.ALTERNATIVES:
-      return withLocaleUrls(getAlternativePages(baseUrl), baseUrl);
+      return withLocaleUrls(await getAlternativePages(baseUrl), baseUrl);
     case SITEMAP_IDS.INTEGRATION_COMBOS:
-      return withLocaleUrls(getIntegrationComboPages(baseUrl), baseUrl);
+      return withLocaleUrls(await getIntegrationComboPages(baseUrl), baseUrl);
+    case SITEMAP_IDS.NATIVE_INTEGRATIONS:
+      return [];
     default:
       return [];
   }

@@ -3,7 +3,8 @@
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import { CalendarCheckOut01Icon, Flag02Icon, Tag01Icon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {

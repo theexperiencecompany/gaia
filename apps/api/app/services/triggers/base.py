@@ -6,6 +6,7 @@ All provider-specific trigger handlers must extend this class.
 
 import asyncio
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from shared.py.wide_events import log
@@ -14,6 +15,25 @@ from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
+
+
+def _parse_event_start_utc(data: Dict[str, Any]) -> Optional[datetime]:
+    """Best-effort extraction of an event's start time as a UTC datetime.
+
+    Handles Composio/Google payloads that may ship `start_time` as an ISO-8601
+    string with or without offset. Returns None when the field is absent or
+    unparseable — callers should skip lag instrumentation in that case.
+    """
+    raw = data.get("start_time") or data.get("startTime")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 class TriggerHandler(ABC):
@@ -278,13 +298,38 @@ class TriggerHandler(ABC):
         Returns:
             Dict with 'status' and 'message' keys
         """
+        now_utc = datetime.now(timezone.utc)
         log.set(
             service="trigger_handler",
             operation="process_event",
             event_type=event_type,
             trigger_id=trigger_id,
             user_id=user_id,
+            now_utc=now_utc.isoformat(),
         )
+
+        event_start_utc = _parse_event_start_utc(data)
+        if event_start_utc is not None:
+            seconds_until_event = int((event_start_utc - now_utc).total_seconds())
+            log.set(
+                event_start_time_utc=event_start_utc.isoformat(),
+                event_start_time_raw=data.get("start_time") or data.get("startTime"),
+                seconds_until_event=seconds_until_event,
+            )
+            countdown = data.get("countdown_window_minutes")
+            if isinstance(countdown, int):
+                expected_fire = event_start_utc.timestamp() - countdown * 60
+                webhook_lag = int(now_utc.timestamp() - expected_fire)
+                log.set(
+                    countdown_window_minutes=countdown,
+                    webhook_lag_seconds=webhook_lag,
+                )
+                if abs(webhook_lag) > 300:
+                    log.warning(
+                        "webhook fired far from expected time — "
+                        f"lag={webhook_lag}s (positive = late, negative = early)",
+                    )
+
         # Find matching workflows using handler's find_workflows method
         # Each handler decides what identifiers it needs (trigger_id, user_id, etc.)
         workflows = await self.find_workflows(event_type, trigger_id or "", data)

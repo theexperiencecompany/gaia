@@ -8,4 +8,5 @@
  * @module
  */
 export { BaseBotAdapter } from "./base";
+export { BotServer } from "./base-server";
 export { richMessageToMarkdown } from "./rich-renderer";

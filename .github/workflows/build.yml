@@ -35,7 +35,7 @@ concurrency:
 
 jobs:
   docker-release:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: write
       packages: write
@@ -61,24 +61,15 @@ jobs:
         with:
           main-branch-name: master
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
         with:
-          version: 10.17.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          nx-cloud-access-token: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       - name: Sync Python dependencies (Nx cached)
         run: npx nx sync api
-        # env:
-        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+        env:
+          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       # Login early so the affected check can query GHCR for missing images.
       - name: Log in to GHCR
@@ -105,7 +96,7 @@ jobs:
             api=true
           fi
 
-          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram"; then
+          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram" || echo "$AFFECTED" | grep -qx "bot-whatsapp"; then
             bots=true
           fi
 
@@ -124,9 +115,10 @@ jobs:
             fi
 
             if [ "$bots" = "false" ]; then
-              if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
-                 image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
-                 image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest"; then
+               if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
+                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
+                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest" || \
+                  image_missing "ghcr.io/theexperiencecompany/gaia-bot-whatsapp:latest"; then
                 echo "⚠️ Bot image(s) missing from GHCR — forcing build"
                 bots=true
               fi
@@ -164,7 +156,7 @@ jobs:
       - name: Ensure bot images are pushed to GHCR
         if: steps.affected.outputs.bots == 'true'
         run: |
-          for bot in discord slack telegram; do
+          for bot in discord slack telegram whatsapp; do
             img="ghcr.io/theexperiencecompany/gaia-bot-${bot}:latest"
             if docker image inspect "$img" &>/dev/null; then
               echo "Pushing $img..."
@@ -188,7 +180,7 @@ jobs:
         run: echo "No affected API/bot Docker projects, skipping build"
 
   docker-web:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
@@ -204,19 +196,8 @@ jobs:
         with:
           main-branch-name: master
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22.15.1"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Setup Node.js + pnpm
+        uses: ./.github/actions/setup-node-pnpm
 
       # Convert Nx affected output into a simple boolean consumed by downstream jobs.
       - name: Check if web is affected
@@ -348,7 +329,9 @@ jobs:
   trigger-deploy:
     needs: [deployment-plan]
     if: needs.deployment-plan.outputs.backend_deploy == 'true'
-    uses: ./.github/workflows/deploy.yml
+    uses: ./.github/workflows/deploy-swarm-prod.yml
+    with:
+      action: deploy
     secrets: inherit
 
   # Trigger web production deploy only when deploy plan allows it.

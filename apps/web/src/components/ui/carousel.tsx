@@ -139,11 +139,17 @@ CarouselForwardRef.displayName = "Carousel";
 
 function CarouselContent({
   className,
+  viewportClassName,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.HTMLAttributes<HTMLDivElement> & { viewportClassName?: string }) {
   const { carouselRef, orientation } = useCarousel();
   return (
-    <div ref={carouselRef} className="overflow-hidden">
+    <div
+      ref={carouselRef}
+      className={["overflow-hidden", viewportClassName]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div
         className={[
           "flex",

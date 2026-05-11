@@ -47,7 +47,12 @@ class WorkflowQueueService:
             )
 
             if job:
-                log.set(workflow={"id": workflow_id, "status": "execution_queued"})
+                log.set(
+                    workflow={"id": workflow_id, "status": "execution_queued"},
+                    arq_job_id=job.job_id,
+                    queue_mode="immediate",
+                    defer_seconds=0,
+                )
                 log.info(
                     f"Queued workflow execution for {workflow_id} with job ID {job.job_id}"
                 )
@@ -66,7 +71,19 @@ class WorkflowQueueService:
     ) -> bool:
         """Queue a scheduled workflow execution with defer_until."""
         try:
+            from datetime import timezone as _tz
+
             pool = await RedisPoolManager.get_pool()
+
+            tz_was_naive = scheduled_at.tzinfo is None
+            if tz_was_naive:
+                log.warning(
+                    f"queue_scheduled_workflow_execution: naive scheduled_at for "
+                    f"{workflow_id}, assuming UTC — check caller",
+                )
+                scheduled_at = scheduled_at.replace(tzinfo=_tz.utc)
+            now = datetime.now(_tz.utc)
+            defer_seconds = int((scheduled_at - now).total_seconds())
 
             job = await pool.enqueue_job(
                 "execute_workflow_by_id",
@@ -76,7 +93,14 @@ class WorkflowQueueService:
             )
 
             if job:
-                log.set(workflow={"id": workflow_id, "status": "scheduled_queued"})
+                log.set(
+                    workflow={"id": workflow_id, "status": "scheduled_queued"},
+                    arq_job_id=job.job_id,
+                    queue_mode="scheduled",
+                    scheduled_at_utc=scheduled_at.isoformat(),
+                    scheduled_at_was_naive=tz_was_naive,
+                    defer_seconds=defer_seconds,
+                )
                 log.info(
                     f"Queued scheduled workflow execution for {workflow_id} at {scheduled_at} with job ID {job.job_id}"
                 )

@@ -1,42 +1,21 @@
 """Google Sheets utility functions for API operations.
 
-This module provides helper functions for Google Sheets and Drive API interactions including:
-- Access token extraction
-- Header generation
+This module provides helpers for Google Sheets and Drive API interactions:
 - Color conversion
 - A1 notation parsing
-- Sheet ID resolution
-- Column header resolution
+- Sheet ID resolution (via Composio proxy)
+- Column header resolution (via Composio proxy)
 """
 
 import re
-from typing import Any, Dict, Optional
-
-import httpx
+from typing import Dict, Optional
 
 from shared.py.wide_events import log
+from app.services.composio.proxy_client import proxy_request_sync
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
-
-# Reusable sync HTTP client
-_http_client = httpx.Client(timeout=60)
-
-
-def get_access_token(auth_credentials: Dict[str, Any]) -> str:
-    """Extract access token from auth_credentials."""
-    token = auth_credentials.get("access_token")
-    if not token:
-        raise ValueError("Missing access_token in auth_credentials")
-    return token
-
-
-def auth_headers(access_token: str) -> Dict[str, str]:
-    """Return Bearer token header for Google APIs."""
-    return {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
+SHEETS_TOOLKIT = "GOOGLESHEETS"
 
 
 def hex_to_rgb(hex_color: str) -> Dict[str, float]:
@@ -82,19 +61,19 @@ def parse_a1_range(range_str: str) -> Dict[str, int]:
 
 
 def get_sheet_id_by_name(
-    spreadsheet_id: str, sheet_name: str, headers: Dict[str, str]
+    spreadsheet_id: str, sheet_name: str, user_id: str
 ) -> Optional[int]:
     """Get sheet ID by its name."""
     log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
     try:
-        resp = _http_client.get(
-            f"{SHEETS_API_BASE}/{spreadsheet_id}",
-            headers=headers,
-            params={"fields": "sheets.properties"},
+        data = proxy_request_sync(
+            user_id=user_id,
+            toolkit=SHEETS_TOOLKIT,
+            endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}",
+            method="GET",
+            query={"fields": "sheets.properties"},
         )
-        resp.raise_for_status()
-        data = resp.json()
-        for sheet in data.get("sheets", []):
+        for sheet in (data or {}).get("sheets", []):
             if sheet.get("properties", {}).get("title") == sheet_name:
                 return sheet["properties"]["sheetId"]
         return None
@@ -107,20 +86,20 @@ def get_column_index_by_header(
     spreadsheet_id: str,
     sheet_name: str,
     column_name: str,
-    headers: Dict[str, str],
+    user_id: str,
 ) -> Optional[int]:
     """Get column index by header name (first row)."""
     log.set(
         spreadsheet_id=spreadsheet_id, sheet_name=sheet_name, column_name=column_name
     )
     try:
-        resp = _http_client.get(
-            f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
-            headers=headers,
+        data = proxy_request_sync(
+            user_id=user_id,
+            toolkit=SHEETS_TOOLKIT,
+            endpoint=f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
+            method="GET",
         )
-        resp.raise_for_status()
-        data = resp.json()
-        header_row = data.get("values", [[]])[0]
+        header_row = (data or {}).get("values", [[]])[0]
         for idx, header in enumerate(header_row):
             if header.lower() == column_name.lower():
                 return idx

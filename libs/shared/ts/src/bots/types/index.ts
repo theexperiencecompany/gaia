@@ -36,6 +36,11 @@ export interface BotConfig {
   gaiaApiKey: string;
   /** The base URL of the GAIA frontend app. */
   gaiaFrontendUrl: string;
+  /**
+   * PostHog API key for bot analytics. Optional — analytics is silently
+   * disabled when absent (safe for local development).
+   */
+  posthogApiKey?: string;
 }
 
 /**

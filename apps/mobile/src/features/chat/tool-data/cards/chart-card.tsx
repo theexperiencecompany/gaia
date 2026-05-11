@@ -1,4 +1,3 @@
-import { Card } from "heroui-native";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Svg, {
@@ -17,6 +16,10 @@ import {
   PieChart01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  ToolCardHeader,
+  ToolCardShell,
+} from "@/features/chat/tool-data/primitives";
 
 // ---------------------------------------------------------------------------
 // Types (matching web ChartDisplay.tsx)
@@ -54,7 +57,7 @@ export interface ChartDisplayData {
 
 const PRIMARY = "#00bbff";
 const _BG_CARD = "#171920";
-const MUTED = "#8e8e93";
+const MUTED = "#71717a";
 const GRID = "rgba(255,255,255,0.08)";
 const CHART_HEIGHT = 180;
 const CHART_WIDTH = 280;
@@ -434,9 +437,9 @@ function PieChartView({ data }: { data: ChartData }) {
 function DataTable({ data }: { data: ChartData }) {
   const elements = data.elements.slice(0, 10);
   return (
-    <View className="rounded-xl overflow-hidden border border-white/8">
+    <View className="rounded-xl overflow-hidden bg-zinc-900">
       {/* Header */}
-      <View className="flex-row bg-white/5 px-3 py-2">
+      <View className="flex-row bg-zinc-900 px-3 py-2">
         <Text style={{ color: MUTED, fontSize: 11, flex: 1 }}>
           {data.x_label || "Label"}
         </Text>
@@ -450,10 +453,14 @@ function DataTable({ data }: { data: ChartData }) {
       {elements.map((el, i) => (
         <View
           key={`row-${el.label}-${i}`}
-          className="flex-row px-3 py-2 border-t border-white/5"
+          className="flex-row px-3 py-2"
+          style={{
+            backgroundColor:
+              i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.03)",
+          }}
         >
           <Text
-            className="text-foreground flex-1"
+            className="text-zinc-200 flex-1"
             style={{ fontSize: 12 }}
             numberOfLines={1}
           >
@@ -472,7 +479,7 @@ function DataTable({ data }: { data: ChartData }) {
         </View>
       ))}
       {data.elements.length > 10 && (
-        <View className="px-3 py-2 border-t border-white/5">
+        <View className="px-3 py-2 bg-zinc-900">
           <Text style={{ color: MUTED, fontSize: 11, textAlign: "center" }}>
             +{data.elements.length - 10} more rows
           </Text>
@@ -488,7 +495,7 @@ function DataTable({ data }: { data: ChartData }) {
 
 type ChartViewMode = "chart" | "table";
 
-function ChartItem({ item }: { item: ChartDisplayData }) {
+export function ChartItem({ item }: { item: ChartDisplayData }) {
   const [viewMode, setViewMode] = useState<ChartViewMode>("chart");
   const cd = item.chart_data;
 
@@ -523,24 +530,24 @@ function ChartItem({ item }: { item: ChartDisplayData }) {
   };
 
   return (
-    <View className="mb-3">
+    <View className="mb-2">
       {/* Item header */}
       <View className="flex-row items-center gap-2 mb-2">
-        <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
+        <View className="w-7 h-7 rounded-xl bg-primary/15 items-center justify-center">
           <AppIcon
             icon={chartTypeIcon}
-            size={12}
+            size={14}
             color={PRIMARY}
             strokeWidth={2}
           />
         </View>
         <Text
-          className="text-xs font-medium text-foreground flex-1"
+          className="text-sm font-medium text-zinc-100 flex-1"
           numberOfLines={1}
         >
           {item.title ?? cd?.title ?? "Chart"}
         </Text>
-        <Text style={{ color: MUTED, fontSize: 10 }}>{chartTypeLabel}</Text>
+        <Text style={{ color: MUTED, fontSize: 11 }}>{chartTypeLabel}</Text>
       </View>
 
       {/* Toggle chart / table */}
@@ -550,7 +557,7 @@ function ChartItem({ item }: { item: ChartDisplayData }) {
             <Pressable
               key={mode}
               onPress={() => setViewMode(mode)}
-              className={`rounded-full px-2.5 py-1 ${viewMode === mode ? "bg-primary/20" : "bg-white/5"}`}
+              className={`rounded-full px-3 py-1 ${viewMode === mode ? "bg-primary/20" : "bg-zinc-700"}`}
             >
               <Text
                 style={{
@@ -600,48 +607,35 @@ export function ChartCard({ data }: { data: unknown }) {
 
   if (validCharts.length === 0) {
     return (
-      <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-3 px-4">
-          <View className="flex-row items-center gap-2">
-            <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
-              <AppIcon
-                icon={ChartRingIcon}
-                size={12}
-                color={PRIMARY}
-                strokeWidth={2}
-              />
-            </View>
-            <Text className="text-xs text-muted">Chart data unavailable</Text>
-          </View>
-        </Card.Body>
-      </Card>
-    );
-  }
-
-  return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Card header */}
-        <View className="flex-row items-center gap-2 mb-3">
-          <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
+      <ToolCardShell>
+        <View className="flex-row items-center gap-3">
+          <View className="w-8 h-8 rounded-full bg-zinc-700 items-center justify-center">
             <AppIcon
               icon={ChartRingIcon}
-              size={12}
+              size={16}
               color={PRIMARY}
               strokeWidth={2}
             />
           </View>
-          <Text className="text-xs font-medium text-muted">
-            {validCharts.length === 1
-              ? "Chart"
-              : `Charts · ${validCharts.length}`}
-          </Text>
+          <Text className="text-sm text-zinc-500">Chart data unavailable</Text>
         </View>
+      </ToolCardShell>
+    );
+  }
 
+  return (
+    <ToolCardShell>
+      <ToolCardHeader
+        icon={ChartRingIcon}
+        title="Charts"
+        count={validCharts.length > 1 ? validCharts.length : undefined}
+      />
+
+      <View className="gap-3">
         {validCharts.map((item, i) => (
           <ChartItem key={item.id ?? `chart-${i}`} item={item} />
         ))}
-      </Card.Body>
-    </Card>
+      </View>
+    </ToolCardShell>
   );
 }

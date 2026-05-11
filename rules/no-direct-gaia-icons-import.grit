@@ -1,0 +1,33 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Flag any import that bypasses the @icons alias and hits the package directly.
+// All icon imports must go through `@icons` (aliased to @theexperiencecompany/gaia-icons/solid-rounded in next.config.mjs + tsconfig).
+//
+// Note: metavariables in import source strings don't support partial matching,
+// so every known sub-path variant is listed explicitly. Add new entries if new
+// icon set variants are published.
+or {
+  `import { $_ } from $source`,
+  `import * as $_ from $source`,
+  `import $_ from $source`,
+  `import $source`
+} as $node where {
+  $source <: or {
+    `"@theexperiencecompany/gaia-icons"`,
+    `"@theexperiencecompany/gaia-icons/solid-rounded"`,
+    `"@theexperiencecompany/gaia-icons/solid-standard"`,
+    `"@theexperiencecompany/gaia-icons/solid-sharp"`,
+    `"@theexperiencecompany/gaia-icons/stroke-rounded"`,
+    `"@theexperiencecompany/gaia-icons/stroke-standard"`,
+    `"@theexperiencecompany/gaia-icons/stroke-sharp"`,
+    `"@theexperiencecompany/gaia-icons/bulk-rounded"`,
+    `"@theexperiencecompany/gaia-icons/duotone-rounded"`,
+    `"@theexperiencecompany/gaia-icons/twotone-rounded"`
+  },
+  register_diagnostic(
+    span = $node,
+    message = "Import icons from `@icons` instead of `@theexperiencecompany/gaia-icons` directly. The `@icons` alias always points to the correct variant (solid-rounded).",
+    severity = "error"
+  )
+}

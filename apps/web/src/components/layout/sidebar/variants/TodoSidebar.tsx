@@ -20,6 +20,7 @@ import { priorityTextColors } from "@/features/todo/components/TodoItem";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { usePathname } from "@/i18n/navigation";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { Priority } from "@/types/features/todoTypes";
 import { accordionItemStyles } from "../constants";
@@ -181,6 +182,10 @@ export default function TodoSidebar() {
   }, [loadProjects, loadCounts, loadLabels]);
 
   const handleNavigation = (href: string) => {
+    trackEvent(ANALYTICS_EVENTS.TODOS_VIEW_CHANGED, {
+      view: href,
+      previous_view: pathname,
+    });
     router.push(href);
   };
 

@@ -1,0 +1,23 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// HugeIcons (hugeicons-react / @hugeicons/*) must not be used.
+// All icons in this codebase come from `@icons` (@theexperiencecompany/gaia-icons/solid-rounded).
+or {
+  `import { $_ } from $source`,
+  `import * as $_ from $source`,
+  `import $_ from $source`
+} as $node where {
+  $source <: or {
+    `"hugeicons-react"`,
+    `"@hugeicons/react"`,
+    `"@hugeicons/core"`,
+    `"@hugeicons/vue"`,
+    `"@hugeicons/svg"`
+  },
+  register_diagnostic(
+    span = $node,
+    message = "Do not import from HugeIcons. Use `@icons` for all icons in this codebase.",
+    severity = "error"
+  )
+}

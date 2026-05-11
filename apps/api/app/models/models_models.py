@@ -64,6 +64,10 @@ class ModelConfig(BaseModel):
     pricing_per_1k_output_tokens: Optional[float] = Field(
         None, description="Cost per 1K output tokens in USD"
     )
+    pricing_per_1k_cached_input_tokens: Optional[float] = Field(
+        None,
+        description="Cost per 1K cached input tokens in USD. Defaults to 25% of input.",
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

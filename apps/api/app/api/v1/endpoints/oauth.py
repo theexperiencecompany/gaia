@@ -6,12 +6,23 @@ import httpx
 from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
+from app.constants.auth import (
+    DESKTOP_DEEP_LINK,
+    MOBILE_DEEP_LINK,
+    OAUTH_FLOW_DESKTOP,
+    OAUTH_FLOW_MOBILE,
+    OAUTH_FLOW_WEB,
+    WOS_SESSION_COOKIE,
+)
 from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
-from app.services.oauth.oauth_state_service import validate_and_consume_oauth_state
+from app.services.oauth.oauth_state_service import (
+    is_safe_redirect_path,
+    validate_and_consume_oauth_state,
+)
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
 from workos import WorkOSClient
@@ -110,16 +121,42 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
 
     # Store the mobile app's redirect URI
     # Default to gaiamobile:// scheme if not provided
-    mobile_callback = redirect_uri or "gaiamobile://auth/callback"
+    mobile_callback = redirect_uri or MOBILE_DEEP_LINK
     await _store_mobile_redirect(state, mobile_callback)
 
-    log.set(oauth_flow_type="mobile")
+    log.set(oauth_flow_type=OAUTH_FLOW_MOBILE)
     log.info(
         f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}..."
     )
 
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
+        redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
+        state=state,
+    )
+    return {"url": authorization_url}
+
+
+@router.get("/login/google/mobile")
+async def login_google_mobile(redirect_uri: Optional[str] = None):
+    """
+    Start Google OAuth flow directly for mobile apps, bypassing the WorkOS hosted UI.
+    Users go straight to Google's sign-in page instead of the WorkOS selection screen.
+
+    Args:
+        redirect_uri: The deep link URI to redirect back to (from Linking.createURL)
+    """
+    state = secrets.token_urlsafe(32)
+    mobile_callback = redirect_uri or MOBILE_DEEP_LINK
+    await _store_mobile_redirect(state, mobile_callback)
+
+    log.set(oauth_flow_type=OAUTH_FLOW_MOBILE)
+    log.info(
+        f"Mobile Google OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}..."
+    )
+
+    authorization_url = workos.user_management.get_authorization_url(
+        provider="GoogleOAuth",
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
         state=state,
     )
@@ -141,12 +178,12 @@ async def workos_mobile_callback(
         mobile_redirect = await _get_and_delete_mobile_redirect(state)
 
     if not mobile_redirect:
-        mobile_redirect = "gaiamobile://auth/callback"
+        mobile_redirect = MOBILE_DEEP_LINK
         log.warning(
             f"No stored redirect URI for state, using default: {mobile_redirect}"
         )
 
-    log.set(oauth_flow_type="mobile")
+    log.set(oauth_flow_type=OAUTH_FLOW_MOBILE)
     log.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
 
     try:
@@ -181,7 +218,8 @@ async def workos_mobile_callback(
         log.set(fields_extracted=fields_extracted)
 
         # Store user info in DB
-        await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        log.set(user_id=str(user_id), is_new_user=is_new_user)
 
         token = auth_response.sealed_session or auth_response.access_token
         return RedirectResponse(url=f"{mobile_redirect}?token={quote(token, safe='')}")
@@ -228,12 +266,12 @@ async def workos_desktop_callback(
     Returns:
         RedirectResponse to gaia:// deep link with token
     """
-    log.set(oauth_flow_type="desktop")
+    log.set(oauth_flow_type=OAUTH_FLOW_DESKTOP)
     try:
         # Validate code parameter
         if not code:
             log.error("No authorization code received from WorkOS (desktop)")
-            return RedirectResponse(url="gaia://auth/callback?error=missing_code")
+            return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
             code=code,
@@ -262,21 +300,22 @@ async def workos_desktop_callback(
         log.set(fields_extracted=fields_extracted)
 
         # Store user info in our database
-        await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        log.set(user_id=str(user_id), is_new_user=is_new_user)
 
         # Return token via deep link - desktop app will handle storage
         token = auth_response.sealed_session or auth_response.access_token
         return RedirectResponse(
-            url=f"gaia://auth/callback?token={quote(token, safe='')}"
+            url=f"{DESKTOP_DEEP_LINK}?token={quote(token, safe='')}"
         )
 
     except HTTPException as e:
         log.error(f"HTTP error during WorkOS desktop auth: {e.detail}")
-        return RedirectResponse(url=f"gaia://auth/callback?error={e.detail}")
+        return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error={e.detail}")
 
     except Exception as e:
         log.error(f"Unexpected error during WorkOS desktop callback: {str(e)}")
-        return RedirectResponse(url="gaia://auth/callback?error=server_error")
+        return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=server_error")
 
 
 @router.get("/workos/callback")
@@ -302,7 +341,7 @@ async def workos_callback(
         if return_url:
             await redis_cache.client.delete(key)
 
-    log.set(oauth_flow_type="web")
+    log.set(oauth_flow_type=OAUTH_FLOW_WEB)
     try:
         # Validate code parameter
         if not code:
@@ -338,25 +377,20 @@ async def workos_callback(
         log.set(fields_extracted=fields_extracted)
 
         # Store user info in our database
-        await store_user_info(name, email, picture_url)
+        user_id, is_new_user = await store_user_info(name, email, picture_url)
+        log.set(user_id=str(user_id), is_new_user=is_new_user)
 
-        # Redirect to return_url if provided, otherwise default /redirect
-        destination = return_url or f"{settings.FRONTEND_URL}/redirect"
-        # Ensure return_url is a relative path on our frontend (prevent open redirect)
-        if return_url and not return_url.startswith("/"):
-            destination = f"{settings.FRONTEND_URL}/redirect"
+        # Redirect to return_url if provided and safe, otherwise default /redirect
+        if return_url and is_safe_redirect_path(return_url):
+            destination = f"{settings.FRONTEND_URL}{return_url}"
         else:
-            destination = (
-                f"{settings.FRONTEND_URL}{return_url}"
-                if return_url
-                else f"{settings.FRONTEND_URL}/redirect"
-            )
+            destination = f"{settings.FRONTEND_URL}/redirect"
 
         response = RedirectResponse(url=destination)
 
         # Set cookies with appropriate security settings
         response.set_cookie(
-            key="wos_session",
+            key=WOS_SESSION_COOKIE,
             value=auth_response.sealed_session or auth_response.access_token,
             httponly=True,
             secure=settings.ENV == "production",

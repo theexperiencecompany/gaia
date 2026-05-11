@@ -3,10 +3,8 @@ import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { InformationCircleIcon } from "@icons";
 import type { ReactElement } from "react";
-import {
-  getBrowserTimezone,
-  type WorkflowFormData,
-} from "../../schemas/workflowFormSchema";
+import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { getBrowserTimezone } from "../../utils/browserTimezone";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 

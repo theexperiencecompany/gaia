@@ -1,3 +1,7 @@
+# STATIC system prompt for the follow-up actions node. Must be byte-identical
+# across users/turns so implicit prompt caching hits. All per-user and
+# per-turn content (tool_names, conversation summary, format instructions) is
+# passed in a separate dynamic-context message produced in the node itself.
 SUGGEST_FOLLOW_UP_ACTIONS = """
 Based on the conversation, suggest 2-4 highly relevant follow-up actions the user might want to do next. If no genuinely useful actions exist, return an empty array.
 
@@ -30,8 +34,5 @@ WHEN TO RETURN EMPTY ARRAY:
 
 Ask yourself: "Would I genuinely click these actions if I were the user right now?"
 
-{format_instructions}
-
-Available tools: {tool_names}
-Context: {conversation_summary}
+The list of available tools, format instructions, and the current conversation context are provided in a separate dynamic-context message AFTER this prompt.
 """

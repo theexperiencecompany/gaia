@@ -8,7 +8,8 @@
 
 import { Button } from "@heroui/button";
 import { CheckmarkCircle02Icon, Mail01Icon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { memo, useState } from "react";
 
 interface OnboardingTodo {

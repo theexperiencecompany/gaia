@@ -322,7 +322,6 @@ async def send_email_route(
     subject: str = Form(...),
     body: str = Form(...),
     thread_id: Optional[str] = Form(None),
-    is_html: Optional[bool] = Form(False),
     cc: Optional[str] = Form(None),
     bcc: Optional[str] = Form(None),
     attachments: Optional[List[UploadFile]] = File(None),
@@ -355,7 +354,6 @@ async def send_email_route(
             extra_recipients=to_list[1:],
             subject=subject,
             body=body,
-            is_html=is_html or False,
             cc_list=cc_list,
             bcc_list=bcc_list,
             attachments=attachments,
@@ -405,7 +403,6 @@ async def send_email_json(
             extra_recipients=request.to[1:],
             subject=request.subject,
             body=request.body,
-            is_html=False,
             cc_list=request.cc,
             bcc_list=request.bcc,
             attachments=None,
@@ -1019,7 +1016,6 @@ async def create_draft_route(
     - **body**: Email body
     - **cc**: Optional list of CC recipients
     - **bcc**: Optional list of BCC recipients
-    - **is_html**: Whether the body is HTML content
 
     Returns the created draft data.
     """
@@ -1035,7 +1031,6 @@ async def create_draft_route(
             to_list=request.to,
             subject=request.subject,
             body=request.body,
-            is_html=request.is_html if request.is_html is not None else False,
             cc_list=request.cc,
             bcc_list=request.bcc,
         )
@@ -1137,7 +1132,6 @@ async def update_draft_route(
     - **body**: Email body
     - **cc**: Optional list of CC recipients
     - **bcc**: Optional list of BCC recipients
-    - **is_html**: Whether the body is HTML content
 
     Returns the updated draft data.
     """
@@ -1154,7 +1148,6 @@ async def update_draft_route(
             to_list=request.to,
             subject=request.subject,
             body=request.body,
-            is_html=request.is_html if request.is_html is not None else False,
             cc_list=request.cc,
             bcc_list=request.bcc,
         )

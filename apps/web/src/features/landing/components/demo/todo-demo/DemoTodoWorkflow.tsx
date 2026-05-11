@@ -2,7 +2,8 @@
 
 import { Button } from "@heroui/button";
 import { PlayIcon, ZapIcon } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DEMO_TODO_WORKFLOW,

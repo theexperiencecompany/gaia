@@ -20,6 +20,8 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from redis.asyncio import Redis
 
+from tests.helpers import worker_redis_url
+
 
 # ---------------------------------------------------------------------------
 # Session-scoped connections (one per test run)
@@ -30,7 +32,7 @@ from redis.asyncio import Redis
 def mongodb_url() -> str:
     return os.environ.get(
         "MONGODB_URL",
-        "mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin",
+        "mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin",  # pragma: allowlist secret
     )
 
 
@@ -43,7 +45,7 @@ def redis_url() -> str:
 def postgres_url() -> str:
     return os.environ.get(
         "DATABASE_URL",
-        "postgresql://gaia:gaia@localhost:5432/gaia_test",
+        "postgresql://gaia:gaia@localhost:5432/gaia_test",  # pragma: allowlist secret
     )
 
 
@@ -61,7 +63,7 @@ async def mongo_db(mongodb_url: str):
     contamination. Use this when you need to work with collections other
     than 'conversations' (e.g., 'todos', 'reminders').
     """
-    client = AsyncIOMotorClient(mongodb_url)
+    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
     db = client["gaia_test"]
     yield db
     client.close()
@@ -77,7 +79,7 @@ async def conversations_collection(mongodb_url: str, monkeypatch):
     loop and cannot be reused by function-scoped async fixtures whose
     asyncio_default_fixture_loop_scope is "function").
     """
-    client = AsyncIOMotorClient(mongodb_url)
+    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
     coll = client["gaia_test"]["conversations"]
     await coll.delete_many({})
 
@@ -98,10 +100,13 @@ async def real_redis(redis_url: str, monkeypatch):
 
     After this fixture, StreamManager methods (publish_chunk, subscribe_stream,
     start_stream, etc.) use real Redis — no mock.
+
+    Each xdist worker uses its own Redis DB so parallel tests cannot wipe
+    each other's keys during ``flushdb()`` teardown.
     """
     from app.db.redis import redis_cache
 
-    client = Redis.from_url(redis_url, decode_responses=True)
+    client = Redis.from_url(worker_redis_url(redis_url), decode_responses=True)
     await client.ping()
 
     monkeypatch.setattr(redis_cache, "redis", client)
@@ -109,7 +114,7 @@ async def real_redis(redis_url: str, monkeypatch):
     yield client
 
     await client.flushdb()
-    await client.aclose()
+    await client.aclose()  # type: ignore[attr-defined]
 
 
 @pytest.fixture
