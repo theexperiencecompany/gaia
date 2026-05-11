@@ -135,14 +135,10 @@ export function TextSoftBlurIn({
           paddingInline: "0.05em",
           marginInline: "-0.05em",
           opacity: isVisible ? 1 : 0,
-          ...(animDone
-            ? null
-            : {
-                filter: isVisible ? "blur(0px)" : `blur(${blur}px)`,
-                transform: isVisible ? "none" : `translateY(${yOffset}px)`,
-                transition: `opacity ${duration}s ${EASE} ${delay}s, filter ${duration}s ${EASE} ${delay}s, transform ${duration}s ${EASE} ${delay}s`,
-                willChange: "opacity, filter, transform",
-              }),
+          filter: isVisible ? "blur(0px)" : `blur(${blur}px)`,
+          transform: isVisible ? "none" : `translateY(${yOffset}px)`,
+          transition: `opacity ${duration}s ${EASE} ${delay}s, filter ${duration}s ${EASE} ${delay}s, transform ${duration}s ${EASE} ${delay}s`,
+          willChange: animDone ? "auto" : "opacity, filter, transform",
           ...(gradient
             ? {
                 backgroundImage: "inherit",

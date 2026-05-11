@@ -62,6 +62,7 @@ export default function HeroSection({
               text="Get a workday back"
               as="span"
               immediate
+              charStagger={0.04}
               className="block"
               gradient={
                 isDark
@@ -73,6 +74,8 @@ export default function HeroSection({
               text="every week."
               as="span"
               immediate
+              startDelay={0.4}
+              charStagger={0.04}
               className="block"
               gradient={
                 isDark
@@ -135,31 +138,35 @@ export default function HeroSection({
             </div>
           </div>
         </SoftBlurInBlock>
-        <SoftBlurInBlock immediate delay={0.55} className="flex gap-4 mt-4">
-          <GetStartedButton
-            btnColor={isDark ? "#00bbff" : "#000000"}
-            classname={
-              isDark
-                ? "text-black! px-1 hover:scale-105"
-                : "text-white! px-1 hover:scale-105"
-            }
-            text={
-              <div className="flex items-center gap-1.5">
-                Sign Up <CircleArrowRight02Icon width={20} height={20} />
-              </div>
-            }
-          />
-          <GetStartedButton
-            btnColor="#ffffff"
-            classname="px-1 hover:scale-105"
-            text={
-              <div className="flex items-center gap-1.5">
-                Explore <DiscoverCircleIcon width={20} height={20} />
-              </div>
-            }
-            href="/use-cases"
-          />
-        </SoftBlurInBlock>
+        <div className="flex gap-4 mt-4">
+          <SoftBlurInBlock immediate delay={0.55}>
+            <GetStartedButton
+              btnColor={isDark ? "#00bbff" : "#000000"}
+              classname={
+                isDark
+                  ? "text-black! px-1 hover:scale-105"
+                  : "text-white! px-1 hover:scale-105"
+              }
+              text={
+                <div className="flex items-center gap-1.5">
+                  Sign Up <CircleArrowRight02Icon width={20} height={20} />
+                </div>
+              }
+            />
+          </SoftBlurInBlock>
+          <SoftBlurInBlock immediate delay={0.75}>
+            <GetStartedButton
+              btnColor="#ffffff"
+              classname="px-1 hover:scale-105"
+              text={
+                <div className="flex items-center gap-1.5">
+                  Explore <DiscoverCircleIcon width={20} height={20} />
+                </div>
+              }
+              href="/use-cases"
+            />
+          </SoftBlurInBlock>
+        </div>
       </div>
     </div>
   );

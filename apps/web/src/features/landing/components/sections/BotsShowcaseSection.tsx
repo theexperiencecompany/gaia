@@ -469,15 +469,16 @@ function CTAGroup({
 }) {
   return (
     <div className="relative flex w-[390px] max-w-full items-center justify-center sm:w-[429px]">
-      <div className="-left-28 -translate-y-1/2 absolute top-1/2 flex items-center gap-2 sm:-left-36">
+      <div className="-left-24 -translate-y-1/2 absolute top-1/2 flex items-center gap-2">
         <Button
           isIconOnly
           variant="flat"
           radius="full"
           aria-label="Previous platform"
           onPress={onPrev}
+          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
         >
-          <ArrowLeft02Icon size={18} />
+          <ArrowLeft02Icon size={24} />
         </Button>
         <Button
           isIconOnly
@@ -485,8 +486,9 @@ function CTAGroup({
           radius="full"
           aria-label="Next platform"
           onPress={onNext}
+          className="min-w-10 h-10 w-10 p-0 text-zinc-500 transition-colors hover:text-zinc-200"
         >
-          <ArrowRight02Icon size={18} />
+          <ArrowRight02Icon size={24} />
         </Button>
       </div>
       <PlatformCTASwitcher
