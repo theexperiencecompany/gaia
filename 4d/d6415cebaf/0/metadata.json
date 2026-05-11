@@ -1,0 +1,68 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "4dd6415cebaf",
+  "session_id": "9f19fac3-6620-41be-bb09-564e4b97746b",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-11T17:36:39.17718Z",
+  "branch": "feat/chat-ui-package",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/web/src/types/api/aboutApiTypes.ts",
+    "apps/web/src/types/api/calendarApiTypes.ts",
+    "apps/web/src/types/api/goalsApiTypes.ts",
+    "apps/web/src/types/api/mailApiTypes.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "ff87bb6e58fe",
+  "token_usage": {
+    "input_tokens": 277,
+    "cache_creation_tokens": 379169,
+    "cache_read_tokens": 26945490,
+    "output_tokens": 90768,
+    "api_call_count": 169
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-11T17:36:39.15574Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 5008,
+    "human_modified": 94,
+    "human_removed": 0,
+    "total_committed": 5008,
+    "total_lines_changed": 23761,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 4,
+      "user_lines_removed": 90,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/web/src/types/api/aboutApiTypes.ts": 1,
+        "apps/web/src/types/api/calendarApiTypes.ts": 1,
+        "apps/web/src/types/api/goalsApiTypes.ts": 1,
+        "apps/web/src/types/api/mailApiTypes.ts": 1
+      },
+      "user_removed_per_file": {
+        "apps/web/src/types/api/aboutApiTypes.ts": 17,
+        "apps/web/src/types/api/calendarApiTypes.ts": 18,
+        "apps/web/src/types/api/goalsApiTypes.ts": 51,
+        "apps/web/src/types/api/mailApiTypes.ts": 4
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4,
+      "agent_lines_removed": 90
+    }
+  ]
+}

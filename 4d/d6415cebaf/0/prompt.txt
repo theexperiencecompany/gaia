@@ -1,0 +1,21 @@
+please perform the necessary cleanup in this branch that is needed based on the changes we made to chat ui lib. ensure u dont break anything. ensure everything type check works ensure everything lints and builds too. ensure no code duplication and ensure that everything works from the new chat ui lib we've created. and once done commit and push too
+
+---
+
+please proceed. hop in that branch and help me clean all up do not merge anything at all
+
+---
+
+please proceed. hop in that branch and help me clean all up do not merge anything at all. also first before you do, tell me why lib has stubs for real backends? shouldn't ist just use the actual stuff? why are stubs used at all?
+
+---
+
+but will this lead to additional complexity for developers??
+
+---
+
+i want to component dedupe, but the chat-ui package won't be for everyone only we'll use it so its fine if its a bit coupled in some places. what odoyou think?
+
+---
+
+do it all smartly the todotypes do it smartly too. and tell me the implications of doing it this way before starting. like what happens for poeple using chatui package what happens to internal developers and people using this monorepo?
