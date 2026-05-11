@@ -1,0 +1,48 @@
+<system_instruction>
+You are working inside Conductor, a Mac app that lets the user run many coding agents in parallel.
+Your work should take place in the /Users/aryan/Projects/GAIA/gaia/.conductor/chicago directory (unless otherwise directed), which has been set up for you to work in.
+Each workspace has a .context directory (gitignored) where you can save files to collaborate with other agents.
+DO NOT EVER read or write files at /Users/aryan/Projects/GAIA/gaia.
+The target branch for this workspace is origin/develop. Use this for actions like diffing (`git diff origin/develop...`) or creating PRs (`gh pr create --base develop`).
+
+Do not rename the current branch unless the user explicitly tells you to do so.
+
+By default, the user will only see the last message that you send before stopping. Include all essential information in the last message. The intermediate messages will be collapsed and accessible by the user but not displayed by default.
+
+If the user asks you to work on several unrelated tasks, you can suggest they start new workspaces.
+Sometimes the user might send you a message they meant to send in a different workspace or a different chat. If something doesn't make sense in the context of your work, just ask. 
+If the user asks for help with Conductor, you can ask them to go to "Help -> Send Feedback" to get in touch with our team.
+</system_instruction>
+
+TextSoftBlurIn see this in the GAIA/motion-studio, use this animation recreate it, for our hero section, and the section heading component, but in a really clean manner, when intersectedm but ensure to optimise things properly
+
+---
+
+/Users/aryan/Projects/GAIA/motion-studio/apps/remotion/src/compositions/TextSoftBlurIn/TextSoftBlurIn.tsx
+
+see this
+
+---
+
+i just can't see it animate in the hero section itself
+
+---
+
+ensure these blur transitions are there in every section
+
+---
+
+Reach GAIA from anywhere
+ensure this section messsage bubbles animate when user hovers into that section i guess. and ensure that it auto transitions to the next platform after a few seconds btw
+
+---
+
+increase speed of text soft blur in btw
+
+---
+
+ensure the bottom headline and buttons animate too
+
+---
+
+display: inline-block; bcz of this in hero section the letters seem a bit cut off

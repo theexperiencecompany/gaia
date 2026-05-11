@@ -1,0 +1,113 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "390b3c895ade",
+  "session_id": "bbe2b99b-9596-4073-b131-2bc57ec43903",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-11T13:41:46.236736Z",
+  "branch": "landing-platform-chat-demo",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(landing)/client.tsx",
+    "apps/web/src/features/landing/components/hero/HeroImage.tsx",
+    "apps/web/src/features/landing/components/hero/HeroSection.tsx",
+    "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",
+    "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx",
+    "apps/web/src/features/landing/components/sections/FinalSection.tsx",
+    "apps/web/src/features/landing/components/sections/Productivity.tsx",
+    "apps/web/src/features/landing/components/sections/ShowcaseSectionLayout.tsx",
+    "apps/web/src/features/landing/components/shared/LargeHeader.tsx",
+    "apps/web/src/features/landing/components/shared/TextSoftBlurIn.tsx",
+    "apps/web/src/features/landing/components/shared/TimeOfDayToggle.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "d5991d3b9be2",
+  "token_usage": {
+    "input_tokens": 395,
+    "cache_creation_tokens": 329170,
+    "cache_read_tokens": 7945386,
+    "output_tokens": 48396,
+    "api_call_count": 78
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-11T13:41:46.220864Z",
+    "agent_lines": 409,
+    "agent_removed": 97,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 47,
+    "total_committed": 409,
+    "total_lines_changed": 553,
+    "agent_percentage": 91.500904159132,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 147,
+      "user_lines_removed": 47,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/web/src/app/[locale]/(landing)/client.tsx": 1,
+        "apps/web/src/features/landing/components/hero/HeroImage.tsx": 69,
+        "apps/web/src/features/landing/components/iphone/ChatDemo.tsx": 3,
+        "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx": 8,
+        "apps/web/src/features/landing/components/sections/FinalSection.tsx": 65,
+        "apps/web/src/features/landing/components/shared/TimeOfDayToggle.tsx": 1
+      },
+      "user_removed_per_file": {
+        "apps/web/src/app/[locale]/(landing)/client.tsx": 1,
+        "apps/web/src/features/landing/components/hero/HeroImage.tsx": 26,
+        "apps/web/src/features/landing/components/iphone/ChatDemo.tsx": 3,
+        "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx": 2,
+        "apps/web/src/features/landing/components/sections/FinalSection.tsx": 15
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 391,
+      "agent_lines_removed": 79
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 395,
+      "agent_lines_removed": 79
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 420,
+      "agent_lines_removed": 105
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 487,
+      "agent_lines_removed": 111
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 487,
+      "agent_lines_removed": 111
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 492,
+      "agent_lines_removed": 116
+    }
+  ]
+}
