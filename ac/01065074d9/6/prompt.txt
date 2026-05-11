@@ -1,0 +1,17 @@
+based on our sequential changes. rn learning your style is way too dependent on scanning your inbox. like it waits for that to happen. and also the flow seemed completely fucked. the only things i saw was the todos generated, when i hit skip, it showed the different platforms, when i hit skip it went to continue to gaia. so i just didn't see the workflows or the learning style we did. could you please explore the logs and figure out what we're doing wrong???
+
+---
+
+first of all how the fuck did it return < 5?? how is that possible? i have sent emails. could you see the filter and see what we're doing wrong??
+
+---
+
+i think approach 3 would be a better approach
+
+---
+
+is anything else left? have we over explained some things in the prompt?
+
+---
+
+can u add comprehensive logs now at each step but without a shitton of data. basically comprehenisvely add logs like the cardinality shit at each step and a lot of information so we know whats going on and its easy to debug everything
