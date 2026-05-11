@@ -143,7 +143,7 @@ export default function LandingPageClient({
             onTextClick={handleTextClick}
             latestRelease={latestRelease}
           />
-          <div className="absolute bottom-6 right-6 z-30">
+          <div className="absolute bottom-6 right-6 z-[1002]">
             <TimeOfDayToggle timeOfDay={timeOfDay} onPress={handleTimeChange} />
           </div>
         </section>

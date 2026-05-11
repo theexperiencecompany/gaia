@@ -38,7 +38,7 @@ export interface ChatDemoProps {
   className?: string;
 }
 
-const DEFAULT_AVATAR = "/gaia-glow.webp";
+const DEFAULT_AVATAR = "/images/logos/macos.webp";
 
 const SF_STACK =
   '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -380,7 +380,7 @@ function IMessageDemo({
             style={{
               border: "1px solid rgba(60,60,67,0.18)",
               borderRadius: 18,
-              padding: "5px 8px 5px 12px",
+              padding: "5px 4px 5px 19px",
               background: "#fff",
               minHeight: 32,
             }}
@@ -620,7 +620,7 @@ function WhatsAppDemo({
               background: "#FFFFFF",
               border: "0.5px solid #8E8E93",
               borderRadius: 16,
-              padding: "0 10px",
+              padding: "0 6px 0 17px",
               height: 32,
               color: "#8E8E93",
             }}
@@ -890,7 +890,7 @@ function TelegramDemo({
               background: "#FFFFFF",
               border: "0.5px solid #D1D1D6",
               borderRadius: 16,
-              padding: "0 12px",
+              padding: "0 8px 0 19px",
               height: 32,
               color: metaColor,
             }}
@@ -1091,9 +1091,6 @@ function SlackDemo({
                 height: 36,
                 borderRadius: 6,
                 marginTop: 4,
-                background: g.author?.avatar
-                  ? undefined
-                  : pickColor(g.author?.name ?? ""),
               }}
             >
               {/* biome-ignore lint/performance/noImgElement: avatar */}
@@ -1609,16 +1606,18 @@ function DiscordDemo({
               style={{
                 width: 40,
                 height: 40,
-                background: g.author?.avatar
-                  ? undefined
-                  : pickColor(g.author?.name ?? ""),
               }}
             >
               {/* biome-ignore lint/performance/noImgElement: avatar */}
               <img
                 src={g.author?.avatar ?? DEFAULT_AVATAR}
                 alt=""
-                style={{ width: 40, height: 40, objectFit: "cover" }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  objectFit: "cover",
+                  transform: "scale(1.05)",
+                }}
               />
             </div>
             <div className="flex min-w-0 flex-1 flex-col">
@@ -2016,25 +2015,6 @@ function EmojiIcon({ size = 22 }: { size?: number }) {
       <path d="M8 14C8 14 9.5 16 12 16C14.5 16 16 14 16 14M15 9H15.01M9 9H9.01M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12ZM15.5 9C15.5 9.27614 15.2761 9.5 15 9.5C14.7239 9.5 14.5 9.27614 14.5 9C14.5 8.72386 14.7239 8.5 15 8.5C15.2761 8.5 15.5 8.72386 15.5 9ZM9.5 9C9.5 9.27614 9.27614 9.5 9 9.5C8.72386 9.5 8.5 9.27614 8.5 9C8.5 8.72386 8.72386 8.5 9 8.5C9.27614 8.5 9.5 8.72386 9.5 9Z" />
     </svg>
   );
-}
-
-function pickColor(seed: string) {
-  const palette = [
-    "#5865F2",
-    "#EB459E",
-    "#F23F42",
-    "#23A55A",
-    "#F0B232",
-    "#FF7C5C",
-    "#9B7CFF",
-    "#1ABC9C",
-    "#3498DB",
-    "#E74C3C",
-  ];
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++)
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-  return palette[Math.abs(hash) % palette.length];
 }
 
 type AuthorGroup = {

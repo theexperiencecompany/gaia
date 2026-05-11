@@ -1,12 +1,18 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { CircleArrowRight02Icon, SquareLockIcon } from "@icons";
+import {
+  ArrowLeft02Icon,
+  ArrowRight02Icon,
+  CircleArrowRight02Icon,
+  SquareLockIcon,
+} from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { Link } from "@/i18n/navigation";
 
@@ -270,20 +276,74 @@ const PLATFORMS: Platform[] = [
 
 export default function BotsShowcaseSection() {
   const [activeId, setActiveId] = useState<ChatPlatform>(PLATFORMS[0].id);
+  const [autoRotate, setAutoRotate] = useState(true);
   const active = PLATFORMS.find((p) => p.id === activeId) ?? PLATFORMS[0];
-  const visibleMessages = useStaggeredMessages(active);
+
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const inView = useSectionInView(sectionRef, 0.25);
+
+  const visibleMessages = useStaggeredMessages(active, inView);
   const phoneRef = useRef<HTMLDivElement>(null);
   const isCtaFloating = useFloatingCta(phoneRef);
 
+  const handleSelect = useCallback((id: ChatPlatform) => {
+    setActiveId(id);
+    setAutoRotate(false);
+  }, []);
+
+  const handlePrev = useCallback(() => {
+    setAutoRotate(false);
+    setActiveId((current) => {
+      const idx = PLATFORMS.findIndex((p) => p.id === current);
+      return PLATFORMS[(idx - 1 + PLATFORMS.length) % PLATFORMS.length].id;
+    });
+  }, []);
+
+  const handleNext = useCallback(() => {
+    setAutoRotate(false);
+    setActiveId((current) => {
+      const idx = PLATFORMS.findIndex((p) => p.id === current);
+      return PLATFORMS[(idx + 1) % PLATFORMS.length].id;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (inView) return;
+    setAutoRotate(true);
+  }, [inView]);
+
+  useEffect(() => {
+    if (!inView || !autoRotate) return;
+    const cascadeMs =
+      Math.max(0, active.demo.messages.length - 1) *
+      (TYPING_DELAY_MS + TYPING_DURATION_MS);
+    const dwellMs = 2500;
+    const id = window.setTimeout(() => {
+      setActiveId((current) => {
+        const idx = PLATFORMS.findIndex((p) => p.id === current);
+        return PLATFORMS[(idx + 1) % PLATFORMS.length].id;
+      });
+    }, cascadeMs + dwellMs);
+    return () => window.clearTimeout(id);
+  }, [inView, autoRotate, active]);
+
   return (
-    <section className="relative flex w-full flex-col items-center px-4 py-20 sm:px-6 sm:py-24 lg:px-8">
+    <section
+      ref={sectionRef}
+      className="relative flex w-full flex-col items-center px-4 py-20 sm:px-6 sm:py-24 lg:px-8"
+    >
       <div className="flex w-full max-w-6xl flex-col items-center gap-8">
-        <LargeHeader headingText="Reach GAIA from anywhere" centered />
+        <LargeHeader
+          chipText="Available everywhere"
+          headingText="Reach GAIA from anywhere"
+          subHeadingText="No new app to learn. Just open the one you already have open."
+          centered
+        />
 
         <PlatformChips
           platforms={PLATFORMS}
           activeId={activeId}
-          onSelect={setActiveId}
+          onSelect={handleSelect}
         />
 
         <div ref={phoneRef}>
@@ -296,10 +356,36 @@ export default function BotsShowcaseSection() {
           actionKey={active.id}
           iconSrc={typeof active.icon === "string" ? active.icon : undefined}
           comingSoon={active.comingSoon}
+          onPrev={handlePrev}
+          onNext={handleNext}
         />
       </div>
     </section>
   );
+}
+
+function useSectionInView(
+  ref: React.RefObject<HTMLElement | null>,
+  threshold: number,
+): boolean {
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry?.isIntersecting ?? false),
+      { threshold },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref, threshold]);
+
+  return inView;
 }
 
 function FloatingCTA({
@@ -308,12 +394,16 @@ function FloatingCTA({
   actionKey,
   iconSrc,
   comingSoon,
+  onPrev,
+  onNext,
 }: {
   isFloating: boolean;
   action: ActionLink;
   actionKey: string;
   iconSrc: string | undefined;
   comingSoon?: boolean;
+  onPrev: () => void;
+  onNext: () => void;
 }) {
   // Reserve the static-flow slot so the layout never jumps when the button
   // pops out of the flow into a fixed position. The CTA is rendered twice:
@@ -325,11 +415,13 @@ function FloatingCTA({
         aria-hidden={isFloating}
         className={isFloating ? "pointer-events-none opacity-0" : "opacity-100"}
       >
-        <PlatformCTASwitcher
+        <CTAGroup
           actionKey={actionKey}
           action={action}
           iconSrc={iconSrc}
           comingSoon={comingSoon}
+          onPrev={onPrev}
+          onNext={onNext}
         />
       </div>
 
@@ -344,16 +436,65 @@ function FloatingCTA({
             className="pointer-events-none fixed inset-x-0 bottom-6 z-[1001] flex justify-center px-4"
           >
             <div className="pointer-events-auto">
-              <PlatformCTASwitcher
+              <CTAGroup
                 actionKey={actionKey}
                 action={action}
                 iconSrc={iconSrc}
                 comingSoon={comingSoon}
+                onPrev={onPrev}
+                onNext={onNext}
               />
             </div>
           </m.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function CTAGroup({
+  actionKey,
+  action,
+  iconSrc,
+  comingSoon,
+  onPrev,
+  onNext,
+}: {
+  actionKey: string;
+  action: ActionLink;
+  iconSrc: string | undefined;
+  comingSoon?: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="relative flex w-[390px] max-w-full items-center justify-center sm:w-[429px]">
+      <div className="-left-28 -translate-y-1/2 absolute top-1/2 flex items-center gap-2 sm:-left-36">
+        <Button
+          isIconOnly
+          variant="flat"
+          radius="full"
+          aria-label="Previous platform"
+          onPress={onPrev}
+        >
+          <ArrowLeft02Icon size={18} />
+        </Button>
+        <Button
+          isIconOnly
+          variant="flat"
+          radius="full"
+          aria-label="Next platform"
+          onPress={onNext}
+        >
+          <ArrowRight02Icon size={18} />
+        </Button>
+      </div>
+      <PlatformCTASwitcher
+        actionKey={actionKey}
+        action={action}
+        iconSrc={iconSrc}
+        comingSoon={comingSoon}
+      />
     </div>
   );
 }
@@ -422,7 +563,10 @@ function useFloatingCta(
 const TYPING_DELAY_MS = 450;
 const TYPING_DURATION_MS = 850;
 
-function useStaggeredMessages(platform: Platform): ChatMessageItem[] {
+function useStaggeredMessages(
+  platform: Platform,
+  enabled: boolean,
+): ChatMessageItem[] {
   const allMessages = platform.demo.messages;
   const [visibleCount, setVisibleCount] = useState(1);
   const [showTyping, setShowTyping] = useState(false);
@@ -430,6 +574,7 @@ function useStaggeredMessages(platform: Platform): ChatMessageItem[] {
   useEffect(() => {
     setVisibleCount(1);
     setShowTyping(false);
+    if (!enabled) return;
     if (allMessages.length <= 1) return;
 
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -449,7 +594,7 @@ function useStaggeredMessages(platform: Platform): ChatMessageItem[] {
     return () => {
       for (const t of timers) clearTimeout(t);
     };
-  }, [allMessages]);
+  }, [allMessages, enabled]);
 
   return useMemo(() => {
     const real = allMessages.slice(0, visibleCount).map((m, i) => ({
@@ -535,7 +680,7 @@ function PhoneFrame({
   messages: ChatMessageItem[];
 }) {
   return (
-    <div className="relative isolate">
+    <div className="relative isolate sm:pb-[82px]">
       <div
         aria-hidden
         className="-z-10 pointer-events-none absolute -inset-x-[28rem] -inset-y-[20rem]"
@@ -548,6 +693,7 @@ function PhoneFrame({
       <IPhoneMockup
         screenBackground={platform.phone.screenBackground}
         statusBarTone={platform.phone.statusBarTone}
+        className="sm:scale-[1.1] sm:origin-top"
       >
         <AnimatePresence mode="wait" initial={false}>
           <m.div

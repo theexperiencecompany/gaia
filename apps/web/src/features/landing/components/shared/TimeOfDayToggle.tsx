@@ -27,6 +27,7 @@ export function TimeOfDayToggle({ timeOfDay, onPress }: TimeOfDayToggleProps) {
       content="P.S. did you know you can click on the hero title 3 times to change the time?"
       placement="left"
       delay={300}
+      classNames={{ content: "max-w-[180px] text-center" }}
     >
       <Button
         isIconOnly

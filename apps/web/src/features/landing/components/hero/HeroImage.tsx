@@ -1,7 +1,7 @@
-import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import Image from "next/image";
-import { useEffect, useRef } from "react";
+import NextImage from "next/image";
+import { useEffect, useRef, useState } from "react";
+import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import type { TimeOfDay } from "@/features/landing/utils/timeOfDay";
 
 const WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
@@ -34,6 +34,20 @@ export default function HeroImage({
   const transformRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
 
+  const [previousTime, setPreviousTime] = useState<TimeOfDay | null>(null);
+  const lastTimeRef = useRef<TimeOfDay>(timeOfDay);
+
+  if (timeOfDay !== lastTimeRef.current) {
+    setPreviousTime(lastTimeRef.current);
+    lastTimeRef.current = timeOfDay;
+  }
+
+  const [shouldPreloadOthers, setShouldPreloadOthers] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShouldPreloadOthers(true), 1200);
+    return () => clearTimeout(t);
+  }, []);
+
   useEffect(() => {
     const handleScroll = () => {
       if (rafRef.current !== null) return;
@@ -55,6 +69,27 @@ export default function HeroImage({
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
+      {shouldPreloadOthers && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
+        >
+          {Object.entries(WALLPAPERS)
+            .filter(([t]) => t !== timeOfDay)
+            .map(([t, { webp }]) => (
+              <NextImage
+                key={t}
+                src={webp}
+                alt=""
+                width={1920}
+                height={1080}
+                sizes="100vw"
+                priority
+              />
+            ))}
+        </div>
+      )}
+
       <div
         ref={transformRef}
         style={{
@@ -65,33 +100,41 @@ export default function HeroImage({
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent opacity-50" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 
-        <AnimatePresence initial={false}>
-          <m.div
-            key={timeOfDay}
+        {previousTime && (
+          <div
+            key={`prev-${previousTime}`}
             className="absolute inset-0 h-full w-full"
-            initial={{ clipPath: "inset(0 0 0 100%)" }}
-            animate={{ clipPath: "inset(0 0 0 0%)" }}
-            exit={{ clipPath: "inset(0 0 0 0%)" }}
-            transition={{ duration: 1.1, ease: [0.65, 0, 0.35, 1] }}
           >
-            <Image
-              src={wallpaper.webp}
+            <ProgressiveImage
+              webpSrc={WALLPAPERS[previousTime].webp}
+              pngSrc={WALLPAPERS[previousTime].png}
               alt="Hero wallpaper"
-              width={1920}
-              height={1080}
-              sizes="100vw"
-              priority
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                position: "absolute",
-                top: 0,
-                left: 0,
-              }}
+              className="object-cover"
+              shouldHaveInitialFade={false}
+              priority={false}
             />
-          </m.div>
-        </AnimatePresence>
+          </div>
+        )}
+
+        <m.div
+          key={timeOfDay}
+          className="absolute inset-0 h-full w-full"
+          initial={
+            previousTime ? { clipPath: "circle(0% at 100% 50%)" } : false
+          }
+          animate={{ clipPath: "circle(150% at 100% 50%)" }}
+          transition={{ duration: 0.5, ease: [0.65, 0, 0.35, 1] }}
+          onAnimationComplete={() => setPreviousTime(null)}
+        >
+          <ProgressiveImage
+            webpSrc={wallpaper.webp}
+            pngSrc={wallpaper.png}
+            alt="Hero wallpaper"
+            className="object-cover"
+            shouldHaveInitialFade={true}
+            priority={true}
+          />
+        </m.div>
       </div>
     </div>
   );
