@@ -1,0 +1,60 @@
+<system_instruction>
+You are working inside Conductor, a Mac app that lets the user run many coding agents in parallel.
+Your work should take place in the /Users/aryan/Projects/GAIA/gaia/.conductor/chicago directory (unless otherwise directed), which has been set up for you to work in.
+Each workspace has a .context directory (gitignored) where you can save files to collaborate with other agents.
+DO NOT EVER read or write files at /Users/aryan/Projects/GAIA/gaia.
+The target branch for this workspace is origin/develop. Use this for actions like diffing (`git diff origin/develop...`) or creating PRs (`gh pr create --base develop`).
+
+Do not rename the current branch unless the user explicitly tells you to do so.
+
+By default, the user will only see the last message that you send before stopping. Include all essential information in the last message. The intermediate messages will be collapsed and accessible by the user but not displayed by default.
+
+If the user asks you to work on several unrelated tasks, you can suggest they start new workspaces.
+Sometimes the user might send you a message they meant to send in a different workspace or a different chat. If something doesn't make sense in the context of your work, just ask. 
+If the user asks for help with Conductor, you can ask them to go to "Help -> Send Feedback" to get in touch with our team.
+</system_instruction>
+
+Reach GAIA from anywhere
+in this section the bottom button add 2 flat buttons with arrow left and right 01 icons that navigate each paltform like whatsapp to telegram etc ensure they cycle properly. use heroui flat buttons
+
+---
+
+mate ensure the prev and next buttons are next to the message on telegram whatsapp buttons like left button center button and then right button and use arrow 02 instead of 01
+
+---
+
+u retard i said to the left and right of the bottom button not the fucking chips holy fuck
+
+---
+
+ensure they're roundedfull
+
+---
+
+do 1 thing. make the position of the left and right arrows absolute, make the cta in the middle always
+
+---
+
+its fucked up and overlapped with the cta ensure theyre layed out properly
+
+---
+
+its fucked up and overlapped with the cta ensure theyre layed out properly
+
+---
+
+it should be basically all in the same row. left arrow, right arrow and the cta button.
+
+but, left and right button div should be absolute such that its left of the cta button but that the layout doesn't shift just bcz of the cta button width changing. and cta should be in center of the screen
+
+---
+
+the layout shifts lmaoo i guess make the cta button width the same as the iphone (the parent of the cta button if not there then creat it dont touch the width of the actual ca)
+
+---
+
+mate not the gaia logo use the macos icon retard also please take screenshots using devtools mcp. the buttons still don't work properly as intended why is this so heard for you please understand everything i've said
+
+---
+
+great now its fixed. now how about you increase the width or offset in such a way where the left and right buttons are a bit more towards the left. also ensure no background images in the profile photo of gaia in the demos bcz it shows a weird outline. rather just do overflow hidden wiht rounded full for discord and other platforms. and for slack just keep rounded as it is just remove the weird orange bg
