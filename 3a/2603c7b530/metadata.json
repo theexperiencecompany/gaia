@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "3a2603c7b530",
+  "strategy": "manual-commit",
+  "branch": "landing-platform-chat-demo",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/web/src/app/styles/globals.css",
+    "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3a/2603c7b530/0/metadata.json",
+      "transcript": "/3a/2603c7b530/0/full.jsonl",
+      "content_hash": "/3a/2603c7b530/0/content_hash.txt",
+      "prompt": "/3a/2603c7b530/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 8,
+    "cache_creation_tokens": 40337,
+    "cache_read_tokens": 177758,
+    "output_tokens": 1088,
+    "api_call_count": 6
+  }
+}
