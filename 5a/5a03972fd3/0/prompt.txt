@@ -1,0 +1,18 @@
+each letter doesnt seem to animate like it used to now like used in components like Reach GAIA from anywhere
+
+---
+
+it should stagger a bit more, only in the hero section like it needs to be a bit more noticeable
+
+---
+
+ensure the cta buttons sequentially stagger animate
+
+---
+
+Reach GAIA from anywhere
+the arrow buttons  left and right slightly dim and largen (reducing the padding of the button)
+
+---
+
+make them variant flat
