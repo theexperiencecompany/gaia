@@ -1,0 +1,59 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "390b3c895ade",
+  "session_id": "65004518-efd2-4d4e-bf7b-7169163ba9c3",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-11T13:41:42.70188Z",
+  "branch": "landing-platform-chat-demo",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/web/src/features/landing/components/hero/HeroImage.tsx",
+    "apps/web/src/features/landing/components/sections/FinalSection.tsx",
+    "apps/web/src/features/landing/components/shared/TimeOfDayToggle.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "16cd4f01b1ca",
+  "checkpoint_transcript_start": 1512,
+  "transcript_lines_at_start": 1512,
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 6348,
+    "cache_read_tokens": 2326865,
+    "output_tokens": 1552,
+    "api_call_count": 5
+  },
+  "session_metrics": {
+    "turn_count": 13
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-11T13:41:42.584715Z",
+    "agent_lines": 37,
+    "agent_removed": 18,
+    "human_added": 426,
+    "human_modified": 30,
+    "human_removed": 0,
+    "total_committed": 493,
+    "total_lines_changed": 595,
+    "agent_percentage": 9.243697478991598,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 144,
+      "user_lines_removed": 30,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/web/src/features/landing/components/hero/HeroImage.tsx": 46,
+        "apps/web/src/features/landing/components/sections/FinalSection.tsx": 53,
+        "apps/web/src/features/landing/components/shared/TimeOfDayToggle.tsx": 45
+      },
+      "user_removed_per_file": {
+        "apps/web/src/features/landing/components/hero/HeroImage.tsx": 25,
+        "apps/web/src/features/landing/components/sections/FinalSection.tsx": 5
+      }
+    }
+  ]
+}
