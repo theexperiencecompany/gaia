@@ -1,0 +1,9 @@
+see the logs in the onboarding flow, seems like there are toasts for workflows generated. why do these show? i thought we were protecting against all such toasts in the onboarding route but they still show with the open button?
+
+---
+
+nah mate your logic makes no sense i think just letting it not show on onboaridng page is better approachj
+
+---
+
+Workflow Generated still shows. why are you overcomplicating and fucking things up like tech debt? why can't you just simplify it? just don't fucking show the toast if its on onboarding route when created workflows!
