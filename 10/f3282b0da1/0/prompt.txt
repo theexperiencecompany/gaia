@@ -1,0 +1,36 @@
+<system_instruction>
+You are working inside Conductor, a Mac app that lets the user run many coding agents in parallel.
+Your work should take place in the /Users/aryan/Projects/GAIA/gaia/.conductor/chicago directory (unless otherwise directed), which has been set up for you to work in.
+Each workspace has a .context directory (gitignored) where you can save files to collaborate with other agents.
+DO NOT EVER read or write files at /Users/aryan/Projects/GAIA/gaia.
+The target branch for this workspace is origin/develop. Use this for actions like diffing (`git diff origin/develop...`) or creating PRs (`gh pr create --base develop`).
+
+Do not rename the current branch unless the user explicitly tells you to do so.
+
+By default, the user will only see the last message that you send before stopping. Include all essential information in the last message. The intermediate messages will be collapsed and accessible by the user but not displayed by default.
+
+If the user asks you to work on several unrelated tasks, you can suggest they start new workspaces.
+Sometimes the user might send you a message they meant to send in a different workspace or a different chat. If something doesn't make sense in the context of your work, just ask. 
+If the user asks for help with Conductor, you can ask them to go to "Help -> Send Feedback" to get in touch with our team.
+</system_instruction>
+
+at the bottom right of the hero section could you add a button that changes between all the times of the day in the hero section background image and the final section too add the button and sync rotation too and use icons like sunrise sunset sun03 moon02 but uite subtle heroui flat button
+
+---
+
+make it full rounded and add a tooltip to it mentioning P.S did you know you can click on the hero section title 3 times to change the theme
+
+---
+
+in the images, instead of it chaging instantly, is there no way we can have a nice transition like right to left? how would we do this i don't really understand?
+
+---
+
+To get a right-to-left wipe, you stack two images and animate them. The pattern:
+
+Wrap the image in a motion.div with key={timeOfDay} inside <AnimatePresence>
+When timeOfDay changes, the keyed div unmounts and a new one mounts
+New one starts at x: "100%" (offscreen right) and animates to x: 0
+AnimatePresence keeps the old one mounted briefly so the new one slides over it
+
+i think this would look weird. position shouldnt change i guess. just transition should be right to left like swiping a cloth or revealing like that.

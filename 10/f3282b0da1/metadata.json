@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "10f3282b0da1",
+  "strategy": "manual-commit",
+  "branch": "landing-platform-chat-demo",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(landing)/client.tsx",
+    "apps/web/src/features/landing/components/demo/ChatDemoSection.tsx",
+    "apps/web/src/features/landing/components/hero/HeroImage.tsx",
+    "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx",
+    "apps/web/src/features/landing/components/sections/FinalSection.tsx",
+    "apps/web/src/features/landing/components/shared/TimeOfDayToggle.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/10/f3282b0da1/0/metadata.json",
+      "transcript": "/10/f3282b0da1/0/full.jsonl",
+      "content_hash": "/10/f3282b0da1/0/content_hash.txt",
+      "prompt": "/10/f3282b0da1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 49,
+    "cache_creation_tokens": 182249,
+    "cache_read_tokens": 2392179,
+    "output_tokens": 31364,
+    "api_call_count": 33
+  }
+}
