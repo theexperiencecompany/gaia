@@ -3,7 +3,7 @@
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Tab, Tabs } from "@heroui/tabs";
-import { SearchIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const CATEGORIES = [

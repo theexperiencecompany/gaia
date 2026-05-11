@@ -111,6 +111,86 @@ export interface CommunityIntegration {
   cloneCount: number;
   toolCount: number;
   tools: Array<{ name: string; description: string | null }>;
-  publishedAt: string;
+  publishedAt: string | null;
   creator: IntegrationCreator | null;
+  source?: "platform" | "custom";
+}
+
+/**
+ * The platform integrations config endpoint returns one of these per
+ * integration. Status is layered on at the API service level via
+ * IntegrationsStatusResponse. Field names are backend-driven.
+ */
+export interface IntegrationsConfigEntry {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  provider?: string;
+  available?: boolean;
+  loginEndpoint?: string;
+  isSpecial?: boolean;
+  displayPriority?: number;
+  includedIntegrations?: string[];
+  isFeatured?: boolean;
+  managedBy?: string;
+  source?: string;
+  authType?: string;
+  iconUrl?: string;
+  slug?: string;
+}
+
+export interface IntegrationsConfigResponse {
+  integrations: IntegrationsConfigEntry[];
+}
+
+export interface IntegrationStatusRecord {
+  integrationId: string;
+  connected: boolean;
+  lastConnected?: string;
+  error?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface IntegrationsStatusResponse {
+  integrations: IntegrationStatusRecord[];
+}
+
+export interface UserIntegrationsResponse {
+  integrations: UserIntegration[];
+  total: number;
+}
+
+export interface CommunityIntegrationsResponse {
+  integrations: CommunityIntegration[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface CommunitySearchParams {
+  search?: string;
+  category?: string;
+  limit?: number;
+  offset?: number;
+  sort?: "popular" | "recent" | "name";
+}
+
+export interface PublicIntegrationResponse extends CommunityIntegration {
+  mcpConfig?: {
+    serverUrl: string;
+    requiresAuth: boolean;
+    authType: string | null;
+  } | null;
+  authType?: IntegrationAuthType | null;
+}
+
+export interface CreateCustomIntegrationRequest {
+  name: string;
+  description?: string;
+  category?: string;
+  server_url: string;
+  requires_auth?: boolean;
+  auth_type?: "none" | "oauth" | "bearer";
+  is_public?: boolean;
+  bearer_token?: string;
 }

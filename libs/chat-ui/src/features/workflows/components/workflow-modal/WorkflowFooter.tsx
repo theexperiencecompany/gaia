@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
-import { GlobeIcon, LinkSquare02Icon, PlayIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { GlobeIcon, LinkSquare02Icon, PlayIcon } from "@icons";
 
 interface WorkflowFooterProps {
   existingWorkflow: boolean;

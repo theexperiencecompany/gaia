@@ -9,7 +9,7 @@ import {
   type NotificationAction,
   type NotificationRecord,
   NotificationStatus,
-} from "../../../types/features/notificationTypes";
+} from "@/types/features/notificationTypes";
 
 interface NotificationItemProps {
   notification: NotificationRecord;

@@ -8,7 +8,7 @@ import {
   CheckmarkCircle02Icon,
   LinkSquare02Icon,
   Timer02Icon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
+} from "@icons";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { Button } from "@/components/ui/button";

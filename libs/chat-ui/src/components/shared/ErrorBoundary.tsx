@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft01Icon, Home01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ArrowLeft01Icon, Home01Icon } from "@icons";
 import React from "react";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 

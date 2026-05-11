@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import { Cancel01Icon, DownloadSquare01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Cancel01Icon, DownloadSquare01Icon } from "@icons";
 import type React from "react";
 import { toast } from "@/lib/toast";
 import type { ImageData } from "@/types/features/toolDataTypes";

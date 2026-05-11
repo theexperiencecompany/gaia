@@ -30,7 +30,7 @@ import {
   ToolsIcon,
   WorkflowCircle06Icon,
   ZapIcon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
+} from "@icons";
 import Image from "next/image";
 import {
   getIconPath,

@@ -1,5 +1,5 @@
 import { Button } from "@heroui/button";
-import { AlertCircleIcon, CheckmarkCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { AlertCircleIcon, CheckmarkCircle02Icon } from "@icons";
 import CustomSpinner from "@/components/ui/spinner";
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowSteps from "../shared/WorkflowSteps";

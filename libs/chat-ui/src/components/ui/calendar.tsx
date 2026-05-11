@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ArrowLeft01Icon } from "@icons";
 import type * as React from "react";
 import { DayPicker } from "react-day-picker";
 import { buttonVariants } from "@/components/ui/button";

@@ -17,7 +17,5 @@ export const useWorkflowSelection = () => ({
     options?: WorkflowSelectionOptions,
   ) => void,
   clearSelectedWorkflow: noop as () => void,
-  setSelectedWorkflow: noop as (
-    workflow: SelectedWorkflowData | null,
-  ) => void,
+  setSelectedWorkflow: noop as (workflow: SelectedWorkflowData | null) => void,
 });

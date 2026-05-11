@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
-import { Cancel01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Cancel01Icon } from "@icons";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { toast } from "@/lib/toast";

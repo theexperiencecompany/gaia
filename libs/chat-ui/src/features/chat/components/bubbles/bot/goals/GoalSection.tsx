@@ -8,7 +8,7 @@ import {
   Timer02Icon,
   UserGroupIcon,
   ZapIcon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
+} from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 

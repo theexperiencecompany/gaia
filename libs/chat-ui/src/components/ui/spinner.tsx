@@ -1,4 +1,4 @@
-import { RedoIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { RedoIcon } from "@icons";
 import Image from "next/image";
 
 export default function Spinner({

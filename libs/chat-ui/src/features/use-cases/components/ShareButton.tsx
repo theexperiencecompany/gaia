@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Copy01Icon, Tick02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Copy01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
 import { siteConfig } from "@/lib/seo";
 import { toast } from "@/lib/toast";

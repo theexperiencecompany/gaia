@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
-import { type IconProps, RedoIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { type IconProps, RedoIcon } from "@icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, {
   type ReactElement,

@@ -1,6 +1,6 @@
 "use client";
 
-import { UnfoldLessIcon, UnfoldMoreIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { UnfoldLessIcon, UnfoldMoreIcon } from "@icons";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import { useMemo, useState } from "react";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";

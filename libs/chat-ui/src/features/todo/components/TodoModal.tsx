@@ -11,7 +11,7 @@ import {
   Tooltip,
   useDisclosure,
 } from "@heroui/react";
-import { TaskAddIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { TaskAddIcon } from "@icons";
 import { useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";

@@ -5,7 +5,7 @@ import { Chip } from "@heroui/chip";
 import { Input, Textarea } from "@heroui/input";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Cancel01Icon, PencilEdit01Icon, PlusSignIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Cancel01Icon, PencilEdit01Icon, PlusSignIcon } from "@icons";
 import DOMPurify from "dompurify";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";

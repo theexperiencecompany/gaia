@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import { PlayIcon, ZapIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { PlayIcon, ZapIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";

@@ -102,7 +102,7 @@ interface UseStoreFn {
   (): UIStore;
   getState: () => UIStore;
 }
-const useUIStore: UseStoreFn = (<U,>(selector?: Selector<U>) => {
+const useUIStore: UseStoreFn = (<U>(selector?: Selector<U>) => {
   if (selector) return selector(frozenState);
   return frozenState;
 }) as UseStoreFn;

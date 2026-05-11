@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Skeleton } from "@heroui/skeleton";
-import { CircleArrowRight02Icon, NewsIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { CircleArrowRight02Icon, NewsIcon } from "@icons";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";

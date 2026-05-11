@@ -22,6 +22,16 @@
       }
     ],
     "paths": {
+      "@/features/chat/components/*": [
+        "../../libs/chat-ui/src/features/chat/components/*",
+        "./src/features/chat/components/*"
+      ],
+      "@/types/api/*": ["../../libs/chat-ui/src/types/api/*"],
+      "@/types/features/*": ["../../libs/chat-ui/src/types/features/*"],
+      "@/types/shared/*": ["../../libs/chat-ui/src/types/shared/*"],
+      "@/types/libraries/*": ["../../libs/chat-ui/src/types/libraries/*"],
+      "@/types/notifications": ["../../libs/chat-ui/src/types/notifications"],
+      "@/types/platform": ["../../libs/chat-ui/src/types/platform"],
       "@/*": ["./src/*"],
       "@/src": ["./src/*"],
       "@shared/*": ["../../libs/shared/ts/src/*"],

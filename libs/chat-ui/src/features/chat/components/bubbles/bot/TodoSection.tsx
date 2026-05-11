@@ -9,7 +9,7 @@ import {
   GridIcon,
   PlayIcon,
   Tick02Icon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
+} from "@icons";
 import { formatToolDueDate } from "@shared/tool-utils";
 import { useRouter } from "next/navigation";
 import { useState } from "react";

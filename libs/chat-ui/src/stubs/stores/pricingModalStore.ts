@@ -25,7 +25,7 @@ interface UseStoreFn {
   subscribe: (listener: (state: PricingModalStore) => void) => () => void;
 }
 
-export const usePricingModalStore: UseStoreFn = (<U,>(
+export const usePricingModalStore: UseStoreFn = (<U>(
   selector?: Selector<U>,
 ) => {
   if (selector) return selector(frozenState);

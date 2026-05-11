@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ArrowDown01Icon } from "@icons";
 import { formatDateRange } from "little-date";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";

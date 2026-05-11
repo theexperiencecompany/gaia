@@ -56,7 +56,7 @@ interface UseLoadingStoreFn {
   subscribe: (listener: (state: LoadingStore) => void) => () => void;
 }
 
-export const useLoadingStore: UseLoadingStoreFn = (<U,>(
+export const useLoadingStore: UseLoadingStoreFn = (<U>(
   selector?: Selector<U>,
 ) => {
   if (selector) return selector(frozenState);

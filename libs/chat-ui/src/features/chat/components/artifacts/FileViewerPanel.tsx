@@ -1,5 +1,6 @@
 "use client";
 
+import { MarkdownRenderer } from "@chat-ui";
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
 import {
@@ -8,10 +9,9 @@ import {
   Copy01Icon,
   Download01Icon,
   File01Icon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
+} from "@icons";
 import { useCallback, useEffect, useState, type WheelEvent } from "react";
 import { type VFSReadResponse, vfsApi } from "@/features/chat/api/vfsApi";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 interface FileViewerPanelProps {

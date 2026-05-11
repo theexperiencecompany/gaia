@@ -1,6 +1,6 @@
 "use client";
 
-import { Cancel01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Cancel01Icon } from "@icons";
 import { OTPInput, OTPInputContext } from "input-otp";
 import * as React from "react";
 import { cn } from "@/lib/utils";

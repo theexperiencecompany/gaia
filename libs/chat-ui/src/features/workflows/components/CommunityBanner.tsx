@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight02Icon, UserGroupIcon, ZapIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ArrowRight02Icon, UserGroupIcon, ZapIcon } from "@icons";
 import { PromoBanner } from "@/components/shared/PromoBanner";
 
 interface CommunityBannerProps {

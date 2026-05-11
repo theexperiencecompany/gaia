@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
 import type { ReactNode } from "react";
 import { toast } from "@/lib/toast";
 import { usePricingModalStore } from "@/stores/pricingModalStore";

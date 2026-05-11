@@ -10,7 +10,7 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { Cancel01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Cancel01Icon } from "@icons";
 import { useEffect, useState } from "react";
 import { mailApi as EmailsAPI } from "@/features/mail/api/mailApi";
 import { toast } from "@/lib/toast";

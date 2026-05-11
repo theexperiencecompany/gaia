@@ -1,7 +1,7 @@
 "use client";
 
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { ArrowUp02Icon, RedditIcon, UserCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ArrowUp02Icon, RedditIcon, UserCircle02Icon } from "@icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import type { RedditCommentData } from "@/types/features/redditTypes";
 

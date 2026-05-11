@@ -1,6 +1,6 @@
 "use client";
 
-import { Cancel01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Cancel01Icon } from "@icons";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import type * as React from "react";
 import { cn } from "@/lib/utils";

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown01Icon, ArrowUp02Icon, CheckmarkCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ArrowDown01Icon, ArrowUp02Icon, CheckmarkCircle02Icon } from "@icons";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import type * as React from "react";
 import { cn } from "@/lib/utils";

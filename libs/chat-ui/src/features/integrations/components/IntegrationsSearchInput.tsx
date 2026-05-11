@@ -1,5 +1,5 @@
 import { Input } from "@heroui/input";
-import { SearchIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { SearchIcon } from "@icons";
 import { forwardRef, type KeyboardEvent } from "react";
 
 interface IntegrationsSearchInputProps {

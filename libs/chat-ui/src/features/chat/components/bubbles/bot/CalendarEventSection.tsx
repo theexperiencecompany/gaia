@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { CalendarAdd01Icon, Tick02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { CalendarAdd01Icon, Tick02Icon } from "@icons";
 import { useMemo, useState } from "react";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { toast } from "@/lib/toast";

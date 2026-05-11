@@ -71,7 +71,10 @@
       "@shared/icons": ["src/shared/icons/index"],
       "@shared/tool-utils/*": ["src/shared/tool-utils/*"],
       "@shared/tool-utils": ["src/shared/tool-utils/index"],
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/shared/*"],
+      "@icons": [
+        "../../node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded"
+      ]
     }
   },
   "include": ["src"],

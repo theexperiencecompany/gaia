@@ -58,7 +58,7 @@ interface UseStoreFn {
   subscribe: (listener: (state: WorkflowSelectionStore) => void) => () => void;
 }
 
-export const useWorkflowSelectionStore: UseStoreFn = (<U,>(
+export const useWorkflowSelectionStore: UseStoreFn = (<U>(
   selector?: Selector<U>,
 ) => {
   if (selector) return selector(frozenState);

@@ -3,7 +3,7 @@
  */
 "use client";
 
-import { ArrowLeft01Icon, CalendarIcon, Cancel01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ArrowLeft01Icon, CalendarIcon, Cancel01Icon } from "@icons";
 import {
   addHours,
   endOfDay,

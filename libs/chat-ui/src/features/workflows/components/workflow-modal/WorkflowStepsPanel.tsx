@@ -6,7 +6,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Skeleton } from "@heroui/skeleton";
-import { AlertCircleIcon, RedoIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { AlertCircleIcon, RedoIcon } from "@icons";
 import { ChevronDown } from "@/components/shared/icons";
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowSteps from "../shared/WorkflowSteps";

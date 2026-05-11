@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
 import { Tooltip } from "@heroui/tooltip";
-import { SparklesIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { SparklesIcon } from "@icons";
 import { useState } from "react";
 import {
   type Control,

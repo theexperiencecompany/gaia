@@ -1,7 +1,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
-import { InformationCircleIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { InformationCircleIcon } from "@icons";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { getBrowserTimezone } from "../../utils/browserTimezone";
 import { ScheduleBuilder } from "../ScheduleBuilder";

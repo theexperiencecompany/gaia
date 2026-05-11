@@ -11,7 +11,7 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Comment01Icon, HelpCircleIcon, PencilEdit01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Comment01Icon, HelpCircleIcon, PencilEdit01Icon } from "@icons";
 import type React from "react";
 import { useState } from "react";
 import { z } from "zod";

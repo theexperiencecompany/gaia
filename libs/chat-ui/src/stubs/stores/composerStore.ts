@@ -90,7 +90,7 @@ interface UseComposerStoreFn {
   subscribe: (listener: (state: ComposerStore) => void) => () => void;
 }
 
-export const useComposerStore: UseComposerStoreFn = (<U,>(
+export const useComposerStore: UseComposerStoreFn = (<U>(
   selector?: Selector<U>,
 ) => {
   if (selector) return selector(frozenState);

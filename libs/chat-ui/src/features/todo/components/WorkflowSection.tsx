@@ -8,7 +8,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Tooltip } from "@heroui/tooltip";
-import { PlayIcon, RedoIcon, SparklesIcon, ZapIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { PlayIcon, RedoIcon, SparklesIcon, ZapIcon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import { Skeleton } from "@/components/ui/skeleton";

@@ -11,7 +11,7 @@ import {
   ModalHeader,
   Textarea,
 } from "@heroui/react";
-import { ConnectIcon, KeyIcon, PuzzleIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
 import { useCallback, useMemo, useRef } from "react";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";

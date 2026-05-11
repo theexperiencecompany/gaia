@@ -16,7 +16,7 @@ import {
   ThermometerWarmIcon,
   Tornado02Icon,
   VisionIcon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
+} from "@icons";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { CloudFogIcon } from "@/components/shared/icons";

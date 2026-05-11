@@ -8,7 +8,7 @@ import {
   CheckmarkCircle02Icon,
   DashedLineCircleIcon,
   Loading03Icon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
+} from "@icons";
 import { useMemo, useRef } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import type {

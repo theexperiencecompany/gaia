@@ -12,7 +12,7 @@ import {
   Maximize01Icon,
   MinusSignIcon,
   PlusSignIcon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
+} from "@icons";
 import {
   createContext,
   forwardRef,

@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { StarAward01Icon, WorkflowCircle03Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";

@@ -62,7 +62,7 @@ interface UseStoreFn {
   ) => () => void;
 }
 
-export const useCalendarEventSelectionStore: UseStoreFn = (<U,>(
+export const useCalendarEventSelectionStore: UseStoreFn = (<U>(
   selector?: Selector<U>,
 ) => {
   if (selector) return selector(frozenState);

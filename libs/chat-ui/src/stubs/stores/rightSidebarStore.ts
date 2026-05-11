@@ -12,10 +12,7 @@ interface RightSidebarState {
   setContent: (content: ReactNode | null) => void;
   setVariant: (variant: RightSidebarVariant) => void;
   open: (variant?: RightSidebarVariant) => void;
-  openWithContent: (
-    content: ReactNode,
-    variant?: RightSidebarVariant,
-  ) => void;
+  openWithContent: (content: ReactNode, variant?: RightSidebarVariant) => void;
   close: () => void;
 }
 
@@ -42,7 +39,7 @@ interface UseStoreFn {
   subscribe: (listener: (state: RightSidebarState) => void) => () => void;
 }
 
-export const useRightSidebar: UseStoreFn = (<U,>(selector?: Selector<U>) => {
+export const useRightSidebar: UseStoreFn = (<U>(selector?: Selector<U>) => {
   if (selector) return selector(frozenState);
   return frozenState;
 }) as UseStoreFn;

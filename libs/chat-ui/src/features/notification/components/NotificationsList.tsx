@@ -1,7 +1,7 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
-import { NotificationIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { NotificationIcon } from "@icons";
 import { useMemo } from "react";
 import type {
   ModalConfig,

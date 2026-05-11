@@ -12,9 +12,8 @@ type LinkProps = {
   children?: ReactNode;
 } & Record<string, unknown>;
 
-const noopComponent: ComponentType<LinkProps> = (() => null) as ComponentType<
-  LinkProps
->;
+const noopComponent: ComponentType<LinkProps> = (() =>
+  null) as ComponentType<LinkProps>;
 
 interface RouterLike {
   push: (href: string, options?: { locale?: string }) => void;
@@ -36,7 +35,10 @@ const noopRouter: RouterLike = Object.freeze({
 
 export const Link = noopComponent;
 
-export const redirect = (_href: string, _options?: { locale?: string }): void => {};
+export const redirect = (
+  _href: string,
+  _options?: { locale?: string },
+): void => {};
 
 export const usePathname = (): string => "/";
 

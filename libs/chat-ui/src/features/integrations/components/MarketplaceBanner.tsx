@@ -4,7 +4,7 @@ import {
   ArrowRight02Icon,
   CursorAddSelectionIcon,
   PackageOpenIcon,
-} from "@theexperiencecompany/gaia-icons/solid-rounded";
+} from "@icons";
 import { PromoBanner } from "@/components/shared/PromoBanner";
 
 interface MarketplaceBannerProps {

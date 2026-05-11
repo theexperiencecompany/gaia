@@ -1,7 +1,7 @@
 "use client";
 
 import { Card } from "@heroui/react";
-import { ArrowDown01Icon, ArrowLeft01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ArrowDown01Icon, ArrowLeft01Icon } from "@icons";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";

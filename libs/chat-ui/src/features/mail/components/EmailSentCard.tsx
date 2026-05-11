@@ -1,5 +1,5 @@
 import { Chip } from "@heroui/chip";
-import { CheckmarkCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { CheckmarkCircle02Icon } from "@icons";
 import { Gmail } from "@/components/shared/icons";
 import type { EmailSentData } from "@/types/features/mailTypes";
 

@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
-import { ArrowDown01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { ArrowDown01Icon } from "@icons";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 

@@ -118,9 +118,7 @@ class ChatDexieStub {
   ): Promise<void> {
     return Promise.resolve();
   }
-  public deleteConversationAndMessages(
-    _conversationId: string,
-  ): Promise<void> {
+  public deleteConversationAndMessages(_conversationId: string): Promise<void> {
     return Promise.resolve();
   }
   public deleteConversationsAndMessagesBulk(

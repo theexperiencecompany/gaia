@@ -40,7 +40,7 @@ interface UseStoreFn {
   subscribe: (listener: (state: ReplyToMessageStore) => void) => () => void;
 }
 
-export const useReplyToMessageStore: UseStoreFn = (<U,>(
+export const useReplyToMessageStore: UseStoreFn = (<U>(
   selector?: Selector<U>,
 ) => {
   if (selector) return selector(frozenState);
@@ -54,6 +54,5 @@ export const useReplyToMessage = () => ({
   replyToMessage: null as ReplyToMessageData | null,
   setReplyToMessage: noop as ReplyToMessageActions["setReplyToMessage"],
   clearReplyToMessage: noop as ReplyToMessageActions["clearReplyToMessage"],
-  setInputFocusCallback:
-    noop as ReplyToMessageActions["setInputFocusCallback"],
+  setInputFocusCallback: noop as ReplyToMessageActions["setInputFocusCallback"],
 });

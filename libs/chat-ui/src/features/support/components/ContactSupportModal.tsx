@@ -10,7 +10,7 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { Select, SelectItem } from "@heroui/select";
-import { Cancel01Icon, Upload01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Cancel01Icon, Upload01Icon } from "@icons";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { toast } from "@/lib/toast";

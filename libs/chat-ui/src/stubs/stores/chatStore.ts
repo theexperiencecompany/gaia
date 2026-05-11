@@ -86,7 +86,7 @@ interface UseChatStoreFn {
   subscribe: (listener: (state: ChatState) => void) => () => void;
 }
 
-export const useChatStore: UseChatStoreFn = (<U,>(selector?: Selector<U>) => {
+export const useChatStore: UseChatStoreFn = (<U>(selector?: Selector<U>) => {
   if (selector) return selector(frozenState);
   return frozenState;
 }) as UseChatStoreFn;

@@ -4,7 +4,7 @@ import { Badge } from "@heroui/badge";
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Tab, Tabs } from "@heroui/tabs";
-import { NotificationIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { NotificationIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";

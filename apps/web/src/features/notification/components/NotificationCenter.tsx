@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
-import { NotificationStatus } from "../../../types/features/notificationTypes";
+import { NotificationStatus } from "@/types/features/notificationTypes";
 import { NotificationConnectBanner } from "./NotificationConnectBanner";
 import { NotificationItem } from "./NotificationItem";
 

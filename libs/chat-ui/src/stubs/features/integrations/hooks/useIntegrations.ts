@@ -28,9 +28,7 @@ export interface UseIntegrationsReturn {
   refetch: () => Promise<void>;
 }
 
-const EMPTY_INTEGRATIONS: Integration[] = Object.freeze(
-  [],
-) as Integration[];
+const EMPTY_INTEGRATIONS: Integration[] = Object.freeze([]) as Integration[];
 
 const asyncNoop = async (): Promise<void> => {};
 
@@ -55,8 +53,7 @@ export const useIntegrations = (): UseIntegrationsReturn => ({
   getIntegrationStatus: () => undefined,
   connectIntegration: async () => ({ status: "noop" }),
   disconnectIntegration: asyncNoop,
-  createCustomIntegration: async () =>
-    ({}) as CreateCustomIntegrationResponse,
+  createCustomIntegration: async () => ({}) as CreateCustomIntegrationResponse,
   deleteCustomIntegration: asyncNoop,
   publishIntegration: asyncNoop,
   unpublishIntegration: asyncNoop,

@@ -206,10 +206,8 @@ export interface StreamToolOutput {
   output: string;
 }
 
-export interface TodoProgressSnapshot {
-  source?: string;
-  todos?: Array<{ id: string; content: string; status: string }>;
-}
+import type { TodoProgressSnapshot } from "./types";
+export type { TodoProgressSnapshot };
 
 type JsonObject = Record<string, unknown>;
 

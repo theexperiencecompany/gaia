@@ -1,6 +1,6 @@
 "use client";
 
-import { Cancel01Icon, PlayIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Cancel01Icon, PlayIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";

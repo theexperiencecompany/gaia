@@ -1,5 +1,5 @@
 import { Button } from "@heroui/button";
-import { Tick02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { Tick02Icon } from "@icons";
 import type { ReactNode } from "react";
 
 export type EventStatus = "idle" | "loading" | "completed";
