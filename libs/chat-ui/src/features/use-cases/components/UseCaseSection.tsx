@@ -1,0 +1,396 @@
+import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
+import { StarAward01Icon, WorkflowCircle03Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
+import Link from "next/link";
+import { useCallback, useRef, useState } from "react";
+import { ChevronUp } from "@/components/shared/icons";
+import type { Workflow } from "@/features/workflows/api/workflowApi";
+import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
+import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
+import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
+import type { UseCase } from "@/types/features/workflowTypes";
+
+export default function UseCaseSection({
+  dummySectionRef,
+  hideUserWorkflows = false,
+  centered = true,
+  exploreWorkflows: propExploreWorkflows,
+  setShowUseCases,
+  showDescriptionAsTooltip,
+  useBlurEffect,
+  disableCentering = false,
+  noMaxWidth = false,
+  slicePerTab,
+  hideAllCategory = false,
+  rows,
+  columns = 4,
+  scroller,
+}: {
+  dummySectionRef: React.RefObject<HTMLDivElement | null>;
+  hideUserWorkflows?: boolean;
+  centered?: boolean;
+  exploreWorkflows?: UseCase[];
+  setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
+  showDescriptionAsTooltip?: boolean;
+  useBlurEffect?: boolean;
+  disableCentering?: boolean;
+  noMaxWidth?: boolean;
+  slicePerTab?: number;
+  hideAllCategory?: boolean;
+  rows?: number;
+  columns?: number;
+  /** Pass null to skip scroll container detection (e.g. on landing page where window is the scroller). */
+  scroller?: HTMLElement | null;
+}) {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(
+    "featured",
+  );
+
+  // Fetch user workflows if needed
+  const { workflows, isLoading: isLoadingWorkflows } = useWorkflows(
+    !hideUserWorkflows,
+  );
+
+  // Fetch explore workflows from centralized store (skip if provided via props)
+  const { workflows: storeExploreWorkflows } = useExploreWorkflows(
+    !propExploreWorkflows || propExploreWorkflows.length === 0,
+  );
+
+  // Convert store workflows to UseCase format
+  const convertedExploreWorkflows: UseCase[] = storeExploreWorkflows.map(
+    (w) => ({
+      title: w.title,
+      description: w.description,
+      action_type: "workflow" as const,
+      integrations:
+        w.steps
+          ?.map((s) => s.category)
+          .filter((v, i, a) => a.indexOf(v) === i) || [],
+      categories: w.categories || ["featured"],
+      published_id: w.id,
+      slug: w.slug ?? undefined,
+      steps: w.steps,
+      creator: w.creator,
+      total_executions: w.total_executions || 0,
+    }),
+  );
+
+  // Use provided explore workflows or converted store workflows
+  const exploreWorkflows =
+    propExploreWorkflows && propExploreWorkflows.length > 0
+      ? propExploreWorkflows
+      : convertedExploreWorkflows;
+
+  // Generate categories dynamically from the actual data
+  const dynamicCategories = Array.from(
+    new Set(exploreWorkflows.flatMap((uc) => uc.categories || [])),
+  ).toSorted();
+
+  const allCategories = [
+    ...(hideAllCategory ? [] : ["all"]),
+    "featured",
+    ...(hideUserWorkflows ? [] : ["workflows"]),
+    ...dynamicCategories.filter((cat) => cat !== "featured"),
+  ];
+
+  // Cache the scroll container to avoid repeated DOM traversals.
+  // When `scroller` prop is provided (including null), skip traversal entirely.
+  const scrollContainerCache = useRef<HTMLElement | null | undefined>(
+    undefined,
+  );
+
+  const getScrollContainer = useCallback((): HTMLElement | null => {
+    // Explicit prop provided — use it directly (null means window/no container)
+    if (scroller !== undefined) return scroller;
+
+    // Return cached result if already resolved
+    if (scrollContainerCache.current !== undefined) {
+      return scrollContainerCache.current;
+    }
+
+    // Walk up the DOM once and cache the result
+    let current = dummySectionRef.current?.parentElement;
+    while (current) {
+      const styles = window.getComputedStyle(current);
+      if (styles.overflowY === "auto" || styles.overflowY === "scroll") {
+        scrollContainerCache.current = current;
+        return current;
+      }
+      current = current.parentElement;
+    }
+    scrollContainerCache.current = null;
+    return null;
+  }, [dummySectionRef, scroller]);
+
+  const filteredUseCases =
+    selectedCategory === null
+      ? exploreWorkflows.filter((useCase: UseCase) =>
+          useCase.categories?.includes("featured"),
+        ) // Show featured when null (fallback)
+      : selectedCategory === "all"
+        ? exploreWorkflows
+        : exploreWorkflows.filter((useCase: UseCase) =>
+            useCase.categories?.includes(selectedCategory),
+          );
+
+  const handleCategoryClick = (category: string) => {
+    const wasSelected = selectedCategory === category;
+    const scrollContainer = getScrollContainer();
+    const useWindowScroll = scrollContainer === null;
+
+    if (wasSelected) {
+      // Unselecting: for featured, go back to default, for others scroll to top and reset to featured
+      if (category === "featured") {
+        // If featured is clicked again, briefly unselect then reselect to show visual feedback
+        setSelectedCategory(null);
+        setTimeout(() => setSelectedCategory("featured"), 100);
+      } else {
+        // For other categories, unselect and go back to featured as default
+        setSelectedCategory("featured");
+        if (useWindowScroll) {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } else if (scrollContainer) {
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
+    } else {
+      // Selecting: only scroll if we need to bring the section into view
+      setSelectedCategory(category);
+
+      // Small delay to let state update
+      setTimeout(() => {
+        if (!dummySectionRef.current) return;
+
+        const sectionRect = dummySectionRef.current.getBoundingClientRect();
+        const containerRect = useWindowScroll
+          ? { top: 0, bottom: window.innerHeight }
+          : scrollContainer
+            ? scrollContainer.getBoundingClientRect()
+            : null;
+        if (!containerRect) return;
+
+        const currentScrollTop = useWindowScroll
+          ? window.scrollY
+          : (scrollContainer?.scrollTop ?? 0);
+
+        // Only scroll if the section is not fully visible or if we need to scroll down
+        const isSectionFullyVisible =
+          sectionRect.top >= containerRect.top &&
+          sectionRect.bottom <= containerRect.bottom;
+
+        // For workflows category, don't scroll at all to prevent the scroll-up issue
+        if (category === "workflows") {
+          return;
+        }
+
+        // For other categories, only scroll if section is not fully visible
+        if (!isSectionFullyVisible) {
+          const top = Math.max(
+            0,
+            currentScrollTop +
+              (sectionRect.bottom - containerRect.bottom) +
+              100,
+          );
+
+          if (useWindowScroll) {
+            window.scrollTo({ top, behavior: "smooth" });
+          } else if (scrollContainer) {
+            scrollContainer.scrollTo({ top, behavior: "smooth" });
+          }
+        }
+      }, 50);
+    }
+  };
+
+  return (
+    <div className="w-full" ref={dummySectionRef}>
+      <div
+        className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
+      >
+        {allCategories.map((category, index) => (
+          <m.div
+            key={category as string}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.3,
+              delay: index * 0.05,
+              ease: "easeOut",
+            }}
+          >
+            <Chip
+              variant={selectedCategory === category ? "solid" : "flat"}
+              color={selectedCategory === category ? "primary" : "default"}
+              className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+              size="lg"
+              startContent={
+                category === "featured" ? (
+                  <StarAward01Icon width={18} height={18} />
+                ) : category === "workflows" ? (
+                  <WorkflowCircle03Icon width={18} height={18} />
+                ) : undefined
+              }
+              onClick={() => handleCategoryClick(category as string)}
+            >
+              {category === "all"
+                ? "All"
+                : category === "featured"
+                  ? "Featured"
+                  : category === "workflows"
+                    ? "Your Workflows"
+                    : (category as string)}
+            </Chip>
+          </m.div>
+        ))}
+
+        {setShowUseCases && (
+          <m.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.3,
+              delay: allCategories.length * 0.05,
+              ease: "easeOut",
+            }}
+            className="pl-2"
+          >
+            <Button
+              isIconOnly
+              radius="full"
+              size="sm"
+              variant="flat"
+              onPress={() => setShowUseCases(false)}
+              className="text-zinc-300 "
+            >
+              <ChevronUp />
+            </Button>
+          </m.div>
+        )}
+      </div>
+
+      <AnimatePresence mode="wait">
+        {/* Render Use Cases */}
+        {filteredUseCases.length > 0 &&
+          selectedCategory !== null &&
+          selectedCategory !== "workflows" && (
+            <m.div
+              key={selectedCategory}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${noMaxWidth ? "" : setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+            >
+              {(slicePerTab || rows
+                ? filteredUseCases.slice(
+                    0,
+                    slicePerTab || (rows ? rows * columns : undefined),
+                  )
+                : filteredUseCases
+              ).map((useCase: UseCase, index: number) => (
+                <m.div
+                  key={useCase.published_id || index}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.3,
+                    delay: index * 0.05, // Stagger animation
+                    ease: "easeOut",
+                  }}
+                >
+                  <UnifiedWorkflowCard
+                    showDescriptionAsTooltip={showDescriptionAsTooltip}
+                    title={useCase.title || ""}
+                    description={useCase.description || ""}
+                    actionType={useCase.action_type || "prompt"}
+                    prompt={useCase.prompt}
+                    slug={useCase.slug}
+                    steps={useCase.steps}
+                    totalExecutions={useCase.total_executions || 0}
+                    showExecutions={true}
+                    useBlurEffect={useBlurEffect}
+                    variant="explore"
+                    primaryAction={
+                      useCase.action_type === "prompt"
+                        ? "insert-prompt"
+                        : "create"
+                    }
+                  />
+                </m.div>
+              ))}
+            </m.div>
+          )}
+
+        {/* Render User Workflows */}
+        {selectedCategory === "workflows" &&
+          !isLoadingWorkflows &&
+          workflows.length > 0 && (
+            <m.div
+              key="workflows"
+              className={`${disableCentering ? "" : "mx-auto"} grid ${noMaxWidth ? "" : setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+            >
+              {workflows
+                // .slice(0, 8)
+                .map((workflow: Workflow, index: number) => (
+                  <m.div
+                    key={workflow.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.3,
+                      delay: index * 0.05, // Stagger animation
+                      ease: "easeOut",
+                    }}
+                  >
+                    <UnifiedWorkflowCard
+                      workflow={workflow}
+                      showDescriptionAsTooltip={showDescriptionAsTooltip}
+                      variant="user"
+                      primaryAction="run"
+                      useBlurEffect={useBlurEffect}
+                    />
+                  </m.div>
+                ))}
+            </m.div>
+          )}
+      </AnimatePresence>
+
+      {/* Empty states */}
+      {filteredUseCases.length === 0 &&
+        selectedCategory !== null &&
+        selectedCategory !== "workflows" && (
+          <div className="flex h-48 items-center justify-center"></div>
+        )}
+
+      {selectedCategory === "workflows" &&
+        !isLoadingWorkflows &&
+        workflows.length === 0 && (
+          <div className="flex h-48 items-center justify-center">
+            <div className="text-center space-y-1">
+              <p className="text-lg text-foreground-600">No workflows found</p>
+              <p className="text-sm text-foreground-400 mb-5">
+                Create your first workflow to get started
+              </p>
+              <Link href={"/workflows"}>
+                <Button color="primary">Create</Button>
+              </Link>
+            </div>
+          </div>
+        )}
+
+      {selectedCategory === "workflows" && isLoadingWorkflows && (
+        <div className="flex h-48 items-center justify-center">
+          <div className="text-center">
+            <p className="text-lg text-foreground-500">Loading workflows...</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

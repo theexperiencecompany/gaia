@@ -25,6 +25,8 @@
       "@/*": ["./src/*"],
       "@/src": ["./src/*"],
       "@shared/*": ["../../libs/shared/ts/src/*"],
+      "@chat-ui": ["../../libs/chat-ui/src/index.ts"],
+      "@chat-ui/*": ["../../libs/chat-ui/src/*"],
       "@icons": [
         "../../node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded"
       ],

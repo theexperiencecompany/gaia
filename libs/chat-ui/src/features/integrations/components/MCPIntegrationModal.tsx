@@ -1,0 +1,218 @@
+"use client";
+
+import { Kbd } from "@heroui/kbd";
+import {
+  Button,
+  Input,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  Textarea,
+} from "@heroui/react";
+import { ConnectIcon, KeyIcon, PuzzleIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { useCallback, useMemo, useRef } from "react";
+import { useModalForm } from "@/hooks/ui/useModalForm";
+import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
+import { usePlatform } from "@/hooks/ui/usePlatform";
+import { toast } from "@/lib/toast";
+import { useIntegrations } from "../hooks/useIntegrations";
+
+const SERVER_URL_REGEX = /^https?:\/\/.+/;
+
+interface MCPIntegrationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onIntegrationCreated?: (integrationId: string) => void;
+}
+
+interface MCPFormData {
+  name: string;
+  description: string;
+  server_url: string;
+  bearer_token: string;
+  requires_auth: boolean;
+  auth_type: "none" | "oauth" | "bearer";
+  is_public: boolean;
+  [key: string]: unknown;
+}
+
+export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
+  isOpen,
+  onClose,
+  onIntegrationCreated,
+}) => {
+  const { isMac, modifierKeyName } = usePlatform();
+  const { createCustomIntegration } = useIntegrations();
+
+  // Use ref to always get latest callback (avoids stale closure in useModalForm)
+  const onIntegrationCreatedRef = useRef(onIntegrationCreated);
+  onIntegrationCreatedRef.current = onIntegrationCreated;
+
+  const initialData = useMemo<MCPFormData>(
+    () => ({
+      name: "",
+      description: "",
+      server_url: "",
+      bearer_token: "",
+      requires_auth: false,
+      auth_type: "none",
+      is_public: false,
+    }),
+    [],
+  );
+
+  const { formData, loading, handleSubmit, updateField, resetForm } =
+    useModalForm<MCPFormData, string>({
+      initialData,
+      validate: [
+        { field: "name", required: true, message: "Name is required" },
+        {
+          field: "server_url",
+          required: true,
+          custom: (value) => {
+            if (!value || typeof value !== "string")
+              return "Server URL is required";
+            if (!SERVER_URL_REGEX.test(value)) {
+              return "Please enter a valid URL starting with http:// or https://";
+            }
+            return null;
+          },
+        },
+      ],
+      onSubmit: async (data) => {
+        const result = await createCustomIntegration({
+          name: data.name,
+          description: data.description?.trim() || undefined,
+          server_url: data.server_url,
+          requires_auth: !!data.bearer_token,
+          auth_type: data.bearer_token ? "bearer" : "none",
+          is_public: false,
+          bearer_token: data.bearer_token || undefined,
+        });
+
+        // Handle auto-connection result
+        const connection = result.connection;
+
+        if (connection?.status === "connected") {
+          toast.success(
+            `Connected to ${result.name} with ${connection.toolsCount || 0} tools!`,
+          );
+        } else if (connection?.status === "requires_oauth") {
+          toast.info("Authorization required - redirecting...");
+          // Redirect to OAuth URL
+          if (connection.oauthUrl && typeof window !== "undefined") {
+            window.location.href = connection.oauthUrl;
+          }
+        } else if (connection?.status === "failed") {
+          toast.warning(
+            `Integration created, but connection failed: ${connection.error || "Unknown error"}. You can retry from the integrations page.`,
+          );
+        } else {
+          toast.success("Custom integration created successfully!");
+        }
+
+        // Return the integration ID to be passed to onSuccess
+        return result.integrationId;
+      },
+      onSuccess: (integrationId?: string) => {
+        handleClose();
+        if (integrationId) {
+          onIntegrationCreatedRef.current?.(integrationId);
+        }
+      },
+      resetOnSuccess: true,
+    });
+
+  const handleClose = useCallback(() => {
+    resetForm();
+    onClose();
+  }, [resetForm, onClose]);
+
+  useModalKeyboardSubmit({ isOpen, loading, isMac, handleSubmit });
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      placement="center"
+      size="lg"
+      className="shadow-none rounded-2xl"
+      backdrop="blur"
+      isDismissable={!loading}
+      isKeyboardDismissDisabled={loading}
+    >
+      <ModalContent>
+        <ModalHeader className="flex flex-col gap-1">
+          <h2 className="text-xl font-semibold">New Integration</h2>
+          <p className="text-sm font-normal text-zinc-400">
+            Use the Model Context Protocol to extend GAIA&apos;s capabilities
+            with external data and tools
+          </p>
+        </ModalHeader>
+
+        <ModalBody>
+          <div className="flex flex-col gap-4">
+            <Input
+              label="Name"
+              placeholder="Integration Name"
+              value={formData.name}
+              onValueChange={(v) => updateField("name", v)}
+              isRequired
+              startContent={<PuzzleIcon width={16} height={16} />}
+              autoFocus
+            />
+
+            <Textarea
+              label="Description"
+              placeholder="What does this integration do?"
+              value={formData.description || ""}
+              onValueChange={(v) => updateField("description", v)}
+              minRows={2}
+              maxRows={3}
+            />
+
+            <Input
+              label="Server URL"
+              placeholder="https://mcp.example.com/sse"
+              value={formData.server_url}
+              onValueChange={(v) => updateField("server_url", v)}
+              isRequired
+              startContent={<ConnectIcon width={16} height={16} />}
+            />
+
+            <Input
+              label="API Key / Bearer Token (optional)"
+              placeholder="sk-... or your API token"
+              value={formData.bearer_token || ""}
+              onValueChange={(v) => updateField("bearer_token", v)}
+              type="password"
+              description="If provided, API key auth will be used. Leave empty for OAuth."
+              startContent={<KeyIcon width={16} height={16} />}
+            />
+          </div>
+        </ModalBody>
+
+        <ModalFooter>
+          <Button
+            color="default"
+            variant="light"
+            onPress={handleClose}
+            isDisabled={loading}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="primary"
+            onPress={handleSubmit}
+            isLoading={loading}
+            endContent={!loading && <Kbd keys={[modifierKeyName, "enter"]} />}
+          >
+            Create
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+};

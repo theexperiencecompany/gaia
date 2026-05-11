@@ -1,0 +1,272 @@
+import { buildQueryString, normalizeListResponse } from "@shared/api";
+import { apiService } from "@/lib/api/service";
+import type {
+  BulkMoveRequest,
+  Project,
+  ProjectCreate,
+  ProjectUpdate,
+  Todo,
+  TodoCreate,
+  TodoFilters,
+  TodoListResponse,
+  TodoUpdate,
+  WorkflowStatus,
+} from "@/types/features/todoTypes";
+import type { Workflow } from "@/types/features/workflowTypes";
+
+export const todoApi = {
+  createTodo: async (todo: TodoCreate): Promise<Todo> => {
+    return apiService.post<Todo>("/todos", todo, {
+      errorMessage: "Failed to create task",
+    });
+  },
+
+  getTodo: async (todoId: string): Promise<Todo> => {
+    return apiService.get<Todo>(`/todos/${todoId}`, {
+      errorMessage: "Failed to fetch task",
+      silent: true,
+    });
+  },
+
+  getAllTodos: async (filters?: TodoFilters): Promise<Todo[]> => {
+    try {
+      const response = await apiService.get<TodoListResponse | Todo[]>(
+        `/todos${buildQueryString(filters as Record<string, string | number | boolean | null | undefined>)}`,
+      );
+      return normalizeListResponse(response);
+    } catch (error) {
+      console.error("Error fetching todos:", error);
+      throw error;
+    }
+  },
+
+  updateTodo: async (todoId: string, update: TodoUpdate): Promise<Todo> => {
+    const response = await apiService.put<Todo>(`/todos/${todoId}`, update);
+
+    // Check if the response has the correct completed status
+    if (
+      update.completed !== undefined &&
+      response.completed !== update.completed
+    ) {
+      console.error("Server returned wrong completed status!", {
+        requested: update.completed,
+        received: response.completed,
+      });
+    }
+
+    return response;
+  },
+
+  deleteTodo: async (todoId: string): Promise<void> => {
+    return apiService.delete(`/todos/${todoId}`, {
+      errorMessage: "Failed to delete task",
+    });
+  },
+
+  // Project operations
+  createProject: async (project: ProjectCreate): Promise<Project> => {
+    return apiService.post<Project>("/projects", project, {
+      errorMessage: "Failed to create project",
+    });
+  },
+
+  getAllProjects: async (): Promise<Project[]> => {
+    return apiService.get<Project[]>("/projects", {
+      errorMessage: "Failed to fetch projects",
+    });
+  },
+
+  updateProject: async (
+    projectId: string,
+    update: ProjectUpdate,
+  ): Promise<Project> => {
+    return apiService.put<Project>(`/projects/${projectId}`, update, {
+      errorMessage: "Failed to update project",
+      silent: true,
+    });
+  },
+
+  deleteProject: async (projectId: string): Promise<void> => {
+    return apiService.delete(`/projects/${projectId}`, {
+      errorMessage: "Failed to delete project",
+      silent: true,
+    });
+  },
+
+  // Bulk operations
+  bulkCompleteTodos: async (todoIds: string[]): Promise<Todo[]> => {
+    const response = await apiService.post<{ updated: Todo[] } | Todo[]>(
+      "/todos/bulk/complete",
+      todoIds,
+      {
+        successMessage: `${todoIds.length} tasks completed`,
+        errorMessage: "Failed to complete tasks",
+      },
+    );
+    // Handle new API response format
+    if (
+      typeof response === "object" &&
+      response !== null &&
+      "updated" in response &&
+      Array.isArray(response.updated)
+    ) {
+      return response.updated;
+    }
+    return response as Todo[];
+  },
+
+  bulkMoveTodos: async (request: BulkMoveRequest): Promise<Todo[]> => {
+    const response = await apiService.post<{ updated: Todo[] } | Todo[]>(
+      "/todos/bulk/move",
+      request,
+      {
+        successMessage: `${request.todo_ids.length} tasks moved`,
+        errorMessage: "Failed to move tasks",
+      },
+    );
+    // Handle new API response format
+    if (
+      typeof response === "object" &&
+      response !== null &&
+      "updated" in response &&
+      Array.isArray(response.updated)
+    ) {
+      return response.updated;
+    }
+    return response as Todo[];
+  },
+
+  bulkDeleteTodos: async (todoIds: string[]): Promise<void> => {
+    return apiService.delete("/todos/bulk", todoIds, {
+      successMessage: `${todoIds.length} tasks deleted`,
+      errorMessage: "Failed to delete tasks",
+    });
+  },
+
+  // search and stats
+  searchTodos: async (query: string): Promise<Todo[]> => {
+    const response = await apiService.get<TodoListResponse | Todo[]>(
+      `/todos?q=${encodeURIComponent(query)}`,
+      {
+        silent: true, // Search operations are usually silent
+      },
+    );
+    return normalizeListResponse(response);
+  },
+
+  // New optimized counts endpoint
+  getTodoCounts: async (): Promise<{
+    inbox: number;
+    today: number;
+    upcoming: number;
+    completed: number;
+    overdue: number;
+  }> => {
+    return apiService.get("/todos/counts", {
+      silent: true,
+    });
+  },
+
+  getAllLabels: async (): Promise<{ name: string; count: number }[]> => {
+    try {
+      return await apiService.get("/todos/labels", { silent: true });
+    } catch (error) {
+      console.error("Error fetching labels:", error);
+      return [];
+    }
+  },
+
+  getTodosByLabel: async (
+    label: string,
+    skip?: number,
+    limit?: number,
+  ): Promise<Todo[]> => {
+    try {
+      const params = new URLSearchParams();
+      params.append("labels", label);
+      if (skip !== undefined && limit !== undefined) {
+        const page = Math.floor(skip / limit) + 1;
+        params.append("page", String(page));
+        params.append("per_page", String(limit));
+      }
+
+      const response = await apiService.get<TodoListResponse | Todo[]>(
+        `/todos?${params.toString()}`,
+      );
+      return normalizeListResponse(response);
+    } catch (error) {
+      console.error("Error fetching todos by label:", error);
+      throw error;
+    }
+  },
+
+  semanticSearchTodos: async (
+    query: string,
+    options?: {
+      limit?: number;
+      project_id?: string;
+      completed?: boolean;
+      priority?: string;
+    },
+  ): Promise<Todo[]> => {
+    try {
+      const params = new URLSearchParams();
+      params.append("q", query);
+      params.append("mode", "semantic");
+
+      if (options?.limit) params.append("per_page", String(options.limit));
+      if (options?.project_id) params.append("project_id", options.project_id);
+      if (options?.completed !== undefined)
+        params.append("completed", String(options.completed));
+      if (options?.priority) params.append("priority", options.priority);
+
+      const response = await apiService.get<TodoListResponse | Todo[]>(
+        `/todos?${params.toString()}`,
+      );
+      return normalizeListResponse(response);
+    } catch (error) {
+      console.error("Error in semantic search:", error);
+      throw error;
+    }
+  },
+
+  // Generate workflow for a todo (background generation + WebSocket notification)
+  // Returns immediately with status: 'generating' or 'exists'
+  generateWorkflow: async (
+    todoId: string,
+  ): Promise<{
+    status: "generating" | "exists";
+    workflow?: Workflow;
+    todo_id?: string;
+    message: string;
+  }> => {
+    return apiService.post<{
+      status: "generating" | "exists";
+      workflow?: Workflow;
+      todo_id?: string;
+      message: string;
+    }>(
+      `/todos/${todoId}/workflow`,
+      {},
+      {
+        errorMessage: "Failed to generate workflow",
+        silent: true,
+      },
+    );
+  },
+
+  // Get workflow for a todo (from standalone workflows collection)
+  getWorkflowStatus: async (
+    todoId: string,
+  ): Promise<{
+    todo_id: string;
+    has_workflow: boolean;
+    is_generating: boolean;
+    workflow_status: WorkflowStatus;
+    workflow: Workflow | null;
+  }> => {
+    return apiService.get(`/todos/${todoId}/workflow-status`, {
+      silent: true, // Don't show success/error toasts for polling
+    });
+  },
+};

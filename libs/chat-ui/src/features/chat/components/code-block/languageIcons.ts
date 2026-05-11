@@ -1,0 +1,75 @@
+// Load devicon stylesheet dynamically
+if (
+  typeof window !== "undefined" &&
+  !document.querySelector('link[href*="devicon"]')
+) {
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.type = "text/css";
+  link.href =
+    "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.min.css";
+  document.head.appendChild(link);
+}
+
+export const getLanguageIcon = (language?: string): string | null => {
+  if (!language) return null;
+
+  const iconMap: Record<string, string> = {
+    javascript: "devicon-javascript-plain",
+    typescript: "devicon-typescript-plain",
+    python: "devicon-python-plain",
+    java: "devicon-java-plain",
+    cpp: "devicon-cplusplus-plain",
+    c: "devicon-c-plain",
+    csharp: "devicon-csharp-plain",
+    php: "devicon-php-plain",
+    ruby: "devicon-ruby-plain",
+    go: "devicon-go-plain",
+    rust: "devicon-rust-plain",
+    swift: "devicon-swift-plain",
+    kotlin: "devicon-kotlin-plain",
+    scala: "devicon-scala-plain",
+    html: "devicon-html5-plain",
+    css: "devicon-css3-plain",
+    scss: "devicon-sass-plain",
+    sass: "devicon-sass-plain",
+    json: "devicon-json-plain",
+    yaml: "devicon-yaml-plain",
+    yml: "devicon-yaml-plain",
+    markdown: "devicon-markdown-plain",
+    sql: "devicon-postgresql-plain",
+    shell: "devicon-bash-plain",
+    bash: "devicon-bash-plain",
+    zsh: "devicon-bash-plain",
+    powershell: "devicon-powershell-plain",
+    dockerfile: "devicon-docker-plain",
+    jsx: "devicon-react-plain",
+    tsx: "devicon-react-plain",
+    vue: "devicon-vuejs-plain",
+    svelte: "devicon-svelte-plain",
+    react: "devicon-react-plain",
+    angular: "devicon-angularjs-plain",
+    node: "devicon-nodejs-plain",
+    nodejs: "devicon-nodejs-plain",
+    express: "devicon-express-plain",
+    django: "devicon-django-plain",
+    flask: "devicon-flask-plain",
+    graphql: "devicon-graphql-plain",
+    mongodb: "devicon-mongodb-plain",
+    mysql: "devicon-mysql-plain",
+    postgresql: "devicon-postgresql-plain",
+    redis: "devicon-redis-plain",
+    docker: "devicon-docker-plain",
+    kubernetes: "devicon-kubernetes-plain",
+    git: "devicon-git-plain",
+    nginx: "devicon-nginx-plain",
+    webpack: "devicon-webpack-plain",
+    vite: "devicon-vitejs-plain",
+    tailwind: "devicon-tailwindcss-plain",
+    tailwindcss: "devicon-tailwindcss-plain",
+    bootstrap: "devicon-bootstrap-plain",
+    mermaid: "devicon-markdown-plain",
+  };
+
+  return iconMap[language.toLowerCase()] || null;
+};

@@ -1,0 +1,333 @@
+"use client";
+
+import { Button } from "@heroui/button";
+import { useDisclosure } from "@heroui/modal";
+import { type IconProps, RedoIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, {
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
+import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
+import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
+import { useHeader } from "@/hooks/layout/useHeader";
+import type { UseCase } from "@/types/features/workflowTypes";
+import {
+  type CommunityWorkflow,
+  type Workflow,
+  workflowApi,
+} from "../api/workflowApi";
+import { CommunityBanner } from "./CommunityBanner";
+import CreateWorkflowModal from "./CreateWorkflowModal";
+import EditWorkflowModal from "./EditWorkflowModal";
+import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
+import { WorkflowListSkeleton } from "./WorkflowSkeletons";
+
+export default function WorkflowPage() {
+  const pageRef = useRef(null);
+  const clearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const workflowId = searchParams.get("id");
+  const { setHeader } = useHeader();
+
+  const {
+    isOpen: isEditOpen,
+    onOpen: onEditOpen,
+    onOpenChange: onEditOpenChange,
+  } = useDisclosure();
+
+  const {
+    isOpen: isCreateOpen,
+    onOpen: onCreateOpen,
+    onOpenChange: onCreateOpenChange,
+  } = useDisclosure();
+
+  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(
+    null,
+  );
+
+  const { workflows, isLoading, error, refetch } = useWorkflows();
+  const [exploreWorkflows, setExploreWorkflows] = useState<UseCase[]>([]);
+  const [exploreWorkflowsTotal, setExploreWorkflowsTotal] = useState(0);
+  const [isLoadingExplore, setIsLoadingExplore] = useState(false);
+
+  const [communityWorkflows, setCommunityWorkflows] = useState<
+    CommunityWorkflow[]
+  >([]);
+  const [isLoadingCommunity, setIsLoadingCommunity] = useState(false);
+  const [communityError, setCommunityError] = useState<string | null>(null);
+
+  // Convert CommunityWorkflow to UseCase format
+  const convertToUseCase = (workflow: CommunityWorkflow): UseCase => ({
+    title: workflow.title,
+    description: workflow.description,
+    action_type: "workflow",
+    integrations:
+      workflow.steps
+        ?.map((s) => s.category)
+        .filter((v, i, a) => a.indexOf(v) === i) || [],
+    categories: workflow.categories || ["featured"],
+    published_id: workflow.id,
+    slug: workflow.slug,
+    steps: workflow.steps,
+    creator: workflow.creator,
+  });
+
+  // Memoize the header component to prevent recreating on every render
+  const headerComponent = useMemo(() => <WorkflowsHeader />, []);
+
+  // Use useLayoutEffect to set header synchronously before paint (faster)
+  // Don't include setHeader in deps - it's stable from Zustand
+  useLayoutEffect(() => {
+    setHeader(headerComponent);
+    return () => setHeader(null);
+  }, [headerComponent]);
+
+  // Fetch explore and community workflows once on mount
+  useEffect(() => {
+    const loadExploreWorkflows = async () => {
+      setIsLoadingExplore(true);
+      try {
+        const response = await workflowApi.getExploreWorkflows(25, 0);
+        const useCases = response.workflows.map(convertToUseCase);
+        setExploreWorkflows(useCases);
+        setExploreWorkflowsTotal(response.total);
+      } catch (error) {
+        console.error("Error loading explore workflows:", error);
+      } finally {
+        setIsLoadingExplore(false);
+      }
+    };
+
+    const loadCommunityWorkflows = async () => {
+      setIsLoadingCommunity(true);
+      setCommunityError(null);
+      try {
+        const response = await workflowApi.getCommunityWorkflows(12, 0);
+        setCommunityWorkflows(response.workflows);
+      } catch (error) {
+        console.error("Error loading community workflows:", error);
+        setCommunityError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load community workflows",
+        );
+      } finally {
+        setIsLoadingCommunity(false);
+      }
+    };
+
+    loadExploreWorkflows();
+    loadCommunityWorkflows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (workflowId && workflows.length > 0) {
+      const workflow = workflows.find((w) => w.id === workflowId);
+      if (workflow) {
+        setSelectedWorkflow(workflow);
+        onEditOpen();
+      }
+    }
+  }, [workflowId, workflows, onEditOpen]);
+
+  const handleWorkflowDeleted = useCallback(
+    (workflowId: string) => {
+      console.log("Workflow deleted:", workflowId);
+      refetch();
+    },
+    [refetch],
+  );
+
+  const handleWorkflowClick = (workflowId: string) => {
+    const workflow = workflows.find((w) => w.id === workflowId);
+    if (workflow) {
+      router.push(`/workflows?id=${workflowId}`, { scroll: false });
+      setSelectedWorkflow(workflow);
+      onEditOpen();
+    }
+  };
+
+  const handleModalClose = (open: boolean) => {
+    onEditOpenChange();
+    if (!open) {
+      router.push("/workflows", { scroll: false });
+      if (clearTimeoutRef.current) clearTimeout(clearTimeoutRef.current);
+      clearTimeoutRef.current = setTimeout(
+        () => setSelectedWorkflow(null),
+        300,
+      );
+    }
+  };
+
+  const handleCommunityWorkflowClick = (slug: string) => {
+    router.push(`/use-cases/${slug}`);
+  };
+
+  const renderGrid = <T extends { id: string }>(
+    items: T[],
+    isLoading: boolean,
+    error: string | null,
+    emptyTitle: string,
+    emptyDescription: string,
+    onRefetch: () => void,
+    renderItem: (item: T) => ReactNode,
+    emptyAction?: ReactNode,
+  ) => {
+    if (isLoading) return <WorkflowListSkeleton />;
+
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center space-y-4 py-1">
+          <p className="text-foreground-400">{error}</p>
+          <Button
+            size="sm"
+            variant="flat"
+            onPress={onRefetch}
+            startContent={<RedoIcon className="h-4 w-4" />}
+          >
+            Try Again
+          </Button>
+        </div>
+      );
+    }
+
+    if (items.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800/30 border-dashed border-2 border-zinc-800 py-16">
+          <div className="text-center">
+            <h3 className="text-lg font-medium text-zinc-300">{emptyTitle}</h3>
+            <p className="mt-2 text-sm text-zinc-500">{emptyDescription}</p>
+          </div>
+          {emptyAction}
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
+        {items.map((item) => renderItem(item))}
+      </div>
+    );
+  };
+
+  const renderSection = (
+    title: string,
+    description: string,
+    children: ReactNode,
+    icon?: ReactElement<IconProps>,
+    count?: number,
+  ) => (
+    <div className="mt-12 flex flex-col gap-3">
+      <div className="flex flex-col space-y-1">
+        <div className="flex items-center gap-2">
+          {icon && <span> {React.cloneElement(icon)}</span>}
+          <h2 className="text-2xl font-medium text-zinc-100">{title}</h2>
+          {count !== undefined && count > 0 && (
+            <span className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-sm font-medium text-zinc-400">
+              {count}
+            </span>
+          )}
+        </div>
+        <p className="font-light text-zinc-500">{description}</p>
+      </div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div className="space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8" ref={pageRef}>
+      <div className="mb-6">
+        <CommunityBanner onCreateWorkflow={onCreateOpen} />
+      </div>
+
+      <div className="flex flex-col gap-6">
+        {renderGrid(
+          workflows,
+          isLoading,
+          error ? "Failed to load workflows" : null,
+          "No workflows yet",
+          "Create your first workflow to get started",
+          refetch,
+          (workflow) => (
+            <UnifiedWorkflowCard
+              key={workflow.id}
+              workflow={workflow}
+              variant="user"
+              showActivationStatus={true}
+              primaryAction="none"
+              onCardClick={() => handleWorkflowClick(workflow.id)}
+            />
+          ),
+        )}
+      </div>
+
+      {renderSection(
+        "Explore & Discover",
+        "See what's possible with real examples that actually work!",
+        isLoadingExplore ? (
+          <WorkflowListSkeleton />
+        ) : exploreWorkflows.length > 0 ? (
+          <UseCaseSection
+            centered={false}
+            dummySectionRef={pageRef}
+            hideUserWorkflows={true}
+            exploreWorkflows={exploreWorkflows}
+            disableCentering={true}
+            noMaxWidth={true}
+          />
+        ) : null,
+        undefined,
+        exploreWorkflowsTotal,
+      )}
+
+      {renderSection(
+        "Community Workflows",
+        "Check out what others have built and grab anything that looks useful!",
+        isLoadingCommunity ? (
+          <WorkflowListSkeleton />
+        ) : (
+          renderGrid(
+            communityWorkflows,
+            false,
+            communityError,
+            "No community workflows yet",
+            "Be the first to publish a workflow to the community",
+            () => window.location.reload(),
+            (workflow) => (
+              <UnifiedWorkflowCard
+                key={workflow.id}
+                communityWorkflow={workflow}
+                variant="community"
+                showCreator={true}
+                onCardClick={() => handleCommunityWorkflowClick(workflow.slug)}
+              />
+            ),
+          )
+        ),
+      )}
+
+      <EditWorkflowModal
+        isOpen={isEditOpen}
+        onOpenChange={handleModalClose}
+        onWorkflowUpdated={() => refetch()}
+        onWorkflowDeleted={handleWorkflowDeleted}
+        workflow={selectedWorkflow}
+      />
+
+      <CreateWorkflowModal
+        isOpen={isCreateOpen}
+        onOpenChange={onCreateOpenChange}
+      />
+    </div>
+  );
+}

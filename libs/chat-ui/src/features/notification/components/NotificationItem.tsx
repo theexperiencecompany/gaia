@@ -1,0 +1,120 @@
+import { Button } from "@heroui/button";
+import { Tooltip } from "@heroui/react";
+import { CheckmarkBadge01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { formatDistanceToNow } from "date-fns";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { useNotificationActions } from "@/hooks/useNotificationActions";
+
+import {
+  type NotificationAction,
+  type NotificationRecord,
+  NotificationStatus,
+} from "../../../types/features/notificationTypes";
+
+interface NotificationItemProps {
+  notification: NotificationRecord;
+  onMarkAsRead: (id: string) => void;
+}
+
+export const NotificationItem = ({
+  notification,
+  onMarkAsRead,
+}: NotificationItemProps) => {
+  const { executeAction, loading, confirmationProps } =
+    useNotificationActions();
+
+  // Access content directly from notification
+  const content = notification.content || {
+    title: "Notification",
+    body: "No details available",
+    actions: [],
+  };
+
+  const isUnread = notification.status === NotificationStatus.DELIVERED;
+
+  return (
+    <div className={`w-full rounded-2xl bg-zinc-900 p-4`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h4 className="max-w-[250px] truncate text-sm font-medium text-zinc-100">
+              {content.title}
+            </h4>
+            {isUnread && (
+              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+            )}
+          </div>
+          <p className="my-1 line-clamp-2 text-left text-sm font-light wrap-break-word text-zinc-400">
+            {content.body}
+          </p>
+          <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
+            <span className="capitalize" suppressHydrationWarning>
+              {formatDistanceToNow(new Date(notification.created_at), {
+                addSuffix: true,
+              })}
+            </span>
+            <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 capitalize">
+              {notification.metadata?.reminder_id ? "reminder" : "system"}
+            </span>
+          </div>
+        </div>
+
+        {isUnread && (
+          <div className="flex shrink-0 items-center gap-1">
+            <Tooltip content="Mark as Read">
+              <Button
+                variant="flat"
+                size="sm"
+                isIconOnly
+                onPress={() => onMarkAsRead(notification.id)}
+                title="Mark as read"
+              >
+                <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip>
+          </div>
+        )}
+      </div>
+
+      {/* Actions buttons if present */}
+      {content.actions &&
+        Array.isArray(content.actions) &&
+        content.actions.length > 0 && (
+          <div className="mt-3 flex gap-2">
+            {content.actions.map((action: NotificationAction) => {
+              const isExecuted = action.executed || false;
+              const isCurrentlyExecuting = loading === action.id;
+              const isDisabled =
+                action.disabled || isExecuted || isCurrentlyExecuting;
+
+              return (
+                <Button
+                  key={action.id}
+                  variant={action.style === "primary" ? "solid" : "flat"}
+                  size="sm"
+                  className={`h-7 bg-zinc-800/50 text-xs text-zinc-200 hover:bg-zinc-800/70 ${isExecuted ? "cursor-not-allowed opacity-50" : ""}`}
+                  disabled={isDisabled}
+                  onPress={() => executeAction(notification.id, action)}
+                >
+                  {isCurrentlyExecuting ? (
+                    <div className="flex items-center gap-1">
+                      <div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+                      <span>Processing...</span>
+                    </div>
+                  ) : (
+                    <>
+                      {action.label}
+                      {isExecuted && <span className="ml-1">✓</span>}
+                    </>
+                  )}
+                </Button>
+              );
+            })}
+          </div>
+        )}
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog {...confirmationProps} />
+    </div>
+  );
+};

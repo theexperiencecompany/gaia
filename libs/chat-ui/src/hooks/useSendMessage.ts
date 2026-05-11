@@ -1,0 +1,215 @@
+import { useCallback } from "react";
+import { v4 as uuidv4 } from "uuid";
+
+import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
+import { useChatStream } from "@/features/chat/hooks/useChatStream";
+import {
+  ANALYTICS_EVENTS,
+  setUserProperties,
+  trackEvent,
+} from "@/lib/analytics";
+import { db, type IMessage } from "@/lib/db/chatDb";
+import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
+import { useChatStore } from "@/stores/chatStore";
+import { useComposerStore } from "@/stores/composerStore";
+import { useLoadingStore } from "@/stores/loadingStore";
+import {
+  type ReplyToMessageData,
+  useReplyToMessageStore,
+} from "@/stores/replyToMessageStore";
+import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
+import type { MessageType } from "@/types/features/convoTypes";
+import type { WorkflowData } from "@/types/features/workflowTypes";
+import fetchDate from "@/utils/date/dateUtils";
+
+type SendMessageOverrides = {
+  files?: MessageType["fileData"];
+  selectedTool?: string | null;
+  selectedToolCategory?: string | null;
+  selectedWorkflow?: WorkflowData | null;
+  selectedCalendarEvent?: SelectedCalendarEventData | null;
+  replyToMessage?: ReplyToMessageData | null;
+  /** Explicit conversation ID to use. Pass null to force a new conversation.
+   *  When omitted, falls back to the active conversation ID from the store. */
+  conversationId?: string | null;
+};
+
+export const useSendMessage = () => {
+  const fetchChatStream = useChatStream();
+
+  return useCallback(
+    async (content: string, overrides?: SendMessageOverrides) => {
+      const composerState = useComposerStore.getState();
+      const workflowState = useWorkflowSelectionStore.getState();
+      const calendarEventState = useCalendarEventSelectionStore.getState();
+      const replyState = useReplyToMessageStore.getState();
+
+      const files = overrides?.files ?? composerState.uploadedFileData;
+      const normalizedFiles = (files ??
+        []) as typeof composerState.uploadedFileData;
+      const selectedTool =
+        overrides?.selectedTool ?? composerState.selectedTool ?? null;
+      const selectedToolCategory =
+        overrides?.selectedToolCategory ??
+        composerState.selectedToolCategory ??
+        null;
+      const selectedWorkflow =
+        overrides?.selectedWorkflow ?? workflowState.selectedWorkflow ?? null;
+      const selectedCalendarEvent =
+        overrides?.selectedCalendarEvent ??
+        calendarEventState.selectedCalendarEvent ??
+        null;
+      const replyToMessage =
+        overrides?.replyToMessage ?? replyState.replyToMessage ?? null;
+
+      const trimmedContent = content.trim();
+      // Allow sending if there's text OR tool OR workflow OR calendar event OR files
+      const hasValidContent =
+        trimmedContent ||
+        selectedTool ||
+        selectedWorkflow ||
+        selectedCalendarEvent ||
+        normalizedFiles.length > 0;
+
+      if (!hasValidContent) {
+        return;
+      }
+
+      // Track first message milestone (only fires once per user, persisted in localStorage)
+      try {
+        const stored = localStorage.getItem("gaia_first_message_sent");
+        if (!stored) {
+          trackEvent(ANALYTICS_EVENTS.CHAT_FIRST_MESSAGE_SENT, {
+            milestone: "first_message",
+          });
+          setUserProperties({ first_message_sent: true });
+          localStorage.setItem("gaia_first_message_sent", "true");
+        }
+      } catch {
+        // Silently fail if localStorage is unavailable
+      }
+
+      const isoTimestamp = fetchDate();
+      const createdAt = new Date(isoTimestamp);
+      const optimisticId = uuidv4();
+      // Use explicit override when provided (e.g. auto-send from workflow sidebar
+      // where the store may still hold a stale ID from the previous conversation).
+      // `overrides.conversationId` being present (even as null) takes precedence.
+      const conversationId =
+        overrides !== undefined && "conversationId" in overrides
+          ? overrides.conversationId
+          : useChatStore.getState().activeConversationId;
+
+      try {
+        const userMessage: MessageType = {
+          type: "user",
+          response: trimmedContent,
+          date: isoTimestamp,
+          message_id: optimisticId, // Temporary ID for optimistic UI
+          fileIds: normalizedFiles.map((file) => file.fileId),
+          fileData: normalizedFiles,
+          selectedTool: selectedTool ?? undefined,
+          toolCategory: selectedToolCategory ?? undefined,
+          selectedWorkflow: selectedWorkflow ?? undefined,
+          selectedCalendarEvent: selectedCalendarEvent ?? undefined,
+          replyToMessage: replyToMessage ?? undefined,
+        };
+        // For new conversations: use Zustand optimistic message (no conversationId yet)
+        // For existing conversations: persist directly to IndexedDB with optimistic ID
+        if (!conversationId) {
+          // New conversation - use Zustand optimistic message
+          useChatStore.getState().setOptimisticMessage({
+            id: optimisticId,
+            conversationId: null,
+            content: trimmedContent,
+            role: "user",
+            createdAt,
+            fileIds: normalizedFiles.map((file) => file.fileId),
+            fileData: normalizedFiles,
+            toolName: selectedTool,
+            toolCategory: selectedToolCategory,
+            workflowId: selectedWorkflow?.id ?? null,
+            selectedWorkflow,
+            selectedCalendarEvent,
+            replyToMessage,
+          });
+
+          // Set loading state AFTER user message is in store
+          // This ensures the loading indicator appears AFTER the user message in the UI
+          useLoadingStore
+            .getState()
+            .setLoadingWithContext(true, trimmedContent);
+
+          await fetchChatStream(
+            trimmedContent,
+            [userMessage],
+            normalizedFiles,
+            selectedTool,
+            selectedToolCategory,
+            selectedWorkflow,
+            selectedCalendarEvent,
+            optimisticId,
+            replyToMessage,
+          );
+          return;
+        }
+
+        // For existing conversations: persist to IndexedDB immediately with optimistic ID
+        // Backend will send real ID which will replace this optimistic message
+        const optimisticMessage: IMessage = {
+          id: optimisticId,
+          conversationId,
+          content: trimmedContent,
+          role: "user",
+          status: "sending",
+          createdAt,
+          updatedAt: createdAt,
+          messageId: optimisticId,
+          fileIds: normalizedFiles.map((file) => file.fileId),
+          fileData: normalizedFiles,
+          toolName: selectedTool,
+          toolCategory: selectedToolCategory,
+          workflowId: selectedWorkflow?.id ?? null,
+          selectedWorkflow: selectedWorkflow,
+          selectedCalendarEvent: selectedCalendarEvent,
+          replyToMessageId: replyToMessage?.id ?? null,
+          replyToMessageData: replyToMessage,
+          optimistic: true,
+        };
+        try {
+          await db.putMessage(optimisticMessage);
+
+          // Set loading state AFTER user message is persisted
+          useLoadingStore
+            .getState()
+            .setLoadingWithContext(true, trimmedContent);
+
+          const streamingUserMessage: MessageType = {
+            ...userMessage,
+            loading: false,
+          };
+
+          await fetchChatStream(
+            trimmedContent,
+            [streamingUserMessage],
+            normalizedFiles,
+            selectedTool,
+            selectedToolCategory,
+            selectedWorkflow,
+            selectedCalendarEvent,
+            optimisticId,
+            replyToMessage,
+          );
+        } catch (error) {
+          console.error("[useSendMessage] Stream failed:", error);
+        }
+      } catch (outerError) {
+        console.error(
+          "[useSendMessage] OUTER ERROR — something threw:",
+          outerError,
+        );
+      }
+    },
+    [fetchChatStream],
+  );
+};

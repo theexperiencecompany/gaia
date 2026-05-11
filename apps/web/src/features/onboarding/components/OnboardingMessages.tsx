@@ -1,7 +1,5 @@
+import { ChatBubbleBot, ChatBubbleUser } from "@chat-ui";
 import * as m from "motion/react-m";
-
-import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
-import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 
 import type { Message } from "../types";
 import { OnboardingIntegrationButtons } from "./OnboardingIntegrationButtons";

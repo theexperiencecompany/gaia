@@ -1,0 +1,89 @@
+name: Publish chat-ui
+
+# Publishes @heygaia/chat-ui to npm.
+#
+# Two triggers:
+#  - push to feat/chat-ui-package: auto-publishes a per-commit prerelease,
+#    e.g. 0.0.0-feat-chat-ui.<sha>, under the `prerelease` dist-tag. Lyon
+#    (motion studio) bumps to that version to test integration changes.
+#  - workflow_dispatch with an explicit version: stable publish, used once
+#    the package has merged and is ready for an official release.
+on:
+  push:
+    branches:
+      - feat/chat-ui-package
+    paths:
+      - "libs/chat-ui/**"
+      - ".github/workflows/publish-chat-ui.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.1.0). Leave empty to publish a SHA-based prerelease."
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Compute version
+        id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$INPUT_VERSION" ]]; then
+            VERSION="$INPUT_VERSION"
+            IS_PRERELEASE="false"
+          else
+            SHA=$(git rev-parse --short HEAD)
+            VERSION="0.0.0-feat-chat-ui.${SHA}"
+            IS_PRERELEASE="true"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Set package version
+        working-directory: libs/chat-ui
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+        working-directory: libs/chat-ui
+
+      - name: Build
+        run: pnpm run build
+        working-directory: libs/chat-ui
+
+      # Auth via OIDC (npm Trusted Publishers) when NPM_TOKEN is not set;
+      # falls back to NPM_TOKEN if it exists for one-time bootstrap.
+      - name: Publish (prerelease)
+        if: steps.version.outputs.is_prerelease == 'true'
+        working-directory: libs/chat-ui
+        run: npm publish --tag prerelease --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish (stable)
+        if: steps.version.outputs.is_prerelease == 'false'
+        working-directory: libs/chat-ui
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        run: echo "::notice::Published @heygaia/chat-ui@${{ steps.version.outputs.version }}"

@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@composio/core": "^0.3.4",
+    "@heygaia/chat-ui": "workspace:*",
     "@heroui/accordion": "2.2.27",
     "@heroui/autocomplete": "2.3.32",
     "@heroui/avatar": "2.2.25",

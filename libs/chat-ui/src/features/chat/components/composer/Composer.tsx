@@ -1,0 +1,513 @@
+import { useRouter } from "next/navigation";
+import type React from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useHotkeys } from "react-hotkeys-hook";
+
+import FilePreview, {
+  type UploadedFilePreview,
+} from "@/features/chat/components/files/FilePreview";
+import FileUpload from "@/features/chat/components/files/FileUpload";
+import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
+import { useLoading } from "@/features/chat/hooks/useLoading";
+import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { useSendMessage } from "@/hooks/useSendMessage";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import {
+  useComposerFiles,
+  useComposerModeSelection,
+  useComposerTextActions,
+  useComposerUI,
+  useInputText,
+} from "@/stores/composerStore";
+import { useReplyToMessage } from "@/stores/replyToMessageStore";
+import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
+import type { FileData } from "@/types/shared/fileTypes";
+import type { SearchMode } from "@/types/shared/searchTypes";
+
+import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
+import ComposerToolbar from "./ComposerToolbar";
+import IntegrationsBanner from "./IntegrationsBanner";
+import SelectedCalendarEventIndicator from "./SelectedCalendarEventIndicator";
+import SelectedReplyIndicator from "./SelectedReplyIndicator";
+import SelectedToolIndicator from "./SelectedToolIndicator";
+import SelectedWorkflowIndicator from "./SelectedWorkflowIndicator";
+
+interface MainSearchbarProps {
+  scrollToBottom: () => void;
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  fileUploadRef?: React.RefObject<{
+    openFileUploadModal: () => void;
+    handleDroppedFiles: (files: File[]) => void;
+  } | null>;
+  appendToInputRef?: React.RefObject<((text: string) => void) | null>;
+  droppedFiles?: File[];
+  onDroppedFilesProcessed?: () => void;
+  hasMessages: boolean;
+  conversationId?: string;
+  voiceModeActive: () => void;
+}
+
+const Composer: React.FC<MainSearchbarProps> = ({
+  scrollToBottom,
+  inputRef,
+  fileUploadRef,
+  appendToInputRef,
+  droppedFiles,
+  onDroppedFilesProcessed,
+  hasMessages,
+  conversationId,
+  voiceModeActive,
+}) => {
+  const router = useRouter();
+  const [currentHeight, setCurrentHeight] = useState<number>(24);
+  const composerInputRef = useRef<ComposerInputRef>(null);
+  const inputText = useInputText();
+  const { setInputText, clearInputText } = useComposerTextActions();
+  const {
+    selectedMode,
+    selectedTool,
+    selectedToolCategory,
+    setSelectedMode,
+    setSelectedTool,
+    setSelectedToolCategory,
+    clearToolSelection,
+  } = useComposerModeSelection();
+  const {
+    fileUploadModal,
+    uploadedFiles,
+    uploadedFileData,
+    pendingDroppedFiles,
+    setFileUploadModal,
+    setUploadedFiles,
+    setUploadedFileData,
+    setPendingDroppedFiles,
+    removeUploadedFile,
+    clearAllFiles,
+  } = useComposerFiles();
+  const { isSlashCommandDropdownOpen, setIsSlashCommandDropdownOpen } =
+    useComposerUI();
+  const { selectedWorkflow, clearSelectedWorkflow } = useWorkflowSelection();
+  const { selectedCalendarEvent, clearSelectedCalendarEvent } =
+    useCalendarEventSelection();
+  const { replyToMessage, clearReplyToMessage, setInputFocusCallback } =
+    useReplyToMessage();
+  const { autoSend } = useWorkflowSelectionStore();
+
+  const sendMessage = useSendMessage();
+  const { isLoading } = useLoading();
+  const { integrations, isLoading: integrationsLoading } = useIntegrations();
+  const currentMode = useMemo(
+    () => Array.from(selectedMode)[0],
+    [selectedMode],
+  );
+
+  // Look up the icon URL for the selected tool's integration
+  const selectedToolIconUrl = useMemo(() => {
+    if (!selectedToolCategory) return null;
+    const integration = integrations.find((i) => i.id === selectedToolCategory);
+    return integration?.iconUrl ?? null;
+  }, [selectedToolCategory, integrations]);
+
+  // Set up input focus callback for reply-to-message functionality
+  useEffect(() => {
+    setInputFocusCallback(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    });
+
+    // Clean up on unmount
+    return () => setInputFocusCallback(null);
+  }, [inputRef, setInputFocusCallback]);
+
+  // NOTE: Workflow auto-send logic lives in ChatPage, NOT here.
+  // ChatPage never remounts, so its useChatStream refs survive the
+  // NewChatLayout → ChatWithMessages layout switch that happens when
+  // the optimistic message makes hasMessages toggle to true.
+
+  // Expose file upload functions to parent component via ref
+  useImperativeHandle(
+    fileUploadRef,
+    () => ({
+      openFileUploadModal: () => setFileUploadModal(true),
+      handleDroppedFiles: (files: File[]) => {
+        setPendingDroppedFiles(files);
+      },
+    }),
+    [setFileUploadModal, setPendingDroppedFiles],
+  );
+
+  useEffect(() => {
+    if (fileUploadModal && pendingDroppedFiles.length > 0) {
+      // Just clear the pending files here after the modal is opened
+      setPendingDroppedFiles([]);
+      if (onDroppedFilesProcessed) {
+        onDroppedFilesProcessed();
+      }
+    }
+  }, [
+    fileUploadModal,
+    pendingDroppedFiles,
+    onDroppedFilesProcessed,
+    setPendingDroppedFiles,
+  ]);
+
+  // Process any droppedFiles passed from parent when they change
+  useEffect(() => {
+    if (droppedFiles && droppedFiles.length > 0) {
+      setPendingDroppedFiles(droppedFiles);
+      setFileUploadModal(true);
+    }
+  }, [droppedFiles, setPendingDroppedFiles, setFileUploadModal]);
+
+  const handleFormSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) e.preventDefault();
+
+    // Prevent double execution when workflow is auto-sending
+    if (autoSend) return;
+
+    // Only prevent submission if there's no text AND no files AND no selected tool AND no selected workflow AND no selected calendar event
+    if (
+      !inputText &&
+      uploadedFiles.length === 0 &&
+      !selectedTool &&
+      !selectedWorkflow &&
+      !selectedCalendarEvent
+    ) {
+      return;
+    }
+    // Note: Loading state is now set in useSendMessage AFTER user message is persisted
+    // This ensures the loading indicator appears AFTER the user message in the UI
+
+    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
+      has_text: !!inputText,
+      has_files: uploadedFiles.length > 0,
+      file_count: uploadedFiles.length,
+      has_tool: !!selectedTool,
+      tool_name: selectedTool,
+      tool_category: selectedToolCategory,
+      has_workflow: !!selectedWorkflow,
+      workflow_name: selectedWorkflow?.title,
+      conversation_id: conversationId,
+    });
+
+    sendMessage(inputText, {
+      files: uploadedFileData,
+      selectedTool: selectedTool ?? null,
+      selectedToolCategory: selectedToolCategory ?? null,
+      selectedWorkflow,
+      selectedCalendarEvent,
+      replyToMessage,
+    });
+
+    clearInputText();
+    clearAllFiles();
+    clearToolSelection();
+    clearSelectedWorkflow();
+    clearSelectedCalendarEvent();
+    clearReplyToMessage();
+
+    if (inputRef) inputRef.current?.focus();
+    scrollToBottom();
+  };
+
+  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (
+    event,
+  ) => {
+    if (event.key === "Enter" && !event.shiftKey && !isLoading) {
+      event.preventDefault();
+      handleFormSubmit();
+    }
+
+    // Handle Escape key when slash command dropdown is closed
+    if (event.key === "Escape" && !isSlashCommandDropdownOpen) {
+      // If there's a selected tool, remove it
+      if (selectedTool) {
+        event.preventDefault();
+        handleRemoveSelectedTool();
+      }
+      // If there's a selected workflow, clear it
+      else if (selectedWorkflow) {
+        event.preventDefault();
+        clearSelectedWorkflow();
+      }
+      // If there's a reply-to message, clear it
+      else if (replyToMessage) {
+        event.preventDefault();
+        clearReplyToMessage();
+      }
+    }
+  };
+
+  const openFileUploadModal = () => {
+    setFileUploadModal(true);
+  };
+
+  const handleSelectionChange = (mode: SearchMode) => {
+    if (currentMode === mode) setSelectedMode(new Set([null]));
+    else setSelectedMode(new Set([mode]));
+    // Clear selected tool when mode changes
+    setSelectedTool(null);
+    setSelectedToolCategory(null);
+    // Clear selected workflow when mode changes
+    clearSelectedWorkflow();
+    // Clear selected calendar event when mode changes
+    clearSelectedCalendarEvent();
+    // If the user selects upload_file mode, open the file selector immediately
+    if (mode === "upload_file")
+      setTimeout(() => {
+        openFileUploadModal();
+      }, 100);
+  };
+
+  const handleSlashCommandSelect = (toolName: string, toolCategory: string) => {
+    setSelectedTool(toolName);
+    setSelectedToolCategory(toolCategory);
+    // Clear the current mode when a tool is selected via slash command
+    setSelectedMode(new Set([null]));
+    // Clear selected workflow when tool is selected
+    clearSelectedWorkflow();
+    // Clear selected calendar event when tool is selected
+    clearSelectedCalendarEvent();
+  };
+
+  const handleRemoveSelectedTool = () => {
+    setSelectedTool(null);
+    setSelectedToolCategory(null);
+  };
+
+  // Handle clicking on an integration in the slash command dropdown
+  const handleIntegrationClick = useCallback(
+    (integrationId: string) => {
+      // Close the dropdown first
+      composerInputRef.current?.toggleSlashCommandDropdown();
+      setIsSlashCommandDropdownOpen(false);
+      // Navigate to integrations page with id param
+      router.push(`/integrations?id=${encodeURIComponent(integrationId)}`);
+    },
+    [router, setIsSlashCommandDropdownOpen],
+  );
+
+  const handleToggleSlashCommandDropdown = () => {
+    // Focus the input first - this will naturally trigger slash command detection
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+
+    composerInputRef.current?.toggleSlashCommandDropdown();
+    // Update the state to reflect the current dropdown state
+    setIsSlashCommandDropdownOpen(
+      composerInputRef.current?.isSlashCommandDropdownOpen() || false,
+    );
+  };
+
+  // Global hotkey to trigger slash command dropdown with '/' key
+  useHotkeys(
+    "slash",
+    () => {
+      handleToggleSlashCommandDropdown();
+    },
+    {
+      enableOnFormTags: false, // Don't trigger when typing in inputs
+      preventDefault: true,
+    },
+  );
+
+  // Sync the state with the actual dropdown state
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const isOpen =
+        composerInputRef.current?.isSlashCommandDropdownOpen() || false;
+      setIsSlashCommandDropdownOpen(isOpen);
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [setIsSlashCommandDropdownOpen]);
+
+  const handleFilesUploaded = (files: UploadedFilePreview[]) => {
+    if (files.length === 0) {
+      // If no files, just clear the uploaded files
+      setUploadedFiles([]);
+      setUploadedFileData([]);
+      return;
+    }
+
+    // Check if these are temporary files (with loading state) or final uploaded files
+    const tempFiles = files.some((file) => file.isUploading);
+
+    if (tempFiles) {
+      // These are temporary files with loading state, just set them
+      setUploadedFiles(files);
+      return;
+    }
+
+    trackEvent(ANALYTICS_EVENTS.CHAT_FILE_UPLOADED, {
+      file_count: files.length,
+      file_types: files.map((f) => f.type),
+      conversation_id: conversationId,
+    });
+    // These are the final uploaded files, replace temp files with final versions
+    setUploadedFiles(
+      files.map((file) => {
+        // Find the corresponding final file (if any)
+        const finalFile = files.find((f) => f.tempId === file.id);
+        // If found, return the final file, otherwise keep the previous file
+        return finalFile || file;
+      }),
+    );
+
+    // Now process the complete file data from the response
+    const fileDataArray = files.map((file) => {
+      // For files that have complete response data (not temp files):
+      // Use the data from the API response, including description and message
+      return {
+        fileId: file.id,
+        url: file.url,
+        filename: file.name,
+        description: file.description || `File: ${file.name}`,
+        type: file.type,
+        message: file.message || "File uploaded successfully",
+      } as FileData;
+    });
+
+    // Store the complete file data
+    setUploadedFileData(fileDataArray);
+  };
+
+  // Store paste handler in a ref to avoid re-subscribing the event listener
+  // whenever dependencies change (advanced-event-handler-refs pattern).
+  const handlePasteRef = useRef((_e: ClipboardEvent) => {});
+  handlePasteRef.current = (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          // Open the file upload modal with the pasted image
+          setFileUploadModal(true);
+          setPendingDroppedFiles([file]); // Store the pasted file
+          break;
+        }
+      }
+    }
+  };
+
+  // Add paste event listener for images (stable subscription)
+  useEffect(() => {
+    const listener = (e: ClipboardEvent) => handlePasteRef.current(e);
+    document.addEventListener("paste", listener);
+    return () => {
+      document.removeEventListener("paste", listener);
+    };
+  }, []);
+
+  // Function to append text to the input
+  const appendToInput = useCallback(
+    (text: string) => {
+      const newText = inputText ? `${inputText} ${text}` : text;
+      setInputText(newText);
+      // Focus the input after appending
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    },
+    [inputText, setInputText, inputRef],
+  );
+
+  // Expose appendToInput function to parent via ref
+  useImperativeHandle(appendToInputRef, () => appendToInput, [appendToInput]);
+
+  return (
+    <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
+      <div className="searchbar relative transition-all z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
+        <IntegrationsBanner
+          integrations={integrations}
+          isLoading={integrationsLoading}
+          hasMessages={hasMessages}
+          onToggleSlashCommand={handleToggleSlashCommandDropdown}
+        />
+        {/* relative z-10 ensures indicators always paint above the absolute banner */}
+        <div className="relative z-10">
+          <FilePreview files={uploadedFiles} onRemove={removeUploadedFile} />
+          <SelectedToolIndicator
+            toolName={selectedTool}
+            toolCategory={selectedToolCategory}
+            iconUrl={selectedToolIconUrl}
+            onRemove={handleRemoveSelectedTool}
+          />
+          <SelectedWorkflowIndicator
+            workflow={selectedWorkflow}
+            onRemove={clearSelectedWorkflow}
+          />
+          <SelectedCalendarEventIndicator
+            event={selectedCalendarEvent}
+            onRemove={clearSelectedCalendarEvent}
+          />
+          <SelectedReplyIndicator
+            replyToMessage={replyToMessage}
+            onRemove={clearReplyToMessage}
+            onNavigate={(messageId) => {
+              const messageElement = document.getElementById(messageId);
+              if (messageElement) {
+                messageElement.scrollIntoView({
+                  behavior: "smooth",
+                  block: "center",
+                });
+                messageElement.style.transition = "all 0.3s ease";
+                messageElement.style.scale = "1.02";
+                setTimeout(() => {
+                  messageElement.style.scale = "1";
+                }, 300);
+              }
+            }}
+          />
+        </div>
+        <ComposerInput
+          ref={composerInputRef}
+          searchbarText={inputText}
+          onSearchbarTextChange={setInputText}
+          handleFormSubmit={handleFormSubmit}
+          handleKeyDown={handleKeyDown}
+          currentHeight={currentHeight}
+          onHeightChange={setCurrentHeight}
+          inputRef={inputRef}
+          hasMessages={hasMessages}
+          onSlashCommandSelect={handleSlashCommandSelect}
+          onIntegrationClick={handleIntegrationClick}
+        />
+        <ComposerToolbar
+          selectedMode={selectedMode}
+          openFileUploadModal={openFileUploadModal}
+          handleFormSubmit={handleFormSubmit}
+          searchbarText={inputText}
+          handleSelectionChange={handleSelectionChange}
+          selectedTool={selectedTool}
+          onToggleSlashCommandDropdown={handleToggleSlashCommandDropdown}
+          isSlashCommandDropdownOpen={isSlashCommandDropdownOpen}
+          voiceModeActive={voiceModeActive}
+        />
+      </div>
+      <FileUpload
+        open={fileUploadModal}
+        onOpenChange={setFileUploadModal}
+        onFilesUploaded={handleFilesUploaded}
+        initialFiles={pendingDroppedFiles}
+        isPastedFile={pendingDroppedFiles.some((file) =>
+          file.type.includes("image"),
+        )}
+      />
+    </div>
+  );
+};
+
+export default Composer;

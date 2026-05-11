@@ -9,69 +9,31 @@ import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
-export interface FileUploadResponse {
-  fileId: string;
-  fileName: string;
-  fileSize: number;
-  contentType: string;
-  url?: string;
-  description?: string;
-  message?: string;
-}
+export type {
+  Conversation,
+  ConversationSyncItem,
+  ConversationWithMessages,
+  FetchConversationsResponse,
+  FileUploadResponse,
+  GenerateImageResponse,
+} from "@chat-ui";
+// Types are the canonical source of truth in @heygaia/chat-ui — re-exported
+// here so existing consumers (`from "@/features/chat/api/chatApi"`) keep
+// working unchanged. No drift between the package's stubs and apps/web's
+// real impl.
+export {
+  ConversationSource,
+  SystemPurpose,
+} from "@chat-ui";
 
-export interface GenerateImageResponse {
-  url: string;
-  improved_prompt?: string;
-}
-
-export enum SystemPurpose {
-  EMAIL_PROCESSING = "email_processing",
-  WORKFLOW_EXECUTION = "workflow_execution",
-  OTHER = "other", // Add more purposes as needed
-}
-
-export enum ConversationSource {
-  WEB = "web",
-  MOBILE = "mobile",
-  TELEGRAM = "telegram",
-  DISCORD = "discord",
-  SLACK = "slack",
-  WHATSAPP = "whatsapp",
-  WORKFLOW_SYSTEM = "workflow_system",
-}
-
-export interface Conversation {
-  _id: string;
-  user_id: string;
-  conversation_id: string;
-  description: string;
-  starred?: boolean;
-  is_system_generated?: boolean;
-  system_purpose?: SystemPurpose;
-  is_unread?: boolean;
-  source?: ConversationSource;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-export interface ConversationWithMessages {
-  id: string;
-  title: string;
-  messages: MessageType[];
-}
-
-export interface FetchConversationsResponse {
-  conversations: Conversation[];
-  total: number;
-  page: number;
-  limit: number;
-  total_pages: number;
-}
-
-export interface ConversationSyncItem {
-  conversation_id: string;
-  last_updated?: string;
-}
+import type {
+  ConversationSyncItem,
+  ConversationWithMessages,
+  FetchConversationsResponse,
+  FileUploadResponse,
+  GenerateImageResponse,
+  SystemPurpose,
+} from "@chat-ui";
 
 export const chatApi = {
   // Fetch conversations with pagination

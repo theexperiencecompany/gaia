@@ -1,0 +1,354 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
+
+import { integrationsApi } from "../api/integrationsApi";
+import type {
+  CreateCustomIntegrationRequest,
+  CreateCustomIntegrationResponse,
+  Integration,
+  IntegrationStatus,
+} from "../types";
+
+export interface UseIntegrationsReturn {
+  // Data
+  integrations: Integration[];
+  isLoading: boolean;
+  error: Error | null;
+
+  // Helpers
+  getIntegrationStatus: (
+    integrationId: string,
+  ) => IntegrationStatus | undefined;
+
+  // Actions
+  connectIntegration: (
+    integrationId: string,
+  ) => Promise<{ status: string; toolsCount?: number }>;
+  disconnectIntegration: (integrationId: string) => Promise<void>;
+  createCustomIntegration: (
+    request: CreateCustomIntegrationRequest,
+  ) => Promise<CreateCustomIntegrationResponse>;
+  deleteCustomIntegration: (integrationId: string) => Promise<void>;
+  publishIntegration: (integrationId: string) => Promise<void>;
+  unpublishIntegration: (integrationId: string) => Promise<void>;
+
+  // Refresh
+  refetch: () => Promise<void>;
+}
+
+type UseFetchIntegrationStatusParams = {
+  refetchOnMount?: boolean | "always";
+};
+
+/**
+ * Helper hook to fetch integration status with refetch options.
+ * Used by pages that need to force-refresh status on mount.
+ */
+export const useFetchIntegrationStatus = ({
+  refetchOnMount,
+}: UseFetchIntegrationStatusParams = {}) => {
+  return useQuery({
+    queryKey: ["integrations", "status"],
+    queryFn: integrationsApi.getIntegrationStatus,
+    refetchOnMount: refetchOnMount,
+  });
+};
+
+/**
+ * Single hook for managing all integrations (platform + custom).
+ * No caching - always fetches fresh data.
+ */
+export const useIntegrations = (): UseIntegrationsReturn => {
+  const queryClient = useQueryClient();
+
+  // Query for platform integration configuration
+  const { data: configData, isLoading: configLoading } = useQuery({
+    queryKey: ["integrations", "config"],
+    queryFn: integrationsApi.getIntegrationConfig,
+  });
+
+  // Query for user's integrations (includes custom integrations with status)
+  const {
+    data: userIntegrationsData,
+    isLoading: userIntegrationsLoading,
+    error,
+  } = useQuery({
+    queryKey: ["integrations", "user"],
+    queryFn: integrationsApi.getUserIntegrations,
+    staleTime: 0, // Always refetch - user integrations are mutable state
+  });
+
+  // Query for platform integration status
+  const { data: statusData, isLoading: statusLoading } = useQuery({
+    queryKey: ["integrations", "status"],
+    queryFn: integrationsApi.getIntegrationStatus,
+    staleTime: 0, // Always refetch - status can change externally (OAuth callbacks)
+  });
+
+  // Merge platform integrations with user's custom integrations
+  const integrations = useMemo(() => {
+    const platformConfigs = configData?.integrations || [];
+    const userIntegrations = userIntegrationsData?.integrations || [];
+    const statuses = statusData?.integrations || [];
+
+    // Build integration list from user's integrations (includes custom)
+    const userIntegrationsList: Integration[] = userIntegrations.map((ui) => ({
+      id: ui.integrationId,
+      name: ui.integration.name,
+      description: ui.integration.description,
+      category: ui.integration.category as Integration["category"],
+      status: ui.status as Integration["status"],
+      managedBy: ui.integration.managedBy,
+      source: ui.integration.source,
+      requiresAuth: ui.integration.requiresAuth,
+      authType: ui.integration.authType,
+      tools: ui.integration.tools,
+      iconUrl: ui.integration.iconUrl ?? undefined,
+      isPublic: ui.integration.isPublic ?? undefined,
+      createdBy: ui.integration.createdBy ?? undefined,
+      creator: ui.integration.creator ?? undefined,
+      slug: ui.integration.slug, // Always provided by backend
+    }));
+
+    // Get IDs of integrations user already has
+    const userIntegrationIds = new Set(
+      userIntegrations.map((ui) => ui.integrationId),
+    );
+
+    // Build a Map for O(1) status lookups
+    const statusMap = new Map(statuses.map((s) => [s.integrationId, s]));
+
+    // Add platform integrations that user hasn't added yet
+    const availablePlatformIntegrations: Integration[] = platformConfigs
+      .filter((pi) => !userIntegrationIds.has(pi.id))
+      .map((pi) => {
+        const status = statusMap.get(pi.id);
+        return {
+          ...pi,
+          source: "platform" as const,
+          status: status?.connected ? "connected" : ("not_connected" as const),
+        };
+      });
+
+    // Sort by status: pending (created) first, then connected, then not_connected
+    // Within each status group, sort alphabetically by name
+    const statusPriority: Record<string, number> = {
+      created: 0,
+      connected: 1,
+      not_connected: 2,
+    };
+
+    const allIntegrations = [
+      ...userIntegrationsList,
+      ...availablePlatformIntegrations,
+    ];
+
+    return allIntegrations.toSorted((a, b) => {
+      const priorityA = statusPriority[a.status] ?? 3;
+      const priorityB = statusPriority[b.status] ?? 3;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
+  }, [configData, userIntegrationsData, statusData]);
+
+  // Get status for a specific integration
+  const getIntegrationStatus = useCallback(
+    (integrationId: string): IntegrationStatus | undefined => {
+      return statusData?.integrations.find(
+        (s) => s.integrationId.toLowerCase() === integrationId.toLowerCase(),
+      );
+    },
+    [statusData],
+  );
+
+  // Connect integration
+  const connectIntegration = useCallback(
+    async (
+      integrationId: string,
+    ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
+      const integration = integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      const integrationName = integration?.name || "Integration";
+
+      const toastId = toast.loading(`Connecting to ${integrationName}...`);
+
+      try {
+        const result = await integrationsApi.connectIntegration(integrationId);
+
+        if (result.status === "connected") {
+          trackEvent(ANALYTICS_EVENTS.INTEGRATION_CONNECTED, {
+            integration: integrationId,
+            source: "integration_settings",
+          });
+          toast.success(`Connected to ${result.name}`, { id: toastId });
+          // Refetch all data
+          await Promise.all([
+            queryClient.refetchQueries({ queryKey: ["integrations"] }),
+            queryClient.refetchQueries({ queryKey: ["tools", "available"] }),
+          ]);
+        } else if (result.status === "redirecting") {
+          // OAuth redirect in progress - dismiss toast, browser will navigate
+          toast.dismiss(toastId);
+        } else {
+          // Handle unexpected status (e.g., failed, pending, etc.)
+          toast.error(`Connection failed: ${result.status}`, { id: toastId });
+        }
+
+        return result;
+      } catch (error) {
+        toast.error(
+          `Failed to connect: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { id: toastId },
+        );
+        trackEvent(ANALYTICS_EVENTS.INTEGRATION_ERROR, {
+          integration: integrationId,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        throw error;
+      }
+    },
+    [queryClient, integrations],
+  );
+
+  // Disconnect integration
+  const disconnectIntegration = useCallback(
+    async (integrationId: string): Promise<void> => {
+      try {
+        await integrationsApi.disconnectIntegration(integrationId);
+        trackEvent(ANALYTICS_EVENTS.INTEGRATION_DISCONNECTED, {
+          integration: integrationId,
+        });
+        toast.success("Integration disconnected");
+        // Refetch all data
+        await queryClient.refetchQueries({ queryKey: ["integrations"] });
+      } catch (error) {
+        toast.error(
+          `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+        trackEvent(ANALYTICS_EVENTS.INTEGRATION_ERROR, {
+          integration: integrationId,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        throw error;
+      }
+    },
+    [queryClient],
+  );
+
+  // Create custom integration mutation
+  // Backend now auto-connects, so we need to refetch both integrations AND tools
+  const createMutation = useMutation({
+    mutationFn: integrationsApi.createCustomIntegration,
+    onSuccess: () => {
+      // Refetch integrations to update connection status
+      queryClient.refetchQueries({ queryKey: ["integrations"] });
+      // Refetch tools since backend auto-connects and discovers tools
+      queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+    },
+  });
+
+  const createCustomIntegration = useCallback(
+    async (request: CreateCustomIntegrationRequest) => {
+      return await createMutation.mutateAsync(request);
+    },
+    [createMutation],
+  );
+
+  // Delete custom integration mutation
+  const deleteMutation = useMutation({
+    mutationFn: integrationsApi.deleteCustomIntegration,
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ["integrations"] });
+    },
+  });
+
+  const deleteCustomIntegration = useCallback(
+    async (integrationId: string) => {
+      await deleteMutation.mutateAsync(integrationId);
+    },
+    [deleteMutation],
+  );
+
+  // Publish custom integration
+  const publishIntegration = useCallback(
+    async (integrationId: string): Promise<void> => {
+      const integration = integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      const integrationName = integration?.name || integrationId;
+
+      const toastId = toast.loading(`Publishing ${integrationName}...`);
+
+      try {
+        await integrationsApi.publishIntegration(integrationId);
+        toast.success(`${integrationName} published to community`, {
+          id: toastId,
+        });
+        await queryClient.refetchQueries({ queryKey: ["integrations"] });
+
+        if (typeof window !== "undefined") {
+          // Navigate to marketplace with refresh parameter to show published integration
+          window.location.href = "/marketplace?refresh=true";
+        }
+      } catch (error) {
+        toast.error(
+          `Failed to publish: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { id: toastId },
+        );
+        throw error;
+      }
+    },
+    [queryClient, integrations],
+  );
+
+  // Unpublish custom integration
+  const unpublishIntegration = useCallback(
+    async (integrationId: string): Promise<void> => {
+      const integration = integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      const integrationName = integration?.name || integrationId;
+
+      const toastId = toast.loading(`Unpublishing ${integrationName}...`);
+
+      try {
+        await integrationsApi.unpublishIntegration(integrationId);
+        toast.success(`${integrationName} unpublished`, { id: toastId });
+        await queryClient.refetchQueries({ queryKey: ["integrations"] });
+      } catch (error) {
+        toast.error(
+          `Failed to unpublish: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { id: toastId },
+        );
+        throw error;
+      }
+    },
+    [queryClient, integrations],
+  );
+
+  // Simple refetch all
+  const refetch = useCallback(async () => {
+    await queryClient.refetchQueries({ queryKey: ["integrations"] });
+  }, [queryClient]);
+
+  return {
+    integrations,
+    isLoading: configLoading || userIntegrationsLoading || statusLoading,
+    error: error as Error | null,
+    getIntegrationStatus,
+    connectIntegration,
+    disconnectIntegration,
+    createCustomIntegration,
+    deleteCustomIntegration,
+    publishIntegration,
+    unpublishIntegration,
+    refetch,
+  };
+};
