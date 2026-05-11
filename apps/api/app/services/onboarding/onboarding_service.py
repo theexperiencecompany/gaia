@@ -5,6 +5,7 @@ from shared.py.wide_events import log
 from app.db.mongodb.collections import (
     conversations_collection,
     todos_collection,
+    user_integrations_collection,
     users_collection,
 )
 from app.models.user_models import (
@@ -13,6 +14,11 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingRequest,
 )
+from app.services.integrations.integration_connection_service import (
+    disconnect_integration,
+)
+from app.services.memory_service import memory_service
+from app.services.onboarding.intelligence_job import abort_active_intelligence_job
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 from app.services.workflow.service import WorkflowService
 from bson import ObjectId
@@ -210,8 +216,10 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
     Fully reset a user's onboarding so they can run the flow from scratch.
 
     Clears `users.onboarding`, deletes onboarding-tagged todos, deletes
-    workflows that were generated during onboarding, and deletes the first
-    conversation that was seeded for the user.
+    workflows that were generated during onboarding, deletes the first
+    conversation that was seeded for the user, disconnects every integration
+    the user connected, wipes Mem0 memories, and deletes the LangGraph
+    checkpointer thread for the seeded conversation.
 
     Returns counts of what was deleted for observability.
     """
@@ -225,6 +233,13 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
 
     if not user_doc:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Abort any in-flight intelligence pipeline first so it can't emit
+    # stage events for the user after the doc is wiped.
+    try:
+        await abort_active_intelligence_job(user_id)
+    except Exception as e:
+        log.warning(f"[reset_onboarding] failed to abort intelligence job: {e}")
 
     onboarding = user_doc.get("onboarding", {}) or {}
     workflow_ids: list[Any] = onboarding.get("suggested_workflows", []) or []
@@ -261,7 +276,9 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
         except Exception as e:
             log.warning(f"[reset_onboarding] failed to delete conversation: {e}")
 
-    # Unset the entire onboarding sub-document so the next run starts fresh.
+    integrations_disconnected = await _disconnect_user_integrations(user_id)
+    memories_cleared = await _clear_user_memories(user_id)
+
     await users_collection.update_one(
         {"_id": user_object_id},
         {
@@ -270,18 +287,45 @@ async def reset_onboarding(user_id: str) -> Dict[str, int]:
         },
     )
 
-    log.set(
-        onboarding={
-            "operation": "reset",
-            "workflows_deleted": workflows_deleted,
-            "todos_deleted": todos_deleted,
-            "conversation_deleted": conversation_deleted,
-        }
-    )
-    log.info(f"Onboarding reset complete for user {user_id}")
-
-    return {
+    counts = {
         "workflows_deleted": workflows_deleted,
         "todos_deleted": todos_deleted,
         "conversation_deleted": conversation_deleted,
+        "integrations_disconnected": integrations_disconnected,
+        "memories_cleared": memories_cleared,
     }
+    log.set(onboarding={"operation": "reset", **counts})
+    log.info(f"Onboarding reset complete for user {user_id}")
+    return counts
+
+
+async def _disconnect_user_integrations(user_id: str) -> int:
+    """Disconnect every integration the user connected. Returns count."""
+    try:
+        cursor = user_integrations_collection.find(
+            {"user_id": user_id}, {"integration_id": 1}
+        )
+        integration_ids = [doc["integration_id"] async for doc in cursor]
+    except Exception as e:
+        log.warning(f"[reset_onboarding] failed to list user integrations: {e}")
+        return 0
+
+    disconnected = 0
+    for integration_id in integration_ids:
+        try:
+            await disconnect_integration(user_id, integration_id)
+            disconnected += 1
+        except Exception as e:
+            log.warning(
+                f"[reset_onboarding] failed to disconnect {integration_id}: {e}"
+            )
+    return disconnected
+
+
+async def _clear_user_memories(user_id: str) -> int:
+    """Purge Mem0 memories accumulated during onboarding. Returns 1 on success."""
+    try:
+        return 1 if await memory_service.delete_all_memories(user_id=user_id) else 0
+    except Exception as e:
+        log.warning(f"[reset_onboarding] failed to clear memories: {e}")
+        return 0

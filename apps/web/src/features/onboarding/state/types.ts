@@ -12,8 +12,10 @@ import type {
 } from "../types/websocket";
 
 /**
- * Derived stage label rendered by the page. See `getStage` in `derive.ts`
- * for the precedence rules — components should never compute this themselves.
+ * Linear stage queue rendered by the page. Each stage advances forward only,
+ * driven by either a user action (ack / confirm) or a backend "no data, skip"
+ * signal. `getStage` walks the queue once per render — components should
+ * never compute this themselves.
  */
 export type Stage =
   | "questions"
@@ -22,6 +24,7 @@ export type Stage =
   | "revealWriting"
   | "revealTodos"
   | "workflows"
+  | "platforms"
   | "chat";
 
 export interface OnboardingState {
@@ -51,9 +54,11 @@ export interface OnboardingState {
   /** User confirmed (or skipped) the todos reveal card. */
   ackedTodos: boolean;
 
-  /** User confirmed the workflows step (with or without a platform connect). */
+  /** User clicked "Understood" on the workflows reveal card. */
   workflowsConfirmed: boolean;
-  /** Messaging platform the user linked during the workflows step, if any. */
+  /** User finished the platform-connect step — either connected or skipped. */
+  platformsConfirmed: boolean;
+  /** Messaging platform the user linked during the platforms stage, if any. */
   connectedPlatform: string | null;
 
   /** Pending todo to auto-send into the chat conversation once it's ready. */
@@ -94,10 +99,12 @@ export type Action =
   | { type: "ackWriting" }
   /** User confirmed (or skipped) the todos reveal card. */
   | { type: "ackTodos" }
-  /** User confirmed the workflows step without connecting a platform. */
+  /** User clicked "Understood" on the workflows reveal card. */
   | { type: "confirmWorkflows" }
   /** User finished the platform-connect popup flow. */
   | { type: "platformConnected"; platform: string }
+  /** User skipped the platform-connect step without picking a platform. */
+  | { type: "skipPlatforms" }
   /** User clicked Run on a todo; queues the message for the chat stage. */
   | { type: "executeTodo"; message: string }
   /** Chat stage consumed the pending todo execution message. */

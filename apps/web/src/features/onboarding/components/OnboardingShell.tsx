@@ -51,6 +51,7 @@ function getContentFingerprint(state: OnboardingState, stage: Stage): string {
     state.ackedWritingStyle ? 1 : 0,
     state.ackedTodos ? 1 : 0,
     state.workflowsConfirmed ? 1 : 0,
+    state.platformsConfirmed ? 1 : 0,
     state.connectedPlatform ?? "",
     b?.writing_style?.style_summary ?? "",
     b?.onboarding_todos?.length ?? 0,

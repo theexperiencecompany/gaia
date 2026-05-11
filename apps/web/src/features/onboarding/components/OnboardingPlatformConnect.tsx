@@ -1,7 +1,7 @@
 /**
- * Telegram / WhatsApp / Discord platform-link picker rendered inside the
- * workflows stage. Once `connectedPlatform` is set, swaps to a confirmation
- * row instead of the buttons.
+ * Telegram / WhatsApp / Discord platform-link picker rendered by the
+ * `platforms` stage. Once `connectedPlatform` is set, swaps to a
+ * confirmation row instead of the buttons.
  */
 
 "use client";

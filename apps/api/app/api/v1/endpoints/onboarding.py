@@ -24,6 +24,7 @@ from app.models.user_models import (
     OnboardingResponse,
 )
 from app.services.composio.composio_service import get_composio_service
+from app.services.onboarding.intelligence_job import enqueue_intelligence_job
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
@@ -90,13 +91,7 @@ async def complete_user_onboarding(
         )
 
         try:
-            from app.utils.redis_utils import RedisPoolManager
-
-            pool = await RedisPoolManager.get_pool()
-            await pool.enqueue_job(
-                "process_onboarding_intelligence_task", user["user_id"]
-            )
-            log.info(f"Queued onboarding intelligence for user {user['user_id']}")
+            await enqueue_intelligence_job(user["user_id"])
         except Exception as e:
             log.error(f"Failed to queue intelligence task: {e}", exc_info=True)
 

@@ -203,7 +203,11 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     """
     log.set(user={"id": user_id})
     pipeline_start = time.monotonic()
-    log.info(f"[intelligence] Starting onboarding intelligence for {user_id}")
+    log.info(
+        "[intelligence] pipeline start",
+        user_id=user_id,
+        phase="start",
+    )
 
     # Emit an immediate status before the Mongo + Composio checks so the user
     # sees activity right away. Without this, the first status_text only lands
@@ -227,7 +231,12 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
     if not user_doc:
-        log.error(f"[intelligence] User not found: {user_id}")
+        log.error(
+            "[intelligence] user not found",
+            user_id=user_id,
+            outcome="aborted",
+            reason="user_not_found",
+        )
         return
 
     onboarding = user_doc.get("onboarding", {})
@@ -244,7 +253,18 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     )
     has_gmail: bool = connection_status.get("gmail", False)
     log.info(
-        f"[intelligence:timing] gmail_check: {time.monotonic() - t_gmail_check:.1f}s (has_gmail={has_gmail})"
+        "[intelligence] gmail check",
+        user_id=user_id,
+        has_gmail=has_gmail,
+        duration_s=round(time.monotonic() - t_gmail_check, 2),
+    )
+    log.info(
+        "[intelligence] inputs",
+        user_id=user_id,
+        has_gmail=has_gmail,
+        profession_set=bool(profession),
+        focus_set=bool(focus),
+        branch="gmail" if has_gmail else "no_gmail",
     )
 
     # ── Roots (fire at t=0) ──────────────────────────────────────────────
@@ -321,7 +341,10 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         default="Welcome to GAIA. I'm here to help — what's on your mind?",
     )
     log.info(
-        f"[intelligence:timing] generate_first_message: {time.monotonic() - t_msg:.1f}s"
+        "[intelligence] first_message generated",
+        user_id=user_id,
+        message_chars=len(first_message),
+        duration_s=round(time.monotonic() - t_msg, 2),
     )
 
     # ── Seed conversation, persist, and wait for holo in parallel ────────
@@ -349,8 +372,22 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         {"conversation_id": conversation_id},
     )
 
+    # Canonical pipeline-end summary. One log line a human (or query) can
+    # use to answer "what did this user's onboarding look like?" without
+    # having to scroll through every intermediate step.
     log.info(
-        f"[intelligence:timing] Pipeline total: {time.monotonic() - pipeline_start:.1f}s"
+        "[intelligence] pipeline done",
+        user_id=user_id,
+        phase="done",
+        has_gmail=has_gmail,
+        writing_style_learned=writing_style is not None,
+        triage_important_count=len(triage.important_emails) if triage else 0,
+        social_profile_count=len(social_profiles),
+        todos_count=len(todos),
+        workflows_count=len(workflows),
+        conversation_seeded=conversation_id is not None,
+        outcome=("ok" if conversation_id else "partial"),
+        duration_s=round(time.monotonic() - pipeline_start, 2),
     )
 
 
@@ -383,21 +420,51 @@ async def _run_inbox_scanning(user_id: str) -> list[dict]:
             on_batch=_on_batch,
         )
     except Exception as e:
-        log.error(f"[intelligence] inbox_scanning failed: {e}", exc_info=True)
+        log.error(
+            "[intelligence] inbox_scanning failed",
+            user_id=user_id,
+            step="inbox_scanning",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
         return []
 
     log.info(
-        f"[intelligence:timing] inbox_scanning: {time.monotonic() - t0:.1f}s ({len(emails)} emails)"
+        "[intelligence] inbox_scanning done",
+        user_id=user_id,
+        step="inbox_scanning",
+        outcome="ok",
+        emails_fetched=len(emails),
+        duration_s=round(time.monotonic() - t0, 2),
     )
     return emails
 
 
 async def _run_provision_gmail(user_id: str) -> None:
     """Fire Gmail system workflow provisioning as a root. No deps."""
+    t0 = time.monotonic()
     try:
         await provision_system_workflows(user_id, "gmail", "Gmail")
+        log.info(
+            "[intelligence] provision_gmail done",
+            user_id=user_id,
+            step="provision_gmail",
+            outcome="ok",
+            duration_s=round(time.monotonic() - t0, 2),
+        )
     except Exception as e:
-        log.warning(f"[intelligence] Gmail provisioning failed: {e}")
+        log.warning(
+            "[intelligence] provision_gmail failed",
+            user_id=user_id,
+            step="provision_gmail",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+        )
 
 
 async def _run_writing_style(
@@ -407,15 +474,18 @@ async def _run_writing_style(
 ) -> Optional[WritingStyleProfile]:
     """Learn writing style from the user's last 50 sent emails.
 
-    Emits WRITING_STYLE_READY even when no style could be learned (no Gmail,
-    zero sent emails, or LLM failure) so the frontend can show a graceful
-    fallback card instead of a stuck spinner.
+    Only runs for users with Gmail connected — the frontend stage queue
+    excludes the writing-style step entirely for the no-gmail path, so this
+    function emits no stage events when there is no Gmail.
     """
     if not has_gmail:
-        await _emit_stage(
-            user_id,
-            OnboardingStage.WRITING_STYLE_READY,
-            {"style_summary": None, "example": None},
+        log.info(
+            "[intelligence] writing_style skipped",
+            user_id=user_id,
+            step="writing_style",
+            outcome="skipped",
+            skip_reason="no_gmail",
+            duration_s=0.0,
         )
         return None
 
@@ -432,26 +502,37 @@ async def _run_writing_style(
             user_id, profession=profession, on_status=_on_status
         )
     except Exception as e:
-        log.error(f"[intelligence] writing_style failed: {e}", exc_info=True)
+        log.error(
+            "[intelligence] writing_style failed",
+            user_id=user_id,
+            step="writing_style",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
         result = None
 
-    log.info(f"[intelligence:timing] writing_style: {time.monotonic() - t0:.1f}s")
+    log.info(
+        "[intelligence] writing_style done",
+        user_id=user_id,
+        step="writing_style",
+        outcome="ok" if result else "empty",
+        learned=result is not None,
+        duration_s=round(time.monotonic() - t0, 2),
+    )
 
-    if result and result.summary and result.example:
-        await _emit_stage(
-            user_id,
-            OnboardingStage.WRITING_STYLE_READY,
-            {
-                "style_summary": result.summary,
-                "example": result.example.model_dump(),
-            },
-        )
-    else:
-        await _emit_stage(
-            user_id,
-            OnboardingStage.WRITING_STYLE_READY,
-            {"style_summary": None, "example": None},
-        )
+    await _emit_stage(
+        user_id,
+        OnboardingStage.WRITING_STYLE_READY,
+        {
+            "style_summary": result.summary if result and result.summary else None,
+            "example": result.example.model_dump()
+            if result and result.example
+            else None,
+        },
+    )
     return result
 
 
@@ -465,31 +546,22 @@ async def _run_triage(
     focus: str,
 ) -> Optional[InboxTriage]:
     if inbox_emails_future is None:
-        # Always emit so the frontend can skip the triage reveal card
-        await _emit_stage(
-            user_id,
-            OnboardingStage.TRIAGE_READY,
-            {
-                "total_scanned": 0,
-                "total_unread": 0,
-                "summary": None,
-                "patterns": [],
-                "important_emails": [],
-            },
+        log.info(
+            "[intelligence] triage skipped",
+            user_id=user_id,
+            step="triage",
+            outcome="skipped",
+            skip_reason="no_gmail",
         )
         return None
     emails = await inbox_emails_future
     if not emails:
-        await _emit_stage(
-            user_id,
-            OnboardingStage.TRIAGE_READY,
-            {
-                "total_scanned": 0,
-                "total_unread": 0,
-                "summary": None,
-                "patterns": [],
-                "important_emails": [],
-            },
+        log.info(
+            "[intelligence] triage skipped",
+            user_id=user_id,
+            step="triage",
+            outcome="skipped",
+            skip_reason="no_emails",
         )
         return None
 
@@ -503,9 +575,28 @@ async def _run_triage(
     try:
         result = await triage_inbox(user_id, emails, profession=profession, focus=focus)
     except Exception as e:
-        log.error(f"[intelligence] triage failed: {e}", exc_info=True)
+        log.error(
+            "[intelligence] triage failed",
+            user_id=user_id,
+            step="triage",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
         result = None
-    log.info(f"[intelligence:timing] triage: {time.monotonic() - t0:.1f}s")
+    log.info(
+        "[intelligence] triage done",
+        user_id=user_id,
+        step="triage",
+        outcome="ok" if result else "empty",
+        emails_in=len(emails),
+        important_count=len(result.important_emails) if result else 0,
+        patterns_count=len(result.patterns) if result else 0,
+        total_unread=result.total_unread if result else 0,
+        duration_s=round(time.monotonic() - t0, 2),
+    )
 
     if result and result.important_emails:
         n = len(result.important_emails)
@@ -556,15 +647,31 @@ async def _run_social_profiles(
             emails, user_name, user_email
         )
     except Exception as e:
-        log.error(f"[intelligence] social_profiles failed: {e}", exc_info=True)
+        log.error(
+            "[intelligence] social_profiles failed",
+            user_id=user_id,
+            step="social_profiles",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
         profiles = []
 
     # Safety net — ensure one profile per platform
+    raw_count = len(profiles)
     profiles = dedup_profiles_by_platform(profiles)
 
     log.info(
-        f"[intelligence:timing] social_profiles: {time.monotonic() - t0:.1f}s "
-        f"({len(profiles)} profiles)"
+        "[intelligence] social_profiles done",
+        user_id=user_id,
+        step="social_profiles",
+        outcome="ok",
+        emails_in=len(emails),
+        raw_count=raw_count,
+        deduped_count=len(profiles),
+        duration_s=round(time.monotonic() - t0, 2),
     )
     # Always emit so the frontend has a definitive signal the stage finished,
     # even if no profiles were found.
@@ -586,6 +693,7 @@ async def _run_todos(
 ) -> list[dict]:
     t0 = time.monotonic()
     todos: list[dict] = []
+    source = "none"
     try:
         if has_gmail:
             triage = await triage_future
@@ -595,12 +703,15 @@ async def _run_todos(
                 {"status_text": "Drafting todos from your inbox"},
             )
             if triage and triage.important_emails:
+                source = "triage"
                 todos = await _create_todos_from_triage(
                     user_id, triage, profession=profession, focus=focus
                 )
             elif focus:
+                source = "focus"
                 todos = await _create_focus_todos(user_id, name, profession, focus)
         elif focus:
+            source = "focus"
             await _emit_stage(
                 user_id,
                 OnboardingStage.TODOS_CREATING,
@@ -608,11 +719,27 @@ async def _run_todos(
             )
             todos = await _create_focus_todos(user_id, name, profession, focus)
     except Exception as e:
-        log.error(f"[intelligence] todos failed: {e}", exc_info=True)
+        log.error(
+            "[intelligence] todos failed",
+            user_id=user_id,
+            step="todos",
+            outcome="failed",
+            source=source,
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
         todos = []
 
     log.info(
-        f"[intelligence:timing] todos: {time.monotonic() - t0:.1f}s ({len(todos)} todos)"
+        "[intelligence] todos done",
+        user_id=user_id,
+        step="todos",
+        outcome="ok" if todos else "empty",
+        source=source,
+        count=len(todos),
+        duration_s=round(time.monotonic() - t0, 2),
     )
     # Always emit so the frontend has a definitive completion signal, even for
     # the zero-todos edge case (Gmail connected but triage found nothing
@@ -662,12 +789,27 @@ async def _run_workflows(
             writing_style,
         )
     except Exception as e:
-        log.error(f"[intelligence] workflows failed: {e}", exc_info=True)
+        log.error(
+            "[intelligence] workflows failed",
+            user_id=user_id,
+            step="workflows",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
         workflows = []
 
     log.info(
-        f"[intelligence:timing] workflows: {time.monotonic() - t0:.1f}s "
-        f"({len(workflows)} workflows)"
+        "[intelligence] workflows done",
+        user_id=user_id,
+        step="workflows",
+        outcome="ok" if workflows else "empty",
+        count=len(workflows),
+        has_triage=triage is not None,
+        has_writing_style=writing_style is not None,
+        duration_s=round(time.monotonic() - t0, 2),
     )
 
     try:
@@ -679,7 +821,11 @@ async def _run_workflows(
             )
     except Exception as e:
         log.warning(
-            f"[intelligence] Failed to persist suggested_workflows for {user_id}: {e}"
+            "[intelligence] persist suggested_workflows failed",
+            user_id=user_id,
+            step="workflows",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
         )
 
     n = len(workflows)
@@ -750,11 +896,25 @@ async def _run_holo_card(
             card_design["overlay_opacity"],
         )
         log.info(
-            f"[intelligence:timing] holo_card: {time.monotonic() - t0:.1f}s "
-            f"(house={card_design['house']}, bio_status={bio_status})"
+            "[intelligence] holo_card done",
+            user_id=user_id,
+            step="holo_card",
+            outcome="ok",
+            house=card_design["house"],
+            bio_status=str(bio_status),
+            duration_s=round(time.monotonic() - t0, 2),
         )
     except Exception as e:
-        log.error(f"[intelligence] holo_card failed: {e}", exc_info=True)
+        log.error(
+            "[intelligence] holo_card failed",
+            user_id=user_id,
+            step="holo_card",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
 
     await _emit_stage(user_id, OnboardingStage.HOLO_READY, {})
 
@@ -769,9 +929,25 @@ async def _seed_conversation(user_id: str, first_message: str) -> Optional[str]:
             user_id=user_id, first_message=first_message
         )
     except Exception as e:
-        log.error(f"[intelligence] seed_conversation failed: {e}", exc_info=True)
+        log.error(
+            "[intelligence] seed_conversation failed",
+            user_id=user_id,
+            step="seed_conversation",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
         return None
-    log.info(f"[intelligence:timing] seed_conversation: {time.monotonic() - t0:.1f}s")
+    log.info(
+        "[intelligence] seed_conversation done",
+        user_id=user_id,
+        step="seed_conversation",
+        outcome="ok",
+        conversation_id=cid,
+        duration_s=round(time.monotonic() - t0, 2),
+    )
     return cid
 
 
@@ -1088,8 +1264,10 @@ async def _create_onboarding_workflows(
         parsed: _WorkflowList = await structured_llm.ainvoke(
             [HumanMessage(content=prompt)]
         )
+        specs_total = len(parsed.workflows)
         created: list[dict] = []
-        for spec in parsed.workflows:
+        specs_failed = 0
+        for idx, spec in enumerate(parsed.workflows):
             try:
                 gen_result = await WorkflowGenerationService.generate_workflow_prompt(
                     title=spec.title,
@@ -1124,10 +1302,38 @@ async def _create_onboarding_workflows(
                     }
                 )
             except Exception as e:
-                log.warning(f"[intelligence] Failed to create workflow from spec: {e}")
+                specs_failed += 1
+                log.warning(
+                    "[intelligence] workflow spec failed",
+                    user_id=user_id,
+                    step="workflows",
+                    spec_index=idx,
+                    spec_title=spec.title[:60],
+                    trigger_type=str(trigger_config.type)
+                    if "trigger_config" in dir()
+                    else None,
+                    error=str(e)[:200],
+                    error_type=type(e).__name__,
+                )
+        log.info(
+            "[intelligence] workflows specs done",
+            user_id=user_id,
+            step="workflows",
+            specs_total=specs_total,
+            specs_created=len(created),
+            specs_failed=specs_failed,
+            fallback_used=False,
+        )
         return created
     except Exception as e:
-        log.warning(f"[intelligence] LLM workflow creation failed, using fallback: {e}")
+        log.warning(
+            "[intelligence] workflow LLM failed, using fallback",
+            user_id=user_id,
+            step="workflows",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            fallback_used=True,
+        )
         return await _create_fallback_workflow(
             user_id, profession, focus, user_timezone
         )

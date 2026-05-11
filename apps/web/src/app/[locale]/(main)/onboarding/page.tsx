@@ -15,6 +15,7 @@ import {
   Chat,
   ChatComposer,
   FocusComposer,
+  Platforms,
   ProcessingComposer,
   QuestionsComposer,
   RevealTodos,
@@ -45,6 +46,8 @@ export default function Onboarding() {
         return <RevealTodos state={state} dispatch={dispatch} />;
       case "workflows":
         return <Workflows state={state} dispatch={dispatch} />;
+      case "platforms":
+        return <Platforms state={state} dispatch={dispatch} />;
       case "chat":
         return <Chat state={state} chat={chat} />;
     }
@@ -64,6 +67,8 @@ export default function Onboarding() {
         return null;
       case "workflows":
         return <WorkflowsComposer state={state} dispatch={dispatch} />;
+      case "platforms":
+        return null;
       case "chat":
         return <ChatComposer chat={chat} />;
     }

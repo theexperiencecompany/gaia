@@ -105,10 +105,21 @@ function OnboardingProgressImpl({
               <ModalHeader>Restart onboarding?</ModalHeader>
               <ModalBody>
                 <p className="text-sm text-zinc-400">
-                  This wipes everything GAIA set up for you so far. Generated
-                  todos, suggested workflows, your writing style profile, and
-                  the welcome conversation. You'll start over from question one.
+                  This wipes everything GAIA set up for you so far and starts
+                  you over from question one. The following will be cleared:
                 </p>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-400">
+                  <li>
+                    Connected integrations (Gmail, Calendar, Slack, and any
+                    others) will be{" "}
+                    <span className="text-zinc-200">disconnected</span> — you'll
+                    need to reconnect them.
+                  </li>
+                  <li>Suggested workflows and their schedules</li>
+                  <li>Onboarding todos</li>
+                  <li>Your writing style and triage profile</li>
+                  <li>The welcome conversation and its agent memory</li>
+                </ul>
               </ModalBody>
               <ModalFooter>
                 <Button variant="flat" onPress={onClose}>

@@ -148,7 +148,6 @@ def init_openrouter_llm():
 def init_llm(
     preferred_provider: Optional[str] = None,
     fallback_enabled: bool = True,
-    use_free: bool = False,
 ):
     """
     Initialize LLM with configurable alternatives based on provider priority.
@@ -158,9 +157,6 @@ def init_llm(
                                           If None, uses default priority order.
         fallback_enabled (bool): Whether to enable fallback to other providers
                                if preferred provider is not available.
-        use_free (bool): If True, uses Gemini 2.0 Flash (free) via OpenRouter with
-                        automatic fallbacks. Useful for auxiliary tasks like
-                        follow-up actions and description generation.
 
     Returns:
         Configured LLM instance with alternatives
@@ -169,37 +165,6 @@ def init_llm(
         RuntimeError: If no LLM providers are properly configured
         ValueError: If preferred_provider is not a valid provider name
     """
-    # Use free model via OpenRouter for cost-effective auxiliary tasks
-    if use_free:
-        if not settings.OPENROUTER_API_KEY:
-            raise RuntimeError(
-                "OpenRouter API key not configured. Free LLM requires OPENROUTER_API_KEY."
-            )
-        log.set(
-            llm={
-                "model": DEFAULT_GEMINI_FREE_MODEL_NAME,
-                "provider": "openrouter",
-                "is_free": True,
-            }
-        )
-        return ChatOpenAI(
-            model=DEFAULT_GEMINI_FREE_MODEL_NAME,
-            temperature=0.1,
-            streaming=False,
-            model_kwargs={
-                "max_tokens": 2048
-            },  # Lower limit for free tier auxiliary tasks
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url=OPENROUTER_BASE_URL,
-            default_headers={
-                "HTTP-Referer": settings.FRONTEND_URL,
-                "X-Title": "GAIA",
-            },
-            extra_body={
-                "models": GEMINI_FREE_FALLBACK_MODELS,
-            },
-        )
-
     # Validate preferred provider if specified
     if preferred_provider and preferred_provider not in PROVIDER_MODELS:
         valid_providers = list(PROVIDER_MODELS.keys())

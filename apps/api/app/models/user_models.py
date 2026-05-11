@@ -133,6 +133,10 @@ class OnboardingData(BaseModel):
     first_message_conversation_id: Optional[str] = Field(
         None, description="ID of the seeded onboarding conversation"
     )
+    intelligence_job_id: Optional[str] = Field(
+        None,
+        description="ARQ job id of the in-flight intelligence pipeline; used to abort on reset/re-enqueue",
+    )
 
 
 class OnboardingRequest(BaseModel):

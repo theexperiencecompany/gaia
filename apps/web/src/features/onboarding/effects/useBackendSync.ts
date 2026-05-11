@@ -10,7 +10,11 @@ import { type Dispatch, useEffect, useRef } from "react";
 
 import { getPersonalization } from "../api/onboardingApi";
 import type { Action, OnboardingState, Stage } from "../state/types";
-import type { OnboardingStage, StagePayloads } from "../types/websocket";
+import type {
+  OnboardingStage,
+  PersonalizationData,
+  StagePayloads,
+} from "../types/websocket";
 
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_BASE_DELAY_MS = 1000;
@@ -107,11 +111,11 @@ export function useBackendSync(
       workflows_creating: (p) =>
         dispatchProgress("workflows_creating", p.status_text),
       writing_style_ready: (p) => {
-        // Backend emits this stage even when no style could be learned
-        // (no Gmail, insufficient sent emails, LLM failure) so the pipeline
-        // has a definitive completion signal. In those cases style_summary
-        // is null and there's nothing to reveal — store null, not an empty
-        // object, so getStage's truthy check skips revealWriting cleanly.
+        // For Gmail users where learning failed (LLM error, near-zero sent
+        // emails) the backend still emits with style_summary=null so the
+        // cursor can advance. Combined with `completedStages.has(
+        // "writing_style_ready")`, derive.ts treats this as "skip the
+        // reveal" instead of leaving the user stuck.
         const summary = p.style_summary?.trim();
         dispatchRef.current({
           type: "serverPatch",
@@ -243,11 +247,29 @@ export function useBackendSync(
         .then((data) => {
           if (aborted || isRestartingRef.current) return;
           dispatchRef.current({ type: "serverSnapshot", data });
+          // The snapshot fills server-side data but `completedStages` is a
+          // session-local Set that only the WS handler populates. Backfill
+          // it from the snapshot so the processing checklist marks rows done
+          // even when the matching event was lost during a WS disconnect.
+          synthesizeCompletedStages(data);
           if (data.first_message_conversation_id) stopPoll();
         })
         .catch(() => {
           // keep polling — WS may still recover
         });
+    };
+
+    const synthesizeCompletedStages = (data: PersonalizationData): void => {
+      const fire = (stage: OnboardingStage) =>
+        dispatchRef.current({ type: "stageComplete", stage });
+      if (data.writing_style?.style_summary !== undefined) {
+        fire("writing_style_ready");
+      }
+      if (data.triage_summary !== undefined) fire("triage_ready");
+      if (data.onboarding_todos !== undefined) fire("todos_ready");
+      if (data.suggested_workflows !== undefined) fire("workflows_ready");
+      if (data.social_profiles !== undefined) fire("social_profiles_ready");
+      if (data.first_message_conversation_id) fire("complete");
     };
 
     const startPolling = () => {
@@ -271,9 +293,14 @@ export function useBackendSync(
         ws = socket;
 
         socket.onopen = () => {
+          const isReconnect = reconnectAttempts > 0;
           reconnectAttempts = 0;
-          // Arm the one-shot silence fallback only on the first connection
-          // attempt; on reconnects we've usually seen events already.
+          if (isReconnect) {
+            // Any stage event emitted during the disconnect window is gone
+            // — close the gap with a fresh REST snapshot so the cursor can
+            // catch up to whatever the pipeline reached while we were down.
+            pollOnce();
+          }
           if (
             !silenceFallbackUsed &&
             !wsReceivedEvent &&
@@ -335,6 +362,7 @@ export function useBackendSync(
       .then((data) => {
         if (aborted) return;
         dispatchRef.current({ type: "serverSnapshot", data });
+        synthesizeCompletedStages(data);
         snapshotResolved = true;
         flushBuffer();
       })

@@ -350,7 +350,7 @@ class WorkflowGenerationService:
         else:
             integrations_hint = ""
 
-        llm = init_llm(use_free=True)
+        llm = init_llm()
 
         formatted = WORKFLOW_PROMPT_GENERATION_TEMPLATE.format(
             title_section=f"Title: {title}\n" if title else "",

@@ -20,6 +20,7 @@ const STAGES_WITH_PROCESSING_CHECKLIST: ReadonlySet<Stage> = new Set<Stage>([
   "revealWriting",
   "revealTodos",
   "workflows",
+  "platforms",
   "chat",
 ]);
 

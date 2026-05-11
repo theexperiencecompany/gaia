@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from app.db.mongodb.collections import users_collection
 from shared.py.wide_events import log, wide_task
 from app.models.user_models import BioStatus
-from app.utils.redis_utils import RedisPoolManager
+from app.services.onboarding.intelligence_job import enqueue_intelligence_job
 
 
 async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
@@ -61,9 +61,6 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
 
             log.set(stuck_users_detected=len(stuck_users))
 
-            # Get ARQ pool to queue jobs
-            pool = await RedisPoolManager.get_pool()
-
             queued_count = 0
             error_count = 0
 
@@ -73,15 +70,11 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                 updated_at = user.get("updated_at", "unknown")
 
                 try:
-                    # Queue personalization job instead of running directly
-                    job = await pool.enqueue_job(
-                        "process_onboarding_intelligence_task", user_id
-                    )
-
-                    if job:
+                    job_id = await enqueue_intelligence_job(user_id)
+                    if job_id:
                         log.info(
                             f"Re-queued intelligence for stuck user {user_id} "
-                            f"(status={bio_status}, last_update={updated_at}, job_id={job.job_id})"
+                            f"(status={bio_status}, last_update={updated_at}, job_id={job_id})"
                         )
                         queued_count += 1
                     else:

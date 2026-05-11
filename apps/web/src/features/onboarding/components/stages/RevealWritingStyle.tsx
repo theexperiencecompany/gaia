@@ -1,13 +1,16 @@
 /**
- * `revealWriting` stage. Shows the editable writing-style card; once acked,
- * shows a "looking for things I can help with…" waiting block while the
- * remaining pipeline finishes. The composer is the "Looks good" CTA that
- * dispatches `ackWriting`.
+ * `revealWriting` stage. Before the user clicks "Looks good", renders the
+ * full editable writing-style card inside an intro bubble. After ack, the
+ * card collapses into a single confirmed row that can be re-expanded via
+ * an accordion. The waiting block ("Looking for things I can help with…")
+ * lives below the collapsed row while the rest of the pipeline finishes.
  */
 
 "use client";
 
+import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Spinner } from "@heroui/spinner";
+import { CheckmarkCircle02Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
@@ -34,15 +37,23 @@ export function RevealWritingStyle({ state }: { state: OnboardingState }) {
 
   if (!writingStyle?.style_summary) return null;
 
+  const card = (
+    <WritingStyleRevealCard
+      style_summary={writingStyle.style_summary}
+      example={writingStyle.example ?? null}
+      profession={profession}
+    />
+  );
+
   return (
     <div className="mt-3 space-y-4">
-      <RevealIntroBubble text={REVEAL_WRITING_STYLE_INTRO}>
-        <WritingStyleRevealCard
-          style_summary={writingStyle.style_summary}
-          example={writingStyle.example ?? null}
-          profession={profession}
-        />
-      </RevealIntroBubble>
+      {state.ackedWritingStyle ? (
+        <CollapsedWritingStyle>{card}</CollapsedWritingStyle>
+      ) : (
+        <RevealIntroBubble text={REVEAL_WRITING_STYLE_INTRO}>
+          {card}
+        </RevealIntroBubble>
+      )}
 
       <AnimatePresence>
         {state.ackedWritingStyle && (
@@ -68,6 +79,47 @@ export function RevealWritingStyle({ state }: { state: OnboardingState }) {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+interface CollapsedWritingStyleProps {
+  children: React.ReactNode;
+}
+
+function CollapsedWritingStyle({ children }: CollapsedWritingStyleProps) {
+  return (
+    <m.div
+      className="ml-10.75 rounded-2xl bg-zinc-800/40 p-1 backdrop-blur-xl"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: EASE_OUT_QUART }}
+    >
+      <Accordion
+        variant="light"
+        className="px-0"
+        itemClasses={{
+          base: "px-0",
+          trigger: "px-3 py-2 rounded-2xl data-[hover=true]:bg-zinc-700/40",
+          titleWrapper: "py-0",
+          content: "px-3 pt-2 pb-3",
+        }}
+      >
+        <AccordionItem
+          key="writing-style"
+          aria-label="Writing style"
+          title={
+            <div className="flex items-center gap-2">
+              <CheckmarkCircle02Icon className="size-4 text-emerald-500" />
+              <span className="text-sm font-medium text-zinc-200">
+                Writing style saved
+              </span>
+            </div>
+          }
+        >
+          {children}
+        </AccordionItem>
+      </Accordion>
+    </m.div>
   );
 }
 

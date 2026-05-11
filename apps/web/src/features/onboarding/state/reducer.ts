@@ -132,8 +132,11 @@ export function reducer(
       return {
         ...state,
         connectedPlatform: action.platform,
-        workflowsConfirmed: true,
+        platformsConfirmed: true,
       };
+
+    case "skipPlatforms":
+      return { ...state, platformsConfirmed: true };
 
     case "executeTodo":
       return {

@@ -1,5 +1,6 @@
 """Service to learn and save user writing style."""
 
+import time
 from typing import Awaitable, Callable, Optional
 
 from bson import ObjectId
@@ -19,6 +20,12 @@ from app.models.onboarding_models import (
     WritingStyleProfile,
 )
 from app.services.mail.mail_service import search_messages
+
+# Minimum usable sent-email count for style learning. Below this we
+# short-circuit with skip_reason="insufficient_sent" so callers can decide
+# whether to render a fallback card or skip the reveal entirely.
+_MIN_SENT_EMAILS = 5
+_MAX_SAMPLES = 30
 
 
 async def learn_writing_style(
@@ -41,6 +48,7 @@ async def learn_writing_style(
     Returns:
         WritingStyleProfile or None if insufficient sent emails
     """
+    t0 = time.monotonic()
     try:
         if on_status is not None:
             await on_status("Reading your sent folder")
@@ -51,36 +59,56 @@ async def learn_writing_style(
         )
 
         sent_emails = result.get("messages", [])
+        sent_count = len(sent_emails)
 
         if on_status is not None:
             await on_status(
-                f"Found {len(sent_emails)} sent email"
-                f"{'s' if len(sent_emails) != 1 else ''}"
+                f"Found {sent_count} sent email{'s' if sent_count != 1 else ''}"
             )
 
-        if len(sent_emails) < 5:
+        if sent_count < _MIN_SENT_EMAILS:
             log.info(
-                f"[writing_style] Insufficient sent emails for user {user_id}: {len(sent_emails)}"
+                "[writing_style] skipped",
+                user_id=user_id,
+                outcome="skipped",
+                skip_reason="insufficient_sent",
+                sent_count=sent_count,
+                duration_s=round(time.monotonic() - t0, 2),
             )
             return None
 
         # Collect full bodies — skip auto-replies and near-empty emails
         samples: list[str] = []
+        skipped_short = 0
+        skipped_autoreply = 0
         for email in sent_emails:
             body = email.get("body", email.get("snippet", "")).strip()
             subject = email.get("subject", "")
             if len(body) < 20:
+                skipped_short += 1
                 continue
             if any(
                 kw in subject.lower()
                 for kw in ["out of office", "auto-reply", "automatic"]
             ):
+                skipped_autoreply += 1
                 continue
             samples.append(body)
-            if len(samples) >= 30:
+            if len(samples) >= _MAX_SAMPLES:
                 break
 
-        if len(samples) < 5:
+        if len(samples) < _MIN_SENT_EMAILS:
+            log.info(
+                "[writing_style] skipped",
+                user_id=user_id,
+                outcome="skipped",
+                skip_reason="insufficient_samples",
+                sent_count=sent_count,
+                samples=len(samples),
+                skipped_short=skipped_short,
+                skipped_autoreply=skipped_autoreply,
+                duration_s=round(time.monotonic() - t0, 2),
+            )
             return None
 
         email_samples_text = "\n---\n".join(samples)
@@ -96,6 +124,7 @@ async def learn_writing_style(
         )
         if on_status is not None:
             await on_status("Analyzing tone and phrasing")
+        t_llm = time.monotonic()
         result_data: WritingStyleOutput = await structured_llm.ainvoke(
             [HumanMessage(content=prompt)]
         )
@@ -106,13 +135,27 @@ async def learn_writing_style(
         )
 
         log.info(
-            f"[writing_style] Learned style for user {user_id}: {profile.summary[:80]}..."
+            "[writing_style] learned",
+            user_id=user_id,
+            outcome="ok",
+            sent_count=sent_count,
+            samples=len(samples),
+            skipped_short=skipped_short,
+            skipped_autoreply=skipped_autoreply,
+            summary_chars=len(profile.summary),
+            llm_duration_s=round(time.monotonic() - t_llm, 2),
+            duration_s=round(time.monotonic() - t0, 2),
         )
         return profile
 
     except Exception as e:
         log.error(
-            f"[writing_style] Failed to learn writing style for {user_id}: {e}",
+            "[writing_style] failed",
+            user_id=user_id,
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
             exc_info=True,
         )
         return None

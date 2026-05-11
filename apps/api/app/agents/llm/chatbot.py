@@ -22,7 +22,7 @@ async def chatbot(
             llm_chain = get_free_llm_chain()
             response = await invoke_with_fallback(llm_chain, state.messages)
         else:
-            llm = init_llm(use_free=False)
+            llm = init_llm()
             response = await llm.ainvoke(state.messages)
 
         return {"messages": [response]}

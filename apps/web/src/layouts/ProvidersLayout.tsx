@@ -44,6 +44,10 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   return (
     <HeroUIProvider>
+      {/* Toaster lives OUTSIDE LazyMotion: sileo uses motion.* internally and
+          would trip strict mode. Tree-shaking isn't impacted because sileo is
+          its own bundle. */}
+      <Toaster position="top-right" />
       <LazyMotionProvider>
         <QueryProvider>
           {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
@@ -52,7 +56,6 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
           </Suspense>
           <GlobalInterceptor />
           {/* <HydrationManager /> */}
-          <Toaster position="top-right" />
           <LoginModal />
           <GlobalIntegrationModal />
           <ElectronRouteGuard>

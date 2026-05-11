@@ -17,6 +17,7 @@ interface PersistedShape {
   ackedWritingStyle: boolean;
   ackedTodos: boolean;
   workflowsConfirmed: boolean;
+  platformsConfirmed: boolean;
   connectedPlatform: string | null;
 }
 
@@ -29,6 +30,7 @@ function pick(state: OnboardingState): PersistedShape {
     ackedWritingStyle: state.ackedWritingStyle,
     ackedTodos: state.ackedTodos,
     workflowsConfirmed: state.workflowsConfirmed,
+    platformsConfirmed: state.platformsConfirmed,
     connectedPlatform: state.connectedPlatform,
   };
 }
@@ -48,6 +50,12 @@ export function loadPersisted(): Partial<OnboardingState> | null {
       ackedWritingStyle: parsed.ackedWritingStyle ?? false,
       ackedTodos: parsed.ackedTodos ?? false,
       workflowsConfirmed: parsed.workflowsConfirmed ?? false,
+      // Pre-split persisted shape only had `connectedPlatform`. If it's set,
+      // the user already completed the platform step — backfill the new
+      // `platformsConfirmed` flag so the cursor doesn't leave them stuck on
+      // the "Connected" confirmation row.
+      platformsConfirmed:
+        parsed.platformsConfirmed ?? !!parsed.connectedPlatform,
       connectedPlatform: parsed.connectedPlatform ?? null,
     };
   } catch {

@@ -15,6 +15,7 @@ export const initialState: OnboardingState = {
   ackedTodos: false,
 
   workflowsConfirmed: false,
+  platformsConfirmed: false,
   connectedPlatform: null,
 
   todoExecutionMessage: null,
