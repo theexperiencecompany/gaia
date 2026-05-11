@@ -1,0 +1,26 @@
+so in the current onboarding flow, do we learn the style and show it on frontend? seems like something went wrong or it was slow for some reason? what have we fucked up? please check logs and diagnose
+
+---
+
+so in the current onboarding flow, do we learn the style and show it on frontend? seems like something went wrong or it was slow for some reason? what have we fucked up? please check logs and diagnose
+
+---
+
+sure yeah do the idempotency, then for onboarding workflow gen, use gemini, and then figure out run inbox scanning and shit also frontend writing style does reveal, ignore the frontend its a non issues. please explore and create tasks and help fix all of these
+
+---
+
+are these the best approach with the  reset path and the lock? why would they keep emitting? is this really good code?
+
+---
+
+So the fix is narrower than initially planned: add a prefer_native_gemini kwarg to
+  generate_workflow_prompt only, and pass it from _create_onboarding_workflows. also i dont want to aggregate tech debt why to create more props when we can just replace with not using the free llm when generating steps? isnt the better approach o just not use the free llm lol for workflwo prompts
+
+---
+
+why is the idempotency needed and the inbox scanning? could u create a plan
+
+---
+
+is the lock over engineering?
