@@ -1,0 +1,47 @@
+what happens in the Scanning your inbox step, is there room for improvement to optimise and speed up the flow to reduce the latency?
+
+---
+
+Based on what I found, here are some things I can help with:
+ why does this still show this? didnt we update the todo text based on our previous conversation btw? also why do we only send 50 for triaging? send 100 i guess. and setart it early.  and use 100 instead of only 50. also then sure stream progress with sender but ensure on the frontend its in the exact same place as the fetched 75 emails and fetched 100 emails and in the same format. also how to make it parallel gmail fetching instead of sequential how will this work? also sure we can do the social profiel regexx during fetch instead of waiting for the completion. sure cachethe inbox scan per user with a short TTL. ignore the perplatform llm username extraction dont make it in 1 call its fine. then i guess we can fetch less than 500. modify what you said with all these considerations and tell me what we need to do
+
+---
+
+review everything you've said. i odnt think 3 is the actual fix i dont think it even can be fixed. what else
+
+---
+
+how much data does the snippet even have? are you even sure this would work? like why wouldn't we need the bodies arent the bodies the actual content???
+
+---
+
+you gotta explore more. is this even sufficient for workflow and todo generation?
+
+---
+
+okay i want to only use the metadata. but can u explore the triaging, like is it good quality? will it have good quality triaging for the todos and workflows with just snippets?
+
+---
+
+sure yeah could you please proceed with all of this and create comprehensive tasks for each?
+
+---
+
+1. #2 metadata format — UNVERIFIED. I added format="metadata", include_payload=False,
+  verbose=False params to search_messages and pass them through to Composio's
+  GMAIL_FETCH_EMAILS. I confirmed Composio's schema accepts those param names from the
+  hooks file, but I did not verify the response shape in metadata mode actually still
+  includes snippet and labelIds the way triage expects. If Composio strips those, triage
+   breaks silently (returns no important emails). then can u please explore library code and figure this out. and tell me where even is social profiles even used on the frontend? is it?
+
+---
+
+is there anything incomplete? walk me through the changes made
+
+---
+
+sure please gracefully omit the section when list is empty ig. also can we use the social profiles in holo card with the information inferred from those socials like fetched information? but ignore the social info if doesn't exist??
+
+---
+
+i want to use the social profiles info in the holo card. but only if it exists, if it doesnt exist im fine with just ignoring
