@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "c3d1d9b1f04e",
+  "session_id": "61105dc3-c8be-4e86-bdb4-924ee960ae10",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T18:44:40.669884Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/chat/components/interface/ChatPage.tsx",
+    "apps/web/src/features/chat/components/interface/ChatRenderer.tsx",
+    "apps/web/src/stores/userStore.ts",
+    "apps/api/app/services/onboarding/onboarding_service.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "8883c8c76304",
+  "checkpoint_transcript_start": 585,
+  "transcript_lines_at_start": 585,
+  "token_usage": {
+    "input_tokens": 38,
+    "cache_creation_tokens": 40852,
+    "cache_read_tokens": 5461386,
+    "output_tokens": 16715,
+    "api_call_count": 28
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T18:44:40.646628Z",
+    "agent_lines": 21,
+    "agent_removed": 21,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 21,
+    "total_lines_changed": 148,
+    "agent_percentage": 28.37837837837838,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

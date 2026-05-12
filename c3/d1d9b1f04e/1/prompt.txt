@@ -1,0 +1,3 @@
+u retard i don't want the fucking rendering at /c when theres no active conversation what the fuck have you done?? my prompt was to replace those 2 chats i messaged with the currentWelcomeChat (post-onboarding /c)
+
+ component that is in the demo that component with proper chat messages and shit from the backend and some stuff from frontend if needed. explore deeply understand what i mean and help me do this
