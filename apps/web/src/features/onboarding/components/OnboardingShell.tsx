@@ -32,6 +32,12 @@ interface OnboardingShellProps {
   onRestart: () => void;
   children: ReactNode;
   composer?: ReactNode;
+  /**
+   * When true, widens the content column to match the main chat page
+   * (`/c`) so tool cards (mail list, etc.) aren't right-cropped. Used while
+   * the in-place onboarding chat stream is active.
+   */
+  wide?: boolean;
 }
 
 /**
@@ -67,6 +73,7 @@ export function OnboardingShell({
   onRestart,
   children,
   composer,
+  wide = false,
 }: OnboardingShellProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const progressStep = getProgress(state, stage);
@@ -102,7 +109,13 @@ export function OnboardingShell({
         ref={scrollRef}
         className="relative z-10 flex-1 overflow-y-auto px-4 pt-20"
       >
-        <div className="relative mx-auto max-w-2xl pb-32">{children}</div>
+        <div
+          className={`relative mx-auto pb-32 ${
+            wide ? "max-w-(--breakpoint-lg)" : "max-w-2xl"
+          }`}
+        >
+          {children}
+        </div>
       </div>
 
       <BlurStack

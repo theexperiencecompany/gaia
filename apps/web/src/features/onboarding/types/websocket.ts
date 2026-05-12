@@ -54,7 +54,12 @@ export interface PersonalizationData {
       why_important: string;
     }>;
   } | null;
-  onboarding_todos?: Array<{ id: string; title: string }> | null;
+  onboarding_todos?: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    source_email?: { sender: string; subject: string } | null;
+  }> | null;
   first_message_conversation_id?: string;
 }
 

@@ -14,6 +14,7 @@
 
 "use client";
 
+import { Skeleton } from "@heroui/skeleton";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Image from "next/image";
@@ -60,7 +61,17 @@ export function OnboardingPlatformPreview({
     [profession, activePlatform, userName, userAvatar],
   );
 
-  const visibleMessages = useStaggeredMessages(script.messages, true);
+  // First-mount only: avatars inside ChatDemo are raw <img> tags and pop in
+  // as they decode. Hold the demo behind a Skeleton for one paint so the
+  // first frame doesn't flash. Subsequent platform rotations reuse the
+  // browser-cached avatars, so the gate stays open.
+  const [hasLoaded, setHasLoaded] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setHasLoaded(true), 350);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  const visibleMessages = useStaggeredMessages(script.messages, hasLoaded);
 
   const scrollHostRef = useRef<HTMLDivElement>(null);
 
@@ -119,25 +130,29 @@ export function OnboardingPlatformPreview({
         className="relative shrink-0 overflow-hidden rounded-2xl"
         style={{ height: 280, minHeight: 280, maxHeight: 280 }}
       >
-        <AnimatePresence mode="wait" initial={false}>
-          <m.div
-            key={activePlatform}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="absolute inset-0"
-          >
-            <ChatDemo
-              platform={activePlatform}
-              messages={visibleMessages}
-              title={script.title}
-              subtitle={script.subtitle}
-              showComposer={false}
-              showHeader={false}
-            />
-          </m.div>
-        </AnimatePresence>
+        {hasLoaded ? (
+          <AnimatePresence mode="wait" initial={false}>
+            <m.div
+              key={activePlatform}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="absolute inset-0"
+            >
+              <ChatDemo
+                platform={activePlatform}
+                messages={visibleMessages}
+                title={script.title}
+                subtitle={script.subtitle}
+                showComposer={false}
+                showHeader={false}
+              />
+            </m.div>
+          </AnimatePresence>
+        ) : (
+          <Skeleton className="absolute inset-0 rounded-2xl" />
+        )}
       </div>
     </div>
   );

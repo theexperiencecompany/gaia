@@ -87,7 +87,7 @@ export default function Onboarding() {
       case "revealWriting":
         return <RevealWritingStyle state={state} />;
       case "revealTodos":
-        return <RevealTodos state={state} dispatch={dispatch} />;
+        return <RevealTodos state={state} dispatch={dispatch} chat={chat} />;
       case "workflows":
         return <Workflows state={state} dispatch={dispatch} />;
       case "platforms":
@@ -129,6 +129,10 @@ export default function Onboarding() {
         stage={stage}
         onRestart={handleRestart}
         composer={wrappedComposer}
+        wide={
+          stage === "chat" ||
+          (stage === "revealTodos" && state.todoExecutionStarted)
+        }
       >
         {introDone ? (
           <m.div {...INTRO_FADE_IN}>

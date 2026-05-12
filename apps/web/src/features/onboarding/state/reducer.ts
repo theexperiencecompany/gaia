@@ -141,12 +141,16 @@ export function reducer(
     case "executeTodo":
       return {
         ...state,
-        ackedTodos: true,
+        todoExecutionStarted: true,
         todoExecutionMessage: action.message,
+        todoExecutionTodo: action.todo,
       };
 
     case "clearTodoExecutionMessage":
       return { ...state, todoExecutionMessage: null };
+
+    case "ackTodoDemo":
+      return { ...state, ackedTodos: true };
 
     case "restartStart":
       return {

@@ -7,11 +7,13 @@
 
 "use client";
 
+import { Mail01Icon } from "@icons";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useEffect } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
+import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import {
   BOT_BUBBLE_DEFAULTS,
   USER_BUBBLE_DEFAULTS,
@@ -28,12 +30,6 @@ import {
 import type { Action, OnboardingState } from "../../state/types";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
 import { HoloCardReveal } from "../reveal/HoloCardReveal";
-
-const TYPING_DOT_CLASSES = [
-  "[animation-delay:0ms]",
-  "[animation-delay:150ms]",
-  "[animation-delay:300ms]",
-] as const;
 
 interface ChatProps {
   state: OnboardingState;
@@ -64,58 +60,122 @@ export function useChatStage(
   return chat;
 }
 
+const RUN_NOW_PREFIX = "Execute this todo for me: ";
+
+interface TodoRunNowCardProps {
+  title: string;
+  sourceEmail: { sender: string; subject: string } | null;
+}
+
+/**
+ * Custom user-side bubble shown in place of the raw "Execute this todo for me:
+ * X" auto-send. Surfaces the todo title prominently and the source email as
+ * a small hint chip below — so the user sees a meaningful card instead of a
+ * machine-generated sentence.
+ */
+function TodoRunNowCard({ title, sourceEmail }: TodoRunNowCardProps) {
+  return (
+    <div className="flex justify-end pr-2">
+      <div className="max-w-[80%] rounded-2xl bg-zinc-800 p-4">
+        <div className="text-xs font-medium tracking-wide text-zinc-400 uppercase">
+          Run now
+        </div>
+        <div className="mt-1 text-sm text-zinc-100">{title}</div>
+        {sourceEmail && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-zinc-900 p-3">
+            <Mail01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-500" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs text-zinc-400">
+                {sourceEmail.sender}
+              </div>
+              <div className="truncate text-xs text-zinc-500">
+                {sourceEmail.subject}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Shared stream renderer — used by both the in-place todo demo inside
+ *  `revealTodos` and by the final `chat` stage. When a user message matches
+ *  the Run Now auto-send shape, render the custom `TodoRunNowCard` instead
+ *  of the raw text bubble. */
+export function OnboardingChatStream({
+  chat,
+  todoOverride,
+}: {
+  chat: UseOnboardingChatReturn;
+  todoOverride?: TodoRunNowCardProps | null;
+}) {
+  return (
+    <>
+      {chat.streamMessages.map((msg) => {
+        const isRunNowMessage =
+          msg.role === "user" &&
+          typeof msg.content === "string" &&
+          msg.content.startsWith(RUN_NOW_PREFIX);
+        return (
+          <m.div key={msg.id} {...MOTION_STREAM_MESSAGE}>
+            {msg.role === "user" ? (
+              isRunNowMessage && todoOverride ? (
+                <TodoRunNowCard
+                  title={todoOverride.title}
+                  sourceEmail={todoOverride.sourceEmail}
+                />
+              ) : (
+                <ChatBubbleUser
+                  {...USER_BUBBLE_DEFAULTS}
+                  text={msg.content}
+                  message_id={msg.id}
+                  date={msg.createdAt.toISOString()}
+                  fileData={msg.fileData}
+                />
+              )
+            ) : (
+              <ChatBubbleBot
+                {...BOT_BUBBLE_DEFAULTS}
+                text={msg.content}
+                message_id={msg.id}
+                loading={msg.status === "sending"}
+                tool_data={msg.tool_data ?? undefined}
+                todo_progress={msg.todo_progress ?? undefined}
+                memory_data={msg.memory_data ?? undefined}
+                image_data={msg.image_data ?? undefined}
+                date={msg.createdAt.toISOString()}
+              />
+            )}
+          </m.div>
+        );
+      })}
+
+      {chat.isChatSending &&
+        !chat.streamMessages.some(
+          (msg) => msg.role === "assistant" && msg.content,
+        ) && (
+          <LoadingIndicator
+            loadingText={
+              todoOverride ? "Auto-executing todo…" : "GAIA is thinking…"
+            }
+            loadingTextKey={0}
+          />
+        )}
+    </>
+  );
+}
+
 /** Stream + holo reveal content for the `chat` stage. */
 export function Chat({ state, chat }: Omit<ChatProps, "dispatch">) {
   const showHolo = state.server?.has_personalization && state.server;
 
   return (
     <m.div className="mt-4 space-y-4" {...MOTION_FADE_UP_LARGE}>
-      {chat.streamMessages.map((msg) => (
-        <m.div key={msg.id} {...MOTION_STREAM_MESSAGE}>
-          {msg.role === "user" ? (
-            <ChatBubbleUser
-              {...USER_BUBBLE_DEFAULTS}
-              text={msg.content}
-              message_id={msg.id}
-              date={msg.createdAt.toISOString()}
-              fileData={msg.fileData}
-            />
-          ) : (
-            <ChatBubbleBot
-              {...BOT_BUBBLE_DEFAULTS}
-              text={msg.content}
-              message_id={msg.id}
-              loading={msg.status === "sending"}
-              tool_data={msg.tool_data ?? undefined}
-              todo_progress={msg.todo_progress ?? undefined}
-              memory_data={msg.memory_data ?? undefined}
-              image_data={msg.image_data ?? undefined}
-              date={msg.createdAt.toISOString()}
-            />
-          )}
-        </m.div>
-      ))}
-
-      {chat.isChatSending &&
-        !chat.streamMessages.some(
-          (m) => m.role === "assistant" && m.content,
-        ) && (
-          <m.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex items-center gap-2 pl-1"
-          >
-            <div className="min-w-10 shrink-0" />
-            <div className="flex gap-1.5">
-              {TYPING_DOT_CLASSES.map((delay) => (
-                <span
-                  key={delay}
-                  className={`inline-block size-1.5 animate-bounce rounded-full bg-zinc-500 ${delay}`}
-                />
-              ))}
-            </div>
-          </m.div>
-        )}
+      <OnboardingChatStream
+        chat={chat}
+        todoOverride={state.todoExecutionTodo}
+      />
 
       {showHolo && state.server && (
         <div className="my-4">

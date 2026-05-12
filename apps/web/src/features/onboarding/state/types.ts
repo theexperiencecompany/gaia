@@ -63,6 +63,21 @@ export interface OnboardingState {
 
   /** Pending todo to auto-send into the chat conversation once it's ready. */
   todoExecutionMessage: string | null;
+  /**
+   * User clicked Run on a todo. The `revealTodos` stage swaps its todo grid
+   * for the chat stream in-place; the stage stays active until the user
+   * dispatches `ackTodoDemo` from the post-demo Continue button.
+   */
+  todoExecutionStarted: boolean;
+  /**
+   * The todo the user clicked Run on. Used to render a custom user bubble
+   * (title + source email hint) for the auto-sent message inside the
+   * onboarding chat stream — the raw message text is hidden from the user.
+   */
+  todoExecutionTodo: {
+    title: string;
+    sourceEmail: { sender: string; subject: string } | null;
+  } | null;
 
   /** POST /onboarding failed; the processing composer offers a retry. */
   submissionError: boolean;
@@ -105,10 +120,22 @@ export type Action =
   | { type: "platformConnected"; platform: string }
   /** User skipped the platform-connect step without picking a platform. */
   | { type: "skipPlatforms" }
-  /** User clicked Run on a todo; queues the message for the chat stage. */
-  | { type: "executeTodo"; message: string }
+  /** User clicked Run on a todo; queues the message + flips the in-place
+   *  chat stream on inside the `revealTodos` stage. Does NOT advance the
+   *  stage — `ackTodoDemo` does that after the demo finishes. */
+  | {
+      type: "executeTodo";
+      message: string;
+      todo: {
+        title: string;
+        sourceEmail: { sender: string; subject: string } | null;
+      };
+    }
   /** Chat stage consumed the pending todo execution message. */
   | { type: "clearTodoExecutionMessage" }
+  /** User clicked Continue after the in-place todo demo finished streaming;
+   *  advances the cursor past `revealTodos` into `workflows`. */
+  | { type: "ackTodoDemo" }
   /** Restart kicked off — flips state back to initial and locks UI. */
   | { type: "restartStart" }
   /** Server `/reset` settled (success or fail); unlocks UI. */

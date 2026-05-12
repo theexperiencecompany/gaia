@@ -135,7 +135,7 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
       <ChatBubbleBot
         {...BOT_BUBBLE_DEFAULTS}
         text={
-          "You shouldn’t have to come check on me. Tell me where you already hang out and I’ll text you — briefings, urgent emails, anything that can’t wait."
+          "Tell me where you already hang out and I’ll text you when it matters — morning briefings, urgent emails, calendar nudges, deadline reminders, anything that can’t wait."
         }
       />
       <OnboardingPlatformConnect

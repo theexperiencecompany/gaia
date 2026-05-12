@@ -1,4 +1,4 @@
-export { Chat, ChatComposer, useChatStage } from "./Chat";
+export { Chat, ChatComposer, OnboardingChatStream, useChatStage } from "./Chat";
 export { FocusComposer } from "./Focus";
 export { Platforms } from "./Platforms";
 export { ProcessingComposer } from "./Processing";
