@@ -34,6 +34,8 @@ async def construct_langchain_messages(
     reply_to_message: Optional[ReplyToMessageData] = None,
     trigger_context: Optional[dict] = None,
     agent_type: Literal["comms", "executor"] = "comms",
+    active_todo_id: Optional[str] = None,
+    execution_mode: Literal["interactive", "background"] = "interactive",
 ) -> List[AnyMessage]:
     """
     Construct LangChain messages for agent interaction.
@@ -76,6 +78,8 @@ async def construct_langchain_messages(
             user_name=user_name,
             user_timezone=user_timezone,
             user_preferences=user_preferences,
+            active_todo_id=active_todo_id,
+            execution_mode=execution_mode,
         )
 
         if memory_msg:

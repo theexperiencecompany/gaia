@@ -8,10 +8,12 @@ and search across canvas context via ChromaDB.
 import asyncio
 from datetime import datetime, timezone
 from typing import Annotated, Optional
+from zoneinfo import ZoneInfo
 
 from app.db.mongodb.collections import todos_collection
 from app.models.todo_models import Priority
 from app.services.tracked_todo_service import tracked_todo_service
+from app.services.user_service import get_user_by_id
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.canvas_vector_utils import search_canvas_context
 from bson import ObjectId
@@ -19,6 +21,45 @@ from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from shared.py.wide_events import log
+
+_RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
+
+
+async def _get_user_tz(user_id: str) -> str:
+    """Look up the user's IANA timezone from MongoDB.
+
+    NOTE: This is an uncached DB call per invocation. Acceptable for now —
+    recurrence math runs at tool-call time, not in a tight loop. Refactor
+    to a cached read if it shows up in profiles.
+    """
+    try:
+        user = await get_user_by_id(user_id)
+        if user and user.get("timezone"):
+            tz_name = user["timezone"]
+            try:
+                ZoneInfo(tz_name)
+                return tz_name
+            except Exception:
+                pass
+    except Exception as e:
+        log.warning(f"_get_user_tz: lookup failed for {user_id}: {e}")
+    log.warning("tracked_todo.user_tz_fallback_utc — no usable IANA tz")
+    return "UTC"
+
+
+def _compute_first_fire_from_cron(cron_expr: str, tz_name: str) -> datetime:
+    """Compute the next fire of a cron expression in the given timezone, returned as UTC."""
+    tz = ZoneInfo(tz_name)
+    now_local = datetime.now(timezone.utc).astimezone(tz)
+    cron = _croniter(cron_expr, now_local)
+    next_dt: datetime = cron.get_next(datetime)
+    if next_dt.tzinfo is None:
+        next_dt = next_dt.replace(tzinfo=tz)
+    return next_dt.astimezone(timezone.utc)
+
+
+def _is_cron_expression(recurrence: str) -> bool:
+    return recurrence not in _RECURRENCE_SHORTCUTS
 
 _background_tasks: set[asyncio.Task] = set()
 
@@ -51,15 +92,24 @@ async def create_tracked_todo(
     ] = "none",
     scheduled_at: Annotated[
         Optional[str],
-        "ISO datetime string when GAIA should execute this todo. "
-        "IMPORTANT: Always include the user's timezone offset from user_timezone in the config — "
-        "never use 'Z' (UTC) unless the user explicitly says UTC. "
-        "Example: if user says '9am' and their timezone is +05:30, use '2026-03-20T09:00:00+05:30'. "
-        "The backend converts to UTC automatically.",
+        "ISO datetime for a ONE-TIME future execution. "
+        "Use this ONLY when there is no recurrence, or when the recurrence is a "
+        "delta-style shortcut ('daily', 'weekly', 'every_4h', 'every_1h') that "
+        "needs a first-fire anchor. "
+        "For cron-style recurrence (e.g. '0 9 * * *' or '0 9,20 * * *'), OMIT this — "
+        "the first fire is computed automatically in the user's timezone. "
+        "Always include the user's timezone offset (e.g., '2026-03-20T09:00:00+05:30'); "
+        "never 'Z' unless the user explicitly says UTC.",
     ] = None,
     recurrence: Annotated[
         Optional[str],
-        "How often to repeat. Options: 'daily', 'weekly', 'every_4h', or a cron expression. Requires scheduled_at to also be set.",
+        "How often to repeat. Options: 'daily', 'weekly', 'every_4h', 'every_1h', "
+        "or a 5-field cron expression. "
+        "ALWAYS evaluated in the user's stored timezone — the backend handles "
+        "the conversion. Just pass the cron in user-local wall-clock terms. "
+        "Example: '0 9,20 * * *' fires at 9 AM and 8 PM in the user's timezone "
+        "daily — ONE recurrence, two fires per day; do NOT create two todos. "
+        "Do NOT bake timezone offsets into the cron string itself.",
     ] = None,
     expires_at: Annotated[
         Optional[str],
@@ -99,30 +149,65 @@ async def create_tracked_todo(
     if not user_id:
         return "Error: user_id not found in config"
 
-    # Validate scheduled_at is in the future
-    if scheduled_at:
-        try:
-            parsed_scheduled = datetime.fromisoformat(
-                scheduled_at.replace("Z", "+00:00")
-            )
-            if parsed_scheduled <= datetime.now(timezone.utc):
-                return "Error: scheduled_at must be in the future. Please provide a future datetime."
-        except ValueError:
-            return f"Error: invalid scheduled_at format '{scheduled_at}'. Use ISO format like '2026-03-20T09:00:00Z'."
+    # Recurrence is always evaluated in the user's stored timezone. We only
+    # look it up here to (a) compute the first cron fire correctly and (b)
+    # surface a user-readable note in the return value.
+    user_tz_name = await _get_user_tz(user_id) if recurrence else None
+
+    notes: list[str] = []
+    parsed_scheduled_at: datetime | None = None
 
     # Validate recurrence format
     if recurrence:
-        valid_shortcuts = {"daily", "weekly", "every_4h", "every_1h"}
-        if recurrence not in valid_shortcuts:
+        if _is_cron_expression(recurrence):
             try:
-                _croniter(recurrence)  # Validate cron syntax
+                _croniter(recurrence)
             except (ValueError, KeyError):
                 return (
                     f"Error: invalid recurrence '{recurrence}'. "
-                    f"Use one of: {', '.join(sorted(valid_shortcuts))}, or a valid cron expression."
+                    f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, "
+                    "or a valid 5-field cron expression."
                 )
-        if not scheduled_at:
-            return "Error: recurrence requires scheduled_at to also be set. Please provide both."
+            # Cron: compute first fire from the cron itself in the user's tz.
+            # If the agent also passed scheduled_at, ignore it — the cron is
+            # the source of truth and passing both is redundant/error-prone.
+            if scheduled_at:
+                notes.append(
+                    "scheduled_at was ignored — for a cron recurrence the first fire "
+                    "is computed from the cron in the user's timezone."
+                )
+            try:
+                parsed_scheduled_at = _compute_first_fire_from_cron(
+                    recurrence, user_tz_name or "UTC"
+                )
+            except Exception as e:
+                return f"Error: could not compute first fire from cron '{recurrence}': {e}"
+        else:
+            # Shortcut recurrence — needs a first-fire anchor (scheduled_at).
+            if not scheduled_at:
+                return (
+                    f"Error: recurrence '{recurrence}' is a shortcut and requires "
+                    "scheduled_at as the first-fire anchor. Either provide scheduled_at "
+                    "or use a cron expression that fully specifies when to fire."
+                )
+            try:
+                parsed_scheduled_at = datetime.fromisoformat(
+                    scheduled_at.replace("Z", "+00:00")
+                )
+            except ValueError:
+                return f"Error: invalid scheduled_at format '{scheduled_at}'."
+            if parsed_scheduled_at <= datetime.now(timezone.utc):
+                return "Error: scheduled_at must be in the future."
+    elif scheduled_at:
+        # One-shot scheduled execution (no recurrence).
+        try:
+            parsed_scheduled_at = datetime.fromisoformat(
+                scheduled_at.replace("Z", "+00:00")
+            )
+        except ValueError:
+            return f"Error: invalid scheduled_at format '{scheduled_at}'."
+        if parsed_scheduled_at <= datetime.now(timezone.utc):
+            return "Error: scheduled_at must be in the future."
 
     result = await tracked_todo_service.create_tracked_todo(
         user_id=user_id,
@@ -133,35 +218,35 @@ async def create_tracked_todo(
         priority=Priority(priority),
     )
 
-    # Store scheduled_at, recurrence, and expires_at on the todo document
-    if scheduled_at or recurrence or expires_at:
+    # Persist scheduling fields
+    if parsed_scheduled_at or recurrence or expires_at:
         update_fields: dict[str, object] = {}
-        if scheduled_at:
-            update_fields["scheduled_at"] = datetime.fromisoformat(
-                scheduled_at.replace("Z", "+00:00")
-            )
+        if parsed_scheduled_at:
+            update_fields["scheduled_at"] = parsed_scheduled_at
         if recurrence:
             update_fields["recurrence"] = recurrence
         if expires_at:
-            update_fields["expires_at"] = datetime.fromisoformat(
-                expires_at.replace("Z", "+00:00")
-            )
+            try:
+                update_fields["expires_at"] = datetime.fromisoformat(
+                    expires_at.replace("Z", "+00:00")
+                )
+            except ValueError:
+                return f"Error: invalid expires_at format '{expires_at}'."
         await todos_collection.update_one(
             {"_id": ObjectId(result.id)},
             {"$set": update_fields},
         )
 
-    # Schedule execution if requested
-    if scheduled_at:
+    # Schedule execution
+    if parsed_scheduled_at:
         try:
-            parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
             success = await tracked_todo_service.schedule_execution(
-                result.id, parsed_at
+                result.id, parsed_scheduled_at
             )
             if not success:
                 return (
                     f"Tracked todo created (ID: {result.id}) but scheduling failed. "
-                    f"The todo exists but will NOT execute automatically at {scheduled_at}."
+                    f"The todo exists but will NOT execute automatically."
                 )
         except Exception as e:
             log.warning(
@@ -174,13 +259,32 @@ async def create_tracked_todo(
                 f"The todo exists but will NOT execute automatically."
             )
 
-    return (
+    out = (
         f"Tracked todo created: {result.id}\n"
         f"Title: {result.title}\n"
         f"VFS: {result.vfs_path}\n"
         f"Canvas: {result.vfs_path}/canvas.md\n"
         f"Log: {result.vfs_path}/log.md"
     )
+    if parsed_scheduled_at and user_tz_name:
+        try:
+            local_fire = parsed_scheduled_at.astimezone(ZoneInfo(user_tz_name))
+            out += (
+                f"\nNote: scheduled in your timezone ({user_tz_name}). "
+                f"First fire: {local_fire.strftime('%a %Y-%m-%d %H:%M %Z')}. "
+                "If this isn't what you wanted, call update_tracked_todo with "
+                "the corrected recurrence (or scheduled_at for one-shots)."
+            )
+        except Exception:
+            out += f"\nFirst fire (UTC): {parsed_scheduled_at.isoformat()}"
+    elif parsed_scheduled_at:
+        out += (
+            f"\nNote: first fire (UTC): {parsed_scheduled_at.isoformat()}. "
+            "If this isn't what you wanted, call update_tracked_todo to correct it."
+        )
+    if notes:
+        out += "\nDetails:\n  - " + "\n  - ".join(notes)
+    return out
 
 
 @tool
@@ -363,12 +467,16 @@ async def update_tracked_todo(
     ] = None,
     scheduled_at: Annotated[
         Optional[str],
-        "ISO datetime string when GAIA should execute this todo. Must be in the future. "
-        "Always include the user's timezone offset (e.g., '2026-03-20T09:00:00+05:30'), never use 'Z' unless user says UTC.",
+        "ISO datetime for one-shot scheduled execution, or first-fire anchor for "
+        "shortcut recurrences ('daily', 'weekly', 'every_4h', 'every_1h'). "
+        "OMIT for cron-style recurrence — first fire is computed from the cron. "
+        "Always include the user's timezone offset. Set to empty string '' to clear.",
     ] = None,
     recurrence: Annotated[
         Optional[str],
-        "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or cron expression. "
+        "Recurrence pattern: 'daily', 'weekly', 'every_4h', 'every_1h', or 5-field cron. "
+        "ALWAYS evaluated in the user's stored timezone. "
+        "Example: '0 9,20 * * *' = 9 AM and 8 PM daily in the user's tz. "
         "Set to empty string '' to clear.",
     ] = None,
     expires_at: Annotated[
@@ -435,17 +543,37 @@ async def update_tracked_todo(
                 return "Error: scheduled_at must be in the future."
             update_fields["scheduled_at"] = parsed_at
 
+    notes: list[str] = []
+
     if recurrence is not None:
         if recurrence == "":
             update_fields["recurrence"] = None
         else:
-            valid_shortcuts = {"daily", "weekly", "every_4h", "every_1h"}
-            if recurrence not in valid_shortcuts:
+            if _is_cron_expression(recurrence):
                 try:
                     _croniter(recurrence)
                 except (ValueError, KeyError):
                     return f"Error: invalid recurrence '{recurrence}'."
+            elif recurrence not in _RECURRENCE_SHORTCUTS:
+                return (
+                    f"Error: invalid recurrence '{recurrence}'. "
+                    f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, or a cron expression."
+                )
             update_fields["recurrence"] = recurrence
+            # For cron: if scheduled_at was also passed, drop it — first fire
+            # is computed from the cron in the user's stored timezone.
+            if _is_cron_expression(recurrence):
+                if scheduled_at:
+                    notes.append(
+                        "scheduled_at was ignored — for a cron recurrence the first fire "
+                        "is computed from the cron in your timezone."
+                    )
+                try:
+                    user_tz_name = await _get_user_tz(user_id)
+                    first_fire = _compute_first_fire_from_cron(recurrence, user_tz_name)
+                    update_fields["scheduled_at"] = first_fire
+                except Exception as e:
+                    return f"Error: could not compute first fire from cron: {e}"
 
     if expires_at is not None:
         if expires_at == "":
@@ -492,10 +620,11 @@ async def update_tracked_todo(
     if result.matched_count == 0:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
-    # If scheduled_at was set (not cleared), reschedule ARQ job
-    if scheduled_at and scheduled_at != "":
-        parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
-        await tracked_todo_service.reschedule_execution(todo_id, parsed_at)
+    # If scheduled_at landed in update_fields with a real datetime (either the
+    # agent passed one, or we computed it from a cron), reschedule the ARQ job.
+    new_scheduled_at = update_fields.get("scheduled_at")
+    if isinstance(new_scheduled_at, datetime):
+        await tracked_todo_service.reschedule_execution(todo_id, new_scheduled_at)
 
     updated_keys = [k for k in update_fields if k != "updated_at"]
 
@@ -506,7 +635,10 @@ async def update_tracked_todo(
         )
         updated_keys.append("references")
 
-    return f"Updated tracked todo {todo_id}: {', '.join(updated_keys)}"
+    msg = f"Updated tracked todo {todo_id}: {', '.join(updated_keys)}"
+    if notes:
+        msg += "\nNotes:\n  - " + "\n  - ".join(notes)
+    return msg
 
 
 @tool

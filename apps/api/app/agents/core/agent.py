@@ -15,7 +15,7 @@ Choose streaming for user interactions, silent for background processing.
 import asyncio
 import json
 from datetime import datetime
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Literal, Optional, cast
 
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
@@ -68,6 +68,18 @@ async def _core_agent_logic(
     """
     user_id = user.get("user_id")
 
+    # Extract active todo binding + execution mode from trigger_context (scheduled
+    # runs set these; interactive turns leave them unset / "interactive").
+    active_todo_id: Optional[str] = None
+    execution_mode: Literal["interactive", "background"] = "interactive"
+    if trigger_context:
+        active_todo_id = trigger_context.get("active_todo_id") or trigger_context.get(
+            "todo_id"
+        )
+        mode = trigger_context.get("execution_mode")
+        if mode in ("interactive", "background"):
+            execution_mode = cast(Literal["interactive", "background"], mode)
+
     # Build langchain messages and get graph concurrently
     history, graph = await asyncio.gather(
         construct_langchain_messages(
@@ -84,6 +96,8 @@ async def _core_agent_logic(
             selected_calendar_event=request.selectedCalendarEvent,
             reply_to_message=request.replyToMessage,
             trigger_context=trigger_context,
+            active_todo_id=active_todo_id,
+            execution_mode=execution_mode,
         ),
         GraphManager.get_graph("comms_agent"),
     )
@@ -109,6 +123,8 @@ async def _core_agent_logic(
         agent_name="comms_agent",
         selected_tool=request.selectedTool,
         tool_category=request.toolCategory,
+        active_todo_id=active_todo_id,
+        execution_mode=execution_mode,
     )
 
     log.set(

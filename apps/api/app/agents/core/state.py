@@ -1,5 +1,5 @@
 from collections.abc import Iterator, MutableMapping
-from typing import List, Optional
+from typing import List, Literal, Optional
 from typing import Annotated
 
 from langchain_core.messages import AnyMessage
@@ -32,3 +32,9 @@ class State(DictLikeModel):
     memories: List[str] = Field(default_factory=list)
     memories_stored: bool = False
     conversation_id: Optional[str] = None
+    # When set, all canvas writes from this turn default to this todo.
+    # Set by scheduled-run trigger or by comms when delegating a todo-bound task.
+    active_todo_id: Optional[str] = None
+    # "background" means no human is reading this turn (scheduled recurrence).
+    # Comms-driven turns are "interactive".
+    execution_mode: Literal["interactive", "background"] = "interactive"

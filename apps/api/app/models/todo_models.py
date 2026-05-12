@@ -65,7 +65,7 @@ class TodoBase(BaseModel):
     )
     recurrence: str | None = Field(
         default=None,
-        description="Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'",
+        description="Recurrence pattern: 'daily', 'weekly', 'every_4h', or cron expression '0 9 * * 1'. Always evaluated in the user's current timezone (user.timezone).",
     )
     gaia_retry_count: int = Field(
         default=0,

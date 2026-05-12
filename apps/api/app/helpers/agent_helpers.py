@@ -242,6 +242,8 @@ def build_agent_config(
     tool_category: Optional[str] = None,
     subagent_id: Optional[str] = None,
     vfs_session_id: Optional[str] = None,
+    active_todo_id: Optional[str] = None,
+    execution_mode: Optional[str] = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -333,6 +335,9 @@ def build_agent_config(
         subagent_id = subagent_id or base_configurable.get("subagent_id")
         vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
         stream_id = base_configurable.get("stream_id")
+        # Inherit active-todo binding + execution mode from parent unless overridden
+        active_todo_id = active_todo_id or base_configurable.get("active_todo_id")
+        execution_mode = execution_mode or base_configurable.get("execution_mode")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -350,6 +355,8 @@ def build_agent_config(
         "subagent_id": subagent_id,
         "vfs_session_id": vfs_session_id,
         "stream_id": stream_id,
+        "active_todo_id": active_todo_id,
+        "execution_mode": execution_mode or "interactive",
     }
 
     config = {
@@ -400,6 +407,15 @@ def build_initial_state(
 
     if trigger_context:
         state["trigger_context"] = trigger_context
+        # Bind active todo + execution mode so banners and tools default
+        # to the firing todo. Scheduled runs always set these; comms-driven
+        # turns may set them when delegating todo-bound work.
+        if active_todo_id := trigger_context.get("active_todo_id") or trigger_context.get(
+            "todo_id"
+        ):
+            state["active_todo_id"] = active_todo_id
+        if execution_mode := trigger_context.get("execution_mode"):
+            state["execution_mode"] = execution_mode
 
     return state
 

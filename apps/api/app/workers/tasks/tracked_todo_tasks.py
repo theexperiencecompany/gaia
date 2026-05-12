@@ -31,6 +31,7 @@ from app.models.notification.notification_models import (
 )
 from app.services.notification_service import notification_service
 from app.services.model_service import get_default_model
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.services.vfs.mongo_vfs import MongoVFS
 from app.utils.redis_utils import RedisPoolManager
@@ -39,6 +40,25 @@ from app.utils.redis_utils import RedisPoolManager
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BACKOFF = [timedelta(hours=1), timedelta(hours=4)]
 LOCK_TTL_SECONDS = 1800
+
+
+async def _load_user_with_tz(user_id: str) -> tuple[dict, ZoneInfo]:
+    """Fetch user record once and resolve their IANA timezone.
+
+    Mirrors the pattern used in workflow_tasks._execute_workflow_as_chat_session
+    so we keep one consistent way to read a user's timezone in worker code.
+    Returns (user_data with user_id populated, ZoneInfo). Falls back to UTC if
+    the user record or timezone is missing.
+    """
+    try:
+        user_data = await get_user_by_id(user_id)
+        if user_data:
+            user_data["user_id"] = user_id
+            return user_data, ZoneInfo(user_data.get("timezone") or "UTC")
+        return {"user_id": user_id}, ZoneInfo("UTC")
+    except Exception as e:
+        log.warning(f"_load_user_with_tz: could not fetch user {user_id}: {e}")
+        return {"user_id": user_id}, ZoneInfo("UTC")
 
 
 async def execute_tracked_todo(ctx: dict, todo_id: str) -> str:
@@ -99,8 +119,14 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
         log.error(f"Todo {todo_id} has no user_id, cannot execute")
         return f"error:{todo_id} (missing user_id)"
 
+    # Single user fetch per run — pattern matches workflow_tasks.py:416–427.
+    # Reused for both agent execution (timezone/model config) and the next-run
+    # computation below, so a tz change takes effect on the next fire without
+    # an extra DB round-trip.
+    user_data, user_tz = await _load_user_with_tz(user_id)
+
     try:
-        await _run_execution(doc, user_id)
+        await _run_execution(doc, user_id, user_data=user_data, user_tz=user_tz)
 
         # Reset retry counter on success
         await todos_collection.update_one(
@@ -108,9 +134,10 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
             {"$set": {"gaia_retry_count": 0, "updated_at": datetime.now(timezone.utc)}},
         )
 
-        # Re-enqueue if recurring
+        # Re-enqueue if recurring. Recurrence is always evaluated in the
+        # user's stored timezone (looked up once at the top of this run).
         if doc.get("recurrence"):
-            next_run = _compute_next_run(doc["recurrence"])
+            next_run = _compute_next_run(doc["recurrence"], str(user_tz))
             if next_run:
                 await todos_collection.update_one(
                     {"_id": ObjectId(todo_id)},
@@ -167,7 +194,9 @@ async def _execute_todo_with_retry(ctx: dict, todo_id: str, pool: Any) -> str:
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _run_execution(doc: dict, user_id: str) -> None:
+async def _run_execution(
+    doc: dict, user_id: str, *, user_data: dict, user_tz: ZoneInfo
+) -> None:
     """
     Dispatch execution to the correct path:
     - If the todo has a workflow_id, queue the workflow.
@@ -192,31 +221,19 @@ async def _run_execution(doc: dict, user_id: str) -> None:
             )
         log.info(f"_run_execution: queued workflow {workflow_id} for todo {doc['_id']}")
     else:
-        await _execute_via_agent(doc, user_id)
+        await _execute_via_agent(doc, user_id, user_data=user_data, user_tz=user_tz)
 
 
-async def _execute_via_agent(doc: dict, user_id: str) -> str:
+async def _execute_via_agent(
+    doc: dict, user_id: str, *, user_data: dict, user_tz: ZoneInfo
+) -> str:
     """
     Execute the todo using call_agent_silent directly (no workflow needed).
 
     Returns the first 200 chars of the agent response.
     """
     todo_id = str(doc["_id"])
-
-    # Fetch full user record for timezone and model config
-    try:
-        user_data = await get_user_by_id(user_id)
-        if user_data:
-            user_data["user_id"] = user_id
-            user_tz = ZoneInfo(user_data.get("timezone", "UTC"))
-        else:
-            user_data = {"user_id": user_id}
-            user_tz = ZoneInfo("UTC")
-        user_time = datetime.now(user_tz)
-    except Exception as exc:
-        log.warning(f"_execute_via_agent: could not fetch user {user_id}: {exc}")
-        user_data = {"user_id": user_id}
-        user_time = datetime.now(timezone.utc)
+    user_time = datetime.now(user_tz)
 
     user_model_config = None
     try:
@@ -299,21 +316,53 @@ async def _execute_via_agent(doc: dict, user_id: str) -> str:
         "trigger_type": "scheduled_todo",
         "todo_id": todo_id,
         "todo_title": title,
+        "active_todo_id": todo_id,
+        "execution_mode": "background",
     }
 
-    complete_message, _tool_data = await call_agent_silent(
-        request=request,
-        conversation_id=conversation_id,
-        user=user_data,
-        user_time=user_time,
-        user_model_config=user_model_config,
-        trigger_context=trigger_context,
+    # Structural paper trail — write a start marker to the canvas Timeline
+    # BEFORE the agent runs, so the run leaves evidence even if the LLM forgets.
+    short_conv = conversation_id[:8]
+    start_iso = datetime.now(timezone.utc).isoformat()
+    await tracked_todo_service.append_canvas_timeline(
+        todo_id=todo_id,
+        user_id=user_id,
+        entry=f"▶ {start_iso} — scheduled run started (conversation_id={short_conv})",
     )
 
-    if complete_message and complete_message.startswith(
-        "Error when calling silent agent:"
-    ):
-        raise RuntimeError(complete_message)
+    complete_message: str = ""
+    try:
+        complete_message, _tool_data = await call_agent_silent(
+            request=request,
+            conversation_id=conversation_id,
+            user=user_data,
+            user_time=user_time,
+            user_model_config=user_model_config,
+            trigger_context=trigger_context,
+        )
+
+        if complete_message and complete_message.startswith(
+            "Error when calling silent agent:"
+        ):
+            raise RuntimeError(complete_message)
+    except Exception as exc:
+        # End marker: failure
+        fail_iso = datetime.now(timezone.utc).isoformat()
+        await tracked_todo_service.append_canvas_timeline(
+            todo_id=todo_id,
+            user_id=user_id,
+            entry=f"✗ {fail_iso} — scheduled run failed ({type(exc).__name__})",
+        )
+        raise
+
+    # End marker: success
+    end_iso = datetime.now(timezone.utc).isoformat()
+    summary = (complete_message or "").strip().replace("\n", " ")[:120]
+    await tracked_todo_service.append_canvas_timeline(
+        todo_id=todo_id,
+        user_id=user_id,
+        entry=f"✓ {end_iso} — scheduled run finished (summary={summary!r})",
+    )
 
     log.info(f"_execute_via_agent: agent completed for todo {todo_id}")
     return complete_message[:200] if complete_message else ""
@@ -362,20 +411,34 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
         )
 
 
-def _compute_next_run(recurrence: str) -> datetime | None:
+def _compute_next_run(
+    recurrence: str, recurrence_tz: str | None = None
+) -> datetime | None:
     """
     Compute the next scheduled run time from a recurrence string.
 
-    Supports named shortcuts:
+    Evaluated in the user's timezone (recurrence_tz, IANA name). Returned as
+    a UTC-aware datetime suitable for ARQ's _defer_until.
+
+    Supports named shortcuts (deltas, tz-agnostic):
     - "daily"    → +1 day
     - "weekly"   → +7 days
     - "every_4h" → +4 hours
     - "every_1h" → +1 hour
 
-    Falls back to croniter for cron expressions (e.g. "0 9 * * *").
+    Falls back to croniter for cron expressions (e.g. "0 9 * * *"), which are
+    evaluated in recurrence_tz so "9am" means user-local 9am.
     Returns None if the recurrence string is unrecognised.
     """
-    now = datetime.now(timezone.utc)
+    try:
+        tz = ZoneInfo(recurrence_tz) if recurrence_tz else timezone.utc
+    except Exception:
+        log.warning(
+            f"_compute_next_run: invalid recurrence_tz '{recurrence_tz}', falling back to UTC"
+        )
+        tz = timezone.utc
+
+    now_utc = datetime.now(timezone.utc)
     shortcuts: dict[str, timedelta] = {
         "daily": timedelta(days=1),
         "weekly": timedelta(weeks=1),
@@ -384,16 +447,17 @@ def _compute_next_run(recurrence: str) -> datetime | None:
     }
 
     if recurrence in shortcuts:
-        return now + shortcuts[recurrence]
+        # Pure deltas — timezone-agnostic.
+        return now_utc + shortcuts[recurrence]
 
-    # Try cron expression
+    # Cron expression — evaluate in the user's local timezone.
     try:
-        cron = croniter(recurrence, now)
+        now_local = now_utc.astimezone(tz)
+        cron = croniter(recurrence, now_local)
         next_dt: datetime = cron.get_next(datetime)
-        # croniter returns naive datetimes; attach UTC
         if next_dt.tzinfo is None:
-            next_dt = next_dt.replace(tzinfo=timezone.utc)
-        return next_dt
+            next_dt = next_dt.replace(tzinfo=tz)
+        return next_dt.astimezone(timezone.utc)
     except Exception:
         log.warning(
             f"_compute_next_run: unrecognised recurrence expression '{recurrence}'"

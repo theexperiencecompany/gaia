@@ -52,6 +52,8 @@ _CONFIGURABLE_SCALAR_KEYS = frozenset(
         "subagent_id",
         "vfs_session_id",
         "user_message_id",
+        "active_todo_id",
+        "execution_mode",
     }
 )
 
@@ -134,6 +136,15 @@ async def call_executor(
         str,
         "The task to execute - describe what needs to be done",
     ],
+    active_todo_id: Annotated[
+        str | None,
+        "Optional tracked-todo ID to BIND this executor run to. When set, "
+        "the executor's canvas writes default to this todo's canvas and a "
+        "🎯 ACTIVE TODO banner is added to its context. Use when delegating "
+        "work that's clearly about a specific existing tracked todo (e.g. "
+        "'update progress on todo X', 'continue working on Y'). Omit for "
+        "general tasks.",
+    ] = None,
 ) -> str:
     """Delegate a task to the executor agent for background execution.
 
@@ -144,7 +155,14 @@ async def call_executor(
     The executor runs in the background and posts its result to the
     conversation as a new bot message when it completes.
     """
-    configurable = config.get("configurable", {})
+    base_configurable = config.get("configurable", {})
+    # When binding to a specific todo, layer a shallow override on top of
+    # the inherited configurable so the executor sees the binding without
+    # mutating the comms agent's RunnableConfig.
+    if active_todo_id:
+        configurable = {**base_configurable, "active_todo_id": active_todo_id}
+    else:
+        configurable = base_configurable
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:

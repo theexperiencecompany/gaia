@@ -100,8 +100,21 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     return ""
 
 
-async def _get_tracked_todos_section(user_id: str) -> str:
-    """Fetch active tracked-todo summary with 60s Redis cache."""
+async def _get_tracked_todos_section(
+    user_id: str, active_todo_id: Optional[str] = None
+) -> str:
+    """Fetch active tracked-todo summary with 60s Redis cache.
+
+    When active_todo_id is set, bypasses cache so the pinned-todo marker
+    reflects the current binding rather than a stale list.
+    """
+    if active_todo_id:
+        # Pinned view is per-run-binding — caching it would cross-pollinate
+        # other turns. Cheap call, not worth caching.
+        return await tracked_todo_service.get_active_tracked_summary(
+            user_id, active_todo_id=active_todo_id
+        )
+
     cache_key = f"tracked_todos:summary:{user_id}"
 
     try:
@@ -122,12 +135,63 @@ async def _get_tracked_todos_section(user_id: str) -> str:
     return summary
 
 
+BACKGROUND_EXECUTION_BANNER = (
+    "🤖 BACKGROUND EXECUTION (no human is reading this turn)\n"
+    "   - You were woken by a scheduled trigger. There is no user to ask.\n"
+    "   - Do NOT ask clarifying questions, present plans for approval, or seek confirmation.\n"
+    "   - Do NOT produce conversational acknowledgements (\"Sure, I'll…\", \"Let me know if…\").\n"
+    "   - Just execute. If you need a decision you cannot make, write the question into "
+    "the active todo's canvas (Context section) and stop.\n"
+    "   - Your output is consumed by the system, not a human. Be terse and action-only."
+)
+
+
+def _format_active_todo_banner(todo: dict) -> str:
+    vfs_path = todo.get("vfs_path") or "(no vfs)"
+    title = todo.get("title", "Untitled")
+    todo_id = str(todo.get("_id") or todo.get("id") or "")
+    return (
+        "🎯 ACTIVE TODO (this run is bound to this todo)\n"
+        f"   id: {todo_id}\n"
+        f"   title: {title}\n"
+        f"   canvas: {vfs_path}/canvas.md\n"
+        "\n"
+        "   Default write target for this turn: this todo's canvas.\n"
+        f'   - Use `update_tracked_todo_canvas(todo_id="{todo_id}", ...)` for any progress, outcome, or learning from this run.\n'
+        "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this todo (rare).\n"
+        "   - To work on a different todo, you must reference it explicitly by id."
+    )
+
+
+async def _build_active_todo_banner(
+    user_id: str, active_todo_id: Optional[str]
+) -> str:
+    if not active_todo_id:
+        return ""
+    try:
+        from bson import ObjectId  # local to avoid top-level dep on helper
+
+        from app.db.mongodb.collections import todos_collection
+
+        doc = await todos_collection.find_one(
+            {"_id": ObjectId(active_todo_id), "user_id": user_id}
+        )
+        if not doc:
+            return ""
+        return _format_active_todo_banner(doc)
+    except Exception as e:
+        log.warning(f"active todo banner fetch failed: {e}")
+        return ""
+
+
 async def get_memory_message(
     user_id: str,
     query: str,
     user_name: Optional[str] = None,
     user_timezone: Optional[str] = None,
     user_preferences: Optional[dict] = None,
+    active_todo_id: Optional[str] = None,
+    execution_mode: Literal["interactive", "background"] = "interactive",
 ) -> SystemMessage:
     """Create memory system message with user context (preferences, timezone, times) and optional memories.
 
@@ -151,6 +215,18 @@ async def get_memory_message(
 
     try:
         context_parts = []
+
+        # Background-execution banner first — must be the most prominent
+        # directive so the agent doesn't ask questions or present plans
+        # when no human is watching.
+        if execution_mode == "background":
+            context_parts.append(BACKGROUND_EXECUTION_BANNER)
+
+        # Active-todo banner — pins the canvas as the default write target
+        # for this run. Resolved from MongoDB so we have title + vfs_path.
+        active_todo_banner = await _build_active_todo_banner(user_id, active_todo_id)
+        if active_todo_banner:
+            context_parts.append(active_todo_banner)
 
         # Add user name context
         if user_name:
@@ -185,7 +261,7 @@ async def get_memory_message(
         ) = await asyncio.gather(
             _get_user_memories_section(query, user_id),
             _get_gaia_knowledge_section(query),
-            _get_tracked_todos_section(user_id),
+            _get_tracked_todos_section(user_id, active_todo_id),
         )
 
         # Combine all sections

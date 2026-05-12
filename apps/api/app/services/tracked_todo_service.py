@@ -204,8 +204,15 @@ class TrackedTodoService:
         )
         return True
 
-    async def get_active_tracked_summary(self, user_id: str) -> str:
-        """Formatted summary of active tracked todos for context injection."""
+    async def get_active_tracked_summary(
+        self, user_id: str, active_todo_id: str | None = None
+    ) -> str:
+        """Formatted summary of active tracked todos for context injection.
+
+        When active_todo_id is provided, that todo is pinned at the top with
+        an ⭐ ACTIVE marker so the agent can quickly identify the run's
+        bound canvas.
+        """
         cursor = todos_collection.find(
             {
                 "user_id": user_id,
@@ -216,6 +223,16 @@ class TrackedTodoService:
         docs = await cursor.to_list(length=15)
         if not docs:
             return ""
+
+        # Move the pinned todo to the front if present in the list.
+        if active_todo_id:
+            pinned_idx: int | None = None
+            for i, d in enumerate(docs):
+                if str(d["_id"]) == active_todo_id:
+                    pinned_idx = i
+                    break
+            if pinned_idx is not None and pinned_idx > 0:
+                docs.insert(0, docs.pop(pinned_idx))
 
         now = datetime.now(timezone.utc)
         lines = ["ACTIVE TRACKED TODOS:"]
@@ -234,13 +251,64 @@ class TrackedTodoService:
                     due_str = f" due({days_until}d)"
 
             todo_id = str(doc["_id"])
+            prefix = "⭐ ACTIVE " if todo_id == active_todo_id else ""
             lines.append(
-                f'  "{doc["title"]}"{labels_str}{due_str}'
+                f'  {prefix}"{doc["title"]}"{labels_str}{due_str}'
                 f" — {age_days}d old, updated {last_update}d ago"
                 f" | ID: {todo_id} | VFS: {doc.get('vfs_path', 'none')}"
             )
 
         return "\n".join(lines)
+
+    async def append_canvas_timeline(
+        self, todo_id: str, user_id: str, entry: str
+    ) -> bool:
+        """Append a line to the canvas Timeline section.
+
+        Called by code (not agent) to guarantee a paper trail for scheduled runs
+        regardless of what the LLM writes. If the canvas has a "## Timeline"
+        section, the line is inserted at the top of its body; otherwise a new
+        section is appended at the end of the canvas.
+        """
+        doc = await todos_collection.find_one(
+            {"_id": ObjectId(todo_id), "user_id": user_id}
+        )
+        if not doc or not doc.get("vfs_path"):
+            return False
+
+        vfs = MongoVFS()
+        canvas_path = f"{doc['vfs_path']}/canvas.md"
+        try:
+            current = await vfs.read(path=canvas_path, user_id=user_id) or ""
+        except Exception as e:
+            log.warning(
+                "tracked_todo.canvas_read_for_timeline_failed",
+                todo_id=todo_id,
+                error=str(e),
+            )
+            return False
+
+        line = entry if entry.startswith("- ") else f"- {entry}"
+        heading = "## Timeline"
+        heading_pos = current.find(f"\n{heading}")
+
+        if heading_pos == -1:
+            # No Timeline section — append a new one at the end.
+            new_canvas = current.rstrip() + f"\n\n{heading}\n{line}\n"
+        else:
+            insert_pos = heading_pos + len(f"\n{heading}")
+            new_canvas = current[:insert_pos] + f"\n{line}" + current[insert_pos:]
+
+        try:
+            await vfs.write(path=canvas_path, content=new_canvas, user_id=user_id)
+        except Exception as e:
+            log.warning(
+                "tracked_todo.canvas_timeline_write_failed",
+                todo_id=todo_id,
+                error=str(e),
+            )
+            return False
+        return True
 
     async def system_log(
         self, todo_id: str, user_id: str, event_type: str, details: str
