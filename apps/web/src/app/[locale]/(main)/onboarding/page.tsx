@@ -12,6 +12,7 @@
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
+import { CompletedStagesTimeline } from "@/features/onboarding/components/CompletedStagesTimeline";
 import { MessagesRegion } from "@/features/onboarding/components/MessagesRegion";
 import { OnboardingIntro } from "@/features/onboarding/components/OnboardingIntro";
 import { OnboardingShell } from "@/features/onboarding/components/OnboardingShell";
@@ -93,7 +94,7 @@ export default function Onboarding() {
       case "platforms":
         return <Platforms state={state} dispatch={dispatch} />;
       case "chat":
-        return <Chat state={state} chat={chat} />;
+        return <Chat state={state} />;
     }
   })();
 
@@ -129,14 +130,12 @@ export default function Onboarding() {
         stage={stage}
         onRestart={handleRestart}
         composer={wrappedComposer}
-        wide={
-          stage === "chat" ||
-          (stage === "revealTodos" && state.todoExecutionStarted)
-        }
+        wide={state.todoExecutionStarted || stage === "chat"}
       >
         {introDone ? (
           <m.div {...INTRO_FADE_IN}>
             <MessagesRegion state={state} stage={stage} />
+            <CompletedStagesTimeline state={state} chat={chat} />
             {stageContent}
           </m.div>
         ) : null}

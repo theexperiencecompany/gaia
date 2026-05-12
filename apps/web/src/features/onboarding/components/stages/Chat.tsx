@@ -166,22 +166,19 @@ export function OnboardingChatStream({
   );
 }
 
-/** Stream + holo reveal content for the `chat` stage. */
-export function Chat({ state, chat }: Omit<ChatProps, "dispatch">) {
+/** Final `chat` stage content. The run-now demo transcript (when present)
+ *  lives in the persistent timeline above, so this stage owns only the closing
+ *  ceremony: the holo personalization card. The composer surfaces the
+ *  "Continue to GAIA" CTA. */
+export function Chat({ state }: Omit<ChatProps, "dispatch" | "chat">) {
   const showHolo = state.server?.has_personalization && state.server;
+  if (!showHolo || !state.server) return null;
 
   return (
     <m.div className="mt-4 space-y-4" {...MOTION_FADE_UP_LARGE}>
-      <OnboardingChatStream
-        chat={chat}
-        todoOverride={state.todoExecutionTodo}
-      />
-
-      {showHolo && state.server && (
-        <div className="my-4">
-          <HoloCardReveal personalizationData={state.server} />
-        </div>
-      )}
+      <div className="my-4">
+        <HoloCardReveal personalizationData={state.server} />
+      </div>
     </m.div>
   );
 }
