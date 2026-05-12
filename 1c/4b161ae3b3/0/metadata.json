@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "1c4b161ae3b3",
+  "session_id": "3cda4813-a3a7-4a84-a5d2-04c2815ff50e",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T19:27:56.903536Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/features/notification/hooks/useNotificationWebSocket.ts",
+    "apps/web/src/features/onboarding/components/OnboardingProcessing.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "f513cc10913f",
+  "checkpoint_transcript_start": 21,
+  "transcript_lines_at_start": 21,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T19:27:56.900433Z",
+    "agent_lines": 15,
+    "agent_removed": 4,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 15,
+    "total_lines_changed": 19,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
