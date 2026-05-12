@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "dcb87e2113cb",
+  "session_id": "61105dc3-c8be-4e86-bdb4-924ee960ae10",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T18:25:37.022702Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/features/chat/components/welcome/useShowWelcomeChat.ts",
+    "apps/web/src/features/chat/components/welcome/WelcomeChat.tsx",
+    "apps/web/src/features/chat/components/interface/ChatPage.tsx",
+    "apps/web/src/features/chat/components/interface/layouts/WelcomeChatLayout.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "f4dd6e181555",
+  "checkpoint_transcript_start": 101,
+  "transcript_lines_at_start": 101,
+  "token_usage": {
+    "input_tokens": 53,
+    "cache_creation_tokens": 56447,
+    "cache_read_tokens": 4474894,
+    "output_tokens": 21753,
+    "api_call_count": 48
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T18:25:37.01222Z",
+    "agent_lines": 357,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 357,
+    "total_lines_changed": 357,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
