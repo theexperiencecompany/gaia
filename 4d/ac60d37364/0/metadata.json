@@ -1,0 +1,154 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "4dac60d37364",
+  "session_id": "026ed791-6f04-44db-953b-82918a996cac",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T12:01:34.972923Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/services/onboarding/first_message_service.py",
+    "apps/api/app/services/onboarding/inbox_triage_service.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingPlatformPreview.tsx",
+    "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx",
+    "apps/web/src/features/onboarding/components/stages/Platforms.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx",
+    "apps/web/src/features/onboarding/components/stages/Workflows.tsx",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/constants/platformPreviewMessages.ts",
+    "apps/web/src/features/onboarding/effects/useBackendSync.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "e610b5191b71",
+  "token_usage": {
+    "input_tokens": 70,
+    "cache_creation_tokens": 84461,
+    "cache_read_tokens": 1778552,
+    "output_tokens": 9746,
+    "api_call_count": 25
+  },
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T12:01:34.964188Z",
+    "agent_lines": 839,
+    "agent_removed": 37,
+    "human_added": 327,
+    "human_modified": 173,
+    "human_removed": 0,
+    "total_committed": 1336,
+    "total_lines_changed": 1695,
+    "agent_percentage": 51.681415929203546,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 282,
+      "user_lines_removed": 80,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/app/agents/prompts/onboarding_prompts.py": 50,
+        "apps/api/app/services/onboarding/first_message_service.py": 29,
+        "apps/api/app/services/onboarding/inbox_triage_service.py": 39,
+        "apps/api/app/services/onboarding/intelligence_service.py": 124,
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx": 1,
+        "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx": 14,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx": 14,
+        "apps/web/src/features/onboarding/effects/useBackendSync.ts": 9
+      },
+      "user_removed_per_file": {
+        "apps/api/app/agents/prompts/onboarding_prompts.py": 40,
+        "apps/api/app/services/onboarding/first_message_service.py": 2,
+        "apps/api/app/services/onboarding/inbox_triage_service.py": 4,
+        "apps/api/app/services/onboarding/intelligence_service.py": 10,
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx": 1,
+        "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx": 4,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx": 11,
+        "apps/web/src/features/onboarding/effects/useBackendSync.ts": 6
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 327,
+      "agent_lines_removed": 85
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 327,
+      "agent_lines_removed": 85
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 327,
+      "agent_lines_removed": 85
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 327,
+      "agent_lines_removed": 85
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 81,
+      "user_lines_removed": 62,
+      "agent_lines_added": 720,
+      "agent_lines_removed": 85,
+      "user_added_per_file": {
+        "apps/web/src/features/landing/components/iphone/useStaggeredMessages.ts": 71,
+        "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx": 10
+      },
+      "user_removed_per_file": {
+        "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx": 62
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 106,
+      "user_lines_removed": 7,
+      "agent_lines_added": 844,
+      "agent_lines_removed": 147,
+      "user_added_per_file": {
+        "apps/web/src/features/landing/components/iphone/useStaggeredMessages.ts": 71,
+        "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx": 17,
+        "apps/web/src/features/onboarding/components/stages/Platforms.tsx": 18
+      },
+      "user_removed_per_file": {
+        "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx": 5,
+        "apps/web/src/features/onboarding/components/stages/Platforms.tsx": 2
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 71,
+      "user_lines_removed": 0,
+      "agent_lines_added": 880,
+      "agent_lines_removed": 154,
+      "user_added_per_file": {
+        "apps/web/src/features/landing/components/iphone/useStaggeredMessages.ts": 71
+      }
+    }
+  ]
+}

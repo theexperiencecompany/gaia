@@ -1,0 +1,29 @@
+ehwn writing style saved accordion, when open too the width is restricted it causes the text to overflow. how about let the width only restrict when accordion is closed, otherwise full width is fine when accordion is open
+
+---
+
+so u know how we show the workflow cards in the onboarding, how can we improve the copy? basically we want to explain what workflows are and how they work but in really short and really human facing example? how would we do this? same with the todos too. can u help me brainstorm and give me a couple different examples
+
+---
+
+i want them to be a bit more informative condensed in short human line
+
+---
+
+i want workflows to even explain that they're integrated with all your digital tools. then for todos, decouple them a bit from emails. explain that these are tasks you can add and gaia can automatically complete them, like workflows but one off things
+
+---
+
+explain triggers a bit more slightly like or triggered on every new email something like that. and explain that workflows help you complete all your every day grunt work you can create more in the workflows page. add all this information in a short but descriptive manner.
+
+---
+
+moment something happens isn't very clear
+
+---
+
+i like this full combined version but with some information from the previous versions in this convo
+
+---
+
+great let's do optin a but ensure each new line is in different text bubbles with newmessage break
