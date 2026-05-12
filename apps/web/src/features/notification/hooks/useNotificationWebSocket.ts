@@ -1,5 +1,5 @@
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
@@ -33,6 +33,11 @@ export function useNotificationWebSocket() {
   const isAuthenticated = !!user?.email;
   const { addNotification, updateNotification } = useNotificationStore();
   const router = useRouter();
+  const pathname = usePathname();
+  // Read pathname through a ref so handleMessage stays referentially stable
+  // and doesn't churn the websocket listener registration on every route change.
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   const handleMessage = useCallback(
     (msg: unknown) => {
@@ -44,8 +49,13 @@ export function useNotificationWebSocket() {
 
             const isTestNotification =
               message.notification.metadata?.test === true;
+            // Suppress toast spam while the user is mid-onboarding — the
+            // onboarding flow surfaces its own progress UI, so a parallel
+            // "I set up N workflows" toast collides with the welcome chat.
+            const isOnboarding =
+              pathnameRef.current?.includes("/onboarding") ?? false;
 
-            if (!isTestNotification) {
+            if (!isTestNotification && !isOnboarding) {
               if (message.notification.content?.title) {
                 const actions = message.notification.content.actions ?? [];
                 const redirectAction = actions.find(

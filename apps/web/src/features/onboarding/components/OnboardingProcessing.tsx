@@ -257,11 +257,12 @@ function OnboardingProcessingImpl({
                     liveMessage !== step.activeText && (
                       <m.p
                         key="sub-message"
-                        className="text-xs text-zinc-500 tabular-nums"
+                        className="text-xs text-zinc-500 tabular-nums truncate"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.2 }}
+                        title={liveMessage}
                       >
                         {liveMessage}
                       </m.p>
