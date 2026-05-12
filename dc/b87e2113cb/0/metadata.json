@@ -1,0 +1,72 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "dcb87e2113cb",
+  "session_id": "3cda4813-a3a7-4a84-a5d2-04c2815ff50e",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T18:25:27.797806Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/features/chat/components/interface/ChatPage.tsx",
+    "apps/web/src/features/chat/components/interface/layouts/WelcomeChatLayout.tsx",
+    "apps/web/src/features/chat/components/welcome/WelcomeChat.tsx",
+    "apps/web/src/features/chat/components/welcome/useShowWelcomeChat.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "f513cc10913f",
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T18:25:27.794005Z",
+    "agent_lines": 357,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 357,
+    "total_lines_changed": 357,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 172,
+      "user_lines_removed": 863,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/app/agents/prompts/onboarding_prompts.py": 32,
+        "apps/api/app/models/onboarding_models.py": 22,
+        "apps/api/app/services/onboarding/intelligence_service.py": 31,
+        "apps/api/app/services/system_workflows/provisioner.py": 8,
+        "apps/api/app/utils/profile_card.py": 57,
+        "apps/api/tests/unit/utils/test_profile_card.py": 1,
+        "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingPlatformPreview.tsx": 5,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/Workflows.tsx": 6,
+        "apps/web/src/features/onboarding/constants/messages.ts": 5,
+        "apps/web/src/features/onboarding/effects/useBackendSync.ts": 3
+      },
+      "user_removed_per_file": {
+        "apps/api/app/agents/prompts/onboarding_prompts.py": 39,
+        "apps/api/app/services/onboarding/intelligence_service.py": 28,
+        "apps/api/app/services/system_workflows/provisioner.py": 2,
+        "apps/api/app/utils/profile_card.py": 86,
+        "apps/api/tests/unit/utils/test_profile_card.py": 697,
+        "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingPlatformPreview.tsx": 5,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/Workflows.tsx": 2,
+        "apps/web/src/features/onboarding/constants/messages.ts": 2
+      }
+    }
+  ]
+}
