@@ -30,11 +30,19 @@ import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 import { apiService } from "@/lib/api/service";
 import { useUserStore } from "@/stores/userStore";
 
-const WELCOME_INTRO =
-  "Hey, welcome to GAIA. Here's your personalised setup ready to go.";
+const WELCOME_BUBBLE =
+  "Hey, welcome to GAIA. Here's your personalised setup ready to go." +
+  "<NEW_MESSAGE_BREAK>" +
+  "I can read your inbox, draft replies, manage your calendar, keep your todos in shape, and run jobs across your tools." +
+  "<NEW_MESSAGE_BREAK>" +
+  "Connect more apps anytime — the more I see, the more I can help.";
 
-const CAPABILITIES_INTRO =
-  "I can read your inbox, draft replies, manage your calendar, keep your todos in shape, and run jobs across your tools. Connect more apps anytime — the more I see, the more I can help.";
+const PLATFORMS_BUBBLE =
+  "You shouldn't have to come check on me." +
+  "<NEW_MESSAGE_BREAK>" +
+  "Pick where you already hang out and I'll text you — briefings, urgent emails, anything that can't wait.";
+
+const WORKFLOWS_BUBBLE = `${WORKFLOWS_INTRO_PRIMARY}<NEW_MESSAGE_BREAK>${WORKFLOWS_INTRO_SECONDARY}`;
 
 const WORKFLOWS_TIP =
   "Tap any card to peek inside the workflow. Edits live on the Workflows page.";
@@ -143,9 +151,7 @@ export function WelcomeChat({ onDismiss }: WelcomeChatProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
     >
-      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WELCOME_INTRO} />
-
-      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={CAPABILITIES_INTRO}>
+      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WELCOME_BUBBLE}>
         <div className="ml-10.75 mt-3">
           <Button
             variant="flat"
@@ -159,31 +165,30 @@ export function WelcomeChat({ onDismiss }: WelcomeChatProps) {
         </div>
       </ChatBubbleBot>
 
-      {!connectedPlatform && (
-        <OnboardingPlatformPreview
-          profession={profession}
-          hoveredPlatform={hoveredPlatform}
-          userName={userName}
-          userAvatar={userAvatar}
-        />
-      )}
+      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={PLATFORMS_BUBBLE}>
+        {!connectedPlatform && (
+          <div className="mt-3">
+            <OnboardingPlatformPreview
+              profession={profession}
+              hoveredPlatform={hoveredPlatform}
+              userName={userName}
+              userAvatar={userAvatar}
+            />
+          </div>
+        )}
+        <div className="mt-3">
+          <OnboardingPlatformConnect
+            onConnect={connectPlatform}
+            onSkip={handleSkipPlatforms}
+            onHoverPlatform={setHoveredPlatform}
+            connectedPlatform={
+              connectedPlatform === "__skipped__" ? null : connectedPlatform
+            }
+          />
+        </div>
+      </ChatBubbleBot>
 
-      <ChatBubbleBot
-        {...BOT_BUBBLE_DEFAULTS}
-        text="You shouldn't have to come check on me. Pick where you already hang out and I'll text you — briefings, urgent emails, anything that can't wait."
-      />
-
-      <OnboardingPlatformConnect
-        onConnect={connectPlatform}
-        onSkip={handleSkipPlatforms}
-        onHoverPlatform={setHoveredPlatform}
-        connectedPlatform={
-          connectedPlatform === "__skipped__" ? null : connectedPlatform
-        }
-      />
-
-      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WORKFLOWS_INTRO_PRIMARY} />
-      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WORKFLOWS_INTRO_SECONDARY}>
+      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WORKFLOWS_BUBBLE}>
         <div className="mt-3">
           {workflowsLoading && workflows.length === 0 ? (
             <div className="ml-10.75 flex items-center gap-2 text-sm text-zinc-500">

@@ -5,6 +5,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { useState } from "react";
 import { HoloCard } from "@/components/ui/holo-card/HoloCard";
+import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { OnboardingPlatformConnect } from "@/features/onboarding/components/OnboardingPlatformConnect";
 import { OnboardingPlatformPreview } from "@/features/onboarding/components/OnboardingPlatformPreview";
 import { OnboardingProcessing } from "@/features/onboarding/components/OnboardingProcessing";
@@ -386,6 +387,13 @@ export default function OnboardingDemoPage() {
 
         {/* Platform connect */}
         <PlatformConnectDemo />
+
+        {/* Welcome chat (post-onboarding /c first visit) */}
+        <DemoSection label="WelcomeChat (post-onboarding /c)">
+          <div className="rounded-2xl border border-zinc-800 bg-primary-bg p-4">
+            <WelcomeChat onDismiss={() => alert("dismissed")} />
+          </div>
+        </DemoSection>
 
         {/* Holo card — now baked with stamp die-cut */}
         <DemoSection label="HoloCardReveal">
