@@ -18,14 +18,12 @@ When the user says "email Rahul about the contract" and months later asks "what 
 
 Always available to the executor — no `retrieve_tools` needed:
 
-| Tool | Purpose |
-|------|---------|
-| `create_tracked_todo` | Create todo with VFS canvas |
-| `update_tracked_todo` | Update properties: `labels`, `due_date`, `priority`, `scheduled_at`, `recurrence`, `expires_at`, `references` |
-| `update_tracked_todo_canvas` | Write to canvas.md. Three modes: `append`, `section`, `replace` (default) |
-| `complete_tracked_todo` | Mark done, archive VFS, requires completion summary |
-| `search_todo_context` | Semantic search across all canvas embeddings (ChromaDB). Includes completed todos. |
-| `list_tracked_todos` | List all active tracked todos (up to 50) with full metadata |
+- `create_tracked_todo` — create todo with VFS canvas
+- `update_tracked_todo` — update labels, due_date, priority, scheduled_at, recurrence, expires_at, references
+- `update_tracked_todo_canvas` — write to canvas.md; modes: append (default), section, replace
+- `complete_tracked_todo` — mark done, archive VFS, requires completion summary
+- `search_todo_context` — semantic search across all canvas embeddings (ChromaDB); includes completed
+- `list_tracked_todos` — list all active tracked todos (up to 50) with full metadata
 
 ## Search First, Create Last
 
@@ -35,15 +33,14 @@ Creating a new todo is the **last step**, not the first. Always search before cr
 search_todo_context(query="relevant keywords")
 ```
 
-| What you find | What to do |
-|---------------|-----------|
-| Active match | Update its canvas. Do NOT create a new one. "Related action" = same initiative, same person, same system, same goal — always update, even for follow-on steps. |
-| Completed match, same initiative resuming | Create new ONLY IF the user explicitly asked GAIA to DO something for this initiative. Never create just because search returned a historical match during an unrelated request. |
-| No match | Create a new todo — only if a write action was performed this turn. |
+- Active match → update its canvas; do NOT create. "Related action" = same initiative, person, system, or goal. Always update, even for follow-on steps.
+- Completed match, same initiative resuming → create new ONLY if the user explicitly asked GAIA to DO something for this initiative again. Never create just because search returned a historical match during an unrelated request.
+- No match → create — only if a write action was performed this turn.
 
 **Create when** GAIA takes an action on an external system (email, calendar, Slack, Linear, Notion, etc.) and nothing relevant already exists in memory.
 
 **Do NOT create for:**
+
 - Pure lookups with no side effects ("what's the weather?", "summarize my emails")
 - Steps in your current orchestration (use `plan_tasks`)
 - Casual conversation or one-off questions
@@ -56,6 +53,7 @@ Overusing tracked todos degrades search quality and clutters GAIA's memory.
 Once you've confirmed no existing todo covers this (see Search First above):
 
 ### Immediate
+
 Completes in this conversation. Create → delegate → document → complete.
 
 ```
@@ -66,6 +64,7 @@ search_todo_context → (nothing relevant found) → create_tracked_todo
 ```
 
 ### Long-Running
+
 Spans conversations or needs follow-up. Create → act → update → leave open.
 
 ```
@@ -75,13 +74,10 @@ search_todo_context → (nothing relevant found) → create_tracked_todo(schedul
 → eventually: complete_tracked_todo with learnings
 ```
 
-| Request | Action |
-|---------|--------|
-| "Send Rahul the report" | Search first. If nothing found: immediate todo. |
-| "Email Rahul about the meeting" | Search first. If nothing found: long-running todo. |
-| "He replied, send thanks" | Search finds existing todo → update canvas, no new todo. |
-| "What's the weather?" | No todo at all. |
-| "Summarize my emails" | No todo at all. |
+- "Send Rahul the report" — search first; if nothing found: immediate todo.
+- "Email Rahul about the meeting" — search first; if nothing found: long-running todo.
+- "He replied, send thanks" — search finds existing todo → update canvas, no new todo.
+- "What's the weather?" / "Summarize my emails" — no todo.
 
 ## Canvas
 
@@ -89,11 +85,9 @@ search_todo_context → (nothing relevant found) → create_tracked_todo(schedul
 
 `update_tracked_todo_canvas` has three modes — **pick the right one**, never default to `replace` out of habit:
 
-| Mode | Default? | When to use | What to pass |
-|------|----------|-------------|--------------|
-| `append` | **yes** | Adding an activity log entry, timeline event, new note | Only the new content to add |
-| `section` | no | Updating one named section (e.g. `Current State`) | Only the new body of that section |
-| `replace` | no | Full restructure or initial canvas setup | The entire canvas markdown |
+- `append` (default) — pass only the new content. Use for activity log entries, timeline events, notes.
+- `section` — pass only the new body of that section (no heading). Use for updating one named section (e.g. `Current State`).
+- `replace` — pass the entire canvas markdown. Only for full restructure or initial setup.
 
 `append` and `section` do **not require reading the file first** — the tool handles it internally.
 
@@ -111,25 +105,32 @@ update_tracked_todo_canvas(todo_id="...", mode="replace", content="# Title\n\n##
 ### Structure
 
 Default template (used when `initial_canvas` is omitted):
+
 ```markdown
 # {title}
 
 ## Key Details
+
 <!-- email addresses, thread IDs, calendar IDs, issue URLs — everything needed to act -->
 
 ## Current State
+
 <!-- what's true RIGHT NOW — updated after every action -->
 
 ## Activity Log
+
 <!-- which agent did what, which tools it used, what the outcome was — add entries HERE, not in Learnings -->
 
 ## Timeline
+
 <!-- chronological list of actions with dates -->
 
 ## Context
+
 <!-- accumulated context from signals, related information, decisions made -->
 
 ## Learnings
+
 <!-- written ONLY at completion time: what worked, what didn't, timing insights, reusable patterns. DO NOT write activity log entries here -->
 ```
 
@@ -141,6 +142,7 @@ After subagents return, record their structured reports in the canvas:
 ## Activity Log
 
 ### 2026-03-26
+
 - **Gmail agent**: Sent email to rahul@example.com re: Q2 contract renewal.
   Tools: GMAIL_CREATE_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b.
   Subject: "Q2 Contract Renewal — Next Steps". Draft approved and sent.
@@ -154,48 +156,50 @@ After subagents return, record their structured reports in the canvas:
 
 ## Create Fields
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| `title` | string | YES | Short descriptive title |
-| `description` | string | no | What needs to happen and expected outcome |
-| `initial_canvas` | string | no | Markdown content (default template if omitted) |
-| `labels` | list[str] | no | `gaia-tracked` added automatically |
-| `priority` | string | no | `high`, `medium`, `low`, `none` (default: `none`) |
-| `scheduled_at` | ISO datetime | no | When GAIA should auto-execute (must be future) |
-| `recurrence` | string | no | Repeat pattern (requires `scheduled_at`) |
-| `expires_at` | ISO datetime | no | When todo becomes irrelevant (skips execution if expired) |
+- `title` (required) — short descriptive title
+- `description` — what needs to happen and expected outcome
+- `initial_canvas` — markdown content; default template if omitted
+- `labels` — list of strings; `gaia-tracked` added automatically
+- `priority` — `high` | `medium` | `low` | `none` (default `none`)
+- `scheduled_at` — ISO datetime when GAIA should auto-execute (must be future). Omit for cron recurrence — first fire is computed from the cron.
+- `recurrence` — repeat pattern. Cron-style works alone (no `scheduled_at` needed); shortcut values still need `scheduled_at` as anchor.
+- `expires_at` — ISO datetime when todo becomes irrelevant (skipped if expired)
 
-**Note:** `due_date` is only settable via `update_tracked_todo`, not at creation time.
+`due_date` is only settable via `update_tracked_todo`, not at creation time.
 
 ## Scheduling & Recurrence
 
 ### `scheduled_at`
+
 ISO datetime, must be in the future. GAIA auto-executes via background worker at that time.
 
 ### `recurrence`
-Requires `scheduled_at`. After successful execution, `scheduled_at` auto-advances and a new job is enqueued.
 
-| Value | Effect |
-|-------|--------|
-| `daily` | +1 day |
-| `weekly` | +7 days |
-| `every_4h` | +4 hours |
-| `every_1h` | +1 hour |
-| Cron expression | Custom (e.g., `0 9 * * 1-5` = weekdays 9am). Validated via croniter. |
+ALWAYS evaluated in the user's stored timezone — pass cron in user-local wall-clock terms, the backend converts to UTC. Do NOT bake offsets into the cron string. After successful execution, `scheduled_at` auto-advances and a new job is enqueued.
+
+- `daily` — +1 day (shortcut, needs `scheduled_at` as anchor)
+- `weekly` — +7 days (shortcut, needs `scheduled_at`)
+- `every_4h` — +4 hours (shortcut, needs `scheduled_at`)
+- `every_1h` — +1 hour (shortcut, needs `scheduled_at`)
+- Cron — `0 9 * * 1-5` = weekdays 9am user-local; `0 9,20 * * *` = 9am and 8pm daily. ONE recurrence, not two todos. No `scheduled_at` needed — first fire is computed from the cron.
 
 ### `due_date` vs `expires_at`
+
 - **`due_date`** = deadline. Overdue tasks still need doing. Set via `update_tracked_todo`.
 - **`expires_at`** = relevance window. Expired tasks are skipped entirely.
 - Both can be set together (e.g., "file taxes": due April 15, expires April 15).
 - Don't set `expires_at` on open-ended tasks with no natural expiry.
 
 ### Validation
+
 - `scheduled_at` must be future
-- `recurrence` requires `scheduled_at`
-- Cannot clear `scheduled_at` while `recurrence` is set
+- Shortcut `recurrence` (`daily`, `weekly`, `every_4h`, `every_1h`) requires `scheduled_at` as anchor. Cron does not.
+- Cannot clear `scheduled_at` while a shortcut `recurrence` is set
 - Cron expressions validated via croniter
+- If both `scheduled_at` and a cron `recurrence` are passed, `scheduled_at` is ignored (first fire comes from the cron)
 
 ### Execution & Retry
+
 - Background worker (ARQ) runs at `scheduled_at`
 - Redis lock prevents concurrent execution of same todo
 - Failure: retries up to 3× with backoff (1 hour, then 4 hours)
@@ -205,13 +209,17 @@ Requires `scheduled_at`. After successful execution, `scheduled_at` auto-advance
 ## Institutional Memory
 
 ### References
+
 Manually link related past todos:
+
 ```
 update_tracked_todo(todo_id="abc", references=["old_todo_id_1"])
 ```
+
 References are appended (not replaced). Use `search_todo_context` to find past todos worth referencing, then read their canvases via `vfs_read` to understand past approaches.
 
 ### Writing Learnings Before Completion
+
 Before calling `complete_tracked_todo`, update the canvas with a thorough `## Learnings` section. Future similar tasks will reference these.
 
 **Good:** "Sarah responds in 2-3 days", "approval takes 1 week", "batch the Linear + Notion updates in one handoff"
@@ -220,21 +228,25 @@ Before calling `complete_tracked_todo`, update the canvas with a thorough `## Le
 ## Lifecycle
 
 ### Before Acting
+
 1. Check the `ACTIVE TRACKED TODOS:` block in your context — does the request relate to an existing todo?
 2. If yes: `vfs_read` its canvas.md, then act, then update canvas
 3. If unclear: `search_todo_context(query="...")` to check for duplicates
 
 ### After Acting
+
 - Update canvas with activity log from subagent reports
 - Update properties if needed (`update_tracked_todo`)
 
 ### Completing
+
 1. Write `## Learnings` in canvas
 2. `complete_tracked_todo(todo_id="...", summary="...")` — archives VFS, marks completed in DB + ChromaDB
 
 ## Examples
 
 ### Immediate: send an email
+
 ```python
 create_tracked_todo(
   title="Sent Q2 report to Sarah",
@@ -244,6 +256,7 @@ create_tracked_todo(
 ```
 
 ### Long-running: follow-up with expiry
+
 ```python
 create_tracked_todo(
   title="Follow up with Rahul re: contract",
@@ -255,6 +268,7 @@ create_tracked_todo(
 ```
 
 ### Recurring: daily check
+
 ```python
 create_tracked_todo(
   title="Daily HN top posts summary",
@@ -264,6 +278,7 @@ create_tracked_todo(
 ```
 
 ### Recurring: weekday cron
+
 ```python
 create_tracked_todo(
   title="Weekday standup prep",
@@ -273,6 +288,7 @@ create_tracked_todo(
 ```
 
 ### Update after creation
+
 ```python
 update_tracked_todo(todo_id="abc123", due_date="2026-04-15")
 update_tracked_todo(todo_id="abc123", scheduled_at="2026-03-30T10:00:00Z")
