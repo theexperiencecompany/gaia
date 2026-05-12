@@ -137,6 +137,9 @@ async def get_user_onboarding_status(user_id: str) -> Dict[str, Any]:
             "completed_at": onboarding_data.get("completed_at"),
             "phase": onboarding_data.get("phase"),
             "preferences": onboarding_data.get("preferences", {}),
+            "first_message_conversation_id": onboarding_data.get(
+                "first_message_conversation_id"
+            ),
         }
 
     except Exception as e:

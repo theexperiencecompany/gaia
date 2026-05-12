@@ -11,6 +11,7 @@ import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUs
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
 import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
+import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -21,6 +22,7 @@ import {
   isBotMessageEmpty,
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
+import { useUserStore } from "@/stores/userStore";
 import type {
   ChatBubbleBotProps,
   SetImageDataType,
@@ -55,6 +57,12 @@ export default function ChatRenderer({
       (convo) => convo.conversation_id === convoIdParam,
     );
   }, [conversations, convoIdParam]);
+
+  const welcomeConvoId = useUserStore(
+    (s) => s.onboarding?.first_message_conversation_id,
+  );
+  const isWelcomeConversation =
+    !!convoIdParam && !!welcomeConvoId && convoIdParam === welcomeConvoId;
 
   // Handle retry callback
   const handleRetry = useCallback(
@@ -194,6 +202,7 @@ export default function ChatRenderer({
       />
       <SearchedImageDialog />
       <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
+      {isWelcomeConversation && <WelcomeChat />}
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
           let messageProps = null;

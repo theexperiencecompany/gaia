@@ -128,11 +128,15 @@ export function Chat({ state, chat }: Omit<ChatProps, "dispatch">) {
 
 /** Composer for the `chat` stage. Always renders the "Continue to GAIA" CTA —
  *  the onboarding chat stage ends with a closed-loop message (no question), so
- *  the user's only forward move is into the full chat experience. */
-export function ChatComposer(_props: Omit<ChatProps, "state" | "dispatch">) {
+ *  the user's only forward move is into the full chat experience. The CTA
+ *  lands the user inside the seeded welcome conversation when available so
+ *  the post-onboarding welcome UI shows up immediately. */
+export function ChatComposer({ state }: Omit<ChatProps, "dispatch" | "chat">) {
+  const welcomeConvoId = state.server?.first_message_conversation_id;
+  const href = welcomeConvoId ? `/c/${welcomeConvoId}` : "/c";
   return (
     <m.div className="flex justify-center pb-2" {...MOTION_COMPOSER_CTA}>
-      <OnboardingCTAButton href="/c">Continue to GAIA</OnboardingCTAButton>
+      <OnboardingCTAButton href={href}>Continue to GAIA</OnboardingCTAButton>
     </m.div>
   );
 }

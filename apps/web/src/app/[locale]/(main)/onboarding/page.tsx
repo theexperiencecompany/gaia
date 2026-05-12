@@ -114,7 +114,7 @@ export default function Onboarding() {
       case "platforms":
         return null;
       case "chat":
-        return <ChatComposer chat={chat} />;
+        return <ChatComposer state={state} />;
     }
   })();
 

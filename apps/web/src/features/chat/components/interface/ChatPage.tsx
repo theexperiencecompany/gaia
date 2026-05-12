@@ -25,8 +25,6 @@ import { useChatLayout } from "@/features/chat/components/interface/hooks/useCha
 import { useScrollBehavior } from "@/features/chat/components/interface/hooks/useScrollBehavior";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
-import { WelcomeChatLayout } from "@/features/chat/components/interface/layouts/WelcomeChatLayout";
-import { useShowWelcomeChat } from "@/features/chat/components/welcome/useShowWelcomeChat";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
@@ -107,14 +105,6 @@ const ChatPage = React.memo(function MainChat() {
     appendToInputRef,
     convoIdParam,
   } = useChatLayout();
-
-  const { showWelcome, dismissWelcome } = useShowWelcomeChat();
-
-  // Once the user actually starts chatting (any message lands), retire the
-  // welcome experience so we never show it again on subsequent /c visits.
-  useEffect(() => {
-    if (showWelcome && hasMessages) dismissWelcome();
-  }, [showWelcome, hasMessages, dismissWelcome]);
 
   // Set active conversation ID and mark as read when opening
   useEffect(() => {
@@ -238,13 +228,6 @@ const ChatPage = React.memo(function MainChat() {
             hasMessages={hasMessages}
           />
         </>
-      ) : showWelcome ? (
-        <WelcomeChatLayout
-          scrollContainerRef={scrollContainerRef}
-          handleScroll={handleScroll}
-          dragHandlers={dragHandlers}
-          composerProps={composerProps}
-        />
       ) : (
         <>
           <NewChatLayout
