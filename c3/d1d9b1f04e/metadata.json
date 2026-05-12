@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "c3d1d9b1f04e",
+  "strategy": "manual-commit",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/api/app/services/onboarding/onboarding_service.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/chat/components/interface/ChatPage.tsx",
+    "apps/web/src/features/chat/components/interface/ChatRenderer.tsx",
+    "apps/web/src/features/chat/components/interface/layouts/WelcomeChatLayout.tsx",
+    "apps/web/src/features/chat/components/welcome/useShowWelcomeChat.ts",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/stores/userStore.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c3/d1d9b1f04e/0/metadata.json",
+      "transcript": "/c3/d1d9b1f04e/0/full.jsonl",
+      "content_hash": "/c3/d1d9b1f04e/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
