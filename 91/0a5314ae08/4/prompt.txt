@@ -1,0 +1,17 @@
+continue with gmail button and how we use your data button text colors should be same. slightly dimmer than the current how we use your data button text and same height as connect gmail for continue without gmail
+
+---
+
+Almost ready text is way too dark same as spinner
+
+---
+
+skip for now button make it lighter too the text
+
+---
+
+Workflows are recurring jobs I run across your tools — Gmail, Calendar, Notion, Slack — on a schedule, or triggered by an event like a new email.
+
+They handle the everyday grunt work for you. Build more anytime in the Workflows page.
+
+this should be in 1 bubble separated by new message brea
