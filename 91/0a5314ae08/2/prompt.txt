@@ -1,0 +1,117 @@
+can we make the holo card in a stamp outline svg shape with really high quality? how would we do this? can u show me first a stamp outline for the holo card on the onboarding demo page?
+
+---
+
+'/Users/aryan/Pictures/Screenshots/CleanShot 2026-05-12 at 19.42.39@2x.png' by stamp i mean something like this btw. and rn the stamp just doesn't show at all figure it why and ensure its exactly like the screenshot i sent the vector clip is proper i guess
+
+---
+
+please verify in chrome devtools. theres just no stamp theres just the outline. and the outline should cut into the holo card. please dont do any work arounds do the best approach
+
+---
+
+'/Users/aryan/Downloads/StampOutline.svg' see this svg and ensure the entire holo card and ensure the rotation and all works perfectly
+
+---
+
+[Image #1] only outline is shown inside its not filled for some reason
+
+---
+
+theres a weird white outline that doesnt move with the holo card
+
+---
+
+the stamp pattern doesnt skew with the hover its static for some reason
+
+---
+
+do this in the main holo card now
+
+---
+
+'/Users/aryan/Pictures/Screenshots/CleanShot 2026-05-12 at 20.39.12@2x.png' in the experience company logo in holo card, do something like this with the text rotating in circle saying the experience company and rotating
+
+---
+
+remove the faded experience company logo. and increase size of the logo and the text
+
+---
+
+make the logo sloightly larger and duplicate the text like opposite sides like the image i pasted to you and its rotated to be visible from opposite sides
+
+---
+
+it should write the experience company then bullet point then experience company then bullet point. and use the serif font and makeit a bit larger
+
+---
+
+i cant see the double text in th eline like company bullet company bullet also lowercase and ensure text doesnt cut off
+
+---
+
+so theres a need for an extra space after the bullet point and make T E C uppercase instead of full lowercase
+
+---
+
+decrease the size of the text
+
+---
+
+the border shine and backdrop blur isn't the same as the other cards
+
+---
+
+reduce the diameter of the main border frame rectangle
+
+---
+
+ensuer the cards are less at the edge of the frame btw increase margin
+
+---
+
+the cards aren't inside the frame border rectangle ensure its inside it and  abit more padding
+
+---
+
+'/Users/aryan/Downloads/Giftbox from Photopea.png' use this giftbox for the revealing holo card like vibrate it properly and scale on hover and then open it to reveal the card
+
+---
+
+move tap to open to the bottom of the gift and not font serif and below the gift
+
+---
+
+when holo card is revealed, scroll to the holo card
+
+---
+
+ensure the clicking and reveal to be synced with the scroll smoothly so that it shows properly with the confetti
+
+---
+
+'/Users/aryan/Pictures/Screenshots/CleanShot 2026-05-12 at 22.22.03@2x.png' why is there gaia logo instead of experience logo? and why is top left gaia logo having black bg
+
+---
+
+[Image #2] use this
+
+---
+
+[Image #4] use this
+
+---
+
+and slightly reduce the logo of experience logo white
+
+---
+
+the issue isnt fixed. like when downloading it still shows random gaia logo and uses black bg in the top right gaia logo for some fucking reason what have we messed up? try triggering download after making change and then see the image to see it works properly
+
+---
+
+mate its here '/Users/aryan/Downloads/Holo Card from GAIA (3).png'
+
+---
+
+the gaia logo in the holo card ensure padding and rounded full and the bg blur and opacitty like the other cards

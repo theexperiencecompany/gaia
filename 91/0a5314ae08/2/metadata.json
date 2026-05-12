@@ -1,0 +1,305 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "910a5314ae08",
+  "session_id": "924afbc6-6902-48d7-bf00-665735f6235f",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T17:10:27.624851Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 25,
+  "files_touched": [
+    "apps/api/app/agents/memory/email_processor.py",
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/constants/email.py",
+    "apps/api/app/services/mail/mail_service.py",
+    "apps/api/app/services/onboarding/first_message_service.py",
+    "apps/api/app/services/onboarding/inbox_triage_service.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/web/public/images/onboarding/giftbox.png",
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/app/fonts/aeonik.ts",
+    "apps/web/src/app/fonts/aeonik/AeonikExtendedProTRIAL-SemiBold.otf",
+    "apps/web/src/app/fonts/index.ts",
+    "apps/web/src/components/ui/holo-card/FrontCardContent.tsx",
+    "apps/web/src/components/ui/holo-card/HoloCard.tsx",
+    "apps/web/src/components/ui/holo-card/HoloCardEditor.tsx",
+    "apps/web/src/components/ui/holo-card/LogoHeader.tsx",
+    "apps/web/src/components/ui/holo-card/RotatingExperienceLogo.tsx",
+    "apps/web/src/components/ui/holo-card/constants.ts",
+    "apps/web/src/components/ui/holo-card/stampShape.ts",
+    "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
+    "apps/web/src/features/onboarding/components/reveal/HoloCardReveal.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx",
+    "apps/web/src/features/onboarding/components/stages/Workflows.tsx",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/constants/platformPreviewMessages.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "93794cf5d227",
+  "token_usage": {
+    "input_tokens": 546,
+    "cache_creation_tokens": 1561144,
+    "cache_read_tokens": 94835380,
+    "output_tokens": 251519,
+    "api_call_count": 311
+  },
+  "session_metrics": {
+    "turn_count": 25
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T17:10:27.535092Z",
+    "agent_lines": 159,
+    "agent_removed": 156,
+    "human_added": 0,
+    "human_modified": 132,
+    "human_removed": 187,
+    "total_committed": 291,
+    "total_lines_changed": 634,
+    "agent_percentage": 49.684542586750794,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 554,
+      "user_lines_removed": 215,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/app/agents/memory/email_processor.py": 29,
+        "apps/api/app/constants/email.py": 1,
+        "apps/api/app/services/mail/mail_service.py": 12,
+        "apps/api/app/services/onboarding/inbox_scan_cache.py": 23,
+        "apps/api/app/services/onboarding/inbox_triage_service.py": 28,
+        "apps/api/app/services/onboarding/intelligence_service.py": 158,
+        "apps/web/src/app/[locale]/(main)/onboarding/page.tsx": 66,
+        "apps/web/src/app/fonts/aeonik.ts": 15,
+        "apps/web/src/app/fonts/index.ts": 3,
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 2,
+        "apps/web/src/features/onboarding/components/OnboardingIntro.tsx": 212,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/Workflows.tsx": 2,
+        "apps/web/src/features/onboarding/constants/messages.ts": 1
+      },
+      "user_removed_per_file": {
+        "apps/api/app/agents/memory/email_processor.py": 15,
+        "apps/api/app/agents/prompts/onboarding_prompts.py": 1,
+        "apps/api/app/constants/email.py": 1,
+        "apps/api/app/services/mail/mail_service.py": 9,
+        "apps/api/app/services/onboarding/first_message_service.py": 12,
+        "apps/api/app/services/onboarding/inbox_triage_service.py": 36,
+        "apps/api/app/services/onboarding/intelligence_service.py": 118,
+        "apps/web/src/app/[locale]/(main)/onboarding/page.tsx": 9,
+        "apps/web/src/app/fonts/index.ts": 2,
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 3,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/Workflows.tsx": 3,
+        "apps/web/src/features/onboarding/constants/messages.ts": 4
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 124,
+      "user_lines_removed": 82,
+      "agent_lines_added": 724,
+      "agent_lines_removed": 287,
+      "user_added_per_file": {
+        "apps/web/src/features/onboarding/constants/platformPreviewMessages.ts": 124
+      },
+      "user_removed_per_file": {
+        "apps/web/src/features/onboarding/constants/platformPreviewMessages.ts": 82
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 801,
+      "agent_lines_removed": 301
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 808,
+      "agent_lines_removed": 301
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 804,
+      "agent_lines_removed": 301
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 806,
+      "agent_lines_removed": 301
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 796,
+      "agent_lines_removed": 301
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 810,
+      "agent_lines_removed": 301
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 748,
+      "agent_lines_removed": 306
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 6,
+      "user_lines_removed": 19,
+      "agent_lines_added": 860,
+      "agent_lines_removed": 323,
+      "user_added_per_file": {
+        "apps/web/src/components/ui/holo-card/FrontCardContent.tsx": 1,
+        "apps/web/src/components/ui/holo-card/LogoHeader.tsx": 1,
+        "apps/web/src/components/ui/holo-card/RotatingExperienceLogo.tsx": 4
+      },
+      "user_removed_per_file": {
+        "apps/web/src/components/ui/holo-card/FrontCardContent.tsx": 9,
+        "apps/web/src/components/ui/holo-card/LogoHeader.tsx": 1,
+        "apps/web/src/components/ui/holo-card/RotatingExperienceLogo.tsx": 4,
+        "apps/web/src/components/ui/holo-card/constants.ts": 5
+      }
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 925,
+      "agent_lines_removed": 343
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 933,
+      "agent_lines_removed": 343
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 918,
+      "agent_lines_removed": 343
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 918,
+      "agent_lines_removed": 343
+    },
+    {
+      "checkpoint_number": 15,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 918,
+      "agent_lines_removed": 343
+    },
+    {
+      "checkpoint_number": 16,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 922,
+      "agent_lines_removed": 343
+    },
+    {
+      "checkpoint_number": 17,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 922,
+      "agent_lines_removed": 343
+    },
+    {
+      "checkpoint_number": 18,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 922,
+      "agent_lines_removed": 343
+    },
+    {
+      "checkpoint_number": 19,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1064,
+      "agent_lines_removed": 431
+    },
+    {
+      "checkpoint_number": 20,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1094,
+      "agent_lines_removed": 463
+    },
+    {
+      "checkpoint_number": 21,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1111,
+      "agent_lines_removed": 464
+    },
+    {
+      "checkpoint_number": 22,
+      "user_lines_added": 2,
+      "user_lines_removed": 3,
+      "agent_lines_added": 1126,
+      "agent_lines_removed": 466,
+      "user_added_per_file": {
+        "apps/web/src/components/ui/holo-card/constants.ts": 2
+      },
+      "user_removed_per_file": {
+        "apps/web/src/components/ui/holo-card/constants.ts": 3
+      }
+    },
+    {
+      "checkpoint_number": 23,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1128,
+      "agent_lines_removed": 469
+    },
+    {
+      "checkpoint_number": 24,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1128,
+      "agent_lines_removed": 469
+    },
+    {
+      "checkpoint_number": 25,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1164,
+      "agent_lines_removed": 475
+    },
+    {
+      "checkpoint_number": 26,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1164,
+      "agent_lines_removed": 475
+    }
+  ]
+}

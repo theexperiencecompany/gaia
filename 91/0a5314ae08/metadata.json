@@ -3,7 +3,7 @@
   "checkpoint_id": "910a5314ae08",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 12,
+  "checkpoints_count": 37,
   "files_touched": [
     "apps/api/app/agents/memory/email_processor.py",
     "apps/api/app/agents/prompts/onboarding_prompts.py",
@@ -14,16 +14,30 @@
     "apps/api/app/services/onboarding/inbox_triage_service.py",
     "apps/api/app/services/onboarding/intelligence_service.py",
     "apps/web/public/audio/onboarding-intro.mp3",
+    "apps/web/public/images/onboarding/giftbox.png",
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
     "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
     "apps/web/src/app/fonts/aeonik.ts",
     "apps/web/src/app/fonts/aeonik/AeonikExtendedPro-Bold.otf",
+    "apps/web/src/app/fonts/aeonik/AeonikExtendedProTRIAL-SemiBold.otf",
     "apps/web/src/app/fonts/index.ts",
+    "apps/web/src/components/ui/holo-card/FrontCardContent.tsx",
+    "apps/web/src/components/ui/holo-card/HoloCard.tsx",
+    "apps/web/src/components/ui/holo-card/HoloCardEditor.tsx",
+    "apps/web/src/components/ui/holo-card/LogoHeader.tsx",
+    "apps/web/src/components/ui/holo-card/RotatingExperienceLogo.tsx",
+    "apps/web/src/components/ui/holo-card/constants.ts",
+    "apps/web/src/components/ui/holo-card/stampShape.ts",
     "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
     "apps/web/src/features/onboarding/components/OnboardingIntro.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
+    "apps/web/src/features/onboarding/components/reveal/HoloCardReveal.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
     "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
     "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx",
     "apps/web/src/features/onboarding/components/stages/Workflows.tsx",
-    "apps/web/src/features/onboarding/constants/messages.ts"
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/constants/platformPreviewMessages.ts"
   ],
   "sessions": [
     {
@@ -37,13 +51,19 @@
       "transcript": "/91/0a5314ae08/1/full.jsonl",
       "content_hash": "/91/0a5314ae08/1/content_hash.txt",
       "prompt": "/91/0a5314ae08/1/prompt.txt"
+    },
+    {
+      "metadata": "/91/0a5314ae08/2/metadata.json",
+      "transcript": "/91/0a5314ae08/2/full.jsonl",
+      "content_hash": "/91/0a5314ae08/2/content_hash.txt",
+      "prompt": "/91/0a5314ae08/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 1788,
-    "cache_creation_tokens": 1760205,
-    "cache_read_tokens": 108199257,
-    "output_tokens": 241179,
-    "api_call_count": 426
+    "input_tokens": 2334,
+    "cache_creation_tokens": 3321349,
+    "cache_read_tokens": 203034637,
+    "output_tokens": 492698,
+    "api_call_count": 737
   }
 }
