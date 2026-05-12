@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "910a5314ae08",
+  "strategy": "manual-commit",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/app/agents/memory/email_processor.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/91/0a5314ae08/0/metadata.json",
+      "transcript": "/91/0a5314ae08/0/full.jsonl",
+      "content_hash": "/91/0a5314ae08/0/content_hash.txt",
+      "prompt": "/91/0a5314ae08/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 447,
+    "cache_creation_tokens": 1338871,
+    "cache_read_tokens": 94134156,
+    "output_tokens": 142513,
+    "api_call_count": 332
+  }
+}
