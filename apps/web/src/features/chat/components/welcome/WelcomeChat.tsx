@@ -12,7 +12,7 @@
 
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
-import { ArrowRight02Icon, ConnectIcon } from "@icons";
+import { ConnectIcon, UserGroupIcon, ZapIcon } from "@icons";
 import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -47,11 +47,7 @@ const WORKFLOWS_BUBBLE = `${WORKFLOWS_INTRO_PRIMARY}<NEW_MESSAGE_BREAK>${WORKFLO
 const WORKFLOWS_TIP =
   "Tap any card to peek inside the workflow. Edits live on the Workflows page.";
 
-interface WelcomeChatProps {
-  onDismiss: () => void;
-}
-
-export function WelcomeChat({ onDismiss }: WelcomeChatProps) {
+export function WelcomeChat() {
   const router = useRouter();
   const popupCleanupRef = useRef<(() => void) | null>(null);
   const [hoveredPlatform, setHoveredPlatform] =
@@ -140,10 +136,6 @@ export function WelcomeChat({ onDismiss }: WelcomeChatProps) {
     setConnectedPlatform("__skipped__");
   }, []);
 
-  const openIntegrations = useCallback(() => {
-    router.push("/integrations");
-  }, [router]);
-
   return (
     <m.div
       className="mx-auto flex w-full max-w-3xl flex-col gap-4 pt-6 pb-32"
@@ -152,15 +144,24 @@ export function WelcomeChat({ onDismiss }: WelcomeChatProps) {
       transition={{ duration: 0.35 }}
     >
       <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WELCOME_BUBBLE}>
-        <div className="ml-10.75 mt-3">
+        <div className="ml-10.75 mt-3 flex flex-wrap gap-2">
           <Button
             variant="flat"
             color="primary"
             radius="full"
             startContent={<ConnectIcon className="size-4" />}
-            onPress={openIntegrations}
+            onPress={() => router.push("/integrations")}
           >
             Browse integrations
+          </Button>
+          <Button
+            variant="flat"
+            color="default"
+            radius="full"
+            startContent={<UserGroupIcon className="size-4" />}
+            onPress={() => router.push("/marketplace")}
+          >
+            Community integrations
           </Button>
         </div>
       </ChatBubbleBot>
@@ -184,6 +185,7 @@ export function WelcomeChat({ onDismiss }: WelcomeChatProps) {
             connectedPlatform={
               connectedPlatform === "__skipped__" ? null : connectedPlatform
             }
+            hideSkip
           />
         </div>
       </ChatBubbleBot>
@@ -219,18 +221,27 @@ export function WelcomeChat({ onDismiss }: WelcomeChatProps) {
             </p>
           )}
         </div>
+        <div className="ml-10.75 mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="flat"
+            color="primary"
+            radius="full"
+            startContent={<ZapIcon className="size-4" />}
+            onPress={() => router.push("/workflows")}
+          >
+            Browse workflows
+          </Button>
+          <Button
+            variant="flat"
+            color="default"
+            radius="full"
+            startContent={<UserGroupIcon className="size-4" />}
+            onPress={() => router.push("/workflows")}
+          >
+            Community workflows
+          </Button>
+        </div>
       </ChatBubbleBot>
-
-      <div className="mt-2 flex justify-center">
-        <Button
-          color="primary"
-          radius="full"
-          endContent={<ArrowRight02Icon className="size-4" />}
-          onPress={onDismiss}
-        >
-          Start chatting with GAIA
-        </Button>
-      </div>
     </m.div>
   );
 }

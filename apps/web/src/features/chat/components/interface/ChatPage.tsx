@@ -244,7 +244,6 @@ const ChatPage = React.memo(function MainChat() {
           handleScroll={handleScroll}
           dragHandlers={dragHandlers}
           composerProps={composerProps}
-          onDismiss={dismissWelcome}
         />
       ) : (
         <>

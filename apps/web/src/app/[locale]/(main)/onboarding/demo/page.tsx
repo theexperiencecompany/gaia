@@ -391,7 +391,7 @@ export default function OnboardingDemoPage() {
         {/* Welcome chat (post-onboarding /c first visit) */}
         <DemoSection label="WelcomeChat (post-onboarding /c)">
           <div className="rounded-2xl border border-zinc-800 bg-primary-bg p-4">
-            <WelcomeChat onDismiss={() => alert("dismissed")} />
+            <WelcomeChat />
           </div>
         </DemoSection>
 

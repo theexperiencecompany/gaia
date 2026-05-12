@@ -45,6 +45,7 @@ interface OnboardingPlatformConnectProps {
   onSkip: () => void;
   onHoverPlatform: (platform: PlatformPreviewPlatform | null) => void;
   connectedPlatform: string | null;
+  hideSkip?: boolean;
 }
 
 export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
@@ -52,6 +53,7 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
   onSkip,
   onHoverPlatform,
   connectedPlatform,
+  hideSkip = false,
 }) => {
   if (connectedPlatform) {
     return (
@@ -102,20 +104,22 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
           </m.div>
         ))}
       </div>
-      <m.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.25, delay: PLATFORMS.length * 0.08 }}
-      >
-        <Button
-          variant="light"
-          size="sm"
-          onPress={onSkip}
-          className="text-zinc-400 hover:text-zinc-200"
+      {!hideSkip && (
+        <m.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.25, delay: PLATFORMS.length * 0.08 }}
         >
-          I'll do it later
-        </Button>
-      </m.div>
+          <Button
+            variant="light"
+            size="sm"
+            onPress={onSkip}
+            className="text-zinc-400 hover:text-zinc-200"
+          >
+            I'll do it later
+          </Button>
+        </m.div>
+      )}
     </div>
   );
 };

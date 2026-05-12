@@ -32,7 +32,6 @@ interface WelcomeChatLayoutProps {
     conversationId?: string;
     voiceModeActive: () => void;
   };
-  onDismiss: () => void;
 }
 
 export const WelcomeChatLayout: React.FC<WelcomeChatLayoutProps> = ({
@@ -40,7 +39,6 @@ export const WelcomeChatLayout: React.FC<WelcomeChatLayoutProps> = ({
   handleScroll,
   dragHandlers,
   composerProps,
-  onDismiss,
 }) => {
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -50,7 +48,7 @@ export const WelcomeChatLayout: React.FC<WelcomeChatLayoutProps> = ({
         onScroll={handleScroll}
         {...dragHandlers}
       >
-        <WelcomeChat onDismiss={onDismiss} />
+        <WelcomeChat />
       </div>
       <div className="shrink-0 pb-2">
         <Composer {...composerProps} />
