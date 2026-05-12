@@ -2,7 +2,14 @@
 
 import { AnimatePresence } from "motion/react";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
@@ -202,7 +209,6 @@ export default function ChatRenderer({
       />
       <SearchedImageDialog />
       <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
-      {isWelcomeConversation && <WelcomeChat />}
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
           let messageProps = null;
@@ -218,23 +224,33 @@ export default function ChatRenderer({
 
           if (!messageProps) return null;
 
-          if (
+          const bubble =
             message.type === "bot" &&
-            !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
-          )
-            return (
+            !isBotMessageEmpty(messageProps as ChatBubbleBotProps) ? (
               <ChatBubbleBot
                 key={message.message_id || index}
                 {...getMessageProps(message, "bot", messagePropsOptions)}
               />
+            ) : (
+              <ChatBubbleUser
+                key={message.message_id || index}
+                {...messageProps}
+              />
             );
 
-          return (
-            <ChatBubbleUser
-              key={message.message_id || index}
-              {...messageProps}
-            />
-          );
+          // Inject the welcome UI (integrations / platform demo / workflows)
+          // directly after the personalised LLM greeting so it reads like a
+          // single agent turn: hello text → supplementary cards → user reply.
+          if (isWelcomeConversation && index === 0) {
+            return (
+              <Fragment key={`${message.message_id || index}-welcome-wrap`}>
+                {bubble}
+                <WelcomeChat />
+              </Fragment>
+            );
+          }
+
+          return bubble;
         },
       )}
       {isLoading && (
