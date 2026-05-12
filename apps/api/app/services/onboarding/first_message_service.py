@@ -1,5 +1,6 @@
 """Generate GAIA's first message to a new user after onboarding intelligence."""
 
+import time
 from typing import Optional
 
 from langchain_core.messages import HumanMessage
@@ -28,6 +29,7 @@ async def generate_first_message(
     Generate GAIA's first message to a new user.
     Single LLM call with all Phase 1+2 context.
     """
+    t0 = time.monotonic()
     try:
         writing_style_summary = (
             writing_style.summary if writing_style else "not yet analyzed"
@@ -82,7 +84,9 @@ async def generate_first_message(
         llm = await providers.aget("gemini_llm")
         if llm is None:
             raise RuntimeError("LLM provider not available")
+        t_llm = time.monotonic()
         response = await llm.ainvoke([HumanMessage(content=prompt)])
+        llm_duration_s = round(time.monotonic() - t_llm, 2)
         content = response.content
         if isinstance(content, list):
             content = "".join(
@@ -91,11 +95,34 @@ async def generate_first_message(
             )
         message = content.strip()
 
-        log.info(f"[first_message] Generated for {user_id}: {message[:80]}...")
+        log.info(
+            "[first_message] generated",
+            user_id=user_id,
+            step="first_message",
+            outcome="ok",
+            message_chars=len(message),
+            prompt_chars=len(prompt),
+            has_triage=triage is not None,
+            has_writing_style=writing_style is not None,
+            todos_count=len(created_todos),
+            workflows_count=len(created_workflows),
+            social_profile_count=len(social_profiles),
+            llm_duration_s=llm_duration_s,
+            duration_s=round(time.monotonic() - t0, 2),
+        )
         return message
 
     except Exception as e:
-        log.error(f"[first_message] Failed for {user_id}: {e}", exc_info=True)
+        log.error(
+            "[first_message] failed",
+            user_id=user_id,
+            step="first_message",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
         # Fallback message
         return (
             f"Hey {name}. I've set up your GAIA and created a couple of automations "

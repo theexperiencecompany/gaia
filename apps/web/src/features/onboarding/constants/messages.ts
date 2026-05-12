@@ -31,3 +31,11 @@ export const REVEAL_WRITING_STYLE_INTRO =
 
 export const REVEAL_TODOS_INTRO =
   "Based on what I found, here are some things I can help with:";
+
+// ── Workflows stage copy ────────────────────────────────────────────────────
+
+export const WORKFLOWS_INTRO =
+  "Workflows are recurring jobs I run across your tools — Gmail, Calendar, Notion, Slack — on a schedule, or triggered by an event like a new email.";
+
+export const WORKFLOWS_SUBLINE =
+  "They handle the everyday grunt work for you. Build more anytime in the Workflows page.";

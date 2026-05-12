@@ -15,7 +15,6 @@ import { AiMail02Icon, Edit02Icon, QuillWrite01Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
-import { RaisedButton } from "@/components/ui/raised-button";
 import { apiService } from "@/lib/api/service";
 import type {
   WritingStyleExampleBlocks,
@@ -26,6 +25,7 @@ const MIN_LENGTH = 20;
 
 interface WritingStyleRevealCardProps extends WritingStyleResults {
   profession?: string;
+  embedded?: boolean;
 }
 
 const hasExampleContent = (blocks: WritingStyleExampleBlocks | null): boolean =>
@@ -35,6 +35,7 @@ export function WritingStyleRevealCard({
   style_summary,
   example,
   profession = "",
+  embedded = false,
 }: WritingStyleRevealCardProps) {
   const [isEditingSummary, setIsEditingSummary] = useState(false);
   const [summaryValue, setSummaryValue] = useState(style_summary);
@@ -105,7 +106,11 @@ export function WritingStyleRevealCard({
 
   return (
     <m.div
-      className="overflow-hidden rounded-2xl bg-zinc-800/60 p-4 space-y-3 ml-10.75"
+      className={
+        embedded
+          ? "space-y-3"
+          : "ml-10.75 space-y-3 rounded-2xl bg-zinc-800/60 p-4"
+      }
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 280, damping: 22 }}
@@ -157,9 +162,14 @@ export function WritingStyleRevealCard({
               <Button size="sm" variant="light" onPress={handleCancel}>
                 Cancel
               </Button>
-              <RaisedButton size="sm" disabled={isSaving} onClick={handleSave}>
+              <Button
+                size="sm"
+                color="primary"
+                isDisabled={isSaving}
+                onPress={handleSave}
+              >
                 {isSaving ? <Spinner size="sm" color="current" /> : "Save"}
-              </RaisedButton>
+              </Button>
             </div>
           </>
         ) : (

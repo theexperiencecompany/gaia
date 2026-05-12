@@ -1,5 +1,6 @@
 """Triage inbox emails for onboarding — find what matters and interesting patterns."""
 
+import time
 from typing import Optional
 
 from langchain_core.messages import HumanMessage
@@ -55,10 +56,12 @@ async def triage_inbox(
             patterns=[],
         )
 
+    t0 = time.monotonic()
     try:
         # Filter noise before prioritizing
         filtered = [e for e in emails if not _is_noise_email(e)]
         unread = [e for e in filtered if e.get("is_unread", False)]
+        noise_dropped = len(emails) - len(filtered)
 
         # Build compact email list for LLM (sender, subject, snippet only)
         # Prioritize unread emails, then fill with recent read emails
@@ -85,12 +88,16 @@ async def triage_inbox(
             profession=profession or "not specified",
             focus=focus or "not specified",
         )
+        t_llm = time.monotonic()
         result: InboxTriageOutput = await structured_llm.ainvoke(
             [HumanMessage(content=prompt)]
         )
+        llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         # Fetch true unread count from Gmail (not limited to scan window)
         true_unread = 0
+        unread_fetch_outcome = "ok"
+        t_unread = time.monotonic()
         try:
             unread_result = await search_messages(
                 user_id=user_id,
@@ -99,8 +106,13 @@ async def triage_inbox(
             )
             true_unread = len(unread_result.get("messages", []))
         except Exception as unread_err:
+            unread_fetch_outcome = "failed"
             log.warning(
-                f"[inbox_triage] Failed to fetch true unread count: {unread_err}"
+                "[inbox_triage] true unread fetch failed",
+                user_id=user_id,
+                step="triage_unread_fetch",
+                error=str(unread_err)[:200],
+                error_type=type(unread_err).__name__,
             )
             true_unread = len([e for e in emails if e.get("is_unread", False)])
 
@@ -113,11 +125,34 @@ async def triage_inbox(
         )
 
         log.info(
-            f"[inbox_triage] Triaged {len(emails)} emails for user {user_id}. "
-            f"Important: {len(triage.important_emails)}, patterns: {len(triage.patterns)}"
+            "[inbox_triage] done",
+            user_id=user_id,
+            step="triage_llm",
+            outcome="ok",
+            emails_in=len(emails),
+            emails_filtered=len(filtered),
+            noise_dropped=noise_dropped,
+            sampled=len(sampled),
+            prompt_chars=len(prompt),
+            important_count=len(triage.important_emails),
+            patterns_count=len(triage.patterns),
+            true_unread=true_unread,
+            unread_fetch_outcome=unread_fetch_outcome,
+            unread_fetch_duration_s=round(time.monotonic() - t_unread, 2),
+            llm_duration_s=llm_duration_s,
+            duration_s=round(time.monotonic() - t0, 2),
         )
         return triage
 
     except Exception as e:
-        log.error(f"[inbox_triage] Failed to triage for {user_id}: {e}", exc_info=True)
+        log.error(
+            "[inbox_triage] failed",
+            user_id=user_id,
+            step="triage_llm",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+            exc_info=True,
+        )
         return None

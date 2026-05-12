@@ -57,7 +57,7 @@ export function RevealTodos({ state, dispatch }: RevealTodosProps) {
         <Button
           variant="light"
           size="sm"
-          className="text-zinc-500"
+          className="text-xs text-zinc-600 hover:text-zinc-400"
           onPress={() => dispatch({ type: "ackTodos" })}
         >
           Skip for now

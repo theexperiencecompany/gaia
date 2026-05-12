@@ -374,7 +374,7 @@ function GmailInput({ onGmailSkip }: { onGmailSkip: () => void }) {
           radius="full"
           onPress={() => setPrivacyModalOpen(true)}
           endContent={<ChevronRight className="size-3" />}
-          className="mx-auto w-fit text-xs text-zinc-600"
+          className="mx-auto w-fit text-xs text-zinc-300 hover:text-zinc-100"
         >
           How we use your data
         </Button>

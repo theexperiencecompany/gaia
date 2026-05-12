@@ -260,15 +260,18 @@ export function useBackendSync(
     };
 
     const synthesizeCompletedStages = (data: PersonalizationData): void => {
+      // Only fire when the snapshot carries actual data — `null` and `[]`
+      // come back on a fresh post-reset snapshot and must not be mistaken
+      // for "the pipeline already finished this step".
       const fire = (stage: OnboardingStage) =>
         dispatchRef.current({ type: "stageComplete", stage });
-      if (data.writing_style?.style_summary !== undefined) {
-        fire("writing_style_ready");
+      if (data.writing_style?.style_summary) fire("writing_style_ready");
+      if (data.triage_summary) fire("triage_ready");
+      if ((data.onboarding_todos?.length ?? 0) > 0) fire("todos_ready");
+      if ((data.suggested_workflows?.length ?? 0) > 0) fire("workflows_ready");
+      if ((data.social_profiles?.length ?? 0) > 0) {
+        fire("social_profiles_ready");
       }
-      if (data.triage_summary !== undefined) fire("triage_ready");
-      if (data.onboarding_todos !== undefined) fire("todos_ready");
-      if (data.suggested_workflows !== undefined) fire("workflows_ready");
-      if (data.social_profiles !== undefined) fire("social_profiles_ready");
       if (data.first_message_conversation_id) fire("complete");
     };
 

@@ -2,6 +2,9 @@
  * Telegram / WhatsApp / Discord platform-link picker rendered by the
  * `platforms` stage. Once `connectedPlatform` is set, swaps to a
  * confirmation row instead of the buttons.
+ *
+ * Each button emits `onHoverPlatform` so the parent can drive a
+ * preview surface above (`OnboardingPlatformPreview`).
  */
 
 "use client";
@@ -11,34 +14,43 @@ import { CheckmarkCircle02Icon } from "@icons";
 import * as m from "motion/react-m";
 import Image from "next/image";
 import type { FC } from "react";
+import { RaisedButton } from "@/components/ui/raised-button";
+import type { PlatformPreviewPlatform } from "../constants/platformPreviewMessages";
 
 const PLATFORMS = [
   {
     label: "Telegram",
-    id: "telegram",
+    id: "telegram" as const,
     icon: "/images/icons/macos/telegram.webp",
   },
   {
     label: "WhatsApp",
-    id: "whatsapp",
+    id: "whatsapp" as const,
     icon: "/images/icons/macos/whatsapp.webp",
   },
   {
+    label: "Slack",
+    id: "slack" as const,
+    icon: "/images/icons/macos/slack.webp",
+  },
+  {
     label: "Discord",
-    id: "discord",
+    id: "discord" as const,
     icon: "/images/icons/macos/discord.webp",
   },
-] as const;
+];
 
 interface OnboardingPlatformConnectProps {
   onConnect: (platform: string) => void;
   onSkip: () => void;
+  onHoverPlatform: (platform: PlatformPreviewPlatform | null) => void;
   connectedPlatform: string | null;
 }
 
 export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
   onConnect,
   onSkip,
+  onHoverPlatform,
   connectedPlatform,
 }) => {
   if (connectedPlatform) {
@@ -59,29 +71,34 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
 
   return (
     <div className="flex flex-col items-start gap-2 ml-10.75">
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="flex flex-wrap gap-2"
+        onMouseLeave={() => onHoverPlatform(null)}
+      >
         {PLATFORMS.map((platform, index) => (
           <m.div
             key={platform.id}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, delay: index * 0.08 }}
+            onMouseEnter={() => onHoverPlatform(platform.id)}
+            onFocus={() => onHoverPlatform(platform.id)}
+            onBlur={() => onHoverPlatform(null)}
           >
-            <Button
-              variant="flat"
+            <RaisedButton
+              color="black"
               className="pl-2 pr-3"
-              startContent={
-                <Image
-                  src={platform.icon}
-                  alt={platform.label}
-                  width={26}
-                  height={26}
-                />
-              }
-              onPress={() => onConnect(platform.id)}
+              onClick={() => onConnect(platform.id)}
             >
+              <Image
+                src={platform.icon}
+                alt={platform.label}
+                width={100}
+                height={100}
+                className="size-6 max-h-6 max-w-6"
+              />
               {platform.label}
-            </Button>
+            </RaisedButton>
           </m.div>
         ))}
       </div>
@@ -94,7 +111,7 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
           variant="light"
           size="sm"
           onPress={onSkip}
-          className="text-zinc-500"
+          className="text-zinc-400 hover:text-zinc-200"
         >
           Skip for now
         </Button>

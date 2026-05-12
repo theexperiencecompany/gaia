@@ -1,13 +1,29 @@
 "use client";
 
+import { Chip } from "@heroui/chip";
+import Image from "next/image";
+import { notFound } from "next/navigation";
 import { useState } from "react";
 import { OnboardingPlatformConnect } from "@/features/onboarding/components/OnboardingPlatformConnect";
+import { OnboardingPlatformPreview } from "@/features/onboarding/components/OnboardingPlatformPreview";
 import { OnboardingProcessing } from "@/features/onboarding/components/OnboardingProcessing";
 import { OnboardingTodoCards } from "@/features/onboarding/components/OnboardingTodoCards";
 import { OnboardingWorkflowCards } from "@/features/onboarding/components/OnboardingWorkflowCards";
 import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
 import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/WritingStyleRevealCard";
+import { professionOptions } from "@/features/onboarding/constants";
+import {
+  PLATFORM_ICONS,
+  PLATFORM_LABELS,
+  PLATFORM_PREVIEW_ORDER,
+  type PlatformPreviewPlatform,
+} from "@/features/onboarding/constants/platformPreviewMessages";
 import type { OnboardingStage } from "@/features/onboarding/types/websocket";
+import { useUserStore } from "@/stores/userStore";
+
+if (process.env.NODE_ENV === "production") {
+  notFound();
+}
 
 // ── Dummy data ────────────────────────────────────────────────────────────────
 
@@ -217,13 +233,94 @@ function TodoCardsDemo() {
 
 function PlatformConnectDemo() {
   const [connected, setConnected] = useState<string | null>(null);
+  const [hoveredPlatform, setHoveredPlatform] =
+    useState<PlatformPreviewPlatform | null>(null);
+  const [pinnedPlatform, setPinnedPlatform] =
+    useState<PlatformPreviewPlatform | null>(null);
+  const [profession, setProfession] = useState<string>("entrepreneur");
+
+  const storeName = useUserStore((s) => s.name);
+  const storeAvatar = useUserStore((s) => s.profilePicture);
+
+  const effectivePlatform = hoveredPlatform ?? pinnedPlatform;
+
   return (
     <DemoSection label="OnboardingPlatformConnect">
-      <OnboardingPlatformConnect
-        onConnect={(p) => setConnected(p)}
-        onSkip={() => setConnected(null)}
-        connectedPlatform={connected}
-      />
+      <div className="mb-4 flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-zinc-500">Platform:</span>
+          {PLATFORM_PREVIEW_ORDER.map((p) => {
+            const isActive = pinnedPlatform === p;
+            return (
+              <Chip
+                key={p}
+                variant={isActive ? "solid" : "flat"}
+                color={isActive ? "primary" : "default"}
+                size="sm"
+                onClick={() =>
+                  setPinnedPlatform((current) => (current === p ? null : p))
+                }
+                className="cursor-pointer select-none"
+                startContent={
+                  <Image
+                    src={PLATFORM_ICONS[p]}
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="h-4 w-4 shrink-0 rounded-[3px]"
+                    aria-hidden
+                  />
+                }
+              >
+                {PLATFORM_LABELS[p]}
+              </Chip>
+            );
+          })}
+          {pinnedPlatform && (
+            <button
+              type="button"
+              className="text-xs text-zinc-500 underline-offset-2 hover:underline"
+              onClick={() => setPinnedPlatform(null)}
+            >
+              clear
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-zinc-500">Profession:</span>
+          {professionOptions.slice(0, 10).map((p) => {
+            const isActive = profession === p.value;
+            return (
+              <Chip
+                key={p.value}
+                variant={isActive ? "solid" : "flat"}
+                color={isActive ? "primary" : "default"}
+                size="sm"
+                onClick={() => setProfession(p.value)}
+                className="cursor-pointer select-none"
+              >
+                {p.label}
+              </Chip>
+            );
+          })}
+        </div>
+      </div>
+      {!connected && (
+        <OnboardingPlatformPreview
+          profession={profession}
+          hoveredPlatform={effectivePlatform}
+          userName={storeName}
+          userAvatar={storeAvatar}
+        />
+      )}
+      <div className="mt-1">
+        <OnboardingPlatformConnect
+          onConnect={(p) => setConnected(p)}
+          onSkip={() => setConnected(null)}
+          onHoverPlatform={setHoveredPlatform}
+          connectedPlatform={connected}
+        />
+      </div>
     </DemoSection>
   );
 }

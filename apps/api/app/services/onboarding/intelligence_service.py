@@ -191,7 +191,11 @@ class _WorkflowSpec(BaseModel):
 
 
 class _WorkflowList(BaseModel):
-    workflows: list[_WorkflowSpec] = Field(description="Exactly 2 workflow specs")
+    workflows: list[_WorkflowSpec] = Field(
+        description="Exactly 3 workflow specs — no more, no fewer",
+        min_length=3,
+        max_length=3,
+    )
 
 
 # ── Main orchestrator ────────────────────────────────────────────────────────
@@ -316,12 +320,19 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     )
 
     # ── First message — does NOT wait for holo card ──────────────────────
+    t_gather = time.monotonic()
     triage, todos, workflows, writing_style, social_profiles = await asyncio.gather(
         triage_future,
         todos_future,
         workflows_future,
         writing_style_future,
         social_profiles_future,
+    )
+    log.info(
+        "[intelligence] critical_path gathered",
+        user_id=user_id,
+        phase="critical_path_gather",
+        duration_s=round(time.monotonic() - t_gather, 2),
     )
 
     t_msg = time.monotonic()
@@ -348,10 +359,17 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     )
 
     # ── Seed conversation, persist, and wait for holo in parallel ────────
+    t_final = time.monotonic()
     conversation_id, _, _ = await asyncio.gather(
         _seed_conversation(user_id, first_message),
         _persist_profiles(user_id, writing_style, triage, social_profiles),
         holo_future,
+    )
+    log.info(
+        "[intelligence] finalize gathered",
+        user_id=user_id,
+        phase="finalize_gather",
+        duration_s=round(time.monotonic() - t_final, 2),
     )
 
     if conversation_id:
@@ -876,13 +894,18 @@ async def _run_holo_card(
             context_parts.append(f"Current focus: {focus}")
         context_summary = "\n".join(context_parts)
 
+        t_meta = time.monotonic()
         metadata = await get_user_metadata(user_id, user=user_doc)
+        meta_duration_s = round(time.monotonic() - t_meta, 2)
         card_design = generate_profile_card_design()
+        t_phrase_bio = time.monotonic()
         phrase, bio_result = await asyncio.gather(
             generate_personality_phrase(user_id, context_summary, profession),
             generate_user_bio(user_id, context_summary, user=user_doc),
         )
+        phrase_bio_duration_s = round(time.monotonic() - t_phrase_bio, 2)
         user_bio, bio_status = bio_result
+        t_save = time.monotonic()
         await save_personalization_data(
             user_id,
             card_design["house"],
@@ -902,6 +925,10 @@ async def _run_holo_card(
             outcome="ok",
             house=card_design["house"],
             bio_status=str(bio_status),
+            context_chars=len(context_summary),
+            meta_duration_s=meta_duration_s,
+            phrase_bio_duration_s=phrase_bio_duration_s,
+            save_duration_s=round(time.monotonic() - t_save, 2),
             duration_s=round(time.monotonic() - t0, 2),
         )
     except Exception as e:
@@ -965,6 +992,7 @@ async def _persist_profiles(
     - Social profiles are only written if the user has not already confirmed
       them via POST /social-profiles ({"$exists": False} filter).
     """
+    t0 = time.monotonic()
     update_fields: dict = {}
     if writing_style:
         update_fields["onboarding.writing_style.summary"] = writing_style.summary
@@ -1025,6 +1053,16 @@ async def _persist_profiles(
                 f"[intelligence] persist social_profiles failed: {e}", exc_info=True
             )
 
+    log.info(
+        "[intelligence] persist_profiles done",
+        user_id=user_id,
+        step="persist_profiles",
+        writing_style_persisted=writing_style is not None,
+        triage_persisted=triage is not None,
+        social_profiles_persisted=len(social_profiles),
+        duration_s=round(time.monotonic() - t0, 2),
+    )
+
 
 # ── Todo creation helpers ────────────────────────────────────────────────────
 
@@ -1036,6 +1074,7 @@ async def _create_focus_todos(
     focus: str,
 ) -> list[dict]:
     """Create 3 GAIA-actionable todos based on user's stated focus via LLM."""
+    t0 = time.monotonic()
     prompt = FOCUS_TODOS_PROMPT.format(
         name=name,
         profession=profession,
@@ -1048,9 +1087,11 @@ async def _create_focus_todos(
         if llm is None:
             raise RuntimeError("LLM provider not available")
         structured_llm = llm.with_structured_output(_FocusTodoList)
+        t_llm = time.monotonic()
         parsed: _FocusTodoList = await structured_llm.ainvoke(
             [HumanMessage(content=prompt)]
         )
+        llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         async def _create_one(title: str) -> Optional[dict]:
             try:
@@ -1065,14 +1106,42 @@ async def _create_focus_todos(
                 result = await TodoService.create_todo(todo, user_id)
                 return {"id": str(result.id), "title": safe_title}
             except Exception as e:
-                log.warning(f"[intelligence] Failed to create focus todo: {e}")
+                log.warning(
+                    "[intelligence] focus todo create failed",
+                    user_id=user_id,
+                    step="todos_focus_create_one",
+                    title=title[:60],
+                    error=str(e)[:200],
+                    error_type=type(e).__name__,
+                )
                 return None
 
+        t_create = time.monotonic()
         results = await asyncio.gather(*[_create_one(t) for t in parsed.todos[:3]])
-        return [r for r in results if r is not None]
+        created = [r for r in results if r is not None]
+        log.info(
+            "[intelligence] focus_todos done",
+            user_id=user_id,
+            step="todos_focus",
+            outcome="ok",
+            specs_count=len(parsed.todos[:3]),
+            created_count=len(created),
+            llm_duration_s=llm_duration_s,
+            create_duration_s=round(time.monotonic() - t_create, 2),
+            duration_s=round(time.monotonic() - t0, 2),
+        )
+        return created
 
     except Exception as e:
-        log.warning(f"[intelligence] _create_focus_todos failed: {e}")
+        log.warning(
+            "[intelligence] focus_todos failed",
+            user_id=user_id,
+            step="todos_focus",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+        )
         return []
 
 
@@ -1098,14 +1167,17 @@ async def _create_todos_from_triage(
         format_instructions="Return a JSON object with a 'todos' key containing a list of todo objects, each with 'title', 'description', 'source_sender', and 'source_subject'.",
     )
 
+    t0 = time.monotonic()
     try:
         llm = await providers.aget("gemini_llm")
         if llm is None:
             raise RuntimeError("LLM provider not available")
         structured_llm = llm.with_structured_output(_TodoListFromEmails)
+        t_llm = time.monotonic()
         parsed: _TodoListFromEmails = await structured_llm.ainvoke(
             [HumanMessage(content=prompt)]
         )
+        llm_duration_s = round(time.monotonic() - t_llm, 2)
 
         async def _create_one(spec: _TodoSpec) -> Optional[dict]:
             try:
@@ -1142,15 +1214,32 @@ async def _create_todos_from_triage(
                 log.warning(f"[intelligence] Failed to create todo: {e}")
                 return None
 
+        t_create = time.monotonic()
         results = await asyncio.gather(*[_create_one(s) for s in parsed.todos[:3]])
         created = [r for r in results if r is not None]
         log.info(
-            f"[intelligence] Created {len(created)} LLM-generated todos from triage"
+            "[intelligence] triage_todos done",
+            user_id=user_id,
+            step="todos_triage",
+            outcome="ok",
+            specs_count=len(parsed.todos[:3]),
+            created_count=len(created),
+            llm_duration_s=llm_duration_s,
+            create_duration_s=round(time.monotonic() - t_create, 2),
+            duration_s=round(time.monotonic() - t0, 2),
         )
         return created
 
     except Exception as e:
-        log.warning(f"[intelligence] LLM todo generation failed: {e}")
+        log.warning(
+            "[intelligence] triage_todos failed",
+            user_id=user_id,
+            step="todos_triage",
+            outcome="failed",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+            duration_s=round(time.monotonic() - t0, 2),
+        )
         return []
 
 
@@ -1229,7 +1318,7 @@ async def _create_onboarding_workflows(
     triage: Optional[InboxTriage] = None,
     writing_style: Optional[WritingStyleProfile] = None,
 ) -> list[dict]:
-    """Create 2 LLM-generated workflows tailored to the user's inbox context.
+    """Create 3 LLM-generated workflows tailored to the user's inbox context.
 
     Gmail system workflow provisioning runs as a separate root task in the
     orchestrator — not here.
@@ -1248,6 +1337,7 @@ async def _create_onboarding_workflows(
         writing_style.summary[:150] if writing_style else "not analyzed"
     )
 
+    t0 = time.monotonic()
     try:
         prompt = WORKFLOW_CREATION_PROMPT.format(
             profession=profession or "professional",
@@ -1261,18 +1351,61 @@ async def _create_onboarding_workflows(
         if llm is None:
             raise RuntimeError("LLM provider not available")
         structured_llm = llm.with_structured_output(_WorkflowList)
-        parsed: _WorkflowList = await structured_llm.ainvoke(
-            [HumanMessage(content=prompt)]
+        t_specs_llm = time.monotonic()
+        parsed: _WorkflowList | None = None
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                candidate: _WorkflowList = await structured_llm.ainvoke(
+                    [HumanMessage(content=prompt)]
+                )
+                if len(candidate.workflows) == 3:
+                    parsed = candidate
+                    break
+                log.warning(
+                    "[intelligence] workflow specs wrong count, retrying",
+                    user_id=user_id,
+                    step="workflows_specs_llm",
+                    attempt=attempt,
+                    specs_count=len(candidate.workflows),
+                )
+            except Exception as e:
+                last_error = e
+                log.warning(
+                    "[intelligence] workflow specs llm failed, retrying",
+                    user_id=user_id,
+                    step="workflows_specs_llm",
+                    attempt=attempt,
+                    error=str(e)[:200],
+                )
+        if parsed is None:
+            if last_error is not None:
+                raise last_error
+            raise RuntimeError(
+                "LLM did not return exactly 3 workflow specs after 3 attempts"
+            )
+        specs_llm_duration_s = round(time.monotonic() - t_specs_llm, 2)
+        log.info(
+            "[intelligence] workflow specs generated",
+            user_id=user_id,
+            step="workflows_specs_llm",
+            specs_count=len(parsed.workflows),
+            llm_duration_s=specs_llm_duration_s,
         )
         specs_total = len(parsed.workflows)
         created: list[dict] = []
         specs_failed = 0
         for idx, spec in enumerate(parsed.workflows):
+            t_spec = time.monotonic()
+            t_prompt = t_spec
+            t_create = t_spec
             try:
+                t_prompt = time.monotonic()
                 gen_result = await WorkflowGenerationService.generate_workflow_prompt(
                     title=spec.title,
                     description=spec.description,
                 )
+                prompt_duration_s = round(time.monotonic() - t_prompt, 2)
                 workflow_prompt = (gen_result.get("prompt") or spec.description).strip()
                 suggested = gen_result.get("suggested_trigger")
                 suggested_dict = (
@@ -1287,9 +1420,11 @@ async def _create_onboarding_workflows(
                     trigger_config=trigger_config,
                     generate_immediately=True,
                 )
+                t_create = time.monotonic()
                 workflow = await WorkflowService.create_workflow(
                     request, user_id, user_timezone=user_timezone
                 )
+                create_duration_s = round(time.monotonic() - t_create, 2)
                 created.append(
                     {
                         "id": str(workflow.id),
@@ -1301,28 +1436,40 @@ async def _create_onboarding_workflows(
                         ),
                     }
                 )
+                log.info(
+                    "[intelligence] workflow spec done",
+                    user_id=user_id,
+                    step="workflows_spec",
+                    spec_index=idx,
+                    spec_title=spec.title[:60],
+                    trigger_type=str(trigger_config.type),
+                    workflow_id=str(workflow.id),
+                    prompt_duration_s=prompt_duration_s,
+                    create_duration_s=create_duration_s,
+                    duration_s=round(time.monotonic() - t_spec, 2),
+                )
             except Exception as e:
                 specs_failed += 1
                 log.warning(
                     "[intelligence] workflow spec failed",
                     user_id=user_id,
-                    step="workflows",
+                    step="workflows_spec",
                     spec_index=idx,
                     spec_title=spec.title[:60],
-                    trigger_type=str(trigger_config.type)
-                    if "trigger_config" in dir()
-                    else None,
                     error=str(e)[:200],
                     error_type=type(e).__name__,
+                    duration_s=round(time.monotonic() - t_spec, 2),
                 )
         log.info(
             "[intelligence] workflows specs done",
             user_id=user_id,
-            step="workflows",
+            step="workflows_specs",
             specs_total=specs_total,
             specs_created=len(created),
             specs_failed=specs_failed,
             fallback_used=False,
+            specs_llm_duration_s=specs_llm_duration_s,
+            duration_s=round(time.monotonic() - t0, 2),
         )
         return created
     except Exception as e:

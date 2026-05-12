@@ -9,13 +9,17 @@
 
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import { apiService } from "@/lib/api/service";
+import { useUserStore } from "@/stores/userStore";
+import { FIELD_NAMES } from "../../constants";
 import { BOT_BUBBLE_DEFAULTS } from "../../constants/bubbleDefaults";
 import { MOTION_FADE_UP } from "../../constants/motion";
+import type { PlatformPreviewPlatform } from "../../constants/platformPreviewMessages";
 import type { Action, OnboardingState } from "../../state/types";
 import { OnboardingPlatformConnect } from "../OnboardingPlatformConnect";
+import { OnboardingPlatformPreview } from "../OnboardingPlatformPreview";
 
 interface PlatformsProps {
   state: OnboardingState;
@@ -24,6 +28,15 @@ interface PlatformsProps {
 
 export function Platforms({ state, dispatch }: PlatformsProps) {
   const popupCleanupRef = useRef<(() => void) | null>(null);
+  const [hoveredPlatform, setHoveredPlatform] =
+    useState<PlatformPreviewPlatform | null>(null);
+
+  const profession = state.responses[FIELD_NAMES.PROFESSION];
+  const onboardingName = state.responses[FIELD_NAMES.NAME];
+  const storeName = useUserStore((s) => s.name);
+  const storeAvatar = useUserStore((s) => s.profilePicture);
+  const userName = onboardingName || storeName;
+  const userAvatar = storeAvatar;
 
   const connectPlatform = useCallback(
     async (platform: string) => {
@@ -110,19 +123,27 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
   }, []);
 
   return (
-    <m.div className="mt-4" {...MOTION_FADE_UP}>
+    <m.div className="mt-4 flex flex-col gap-3" {...MOTION_FADE_UP}>
+      {!state.connectedPlatform && (
+        <OnboardingPlatformPreview
+          profession={profession}
+          hoveredPlatform={hoveredPlatform}
+          userName={userName}
+          userAvatar={userAvatar}
+        />
+      )}
       <ChatBubbleBot
         {...BOT_BUBBLE_DEFAULTS}
-        text="Get notifications and talk to me on the go:"
-      >
-        <div className="mt-3">
-          <OnboardingPlatformConnect
-            onConnect={connectPlatform}
-            onSkip={skip}
-            connectedPlatform={state.connectedPlatform}
-          />
-        </div>
-      </ChatBubbleBot>
+        text={
+          "You shouldn’t have to come check on me. Tell me where you already hang out and I’ll text you — briefings, urgent emails, anything that can’t wait."
+        }
+      />
+      <OnboardingPlatformConnect
+        onConnect={connectPlatform}
+        onSkip={skip}
+        onHoverPlatform={setHoveredPlatform}
+        connectedPlatform={state.connectedPlatform}
+      />
     </m.div>
   );
 }

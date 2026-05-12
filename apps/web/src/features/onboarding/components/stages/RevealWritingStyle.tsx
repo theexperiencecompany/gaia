@@ -13,7 +13,7 @@ import { Spinner } from "@heroui/spinner";
 import { CheckmarkCircle02Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import type { Dispatch } from "react";
+import { type Dispatch, useState } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import { FIELD_NAMES } from "../../constants";
 import { BOT_BUBBLE_DEFAULTS } from "../../constants/bubbleDefaults";
@@ -37,21 +37,24 @@ export function RevealWritingStyle({ state }: { state: OnboardingState }) {
 
   if (!writingStyle?.style_summary) return null;
 
-  const card = (
-    <WritingStyleRevealCard
-      style_summary={writingStyle.style_summary}
-      example={writingStyle.example ?? null}
-      profession={profession}
-    />
-  );
-
   return (
     <div className="mt-3 space-y-4">
       {state.ackedWritingStyle ? (
-        <CollapsedWritingStyle>{card}</CollapsedWritingStyle>
+        <CollapsedWritingStyle>
+          <WritingStyleRevealCard
+            style_summary={writingStyle.style_summary}
+            example={writingStyle.example ?? null}
+            profession={profession}
+            embedded
+          />
+        </CollapsedWritingStyle>
       ) : (
         <RevealIntroBubble text={REVEAL_WRITING_STYLE_INTRO}>
-          {card}
+          <WritingStyleRevealCard
+            style_summary={writingStyle.style_summary}
+            example={writingStyle.example ?? null}
+            profession={profession}
+          />
         </RevealIntroBubble>
       )}
 
@@ -87,9 +90,12 @@ interface CollapsedWritingStyleProps {
 }
 
 function CollapsedWritingStyle({ children }: CollapsedWritingStyleProps) {
+  const [isOpen, setIsOpen] = useState(false);
   return (
     <m.div
-      className="ml-10.75 rounded-2xl bg-zinc-800/40 p-1 backdrop-blur-xl"
+      className={`ml-10.75 rounded-2xl bg-zinc-800/40 p-1 backdrop-blur-xl transition-[width,max-width] duration-300 ${
+        isOpen ? "w-full" : "w-96"
+      }`}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: EASE_OUT_QUART }}
@@ -97,6 +103,10 @@ function CollapsedWritingStyle({ children }: CollapsedWritingStyleProps) {
       <Accordion
         variant="light"
         className="px-0"
+        onSelectionChange={(keys) => {
+          const set = keys as Set<string | number>;
+          setIsOpen(set.size > 0);
+        }}
         itemClasses={{
           base: "px-0",
           trigger: "px-3 py-2 rounded-2xl data-[hover=true]:bg-zinc-700/40",
