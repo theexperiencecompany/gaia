@@ -1,0 +1,13 @@
+when i hit restart onboarding, the emails didn't seem to rescan and triage. why?
+
+---
+
+in Your email writing style don't use raised button use heroui blue button. and in the accordion, no need for the bg parent surrounding the 2 cards email writing style and  example email. also when collapsed ensure accordion width is same as  Scanning your inbox component
+
+---
+
+what else can we add or avoid? like based on what you think should be there from a user perspective?
+
+---
+
+nah mate the tasks should not just be email related oh my god

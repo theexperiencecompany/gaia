@@ -1,0 +1,81 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "4dac60d37364",
+  "session_id": "6fc584fe-b306-4943-9064-6f8456627607",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T12:01:35.60028Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/services/onboarding/first_message_service.py",
+    "apps/api/app/services/onboarding/inbox_triage_service.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx",
+    "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx",
+    "apps/web/src/features/onboarding/effects/useBackendSync.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "11c14c872627",
+  "checkpoint_transcript_start": 880,
+  "transcript_lines_at_start": 880,
+  "token_usage": {
+    "input_tokens": 73,
+    "cache_creation_tokens": 443001,
+    "cache_read_tokens": 19527874,
+    "output_tokens": 30567,
+    "api_call_count": 53
+  },
+  "session_metrics": {
+    "turn_count": 14
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T12:01:35.55884Z",
+    "agent_lines": 332,
+    "agent_removed": 102,
+    "human_added": 1432,
+    "human_modified": 3,
+    "human_removed": 0,
+    "total_committed": 1767,
+    "total_lines_changed": 2272,
+    "agent_percentage": 19.102112676056336,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 9,
+      "agent_lines_removed": 6
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 25,
+      "user_lines_removed": 0,
+      "agent_lines_added": 237,
+      "agent_lines_removed": 77,
+      "user_added_per_file": {
+        "apps/api/app/services/onboarding/intelligence_service.py": 25
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 262,
+      "agent_lines_removed": 77
+    }
+  ]
+}
