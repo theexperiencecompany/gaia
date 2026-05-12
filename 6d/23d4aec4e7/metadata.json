@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "6d23d4aec4e7",
+  "strategy": "manual-commit",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingPlatformPreview.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/Platforms.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/components/stages/index.ts",
+    "apps/web/src/features/onboarding/state/initial.ts",
+    "apps/web/src/features/onboarding/state/reducer.ts",
+    "apps/web/src/features/onboarding/state/types.ts",
+    "apps/web/src/features/onboarding/types/websocket.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6d/23d4aec4e7/0/metadata.json",
+      "transcript": "/6d/23d4aec4e7/0/full.jsonl",
+      "content_hash": "/6d/23d4aec4e7/0/content_hash.txt",
+      "prompt": "/6d/23d4aec4e7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 169,
+    "cache_creation_tokens": 566658,
+    "cache_read_tokens": 15796584,
+    "output_tokens": 50900,
+    "api_call_count": 119
+  }
+}

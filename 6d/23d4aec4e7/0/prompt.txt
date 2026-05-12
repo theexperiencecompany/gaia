@@ -1,0 +1,20 @@
+so when i hit run now for the todos, it basically doesn't show the running now steps until after the user does skip for the socials and hits understood for the workflows genreated. basically it waits for the user to complete onboarding until the last step, and then it shows the output and currently processing. how can we fix this so that as soon as user hits run now then the processing data is shown and then the user hits does the workflow understood and socials understood after the run now shit. also when doing run now, i think a part of the system prompt should explain what is going on that the user is part of onboarding. there's no message the user can perform after it, its basically to show the demo so it doesnt show text like this: anything else u need me to look into?
+
+
+ explore
+
+---
+
+i dont like this approach this should not be in a new chat it should be shown on onboarding page itself
+
+---
+
+yes
+
+---
+
+in onboarding flow when i hit run now for the onboarding todos, it should show the user's todo that the user has selected to run now. also when loading, it should show the wavespinner instead of the 3 custom dots that we show. also the width of the onboarding screen is different than the chat page so because of this some components like mail list cards are cut off from the right side. then add margin top for the executed path i guess. also for the run now todo the shit that's run, could you add to the prompt to mention the email where the todo came from? absically a hint from the llm in the todo data payload that is sent with run now. please create tasks for every single thing i've mentioned and explore and help me fix them
+
+---
+
+and with the wave spinner square do we write some loading text too like auto executing todo like the shimmer on the frontend? could you please do that?
