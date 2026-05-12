@@ -102,7 +102,7 @@ export function OnboardingShell({
         ref={scrollRef}
         className="relative z-10 flex-1 overflow-y-auto px-4 pt-20"
       >
-        <div className="relative mx-auto max-w-2xl pb-48">{children}</div>
+        <div className="relative mx-auto max-w-2xl pb-32">{children}</div>
       </div>
 
       <BlurStack

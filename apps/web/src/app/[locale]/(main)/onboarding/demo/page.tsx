@@ -4,6 +4,7 @@ import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { useState } from "react";
+import { HoloCard } from "@/components/ui/holo-card/HoloCard";
 import { OnboardingPlatformConnect } from "@/features/onboarding/components/OnboardingPlatformConnect";
 import { OnboardingPlatformPreview } from "@/features/onboarding/components/OnboardingPlatformPreview";
 import { OnboardingProcessing } from "@/features/onboarding/components/OnboardingProcessing";
@@ -386,7 +387,7 @@ export default function OnboardingDemoPage() {
         {/* Platform connect */}
         <PlatformConnectDemo />
 
-        {/* Holo card */}
+        {/* Holo card — now baked with stamp die-cut */}
         <DemoSection label="HoloCardReveal">
           <HoloCardReveal personalizationData={DUMMY_HOLO_CARD} />
         </DemoSection>

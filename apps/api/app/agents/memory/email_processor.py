@@ -174,28 +174,36 @@ async def _search_platform_emails(
         return []
 
 
+def _extract_display_name(raw_from: str) -> str:
+    if not raw_from:
+        return ""
+    name = raw_from.split("<", 1)[0].strip().strip('"')
+    if not name:
+        return raw_from.split("@", 1)[0].strip("<>") or raw_from
+    return name[:30]
+
+
 async def fetch_emails_for_onboarding(
     user_id: str,
     months: int = 1,
-    batch_size: int = 25,
+    batch_size: int = 100,
     max_total: int = ONBOARDING_EMAIL_SCAN_LIMIT,
-    on_batch: Callable[[int], Awaitable[None]] | None = None,
+    on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
+    fmt: str = "metadata",
+    into: list[dict] | None = None,
 ) -> list[dict]:
-    """
-    Fetch the last `months` months of received emails for onboarding intelligence.
+    """Fetch the last `months` months of received emails for onboarding.
 
-    Fetches in small batches (default 25) to avoid Composio 413 payload-too-large
-    errors, then paginates until max_total is reached or no more pages remain.
-
-    If `on_batch` is provided, it is called with the running email count after
-    each batch lands — callers can use this to stream live progress to the UI.
-
-    Returns list of email dicts with sender, subject, snippet, is_unread fields.
-    Does NOT store to memory — caller uses the raw data.
+    Uses Gmail metadata format by default (no body) so batches can be 100 wide.
+    Callers that need bodies (writing style, social profile regex) pass fmt="full".
+    on_batch receives (running_count, latest_sender_display_name_or_None).
+    If `into` is provided, batches are appended to it live so concurrent
+    consumers can observe partial progress.
     """
     query = f"in:inbox newer_than:{months * 30}d"
-    all_emails: list[dict] = []
+    all_emails: list[dict] = into if into is not None else []
     page_token: str | None = None
+    metadata_mode = fmt == "metadata"
 
     try:
         while len(all_emails) < max_total:
@@ -205,13 +213,19 @@ async def fetch_emails_for_onboarding(
                 query=query,
                 max_results=remaining,
                 page_token=page_token,
+                format=fmt,
+                include_payload=not metadata_mode,
+                verbose=not metadata_mode,
             )
             batch = result.get("messages", [])
             if not batch:
                 break
             all_emails.extend(batch)
             if on_batch is not None:
-                await on_batch(len(all_emails))
+                latest_sender = _extract_display_name(
+                    batch[-1].get("from") or batch[-1].get("sender") or ""
+                )
+                await on_batch(len(all_emails), latest_sender or None)
             page_token = result.get("nextPageToken")
             if not page_token:
                 break
@@ -222,7 +236,7 @@ async def fetch_emails_for_onboarding(
         )
 
     log.info(
-        f"[fetch_emails_for_onboarding] Fetched {len(all_emails)} emails for {user_id}"
+        f"[fetch_emails_for_onboarding] Fetched {len(all_emails)} emails for {user_id} (fmt={fmt})"
     )
     return all_emails
 

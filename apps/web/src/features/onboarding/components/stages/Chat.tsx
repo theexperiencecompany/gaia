@@ -131,7 +131,7 @@ export function Chat({ state, chat }: Omit<ChatProps, "dispatch">) {
  *  the user's only forward move is into the full chat experience. */
 export function ChatComposer(_props: Omit<ChatProps, "state" | "dispatch">) {
   return (
-    <m.div className="flex justify-center pb-6" {...MOTION_COMPOSER_CTA}>
+    <m.div className="flex justify-center pb-2" {...MOTION_COMPOSER_CTA}>
       <OnboardingCTAButton href="/c">Continue to GAIA</OnboardingCTAButton>
     </m.div>
   );

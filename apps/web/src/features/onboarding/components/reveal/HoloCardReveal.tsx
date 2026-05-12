@@ -1,15 +1,21 @@
 /**
- * Inline holo card reveal shown above the chat stream. Three-state machine:
- * shimmer placeholder → vibrate animation on tap → revealed editable card
- * with confetti. Read-only personalization data passed in by the caller.
+ * Inline holo-card reveal shown above the chat stream. Four-state machine:
+ *   idle (giftbox) → vibrating (anticipation) → bursting (scale-up + fade)
+ *   → revealed (editable card with confetti)
+ *
+ * On hover the giftbox scales and lifts slightly, signalling it's interactive.
+ * The "bursting" step double-buffers the visuals: the giftbox scales and fades
+ * out while the card scales in underneath, so the transition reads as the box
+ * opening rather than disappearing flatly.
  */
 
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
 import confetti from "canvas-confetti";
+import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { useState } from "react";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
@@ -20,10 +26,55 @@ interface HoloCardRevealProps {
   personalizationData: PersonalizationData;
 }
 
-type RevealState = "shimmer" | "vibrating" | "revealed";
+type RevealState = "idle" | "vibrating" | "bursting" | "revealed";
+
+// Container is sized to the holo card so the giftbox and the revealed card
+// share an anchor — no layout jump when the state flips.
+const GIFTBOX_SRC = "/images/onboarding/giftbox.png";
 
 export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
-  const [revealState, setRevealState] = useState<RevealState>("shimmer");
+  const [revealState, setRevealState] = useState<RevealState>("idle");
+  const cardWrapRef = useRef<HTMLDivElement>(null);
+
+  // Choreography on reveal:
+  //   t=0    card mounts, springs in from scale 0.6
+  //   t=40   smooth scroll kicks off so the card is in view as it grows
+  //   t=520  scroll has settled — fire confetti from the card's actual
+  //          on-screen centre so the burst lands ON the card, not on the
+  //          original (pre-scroll) viewport position
+  // Times are deliberately offset; firing confetti before the scroll settles
+  // makes the particles spawn at a stale origin and look detached.
+  useEffect(() => {
+    if (revealState !== "revealed") return;
+    const scrollTimer = window.setTimeout(() => {
+      cardWrapRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 40);
+    const confettiTimer = window.setTimeout(() => {
+      const node = cardWrapRef.current;
+      const origin = node
+        ? (() => {
+            const rect = node.getBoundingClientRect();
+            return {
+              x: (rect.left + rect.width / 2) / window.innerWidth,
+              y: (rect.top + rect.height / 2) / window.innerHeight,
+            };
+          })()
+        : { x: 0.5, y: 0.55 };
+      confetti({
+        particleCount: 160,
+        spread: 80,
+        startVelocity: 45,
+        origin,
+      });
+    }, 520);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(confettiTimer);
+    };
+  }, [revealState]);
 
   const holoCardData: HoloCardDisplayData = {
     house: personalizationData.house ?? "bluehaven",
@@ -48,107 +99,139 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
     holo_card_id: personalizationData.holo_card_id,
   };
 
-  const handleShimmerClick = () => {
+  const handleGiftboxClick = () => {
+    if (revealState !== "idle") return;
     setRevealState("vibrating");
   };
 
   const handleVibrationComplete = () => {
+    setRevealState("bursting");
+  };
+
+  const handleBurstComplete = () => {
     setRevealState("revealed");
-    confetti({
-      particleCount: 120,
-      spread: 70,
-      origin: { y: 0.6 },
-    });
   };
 
   return (
     <m.div
-      className="flex flex-col items-center"
+      className="flex flex-col items-center py-2"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
     >
-      {revealState === "revealed" ? (
-        <div
-          className="flex flex-col items-center gap-4"
-          role="img"
-          aria-label="Your personalized GAIA member card"
-        >
-          <p className="text-sm text-zinc-400">Click to flip card</p>
-          <HoloCardEditor
-            initialData={holoCardData}
-            height={HOLO_CARD_HEIGHT}
-            width={HOLO_CARD_WIDTH}
-          />
-        </div>
-      ) : (
-        <m.button
-          type="button"
-          aria-label="Tap to reveal your personalized GAIA card"
-          className="group relative cursor-pointer"
-          onClick={revealState === "shimmer" ? handleShimmerClick : undefined}
-          animate={
-            revealState === "vibrating"
-              ? {
-                  scale: [1, 1.03, 1.03, 1, 1, 1, 1, 1, 1, 1],
-                  x: [0, 0, 0, -6, 6, -6, 6, -4, 4, -2, 2, 0],
+      <div
+        className="relative flex items-center justify-center"
+        style={{
+          width: HOLO_CARD_WIDTH,
+          minHeight: revealState === "revealed" ? HOLO_CARD_HEIGHT : "auto",
+        }}
+      >
+        <AnimatePresence mode="wait">
+          {revealState !== "revealed" && (
+            <m.button
+              key="giftbox"
+              type="button"
+              aria-label="Tap to reveal your personalized GAIA card"
+              onClick={handleGiftboxClick}
+              disabled={revealState !== "idle"}
+              className="group relative flex cursor-pointer items-center justify-center bg-transparent outline-none"
+              style={{ perspective: 1000 }}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={
+                revealState === "vibrating"
+                  ? {
+                      opacity: 1,
+                      scale: [1, 1.04, 1.04, 1, 1, 1, 1, 1],
+                      rotate: [0, -8, 8, -10, 10, -6, 6, -3, 3, 0],
+                      x: [0, -4, 4, -6, 6, -4, 4, -2, 2, 0],
+                    }
+                  : revealState === "bursting"
+                    ? {
+                        opacity: [1, 1, 0],
+                        scale: [1, 1.3, 1.6],
+                        rotate: 0,
+                        x: 0,
+                      }
+                    : { opacity: 1, scale: 1, rotate: 0, x: 0 }
+              }
+              whileHover={
+                revealState === "idle" ? { scale: 1.06, y: -6 } : undefined
+              }
+              whileTap={revealState === "idle" ? { scale: 0.97 } : undefined}
+              transition={
+                revealState === "vibrating"
+                  ? { duration: 0.7, ease: "easeInOut" }
+                  : revealState === "bursting"
+                    ? { duration: 0.45, ease: "easeOut" }
+                    : { type: "spring", stiffness: 320, damping: 22 }
+              }
+              onAnimationComplete={
+                revealState === "vibrating"
+                  ? handleVibrationComplete
+                  : revealState === "bursting"
+                    ? handleBurstComplete
+                    : undefined
+              }
+            >
+              <m.div
+                className="relative flex flex-col items-center"
+                style={{ width: HOLO_CARD_WIDTH }}
+                animate={revealState === "idle" ? { y: [0, -6, 0] } : { y: 0 }}
+                transition={
+                  revealState === "idle"
+                    ? { duration: 3, repeat: Infinity, ease: "easeInOut" }
+                    : undefined
                 }
-              : { x: 0, scale: 1 }
-          }
-          transition={
-            revealState === "vibrating" ? { duration: 0.55 } : undefined
-          }
-          onAnimationComplete={
-            revealState === "vibrating" ? handleVibrationComplete : undefined
-          }
-        >
-          {/* Shimmer card placeholder */}
-          <div
-            className="relative overflow-hidden rounded-2xl shadow-2xl bg-gradient-to-br from-zinc-800 to-zinc-600"
-            style={{ height: HOLO_CARD_HEIGHT, width: HOLO_CARD_WIDTH }}
-          >
-            {/* Shimmer sweep */}
+              >
+                <Image
+                  src={GIFTBOX_SRC}
+                  alt=""
+                  width={1360}
+                  height={952}
+                  priority
+                  className="h-auto w-[240px] select-none"
+                  draggable={false}
+                />
+                {revealState === "idle" && (
+                  <m.p
+                    className="mt-4 text-sm text-white/80"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 2.4, repeat: Infinity }}
+                  >
+                    Click to open
+                  </m.p>
+                )}
+              </m.div>
+            </m.button>
+          )}
+
+          {revealState === "revealed" && (
             <m.div
-              className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-              style={{ backgroundSize: "200% 100%" }}
-              animate={{ backgroundPosition: ["200% 0", "-200% 0"] }}
-              transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
-            />
-
-            {/* Card content skeleton */}
-            <div className="flex h-full flex-col justify-between p-6">
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-8 w-24 rounded-full" />
-                <Skeleton className="h-8 w-20 rounded-full" />
-              </div>
-              <div className="space-y-3">
-                <Skeleton className="h-10 w-48 rounded-lg" />
-                <Skeleton className="h-6 w-40 rounded-lg" />
-                <div className="mt-8 flex items-center justify-between">
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-24 rounded" />
-                    <Skeleton className="h-3 w-20 rounded" />
-                  </div>
-                  <Skeleton className="h-8 w-8 rounded-full" />
-                </div>
-              </div>
-            </div>
-
-            {/* Pulsing border */}
-            <div className="pointer-events-none absolute inset-0 animate-pulse rounded-2xl ring-2 ring-primary/50 group-hover:ring-primary/80" />
-          </div>
-
-          {/* Click to reveal overlay */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <div className="animate-pulse rounded-full bg-white/20 px-8 py-4 backdrop-blur-md">
-              <p className="font-serif text-2xl text-white">
-                Tap to reveal your card
-              </p>
-            </div>
-            <p className="text-sm text-zinc-400">Personalized just for you</p>
-          </div>
-        </m.button>
-      )}
+              key="card"
+              ref={cardWrapRef}
+              className="flex flex-col items-center gap-4"
+              role="img"
+              aria-label="Your personalized GAIA member card"
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{
+                type: "spring",
+                stiffness: 220,
+                damping: 18,
+                delay: 0.05,
+              }}
+            >
+              <HoloCardEditor
+                initialData={holoCardData}
+                height={HOLO_CARD_HEIGHT}
+                width={HOLO_CARD_WIDTH}
+              />
+              <p className="text-sm text-zinc-400">Click to flip card</p>
+            </m.div>
+          )}
+        </AnimatePresence>
+      </div>
     </m.div>
   );
 }

@@ -9,7 +9,11 @@
 
 "use client";
 
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
+import { useState } from "react";
 import { MessagesRegion } from "@/features/onboarding/components/MessagesRegion";
+import { OnboardingIntro } from "@/features/onboarding/components/OnboardingIntro";
 import { OnboardingShell } from "@/features/onboarding/components/OnboardingShell";
 import {
   Chat,
@@ -25,12 +29,52 @@ import {
   Workflows,
   WorkflowsComposer,
 } from "@/features/onboarding/components/stages";
+import { EASE_OUT_QUART } from "@/features/onboarding/constants/motion";
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
+
+const INTRO_FADE_IN = {
+  initial: { opacity: 0, filter: "blur(12px)" },
+  animate: { opacity: 1, filter: "blur(0px)" },
+  transition: { duration: 0.6, ease: EASE_OUT_QUART },
+} as const;
+
+const INTRO_SEEN_KEY = "gaia.onboarding.introSeen";
+
+function hasSeenIntro(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.sessionStorage.getItem(INTRO_SEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markIntroSeen(): void {
+  try {
+    window.sessionStorage.setItem(INTRO_SEEN_KEY, "1");
+  } catch {
+    // sessionStorage unavailable (private mode, etc.) — silently skip.
+  }
+}
 
 export default function Onboarding() {
   const { state, stage, dispatch, restart } = useOnboarding({
     skipAutoRedirect: true,
   });
+  const [introDone, setIntroDone] = useState<boolean>(hasSeenIntro);
+
+  const handleRestart = () => {
+    try {
+      window.sessionStorage.removeItem(INTRO_SEEN_KEY);
+    } catch {}
+    setIntroDone(false);
+    return restart();
+  };
+
+  const handleIntroComplete = () => {
+    markIntroSeen();
+    setIntroDone(true);
+  };
 
   const chat = useChatStage(state, dispatch);
 
@@ -74,15 +118,28 @@ export default function Onboarding() {
     }
   })();
 
+  const wrappedComposer = introDone ? (
+    <m.div {...INTRO_FADE_IN}>{composer}</m.div>
+  ) : null;
+
   return (
-    <OnboardingShell
-      state={state}
-      stage={stage}
-      onRestart={restart}
-      composer={composer}
-    >
-      <MessagesRegion state={state} stage={stage} />
-      {stageContent}
-    </OnboardingShell>
+    <>
+      <OnboardingShell
+        state={state}
+        stage={stage}
+        onRestart={handleRestart}
+        composer={wrappedComposer}
+      >
+        {introDone ? (
+          <m.div {...INTRO_FADE_IN}>
+            <MessagesRegion state={state} stage={stage} />
+            {stageContent}
+          </m.div>
+        ) : null}
+      </OnboardingShell>
+      <AnimatePresence>
+        {!introDone && <OnboardingIntro onComplete={handleIntroComplete} />}
+      </AnimatePresence>
+    </>
   );
 }

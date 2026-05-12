@@ -361,10 +361,9 @@ function GmailInput({ onGmailSkip }: { onGmailSkip: () => void }) {
         </RaisedButton>
         <Button
           variant="light"
-          size="sm"
           onPress={onGmailSkip}
           aria-label="Continue onboarding without connecting Gmail"
-          className="text-zinc-500"
+          className="text-zinc-400 hover:text-zinc-200"
         >
           Continue without Gmail
         </Button>
@@ -374,7 +373,7 @@ function GmailInput({ onGmailSkip }: { onGmailSkip: () => void }) {
           radius="full"
           onPress={() => setPrivacyModalOpen(true)}
           endContent={<ChevronRight className="size-3" />}
-          className="mx-auto w-fit text-xs text-zinc-300 hover:text-zinc-100"
+          className="mx-auto w-fit text-xs text-zinc-400 hover:text-zinc-200"
         >
           How we use your data
         </Button>

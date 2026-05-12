@@ -1,5 +1,5 @@
 import type React from "react";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import Tilt from "react-parallax-tilt";
 
 import { StyledHoloCard } from "@/app/styles/holo-card.styles";
@@ -10,6 +10,11 @@ import { CardOverlay } from "./CardOverlay";
 import { CARD_CLASSES } from "./constants";
 import { FrontCardContent } from "./FrontCardContent";
 import { LogoHeader } from "./LogoHeader";
+import {
+  STAMP_NATURAL_HEIGHT,
+  STAMP_NATURAL_WIDTH,
+  STAMP_OUTER_PATH_D,
+} from "./stampShape";
 import type { HoloCardProps } from "./types";
 import { calculateBackgroundPosition } from "./utils";
 
@@ -156,12 +161,57 @@ export const HoloCard = ({
         transform: "rotateY(180deg)",
       };
 
+  // Stamp die-cut clip-path. The source path is landscape 1877.8125×1409.0625;
+  // we rotate it 90° CW and stretch into the card's portrait W×H inside the
+  // <clipPath> transform so the same path data works at any card size. The
+  // clipPath ID is unique per HoloCard instance so multiple cards on the same
+  // page don't collide. Clip-path is applied in local coords before the
+  // element's CSS transform, so the silhouette tilts and flips with the card.
+  const clipId = useId();
+  const clipUrl = `url(#${clipId})`;
+  const clipTransform = `scale(${width / STAMP_NATURAL_HEIGHT} ${height / STAMP_NATURAL_WIDTH}) translate(${STAMP_NATURAL_HEIGHT} 0) rotate(90)`;
+  const clipStyle = {
+    clipPath: clipUrl,
+    WebkitClipPath: clipUrl,
+  };
+
+  // Inner stamp border: a 4px solid-white rectangle ring inset 22px from the
+  // card edge. Uses CSS `border` (not mask-composite) so it renders the same
+  // way in `html-to-image` clones — earlier experiments with mask-composite
+  // gave a beautiful glass ring on screen but downloaded as a fully-filled
+  // white rectangle because the masking step was dropped during cloning.
+  // Rendered inside the clipped face so the Tilt transform carries it with
+  // the card.
+  const stampBorderStyle = {
+    position: "absolute" as const,
+    inset: 22,
+    border: "4px solid rgba(255, 255, 255, 0.92)",
+    borderRadius: 0,
+    pointerEvents: "none" as const,
+    zIndex: 4,
+    boxSizing: "border-box" as const,
+  };
+  const StampBorder = () => <div aria-hidden style={stampBorderStyle} />;
+
   return (
     <div
       className={forceSide ? "" : "perspective-1000"}
       onClick={handleCardClick}
       style={containerStyle}
     >
+      <svg
+        aria-hidden
+        width="0"
+        height="0"
+        style={{ position: "absolute", width: 0, height: 0 }}
+      >
+        <title>Stamp clip-path</title>
+        <defs>
+          <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+            <path d={STAMP_OUTER_PATH_D} transform={clipTransform} />
+          </clipPath>
+        </defs>
+      </svg>
       <div
         className={
           forceSide ? "relative" : "relative transition-transform duration-700"
@@ -171,14 +221,15 @@ export const HoloCard = ({
         {/* Front Side */}
         <div style={frontStyle}>
           {forceSide ? (
-            <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-xl">
+            <div className="relative h-full w-full" style={clipStyle}>
+              <StampBorder />
               <CardOverlay
                 overlayColor={overlay_color}
                 overlayOpacity={overlay_opacity}
               />
 
               <div className={CARD_CLASSES.CONTENT_WRAPPER}>
-                <LogoHeader house={house} variant="front" />
+                <LogoHeader variant="front" />
                 <FrontCardContent
                   name={name}
                   personalityPhrase={personality_phrase}
@@ -205,14 +256,15 @@ export const HoloCard = ({
               {/* </DitherEffect> */}
             </div>
           ) : (
-            <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
+            <Tilt className="relative h-full w-full p-0!" style={clipStyle}>
+              <StampBorder />
               <CardOverlay
                 overlayColor={overlay_color}
                 overlayOpacity={overlay_opacity}
               />
 
               <div className={CARD_CLASSES.CONTENT_WRAPPER}>
-                <LogoHeader house={house} variant="front" />
+                <LogoHeader variant="front" />
                 <FrontCardContent
                   name={name}
                   personalityPhrase={personality_phrase}
@@ -246,7 +298,8 @@ export const HoloCard = ({
         {/* Back Side */}
         <div style={backStyle}>
           {forceSide ? (
-            <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-xl">
+            <div className="relative h-full w-full" style={clipStyle}>
+              <StampBorder />
               <CardOverlay
                 overlayColor={overlay_color}
                 overlayOpacity={overlay_opacity}
@@ -254,7 +307,6 @@ export const HoloCard = ({
 
               <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
                 <div className="flex w-full flex-col gap-4">
-                  <LogoHeader house={house} variant="back" />
                   <BackCardContent
                     name={name}
                     personalityPhrase={personality_phrase}
@@ -289,7 +341,8 @@ export const HoloCard = ({
               {/* </DitherEffect> */}
             </div>
           ) : (
-            <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
+            <Tilt className="relative h-full w-full p-0!" style={clipStyle}>
+              <StampBorder />
               <CardOverlay
                 overlayColor={overlay_color}
                 overlayOpacity={overlay_opacity}
@@ -297,7 +350,6 @@ export const HoloCard = ({
 
               <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
                 <div className="flex w-full flex-col gap-4">
-                  <LogoHeader house={house} variant="back" />
                   <BackCardContent
                     name={name}
                     personalityPhrase={personality_phrase}

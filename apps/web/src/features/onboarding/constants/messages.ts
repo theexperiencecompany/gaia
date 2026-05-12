@@ -35,7 +35,4 @@ export const REVEAL_TODOS_INTRO =
 // ── Workflows stage copy ────────────────────────────────────────────────────
 
 export const WORKFLOWS_INTRO =
-  "Workflows are recurring jobs I run across your tools — Gmail, Calendar, Notion, Slack — on a schedule, or triggered by an event like a new email.";
-
-export const WORKFLOWS_SUBLINE =
-  "They handle the everyday grunt work for you. Build more anytime in the Workflows page.";
+  "Workflows are recurring jobs I run across your tools — Gmail, Calendar, Notion, Slack — on a schedule, or triggered by an event like a new email.\n\nThey handle the everyday grunt work for you. Build more anytime in the Workflows page.";

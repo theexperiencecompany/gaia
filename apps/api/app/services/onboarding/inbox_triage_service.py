@@ -9,7 +9,6 @@ from shared.py.wide_events import log
 from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.core.lazy_loader import providers
 from app.models.onboarding_models import InboxTriage, InboxTriageOutput
-from app.services.mail.mail_service import search_messages
 
 _NOISE_SENDERS = (
     "noreply@",
@@ -19,6 +18,16 @@ _NOISE_SENDERS = (
     "donotreply@",
 )
 
+_MEANINGFUL_LABELS = {
+    "IMPORTANT",
+    "STARRED",
+    "CATEGORY_PERSONAL",
+    "CATEGORY_SOCIAL",
+    "CATEGORY_PROMOTIONS",
+    "CATEGORY_UPDATES",
+    "CATEGORY_FORUMS",
+}
+
 
 def _is_noise_email(email: dict) -> bool:
     """Return True if the email is automated noise unlikely to need user action."""
@@ -27,6 +36,15 @@ def _is_noise_email(email: dict) -> bool:
     return any(sender.startswith(prefix) for prefix in _NOISE_SENDERS) or (
         "unsubscribe" in snippet
     )
+
+
+def _format_labels(email: dict) -> str:
+    labels = email.get("labelIds") or email.get("label_ids") or []
+    kept = [lbl for lbl in labels if lbl in _MEANINGFUL_LABELS]
+    if not kept:
+        return ""
+    pretty = [lbl.replace("CATEGORY_", "").lower() for lbl in kept]
+    return f"[{', '.join(pretty)}] "
 
 
 async def triage_inbox(
@@ -40,7 +58,7 @@ async def triage_inbox(
 
     Args:
         user_id: The user's ID
-        emails: List of email dicts with sender, subject, snippet, is_unread
+        emails: List of email dicts with sender, subject, snippet, is_unread, labelIds
         profession: User's profession for context-aware triaging
         focus: User's current focus for context-aware triaging
 
@@ -58,23 +76,19 @@ async def triage_inbox(
 
     t0 = time.monotonic()
     try:
-        # Filter noise before prioritizing
         filtered = [e for e in emails if not _is_noise_email(e)]
         unread = [e for e in filtered if e.get("is_unread", False)]
-        noise_dropped = len(emails) - len(filtered)
-
-        # Build compact email list for LLM (sender, subject, snippet only)
-        # Prioritize unread emails, then fill with recent read emails
         read = [e for e in filtered if not e.get("is_unread", False)]
-        # Take up to 30 unread + 20 most recent read, capped at 50
-        sampled = (unread[:30] + read[:20])[:50]
+        noise_dropped = len(emails) - len(filtered)
+        sampled = (unread[:60] + read[:40])[:100]
 
         email_lines = []
         for e in sampled:
             sender = e.get("sender", "Unknown")
             subject = e.get("subject", "(no subject)")
-            snippet = e.get("snippet", "")[:100]
-            email_lines.append(f"- {sender} | {subject} | {snippet}")
+            snippet = e.get("snippet", "")
+            labels = _format_labels(e)
+            email_lines.append(f"- {labels}{sender} | {subject} | {snippet}")
 
         email_list_text = "\n".join(email_lines)
 
@@ -94,31 +108,11 @@ async def triage_inbox(
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
-        # Fetch true unread count from Gmail (not limited to scan window)
-        true_unread = 0
-        unread_fetch_outcome = "ok"
-        t_unread = time.monotonic()
-        try:
-            unread_result = await search_messages(
-                user_id=user_id,
-                query="is:unread in:inbox",
-                max_results=500,
-            )
-            true_unread = len(unread_result.get("messages", []))
-        except Exception as unread_err:
-            unread_fetch_outcome = "failed"
-            log.warning(
-                "[inbox_triage] true unread fetch failed",
-                user_id=user_id,
-                step="triage_unread_fetch",
-                error=str(unread_err)[:200],
-                error_type=type(unread_err).__name__,
-            )
-            true_unread = len([e for e in emails if e.get("is_unread", False)])
+        total_unread = len(unread)
 
         triage = InboxTriage(
             total_scanned=len(emails),
-            total_unread=true_unread,
+            total_unread=total_unread,
             summary=result.summary,
             important_emails=result.important_emails,
             patterns=result.patterns,
@@ -136,9 +130,7 @@ async def triage_inbox(
             prompt_chars=len(prompt),
             important_count=len(triage.important_emails),
             patterns_count=len(triage.patterns),
-            true_unread=true_unread,
-            unread_fetch_outcome=unread_fetch_outcome,
-            unread_fetch_duration_s=round(time.monotonic() - t_unread, 2),
+            total_unread=total_unread,
             llm_duration_s=llm_duration_s,
             duration_s=round(time.monotonic() - t0, 2),
         )

@@ -73,7 +73,7 @@ export function RevealWritingStyle({ state }: { state: OnboardingState }) {
             >
               <div className="mt-2 ml-10.75 flex items-center gap-2">
                 <Spinner size="sm" color="default" />
-                <span className="text-sm text-zinc-500">
+                <span className="text-sm text-zinc-300">
                   {getCurrentProgress(state) ?? "Almost ready"}
                 </span>
               </div>

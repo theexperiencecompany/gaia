@@ -21,7 +21,6 @@ async def generate_first_message(
     triage: Optional[InboxTriage],
     created_todos: list[dict],
     created_workflows: list[dict],
-    social_profiles: list[dict],
     writing_style: Optional[WritingStyleProfile],
     focus: str = "",
 ) -> str:
@@ -33,15 +32,6 @@ async def generate_first_message(
     try:
         writing_style_summary = (
             writing_style.summary if writing_style else "not yet analyzed"
-        )
-
-        social_profiles_text = (
-            ", ".join(
-                f"{p.get('platform', '')}: {p.get('url', '')}"
-                for p in social_profiles[:5]
-            )
-            if social_profiles
-            else "none found"
         )
 
         important_emails_text = ""
@@ -72,7 +62,6 @@ async def generate_first_message(
             profession=profession,
             focus=focus or "not stated",
             writing_style_summary=writing_style_summary,
-            social_profiles_text=social_profiles_text,
             total_scanned=total_scanned,
             total_unread=total_unread,
             patterns=patterns_text or "no notable patterns",
@@ -106,7 +95,6 @@ async def generate_first_message(
             has_writing_style=writing_style is not None,
             todos_count=len(created_todos),
             workflows_count=len(created_workflows),
-            social_profile_count=len(social_profiles),
             llm_duration_s=llm_duration_s,
             duration_s=round(time.monotonic() - t0, 2),
         )

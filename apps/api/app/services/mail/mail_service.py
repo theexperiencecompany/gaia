@@ -476,26 +476,29 @@ async def search_messages(
     query: Optional[str] = None,
     max_results: int = 20,
     page_token: Optional[str] = None,
+    format: Optional[str] = None,
+    include_payload: Optional[bool] = None,
+    verbose: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Search Gmail messages using Composio Gmail tool.
 
-    Args:
-        user_id: User ID for Composio authentication
-        query: Search query in Gmail's search syntax
-        max_results: Maximum number of results to return
-        page_token: Token for pagination
-
-    Returns:
-        Dict containing messages and next page token
+    Pass format="metadata" with include_payload=False and verbose=False to
+    skip body decode and bypass GMAIL_FULL_FETCH_HARD_LIMIT.
     """
     try:
-        parameters = {
+        parameters: Dict[str, Any] = {
             "query": query or "",
             "max_results": max_results,
         }
         if page_token:
             parameters["page_token"] = page_token
+        if format is not None:
+            parameters["format"] = format
+        if include_payload is not None:
+            parameters["include_payload"] = include_payload
+        if verbose is not None:
+            parameters["verbose"] = verbose
 
         result = await invoke_gmail_tool(user_id, "GMAIL_FETCH_EMAILS", parameters)
 

@@ -19,6 +19,7 @@ Holo card runs fully independently.
 
 import asyncio
 import time
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Awaitable, Optional, TypeVar
 
@@ -47,6 +48,7 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.composio.composio_service import get_composio_service
 from app.services.workflow.generation_service import WorkflowGenerationService
+from app.services.onboarding import inbox_scan_cache
 from app.services.onboarding.first_message_service import generate_first_message
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.post_onboarding_service import (
@@ -136,6 +138,19 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
 
 # Module-level set prevents GC of fire-and-forget tasks
 _background_tasks: set[asyncio.Task] = set()
+
+
+_TRIAGE_EARLY_THRESHOLD = 100
+
+
+@dataclass
+class InboxScanContext:
+    """Shared state between the inbox fetch task and consumers (triage)
+    that want to start as soon as enough emails are buffered."""
+
+    emails: list[dict] = field(default_factory=list)
+    first_batch_ready: asyncio.Event = field(default_factory=asyncio.Event)
+    done: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 # ── Pydantic spec models for LLM structured outputs ──────────────────────────
@@ -271,26 +286,22 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         branch="gmail" if has_gmail else "no_gmail",
     )
 
-    # ── Roots (fire at t=0) ──────────────────────────────────────────────
-    inbox_emails_future: Optional[asyncio.Task[list[dict]]] = None
+    inbox_ctx: Optional[InboxScanContext] = None
     provision_future: Optional[asyncio.Task[None]] = None
 
     if has_gmail:
-        inbox_emails_future = asyncio.create_task(_run_inbox_scanning(user_id))
+        inbox_ctx = InboxScanContext()
+        scan_task = asyncio.create_task(_run_inbox_scanning(user_id, inbox_ctx))
+        _background_tasks.add(scan_task)
+        scan_task.add_done_callback(_background_tasks.discard)
         provision_future = asyncio.create_task(_run_provision_gmail(user_id))
 
-    # Writing style is created unconditionally — returns None for no-Gmail users.
-    # Owns its own 50-sent-email fetch internally (no shared future with inbox scan).
     writing_style_future: asyncio.Task[Optional[WritingStyleProfile]] = (
         asyncio.create_task(_run_writing_style(user_id, has_gmail, profession))
     )
 
-    # ── Derived nodes ────────────────────────────────────────────────────
     triage_future = asyncio.create_task(
-        _run_triage(user_id, inbox_emails_future, profession, focus)
-    )
-    social_profiles_future = asyncio.create_task(
-        _run_social_profiles(user_id, name, user_email, inbox_emails_future)
+        _run_triage(user_id, inbox_ctx, profession, focus)
     )
     todos_future = asyncio.create_task(
         _run_todos(user_id, name, profession, focus, has_gmail, triage_future)
@@ -307,26 +318,12 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             writing_style_future,
         )
     )
-    holo_future = asyncio.create_task(
-        _run_holo_card(
-            user_id,
-            user_doc,
-            profession,
-            focus,
-            triage_future,
-            writing_style_future,
-            social_profiles_future,
-        )
-    )
-
-    # ── First message — does NOT wait for holo card ──────────────────────
     t_gather = time.monotonic()
-    triage, todos, workflows, writing_style, social_profiles = await asyncio.gather(
+    triage, todos, workflows, writing_style = await asyncio.gather(
         triage_future,
         todos_future,
         workflows_future,
         writing_style_future,
-        social_profiles_future,
     )
     log.info(
         "[intelligence] critical_path gathered",
@@ -345,7 +342,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             triage=triage,
             created_todos=todos,
             created_workflows=workflows,
-            social_profiles=[p.model_dump() for p in social_profiles],
             writing_style=writing_style,
             focus=focus,
         ),
@@ -358,12 +354,10 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         duration_s=round(time.monotonic() - t_msg, 2),
     )
 
-    # ── Seed conversation, persist, and wait for holo in parallel ────────
     t_final = time.monotonic()
-    conversation_id, _, _ = await asyncio.gather(
+    conversation_id, _ = await asyncio.gather(
         _seed_conversation(user_id, first_message),
-        _persist_profiles(user_id, writing_style, triage, social_profiles),
-        holo_future,
+        _persist_profiles(user_id, writing_style, triage),
     )
     log.info(
         "[intelligence] finalize gathered",
@@ -378,8 +372,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             {"$set": {"onboarding.first_message_conversation_id": conversation_id}},
         )
 
-    # Don't block completion on Gmail workflow provisioning — it's already
-    # running; let it finish whenever.
     if provision_future is not None and not provision_future.done():
         _background_tasks.add(provision_future)
         provision_future.add_done_callback(_background_tasks.discard)
@@ -389,6 +381,26 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         OnboardingStage.COMPLETE,
         {"conversation_id": conversation_id},
     )
+
+    async def _post_complete() -> None:
+        social_profiles: list[SocialProfile] = []
+        if has_gmail:
+            social_profiles = await _run_social_profiles_background(
+                user_id, name, user_email
+            )
+        await _run_holo_card(
+            user_id,
+            user_doc,
+            profession,
+            focus,
+            triage,
+            writing_style,
+            social_profiles,
+        )
+
+    post_task = asyncio.create_task(_post_complete())
+    _background_tasks.add(post_task)
+    post_task.add_done_callback(_background_tasks.discard)
 
     # Canonical pipeline-end summary. One log line a human (or query) can
     # use to answer "what did this user's onboarding look like?" without
@@ -400,7 +412,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         has_gmail=has_gmail,
         writing_style_learned=writing_style is not None,
         triage_important_count=len(triage.important_emails) if triage else 0,
-        social_profile_count=len(social_profiles),
         todos_count=len(todos),
         workflows_count=len(workflows),
         conversation_seeded=conversation_id is not None,
@@ -412,10 +423,32 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 # ── Root wrappers ────────────────────────────────────────────────────────────
 
 
-async def _run_inbox_scanning(user_id: str) -> list[dict]:
-    """Fetch the inbox for triage + social profile extraction.
-    Emits INBOX_SCANNING repeatedly with {"status_text": "..."} as batches land."""
+async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
+    """Stream the inbox into ctx.emails (metadata format).
+    Sets ctx.first_batch_ready once ~100 emails buffered so triage can start
+    early; sets ctx.done when fetch completes."""
     t0 = time.monotonic()
+
+    cached = await inbox_scan_cache.get(user_id, "metadata")
+    if cached is not None:
+        ctx.emails.extend(cached)
+        ctx.first_batch_ready.set()
+        ctx.done.set()
+        await _emit_stage(
+            user_id,
+            OnboardingStage.INBOX_SCANNING,
+            {"status_text": f"Loaded {len(cached)} cached emails"},
+        )
+        log.info(
+            "[intelligence] inbox_scanning cache_hit",
+            user_id=user_id,
+            step="inbox_scanning",
+            outcome="ok",
+            emails_fetched=len(cached),
+            cache_hit=True,
+            duration_s=round(time.monotonic() - t0, 2),
+        )
+        return
 
     await _emit_stage(
         user_id,
@@ -423,20 +456,30 @@ async def _run_inbox_scanning(user_id: str) -> list[dict]:
         {"status_text": "Connecting to Gmail"},
     )
 
-    async def _on_batch(current: int) -> None:
+    async def _on_batch(current: int, latest_sender: str | None) -> None:
+        if not ctx.first_batch_ready.is_set() and current >= _TRIAGE_EARLY_THRESHOLD:
+            ctx.first_batch_ready.set()
+        status_text = (
+            f"Fetched {current} emails — {latest_sender}"
+            if latest_sender
+            else f"Fetched {current} emails"
+        )
         await _emit_stage(
             user_id,
             OnboardingStage.INBOX_SCANNING,
-            {"status_text": f"Fetched {current} emails"},
+            {"status_text": status_text},
         )
 
+    fetch_ok = False
     try:
-        emails = await fetch_emails_for_onboarding(
+        await fetch_emails_for_onboarding(
             user_id,
             months=1,
             max_total=ONBOARDING_EMAIL_SCAN_LIMIT,
             on_batch=_on_batch,
+            into=ctx.emails,
         )
+        fetch_ok = True
     except Exception as e:
         log.error(
             "[intelligence] inbox_scanning failed",
@@ -448,17 +491,20 @@ async def _run_inbox_scanning(user_id: str) -> list[dict]:
             duration_s=round(time.monotonic() - t0, 2),
             exc_info=True,
         )
-        return []
+    finally:
+        ctx.first_batch_ready.set()
+        ctx.done.set()
+        if fetch_ok:
+            await inbox_scan_cache.put(user_id, "metadata", list(ctx.emails))
 
     log.info(
         "[intelligence] inbox_scanning done",
         user_id=user_id,
         step="inbox_scanning",
         outcome="ok",
-        emails_fetched=len(emails),
+        emails_fetched=len(ctx.emails),
         duration_s=round(time.monotonic() - t0, 2),
     )
-    return emails
 
 
 async def _run_provision_gmail(user_id: str) -> None:
@@ -559,11 +605,11 @@ async def _run_writing_style(
 
 async def _run_triage(
     user_id: str,
-    inbox_emails_future: Optional[asyncio.Task[list[dict]]],
+    inbox_ctx: Optional[InboxScanContext],
     profession: str,
     focus: str,
 ) -> Optional[InboxTriage]:
-    if inbox_emails_future is None:
+    if inbox_ctx is None:
         log.info(
             "[intelligence] triage skipped",
             user_id=user_id,
@@ -572,7 +618,8 @@ async def _run_triage(
             skip_reason="no_gmail",
         )
         return None
-    emails = await inbox_emails_future
+    await inbox_ctx.first_batch_ready.wait()
+    emails = list(inbox_ctx.emails)
     if not emails:
         log.info(
             "[intelligence] triage skipped",
@@ -647,23 +694,44 @@ async def _run_triage(
     return result
 
 
-async def _run_social_profiles(
+async def _run_social_profiles_background(
     user_id: str,
     user_name: str,
     user_email: Optional[str],
-    inbox_emails_future: Optional[asyncio.Task[list[dict]]],
 ) -> list[SocialProfile]:
-    if inbox_emails_future is None:
-        return []
-    emails = await inbox_emails_future
-    if not emails:
-        return []
-
+    """Off-critical-path: fetch full email bodies, run social-profile regex,
+    persist, and emit SOCIAL_PROFILES_READY. Returns the deduped profiles so
+    chained consumers (e.g. holo card) can use them."""
     t0 = time.monotonic()
+    profiles: list[SocialProfile] = []
     try:
-        profiles = await extract_social_profiles_from_emails(
-            emails, user_name, user_email
-        )
+        emails = await inbox_scan_cache.get(user_id, "full")
+        if emails is None:
+            emails = await fetch_emails_for_onboarding(
+                user_id,
+                months=1,
+                max_total=ONBOARDING_EMAIL_SCAN_LIMIT,
+                fmt="full",
+            )
+            await inbox_scan_cache.put(user_id, "full", emails)
+
+        if emails:
+            raw = await extract_social_profiles_from_emails(
+                emails, user_name, user_email
+            )
+            raw_count = len(raw)
+            profiles = dedup_profiles_by_platform(raw)
+            await _persist_social_profiles(user_id, profiles)
+            log.info(
+                "[intelligence] social_profiles done",
+                user_id=user_id,
+                step="social_profiles",
+                outcome="ok",
+                emails_in=len(emails),
+                raw_count=raw_count,
+                deduped_count=len(profiles),
+                duration_s=round(time.monotonic() - t0, 2),
+            )
     except Exception as e:
         log.error(
             "[intelligence] social_profiles failed",
@@ -675,24 +743,7 @@ async def _run_social_profiles(
             duration_s=round(time.monotonic() - t0, 2),
             exc_info=True,
         )
-        profiles = []
 
-    # Safety net — ensure one profile per platform
-    raw_count = len(profiles)
-    profiles = dedup_profiles_by_platform(profiles)
-
-    log.info(
-        "[intelligence] social_profiles done",
-        user_id=user_id,
-        step="social_profiles",
-        outcome="ok",
-        emails_in=len(emails),
-        raw_count=raw_count,
-        deduped_count=len(profiles),
-        duration_s=round(time.monotonic() - t0, 2),
-    )
-    # Always emit so the frontend has a definitive signal the stage finished,
-    # even if no profiles were found.
     await _emit_stage(
         user_id,
         OnboardingStage.SOCIAL_PROFILES_READY,
@@ -867,14 +918,10 @@ async def _run_holo_card(
     user_doc: dict,
     profession: str,
     focus: str,
-    triage_future: asyncio.Task[Optional[InboxTriage]],
-    writing_style_future: asyncio.Task[Optional[WritingStyleProfile]],
-    social_profiles_future: asyncio.Task[list[SocialProfile]],
+    triage: Optional[InboxTriage],
+    writing_style: Optional[WritingStyleProfile],
+    social_profiles: Optional[list[SocialProfile]] = None,
 ) -> None:
-    triage, writing_style, social_profiles = await asyncio.gather(
-        triage_future, writing_style_future, social_profiles_future
-    )
-
     t0 = time.monotonic()
     try:
         context_parts: list[str] = []
@@ -978,20 +1025,42 @@ async def _seed_conversation(user_id: str, first_message: str) -> Optional[str]:
     return cid
 
 
+async def _persist_social_profiles(
+    user_id: str, social_profiles: list[SocialProfile]
+) -> None:
+    """Write auto-extracted profiles only if the user hasn't already confirmed
+    them via POST /social-profiles."""
+    if not social_profiles:
+        return
+    try:
+        await users_collection.update_one(
+            {
+                "_id": ObjectId(user_id),
+                "$or": [
+                    {"onboarding.social_profiles": {"$exists": False}},
+                    {"onboarding.social_profiles": None},
+                    {"onboarding.social_profiles": []},
+                ],
+            },
+            {
+                "$set": {
+                    "onboarding.social_profiles": [
+                        p.model_dump() for p in social_profiles
+                    ]
+                }
+            },
+        )
+    except Exception as e:
+        log.error(f"[intelligence] persist social_profiles failed: {e}", exc_info=True)
+
+
 async def _persist_profiles(
     user_id: str,
     writing_style: Optional[WritingStyleProfile],
     triage: Optional[InboxTriage],
-    social_profiles: list[SocialProfile],
 ) -> None:
-    """Persist writing style, triage summary, and social profiles.
-
-    Preserves two non-negotiable user-edit guards:
-    - Writing style writes only sub-fields (never the whole object) so
-      user_edited_summary is never clobbered.
-    - Social profiles are only written if the user has not already confirmed
-      them via POST /social-profiles ({"$exists": False} filter).
-    """
+    """Persist writing style and triage summary. Social profiles are persisted
+    separately by the background task in _run_social_profiles_background."""
     t0 = time.monotonic()
     update_fields: dict = {}
     if writing_style:
@@ -1025,41 +1094,12 @@ async def _persist_profiles(
                 f"[intelligence] persist update_fields failed: {e}", exc_info=True
             )
 
-    if social_profiles:
-        try:
-            # Only write auto-extracted profiles if the user hasn't already
-            # confirmed them via POST /social-profiles.  The field may be
-            # absent, null, or an empty list after initial onboarding — all
-            # three mean "not yet confirmed by the user".
-            await users_collection.update_one(
-                {
-                    "_id": ObjectId(user_id),
-                    "$or": [
-                        {"onboarding.social_profiles": {"$exists": False}},
-                        {"onboarding.social_profiles": None},
-                        {"onboarding.social_profiles": []},
-                    ],
-                },
-                {
-                    "$set": {
-                        "onboarding.social_profiles": [
-                            p.model_dump() for p in social_profiles
-                        ]
-                    }
-                },
-            )
-        except Exception as e:
-            log.error(
-                f"[intelligence] persist social_profiles failed: {e}", exc_info=True
-            )
-
     log.info(
         "[intelligence] persist_profiles done",
         user_id=user_id,
         step="persist_profiles",
         writing_style_persisted=writing_style is not None,
         triage_persisted=triage is not None,
-        social_profiles_persisted=len(social_profiles),
         duration_s=round(time.monotonic() - t0, 2),
     )
 

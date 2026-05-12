@@ -220,11 +220,13 @@ Context:
 
 Style: Sassy best friend who sees through them. Third person. Call out patterns and quirks, not job titles.
 
+NEVER use em dashes (—) or en dashes (–) anywhere in the bio. Use commas, periods, colons, or parentheses instead. Em dashes are a tell that the text is AI-generated, so they are strictly off-limits regardless of how natural they would feel.
+
 Examples:
 
 ❌ "Alex is a passionate software engineer who loves coding and problem-solving."
 
-✅ "Alex writes code like poetry—elegant, intentional, and probably refactored three times. The type to have 47 browser tabs open about some niche framework at 2am, while maintaining a pristine todo list. Chaotic method that somehow always delivers."
+✅ "Alex writes code like poetry, elegant, intentional, and probably refactored three times. The type to have 47 browser tabs open about some niche framework at 2am, while maintaining a pristine todo list. Chaotic method that somehow always delivers."
 
 ❌ "Sarah is a designer who creates beautiful experiences and cares about her craft."
 
@@ -240,7 +242,6 @@ User context:
 - Profession: {profession}
 - Current focus: {focus}
 - Writing style learned: {writing_style_summary}
-- Social profiles found: {social_profiles_text}
 
 What you found in their inbox:
 - Total emails scanned: {total_scanned}
