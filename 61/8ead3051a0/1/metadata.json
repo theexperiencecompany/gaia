@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "618ead3051a0",
+  "session_id": "3cda4813-a3a7-4a84-a5d2-04c2815ff50e",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T21:18:18.048042Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStageAccordion.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "f513cc10913f",
+  "checkpoint_transcript_start": 21,
+  "transcript_lines_at_start": 21,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T21:18:18.045909Z",
+    "agent_lines": 263,
+    "agent_removed": 113,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 263,
+    "total_lines_changed": 376,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
