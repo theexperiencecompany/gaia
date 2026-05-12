@@ -115,3 +115,7 @@ mate its here '/Users/aryan/Downloads/Holo Card from GAIA (3).png'
 ---
 
 the gaia logo in the holo card ensure padding and rounded full and the bg blur and opacitty like the other cards
+
+---
+
+commit and push all changes
