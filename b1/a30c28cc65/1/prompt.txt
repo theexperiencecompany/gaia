@@ -1,0 +1,15 @@
+I Set Up 2 Workflows For Your Gmail this toast still appears in the onboarding route it shouldn't. also Workflows are recurring jobs I run across your tools — Gmail, Calendar, Notion, Slack — on a schedule, or triggered by an event like a new email.
+They handle the everyday grunt work for you. Build more anytime in the Workflows page.
+
+
+ here remove the em dashes. and please dont move these in the same chat bubble bro like do it with NEW_MESSAGE_BREAK's so that different bubbles. 
+via WhatsApp
+here write "Demo via x platform" instead of just via platform. and increase the icon size slightly.  and rename skip for now to be "I'll do it later" also holo card gift didn't even appear. create tasks for all of these fix them all and help me diagnose the holo card issue based on log files and why it didn't show
+
+---
+
+why do we do complete and then holo close? does this even make sense?
+
+---
+
+i think we should reorder to run holo card before emitting complete. and for the holo card, merge both the api calls to be structured output for phrase and bio instead of doing this shit in different api calls.
