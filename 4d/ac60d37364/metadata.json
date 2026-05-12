@@ -3,13 +3,15 @@
   "checkpoint_id": "4dac60d37364",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 12,
+  "checkpoints_count": 26,
   "files_touched": [
     "apps/api/app/agents/prompts/onboarding_prompts.py",
     "apps/api/app/services/onboarding/first_message_service.py",
     "apps/api/app/services/onboarding/inbox_triage_service.py",
     "apps/api/app/services/onboarding/intelligence_service.py",
     "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/features/landing/components/iphone/ChatDemo.tsx",
+    "apps/web/src/features/landing/components/iphone/useStaggeredMessages.ts",
     "apps/web/src/features/landing/components/sections/BotsShowcaseSection.tsx",
     "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
     "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx",
@@ -35,13 +37,19 @@
       "transcript": "/4d/ac60d37364/1/full.jsonl",
       "content_hash": "/4d/ac60d37364/1/content_hash.txt",
       "prompt": "/4d/ac60d37364/1/prompt.txt"
+    },
+    {
+      "metadata": "/4d/ac60d37364/2/metadata.json",
+      "transcript": "/4d/ac60d37364/2/full.jsonl",
+      "content_hash": "/4d/ac60d37364/2/content_hash.txt",
+      "prompt": "/4d/ac60d37364/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 143,
-    "cache_creation_tokens": 527462,
-    "cache_read_tokens": 21306426,
-    "output_tokens": 40313,
-    "api_call_count": 78
+    "input_tokens": 522,
+    "cache_creation_tokens": 1256467,
+    "cache_read_tokens": 57525676,
+    "output_tokens": 135914,
+    "api_call_count": 297
   }
 }

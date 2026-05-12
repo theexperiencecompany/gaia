@@ -1,0 +1,63 @@
+Here’s what I set up to run on a recurring basis:
+
+so these workflows only 1-2 are generated. how to enforce that literally 3 are generated at all times
+
+---
+
+Get notifications and talk to me on the go. how can we improve this text in the onboarding? so that the user can understand why the different platforms exist and the notifications and other things like gaia can message them autonomously? how can we write this? help me brainstorm. also how can we show a card with a minimal version of the demo in here Reach GAIA from anywhere in the landing page. like u know how the landing page has this, can the onboarding flow show the different animations but in an aspect video card hich auto scrolls or something? but with the exact same components used in the landing page??
+
+---
+
+i want it to be a bit more human. and the proactive forward is good. give me a couple final versions. and for the mini demo card, i just want the chat surface just within a card with the chat bubble. it can automatically animate the different platforms, but change sections when the user hovers on each platform like discord telegram whatsapp buttons then change the platform type in the demo.
+
+---
+
+i like 3. let's do it. now let's proceed with all of this. also how about we show different platform messages based on the personality type of the user? like hardcoded dict based on the different personalities on the frontend and the one the user selects
+
+---
+
+no sorry i meant the profession. show different text messages catering to the user's profession.
+
+---
+
+anything left?
+
+---
+
+yes please do that in onboarding demo route. ignore the preduced motion snhit
+
+---
+
+ensure fixed height so height doesnt change
+
+---
+
+fix height as in it shouldnt shift
+
+---
+
+the height just shouldnt change bro like min and max and proper width too so that when less bubbles and more bubbles are there the dmimensions dont shift at all
+
+---
+
+width is way to less btw. height is proper. also ensure onboarding doesnt have the header like u know the top header with profile photo and back buttons or the channel name, we can just remove that in the onboarding with a prop.
+
+---
+
+width is way too short and demos should be a bit linger
+
+---
+
+slightly less height and a bit more width and also ensure user message in the discord demo with the user name and profile photo and ensure slack button too with the demo
+
+---
+
+does the onboarding page hide the header??
+
+---
+
+no u retard im talking about the chat demo header?
+
+---
+
+make the buttons default cariant instead of flat for the platforms
