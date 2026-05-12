@@ -92,7 +92,7 @@ services:
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
       POSTGRES_DB: langgraph
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     restart: on-failure

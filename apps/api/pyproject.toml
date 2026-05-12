@@ -167,8 +167,8 @@ backend = [
   "pyinstrument>=5.1.1",
   "posthog>=7.4.2",
   "sentry-sdk[langgraph]>=2.44.0",
-  "opik>=1.9.47,<1.9.80",
-  "litellm!=1.81.0",
+  "opik>=1.10.0",
+  "litellm>=1.83.4,<1.90",
   "prometheus-fastapi-instrumentator>=7.0.0",
   "prometheus-client>=0.20.0",
 ]
