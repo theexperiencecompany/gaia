@@ -1,0 +1,39 @@
+holo card taking way too long to show on frontend, why not just eagerly show this when user is on the last stage or something? regardless of if the social profiles are analysed or not? can u please explore the log files, tell me what happened? what took long? we don't want the user to complete onboarding without revealing holo card its not optional it needs to be required
+
+---
+
+this is so retarded to show skeleton lmao there must be a beter way
+
+---
+
+we must fix the actual root cause tho why the fuck did it take 5 minutes??? for the holo card and the text to come after that if it was ready so quick? explore deeply
+
+---
+
+stop assuming shit lmao you gotta explore the root cause what even happened what are we missing
+
+---
+
+You shouldn’t have to come check on me. Tell me where you already hang out and I’ll text you — briefings, urgent emails, anything that can’t wait.
+
+ what to write instead of you shouildnt have to come check on me it sounds weird. also the demo section with social buttons in onboarding flashes a lot when loading. i think we can use skeleton
+
+---
+
+dont write no need to checking on me
+
+---
+
+give me completely different variations
+
+---
+
+give me a way to reach you is good
+
+---
+
+how about remove the give me a way line just do tell me where you already hang out and i'll text you when it matters - briefings, urgent emails etc etc (add a few more examples)
+
+---
+
+remove drafts ready for review

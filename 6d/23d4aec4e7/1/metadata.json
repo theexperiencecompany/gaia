@@ -1,0 +1,112 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "6d23d4aec4e7",
+  "session_id": "466d29db-72f9-43d1-a14f-2a1ef485a55b",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T21:13:15.164615Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingPlatformPreview.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/Platforms.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/components/stages/index.ts",
+    "apps/web/src/features/onboarding/state/initial.ts",
+    "apps/web/src/features/onboarding/state/reducer.ts",
+    "apps/web/src/features/onboarding/state/types.ts",
+    "apps/web/src/features/onboarding/types/websocket.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "abf65ce70c27",
+  "token_usage": {
+    "input_tokens": 114,
+    "cache_creation_tokens": 139925,
+    "cache_read_tokens": 7448023,
+    "output_tokens": 37793,
+    "api_call_count": 64
+  },
+  "session_metrics": {
+    "turn_count": 10
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T21:13:15.152604Z",
+    "agent_lines": 255,
+    "agent_removed": 70,
+    "human_added": 0,
+    "human_modified": 7,
+    "human_removed": 8,
+    "total_committed": 262,
+    "total_lines_changed": 340,
+    "agent_percentage": 95.58823529411765,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 93,
+      "agent_lines_removed": 14
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 93,
+      "agent_lines_removed": 14
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 7,
+      "user_lines_removed": 15,
+      "agent_lines_added": 279,
+      "agent_lines_removed": 79,
+      "user_added_per_file": {
+        "apps/web/src/features/onboarding/components/stages/Chat.tsx": 7
+      },
+      "user_removed_per_file": {
+        "apps/web/src/features/onboarding/components/stages/Chat.tsx": 15
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 277,
+      "agent_lines_removed": 85
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 277,
+      "agent_lines_removed": 85
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 277,
+      "agent_lines_removed": 85
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 277,
+      "agent_lines_removed": 85
+    }
+  ]
+}
