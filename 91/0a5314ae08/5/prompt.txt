@@ -1,0 +1,33 @@
+in onboarding page, Hey! I’m GAIA. What should I call you? before this comes. in the middle of the screen. can you write Welcome to GAIA with soft blur in, then hide that welcome to gaia and then write your personal ai assistant with word crossfade animation. use the animations used in GAIA/motion-studio  ensure each text is in the middle of the screen and the background bg animates too'/Users/aryan/Projects/GAIA/branding/fonts/AeonikExtendedProTRIAL-Bold.otf' u gotta use this font for this and bacground opacity is full, and once the welcome to gaia scene 1, then scene 2 for your personal ai assistant is animated, the scene 3 is where the onboarding starts, and then the bg opacity is reduced i guess to the current opacity and the first chat bubble and the composer animates with blur and opacity fade in. can u explore and figure out how to do this? '/Users/aryan/Downloads/piano-sound-generation-2.mp3' and also using this audio sound basically as the animation ends and onboarding is starting
+
+---
+
+is there anything left to do? anything broken or not working?
+
+---
+
+theres too much delay between welcome to gaia and the your personal ai assistant text. reduce it and make the your personal ai assistant text smaller and make the bg fade in from black initially and then the audio cuts off too so fix that. create tasks for all of these
+
+---
+
+also how about you make the audio start in the starting at welcome to gaia instead of after the title reveal. also yeah combine option a and b i guess
+
+---
+
+the audio doesnt play at all now even on page reload and cursor move. previously at least it was working at the end of onboarding. rn it should just be in the starting of the onboarding text welcome reveal
+
+---
+
+make the audio play at your personal ai assistant now instead of welcome to gaia
+
+---
+
+make it a bit more seamless the fade of your personal ai assistant and the appearance of onboarding
+
+---
+
+so the animation is shown each time the user opens onboarding or connects gmail too
+
+---
+
+in the social platforms like whatsapp telegram etc demo card in the frontend. can we make it easier to understand the demos like the wordings used? it should be easily understandable and wow moment even for a dummy

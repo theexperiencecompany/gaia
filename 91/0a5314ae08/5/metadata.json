@@ -1,0 +1,154 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "910a5314ae08",
+  "session_id": "fbe960e0-69da-4460-83ac-d0e91edf0f69",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T17:10:28.156202Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "apps/api/app/agents/memory/email_processor.py",
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/constants/email.py",
+    "apps/api/app/services/mail/mail_service.py",
+    "apps/api/app/services/onboarding/first_message_service.py",
+    "apps/api/app/services/onboarding/inbox_scan_cache.py",
+    "apps/api/app/services/onboarding/inbox_triage_service.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/web/public/audio/onboarding-intro.mp3",
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/app/fonts/aeonik.ts",
+    "apps/web/src/app/fonts/aeonik/AeonikExtendedPro-Bold.otf",
+    "apps/web/src/app/fonts/index.ts",
+    "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingIntro.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx",
+    "apps/web/src/features/onboarding/components/stages/Workflows.tsx",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/constants/platformPreviewMessages.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "5b1e59eef87d",
+  "token_usage": {
+    "input_tokens": 3958,
+    "cache_creation_tokens": 368181,
+    "cache_read_tokens": 10942112,
+    "output_tokens": 82101,
+    "api_call_count": 90
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T17:10:28.136028Z",
+    "agent_lines": 444,
+    "agent_removed": 217,
+    "human_added": 543,
+    "human_modified": 85,
+    "human_removed": 0,
+    "total_committed": 1072,
+    "total_lines_changed": 1462,
+    "agent_percentage": 45.21203830369357,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 7,
+      "user_lines_removed": 12,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 2,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/Workflows.tsx": 2,
+        "apps/web/src/features/onboarding/constants/messages.ts": 1
+      },
+      "user_removed_per_file": {
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 3,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/Workflows.tsx": 3,
+        "apps/web/src/features/onboarding/constants/messages.ts": 4
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 253,
+      "agent_lines_removed": 23
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 253,
+      "agent_lines_removed": 23
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 259,
+      "agent_lines_removed": 23
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 95,
+      "user_lines_removed": 43,
+      "agent_lines_added": 298,
+      "agent_lines_removed": 24,
+      "user_added_per_file": {
+        "apps/api/app/agents/memory/email_processor.py": 39,
+        "apps/api/app/services/mail/mail_service.py": 17,
+        "apps/api/app/services/onboarding/inbox_triage_service.py": 39
+      },
+      "user_removed_per_file": {
+        "apps/api/app/agents/memory/email_processor.py": 9,
+        "apps/api/app/services/mail/mail_service.py": 1,
+        "apps/api/app/services/onboarding/inbox_triage_service.py": 33
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 70,
+      "user_lines_removed": 30,
+      "agent_lines_added": 403,
+      "agent_lines_removed": 85,
+      "user_added_per_file": {
+        "apps/api/app/agents/memory/email_processor.py": 4,
+        "apps/api/app/services/onboarding/intelligence_service.py": 66
+      },
+      "user_removed_per_file": {
+        "apps/api/app/agents/memory/email_processor.py": 1,
+        "apps/api/app/services/onboarding/intelligence_service.py": 29
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 549,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 524,
+      "agent_lines_removed": 215
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 554,
+      "agent_lines_removed": 215
+    }
+  ]
+}
