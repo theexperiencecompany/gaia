@@ -1,0 +1,74 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "910a5314ae08",
+  "session_id": "a99b77be-250d-48ca-885c-89a8ecb566fa",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-12T17:10:27.720439Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx",
+    "apps/web/src/features/onboarding/components/stages/Workflows.tsx",
+    "apps/web/src/features/onboarding/constants/messages.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "ec1280aabc9e",
+  "token_usage": {
+    "input_tokens": 18,
+    "cache_creation_tokens": 45916,
+    "cache_read_tokens": 142156,
+    "output_tokens": 1814,
+    "api_call_count": 3
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-12T17:10:27.715635Z",
+    "agent_lines": 0,
+    "agent_removed": 7,
+    "human_added": 1123,
+    "human_modified": 5,
+    "human_removed": 0,
+    "total_committed": 1126,
+    "total_lines_changed": 1583,
+    "agent_percentage": 0.4421983575489577,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 4,
+      "user_lines_removed": 5,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 2,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx": 1
+      },
+      "user_removed_per_file": {
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 3,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/RevealWritingStyle.tsx": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 7,
+      "agent_lines_removed": 12
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 7,
+      "agent_lines_removed": 12
+    }
+  ]
+}
