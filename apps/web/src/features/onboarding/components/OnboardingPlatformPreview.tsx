@@ -90,7 +90,7 @@ export function OnboardingPlatformPreview({
       className="ml-10.75 flex flex-col rounded-3xl bg-zinc-900 p-2.5"
       style={{ width: 500, minWidth: 500, maxWidth: 500 }}
     >
-      <div className="mb-1.5 flex h-5 shrink-0 items-center gap-1.5 px-1">
+      <div className="mb-1.5 flex h-6 shrink-0 items-center gap-2 px-1">
         <AnimatePresence mode="wait" initial={false}>
           <m.div
             key={activePlatform}
@@ -103,13 +103,13 @@ export function OnboardingPlatformPreview({
             <Image
               src={PLATFORM_ICONS[activePlatform]}
               alt=""
-              width={14}
-              height={14}
-              className="rounded-[3px]"
+              width={18}
+              height={18}
+              className="rounded-[4px]"
               aria-hidden
             />
             <span className="text-[11px] text-zinc-500">
-              via {PLATFORM_LABELS[activePlatform]}
+              Demo via {PLATFORM_LABELS[activePlatform]}
             </span>
           </m.div>
         </AnimatePresence>

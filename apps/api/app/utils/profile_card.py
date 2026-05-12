@@ -5,15 +5,14 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from bson import ObjectId
+from langchain_core.messages import HumanMessage
 
 from app.agents.llm.client import init_llm
-from app.agents.prompts.onboarding_prompts import (
-    PERSONALITY_PHRASE_PROMPT,
-    USER_BIO_PROMPT,
-)
+from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
 from shared.py.wide_events import log
 from app.constants.profession_bios import get_random_bio_for_profession
 from app.db.mongodb.collections import users_collection
+from app.models.onboarding_models import HoloCardLLMOutput
 from app.models.user_models import BioStatus
 
 # Available houses for user assignment
@@ -173,103 +172,75 @@ async def get_user_metadata(
         }
 
 
-async def generate_personality_phrase(
-    user_id: str, context_summary: str, profession: str = ""
-) -> str:
-    """
-    Generate a unique 2-3 word personality phrase using LLM.
-
-    Args:
-        user_id: User identifier
-        context_summary: Structured context (triage summary, writing style, profiles, etc.)
-        profession: User's profession (optional)
-
-    Returns:
-        Generated personality phrase (e.g., "Digital Alchemist")
-    """
-    log.set(
-        operation="generate_personality_phrase",
-        user_id=user_id,
-        profession=profession,
-    )
-    try:
-        prompt = PERSONALITY_PHRASE_PROMPT.format(
-            profession=profession, context_summary=context_summary
-        )
-
-        llm = init_llm(preferred_provider="gemini").bind(temperature=1.2, top_k=80)
-        response = await llm.ainvoke(prompt)
-
-        content = _extract_text_from_llm_response(response.content)
-        phrase = content.strip().strip('"').strip("'")
-        log.info(f"Generated personality phrase for user {user_id}: {phrase}")
-        return phrase
-
-    except Exception as e:
-        log.error(f"Error generating personality phrase: {e}", exc_info=True)
-        # Fallback based on profession
-        profession_map = {
-            "developer": "Curious Developer",
-            "designer": "Creative Designer",
-            "engineer": "Innovative Engineer",
-            "student": "Eager Learner",
-            "manager": "Strategic Leader",
-        }
-        profession_lower = profession.lower() if profession else ""
-        for key, value in profession_map.items():
-            if key in profession_lower:
-                return value
-        return "Curious Adventurer"
+def _phrase_fallback(profession: str) -> str:
+    """Fallback personality phrase when the LLM call fails."""
+    profession_map = {
+        "developer": "Curious Developer",
+        "designer": "Creative Designer",
+        "engineer": "Innovative Engineer",
+        "student": "Eager Learner",
+        "manager": "Strategic Leader",
+    }
+    profession_lower = profession.lower() if profession else ""
+    for key, value in profession_map.items():
+        if key in profession_lower:
+            return value
+    return "Curious Adventurer"
 
 
-async def generate_user_bio(
+async def generate_holo_card_content(
     user_id: str,
     context_summary: str,
     user: Optional[Dict[str, Any]] = None,
-) -> Tuple[str, BioStatus]:
+) -> Tuple[str, str, BioStatus]:
     """
-    Generate user bio paragraph using LLM based on structured context.
-
-    Args:
-        user_id: User identifier
-        context_summary: Structured context (triage summary, writing style, profiles, etc.)
-        user: Pre-fetched user document (avoids redundant DB call)
+    Generate the holo card's personality phrase and bio in a single structured
+    LLM call. Replaces the previous two sequential calls.
 
     Returns:
-        Tuple of (bio_text, bio_status)
+        Tuple of (personality_phrase, user_bio, bio_status).
     """
-    log.set(operation="generate_user_bio", user_id=user_id)
+    log.set(operation="generate_holo_card_content", user_id=user_id)
+
+    if user is None:
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+    name = (user or {}).get("name", "User")
+    profession = (
+        (user or {}).get("onboarding", {}).get("preferences", {}).get("profession", "")
+    )
+
+    # No usable context — skip the LLM and use deterministic fallbacks.
+    if not context_summary.strip():
+        default_bio = get_random_bio_for_profession(name, profession or "other")
+        return _phrase_fallback(profession), default_bio, BioStatus.NO_GMAIL
+
     try:
-        if user is None:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        if not user:
-            return ("Welcome to GAIA!", BioStatus.NO_GMAIL)
-
-        name = user.get("name", "User")
-        profession = (
-            user.get("onboarding", {}).get("preferences", {}).get("profession", "")
+        prompt = HOLO_CARD_PROMPT.format(
+            name=name,
+            profession=profession or "",
+            context_summary=context_summary[:10000],
         )
-
-        # No context available — use profession-based fallback
-        if not context_summary.strip():
-            default_bio = get_random_bio_for_profession(name, profession or "other")
-            return (default_bio, BioStatus.NO_GMAIL)
-
-        prompt = USER_BIO_PROMPT.format(
-            name=name, profession=profession, context_summary=context_summary[:10000]
+        # Gemini bound at moderate-high temperature: high enough that the
+        # phrase stays creative/unexpected, low enough that the bio stays
+        # coherent. Structured output via with_structured_output keeps both
+        # fields returned atomically — no two-call latency penalty.
+        llm = init_llm(preferred_provider="gemini").bind(temperature=1.0)
+        structured_llm = llm.with_structured_output(HoloCardLLMOutput)
+        result: HoloCardLLMOutput = await structured_llm.ainvoke(
+            [HumanMessage(content=prompt)]
         )
-
-        llm = init_llm(preferred_provider="gemini")
-        response = await llm.ainvoke(prompt)
-
-        content = _extract_text_from_llm_response(response.content)
-        bio = content.strip()
-        log.info(f"Generated bio for user {user_id}")
-        return bio, BioStatus.COMPLETED
+        phrase = result.personality_phrase.strip().strip('"').strip("'")
+        bio = result.user_bio.strip()
+        log.info(f"Generated holo card content for user {user_id}: phrase='{phrase}'")
+        return phrase, bio, BioStatus.COMPLETED
 
     except Exception as e:
-        log.error(f"Error generating user bio: {e}", exc_info=True)
-        return ("Welcome to GAIA!", BioStatus.NO_GMAIL)
+        log.error(f"Error generating holo card content: {e}", exc_info=True)
+        return (
+            _phrase_fallback(profession),
+            get_random_bio_for_profession(name, profession or "other"),
+            BioStatus.NO_GMAIL,
+        )
 
 
 def generate_profile_card_design() -> Dict[str, Any]:

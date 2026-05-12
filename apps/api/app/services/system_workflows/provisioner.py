@@ -53,7 +53,10 @@ SYSTEM_WORKFLOW_REGISTRY: dict[str, Callable[[], CreateWorkflowRequest]] = {
 
 
 async def provision_system_workflows(
-    user_id: str, integration_id: str, integration_display_name: str
+    user_id: str,
+    integration_id: str,
+    integration_display_name: str,
+    notify: bool = True,
 ) -> None:
     """Create system workflows for a newly connected integration.
 
@@ -64,6 +67,9 @@ async def provision_system_workflows(
         user_id: The user who connected the integration.
         integration_id: The integration that was connected (e.g. 'gmail', 'googlecalendar').
         integration_display_name: Human-readable name for notifications (e.g. 'Gmail').
+        notify: If True, sends a user notification summarising the new workflows.
+            Set to False during onboarding so the provisioning is silent — the
+            onboarding UI surfaces the workflows itself.
     """
     log.set(
         service="system_workflow_provisioner",
@@ -111,7 +117,7 @@ async def provision_system_workflows(
                 exc_info=True,
             )
 
-    if created:
+    if created and notify:
         await _notify_workflows_provisioned(user_id, integration_display_name, created)
 
 

@@ -63,9 +63,8 @@ from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.todo_service import TodoService
 from app.services.workflow.service import WorkflowService
 from app.utils.profile_card import (
-    generate_personality_phrase,
+    generate_holo_card_content,
     generate_profile_card_design,
-    generate_user_bio,
     get_user_metadata,
 )
 from app.utils.seeding_utils import seed_onboarding_conversation
@@ -354,10 +353,33 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         duration_s=round(time.monotonic() - t_msg, 2),
     )
 
+    # Run holo card prep (social profiles → phrase/bio) in parallel with the
+    # conversation seed + profile persist. holo_ready MUST fire before
+    # COMPLETE so the frontend's giftbox is ready by the time the chat stage
+    # mounts. Holo is the slowest leg (LLM call), so parallelising keeps
+    # total wall time bounded by the holo call rather than serialising it
+    # after COMPLETE as a fire-and-forget background task.
+    async def _social_then_holo() -> None:
+        social_profiles: list[SocialProfile] = []
+        if has_gmail:
+            social_profiles = await _run_social_profiles_background(
+                user_id, name, user_email
+            )
+        await _run_holo_card(
+            user_id,
+            user_doc,
+            profession,
+            focus,
+            triage,
+            writing_style,
+            social_profiles,
+        )
+
     t_final = time.monotonic()
-    conversation_id, _ = await asyncio.gather(
+    conversation_id, _, _ = await asyncio.gather(
         _seed_conversation(user_id, first_message),
         _persist_profiles(user_id, writing_style, triage),
+        _social_then_holo(),
     )
     log.info(
         "[intelligence] finalize gathered",
@@ -376,31 +398,14 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         _background_tasks.add(provision_future)
         provision_future.add_done_callback(_background_tasks.discard)
 
+    # COMPLETE is now genuinely terminal — holo_ready has already fired from
+    # inside _run_holo_card above. Frontend can close the WS on COMPLETE
+    # without dropping any subsequent event.
     await _emit_stage(
         user_id,
         OnboardingStage.COMPLETE,
         {"conversation_id": conversation_id},
     )
-
-    async def _post_complete() -> None:
-        social_profiles: list[SocialProfile] = []
-        if has_gmail:
-            social_profiles = await _run_social_profiles_background(
-                user_id, name, user_email
-            )
-        await _run_holo_card(
-            user_id,
-            user_doc,
-            profession,
-            focus,
-            triage,
-            writing_style,
-            social_profiles,
-        )
-
-    post_task = asyncio.create_task(_post_complete())
-    _background_tasks.add(post_task)
-    post_task.add_done_callback(_background_tasks.discard)
 
     # Canonical pipeline-end summary. One log line a human (or query) can
     # use to answer "what did this user's onboarding look like?" without
@@ -511,7 +516,7 @@ async def _run_provision_gmail(user_id: str) -> None:
     """Fire Gmail system workflow provisioning as a root. No deps."""
     t0 = time.monotonic()
     try:
-        await provision_system_workflows(user_id, "gmail", "Gmail")
+        await provision_system_workflows(user_id, "gmail", "Gmail", notify=False)
         log.info(
             "[intelligence] provision_gmail done",
             user_id=user_id,
@@ -946,12 +951,10 @@ async def _run_holo_card(
         meta_duration_s = round(time.monotonic() - t_meta, 2)
         card_design = generate_profile_card_design()
         t_phrase_bio = time.monotonic()
-        phrase, bio_result = await asyncio.gather(
-            generate_personality_phrase(user_id, context_summary, profession),
-            generate_user_bio(user_id, context_summary, user=user_doc),
+        phrase, user_bio, bio_status = await generate_holo_card_content(
+            user_id, context_summary, user=user_doc
         )
         phrase_bio_duration_s = round(time.monotonic() - t_phrase_bio, 2)
-        user_bio, bio_status = bio_result
         t_save = time.monotonic()
         await save_personalization_data(
             user_id,

@@ -113,7 +113,7 @@ export const OnboardingPlatformConnect: FC<OnboardingPlatformConnectProps> = ({
           onPress={onSkip}
           className="text-zinc-400 hover:text-zinc-200"
         >
-          Skip for now
+          I'll do it later
         </Button>
       </m.div>
     </div>

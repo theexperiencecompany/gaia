@@ -11,7 +11,10 @@ import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import { BOT_BUBBLE_DEFAULTS } from "../../constants/bubbleDefaults";
-import { WORKFLOWS_INTRO } from "../../constants/messages";
+import {
+  WORKFLOWS_INTRO_PRIMARY,
+  WORKFLOWS_INTRO_SECONDARY,
+} from "../../constants/messages";
 import { MOTION_FADE_UP_LARGE } from "../../constants/motion";
 import type { Action, OnboardingState } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
@@ -31,7 +34,8 @@ export function Workflows({ state }: WorkflowsProps) {
 
   return (
     <m.div className="mt-4 space-y-4" {...MOTION_FADE_UP_LARGE}>
-      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WORKFLOWS_INTRO}>
+      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WORKFLOWS_INTRO_PRIMARY} />
+      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WORKFLOWS_INTRO_SECONDARY}>
         <div className="mt-3">
           <OnboardingWorkflowCards workflows={workflows} />
         </div>

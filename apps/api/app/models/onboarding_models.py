@@ -92,6 +92,28 @@ class WritingStyleOutput(BaseModel):
     )
 
 
+class HoloCardLLMOutput(BaseModel):
+    """Structured output for the holo card LLM call — phrase + bio in one shot."""
+
+    personality_phrase: str = Field(
+        description=(
+            "Unique 2-3 word personality phrase capturing the user's essence. "
+            "Poetic, metaphorical, and unexpected — never corporate buzzwords, "
+            "generic descriptors, or obvious profession references. Examples of "
+            "the right register: 'Midnight Architect', 'Velvet Rebel', 'Pattern "
+            "Seeker', 'Quiet Thunder'."
+        ),
+    )
+    user_bio: str = Field(
+        description=(
+            "Sassy, insightful 2-3 sentence bio in third person that makes the "
+            "user think 'wow, how does GAIA know me so well?'. Calls out patterns "
+            "and quirks, not job titles. NEVER use em dashes or en dashes — use "
+            "commas, periods, colons, or parentheses instead."
+        ),
+    )
+
+
 class WritingStyleExampleOutput(BaseModel):
     """Structured output for regenerating a single example from an edited summary."""
 

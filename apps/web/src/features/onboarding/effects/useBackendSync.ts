@@ -173,6 +173,9 @@ export function useBackendSync(
           });
       },
       complete: (p) => {
+        // Backend emits `complete` only after holo_ready has fired (holo
+        // card now runs inside the main pipeline gather), so closing the WS
+        // here is safe — no terminal events trail this one.
         dispatchRef.current({
           type: "serverPatch",
           patch: {
