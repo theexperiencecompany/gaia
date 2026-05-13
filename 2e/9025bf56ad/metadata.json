@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "2e9025bf56ad",
+  "strategy": "manual-commit",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2e/9025bf56ad/0/metadata.json",
+      "transcript": "/2e/9025bf56ad/0/full.jsonl",
+      "content_hash": "/2e/9025bf56ad/0/content_hash.txt",
+      "prompt": "/2e/9025bf56ad/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 26,
+    "cache_creation_tokens": 17163,
+    "cache_read_tokens": 4035813,
+    "output_tokens": 10317,
+    "api_call_count": 16
+  }
+}
