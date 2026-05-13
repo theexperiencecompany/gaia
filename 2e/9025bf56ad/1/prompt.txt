@@ -1,0 +1,26 @@
+## Page Feedback: /onboarding
+**Viewport:** 1492×889
+
+### 1. <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div> space
+**Location:** .relative > .relative > div > .mt-10
+**Source:** _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+**React:** <Onboarding> <OnboardingShell> <motion.div> <RevealTodos> <motion.div>
+**Feedback:** increase the size of this to match component 2 so that component 2 doesnt get cut off bcz of this component
+
+### 2. <motion.div> <RevealTodos> <motion.div> <OnboardingChatStream> <motion.div> <ChatBubbleBot> chat bubble
+**Location:** .flex > .chatbubblebot > .flex > .chat
+**Source:** _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+**React:** <motion.div> <RevealTodos> <motion.div> <OnboardingChatStream> <motion.div> <ChatBubbleBot>
+**Feedback:** this is component 2 that gets cut off!! help me fix this
+
+---
+
+remove dumb comments
+
+---
+
+when the gift box is shown the entire width gets fucked up and now its full width of the screen instead of constrained. help me fix it
+
+---
+
+nah mate what the fuck is the wide column bullshit. there should be 1 single width of the onboarding chat, which is same width of our normal chat stuff

@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "2e9025bf56ad",
+  "session_id": "d193d433-0d97-4dd6-adce-a89ef5aac7ea",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-13T18:34:39.585318Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "91ed1d6aed76",
+  "token_usage": {
+    "input_tokens": 68,
+    "cache_creation_tokens": 120408,
+    "cache_read_tokens": 4393448,
+    "output_tokens": 23370,
+    "api_call_count": 48
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-13T18:34:39.575812Z",
+    "agent_lines": 0,
+    "agent_removed": 8,
+    "human_added": 134,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 135,
+    "total_lines_changed": 249,
+    "agent_percentage": 3.2128514056224895,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1,
+      "agent_lines_removed": 1
+    }
+  ]
+}
