@@ -1,0 +1,1 @@
+even after i did do run now for the todos it just shows 3 todos saved for later instead of the one thats run, and dont just show bullet points, render the previous todo components with the dotted circle icon and check if they've been executed.

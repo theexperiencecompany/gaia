@@ -1,0 +1,61 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "081ba2586446",
+  "session_id": "14c8e90e-27e8-4bac-9326-dae294246eab",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-13T18:29:35.243954Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingTodoCards.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/components/stages/Workflows.tsx",
+    "apps/web/src/features/onboarding/state/types.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "0d1fc0e4e580",
+  "checkpoint_transcript_start": 678,
+  "transcript_lines_at_start": 678,
+  "token_usage": {
+    "input_tokens": 23,
+    "cache_creation_tokens": 241781,
+    "cache_read_tokens": 3971073,
+    "output_tokens": 11730,
+    "api_call_count": 18
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-13T18:29:35.19763Z",
+    "agent_lines": 43,
+    "agent_removed": 34,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 6,
+    "total_committed": 43,
+    "total_lines_changed": 83,
+    "agent_percentage": 92.7710843373494,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 6,
+      "user_lines_removed": 6,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/web/src/features/onboarding/components/OnboardingShell.tsx": 5,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1
+      },
+      "user_removed_per_file": {
+        "apps/web/src/features/onboarding/components/OnboardingShell.tsx": 5,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 1
+      }
+    }
+  ]
+}
