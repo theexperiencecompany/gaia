@@ -10,10 +10,12 @@ services:
       dockerfile: apps/api/Dockerfile
     image: gaia
     working_dir: /app/apps/api
+    # Packages are already installed system-wide by the Dockerfile via
+    # `uv sync --frozen` against UV_PROJECT_ENVIRONMENT=/usr/local. Call python
+    # directly so we don't trigger uv's runtime sync (which would try to mutate
+    # root-owned files in /usr/local/lib as appuser).
     command:
       [
-        "uv",
-        "run",
         "python",
         "-m",
         "uvicorn",
@@ -35,10 +37,40 @@ services:
       PYTHONPATH: /app/apps/api
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
+      # Persistent workspace storage (JuiceFS on Cloudflare R2). Sidecar mount
+      # at /mnt/jfs is created on the host (or as a tmpfs in dev when R2 is
+      # unset — the storage helper short-circuits gracefully in that case).
+      JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
+      # Skip uv's env sync at runtime; the Dockerfile already installed every
+      # package system-wide via `uv sync --frozen` at build time. Without this,
+      # `uv run` tries to mutate root-owned files in /usr/local/lib as appuser.
+      UV_NO_SYNC: "1"
+      # Override Infisical's localhost URLs with the docker-compose service
+      # hostnames. Infisical respects pre-set env vars, so these take precedence.
+      # (The "localhost" URLs in Infisical are for `nx dev api` where Python
+      # runs on the host and connects to dockered infra at host-mapped ports.)
+      POSTGRES_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/langgraph
+      REDIS_URL: redis://redis:6379/0
+      MONGO_DB: mongodb://mongo:27017/
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      CHROMADB_HOST: chromadb
+      CHROMADB_PORT: "8000"
+      # JuiceFS metadata DB lives on the same postgres container.
+      JUICEFS_META_URL_TEMPLATE: postgres://postgres:postgres@postgres:5432/gaia_juicefs_{shard}?sslmode=disable
     env_file:
       - ../../apps/api/.env
     volumes:
       - ../../apps/api/app:/app/apps/api/app
+      - juicefs_cache:/var/cache/juicefs
+    # FUSE mount inside container requires SYS_ADMIN + /dev/fuse + an
+    # unconfined apparmor profile on Ubuntu/Debian hosts. Without these,
+    # `juicefs mount` fails with "fusermount3: cannot open /dev/fuse".
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
     ports:
       - "${API_HOST_PORT:-8000}:80"
     restart: on-failure
@@ -85,7 +117,10 @@ services:
 
   # Postgres Service
   postgres:
-    image: postgres:18-alpine
+    # Pinned to 17: postgres:18 changed the expected mount layout to
+    # /var/lib/postgresql (not /var/lib/postgresql/data). Upgrading is a
+    # separate migration concern outside this work.
+    image: postgres:17-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
@@ -93,6 +128,8 @@ services:
       POSTGRES_DB: langgraph
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # postgres-init/*.sql runs once on first init — creates gaia_juicefs_0
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     restart: on-failure
@@ -172,16 +209,36 @@ services:
       - LOG_FORMAT=json
       - LOG_COLORIZE=false
       - ARQ_METRICS_PORT=9100
+      - JUICEFS_HOST_MOUNT_PATH=/mnt/jfs
+      - UV_NO_SYNC=1
+      # Same Infisical-overrides as gaia-backend (container hostnames)
+      - POSTGRES_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/langgraph
+      - REDIS_URL=redis://redis:6379/0
+      - MONGO_DB=mongodb://mongo:27017/
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8000
+      - JUICEFS_META_URL_TEMPLATE=postgres://postgres:postgres@postgres:5432/gaia_juicefs_{shard}?sslmode=disable
     expose:
       - "9100"
-    command: ["uv", "run", "python", "-m", "arq", "app.worker.WorkerSettings"]
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
       - ../../apps/api/app:/app/apps/api/app
+      - juicefs_cache:/var/cache/juicefs
+    # JuiceFS mount needs FUSE; same caps/devices as gaia-backend
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
     depends_on:
       redis:
         condition: service_healthy
       mongo:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - gaia_network
@@ -416,6 +473,7 @@ volumes:
   loki_data:
   grafana_data:
   prometheus_data:
+  juicefs_cache:
 
 networks:
   gaia_network:

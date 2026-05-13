@@ -74,7 +74,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             tool_runtime_config
             if tool_runtime_config
             else ToolRuntimeConfig(
-                initial_tool_names=["vfs_read", "vfs_cmd"],
+                initial_tool_names=["read", "bash"],
                 enable_retrieve_tools=True,
                 include_subagents_in_retrieve=False,
             )

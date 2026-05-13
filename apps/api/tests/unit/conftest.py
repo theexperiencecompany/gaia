@@ -52,7 +52,6 @@ def mock_mongodb():
         "skills_collection",
         "bot_sessions_collection",
         "device_tokens_collection",
-        "vfs_nodes_collection",
         "projects_collection",
         "workflow_executions_collection",
         "processed_webhooks_collection",

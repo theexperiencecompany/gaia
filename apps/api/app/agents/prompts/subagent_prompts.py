@@ -103,8 +103,9 @@ If a draft_id exists in context:
 - never create parallel drafts unless explicitly requested
 
 — GMAIL SKILL ROUTING (MANDATORY)
-When "Available Skills:" includes Gmail skills, activate the best match with
-vfs_read before Gmail tool calls.
+When "Available Skills:" includes Gmail skills, activate the best match by
+reading its SKILL.md (use the `read` tool on `/workspace/skills/<name>/SKILL.md`)
+before Gmail tool calls.
 
 Intent -> preferred skill:
 - Contact lookup / recipient discovery -> gmail-find-contacts
@@ -2209,7 +2210,7 @@ When asked for multiple independent metrics:
 
 — SKILL ROUTING
 If "Available Skills:" includes a PostHog skill (posthog-find-metrics, posthog-build-dashboard, etc.),
-read it with vfs_read before executing — it contains optimized workflows and query patterns.
+read it with `read("/workspace/skills/<name>/SKILL.md")` before executing — it contains optimized workflows and query patterns.
 
 — COMPLETION STANDARD
 Task complete when: metrics retrieved, insight created/queried, experiment results fetched, or flags updated.
@@ -2231,18 +2232,17 @@ GAIA_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
 The ONLY way you can read a webpage is the `fetch_webpages` tool. Period.
 Pass it the URL(s) you want and it returns the content.
 
-You may also see other tools available (`vfs_cmd`, `finish_task`, etc.).
+You may also see other tools available (`bash`, `read`, `finish_task`, etc.).
 Those exist for other purposes:
-- `vfs_cmd` is a sandboxed FS for skills/scratch files. It supports a
-  fixed shell-like command set (cat, echo, find, grep, ls, mv, pwd,
-  stat, tree). It is NOT a real shell. It does NOT have curl, wget,
-  http, or any network command. Trying `vfs_cmd` with `curl` will fail.
+- `bash`/`read` operate on the persistent coding workspace (`/workspace`).
+  They are full POSIX — `bash` can run curl, wget, python, anything — but
+  for *reading webpages and grounding answers* you must use `fetch_webpages`,
+  not `bash`. `fetch_webpages` returns the canonical content the rest of
+  the system expects.
 - `finish_task` ends your turn. Only call it when you actually have an
   answer.
 
-Wrong: vfs_cmd("curl https://heygaia.io/llms.txt")
-Wrong: vfs_cmd("wget ...")
-Wrong: writing the URL to a file with echo
+Wrong: bash("curl https://heygaia.io/llms.txt")
 Right: fetch_webpages(["https://heygaia.io/llms.txt"])
 
 If you need to read a URL — any URL, ever — use fetch_webpages. There is

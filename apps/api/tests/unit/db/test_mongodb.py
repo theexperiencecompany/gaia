@@ -730,7 +730,6 @@ class TestIndexStatus:
             "notifications_collection",
             "reminders_collection",
             "workflows_collection",
-            "vfs_nodes_collection",
             "skills_collection",
         ]
 
@@ -781,7 +780,6 @@ class TestIndexStatus:
             "notifications_collection": ok_collection,
             "reminders_collection": ok_collection,
             "workflows_collection": ok_collection,
-            "vfs_nodes_collection": ok_collection,
             "skills_collection": ok_collection,
         }
 

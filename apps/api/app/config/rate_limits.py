@@ -189,21 +189,37 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
             title="Memory Operations", description="Store and retrieve memories"
         ),
     ),
-    # VFS (Tool-Level)
-    "vfs_write": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),
-        pro=RateLimitConfig(day=5000, month=150000),
+    # Coding tools (persistent E2B workspace)
+    "bash_execution": TieredRateLimits(
+        free=RateLimitConfig(day=20, month=200),  # Restrictive: sandbox cost
+        pro=RateLimitConfig(day=1500, month=45000),
         info=FeatureInfo(
-            title="VFS Write",
-            description="Write files to the virtual filesystem",
+            title="Shell Execution",
+            description="Run shell commands in the persistent coding sandbox",
         ),
     ),
-    "vfs_cmd": TieredRateLimits(
+    "workspace_read": TieredRateLimits(
         free=RateLimitConfig(day=500, month=15000),
         pro=RateLimitConfig(day=20000, month=600000),
         info=FeatureInfo(
-            title="VFS Commands",
-            description="Run shell-like commands against the virtual filesystem",
+            title="Workspace Read",
+            description="Read files from the persistent coding workspace",
+        ),
+    ),
+    "workspace_write": TieredRateLimits(
+        free=RateLimitConfig(day=200, month=5000),
+        pro=RateLimitConfig(day=5000, month=150000),
+        info=FeatureInfo(
+            title="Workspace Write",
+            description="Write files to the persistent coding workspace",
+        ),
+    ),
+    "workspace_edit": TieredRateLimits(
+        free=RateLimitConfig(day=200, month=5000),
+        pro=RateLimitConfig(day=5000, month=150000),
+        info=FeatureInfo(
+            title="Workspace Edit",
+            description="Edit files in the persistent coding workspace",
         ),
     ),
     # CREATIVE TOOLS
@@ -213,11 +229,6 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
         info=FeatureInfo(
             title="Flowchart Creation", description="Create flowcharts and diagrams"
         ),
-    ),
-    "code_execution": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),  # Keep restrictive (security)
-        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
-        info=FeatureInfo(title="Code Execution", description="Execute code snippets"),
     ),
     # UTILITY
     "weather_checks": TieredRateLimits(

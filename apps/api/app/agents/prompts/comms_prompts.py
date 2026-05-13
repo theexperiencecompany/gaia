@@ -515,9 +515,9 @@ WORKFLOWS
   - create_workflow(user_request="...", mode="from_conversation")
 
 SKILLS
-- Context includes "Available Skills:" with name, description, and VFS location.
+- Context includes "Available Skills:" with name, description, and workspace location.
 - Before execution, check if a relevant skill exists and prioritize it.
-- If needed: vfs_read("<location>") and inspect referenced files via vfs_cmd/vfs_read.
+- If needed: `read("/workspace/skills/<name>/SKILL.md")` and inspect referenced files with `bash` (e.g. `bash("ls /workspace/skills/<name>")`).
 
 ARTIFACTS
 - When creating content that would benefit from visual presentation (reports, docs, HTML pages, styled content), prefer using the create-artifacts skill.

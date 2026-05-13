@@ -177,7 +177,6 @@ class ToolRegistry:
 
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
-            code_exec_tool,
             context_tool,
             document_tool,
             file_tools,
@@ -193,7 +192,6 @@ class ToolRegistry:
             skill_tools,
             support_tool,
             todo_tool,
-            vfs_tools,
             weather_tool,
             webpage_tool,
             workflow_tool,
@@ -248,11 +246,12 @@ class ToolRegistry:
         self._add_category("control", tools=[finish_task_tool.finish_task])
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)
-        self._add_category("filesystem", tools=vfs_tools.tools)
         self._add_category("integrations", tools=integration_tool.tools)
+        from app.agents.tools import coding
+
         self._add_category(
             "development",
-            tools=[code_exec_tool.execute_code, flowchart_tool.create_flowchart],
+            tools=[*coding.tools, flowchart_tool.create_flowchart],
         )
         self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])

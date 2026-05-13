@@ -3,11 +3,11 @@ Skill Discovery Service - Generate available skills text for agent prompts.
 
 This module implements the "progressive disclosure" model from the Agent Skills spec:
   Level 1: Only name + description + location injected into system prompt
-  Level 2: Agent reads full SKILL.md via vfs_read (on-demand)
-  Level 3: Agent reads referenced files via vfs_read/vfs_cmd (on-demand)
+  Level 2: Agent reads full SKILL.md via the `read` tool (on-demand)
+  Level 3: Agent reads referenced files via `read` / `bash` (on-demand)
 
-The agent uses existing VFS tools (vfs_read, vfs_cmd) to activate skills —
-no special-purpose tools needed.
+The agent uses the coding tools (`read`, `bash`) to activate skills, since
+skills are bind-mounted into the sandbox at `/workspace/skills/<name>/`.
 
 All skills (system + user) live in the same MongoDB collection and are
 queried together by get_skills_for_agent() in registry.py.

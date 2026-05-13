@@ -245,6 +245,29 @@ class ProductionSettings(CommonSettings):
     # Code Execution Environment
     # ----------------------------------------------
     E2B_API_KEY: str
+    E2B_TEMPLATE_ID: str  # gaia-coder template ID (run scripts/build_e2b_template.py)
+    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 60
+    E2B_DEFAULT_BASH_TIMEOUT: int = 120
+    E2B_SANDBOX_EVICT_DAYS: int = 14
+    E2B_WARM_POOL_TARGET_RATIO: float = 2.0  # Phase 2
+
+    # ----------------------------------------------
+    # Persistent Workspace Storage (R2 + JuiceFS)
+    # ----------------------------------------------
+    R2_ACCOUNT_ID: str
+    R2_BUCKET: str  # e.g. "gaia-workspaces"
+    R2_ACCESS_KEY: str
+    R2_SECRET_KEY: str
+    # Templated metadata URL: contains {shard} substituted at mount time.
+    # Example: "postgres://juicefs:pass@host:5432/gaia_juicefs_{shard}?sslmode=require"
+    JUICEFS_META_URL_TEMPLATE: str
+    JUICEFS_NUM_SHARDS: int = 1  # Phase 1: 1, Phase 2: 16
+    # JuiceFS RSA-4096 private key in PEM form. Whole multi-line PEM stored as a
+    # single env var / Infisical secret; the entrypoint writes it to disk on
+    # boot so `juicefs format / mount` can pick it up. Optional — leave empty
+    # to skip client-side encryption (R2 at-rest encryption still applies).
+    JFS_ENCRYPTION_KEY: Optional[str] = None
+    JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"  # API container's sidecar mount
 
     # ----------------------------------------------
     # Payment Processing
@@ -403,6 +426,23 @@ class DevelopmentSettings(CommonSettings):
     # Code Execution Environment
     # ----------------------------------------------
     E2B_API_KEY: Optional[str] = None
+    E2B_TEMPLATE_ID: Optional[str] = None
+    E2B_SANDBOX_IDLE_PAUSE_SECONDS: int = 60
+    E2B_DEFAULT_BASH_TIMEOUT: int = 120
+    E2B_SANDBOX_EVICT_DAYS: int = 14
+    E2B_WARM_POOL_TARGET_RATIO: float = 2.0
+
+    # ----------------------------------------------
+    # Persistent Workspace Storage (R2 + JuiceFS)
+    # ----------------------------------------------
+    R2_ACCOUNT_ID: Optional[str] = None
+    R2_BUCKET: Optional[str] = None
+    R2_ACCESS_KEY: Optional[str] = None
+    R2_SECRET_KEY: Optional[str] = None
+    JUICEFS_META_URL_TEMPLATE: Optional[str] = None
+    JUICEFS_NUM_SHARDS: int = 1
+    JFS_ENCRYPTION_KEY: Optional[str] = None
+    JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"
 
     # ----------------------------------------------
     # Payment Processing

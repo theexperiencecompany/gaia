@@ -14,6 +14,7 @@ from app.workers.tasks import (
     process_reminder,
     process_workflow_generation_task,
     store_memories_batch,
+    sweep_idle_sandboxes,
     regenerate_workflow_steps,
 )
 
@@ -31,6 +32,7 @@ _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory
 _process_personalization_task = instrument_task(process_personalization_task)
 _store_memories_batch = instrument_task(store_memories_batch)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
+_sweep_idle_sandboxes = instrument_task(sweep_idle_sandboxes)
 
 WorkerSettings.functions = [
     _process_reminder,
@@ -44,6 +46,7 @@ WorkerSettings.functions = [
     _process_personalization_task,
     _store_memories_batch,
     _cleanup_stuck_personalization,
+    _sweep_idle_sandboxes,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -62,6 +65,11 @@ WorkerSettings.cron_jobs = [
     cron(
         _cleanup_stuck_personalization,
         minute={0, 30},  # Every 30 minutes
+        second=0,
+    ),
+    cron(
+        _sweep_idle_sandboxes,
+        minute=0,  # Hourly
         second=0,
     ),
 ]

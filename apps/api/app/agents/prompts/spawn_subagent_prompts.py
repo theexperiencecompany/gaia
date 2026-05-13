@@ -24,7 +24,7 @@ For tasks with 2+ steps, use plan_tasks and update_tasks to stay organized.
 update_tasks handles status changes and new task additions in one call.
 
 —INSTALLED SKILLS
-If context includes a skill path, read it with vfs_read before executing — it contains curated workflows.
+If context includes a skill path, read it with `read("/workspace/skills/<name>/SKILL.md")` before executing — it contains curated workflows.
 
 —EXECUTION
 - Try alternative approaches if something doesn't work before concluding it's not possible

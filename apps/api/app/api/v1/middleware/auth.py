@@ -62,8 +62,11 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/webhook",  # Webhook endpoints use signature verification
             "/metrics",
         ]
-        # agent only paths
+        # agent only paths — these accept an "Authorization: Bearer <agent JWT>"
+        # in addition to a WorkOS session cookie. /api/v1/dev/* are smoke-test
+        # endpoints that 404 in production.
         self.agent_only_paths = ["/api/v1/chat-stream"]
+        self.agent_only_path_prefixes = ("/api/v1/dev/",)
         # Cache expiry time
         self.user_cache_expiry = 3600  # 1 hour
 
@@ -123,10 +126,13 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             except Exception as e:
                 log.error(f"Authentication middleware error: {e}")
                 # Don't block request on auth failures - routes can handle this
-        if (
-            not request.state.authenticated
-            and request.url.path in self.agent_only_paths
-        ):
+        accepts_agent_token = (
+            request.url.path in self.agent_only_paths
+            or any(
+                request.url.path.startswith(p) for p in self.agent_only_path_prefixes
+            )
+        )
+        if not request.state.authenticated and accepts_agent_token:
             auth_header = request.headers.get("Authorization")
             agent_info = None
             if auth_header and auth_header.startswith("Bearer "):

@@ -35,7 +35,7 @@ from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.finish_task_tool import finish_task
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
-from app.agents.tools.vfs_tools import vfs_cmd, vfs_read
+from app.agents.tools.coding import bash, read
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.general import FINISH_TASK_NAME
 from shared.py.wide_events import log
@@ -110,9 +110,9 @@ class SubAgentFactory:
         # Add search_memory to scoped_tool_dict so subagents can access user memories
         scoped_tool_dict[search_memory.name] = search_memory
 
-        # Add vfs_read and vfs_cmd so subagents can always access the VFS
-        scoped_tool_dict[vfs_read.name] = vfs_read
-        scoped_tool_dict[vfs_cmd.name] = vfs_cmd
+        # Always-on coding tools so subagents can read files / run shell.
+        scoped_tool_dict[read.name] = read
+        scoped_tool_dict[bash.name] = bash
 
         # Add search tools to scoped_tool_dict so subagents can bind and execute them
         # when retrieved (retrieve_tools may return these from the general namespace).
@@ -128,7 +128,7 @@ class SubAgentFactory:
         # all parent tools, not just the provider's scoped tools.
         # The provider agent itself uses scoped_tool_dict for its own tool access,
         # but its SubagentMiddleware needs the full registry so that any child
-        # subagent it spawns can access tools like vfs_read, web_search, etc.
+        # subagent it spawns can access tools like read, bash, web_search, etc.
         full_tool_dict = tool_registry.get_tool_dict()
 
         middleware = create_subagent_middleware(
