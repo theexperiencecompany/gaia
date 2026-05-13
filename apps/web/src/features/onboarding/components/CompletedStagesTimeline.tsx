@@ -11,24 +11,30 @@
 
 "use client";
 
-import { useMemo } from "react";
+import { type Dispatch, useMemo } from "react";
 import { FIELD_NAMES } from "../constants";
+import { useConnectPlatform } from "../hooks/useConnectPlatform";
 import type { UseOnboardingChatReturn } from "../hooks/useOnboardingChat";
-import type { OnboardingState } from "../state/types";
+import type { Action, OnboardingState } from "../state/types";
 import { CompletedStageAccordion } from "./CompletedStageAccordion";
+import { OnboardingPlatformConnect } from "./OnboardingPlatformConnect";
 import { OnboardingTodoCards } from "./OnboardingTodoCards";
+import { OnboardingWorkflowCards } from "./OnboardingWorkflowCards";
 import { WritingStyleRevealCard } from "./reveal/WritingStyleRevealCard";
 import { OnboardingChatStream } from "./stages/Chat";
 
 interface CompletedStagesTimelineProps {
   state: OnboardingState;
+  dispatch: Dispatch<Action>;
   chat: UseOnboardingChatReturn;
 }
 
 export function CompletedStagesTimeline({
   state,
+  dispatch,
   chat,
 }: CompletedStagesTimelineProps) {
+  const { connect, skip } = useConnectPlatform(dispatch);
   const writingStyle = state.server?.writing_style;
   const todos = state.server?.onboarding_todos ?? [];
   const workflows = state.server?.suggested_workflows ?? [];
@@ -115,18 +121,7 @@ export function CompletedStagesTimeline({
           itemKey="workflows"
           title={`${workflows.length} ${workflows.length === 1 ? "workflow" : "workflows"} added`}
         >
-          <ul className="space-y-3">
-            {workflows.map((wf, idx) => (
-              <li key={wf.id ?? `${wf.title}-${idx}`} className="text-sm">
-                <div className="font-medium text-zinc-200">{wf.title}</div>
-                {wf.description && (
-                  <div className="mt-0.5 text-xs text-zinc-400">
-                    {wf.description}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+          <OnboardingWorkflowCards workflows={workflows} />
         </CompletedStageAccordion>
       )}
 
@@ -139,11 +134,13 @@ export function CompletedStagesTimeline({
               : "Skipped social connections"
           }
         >
-          <p className="text-sm text-zinc-300">
-            {state.connectedPlatform
-              ? `You'll receive briefings and urgent notifications on ${state.connectedPlatform}.`
-              : "You can connect Telegram, WhatsApp, or Discord later from Settings."}
-          </p>
+          <OnboardingPlatformConnect
+            onConnect={connect}
+            onSkip={skip}
+            onHoverPlatform={() => {}}
+            connectedPlatform={state.connectedPlatform}
+            hideSkip
+          />
         </CompletedStageAccordion>
       )}
     </div>

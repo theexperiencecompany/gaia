@@ -130,12 +130,15 @@ export default function Onboarding() {
         stage={stage}
         onRestart={handleRestart}
         composer={wrappedComposer}
-        wide={state.todoExecutionStarted || stage === "chat"}
       >
         {introDone ? (
           <m.div {...INTRO_FADE_IN}>
             <MessagesRegion state={state} stage={stage} />
-            <CompletedStagesTimeline state={state} chat={chat} />
+            <CompletedStagesTimeline
+              state={state}
+              dispatch={dispatch}
+              chat={chat}
+            />
             {stageContent}
           </m.div>
         ) : null}

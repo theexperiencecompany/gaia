@@ -32,7 +32,6 @@ interface OnboardingShellProps {
   onRestart: () => void;
   children: ReactNode;
   composer?: ReactNode;
-  wide?: boolean;
 }
 
 /**
@@ -68,7 +67,6 @@ export function OnboardingShell({
   onRestart,
   children,
   composer,
-  wide = false,
 }: OnboardingShellProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const progressStep = getProgress(state, stage);
@@ -104,11 +102,7 @@ export function OnboardingShell({
         ref={scrollRef}
         className="relative z-10 flex-1 overflow-y-auto px-4 pt-20"
       >
-        <div
-          className={`relative mx-auto w-full pb-32 ${
-            wide ? "max-w-(--breakpoint-xl)" : "max-w-2xl"
-          }`}
-        >
+        <div className="relative mx-auto w-full max-w-(--breakpoint-lg) pb-32">
           {children}
         </div>
       </div>
