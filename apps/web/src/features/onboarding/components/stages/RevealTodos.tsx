@@ -48,7 +48,7 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
       dispatch({
         type: "executeTodo",
         message,
-        todo: { title: todo.title, sourceEmail },
+        todo: { id: todo.id, title: todo.title, sourceEmail },
       });
     },
     [todos, dispatch],
@@ -59,7 +59,7 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
   if (state.todoExecutionStarted) {
     return (
       <m.div
-        className="mt-10 space-y-4"
+        className="mt-10 w-full space-y-4"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}

@@ -11,11 +11,12 @@
 
 "use client";
 
-import { Mail01Icon } from "@icons";
+import { useMemo } from "react";
 import { FIELD_NAMES } from "../constants";
 import type { UseOnboardingChatReturn } from "../hooks/useOnboardingChat";
 import type { OnboardingState } from "../state/types";
 import { CompletedStageAccordion } from "./CompletedStageAccordion";
+import { OnboardingTodoCards } from "./OnboardingTodoCards";
 import { WritingStyleRevealCard } from "./reveal/WritingStyleRevealCard";
 import { OnboardingChatStream } from "./stages/Chat";
 
@@ -37,9 +38,33 @@ export function CompletedStagesTimeline({
   const showWorkflows = state.workflowsConfirmed && workflows.length > 0;
   const showPlatforms = state.platformsConfirmed;
 
+  // OnboardingTodoCards types `source_email` as an object (not nullable). The
+  // backend payload returns nullable, so normalise here before handing the list
+  // off so we don't widen the card component's contract.
+  const cardTodos = useMemo(
+    () =>
+      todos.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description ?? undefined,
+        source_email: t.source_email ?? undefined,
+      })),
+    [todos],
+  );
+
+  const executedTodoIds = useMemo(
+    () =>
+      state.todoExecutionTodo
+        ? new Set([state.todoExecutionTodo.id])
+        : new Set<string>(),
+    [state.todoExecutionTodo],
+  );
+
   if (!showWriting && !showTodos && !showWorkflows && !showPlatforms) {
     return null;
   }
+
+  const executedTitle = state.todoExecutionTodo?.title;
 
   return (
     <div className="mt-3 space-y-3">
@@ -61,41 +86,27 @@ export function CompletedStagesTimeline({
         <CompletedStageAccordion
           itemKey="todos"
           title={
-            state.todoExecutionStarted && state.todoExecutionTodo
-              ? `Ran "${state.todoExecutionTodo.title}"`
+            state.todoExecutionStarted && executedTitle
+              ? `Ran "${executedTitle}"`
               : `Saved ${todos.length} ${todos.length === 1 ? "todo" : "todos"} for later`
           }
         >
-          {state.todoExecutionStarted ? (
-            <div className="space-y-4">
+          <div className="space-y-4">
+            <OnboardingTodoCards
+              todos={cardTodos}
+              onExecuteTodo={() => {}}
+              isExecuting={false}
+              executingTodoId={null}
+              completedTodoIds={executedTodoIds}
+              readOnly
+            />
+            {state.todoExecutionStarted && (
               <OnboardingChatStream
                 chat={chat}
                 todoOverride={state.todoExecutionTodo}
               />
-            </div>
-          ) : (
-            <ul className="space-y-2">
-              {todos.map((todo) => (
-                <li
-                  key={todo.id}
-                  className="flex items-start gap-2 text-sm text-zinc-300"
-                >
-                  <span className="mt-1.5 size-1 shrink-0 rounded-full bg-zinc-500" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-zinc-200">{todo.title}</div>
-                    {todo.source_email && (
-                      <div className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
-                        <Mail01Icon className="size-3 shrink-0" />
-                        <span className="truncate">
-                          {todo.source_email.sender}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+            )}
+          </div>
         </CompletedStageAccordion>
       )}
 

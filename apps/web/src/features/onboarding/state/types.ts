@@ -75,6 +75,7 @@ export interface OnboardingState {
    * onboarding chat stream — the raw message text is hidden from the user.
    */
   todoExecutionTodo: {
+    id: string;
     title: string;
     sourceEmail: { sender: string; subject: string } | null;
   } | null;
@@ -127,6 +128,7 @@ export type Action =
       type: "executeTodo";
       message: string;
       todo: {
+        id: string;
         title: string;
         sourceEmail: { sender: string; subject: string } | null;
       };

@@ -34,8 +34,10 @@ export function Workflows({ state }: WorkflowsProps) {
 
   return (
     <m.div className="mt-4 space-y-4" {...MOTION_FADE_UP_LARGE}>
-      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WORKFLOWS_INTRO_PRIMARY} />
-      <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WORKFLOWS_INTRO_SECONDARY}>
+      <ChatBubbleBot
+        {...BOT_BUBBLE_DEFAULTS}
+        text={`${WORKFLOWS_INTRO_PRIMARY}<NEW_MESSAGE_BREAK>${WORKFLOWS_INTRO_SECONDARY}`}
+      >
         <div className="mt-3">
           <OnboardingWorkflowCards workflows={workflows} />
         </div>

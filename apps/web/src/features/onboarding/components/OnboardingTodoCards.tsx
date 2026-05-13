@@ -25,6 +25,9 @@ interface OnboardingTodoCardsProps {
   isExecuting: boolean;
   executingTodoId: string | null;
   completedTodoIds?: Set<string>;
+  /** Suppress the hover "Run now" button — used when displaying the cards as a
+   *  historical record (e.g. inside the completed-stages timeline accordion). */
+  readOnly?: boolean;
 }
 
 const MAX_VISIBLE = 5;
@@ -41,6 +44,7 @@ function OnboardingTodoCardsImpl({
   isExecuting,
   executingTodoId,
   completedTodoIds,
+  readOnly = false,
 }: OnboardingTodoCardsProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -70,6 +74,7 @@ function OnboardingTodoCardsImpl({
           const isFirst = index === 0;
           const nothingHovered = hoveredId === null;
           const showRunNow =
+            !readOnly &&
             !isExecuting &&
             !active &&
             !completed &&
