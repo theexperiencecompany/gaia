@@ -61,6 +61,7 @@ export interface PersonalizationData {
     source_email?: { sender: string; subject: string } | null;
   }> | null;
   first_message_conversation_id?: string;
+  first_message?: string | null;
 }
 
 // ── Per-reveal-card payload types (consumed by reveal components) ──────────

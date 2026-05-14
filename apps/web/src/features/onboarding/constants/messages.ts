@@ -26,7 +26,7 @@ export const REVEAL_WRITING_STYLE_INTRO =
   "Here's what I learned about how you write:";
 
 export const REVEAL_TODOS_INTRO =
-  "Based on what I found, here are some things I can help with:";
+  "You can add todos and I will run them automatically. This keeps your todo list moving so it never piles up.<NEW_MESSAGE_BREAK>I drafted a few from your inbox that I think are worth doing. Try one:";
 
 // ── Workflows stage copy ────────────────────────────────────────────────────
 
@@ -34,4 +34,4 @@ export const WORKFLOWS_INTRO_PRIMARY =
   "Workflows are recurring jobs I run across your tools like Gmail, Calendar, Notion, and Slack, on a schedule or triggered by an event like a new email.";
 
 export const WORKFLOWS_INTRO_SECONDARY =
-  "They handle the everyday grunt work for you. Build more anytime in the Workflows page.";
+  "They handle the everyday grunt work for you. I've put together a few tailored to how you work, build more anytime in the Workflows page.";

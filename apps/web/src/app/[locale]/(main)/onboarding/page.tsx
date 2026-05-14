@@ -32,6 +32,7 @@ import {
 } from "@/features/onboarding/components/stages";
 import { EASE_OUT_QUART } from "@/features/onboarding/constants/motion";
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
+import { useUserStore } from "@/stores/userStore";
 
 const INTRO_FADE_IN = {
   initial: { opacity: 0, filter: "blur(12px)" },
@@ -39,41 +40,61 @@ const INTRO_FADE_IN = {
   transition: { duration: 0.6, ease: EASE_OUT_QUART },
 } as const;
 
-const INTRO_SEEN_KEY = "gaia.onboarding.introSeen";
+const INTRO_SEEN_PREFIX = "gaia.onboarding.introSeen";
 
-function hasSeenIntro(): boolean {
+// Keyed per-user so a new account still gets the intro, while the same
+// user reloading (or coming back from an external OAuth redirect that lands
+// them in a fresh browsing context, e.g. Arc's Little Arc) skips it.
+function introSeenKey(userId: string): string | null {
+  return userId ? `${INTRO_SEEN_PREFIX}.${userId}` : null;
+}
+
+function hasSeenIntro(userId: string): boolean {
   if (typeof window === "undefined") return false;
+  const key = introSeenKey(userId);
+  if (!key) return false;
   try {
-    return window.sessionStorage.getItem(INTRO_SEEN_KEY) === "1";
+    return window.localStorage.getItem(key) === "1";
   } catch {
     return false;
   }
 }
 
-function markIntroSeen(): void {
+function markIntroSeen(userId: string): void {
+  const key = introSeenKey(userId);
+  if (!key) return;
   try {
-    window.sessionStorage.setItem(INTRO_SEEN_KEY, "1");
+    window.localStorage.setItem(key, "1");
   } catch {
-    // sessionStorage unavailable (private mode, etc.) — silently skip.
+    // localStorage unavailable (private mode, etc.) — silently skip.
   }
+}
+
+function clearIntroSeen(userId: string): void {
+  const key = introSeenKey(userId);
+  if (!key) return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {}
 }
 
 export default function Onboarding() {
   const { state, stage, dispatch, restart } = useOnboarding({
     skipAutoRedirect: true,
   });
-  const [introDone, setIntroDone] = useState<boolean>(hasSeenIntro);
+  const userId = useUserStore((s) => s.userId);
+  const [introDone, setIntroDone] = useState<boolean>(() =>
+    hasSeenIntro(userId),
+  );
 
   const handleRestart = () => {
-    try {
-      window.sessionStorage.removeItem(INTRO_SEEN_KEY);
-    } catch {}
+    clearIntroSeen(userId);
     setIntroDone(false);
     return restart();
   };
 
   const handleIntroComplete = () => {
-    markIntroSeen();
+    markIntroSeen(userId);
     setIntroDone(true);
   };
 

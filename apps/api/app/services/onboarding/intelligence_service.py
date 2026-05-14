@@ -35,6 +35,7 @@ from app.agents.prompts.onboarding_prompts import (
     WORKFLOW_CREATION_PROMPT,
 )
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
+from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.lazy_loader import providers
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import users_collection
@@ -48,6 +49,7 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.composio.composio_service import get_composio_service
 from app.services.workflow.generation_service import WorkflowGenerationService
+from app.utils.redis_utils import RedisPoolManager
 from app.services.onboarding import inbox_scan_cache
 from app.services.onboarding.first_message_service import generate_first_message
 from app.services.onboarding.inbox_triage_service import triage_inbox
@@ -206,9 +208,9 @@ class _WorkflowSpec(BaseModel):
 
 class _WorkflowList(BaseModel):
     workflows: list[_WorkflowSpec] = Field(
-        description="Exactly 3 workflow specs — no more, no fewer",
-        min_length=3,
-        max_length=3,
+        description="Exactly 4 workflow specs — no more, no fewer",
+        min_length=4,
+        max_length=4,
     )
 
 
@@ -290,7 +292,32 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     if has_gmail:
         inbox_ctx = InboxScanContext()
-        scan_task = asyncio.create_task(_run_inbox_scanning(user_id, inbox_ctx))
+
+        async def _scan_then_enqueue_mem0(ctx: InboxScanContext) -> None:
+            # Run the visible inbox scan, then immediately queue the durable
+            # Mem0 ingestion. Queuing here (rather than after COMPLETE) means:
+            #   1. Heavy Composio contention is over — the visible scan is done.
+            #   2. Mem0 starts ~10s earlier, running in parallel with triage /
+            #      workflows / first_message (which hit LLMs, not Composio).
+            #   3. Survives downstream pipeline failures — Mem0 is queued
+            #      before triage even begins.
+            await _run_inbox_scanning(user_id, ctx)
+            try:
+                pool = await RedisPoolManager.get_pool()
+                await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+                log.info(
+                    "[intelligence] queued gmail->mem0 ingestion",
+                    user_id=user_id,
+                )
+            except Exception as e:
+                log.warning(
+                    "[intelligence] failed to queue gmail->mem0 ingestion",
+                    user_id=user_id,
+                    error=str(e)[:200],
+                    error_type=type(e).__name__,
+                )
+
+        scan_task = asyncio.create_task(_scan_then_enqueue_mem0(inbox_ctx))
         _background_tasks.add(scan_task)
         scan_task.add_done_callback(_background_tasks.discard)
         provision_future = asyncio.create_task(_run_provision_gmail(user_id))
@@ -391,7 +418,12 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     if conversation_id:
         await users_collection.update_one(
             {"_id": ObjectId(user_id)},
-            {"$set": {"onboarding.first_message_conversation_id": conversation_id}},
+            {
+                "$set": {
+                    "onboarding.first_message_conversation_id": conversation_id,
+                    "onboarding.first_message": first_message,
+                }
+            },
         )
 
     if provision_future is not None and not provision_future.done():
@@ -1122,7 +1154,7 @@ async def _create_focus_todos(
         name=name,
         profession=profession,
         focus=focus,
-        format_instructions="Return a JSON object with a 'todos' key containing a list of 3 todo title strings.",
+        format_instructions=f"Return a JSON object with a 'todos' key containing a list of {ONBOARDING_TODO_LIMIT} todo title strings.",
     )
 
     try:
@@ -1160,14 +1192,16 @@ async def _create_focus_todos(
                 return None
 
         t_create = time.monotonic()
-        results = await asyncio.gather(*[_create_one(t) for t in parsed.todos[:3]])
+        results = await asyncio.gather(
+            *[_create_one(t) for t in parsed.todos[:ONBOARDING_TODO_LIMIT]]
+        )
         created = [r for r in results if r is not None]
         log.info(
             "[intelligence] focus_todos done",
             user_id=user_id,
             step="todos_focus",
             outcome="ok",
-            specs_count=len(parsed.todos[:3]),
+            specs_count=len(parsed.todos[:ONBOARDING_TODO_LIMIT]),
             created_count=len(created),
             llm_duration_s=llm_duration_s,
             create_duration_s=round(time.monotonic() - t_create, 2),
@@ -1258,14 +1292,16 @@ async def _create_todos_from_triage(
                 return None
 
         t_create = time.monotonic()
-        results = await asyncio.gather(*[_create_one(s) for s in parsed.todos[:3]])
+        results = await asyncio.gather(
+            *[_create_one(s) for s in parsed.todos[:ONBOARDING_TODO_LIMIT]]
+        )
         created = [r for r in results if r is not None]
         log.info(
             "[intelligence] triage_todos done",
             user_id=user_id,
             step="todos_triage",
             outcome="ok",
-            specs_count=len(parsed.todos[:3]),
+            specs_count=len(parsed.todos[:ONBOARDING_TODO_LIMIT]),
             created_count=len(created),
             llm_duration_s=llm_duration_s,
             create_duration_s=round(time.monotonic() - t_create, 2),
@@ -1402,7 +1438,7 @@ async def _create_onboarding_workflows(
                 candidate: _WorkflowList = await structured_llm.ainvoke(
                     [HumanMessage(content=prompt)]
                 )
-                if len(candidate.workflows) == 3:
+                if len(candidate.workflows) == 4:
                     parsed = candidate
                     break
                 log.warning(
@@ -1425,7 +1461,7 @@ async def _create_onboarding_workflows(
             if last_error is not None:
                 raise last_error
             raise RuntimeError(
-                "LLM did not return exactly 3 workflow specs after 3 attempts"
+                "LLM did not return exactly 4 workflow specs after 3 attempts"
             )
         specs_llm_duration_s = round(time.monotonic() - t_specs_llm, 2)
         log.info(

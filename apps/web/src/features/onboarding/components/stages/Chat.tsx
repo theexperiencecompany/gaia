@@ -110,9 +110,19 @@ export function OnboardingChatStream({
   chat: UseOnboardingChatReturn;
   todoOverride?: TodoRunNowCardProps | null;
 }) {
+  const runNowStart = chat.streamMessages.findIndex(
+    (m) =>
+      m.role === "user" &&
+      typeof m.content === "string" &&
+      m.content.startsWith(RUN_NOW_PREFIX),
+  );
+  const visibleMessages =
+    todoOverride && runNowStart >= 0
+      ? chat.streamMessages.slice(runNowStart)
+      : chat.streamMessages;
   return (
     <>
-      {chat.streamMessages.map((msg) => {
+      {visibleMessages.map((msg) => {
         const isRunNowMessage =
           msg.role === "user" &&
           typeof msg.content === "string" &&
@@ -152,7 +162,7 @@ export function OnboardingChatStream({
       })}
 
       {chat.isChatSending &&
-        !chat.streamMessages.some(
+        !visibleMessages.some(
           (msg) => msg.role === "assistant" && msg.content,
         ) && (
           <LoadingIndicator
@@ -166,16 +176,23 @@ export function OnboardingChatStream({
   );
 }
 
-/** Final `chat` stage content. The run-now demo transcript (when present)
- *  lives in the persistent timeline above, so this stage owns only the closing
- *  ceremony: the holo personalization card. The composer surfaces the
- *  "Continue to GAIA" CTA. */
 export function Chat({ state }: Omit<ChatProps, "dispatch" | "chat">) {
   const showHolo = state.server?.has_personalization && state.server;
   if (!showHolo || !state.server) return null;
 
+  const firstMessage = state.server.first_message;
+
   return (
     <m.div className="mt-4 space-y-4" {...MOTION_FADE_UP_LARGE}>
+      {firstMessage && (
+        <ChatBubbleBot
+          {...BOT_BUBBLE_DEFAULTS}
+          text={firstMessage}
+          message_id="onboarding-first-message"
+          loading={false}
+          date={new Date().toISOString()}
+        />
+      )}
       <div className="my-4">
         <HoloCardReveal personalizationData={state.server} />
       </div>

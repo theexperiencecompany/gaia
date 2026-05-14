@@ -10,6 +10,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
+from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import (
     todos_collection,
@@ -366,7 +367,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
                     {"_id": 1, "title": 1, "description": 1, "source_email": 1},
                 )
                 .sort("created_at", -1)
-                .limit(5)
+                .limit(ONBOARDING_TODO_LIMIT)
             )
             onboarding_todos = [
                 {
@@ -398,6 +399,7 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             "first_message_conversation_id": onboarding.get(
                 "first_message_conversation_id"
             ),
+            "first_message": onboarding.get("first_message"),
             "writing_style": writing_style_payload,
             "social_profiles": [
                 {"platform": p.get("platform", ""), "url": p.get("url", "")}

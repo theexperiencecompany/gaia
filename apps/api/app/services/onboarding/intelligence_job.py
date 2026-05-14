@@ -16,7 +16,7 @@ from arq.utils import timestamp_ms
 from bson import ObjectId
 from shared.py.wide_events import log
 
-from app.db.mongodb.collections import users_collection
+from app.db.mongodb.collections import todos_collection, users_collection
 from app.utils.redis_utils import RedisPoolManager
 
 
@@ -77,12 +77,34 @@ async def abort_active_intelligence_job(user_id: str) -> bool:
     return aborted
 
 
+async def _purge_stale_onboarding_todos(user_id: str) -> int:
+    try:
+        result = await todos_collection.delete_many(
+            {"user_id": user_id, "labels": "onboarding"}
+        )
+        return result.deleted_count
+    except Exception as e:
+        log.warning(
+            "[intelligence_job] failed to purge stale onboarding todos",
+            user_id=user_id,
+            error=str(e)[:200],
+        )
+        return 0
+
+
 async def enqueue_intelligence_job(user_id: str) -> Optional[str]:
     """Enqueue the intelligence pipeline for the user, aborting any in-flight job first.
 
     Returns the new job id, or None if enqueue failed.
     """
     await abort_active_intelligence_job(user_id)
+    purged = await _purge_stale_onboarding_todos(user_id)
+    if purged:
+        log.info(
+            "[intelligence_job] purged stale onboarding todos",
+            user_id=user_id,
+            purged=purged,
+        )
 
     pool = await RedisPoolManager.get_pool()
     job = await pool.enqueue_job(_INTELLIGENCE_TASK, user_id)

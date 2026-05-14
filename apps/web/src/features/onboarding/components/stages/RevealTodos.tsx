@@ -42,9 +42,11 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
       if (!todo) return;
       const sourceEmail = todo.source_email ?? null;
       const emailHint = sourceEmail
-        ? `\n\n[Context for you: this todo was derived from an email from "${sourceEmail.sender}" with the subject "${sourceEmail.subject}". Reference this email in your response when relevant.]`
+        ? `\n\n[Context: derived from an email from "${sourceEmail.sender}" with subject "${sourceEmail.subject}". Reference this email and its actual contents.]`
         : "";
-      const message = `Execute this todo for me: ${todo.title}${emailHint}`;
+      const closingHint =
+        "\n\n[This is an onboarding run-now demo. Execute the todo and report the result in 1-2 short sentences. Do NOT ask a follow-up question. Do NOT offer further help or automation. End on the result.]";
+      const message = `Execute this todo for me: ${todo.title}${emailHint}${closingHint}`;
       dispatch({
         type: "executeTodo",
         message,
@@ -57,6 +59,10 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
   if (todos.length === 0) return null;
 
   if (state.todoExecutionStarted) {
+    const executingTodo = state.todoExecutionTodo
+      ? todos.find((t) => t.id === state.todoExecutionTodo?.id)
+      : null;
+    const done = chat.isTodoExecutionDone;
     return (
       <m.div
         className="mt-10 w-full space-y-4"
@@ -64,6 +70,23 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
+        {executingTodo && (
+          <OnboardingTodoCards
+            todos={[
+              {
+                id: executingTodo.id,
+                title: executingTodo.title,
+                description: executingTodo.description ?? undefined,
+                source_email: executingTodo.source_email ?? undefined,
+              },
+            ]}
+            onExecuteTodo={() => {}}
+            isExecuting={!done}
+            executingTodoId={done ? null : executingTodo.id}
+            completedTodoIds={done ? new Set([executingTodo.id]) : new Set()}
+            readOnly
+          />
+        )}
         <OnboardingChatStream
           chat={chat}
           todoOverride={state.todoExecutionTodo}
@@ -91,7 +114,12 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
     <div className="mt-3 space-y-4">
       <RevealIntroBubble text={REVEAL_TODOS_INTRO}>
         <OnboardingTodoCards
-          todos={todos.map((t) => ({ id: t.id, title: t.title }))}
+          todos={todos.map((t) => ({
+            id: t.id,
+            title: t.title,
+            description: t.description ?? undefined,
+            source_email: t.source_email ?? undefined,
+          }))}
           onExecuteTodo={handleExecute}
           isExecuting={false}
           executingTodoId={null}

@@ -303,13 +303,22 @@ async def handle_oauth_connection(
     if integration_config.id == GMAIL_INTEGRATION_ID:
         log.info(f"Starting Gmail email processing for user {user_id}")
 
-        # Check if user has completed onboarding and update bio_status to processing
+        # Fetch once; both branches below read the same snapshot.
+        user_doc = None
         try:
             user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-            if user_doc and user_doc.get("onboarding", {}).get("completed"):
-                current_bio_status = user_doc.get("onboarding", {}).get("bio_status")
+        except Exception as e:
+            log.error(f"Failed to load user_doc for {user_id}: {e}", exc_info=True)
 
-                # If bio was generated without Gmail, update status to processing
+        onboarding_completed = bool(
+            user_doc and user_doc.get("onboarding", {}).get("completed")
+        )
+
+        # If bio was generated without Gmail (post-onboarding reconnect),
+        # bump bio_status back to processing so the UI re-runs.
+        if onboarding_completed and user_doc:
+            try:
+                current_bio_status = user_doc.get("onboarding", {}).get("bio_status")
                 if current_bio_status in [BioStatus.NO_GMAIL, "no_gmail"]:
                     await users_collection.update_one(
                         {"_id": ObjectId(user_id)},
@@ -324,8 +333,6 @@ async def handle_oauth_connection(
                         f"Updated bio_status to processing for user {user_id} "
                         f"(was {current_bio_status})"
                     )
-
-                    # Send WebSocket update to notify frontend
                     try:
                         if isinstance(user_id, str) and user_id:
                             await websocket_manager.broadcast_to_user(
@@ -335,24 +342,31 @@ async def handle_oauth_connection(
                                     "data": {"bio_status": BioStatus.PROCESSING},
                                 },
                             )
-                        else:
-                            log.warning(
-                                f"Cannot broadcast WebSocket update: user_id is not a valid string ({user_id})"
-                            )
                     except Exception as ws_error:
                         log.warning(f"Failed to send WebSocket update: {ws_error}")
-        except Exception as e:
-            log.error(
-                f"Error updating bio_status for user {user_id}: {e}", exc_info=True
-            )
+            except Exception as e:
+                log.error(
+                    f"Error updating bio_status for user {user_id}: {e}",
+                    exc_info=True,
+                )
 
-        # Queue Gmail processing via ARQ
-        try:
-            pool = await RedisPoolManager.get_pool()
-            await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
-            log.info(f"Queued Gmail processing job for user {user_id}")
-        except Exception as e:
-            log.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
+        # Queue Gmail->Mem0 ingestion via ARQ — but only if the user has
+        # already completed onboarding. During first-time onboarding, the
+        # onboarding pipeline (process_onboarding_intelligence) enqueues this
+        # job itself once inbox scanning finishes, so it doesn't compete with
+        # the visible scan for Composio Gmail capacity.
+        if onboarding_completed:
+            try:
+                pool = await RedisPoolManager.get_pool()
+                await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+                log.info(f"Queued Gmail processing job for user {user_id}")
+            except Exception as e:
+                log.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
+        else:
+            log.info(
+                "Deferring Gmail->Mem0 ingestion until onboarding pipeline "
+                f"completes for user {user_id}"
+            )
 
     # Invalidate OAuth status cache for this user
     try:
