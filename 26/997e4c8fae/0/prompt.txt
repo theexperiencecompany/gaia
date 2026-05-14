@@ -192,3 +192,11 @@ Mic02Icon MicOff02Icon use these icons btw for voice and use chevron up (from ic
 ---
 
 ensure proper spacing between the bubbles please
+
+---
+
+in the "i'm speaking" mode when inactive, its way too tall not as short as the gaia speaking mode please help me fix that in the backgorund gradient wavelength shit. u can screenshot and text
+
+---
+
+commit and push it. looks good i guess. and ensure this page is only accessible in development
