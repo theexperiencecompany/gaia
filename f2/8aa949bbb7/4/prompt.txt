@@ -1,0 +1,25 @@
+so please see th file logs and all whats going on in the application api and arq worker. in onboarding Scanning your inbox it just showed this for so long, and then it showed connecting to gmail like it took so long and nothing seemed to be happening there. what are we fucking up? explore root cause anlaysis and tell me whats taking up the time
+
+---
+
+where do we double fetch? which can we remove? how can we? can u restart redis for me too. also how the fuck is arq worker single loop wtf ? arq worker literally manages shit in the background? please re evaluate explore and then tell me
+
+---
+
+how about process_gmail_to_memory we do this AFTER ibox scanning is complete for triaging and writing style and social platforms and holo card?
+
+---
+
+are there any issues with this? also no i don't think we even can parallelize the nextpage token loop
+
+---
+
+wait no then this flow is wrong because user should connect gmail even after they've done onboarding
+
+---
+
+how would we fix those???
+
+---
+
+so what are the best fixes for both shit

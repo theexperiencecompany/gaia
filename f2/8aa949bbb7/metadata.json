@@ -3,7 +3,7 @@
   "checkpoint_id": "f28aa949bbb7",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 16,
+  "checkpoints_count": 23,
   "files_touched": [
     "apps/api/app/agents/prompts/onboarding_prompts.py",
     "apps/api/app/api/v1/endpoints/onboarding.py",
@@ -43,13 +43,19 @@
       "transcript": "/f2/8aa949bbb7/3/full.jsonl",
       "content_hash": "/f2/8aa949bbb7/3/content_hash.txt",
       "prompt": "/f2/8aa949bbb7/3/prompt.txt"
+    },
+    {
+      "metadata": "/f2/8aa949bbb7/4/metadata.json",
+      "transcript": "/f2/8aa949bbb7/4/full.jsonl",
+      "content_hash": "/f2/8aa949bbb7/4/content_hash.txt",
+      "prompt": "/f2/8aa949bbb7/4/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 671,
-    "cache_creation_tokens": 1960966,
-    "cache_read_tokens": 73811046,
-    "output_tokens": 199874,
-    "api_call_count": 467
+    "input_tokens": 769,
+    "cache_creation_tokens": 2124872,
+    "cache_read_tokens": 77185530,
+    "output_tokens": 225747,
+    "api_call_count": 510
   }
 }
