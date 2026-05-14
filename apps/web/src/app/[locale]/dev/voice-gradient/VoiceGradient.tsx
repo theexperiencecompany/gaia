@@ -464,7 +464,29 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
 
     const start = performance.now();
     let raf = 0;
+    /* Idle throttle: when the spectrum has been near-zero for > IDLE_MS,
+       we cap the render rate to ~30fps (half the GPU work during silence)
+       while still rendering at full 60fps the moment audio resumes. */
+    const IDLE_MS = 1000;
+    const IDLE_FRAME_MS = 32; // ~30 fps
+    const ACTIVE_THRESHOLD = 0.02;
+    let lastActiveAt = performance.now();
+    let lastDrawAt = 0;
+
     const draw = (now: number) => {
+      // Compute current spectrum activity. Buffer is small (24 bins) so this
+      // is a few µs.
+      let sum = 0;
+      for (let i = 0; i < spectrum.length; i++) sum += spectrum[i];
+      const avg = sum / Math.max(1, spectrum.length);
+      if (avg > ACTIVE_THRESHOLD) lastActiveAt = now;
+      const isIdle = now - lastActiveAt > IDLE_MS;
+      if (isIdle && now - lastDrawAt < IDLE_FRAME_MS) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      lastDrawAt = now;
+
       const t = now - start;
 
       const target = modeRef.current === "gaia" ? 1 : 0;
