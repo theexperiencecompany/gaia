@@ -1,0 +1,23 @@
+Based on what I found, here are some things I can help with:
+
+can you rewrite this in onboarding to write like you can create todos, and gaia can complete them and here are some tasks you can try out. give me suggestions on what to add in this direction. n oem dashes.
+
+---
+
+sure make a bit more high quality options
+
+---
+
+also in the todo accordion, once its ran we show ran xyz. in that accordion, the todos component shows the email summary too below the todo title. but this isn't shown in the onboarding where user clicks on run now. why? where is the description there? also, why in onboarding only 3 are shown, but in collapsed accordion 5 are shown. what are we messing up? please explore and tell me about this. also i like 6 but frame it like you can add todos and i will run them end to end. and i drafted a few from your inbox that i think can be important. try one
+
+---
+
+sure apply the copy ussue but dont fix the 3 5 issue. there seems to be an issue like why are 5 generated in the first place? how about limie both places to be 3 instead of 5 but ensure shared code but explore the underlying root cuase like where would the user get 5 if only 3 were created regardless of the slicing?
+
+---
+
+write run them automatically btw . and write that this can help you keep your todo list empty (repharse that a bit better) also dont add retarded ass comments btw. and make sure you fix the actual reason where 5 is done like the limit. also does restart onboarding clear the user's todos in the proper place too please check that too
+
+---
+
+ensure new message break is used btw. before "i darfted a few from your inbox" first understand this

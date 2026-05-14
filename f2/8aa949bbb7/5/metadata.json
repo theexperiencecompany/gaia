@@ -1,0 +1,107 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "f28aa949bbb7",
+  "session_id": "cb74ccba-8827-4435-887e-bef84d4cf2aa",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-14T14:18:04.619039Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/api/v1/endpoints/onboarding.py",
+    "apps/api/app/constants/todos.py",
+    "apps/api/app/services/oauth/oauth_service.py",
+    "apps/api/app/services/onboarding/intelligence_job.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/constants/messages.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "d3add4187978",
+  "token_usage": {
+    "input_tokens": 106,
+    "cache_creation_tokens": 198463,
+    "cache_read_tokens": 5500974,
+    "output_tokens": 22270,
+    "api_call_count": 61
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-14T14:18:04.609094Z",
+    "agent_lines": 22,
+    "agent_removed": 20,
+    "human_added": 70,
+    "human_modified": 40,
+    "human_removed": 0,
+    "total_committed": 132,
+    "total_lines_changed": 195,
+    "agent_percentage": 21.53846153846154,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 94,
+      "user_lines_removed": 33,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/app/services/oauth/oauth_service.py": 35,
+        "apps/api/app/services/onboarding/intelligence_service.py": 27,
+        "apps/web/src/app/[locale]/(main)/onboarding/page.tsx": 32
+      },
+      "user_removed_per_file": {
+        "apps/api/app/services/oauth/oauth_service.py": 21,
+        "apps/api/app/services/onboarding/intelligence_service.py": 1,
+        "apps/web/src/app/[locale]/(main)/onboarding/page.tsx": 11
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 94,
+      "agent_lines_removed": 33
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 94,
+      "agent_lines_removed": 33
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 29,
+      "user_lines_removed": 7,
+      "agent_lines_added": 94,
+      "agent_lines_removed": 33,
+      "user_added_per_file": {
+        "apps/api/app/agents/prompts/onboarding_prompts.py": 4,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 25
+      },
+      "user_removed_per_file": {
+        "apps/api/app/agents/prompts/onboarding_prompts.py": 5,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 2
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 164,
+      "agent_lines_removed": 48
+    }
+  ]
+}
