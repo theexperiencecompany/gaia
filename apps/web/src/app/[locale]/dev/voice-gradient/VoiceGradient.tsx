@@ -20,6 +20,17 @@ void main() {
 }
 `;
 
+/* ─── Trivial blit fragment: samples the wave FBO with bilinear filter ── */
+const BLIT_FRAG = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uTex;
+void main() {
+  fragColor = texture(uTex, vUv);
+}
+`;
+
 /* ─── Fragment shader: uniform body + soft volumetric peak ──────────────────
  *
  * Architectural intent: there is exactly ONE wave envelope. The area below
@@ -359,14 +370,18 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
       return;
     }
 
-    let program: WebGLProgram;
+    let waveProgram: WebGLProgram;
+    let blitProgram: WebGLProgram;
     let vbo: WebGLBuffer | null = null;
     try {
       const vert = compileShader(gl, gl.VERTEX_SHADER, VERT);
-      const frag = compileShader(gl, gl.FRAGMENT_SHADER, FRAG);
-      program = linkProgram(gl, vert, frag);
+      const wfrag = compileShader(gl, gl.FRAGMENT_SHADER, FRAG);
+      const bfrag = compileShader(gl, gl.FRAGMENT_SHADER, BLIT_FRAG);
+      waveProgram = linkProgram(gl, vert, wfrag);
+      blitProgram = linkProgram(gl, vert, bfrag);
       gl.deleteShader(vert);
-      gl.deleteShader(frag);
+      gl.deleteShader(wfrag);
+      gl.deleteShader(bfrag);
     } catch (e) {
       console.error("[VoiceGradient] shader build failed", e);
       return;
@@ -379,25 +394,69 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
       new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
       gl.STATIC_DRAW,
     );
-    const aPos = gl.getAttribLocation(program, "aPos");
-    gl.enableVertexAttribArray(aPos);
-    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    /* Each program needs its own aPos binding because attribute locations
+       are program-specific. */
+    const bindAttribFor = (prog: WebGLProgram) => {
+      const loc = gl.getAttribLocation(prog, "aPos");
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    };
+    bindAttribFor(waveProgram);
+    bindAttribFor(blitProgram);
 
-    const uSpectrum = gl.getUniformLocation(program, "uSpectrum");
-    const uTime = gl.getUniformLocation(program, "uTime");
-    const uResolution = gl.getUniformLocation(program, "uResolution");
-    const uMode = gl.getUniformLocation(program, "uMode");
+    const uSpectrum = gl.getUniformLocation(waveProgram, "uSpectrum");
+    const uTime = gl.getUniformLocation(waveProgram, "uTime");
+    const uResolution = gl.getUniformLocation(waveProgram, "uResolution");
+    const uMode = gl.getUniformLocation(waveProgram, "uMode");
+    const uBlitTex = gl.getUniformLocation(blitProgram, "uTex");
+
+    /* ─── Offscreen framebuffer: heavy wave shader renders into a
+         half-resolution colour texture, then the trivial blit shader
+         upsamples it to the canvas with bilinear filtering. The wave is
+         volumetric/blurred so the 2× upscale is invisible, and the
+         fragment-shader workload drops ~75%. */
+    const fbo = gl.createFramebuffer();
+    const fboTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, fboTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      fboTex,
+      0,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    /* Scale factor for the offscreen render relative to the canvas. */
+    const RENDER_SCALE = 0.5;
+    let fboW = 0;
+    let fboH = 0;
 
     const resize = () => {
-      /* DPR capped at 1.5: the gradient is heavily blurred so the extra
-         sharpness from a true 2× render is invisible, while pixel count
-         drops by ~44% (1.5² vs 2²) — a big fragment-shader saving. */
       const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
-      gl.viewport(0, 0, canvas.width, canvas.height);
+      fboW = Math.max(2, Math.floor(canvas.width * RENDER_SCALE));
+      fboH = Math.max(2, Math.floor(canvas.height * RENDER_SCALE));
+      gl.bindTexture(gl.TEXTURE_2D, fboTex);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        fboW,
+        fboH,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        null,
+      );
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -411,15 +470,30 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
       const target = modeRef.current === "gaia" ? 1 : 0;
       fadeRef.current += (target - fadeRef.current) * 0.06;
 
+      /* Pass 1 — render wave into the half-res FBO. */
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.viewport(0, 0, fboW, fboH);
       // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
-      gl.useProgram(program);
+      gl.useProgram(waveProgram);
+      bindAttribFor(waveProgram);
       gl.uniform1fv(uSpectrum, spectrum);
       gl.uniform1f(uTime, t);
-      gl.uniform2f(uResolution, canvas.width, canvas.height);
+      gl.uniform2f(uResolution, fboW, fboH);
       gl.uniform1f(uMode, fadeRef.current);
-
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      /* Pass 2 — blit FBO texture to canvas at full resolution with
+         bilinear upsampling (the GPU handles the interpolation for free). */
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
+      gl.useProgram(blitProgram);
+      bindAttribFor(blitProgram);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, fboTex);
+      gl.uniform1i(uBlitTex, 0);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
       raf = requestAnimationFrame(draw);
@@ -430,7 +504,10 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
       cancelAnimationFrame(raf);
       ro.disconnect();
       if (vbo) gl.deleteBuffer(vbo);
-      gl.deleteProgram(program);
+      if (fbo) gl.deleteFramebuffer(fbo);
+      if (fboTex) gl.deleteTexture(fboTex);
+      gl.deleteProgram(waveProgram);
+      gl.deleteProgram(blitProgram);
     };
   }, [spectrum]);
 
