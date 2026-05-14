@@ -3,14 +3,16 @@
   "checkpoint_id": "bd686b2fbc1f",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 4,
+  "checkpoints_count": 6,
   "files_touched": [
     "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
     "apps/web/src/app/styles/globals.css",
     "apps/web/src/components/ui/holo-card/BackCardContent.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStageAccordion.tsx",
     "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx",
     "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
     "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingProcessing.tsx",
     "apps/web/src/features/onboarding/components/OnboardingProgress.tsx",
     "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
     "apps/web/src/features/onboarding/components/OnboardingTodoCards.tsx",
@@ -38,13 +40,19 @@
       "transcript": "/bd/686b2fbc1f/1/full.jsonl",
       "content_hash": "/bd/686b2fbc1f/1/content_hash.txt",
       "prompt": "/bd/686b2fbc1f/1/prompt.txt"
+    },
+    {
+      "metadata": "/bd/686b2fbc1f/2/metadata.json",
+      "transcript": "/bd/686b2fbc1f/2/full.jsonl",
+      "content_hash": "/bd/686b2fbc1f/2/content_hash.txt",
+      "prompt": "/bd/686b2fbc1f/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 52,
-    "cache_creation_tokens": 117187,
-    "cache_read_tokens": 2012123,
-    "output_tokens": 10824,
-    "api_call_count": 27
+    "input_tokens": 74,
+    "cache_creation_tokens": 184471,
+    "cache_read_tokens": 2732441,
+    "output_tokens": 13843,
+    "api_call_count": 39
   }
 }

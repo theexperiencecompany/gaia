@@ -1,0 +1,5 @@
+how many chats do we create post onboarding?
+
+---
+
+what is the title of this? does it show the text that is triaged from the onboarding? also do we navigaet to this at the end of onboarding when user is shown continue to gaia? or do we navigate to just chat. it should navigate to that chat btw
