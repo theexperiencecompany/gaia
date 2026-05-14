@@ -3,7 +3,7 @@
   "checkpoint_id": "f28aa949bbb7",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 5,
+  "checkpoints_count": 16,
   "files_touched": [
     "apps/api/app/agents/prompts/onboarding_prompts.py",
     "apps/api/app/api/v1/endpoints/onboarding.py",
@@ -11,6 +11,8 @@
     "apps/api/app/services/oauth/oauth_service.py",
     "apps/api/app/services/onboarding/intelligence_job.py",
     "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/api/app/services/workflow/service.py",
+    "apps/api/app/services/workflow/trigger_service.py",
     "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
     "apps/web/src/features/onboarding/components/stages/Chat.tsx",
     "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
@@ -35,13 +37,19 @@
       "transcript": "/f2/8aa949bbb7/2/full.jsonl",
       "content_hash": "/f2/8aa949bbb7/2/content_hash.txt",
       "prompt": "/f2/8aa949bbb7/2/prompt.txt"
+    },
+    {
+      "metadata": "/f2/8aa949bbb7/3/metadata.json",
+      "transcript": "/f2/8aa949bbb7/3/full.jsonl",
+      "content_hash": "/f2/8aa949bbb7/3/content_hash.txt",
+      "prompt": "/f2/8aa949bbb7/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 395,
-    "cache_creation_tokens": 706832,
-    "cache_read_tokens": 37353812,
-    "output_tokens": 128263,
-    "api_call_count": 285
+    "input_tokens": 671,
+    "cache_creation_tokens": 1960966,
+    "cache_read_tokens": 73811046,
+    "output_tokens": 199874,
+    "api_call_count": 467
   }
 }
