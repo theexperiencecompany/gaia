@@ -1,0 +1,122 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "26997e4c8fae",
+  "session_id": "abc44e27-8e38-44d3-bbb1-db308d92abed",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-14T09:47:23.357355Z",
+  "branch": "feat/voice-gradient-demo",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "apps/web/src/app/[locale]/dev/voice-gradient/VoiceGradient.tsx",
+    "apps/web/src/app/[locale]/dev/voice-gradient/page.tsx",
+    "apps/web/src/app/[locale]/dev/voice-gradient/useVoiceSpectrum.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "bd96eedd289b",
+  "token_usage": {
+    "input_tokens": 1104,
+    "cache_creation_tokens": 3299338,
+    "cache_read_tokens": 301024914,
+    "output_tokens": 371814,
+    "api_call_count": 734
+  },
+  "session_metrics": {
+    "turn_count": 26
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-14T09:47:22.793065Z",
+    "agent_lines": 193,
+    "agent_removed": 113,
+    "human_added": 25,
+    "human_modified": 12,
+    "human_removed": 0,
+    "total_committed": 224,
+    "total_lines_changed": 343,
+    "agent_percentage": 89.21282798833819,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 27,
+      "agent_lines_removed": 7,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 84,
+      "agent_lines_removed": 24,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 88,
+      "agent_lines_removed": 40,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 87,
+      "agent_lines_removed": 41,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 316,
+      "agent_lines_removed": 125,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 205,
+      "agent_lines_removed": 116,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 25,
+      "user_lines_removed": 3,
+      "agent_lines_added": 205,
+      "agent_lines_removed": 116,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19,
+        "apps/web/src/app/[locale]/dev/voice-gradient/VoiceGradient.tsx": 6
+      },
+      "user_removed_per_file": {
+        "apps/web/src/app/[locale]/dev/voice-gradient/VoiceGradient.tsx": 3
+      }
+    }
+  ]
+}
