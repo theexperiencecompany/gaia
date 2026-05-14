@@ -1,0 +1,220 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "8e41539e7246",
+  "session_id": "abc44e27-8e38-44d3-bbb1-db308d92abed",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-14T08:23:44.039893Z",
+  "branch": "feat/voice-gradient-demo",
+  "checkpoints_count": 15,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(landing)/marketplace/[slug]/client.tsx",
+    "apps/web/src/app/[locale]/(landing)/use-cases/[slug]/client.tsx",
+    "apps/web/src/app/[locale]/(landing)/use-cases/client.tsx",
+    "apps/web/src/app/[locale]/dev/layout.tsx",
+    "apps/web/src/app/[locale]/dev/voice-gradient/VoiceGradient.tsx",
+    "apps/web/src/app/[locale]/dev/voice-gradient/page.tsx",
+    "apps/web/src/app/[locale]/dev/voice-gradient/useVoiceSpectrum.ts",
+    "apps/web/src/layouts/LandingProvidersLayout.tsx",
+    "apps/web/src/layouts/ProvidersLayout.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "59306f6b92d1",
+  "token_usage": {
+    "input_tokens": 785,
+    "cache_creation_tokens": 2437036,
+    "cache_read_tokens": 157874103,
+    "output_tokens": 297580,
+    "api_call_count": 515
+  },
+  "session_metrics": {
+    "turn_count": 19
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-14T08:23:43.659539Z",
+    "agent_lines": 904,
+    "agent_removed": 0,
+    "human_added": 4,
+    "human_modified": 16,
+    "human_removed": 0,
+    "total_committed": 924,
+    "total_lines_changed": 924,
+    "agent_percentage": 97.83549783549783,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 549,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 549,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 562,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 250,
+      "user_lines_removed": 177,
+      "agent_lines_added": 549,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19,
+        "apps/web/src/app/[locale]/(landing)/marketplace/[slug]/client.tsx": 2,
+        "apps/web/src/app/[locale]/(landing)/use-cases/[slug]/client.tsx": 2,
+        "apps/web/src/app/[locale]/(landing)/use-cases/client.tsx": 2,
+        "apps/web/src/app/[locale]/(main)/dev/voice-gradient/VoiceGradient.tsx": 215,
+        "apps/web/src/features/landing/components/LazyMotionProvider.tsx": 1,
+        "apps/web/src/layouts/LandingProvidersLayout.tsx": 5,
+        "apps/web/src/layouts/ProvidersLayout.tsx": 4
+      },
+      "user_removed_per_file": {
+        "apps/web/src/app/[locale]/(main)/dev/voice-gradient/VoiceGradient.tsx": 154,
+        "apps/web/src/features/landing/components/LazyMotionProvider.tsx": 8,
+        "apps/web/src/layouts/LandingProvidersLayout.tsx": 10,
+        "apps/web/src/layouts/ProvidersLayout.tsx": 5
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 714,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 780,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 780,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1077,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1154,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1154,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1008,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1011,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1031,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 15,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 897,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    },
+    {
+      "checkpoint_number": 16,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 935,
+      "agent_lines_removed": 15,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    }
+  ]
+}
