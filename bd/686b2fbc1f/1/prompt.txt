@@ -1,0 +1,5 @@
+ensure the top stages have same width accordingly
+
+---
+
+i mean the top stages component that shows the number of stages left
