@@ -36,7 +36,7 @@ interface UseVoiceSpectrumOptions {
   source: SpectrumSource;
 }
 
-const TEMPORAL_SMOOTHING = 0.09;
+const TEMPORAL_SMOOTHING = 0.18;
 const SPATIAL_KERNEL = [0.25, 0.5, 0.25] as const;
 const FFT_SIZE = 1024;
 
@@ -318,7 +318,7 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
           count++;
         }
         const avg = count > 0 ? sum / count / 255 : 0;
-        const lifted = Math.min(1, (avg * 2.2) ** 1.05);
+        const lifted = Math.min(1, (avg * 2.4) ** 1.1);
         // Noise gate: anything quieter than NOISE_GATE → exactly 0 so true
         // silence reads as a flat wave (no idle shimmer).
         out[i] = gateBin(lifted);

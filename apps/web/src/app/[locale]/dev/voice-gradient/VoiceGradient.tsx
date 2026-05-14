@@ -60,9 +60,12 @@ float vnoise(vec2 p) {
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 float fbm(vec2 p) {
+  /* 3 octaves is enough for the visual texture we need — 4 octaves was
+     ~33% more fragment work for sub-pixel detail nobody sees through
+     the heavy gaussian/blur passes. */
   float v = 0.0;
-  float a = 0.5;
-  for (int i = 0; i < 4; i++) {
+  float a = 0.55;
+  for (int i = 0; i < 3; i++) {
     v += a * vnoise(p);
     p *= 2.02;
     a *= 0.5;
@@ -100,12 +103,50 @@ vec3 tonemap(vec3 c) {
 }
 
 /** Spectrum-driven wave height in [0..1]. binShift lets ghost layers sample
-    a phase-shifted slice of the spectrum so each ghost has its own shape. */
+    a phase-shifted slice of the spectrum so each ghost has its own shape.
+    Peak-sharpening: we sample the bin at fi AND its neighbours; if fi
+    is a local maximum, we BOOST it (peak rises higher than its shoulders),
+    yielding pointed mountain peaks instead of plateaus. */
 float waveHeight(float xNorm, float binShift) {
-  float fi = xNorm * float(${SPECTRUM_BINS} - 1) + binShift;
-  float v = pow(max(0.0, specAt(fi)), 1.8);
-  float jitter = (fbm(vec2(xNorm * 4.5 + binShift, uTime * 0.00012)) - 0.5) * 0.05;
-  return clamp(v + jitter, 0.0, 1.0);
+  /* Drifting-center mapping — wanders ±0.15 around mid-screen so the
+     action stays roughly centered but never exactly mirrored. */
+  float driftCenter = 0.5 +
+    sin(uTime * 0.00018) * 0.11 +
+    sin(uTime * 0.00027 + 1.7) * 0.05;
+
+  /* Per-x fBM bin-index jitter — too big causes aliased vertical pillars
+     (adjacent x's land on completely different bins). Keep moderate. */
+  float binJitter =
+    (fbm(vec2(xNorm * 4.5 + binShift * 0.7,
+              uTime * 0.00009)) - 0.5) * 2.8;
+
+  /* Smoothly-varying side-bias: tanh maps xRel through a continuous S-curve
+     from -1.5 (far left) to +2.5 (far right) — same |xRel| samples different
+     bins on each side, but with NO discontinuity at xRel=0 (which would
+     otherwise produce a vertical pillar artifact through the drift center). */
+  float xRel = xNorm - driftCenter;
+  float sideBias = 0.5 + 2.0 * tanh(xRel * 10.0);
+
+  float centerDist = abs(xRel) * 2.0;
+  float fi = centerDist * float(${SPECTRUM_BINS} - 1)
+           + binShift + binJitter + sideBias;
+  fi = max(0.0, fi);
+
+  float v  = specAt(fi);
+  float vL = specAt(max(0.0, fi - 0.7));
+  float vR = specAt(fi + 0.7);
+
+  /* Local-maxima boost — peaks rise more than their shoulders. */
+  float ridge = max(0.0, v - 0.5 * (vL + vR));
+  v = v + ridge * 1.1;
+
+  /* Gamma curve — crushes low/mid energy so peaks spike visibly. */
+  v = pow(clamp(v, 0.0, 1.4), 2.3);
+
+  /* Small height-domain perturbation to add organic micro-roughness. */
+  float perturb = (fbm(vec2(xNorm * 5.0 + binShift,
+                            uTime * 0.00013)) - 0.5) * 0.05;
+  return clamp(v + perturb, 0.0, 1.0);
 }
 
 void main() {
@@ -115,11 +156,14 @@ void main() {
   float aspect = uResolution.x / uResolution.y;
 
   /* ─── Palette ───────────────────────────────────────────────────────── */
-  /* User mode (cool slate / white), GAIA mode (deep navy / muted blue). */
+  /* User mode (cool slate / white), GAIA mode (deep navy / muted blue).
+     Top stop kept dark so the wave's vertical extent matches GAIA mode
+     in perceived height — brighter colors at the upper edge would make
+     the wave read as taller even when geometry is identical. */
   vec3 bandBottomU = vec3(0.78, 0.85, 0.96);
-  vec3 bandTopU    = vec3(0.32, 0.42, 0.62);
+  vec3 bandTopU    = vec3(0.08, 0.10, 0.18);
   vec3 navyU       = vec3(0.05, 0.08, 0.16);
-  vec3 tipU        = vec3(0.95, 0.98, 1.00);
+  vec3 tipU        = vec3(0.92, 0.95, 1.00);
 
   vec3 bandBottomG = vec3(0.20, 0.50, 0.78);
   vec3 bandTopG    = vec3(0.02, 0.10, 0.26);   // dark — bleeds into navy/black above
@@ -151,10 +195,14 @@ void main() {
      LIGHT (additive). The cumulative brightness across overlapping layers
      creates real luminous depth, not a graphic stack. */
 
+  /* Same wave geometry in both modes — palette is the only thing that
+     differs across modes. ampMul stays at 1.0. */
+  float ampMul = 1.0;
+
   /* Far back ghost — very wide feather, low alpha, dark blue */
   {
-    float h = waveHeight(uv.x, 4.0);
-    float yBase = 0.68 - h * 0.30;
+    float h = waveHeight(uv.x, 4.0) * ampMul;
+    float yBase = 0.68 - h * 0.34;
     float dist = uv.y - yBase;
     float mask = 0.5 + 0.5 * tanh(dist / 0.20 * 1.6);
     vec3 col = mix(bandTop * 0.5, bandTop, smoothstep(0.0, 0.6, dist));
@@ -164,8 +212,8 @@ void main() {
 
   /* Mid ghost */
   {
-    float h = waveHeight(uv.x, 1.8);
-    float yBase = 0.76 - h * 0.30;
+    float h = waveHeight(uv.x, 1.8) * ampMul;
+    float yBase = 0.76 - h * 0.34;
     float dist = uv.y - yBase;
     float mask = 0.5 + 0.5 * tanh(dist / 0.14 * 1.7);
     vec3 col = mix(bandTop, mix(bandTop, bandBottom, 0.55), smoothstep(0.0, 0.4, dist));
@@ -173,9 +221,15 @@ void main() {
     color += col * mask * 0.6;
   }
 
-  /* Foreground — sharper, brightest body */
-  float hMain = waveHeight(uv.x, 0.0);
-  float envY = 0.85 - hMain * 0.30;
+  /* Foreground — sharper, brightest body. ampMul (declared above) scales
+     user-mode wave height down ~15% so the brighter white palette doesn't
+     read as visually taller than GAIA's blue. */
+  /* Cached centre-x wave height — reused by body fill, radial glow,
+     chromatic tip and bloom passes to avoid 3+ redundant fragment ops
+     per pixel. */
+  float hRaw = waveHeight(uv.x, 0.0);
+  float hMain = hRaw * ampMul;
+  float envY = 0.87 - hMain * 0.34;
   float distMain = uv.y - envY;
   {
     float mask = 0.5 + 0.5 * tanh(distMain / 0.09 * 1.8);
@@ -187,36 +241,40 @@ void main() {
     color += col * mask * 0.85;
   }
 
-  /* ─── Radial peak glow — bright cyan halo radiating outward from the
-       highest point of the main wave at this x. Creates the "lit emission"
-       feel. Strength scales with local wave height. ─────────────────── */
+  /* ─── Radial peak glow. Strength uses a HORIZONTAL-AVERAGED hMain so
+       neighbouring x's don't snap to different glow intensities (which
+       would manifest as vertical pillars). ─────────────────────────── */
   {
     float dist = abs(distMain);
+    float hAvg = (waveHeight(uv.x - 0.05, 0.0)
+                + hRaw * 2.0
+                + waveHeight(uv.x + 0.05, 0.0)) * 0.25 * ampMul;
     float glow = exp(-pow(dist / 0.18, 1.4));
-    float strength = pow(hMain, 1.2);
-    vec3 glowColor = mix(bandBottom * 1.2, tip, smoothstep(0.4, 1.0, hMain));
-    color += glowColor * glow * strength * 0.55;
+    float strength = pow(hAvg, 1.2);
+    vec3 glowColor = mix(bandBottom * 1.2, tip, smoothstep(0.4, 1.0, hAvg));
+    color += glowColor * glow * strength * 0.5;
   }
 
   /* ─── Chromatic peak tip — narrow cyan-green band right AT the envelope.
        Only fires on tall peaks so the colour dispersion reads as "lit
        lens" at the summit rather than smearing across the whole band. */
-  if (hMain > 0.25) {
-    float tipBand = exp(-pow(distMain * 30.0, 2.0));
-    float tipStrength = smoothstep(0.25, 0.75, hMain);
-    color += tip * tipBand * tipStrength * 0.55;
+  {
+    /* Chromatic tip — heavily horizontal-averaged + low intensity so it
+       stays a subtle iridescent shimmer at peak summits, not a column. */
+    float hTip = (waveHeight(uv.x - 0.06, 0.0)
+                + waveHeight(uv.x - 0.03, 0.0) * 2.0
+                + hRaw * 3.0
+                + waveHeight(uv.x + 0.03, 0.0) * 2.0
+                + waveHeight(uv.x + 0.06, 0.0)) * (1.0 / 9.0) * ampMul;
+    float tipBand = exp(-pow(distMain * 26.0, 2.0));
+    float tipStrength = smoothstep(0.22, 0.7, hTip);
+    color += tip * tipBand * tipStrength * 0.18;
   }
 
-  /* ─── Vertical god-ray — soft column of light rising upward from each
-       tall peak position, fading into the dark sky. Adds the "atmospheric
-       beam" feel of a real lit voice visualizer. ───────────────────── */
-  if (distMain < 0.0 && hMain > 0.20) {
-    float colAbove = abs(distMain);
-    float ray = exp(-pow(colAbove / 0.30, 1.3));
-    float rayStrength = pow(hMain, 1.5);
-    vec3 rayColor = mix(bandTop * 0.8, tip * 0.7, smoothstep(0.3, 0.9, hMain));
-    color += rayColor * ray * rayStrength * 0.32;
-  }
+  /* (God-ray pass removed — its per-pixel-x evaluation produced visible
+     vertical pillars at every peak position. The body fill, peak radial
+     glow, atmospheric halo and bloom skirt below carry the "lit" feel
+     without the column artifacts.) */
 
   /* ─── Soft horizontal bloom — at the envelope, neighboring pixels'
        brightness bleeds to this pixel. Approximated by sampling the wave
@@ -331,7 +389,10 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
     const uMode = gl.getUniformLocation(program, "uMode");
 
     const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      /* DPR capped at 1.5: the gradient is heavily blurred so the extra
+         sharpness from a true 2× render is invisible, while pixel count
+         drops by ~44% (1.5² vs 2²) — a big fragment-shader saving. */
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
       canvas.width = Math.floor(w * dpr);
