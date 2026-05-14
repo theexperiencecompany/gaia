@@ -1,0 +1,41 @@
+i feel like the voice demo animations are  abit jittery now. maybe because of the optimisations made? or something else? please help
+
+---
+
+explain both these fixes. what are better
+
+---
+
+sure fix all
+
+---
+
+also previously it was a bit more beautiful like spectral now it just feels slightly 2 dimensional with just 2 colors in both gaia mode and user mode. whats the root cause?
+
+---
+
+yes sure
+
+---
+
+once done u can take screenshots with chrome. ensure its ethereal and not flat colors just 2 dimensional. also the white one needs a lot of improvement in the colors and chromatic shit
+
+---
+
+great blue looks good but what about the you're speaking white version??
+
+---
+
+still not better user mode i think it can have the cyan cast across it instead of pink and gold shit. turqouise green if needed too. also the first layer eeds something interesting there too
+
+---
+
+its ugly as fuck the cyan tip it doesnt match with the blueish purplish accent in the background. i guess fix it to use that color instead so it merges with the background itself
+
+---
+
+no man its just weird especially when its idle and when its speaking with white its just too much white
+
+---
+
+see when its idle it looks like a random border in the middle
