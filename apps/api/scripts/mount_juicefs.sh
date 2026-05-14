@@ -75,7 +75,12 @@ if ! mount_juicefs; then
 fi
 
 # JuiceFS mounted — bind-mount user's prefix at /workspace.
+# Make the per-user JuiceFS dir world-writable before the bind. chown on
+# JuiceFS-mounted paths doesn't always stick (some FUSE quirks); chmod is the
+# safe path. Isolation is enforced at the JuiceFS-path layer (one user, one
+# prefix), so 0777 is fine within the user's own slice.
 sudo mkdir -p "$JFS_MOUNT/users/$USER_ID" "$JFS_MOUNT/skills/$USER_ID"
+sudo chmod 0777 "$JFS_MOUNT/users/$USER_ID" "$JFS_MOUNT/skills/$USER_ID" 2>/dev/null || true
 sudo mkdir -p "$WORKSPACE"
 if ! sudo mount --bind "$JFS_MOUNT/users/$USER_ID" "$WORKSPACE"; then
     echo "WARN: bind-mount $JFS_MOUNT/users/$USER_ID → $WORKSPACE failed — " \
@@ -83,8 +88,9 @@ if ! sudo mount --bind "$JFS_MOUNT/users/$USER_ID" "$WORKSPACE"; then
     ensure_workspace_writable
     exit 0
 fi
+sudo chmod 0777 "$WORKSPACE" 2>/dev/null || true
 sudo mkdir -p "$WORKSPACE/skills"
 sudo mount --bind "$JFS_MOUNT/skills/$USER_ID" "$WORKSPACE/skills" -o ro || true
-sudo chown -R "$(id -u):$(id -g)" "$WORKSPACE" 2>/dev/null || true
-mkdir -p "$WORKSPACE/.gaia/runs"
+mkdir -p "$WORKSPACE/.gaia/runs" 2>/dev/null || sudo mkdir -p "$WORKSPACE/.gaia/runs"
+sudo chmod -R 0777 "$WORKSPACE/.gaia" 2>/dev/null || true
 echo "OK: JuiceFS mounted; /workspace is durable" >&2

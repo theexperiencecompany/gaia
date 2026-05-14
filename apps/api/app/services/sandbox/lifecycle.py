@@ -62,13 +62,15 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
 
     async_sandbox_cls = _import_e2b()
 
+    # `.strip()` because Infisical-fetched secrets sometimes pick up trailing
+    # newlines that AWS SigV4 then rejects with cryptic "InvalidSignature".
     envs = {
         "USER_ID": user_id,
         "JFS_META_URL": shard_meta_url(shard_id),
-        "JFS_R2_KEY": settings.R2_ACCESS_KEY or "",
-        "JFS_R2_SECRET": settings.R2_SECRET_KEY or "",
-        "JFS_R2_BUCKET": settings.R2_BUCKET or "",
-        "JFS_R2_ACCOUNT": settings.R2_ACCOUNT_ID or "",
+        "JFS_R2_KEY": (settings.R2_ACCESS_KEY or "").strip(),
+        "JFS_R2_SECRET": (settings.R2_SECRET_KEY or "").strip(),
+        "JFS_R2_BUCKET": (settings.R2_BUCKET or "").strip(),
+        "JFS_R2_ACCOUNT": (settings.R2_ACCOUNT_ID or "").strip(),
     }
     sbx = await async_sandbox_cls.create(
         template=settings.E2B_TEMPLATE_ID,

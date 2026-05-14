@@ -26,8 +26,14 @@ def shard_meta_url(shard_id: int) -> str:
 
     The template in settings contains `{shard}` which is substituted. Single-
     shard deployments may use a template with no `{shard}` placeholder.
+
+    JuiceFS expects scheme `postgres://`, not `postgresql://` — managed
+    Postgres providers (Neon, Supabase, etc.) hand out the latter, so we
+    rewrite at the boundary.
     """
     template = settings.JUICEFS_META_URL_TEMPLATE or ""
     if "{shard}" in template:
-        return template.replace("{shard}", str(shard_id))
+        template = template.replace("{shard}", str(shard_id))
+    if template.startswith("postgresql://"):
+        template = "postgres://" + template[len("postgresql://"):]
     return template

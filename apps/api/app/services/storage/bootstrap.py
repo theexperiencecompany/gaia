@@ -45,9 +45,13 @@ def _missing_settings() -> list[str]:
 
 
 def _meta_url(shard: int = 0) -> str:
+    """Resolve the metadata URL for a shard, normalizing scheme for JuiceFS."""
     template = settings.JUICEFS_META_URL_TEMPLATE or ""
     if "{shard}" in template:
-        return template.replace("{shard}", str(shard))
+        template = template.replace("{shard}", str(shard))
+    # JuiceFS rejects `postgresql://` — managed PG providers use it; rewrite.
+    if template.startswith("postgresql://"):
+        template = "postgres://" + template[len("postgresql://"):]
     return template
 
 
@@ -107,7 +111,15 @@ def _run(cmd: list[str], *, timeout: int = 60) -> subprocess.CompletedProcess[st
 
 
 def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> None:
-    """Run `juicefs format` if the FS isn't formatted yet. Idempotent."""
+    """Run `juicefs format` if the FS isn't formatted yet. Idempotent.
+
+    Notes on choices:
+    - No `--shards`: requires a `%d` placeholder per-shard bucket URL which
+      we don't use; single bucket is fine at our scale.
+    - No `--encrypt-rsa-key` by default: JuiceFS stores the PEM in its
+      settings table which is varchar(4096); RSA-4096 overflows. R2 still
+      encrypts at rest. Encryption can be re-enabled later with RSA-2048.
+    """
     status = _run(["juicefs", "status", meta_url], timeout=15)
     if status.returncode == 0:
         log.info("[juicefs] filesystem already formatted")
@@ -119,9 +131,8 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> None:
         "format",
         "--storage", "s3",
         "--bucket", _bucket_url(),
-        "--access-key", settings.R2_ACCESS_KEY or "",
-        "--secret-key", settings.R2_SECRET_KEY or "",
-        "--shards", _FORMAT_SHARDS,
+        "--access-key", (settings.R2_ACCESS_KEY or "").strip(),
+        "--secret-key", (settings.R2_SECRET_KEY or "").strip(),
     ]
     if encrypt_key is not None:
         cmd.extend(["--encrypt-rsa-key", str(encrypt_key)])
