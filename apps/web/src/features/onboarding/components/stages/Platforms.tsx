@@ -18,6 +18,8 @@ import { MOTION_FADE_UP } from "../../constants/motion";
 import type { PlatformPreviewPlatform } from "../../constants/platformPreviewMessages";
 import { useConnectPlatform } from "../../hooks/useConnectPlatform";
 import type { Action, OnboardingState } from "../../state/types";
+import { ComposerCTA } from "../ComposerCTA";
+import { OnboardingCTAButton } from "../OnboardingCTAButton";
 import { OnboardingPlatformConnect } from "../OnboardingPlatformConnect";
 import { OnboardingPlatformPreview } from "../OnboardingPlatformPreview";
 
@@ -52,7 +54,7 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
       <ChatBubbleBot
         {...BOT_BUBBLE_DEFAULTS}
         text={
-          "Tell me where you already hang out and I’ll text you when it matters — morning briefings, urgent emails, calendar nudges, deadline reminders, anything that can’t wait."
+          "Tell me where you already hang out and I’ll text you when it matters, morning briefings, urgent emails, calendar nudges, deadline reminders, anything that can’t wait."
         }
       />
       <OnboardingPlatformConnect
@@ -60,7 +62,22 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
         onSkip={skip}
         onHoverPlatform={setHoveredPlatform}
         connectedPlatform={state.connectedPlatform}
+        hideSkip
       />
     </m.div>
+  );
+}
+
+/** Bottom-of-shell composer for the `platforms` stage: a quiet "I'll do it
+ *  later" skip button, mirroring the position of "Understood" in workflows.
+ *  Hidden once a platform is connected (the stage auto-advances). */
+export function PlatformsComposer({ state, dispatch }: PlatformsProps) {
+  const { skip } = useConnectPlatform(dispatch);
+  if (state.connectedPlatform) return null;
+
+  return (
+    <ComposerCTA>
+      <OnboardingCTAButton onClick={skip}>I'll do it later</OnboardingCTAButton>
+    </ComposerCTA>
   );
 }

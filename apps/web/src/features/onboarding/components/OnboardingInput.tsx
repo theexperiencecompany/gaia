@@ -429,7 +429,7 @@ function TextSendInput({
 
 function PressEnterHint() {
   return (
-    <p className="mt-2 flex items-center justify-center space-x-1 text-center text-xs text-zinc-500">
+    <p className="mt-2 flex items-center justify-center space-x-1 text-center text-xs text-zinc-300">
       <span>Press</span>
       <Kbd keys={"enter"} />
       <span>to continue</span>

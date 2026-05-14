@@ -11,10 +11,6 @@ export const PROCESSING_MSG_FOCUS = "Got it. Setting things up around that.";
 export const FOCUS_QUESTION =
   "Got it. What's the one thing you most need to get done this week?";
 
-export const SUBMISSION_ERROR_MSG = "Something went wrong setting things up.";
-
-export const RETRY_LABEL = "Try again";
-
 // ── Processing step labels ───────────────────────────────────────────────────
 
 export const STEP_SCANNING_INBOX = "Scanning your inbox";

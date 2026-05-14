@@ -530,6 +530,29 @@
     display: none;
   }
 
+  .scrollbar-faint {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 100px;
+  }
+
+  .scrollbar-faint::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
   .heroimage {
     image-rendering: crisp-edges;
   }

@@ -38,7 +38,9 @@ export const BackCardContent: React.FC<BackCardContentProps> = ({
         >
           {personalityPhrase}
         </div>
-        <p className="text-sm text-white/80">{userBio}</p>
+        <p className="scrollbar-faint pointer-events-auto max-h-60 overflow-y-auto overscroll-contain text-sm text-white/80">
+          {userBio}
+        </p>
       </div>
     </div>
   );

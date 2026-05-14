@@ -74,6 +74,7 @@ def configure_middleware(app: FastAPI) -> None:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_allowed_origins(),
+        allow_origin_regex=get_allowed_origin_regex(),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
         allow_headers=["*"],
@@ -126,3 +127,15 @@ def get_allowed_origins() -> list[str]:
         )
 
     return allowed_origins
+
+
+def get_allowed_origin_regex() -> str | None:
+    """Regex of additional allowed origins.
+
+    In development we allow any portless tunnel (``https://<slug>.localhost:<port>``)
+    so dev URLs like ``https://voice-demo.localhost:1355`` reach the API without
+    hardcoding each subdomain.
+    """
+    if settings.ENV == "production":
+        return None
+    return r"^https://[a-z0-9-]+\.localhost(?::\d+)?$"

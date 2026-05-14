@@ -22,6 +22,5 @@ export const initialState: OnboardingState = {
   todoExecutionStarted: false,
   todoExecutionTodo: null,
 
-  submissionError: false,
   isRestarting: false,
 };

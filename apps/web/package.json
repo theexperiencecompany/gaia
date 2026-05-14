@@ -194,7 +194,7 @@
     "remark-parse": "^11.0.0",
     "remark-smartypants": "^3.0.2",
     "remark-supersub": "^1.0.0",
-    "sanitize-html": "^2.17.2",
+    "sanitize-html": "^2.17.3",
     "sharp": "^0.33.5",
     "sileo": "0.1.4",
     "string-similarity": "^4.0.4",

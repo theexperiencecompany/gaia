@@ -76,12 +76,6 @@ export function reducer(
       };
     }
 
-    case "submitError":
-      return { ...state, submissionError: true };
-
-    case "retrySubmit":
-      return { ...state, submissionError: false };
-
     case "serverSnapshot":
       return { ...state, server: action.data };
 

@@ -1,33 +1,27 @@
 "use client";
 
-import { type Dispatch, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import type { UserInfo } from "@/features/auth/api/authApi";
 
 import { completeOnboarding } from "../api/onboardingApi";
 import { FIELD_NAMES } from "../constants";
 import { isResponsesComplete } from "../state/derive";
-import type { Action, OnboardingState } from "../state/types";
+import type { OnboardingState } from "../state/types";
 
 /**
  * Fires POST /onboarding once all required answers are captured and the
- * pipeline hasn't started yet. Idempotent via an in-flight ref and a 409
- * short-circuit (server already accepted a prior submission). On failure it
- * sets `submissionError` so the processing composer can offer a retry.
+ * pipeline hasn't started yet. Idempotent via an in-flight ref.
  */
 export function useOnboardingSubmission(
   state: OnboardingState,
-  dispatch: Dispatch<Action>,
   onSuccess?: (user: UserInfo) => void,
 ): void {
   const inFlightRef = useRef(false);
 
   useEffect(() => {
-    // Guard combo implies stage === "processing": responses complete + no
-    // server snapshot yet + not restarting + no prior error.
     if (inFlightRef.current) return;
     if (state.isRestarting) return;
-    if (state.submissionError) return;
     if (state.server != null) return;
     if (!isResponsesComplete(state)) return;
 
@@ -46,15 +40,11 @@ export function useOnboardingSubmission(
           onSuccess?.(response.user);
         }
       })
-      .catch((error: unknown) => {
-        const err = error as { response?: { status?: number } };
-        if (err?.response?.status === 409) {
-          return;
-        }
-        dispatch({ type: "submitError" });
+      .catch(() => {
+        // Submission failed; processing stage stays as-is.
       })
       .finally(() => {
         inFlightRef.current = false;
       });
-  }, [state, dispatch, onSuccess]);
+  }, [state, onSuccess]);
 }

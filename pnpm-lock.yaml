@@ -937,7 +937,7 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0
       sanitize-html:
-        specifier: ^2.17.2
+        specifier: ^2.17.3
         version: 2.17.3
       sharp:
         specifier: ^0.33.5

@@ -34,8 +34,8 @@ export function CompletedStageAccordion({
   const [isOpen, setIsOpen] = useState(false);
   return (
     <m.div
-      className={`ml-10.75 rounded-2xl bg-zinc-800/40 p-1 backdrop-blur-xl transition-[width,max-width] duration-300 ${
-        isOpen ? "w-full" : "w-96"
+      className={`ml-10.75 rounded-2xl bg-zinc-800/40 p-1 backdrop-blur-xl ${
+        isOpen ? "w-full" : "w-[28rem]"
       }`}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}

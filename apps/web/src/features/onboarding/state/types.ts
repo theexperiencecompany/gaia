@@ -80,8 +80,6 @@ export interface OnboardingState {
     sourceEmail: { sender: string; subject: string } | null;
   } | null;
 
-  /** POST /onboarding failed; the processing composer offers a retry. */
-  submissionError: boolean;
   /** Restart in progress — UI is locked while the server `/reset` runs. */
   isRestarting: boolean;
 }
@@ -93,10 +91,6 @@ export type Action =
   | { type: "draftProfession"; value: string | null }
   /** User submitted an answer; advances `questionIndex`. */
   | { type: "answer"; field: string; value: string }
-  /** POST /onboarding failed; arms the retry composer. */
-  | { type: "submitError" }
-  /** User clicked retry on the submission error composer. */
-  | { type: "retrySubmit" }
   /** Full personalization snapshot from REST (poll or initial fetch). */
   | { type: "serverSnapshot"; data: PersonalizationData }
   /** Partial patch from a WS stage event. */

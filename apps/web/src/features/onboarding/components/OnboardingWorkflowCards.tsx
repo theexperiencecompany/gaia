@@ -35,10 +35,14 @@ interface OnboardingWorkflow {
 
 interface OnboardingWorkflowCardsProps {
   workflows: OnboardingWorkflow[];
+  /** Drop the `ml-10.75` indent — used when the grid is rendered inside an
+   *  accordion (where the parent already handles padding). */
+  embedded?: boolean;
 }
 
 function OnboardingWorkflowCardsImpl({
   workflows,
+  embedded = false,
 }: OnboardingWorkflowCardsProps) {
   const [activeWorkflow, setActiveWorkflow] = useState<Workflow | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -73,7 +77,11 @@ function OnboardingWorkflowCardsImpl({
   return (
     <>
       <m.div
-        className="ml-10.75 grid grid-cols-1 gap-3 sm:grid-cols-2"
+        className={
+          embedded
+            ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+            : "ml-10.75 grid grid-cols-1 gap-3 sm:grid-cols-2"
+        }
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}

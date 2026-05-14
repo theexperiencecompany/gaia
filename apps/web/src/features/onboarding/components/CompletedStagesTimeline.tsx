@@ -105,6 +105,7 @@ export function CompletedStagesTimeline({
               executingTodoId={null}
               completedTodoIds={executedTodoIds}
               readOnly
+              embedded
             />
             {state.todoExecutionStarted && (
               <OnboardingChatStream
@@ -121,7 +122,7 @@ export function CompletedStagesTimeline({
           itemKey="workflows"
           title={`${workflows.length} ${workflows.length === 1 ? "workflow" : "workflows"} added`}
         >
-          <OnboardingWorkflowCards workflows={workflows} />
+          <OnboardingWorkflowCards workflows={workflows} embedded />
         </CompletedStageAccordion>
       )}
 
@@ -140,6 +141,7 @@ export function CompletedStagesTimeline({
             onHoverPlatform={() => {}}
             connectedPlatform={state.connectedPlatform}
             hideSkip
+            embedded
           />
         </CompletedStageAccordion>
       )}

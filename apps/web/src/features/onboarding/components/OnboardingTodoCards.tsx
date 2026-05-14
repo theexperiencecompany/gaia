@@ -28,6 +28,9 @@ interface OnboardingTodoCardsProps {
   /** Suppress the hover "Run now" button — used when displaying the cards as a
    *  historical record (e.g. inside the completed-stages timeline accordion). */
   readOnly?: boolean;
+  /** Drop the `ml-10.75` indent — used when the list is rendered inside an
+   *  accordion (where the parent already handles padding). */
+  embedded?: boolean;
 }
 
 const MAX_VISIBLE = 5;
@@ -45,6 +48,7 @@ function OnboardingTodoCardsImpl({
   executingTodoId,
   completedTodoIds,
   readOnly = false,
+  embedded = false,
 }: OnboardingTodoCardsProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -62,7 +66,9 @@ function OnboardingTodoCardsImpl({
 
   return (
     <m.div
-      className="flex flex-col gap-2 ml-10.75"
+      className={
+        embedded ? "flex flex-col gap-2" : "flex flex-col gap-2 ml-10.75"
+      }
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}

@@ -108,8 +108,8 @@ export function WritingStyleRevealCard({
     <m.div
       className={
         embedded
-          ? "space-y-3"
-          : "ml-10.75 space-y-3 rounded-2xl bg-zinc-800/60 p-4"
+          ? "space-y-2"
+          : "ml-10.75 space-y-2 rounded-2xl bg-zinc-800/60 p-3"
       }
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}

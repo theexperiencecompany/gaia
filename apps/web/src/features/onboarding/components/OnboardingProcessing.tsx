@@ -178,7 +178,7 @@ function OnboardingProcessingImpl({
 
   return (
     <m.div
-      className="mt-3 flex flex-col gap-3 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl w-96"
+      className="mt-3 flex w-[28rem] flex-col gap-3 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: EASE_OUT_QUART }}

@@ -37,7 +37,7 @@ function OnboardingProgressImpl({
   return (
     <nav
       aria-label="Onboarding progress"
-      className="fixed top-0 right-0 left-0 z-50 mx-auto flex max-w-lg items-center justify-center gap-2 px-4 py-4"
+      className="fixed top-0 right-0 left-0 z-50 mx-auto flex max-w-3xl items-center justify-center gap-2 px-4 py-4"
     >
       {Array.from({ length: totalSteps }, (_, i) => i).map((index) => {
         const isCompleted = index < currentStep;

@@ -97,7 +97,7 @@ export function useOnboarding({
     },
     [setUser],
   );
-  useOnboardingSubmission(state, dispatch, handleSubmissionSuccess);
+  useOnboardingSubmission(state, handleSubmissionSuccess);
 
   // WS + initial snapshot fetch
   useBackendSync(state, stage, dispatch);
