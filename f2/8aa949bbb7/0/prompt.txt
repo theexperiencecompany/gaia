@@ -1,0 +1,14 @@
+so how does the "welcome to gaia" animation flow and the reloading onboarding flow work after i've connected gmail or when i restart the page? how does this work? is the entire flow robust and clean?
+
+---
+
+but it seems like the welcome to gaia shows again after connecting email. and also, when it opens in arc little window popup (the window to connect gmail) it gegts all fucked. what is happening in these cases
+
+---
+
+isn't useconnectplatform completely different than the useintegrations??? please explore properly
+
+---
+
+Caveat: localStorage is per-origin and persistent, so the intro would never replay even on a fresh visit weeks later. If you want it to replay for genuinely-new sessions, key it on
+   user id (gaia.onboarding.introSeen.${userId}) so a new user still sees it. sure let's do this i like this.
