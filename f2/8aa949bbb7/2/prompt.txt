@@ -1,0 +1,10 @@
+is anything left?
+
+---
+
+the i setup 2 workflows for your gmail still shows on the onboarding page idk why its so difficult to remove this on the onboarding page route?? Scanning your inbox
+ then the text below here make it in single lin and truncate
+
+---
+
+wtf are you doing? why are you doing it from the backend? why not suppress it from frontend? there'san easy fix
