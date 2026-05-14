@@ -1,0 +1,136 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "bd686b2fbc1f",
+  "session_id": "f67c0d2f-5306-4b96-a4bd-d9217086c84b",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-14T09:39:42.470805Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/app/styles/globals.css",
+    "apps/web/src/components/ui/holo-card/BackCardContent.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStageAccordion.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingProcessing.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingProgress.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingTodoCards.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingWorkflowCards.tsx",
+    "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx",
+    "apps/web/src/features/onboarding/components/stages/Platforms.tsx",
+    "apps/web/src/features/onboarding/components/stages/Processing.tsx",
+    "apps/web/src/features/onboarding/components/stages/index.ts",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/effects/useOnboardingSubmission.ts",
+    "apps/web/src/features/onboarding/hooks/useOnboarding.ts",
+    "apps/web/src/features/onboarding/state/initial.ts",
+    "apps/web/src/features/onboarding/state/reducer.ts",
+    "apps/web/src/features/onboarding/state/types.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "31b60616b6ab",
+  "token_usage": {
+    "input_tokens": 153,
+    "cache_creation_tokens": 141405,
+    "cache_read_tokens": 11068796,
+    "output_tokens": 45991,
+    "api_call_count": 108
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-14T09:39:42.454215Z",
+    "agent_lines": 71,
+    "agent_removed": 91,
+    "human_added": 38,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 111,
+    "total_lines_changed": 204,
+    "agent_percentage": 79.41176470588235,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 1,
+      "user_lines_removed": 1,
+      "agent_lines_added": 1,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        "apps/web/src/features/onboarding/components/OnboardingProgress.tsx": 1
+      },
+      "user_removed_per_file": {
+        "apps/web/src/features/onboarding/components/OnboardingProgress.tsx": 1
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 13,
+      "agent_lines_removed": 81
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 13,
+      "agent_lines_removed": 81
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 46,
+      "agent_lines_removed": 99
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 36,
+      "agent_lines_removed": 84
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 34,
+      "agent_lines_removed": 84
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 52,
+      "agent_lines_removed": 87
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 24,
+      "user_lines_removed": 1,
+      "agent_lines_added": 72,
+      "agent_lines_removed": 90,
+      "user_added_per_file": {
+        "apps/web/src/app/styles/globals.css": 23,
+        "apps/web/src/components/ui/holo-card/BackCardContent.tsx": 1
+      },
+      "user_removed_per_file": {
+        "apps/web/src/components/ui/holo-card/BackCardContent.tsx": 1
+      }
+    }
+  ]
+}

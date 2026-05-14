@@ -1,0 +1,37 @@
+in onboarding when will this be shown: Something went wrong setting things up.
+
+try again. and what happens when user clicks on try again??
+
+---
+
+just remove this button for something went wrong like its retarded  why it shows i don't know it doesnt make sense most of the time
+
+---
+
+for the todo thats executing, do we show the currently executing todo???
+
+---
+
+Tell me where you already hang out and I’ll text you when it matters — morning briefings, urgent emails, calendar nudges, deadline reminders, anything that can’t wait.
+
+here remove the em dash, and i'll do it later, move it to the bottom like the buttons like understood that says i'll do it later
+
+---
+
+so the emails name and subject showing in the saved n todos for later. but didn't show in the run now component. also mate when the telegram whatsapp slack discord buttons show thei'll do it later doesnt show in the bottom composer slot. what the fuck did you even do. and is this even part of the reveal todos??? are you sure abt the stage
+
+---
+
+ensure same color and icon like the other buttons too
+
+---
+
+in saved 5 todos for later, the inner component shouldnt have left padding in the accordion, same with n workflows added accordion. the left padding hsoud exist when rendered normally tho. see the writing style how left margin works there and set it up accordingly
+
+---
+
+the skipped social connections needs the left margin fix too
+
+---
+
+the accordions and the  Scanning your inbox component, slightly increase the width. also in the accordions the height shifts a bit. like what happens is accordion opens, height is a bit much, then it reduces to the normal height when its open. so i think the fix could be to constraint the height properly when its closed so that when its open it transitions from the same height to the normal open height so it deoesnt shift
