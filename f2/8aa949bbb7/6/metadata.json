@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "f28aa949bbb7",
+  "session_id": "f67c0d2f-5306-4b96-a4bd-d9217086c84b",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-14T14:18:04.850882Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "31b60616b6ab",
+  "token_usage": {
+    "input_tokens": 153,
+    "cache_creation_tokens": 141405,
+    "cache_read_tokens": 11068796,
+    "output_tokens": 45991,
+    "api_call_count": 108
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-14T14:18:04.834365Z",
+    "agent_lines": 31,
+    "agent_removed": 3,
+    "human_added": 159,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 190,
+    "total_lines_changed": 252,
+    "agent_percentage": 13.492063492063492,
+    "metric_version": 2
+  }
+}
