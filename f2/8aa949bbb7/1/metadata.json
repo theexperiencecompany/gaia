@@ -1,0 +1,90 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "f28aa949bbb7",
+  "session_id": "0e1d9c54-eecb-45a8-b031-463b67e648b7",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-14T14:18:00.408393Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/api/v1/endpoints/onboarding.py",
+    "apps/api/app/constants/todos.py",
+    "apps/api/app/services/oauth/oauth_service.py",
+    "apps/api/app/services/onboarding/intelligence_job.py",
+    "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/types/websocket.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "72bf1db68884",
+  "token_usage": {
+    "input_tokens": 85,
+    "cache_creation_tokens": 148974,
+    "cache_read_tokens": 8536804,
+    "output_tokens": 26054,
+    "api_call_count": 70
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-14T14:18:00.394223Z",
+    "agent_lines": 0,
+    "agent_removed": 18,
+    "human_added": 9,
+    "human_modified": 48,
+    "human_removed": 0,
+    "total_committed": 54,
+    "total_lines_changed": 112,
+    "agent_percentage": 16.071428571428573,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 164,
+      "user_lines_removed": 48,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/api/app/agents/prompts/onboarding_prompts.py": 4,
+        "apps/api/app/api/v1/endpoints/onboarding.py": 1,
+        "apps/api/app/constants/todos.py": 2,
+        "apps/api/app/services/oauth/oauth_service.py": 35,
+        "apps/api/app/services/onboarding/intelligence_job.py": 22,
+        "apps/api/app/services/onboarding/intelligence_service.py": 36,
+        "apps/web/src/app/[locale]/(main)/onboarding/page.tsx": 32,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 31,
+        "apps/web/src/features/onboarding/constants/messages.ts": 1
+      },
+      "user_removed_per_file": {
+        "apps/api/app/agents/prompts/onboarding_prompts.py": 5,
+        "apps/api/app/api/v1/endpoints/onboarding.py": 1,
+        "apps/api/app/services/oauth/oauth_service.py": 21,
+        "apps/api/app/services/onboarding/intelligence_service.py": 6,
+        "apps/web/src/app/[locale]/(main)/onboarding/page.tsx": 11,
+        "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx": 3,
+        "apps/web/src/features/onboarding/constants/messages.ts": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 164,
+      "agent_lines_removed": 48
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 164,
+      "agent_lines_removed": 48
+    }
+  ]
+}

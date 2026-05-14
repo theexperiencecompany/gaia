@@ -1,0 +1,12 @@
+Aryan, digging through your inbox was a wild ride. You are clearly balancing a massive product launch with a relentless focus on SEO and competitive intelligence. I already drafted a partnership response for Allie and lined up your competitive briefings. You can connect your Slack or Telegram in settings if you want these updates hitting your phone instead of the app.
+
+
+ this text showed weirdly along with todos and then disappeared randomly. like it was weird. see our log files to understand the issue,  and how can we ensure its in the holo card stage? please epxlore the flow inc ode and what we did in the backend that led it to be shown in the todos stage and how can we move it in the holo card stage
+
+---
+
+no mte explore the code a bit deeper. the first message also seeds and also shows in onboarding page.
+
+---
+
+yes please lets do this
