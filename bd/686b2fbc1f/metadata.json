@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "bd686b2fbc1f",
+  "strategy": "manual-commit",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/app/styles/globals.css",
+    "apps/web/src/components/ui/holo-card/BackCardContent.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingProgress.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingTodoCards.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingWorkflowCards.tsx",
+    "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx",
+    "apps/web/src/features/onboarding/components/stages/Platforms.tsx",
+    "apps/web/src/features/onboarding/components/stages/Processing.tsx",
+    "apps/web/src/features/onboarding/components/stages/index.ts",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/effects/useOnboardingSubmission.ts",
+    "apps/web/src/features/onboarding/hooks/useOnboarding.ts",
+    "apps/web/src/features/onboarding/state/initial.ts",
+    "apps/web/src/features/onboarding/state/reducer.ts",
+    "apps/web/src/features/onboarding/state/types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bd/686b2fbc1f/0/metadata.json",
+      "transcript": "/bd/686b2fbc1f/0/full.jsonl",
+      "content_hash": "/bd/686b2fbc1f/0/content_hash.txt",
+      "prompt": "/bd/686b2fbc1f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 107843,
+    "cache_read_tokens": 1254113,
+    "output_tokens": 6813,
+    "api_call_count": 21
+  }
+}

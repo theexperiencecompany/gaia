@@ -1,0 +1,114 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "bd686b2fbc1f",
+  "session_id": "56dab183-c933-4622-8cb6-d755a33b284a",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-14T09:39:41.938279Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/app/styles/globals.css",
+    "apps/web/src/components/ui/holo-card/BackCardContent.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingInput.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingProgress.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingShell.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingTodoCards.tsx",
+    "apps/web/src/features/onboarding/components/OnboardingWorkflowCards.tsx",
+    "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx",
+    "apps/web/src/features/onboarding/components/stages/Platforms.tsx",
+    "apps/web/src/features/onboarding/components/stages/Processing.tsx",
+    "apps/web/src/features/onboarding/components/stages/index.ts",
+    "apps/web/src/features/onboarding/constants/messages.ts",
+    "apps/web/src/features/onboarding/effects/useOnboardingSubmission.ts",
+    "apps/web/src/features/onboarding/hooks/useOnboarding.ts",
+    "apps/web/src/features/onboarding/state/initial.ts",
+    "apps/web/src/features/onboarding/state/reducer.ts",
+    "apps/web/src/features/onboarding/state/types.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "1e59a4f50831",
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 107843,
+    "cache_read_tokens": 1254113,
+    "output_tokens": 6813,
+    "api_call_count": 21
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-14T09:39:41.932518Z",
+    "agent_lines": 0,
+    "agent_removed": 1,
+    "human_added": 0,
+    "human_modified": 18,
+    "human_removed": 71,
+    "total_committed": 26,
+    "total_lines_changed": 95,
+    "agent_percentage": 1.0526315789473684,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 69,
+      "user_lines_removed": 89,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/web/src/app/[locale]/(main)/onboarding/page.tsx": 3,
+        "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx": 3,
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx": 16,
+        "apps/web/src/features/onboarding/components/OnboardingProgress.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingShell.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingTodoCards.tsx": 7,
+        "apps/web/src/features/onboarding/components/OnboardingWorkflowCards.tsx": 9,
+        "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx": 2,
+        "apps/web/src/features/onboarding/components/stages/Platforms.tsx": 18,
+        "apps/web/src/features/onboarding/components/stages/index.ts": 1,
+        "apps/web/src/features/onboarding/effects/useOnboardingSubmission.ts": 6,
+        "apps/web/src/features/onboarding/hooks/useOnboarding.ts": 1
+      },
+      "user_removed_per_file": {
+        "apps/web/src/app/[locale]/(main)/onboarding/page.tsx": 3,
+        "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingInput.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingPlatformConnect.tsx": 2,
+        "apps/web/src/features/onboarding/components/OnboardingProgress.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingShell.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingTodoCards.tsx": 1,
+        "apps/web/src/features/onboarding/components/OnboardingWorkflowCards.tsx": 1,
+        "apps/web/src/features/onboarding/components/reveal/WritingStyleRevealCard.tsx": 2,
+        "apps/web/src/features/onboarding/components/stages/Platforms.tsx": 1,
+        "apps/web/src/features/onboarding/components/stages/Processing.tsx": 39,
+        "apps/web/src/features/onboarding/components/stages/index.ts": 2,
+        "apps/web/src/features/onboarding/constants/messages.ts": 4,
+        "apps/web/src/features/onboarding/effects/useOnboardingSubmission.ts": 16,
+        "apps/web/src/features/onboarding/hooks/useOnboarding.ts": 1,
+        "apps/web/src/features/onboarding/state/initial.ts": 1,
+        "apps/web/src/features/onboarding/state/reducer.ts": 6,
+        "apps/web/src/features/onboarding/state/types.ts": 6
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 72,
+      "agent_lines_removed": 90
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 72,
+      "agent_lines_removed": 90
+    }
+  ]
+}

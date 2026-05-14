@@ -1,0 +1,9 @@
+in holo card,the description of the user in the back of the holo card, ensure the description of the user height is constrained and is scrollable, and doesnt push the below card which says the member since and the user id
+
+---
+
+ensure the scrollbar in that section is less width and less opacity
+
+---
+
+the color changes on hover but normally the width isnt reduced and color isnt changed normally either
