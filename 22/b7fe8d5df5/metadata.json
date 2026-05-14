@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "22b7fe8d5df5",
+  "strategy": "manual-commit",
+  "branch": "feat/voice-gradient-demo",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/22/b7fe8d5df5/0/metadata.json",
+      "transcript": "/22/b7fe8d5df5/0/full.jsonl",
+      "content_hash": "/22/b7fe8d5df5/0/content_hash.txt",
+      "prompt": "/22/b7fe8d5df5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1125,
+    "cache_creation_tokens": 3312872,
+    "cache_read_tokens": 312973155,
+    "output_tokens": 381564,
+    "api_call_count": 750
+  }
+}

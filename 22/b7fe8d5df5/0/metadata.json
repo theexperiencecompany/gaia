@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "22b7fe8d5df5",
+  "session_id": "abc44e27-8e38-44d3-bbb1-db308d92abed",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-14T09:58:20.55834Z",
+  "branch": "feat/voice-gradient-demo",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "ce79b267075d",
+  "token_usage": {
+    "input_tokens": 1125,
+    "cache_creation_tokens": 3312872,
+    "cache_read_tokens": 312973155,
+    "output_tokens": 381564,
+    "api_call_count": 750
+  },
+  "session_metrics": {
+    "turn_count": 27
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 19,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 19
+      }
+    }
+  ]
+}
