@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "32ef031931cd",
+  "strategy": "manual-commit",
+  "branch": "fix/download-page-desktop-urls",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "apps/web/src/features/download/components/DownloadPage.tsx",
+    "apps/web/src/hooks/ui/usePlatformDetection.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/32/ef031931cd/0/metadata.json",
+      "transcript": "/32/ef031931cd/0/full.jsonl",
+      "content_hash": "/32/ef031931cd/0/content_hash.txt",
+      "prompt": "/32/ef031931cd/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 153,
+    "cache_creation_tokens": 214059,
+    "cache_read_tokens": 8472529,
+    "output_tokens": 44727,
+    "api_call_count": 93
+  }
+}

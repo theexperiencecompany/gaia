@@ -1,0 +1,40 @@
+open a pr from this branch to develop and then checkout to develop. so fix the download page. it currently points to latest but latest is web so it should point to desktop instead!
+
+---
+
+open a pr from this branch to develop and then checkout to develop. so fix the download page. it currently points to latest but latest is web so it should point to desktop instead! please fix the urls and test the files locally
+
+---
+
+Re your URL question: the URL I added is a local Next.js API route — /api/download/GAIA-arm64.dmg. It does not hit GitHub's ?q= syntax. The route reads the GitHub Releases API
+  server-side, finds the most-recent release whose tag starts with desktop-, and 302-redirects to that release's asset. The ?q=desktop URL is only used for the human-facing "All releases"
+  link (also verified 200).
+ is this even the right approach? should we use next js api route for this ??
+
+---
+
+no release workflow why not just get the most latest one that is desktop one how woul we d othis
+
+---
+
+i do not wnat any fucking server related bullshit. i just like the way it was before but instead of release tag do the github tag stuff
+
+---
+
+lmao what the fuck why do we pin the version like this. why can't we get the version somehow and then construct the url smartly? how would weo d this
+
+---
+
+i dont want fallback to a version its just not good how about for fallback use this https://github.com/theexperiencecompany/gaia/releases?q=desktop&expanded=true?
+
+---
+
+show me the url that is used now
+
+---
+
+also what is the need for buuilding new platform and config again? have you introduced a lot of tech debt unnecessarily?
+
+---
+
+why are the static configs even needed? yes bro i want to make it in build platform configs. please dont add any code that is unnecessary only most critical additions
