@@ -75,8 +75,8 @@ float fbm(vec2 p) {
      ~33% more fragment work for sub-pixel detail nobody sees through
      the heavy gaussian/blur passes. */
   float v = 0.0;
-  float a = 0.55;
-  for (int i = 0; i < 3; i++) {
+  float a = 0.5;
+  for (int i = 0; i < 4; i++) {
     v += a * vnoise(p);
     p *= 2.02;
     a *= 0.5;
@@ -171,20 +171,38 @@ void main() {
      Top stop kept dark so the wave's vertical extent matches GAIA mode
      in perceived height — brighter colors at the upper edge would make
      the wave read as taller even when geometry is identical. */
-  vec3 bandBottomU = vec3(0.78, 0.85, 0.96);
-  vec3 bandTopU    = vec3(0.08, 0.10, 0.18);
+  /* User mode — pearlescent silver / holographic foil. Body desaturated
+     deliberately so the holographic shimmer pass below (cyan/pink/gold
+     RGB rotation) reads as the dominant chroma rather than competing
+     with a tinted base. bandBottomU is near-pure-white, bandMidU is a
+     neutral silver, bandTopU is a cool slate. */
+  /* Deep pearl silver-blue. Bandwidth stays in the cool silver family but
+     well below 50% luminance so additive ghost layers + density boost
+     don't tonemap into white blowout. */
+  vec3 bandBottomU = vec3(0.30, 0.42, 0.65);
+  vec3 bandMidU    = vec3(0.22, 0.32, 0.52);
+  vec3 bandTopU    = vec3(0.24, 0.30, 0.46);
   vec3 navyU       = vec3(0.05, 0.08, 0.16);
-  vec3 tipU        = vec3(0.92, 0.95, 1.00);
+  /* Chroma stays in the slate-violet family of bandTopU so dispersion
+     reads as the same hue as the BG, just at higher luminance. */
+  vec3 tipU        = vec3(0.55, 0.66, 0.95);   // bright periwinkle — primary
+  vec3 tipAltU     = vec3(0.72, 0.78, 1.00);   // pale ice-violet — secondary
 
   vec3 bandBottomG = vec3(0.20, 0.50, 0.78);
-  vec3 bandTopG    = vec3(0.02, 0.10, 0.26);   // dark — bleeds into navy/black above
+  vec3 bandMidG    = vec3(0.12, 0.40, 0.62);   // teal midtone
+  vec3 bandTopG    = vec3(0.08, 0.22, 0.46);
   vec3 navyG       = vec3(0.02, 0.09, 0.22);
-  vec3 tipG        = vec3(0.45, 0.95, 0.80);   // cyan-green chromatic dispersion
+  /* Chroma stays in the blue-violet family of bandTopG so dispersion
+     reads as the BG itself glowing rather than a foreign hue. */
+  vec3 tipG        = vec3(0.42, 0.70, 1.05);   // bright cerulean
+  vec3 tipAltG     = vec3(0.55, 0.50, 0.98);   // blue-violet
 
   vec3 bandBottom = mix(bandBottomU, bandBottomG, uMode);
+  vec3 bandMid    = mix(bandMidU,    bandMidG,    uMode);
   vec3 bandTop    = mix(bandTopU,    bandTopG,    uMode);
   vec3 navy       = mix(navyU,       navyG,       uMode);
   vec3 tip        = mix(tipU,        tipG,        uMode);
+  vec3 tipAlt     = mix(tipAltU,     tipAltG,     uMode);
 
   /* ─── BG — bleeds from pure black at top to deep navy at bottom so the
        wave's top fade doesn't snap against pure black ─────────────────── */
@@ -210,7 +228,9 @@ void main() {
      differs across modes. ampMul stays at 1.0. */
   float ampMul = 1.0;
 
-  /* Far back ghost — very wide feather, low alpha, dark blue */
+  /* Far back ghost — very wide feather, low alpha, dark blue.
+     Gated by local h so at idle (h ≈ 0) the layer disappears completely,
+     instead of painting a static horizontal stripe across the canvas. */
   {
     float h = waveHeight(uv.x, 4.0) * ampMul;
     float yBase = 0.68 - h * 0.34;
@@ -218,10 +238,10 @@ void main() {
     float mask = 0.5 + 0.5 * tanh(dist / 0.20 * 1.6);
     vec3 col = mix(bandTop * 0.5, bandTop, smoothstep(0.0, 0.6, dist));
     col *= 0.5 + density * 1.1;
-    color += col * mask * 0.45;
+    color += col * mask * 0.45 * smoothstep(0.04, 0.30, h);
   }
 
-  /* Mid ghost */
+  /* Mid ghost — same idle gate. */
   {
     float h = waveHeight(uv.x, 1.8) * ampMul;
     float yBase = 0.76 - h * 0.34;
@@ -229,7 +249,7 @@ void main() {
     float mask = 0.5 + 0.5 * tanh(dist / 0.14 * 1.7);
     vec3 col = mix(bandTop, mix(bandTop, bandBottom, 0.55), smoothstep(0.0, 0.4, dist));
     col *= 0.5 + density * 1.2;
-    color += col * mask * 0.6;
+    color += col * mask * 0.6 * smoothstep(0.04, 0.30, h);
   }
 
   /* Foreground — sharper, brightest body. ampMul (declared above) scales
@@ -245,11 +265,82 @@ void main() {
   {
     float mask = 0.5 + 0.5 * tanh(distMain / 0.09 * 1.8);
     float bodyT = clamp(distMain / max(0.0001, 1.0 - envY), 0.0, 1.0);
-    vec3 col = mix(bandTop * 1.2, bandBottom, smoothstep(0.0, 0.7, bodyT));
+    /* 3-stop body gradient — top (slate) → mid (iridescent) → bottom (pale).
+       The middle stop breaks the 2-color "blob" feel and lets a real hue
+       inflection live inside the wave body. */
+    vec3 colTopMid = mix(bandTop * 1.2, bandMid, smoothstep(0.0, 0.45, bodyT));
+    vec3 col = mix(colTopMid, bandBottom, smoothstep(0.35, 0.85, bodyT));
+
+    /* Horizontal hue rotation — body shifts toward tipAlt on alternating
+       x bands. Sine-driven so neighbouring pixels differ smoothly (no
+       pillars), and slow uTime drift makes the chroma breathe. */
+    float hueShift = 0.5 + 0.5 * sin(uv.x * 4.5 + uTime * 0.00012);
+    vec3 chromTint = mix(col, mix(col * 0.92, tipAlt, 0.35), hueShift);
+    col = mix(col, chromTint, 0.22);
+
     /* HEAVY density modulation — body is half-strength baseline plus fBM
        boost. This is what produces visible cloud-like volumetric texture. */
     col *= 0.45 + density * 1.3;
     color += col * mask * 0.85;
+  }
+
+  /* ─── Foreground caustic — fBM-driven turquoise streaks running through
+       the wave body, like sunlight refracting through water. The fBM
+       sample uses scaled uv + slow uTime drift so the streaks crawl
+       organically. Stronger in user mode (cool silver loves a teal
+       caustic) and present-but-quieter in GAIA mode. ─────────────────── */
+  if (distMain > 0.0) {
+    float caustic = fbm(vec2(uv.x * aspect * 7.0 + uTime * 0.00018,
+                             uv.y * 5.0 - uTime * 0.00010));
+    /* Square + bias so caustic peaks read as bright streaks against a
+       dim baseline rather than a uniform haze. */
+    caustic = pow(clamp(caustic, 0.0, 1.0), 1.8);
+    vec3 causticColor = mix(
+      vec3(0.55, 0.68, 0.98),  // periwinkle — user mode
+      vec3(0.30, 0.55, 1.00),  // cerulean — GAIA mode
+      uMode
+    );
+    float causticMask = exp(-pow(distMain / 0.32, 1.4));
+    float causticAmt = mix(0.30, 0.16, uMode);  // user-mode stronger
+    color += causticColor * caustic * causticMask * causticAmt
+           * smoothstep(0.05, 0.5, hRaw);
+  }
+
+  /* ─── Iridescent specular sweep along the envelope — thin highlight that
+       cycles between primary tip and tipAlt across x. Gives the wave's
+       crest a prismatic edge instead of a single-color rim. ──────────── */
+  {
+    float specBand = exp(-pow(distMain * 18.0, 2.0));
+    float specHue = 0.5 + 0.5 * sin(uv.x * 6.0 + uTime * 0.00015);
+    vec3 specColor = mix(tip, tipAlt, specHue);
+    /* Spec sweep gated by hRaw so it only fires on tall peaks — keeps idle
+       state clean. */
+    color += specColor * specBand * smoothstep(0.15, 0.55, hRaw) * 0.12;
+  }
+
+  /* ─── Holographic shimmer — user-mode-only iridescent foil. Three
+       phase-shifted sines at 120° (cyan/pink/gold) sum to produce a
+       chroma vector that we use as a MULTIPLICATIVE tint on the existing
+       body (additive on bright white was invisible — it just stayed
+       white). Strength fades into GAIA mode via (1.0 - uMode). ──────── */
+  if (distMain > 0.0) {
+    float holoStrength = (1.0 - uMode);
+    float ph = uv.x * 5.5 + uTime * 0.00020;
+    float h1 = 0.5 + 0.5 * sin(ph);
+    float h2 = 0.5 + 0.5 * sin(ph + 2.094);
+    float h3 = 0.5 + 0.5 * sin(ph + 4.189);
+    vec3 holoTint =
+        vec3(0.55, 0.78, 1.20) * h1 +   // sky blue
+        vec3(0.70, 0.72, 1.10) * h2 +   // periwinkle
+        vec3(0.85, 0.92, 1.10) * h3;    // pale ice
+    /* Normalize so the sum averages to ~vec3(1) — preserves perceived
+       brightness, only shifts hue. */
+    holoTint *= (1.0 / 1.5);
+    float bodyMask = exp(-pow(distMain / 0.35, 1.6));
+    /* Tint amount gated by hRaw too — at idle the body picks up almost
+       no hue rotation, so silence reads as clean pearl silver. */
+    float tintAmt = holoStrength * bodyMask * smoothstep(0.10, 0.45, hRaw) * 0.45;
+    color = mix(color, color * holoTint * 1.10, tintAmt);
   }
 
   /* ─── Radial peak glow. Strength uses a HORIZONTAL-AVERAGED hMain so
@@ -277,15 +368,35 @@ void main() {
                 + hRaw * 3.0
                 + waveHeight(uv.x + 0.03, 0.0) * 2.0
                 + waveHeight(uv.x + 0.06, 0.0)) * (1.0 / 9.0) * ampMul;
-    float tipBand = exp(-pow(distMain * 26.0, 2.0));
+    /* Prism dispersion — primary band sits AT the envelope, secondary band
+       sits slightly ABOVE (in negative distMain → unlit sky), so neighbouring
+       hues separate vertically like light through a prism. The split is
+       most visible on tall peaks and fades on quiet stretches. */
+    float tipBand    = exp(-pow(distMain * 26.0, 2.0));
+    float tipBandAlt = exp(-pow((distMain + 0.018) * 22.0, 2.0));
     float tipStrength = smoothstep(0.22, 0.7, hTip);
-    color += tip * tipBand * tipStrength * 0.18;
+    color += tip    * tipBand    * tipStrength * 0.42;
+    color += tipAlt * tipBandAlt * tipStrength * 0.22;
   }
 
-  /* (God-ray pass removed — its per-pixel-x evaluation produced visible
-     vertical pillars at every peak position. The body fill, peak radial
-     glow, atmospheric halo and bloom skirt below carry the "lit" feel
-     without the column artifacts.) */
+  /* ─── Vertical god-ray — atmospheric beams rising from tall peaks. The
+       original per-x version produced vertical pillars; this version samples
+       waveHeight at 5 wide-spaced x offsets and averages aggressively, so
+       neighbouring pixels can't land on wildly different ray intensities. */
+  {
+    float hRay = (waveHeight(uv.x - 0.10, 0.0)
+                + waveHeight(uv.x - 0.05, 0.0) * 2.0
+                + hRaw * 3.0
+                + waveHeight(uv.x + 0.05, 0.0) * 2.0
+                + waveHeight(uv.x + 0.10, 0.0)) * (1.0 / 9.0) * ampMul;
+    if (distMain < 0.0 && hRay > 0.20) {
+      float colAbove = abs(distMain);
+      float ray = exp(-pow(colAbove / 0.30, 1.3));
+      float rayStrength = pow(hRay, 1.5);
+      vec3 rayColor = mix(bandTop * 0.8, tip * 0.7, smoothstep(0.3, 0.9, hRay));
+      color += rayColor * ray * rayStrength * 0.18;
+    }
+  }
 
   /* ─── Soft horizontal bloom — at the envelope, neighboring pixels'
        brightness bleeds to this pixel. Approximated by sampling the wave
@@ -432,8 +543,10 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
     );
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    /* Scale factor for the offscreen render relative to the canvas. */
-    const RENDER_SCALE = 0.5;
+    /* Scale factor for the offscreen render relative to the canvas. 0.7
+       keeps ~half the fragment work while avoiding the half-res edge
+       shimmer that 0.5 produced on the sharp wave silhouette. */
+    const RENDER_SCALE = 0.7;
     let fboW = 0;
     let fboH = 0;
 
@@ -464,29 +577,8 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
 
     const start = performance.now();
     let raf = 0;
-    /* Idle throttle: when the spectrum has been near-zero for > IDLE_MS,
-       we cap the render rate to ~30fps (half the GPU work during silence)
-       while still rendering at full 60fps the moment audio resumes. */
-    const IDLE_MS = 1000;
-    const IDLE_FRAME_MS = 32; // ~30 fps
-    const ACTIVE_THRESHOLD = 0.02;
-    let lastActiveAt = performance.now();
-    let lastDrawAt = 0;
 
     const draw = (now: number) => {
-      // Compute current spectrum activity. Buffer is small (24 bins) so this
-      // is a few µs.
-      let sum = 0;
-      for (let i = 0; i < spectrum.length; i++) sum += spectrum[i];
-      const avg = sum / Math.max(1, spectrum.length);
-      if (avg > ACTIVE_THRESHOLD) lastActiveAt = now;
-      const isIdle = now - lastActiveAt > IDLE_MS;
-      if (isIdle && now - lastDrawAt < IDLE_FRAME_MS) {
-        raf = requestAnimationFrame(draw);
-        return;
-      }
-      lastDrawAt = now;
-
       const t = now - start;
 
       const target = modeRef.current === "gaia" ? 1 : 0;
