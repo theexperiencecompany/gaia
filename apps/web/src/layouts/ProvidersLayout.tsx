@@ -6,6 +6,7 @@ import { type ReactNode, Suspense } from "react";
 import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
+import LoginModal from "@/features/auth/components/LoginModal";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -17,10 +18,6 @@ import { HeroUIProvider } from "@/layouts/HeroUIProvider";
 import QueryProvider from "@/layouts/QueryProvider";
 import { useWebSocketConnection } from "@/lib/websocket/useWebSocketConnection";
 
-const LoginModal = dynamic(
-  () => import("@/features/auth/components/LoginModal"),
-  { ssr: false },
-);
 const GlobalIntegrationModal = dynamic(
   () =>
     import("@/features/integrations/components/GlobalIntegrationModal").then(
@@ -44,6 +41,9 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   return (
     <HeroUIProvider>
+      {/* LoginModal lives outside LazyMotionProvider because HeroUI's Modal
+          imports the full `motion` API, which throws under LazyMotion strict. */}
+      <LoginModal />
       <LazyMotionProvider>
         <QueryProvider>
           {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
@@ -53,7 +53,6 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
           <GlobalInterceptor />
           {/* <HydrationManager /> */}
           <Toaster position="top-right" />
-          <LoginModal />
           <GlobalIntegrationModal />
           <ElectronRouteGuard>
             <KeyboardShortcutsProvider>

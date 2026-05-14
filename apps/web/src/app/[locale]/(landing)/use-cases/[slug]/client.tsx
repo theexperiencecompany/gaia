@@ -5,6 +5,7 @@ import { PlayIcon, UserCircle02Icon } from "@icons";
 import Image from "next/image";
 import { useTransition } from "react";
 import { wallpapers } from "@/config/wallpapers";
+import LoginModal from "@/features/auth/components/LoginModal";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -167,6 +168,7 @@ export default function UseCaseDetailClient({
 
   return (
     <div className="relative">
+      <LoginModal />
       <Image
         src={wallpapers.useCases.webp}
         alt="GAIA Use-Cases Wallpaper"
