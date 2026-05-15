@@ -40,7 +40,7 @@ function SampleCard({
   );
 }
 
-export default function OpenUIDemoPage(): JSX.Element {
+export default function OpenUISamplesPage(): JSX.Element {
   const groups = OPENUI_SAMPLES.reduce<Record<string, typeof OPENUI_SAMPLES>>(
     (acc, s) => {
       const bucket = acc[s.group] ?? [];
