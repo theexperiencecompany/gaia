@@ -275,8 +275,8 @@ class ProductionSettings(CommonSettings):
     JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"  # API container's sidecar mount
     # JuiceFS bootstrap supervisor (tune per env without a code change):
     JUICEFS_MOUNT_READY_TIMEOUT: int = 90  # secs to wait for mount readiness
-    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 8  # retries on transient meta errors
-    JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3  # base secs, exponential, cap 30
+    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 20  # retries on transient meta errors
+    JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3  # base secs, exponential, cap 15
     SESSION_RETENTION_DAYS: int = 30  # prune sessions after this inactivity
     SESSION_PRUNE_BATCH_LIMIT: int = 1000  # safety cap per prune task run
 
@@ -457,7 +457,7 @@ class DevelopmentSettings(CommonSettings):
     JFS_ENCRYPTION_KEY: Optional[str] = None
     JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"
     JUICEFS_MOUNT_READY_TIMEOUT: int = 90
-    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 8
+    JUICEFS_BOOTSTRAP_MAX_ATTEMPTS: int = 20
     JUICEFS_BOOTSTRAP_RETRY_BACKOFF: int = 3
     SESSION_RETENTION_DAYS: int = 30
     SESSION_PRUNE_BATCH_LIMIT: int = 1000

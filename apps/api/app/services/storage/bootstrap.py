@@ -65,10 +65,13 @@ _PERMANENT_MARKERS = (
     "signaturedoesnotmatch",
     "no such bucket",
     "specified bucket does not exist",
-    "no such host",
     "unknown authority",
     "certificate is not valid",
 )
+# NOTE: DNS failures ("no such host", "server misbehaving", NXDOMAIN) are
+# deliberately NOT permanent — Docker's embedded resolver (and serverless
+# providers) intermittently fail to resolve an external meta host that
+# resolves fine on a later attempt. Treat as transient and retry.
 
 
 def _classify(text: str) -> str:
@@ -336,7 +339,7 @@ def _bootstrap_loop() -> None:
                 )
             return
         if attempt < attempts:
-            delay = min(base_backoff * (2 ** (attempt - 1)), 30)
+            delay = min(base_backoff * (2 ** (attempt - 1)), 15)
             log.info(
                 "[juicefs] transient mount failure; backing off",
                 attempt=attempt,
