@@ -16,10 +16,12 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Mail01Icon } from "@icons";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useCallback } from "react";
 import { REVEAL_TODOS_INTRO } from "../../constants/messages";
+import { MOTION_COMPOSER_CTA } from "../../constants/motion";
 import type { UseOnboardingChatReturn } from "../../hooks/useOnboardingChat";
 import type { Action, OnboardingState } from "../../state/types";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
@@ -30,7 +32,68 @@ import { OnboardingChatStream } from "./Chat";
 interface RevealTodosProps {
   state: OnboardingState;
   dispatch: Dispatch<Action>;
+  /** Run-now demo chat — separate throwaway conversation, NOT the welcome
+   *  conversation. See `useChatStage`. */
   chat: UseOnboardingChatReturn;
+}
+
+function generateConvoId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `onboarding-todo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+interface SelectedTodoIndicatorProps {
+  title: string;
+  sourceEmail: { sender: string; subject: string } | null;
+}
+
+/** Static "selected todo" indicator rendered above the run-now demo stream.
+ *  Replaces the previous chat-bubble-shaped TodoRunNowCard so the auto-sent
+ *  user message never reads as a real conversation turn. */
+function SelectedTodoIndicator({
+  title,
+  sourceEmail,
+}: SelectedTodoIndicatorProps) {
+  return (
+    <div className="rounded-2xl bg-zinc-900 p-3">
+      <div className="text-xs font-medium tracking-wide text-zinc-500 uppercase">
+        Selected todo
+      </div>
+      <div className="mt-1 text-sm text-zinc-100">{title}</div>
+      {sourceEmail && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl bg-zinc-800 p-3">
+          <Mail01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-500" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs text-zinc-400">
+              {sourceEmail.sender}
+            </div>
+            <div className="truncate text-xs text-zinc-500">
+              {sourceEmail.subject}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Composer for the `revealTodos` stage. Renders a "Continue" CTA in the
+ *  pinned footer once the run-now demo finishes — replaces the old inline
+ *  button that used to sit beneath the todo result. */
+export function RevealTodosComposer({
+  dispatch,
+  chat,
+}: Pick<RevealTodosProps, "dispatch" | "chat">) {
+  if (!chat.isTodoExecutionDone) return null;
+  return (
+    <m.div className="flex justify-center pb-2" {...MOTION_COMPOSER_CTA}>
+      <OnboardingCTAButton onClick={() => dispatch({ type: "ackTodoDemo" })}>
+        Continue
+      </OnboardingCTAButton>
+    </m.div>
+  );
 }
 
 export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
@@ -50,6 +113,7 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
       dispatch({
         type: "executeTodo",
         message,
+        convoId: generateConvoId(),
         todo: { id: todo.id, title: todo.title, sourceEmail },
       });
     },
@@ -59,53 +123,21 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
   if (todos.length === 0) return null;
 
   if (state.todoExecutionStarted) {
-    const executingTodo = state.todoExecutionTodo
-      ? todos.find((t) => t.id === state.todoExecutionTodo?.id)
-      : null;
-    const done = chat.isTodoExecutionDone;
+    const selected = state.todoExecutionTodo;
     return (
       <m.div
-        className="mt-10 w-full space-y-4"
+        className="mt-10 w-full space-y-4 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
-        {executingTodo && (
-          <OnboardingTodoCards
-            todos={[
-              {
-                id: executingTodo.id,
-                title: executingTodo.title,
-                description: executingTodo.description ?? undefined,
-                source_email: executingTodo.source_email ?? undefined,
-              },
-            ]}
-            onExecuteTodo={() => {}}
-            isExecuting={!done}
-            executingTodoId={done ? null : executingTodo.id}
-            completedTodoIds={done ? new Set([executingTodo.id]) : new Set()}
-            readOnly
+        {selected && (
+          <SelectedTodoIndicator
+            title={selected.title}
+            sourceEmail={selected.sourceEmail}
           />
         )}
-        <OnboardingChatStream
-          chat={chat}
-          todoOverride={state.todoExecutionTodo}
-        />
-
-        {chat.isTodoExecutionDone && (
-          <m.div
-            className="flex justify-center pt-2"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-          >
-            <OnboardingCTAButton
-              onClick={() => dispatch({ type: "ackTodoDemo" })}
-            >
-              Continue
-            </OnboardingCTAButton>
-          </m.div>
-        )}
+        <OnboardingChatStream chat={chat} hideRunNowUserMessage />
       </m.div>
     );
   }

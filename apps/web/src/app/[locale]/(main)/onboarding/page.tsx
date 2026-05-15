@@ -24,6 +24,7 @@ import {
   PlatformsComposer,
   QuestionsComposer,
   RevealTodos,
+  RevealTodosComposer,
   RevealWritingStyle,
   RevealWritingStyleComposer,
   useChatStage,
@@ -107,7 +108,10 @@ export default function Onboarding() {
     setIntroDone(true);
   };
 
-  const chat = useChatStage(state, dispatch);
+  const { welcome: welcomeChat, todoDemo: todoDemoChat } = useChatStage(
+    state,
+    dispatch,
+  );
 
   const stageContent = (() => {
     switch (stage) {
@@ -118,7 +122,9 @@ export default function Onboarding() {
       case "revealWriting":
         return <RevealWritingStyle state={state} />;
       case "revealTodos":
-        return <RevealTodos state={state} dispatch={dispatch} chat={chat} />;
+        return (
+          <RevealTodos state={state} dispatch={dispatch} chat={todoDemoChat} />
+        );
       case "workflows":
         return <Workflows state={state} dispatch={dispatch} />;
       case "platforms":
@@ -139,7 +145,7 @@ export default function Onboarding() {
       case "revealWriting":
         return <RevealWritingStyleComposer state={state} dispatch={dispatch} />;
       case "revealTodos":
-        return null;
+        return <RevealTodosComposer dispatch={dispatch} chat={todoDemoChat} />;
       case "workflows":
         return <WorkflowsComposer state={state} dispatch={dispatch} />;
       case "platforms":
@@ -172,7 +178,7 @@ export default function Onboarding() {
             <CompletedStagesTimeline
               state={state}
               dispatch={dispatch}
-              chat={chat}
+              chat={todoDemoChat}
             />
             {stageContent}
           </m.div>

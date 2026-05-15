@@ -19,6 +19,7 @@ export const initialState: OnboardingState = {
   connectedPlatform: null,
 
   todoExecutionMessage: null,
+  todoExecutionConvoId: null,
   todoExecutionStarted: false,
   todoExecutionTodo: null,
 

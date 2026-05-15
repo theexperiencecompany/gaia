@@ -59,9 +59,11 @@ export function CompletedStageAccordion({
           key={itemKey}
           aria-label={title}
           title={
-            <div className="flex items-center gap-2">
-              <CheckmarkCircle02Icon className="size-4 text-emerald-500" />
-              <span className="text-sm font-medium text-zinc-200">{title}</span>
+            <div className="flex min-w-0 items-center gap-2">
+              <CheckmarkCircle02Icon className="size-4 min-w-4 shrink-0 text-emerald-500" />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-200">
+                {title}
+              </span>
             </div>
           }
         >

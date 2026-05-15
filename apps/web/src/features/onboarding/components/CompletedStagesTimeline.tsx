@@ -108,10 +108,7 @@ export function CompletedStagesTimeline({
               embedded
             />
             {state.todoExecutionStarted && (
-              <OnboardingChatStream
-                chat={chat}
-                todoOverride={state.todoExecutionTodo}
-              />
+              <OnboardingChatStream chat={chat} hideRunNowUserMessage />
             )}
           </div>
         </CompletedStageAccordion>

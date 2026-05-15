@@ -104,9 +104,12 @@ export default function EmailListCard({
   };
 
   if (emails) {
+    const isSingle = emails.length === 1;
     const content = (
       <div
-        className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
+        className={`w-full max-w-2xl ${backgroundColor} px-3 text-white ${
+          isSingle ? "rounded-2xl py-1" : "rounded-3xl py-3"
+        }`}
       >
         {/* Email List */}
         <ScrollShadow className={`${maxHeight} divide-y divide-zinc-800`}>

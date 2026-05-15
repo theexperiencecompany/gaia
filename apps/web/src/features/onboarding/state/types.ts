@@ -64,15 +64,21 @@ export interface OnboardingState {
   /** Pending todo to auto-send into the chat conversation once it's ready. */
   todoExecutionMessage: string | null;
   /**
+   * Throwaway conversation id the run-now demo streams into. Generated fresh
+   * on every Run-Now click so the demo never bleeds into the welcome
+   * conversation (which the user lands in after "Continue to GAIA").
+   */
+  todoExecutionConvoId: string | null;
+  /**
    * User clicked Run on a todo. The `revealTodos` stage swaps its todo grid
    * for the chat stream in-place; the stage stays active until the user
    * dispatches `ackTodoDemo` from the post-demo Continue button.
    */
   todoExecutionStarted: boolean;
   /**
-   * The todo the user clicked Run on. Used to render a custom user bubble
-   * (title + source email hint) for the auto-sent message inside the
-   * onboarding chat stream — the raw message text is hidden from the user.
+   * The todo the user clicked Run on. Surfaced as a static "selected todo"
+   * indicator at the top of the demo container — the raw auto-sent user
+   * message itself is hidden from the stream.
    */
   todoExecutionTodo: {
     id: string;
@@ -121,6 +127,7 @@ export type Action =
   | {
       type: "executeTodo";
       message: string;
+      convoId: string;
       todo: {
         id: string;
         title: string;

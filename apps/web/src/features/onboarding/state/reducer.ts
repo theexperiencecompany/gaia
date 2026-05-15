@@ -137,6 +137,7 @@ export function reducer(
         ...state,
         todoExecutionStarted: true,
         todoExecutionMessage: action.message,
+        todoExecutionConvoId: action.convoId,
         todoExecutionTodo: action.todo,
       };
 

@@ -5,6 +5,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { useState } from "react";
 import { HoloCard } from "@/components/ui/holo-card/HoloCard";
+import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { OnboardingPlatformConnect } from "@/features/onboarding/components/OnboardingPlatformConnect";
 import { OnboardingPlatformPreview } from "@/features/onboarding/components/OnboardingPlatformPreview";
@@ -14,6 +15,7 @@ import { OnboardingWorkflowCards } from "@/features/onboarding/components/Onboar
 import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
 import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/WritingStyleRevealCard";
 import { professionOptions } from "@/features/onboarding/constants";
+import { BOT_BUBBLE_DEFAULTS } from "@/features/onboarding/constants/bubbleDefaults";
 import {
   PLATFORM_ICONS,
   PLATFORM_LABELS,
@@ -327,6 +329,58 @@ function PlatformConnectDemo() {
   );
 }
 
+// ── Message-break stagger demo ────────────────────────────────────────────────
+
+const MESSAGE_BREAK_SAMPLES = [
+  "Hey! I'm GAIA.<NEW_MESSAGE_BREAK>What should I call you?",
+  "Nice to meet you, Aryan!<NEW_MESSAGE_BREAK>What do you do?<NEW_MESSAGE_BREAK>I'll use this to tailor your setup.",
+  "Got it.<NEW_MESSAGE_BREAK>Mind if I peek at your inbox?<NEW_MESSAGE_BREAK>I'll draft todos from anything urgent.<NEW_MESSAGE_BREAK>You can disconnect any time.",
+];
+
+function MessageBreakStaggerDemo() {
+  const [nonce, setNonce] = useState(0);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const sample = MESSAGE_BREAK_SAMPLES[activeIdx];
+
+  return (
+    <DemoSection label="NEW_MESSAGE_BREAK stagger">
+      <p className="text-xs text-zinc-500">
+        Each segment between <code>&lt;NEW_MESSAGE_BREAK&gt;</code> tokens fades
+        in with a 0.35s stagger. Single-segment messages skip the animation.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {MESSAGE_BREAK_SAMPLES.map((_, i) => (
+          <Chip
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable list
+            key={i}
+            variant={activeIdx === i ? "solid" : "flat"}
+            color={activeIdx === i ? "primary" : "default"}
+            size="sm"
+            onClick={() => {
+              setActiveIdx(i);
+              setNonce((n) => n + 1);
+            }}
+            className="cursor-pointer select-none"
+          >
+            {MESSAGE_BREAK_SAMPLES[i].split("<NEW_MESSAGE_BREAK>").length}{" "}
+            bubbles
+          </Chip>
+        ))}
+        <button
+          type="button"
+          onClick={() => setNonce((n) => n + 1)}
+          className="cursor-pointer rounded-lg bg-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-600"
+        >
+          Replay
+        </button>
+      </div>
+      <div key={`${activeIdx}-${nonce}`} className="pt-2">
+        <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={sample} />
+      </div>
+    </DemoSection>
+  );
+}
+
 // ── Layout helpers ────────────────────────────────────────────────────────────
 
 function DemoSection({
@@ -364,6 +418,9 @@ export default function OnboardingDemoPage() {
             All components with simulated dummy data. Not wired to backend.
           </p>
         </div>
+
+        {/* Message-break stagger */}
+        <MessageBreakStaggerDemo />
 
         {/* Processing widget */}
         <ProcessingDemo />
