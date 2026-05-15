@@ -1,9 +1,11 @@
 {
   "cli_version": "0.5.6",
   "checkpoint_id": "b412e7ddd05d",
+  "session_id": "80e3a248-24d1-472d-b172-150f1e9d249d",
   "strategy": "manual-commit",
+  "created_at": "2026-05-15T20:46:37.3208Z",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 13,
+  "checkpoints_count": 4,
   "files_touched": [
     "apps/api/app/agents/core/messages.py",
     "apps/api/app/agents/prompts/onboarding_prompts.py",
@@ -46,37 +48,59 @@
     "apps/web/src/features/onboarding/types/index.ts",
     "apps/web/src/features/onboarding/utils/clarifyHelpers.ts"
   ],
-  "sessions": [
-    {
-      "metadata": "/b4/12e7ddd05d/0/metadata.json",
-      "transcript": "/b4/12e7ddd05d/0/full.jsonl",
-      "content_hash": "/b4/12e7ddd05d/0/content_hash.txt",
-      "prompt": "/b4/12e7ddd05d/0/prompt.txt"
-    },
-    {
-      "metadata": "/b4/12e7ddd05d/1/metadata.json",
-      "transcript": "/b4/12e7ddd05d/1/full.jsonl",
-      "content_hash": "/b4/12e7ddd05d/1/content_hash.txt",
-      "prompt": "/b4/12e7ddd05d/1/prompt.txt"
-    },
-    {
-      "metadata": "/b4/12e7ddd05d/2/metadata.json",
-      "transcript": "/b4/12e7ddd05d/2/full.jsonl",
-      "content_hash": "/b4/12e7ddd05d/2/content_hash.txt",
-      "prompt": "/b4/12e7ddd05d/2/prompt.txt"
-    },
-    {
-      "metadata": "/b4/12e7ddd05d/3/metadata.json",
-      "transcript": "/b4/12e7ddd05d/3/full.jsonl",
-      "content_hash": "/b4/12e7ddd05d/3/content_hash.txt",
-      "prompt": "/b4/12e7ddd05d/3/prompt.txt"
-    }
-  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "e22390a9e16d",
   "token_usage": {
-    "input_tokens": 355,
-    "cache_creation_tokens": 1040951,
-    "cache_read_tokens": 30831751,
-    "output_tokens": 145284,
-    "api_call_count": 251
-  }
+    "input_tokens": 64,
+    "cache_creation_tokens": 116885,
+    "cache_read_tokens": 4096284,
+    "output_tokens": 18754,
+    "api_call_count": 44
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-15T20:46:37.310579Z",
+    "agent_lines": 1456,
+    "agent_removed": 144,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1456,
+    "total_lines_changed": 1600,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
 }
