@@ -275,7 +275,9 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
             ) : (
               // Revealed Card State
               <div className="relative flex flex-col items-center gap-4 animate-scale-in">
-                <div className="text-sm text-zinc-400">Click to flip card</div>
+                <div className="text-sm text-zinc-400">
+                  Click to flip your personalised profile card
+                </div>
                 <HoloCardEditor
                   initialData={holoCardData}
                   height={HOLO_CARD_HEIGHT}

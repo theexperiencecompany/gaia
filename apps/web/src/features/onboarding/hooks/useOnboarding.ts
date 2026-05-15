@@ -31,6 +31,7 @@ import { initialState } from "../state/initial";
 import { clearPersisted } from "../state/persist";
 import { reducer } from "../state/reducer";
 import type { Action, OnboardingState, Stage } from "../state/types";
+import { useClarifyQuestions } from "./useClarifyQuestions";
 
 interface UseOnboardingReturn {
   state: OnboardingState;
@@ -64,12 +65,12 @@ export function useOnboarding({
   const [state, dispatch] = useReducer(reducer, initialState);
   const stage = getStage(state);
 
-  // Persist + hydrate from sessionStorage
+  // Persist + hydrate from localStorage
   useOnboardingPersistence(state, dispatch);
 
   // Resume mid-pipeline if backend says onboarding was already submitted but
   // hasn't reached chat. Without this, a user reloading after the
-  // sessionStorage was cleared would land back on Q1. The `questionIndex`
+  // localStorage was cleared would land back on Q1. The `questionIndex`
   // guard naturally short-circuits subsequent runs once we've hydrated past
   // the Q&A — no ref needed.
   useEffect(() => {
@@ -98,6 +99,11 @@ export function useOnboarding({
     [setUser],
   );
   useOnboardingSubmission(state, handleSubmissionSuccess);
+
+  // No-Gmail clarify follow-up: fetch the 3 LLM-generated questions once
+  // the user has answered the focus prompt. Gated internally on the no-Gmail
+  // path, so this is a no-op for Gmail users.
+  useClarifyQuestions(state, dispatch);
 
   // WS + initial snapshot fetch
   useBackendSync(state, stage, dispatch);

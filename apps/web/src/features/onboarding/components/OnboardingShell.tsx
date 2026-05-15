@@ -114,7 +114,16 @@ export function OnboardingShell({
       <BlurStack className="pointer-events-none fixed right-0 bottom-0 left-0 z-20 h-24" />
 
       {composer && (
-        <div className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-lg pb-3">
+        <div
+          className={
+            // Clarify composer is a multi-question card — give it more room
+            // than the standard text composer. Every other stage stays at
+            // max-w-lg so the visual rhythm of the existing flow is unchanged.
+            stage === "clarify"
+              ? "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-xl pb-3"
+              : "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-lg pb-3"
+          }
+        >
           {composer}
         </div>
       )}

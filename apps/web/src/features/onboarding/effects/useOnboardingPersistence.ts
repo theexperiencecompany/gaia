@@ -7,7 +7,7 @@ import { loadPersisted, savePersisted } from "../state/persist";
 import type { Action, OnboardingState } from "../state/types";
 
 /**
- * Hydrates the reducer from sessionStorage on first mount, then writes the
+ * Hydrates the reducer from localStorage on first mount, then writes the
  * whitelisted slice on every state change. The hydration guard ensures we
  * never overwrite persisted state with `initialState` during the first
  * render before hydration runs.

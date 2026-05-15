@@ -25,6 +25,7 @@ from app.models.user_models import (
     OnboardingResponse,
 )
 from app.services.composio.composio_service import get_composio_service
+from app.services.onboarding.clarify_service import generate_clarify_questions
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
@@ -97,6 +98,41 @@ async def complete_user_onboarding(
     except Exception as e:
         log.error(f"Error completing onboarding: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
+
+
+class ClarifyQuestionsRequest(BaseModel):
+    name: str
+    profession: str
+    focus: str
+
+
+@router.post("/clarify-questions", response_model=dict)
+async def get_clarify_questions(
+    payload: ClarifyQuestionsRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    LLM-generated 3-question follow-up for the no-Gmail path. Returned as
+    `{ questions: [{ id, kind, question, options }] }` — the frontend renders
+    these in the clarify composer. Answers come back later on `POST
+    /onboarding` as `clarify_answers`.
+
+    No persistence here — the questions are stateless. We regenerate every
+    time the user hits the endpoint so a restart picks up a fresh set keyed
+    to the latest focus answer.
+    """
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={"operation": "clarify_questions"},
+    )
+    name = payload.name.strip() or "there"
+    profession = payload.profession.strip() or "professional"
+    focus = payload.focus.strip()
+    if not focus:
+        raise HTTPException(status_code=400, detail="Focus is required")
+
+    questions = await generate_clarify_questions(name, profession, focus)
+    return {"questions": questions}
 
 
 @router.post("/reset", response_model=dict)

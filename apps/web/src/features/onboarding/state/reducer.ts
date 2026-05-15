@@ -161,5 +161,100 @@ export function reducer(
 
     case "reset":
       return initialState;
+
+    case "clarifyLoaded": {
+      // First question becomes the active tab if nothing was selected yet.
+      const activeTab =
+        state.clarifyActiveTab ?? action.questions[0]?.id ?? null;
+      return {
+        ...state,
+        clarifyQuestions: action.questions,
+        clarifyActiveTab: activeTab,
+      };
+    }
+
+    case "clarifySelectOption": {
+      // Picking a real option clears any pending "Other" selection.
+      const { [action.questionId]: _drop, ...remainingOther } =
+        state.clarifyOtherSelected;
+      return {
+        ...state,
+        clarifyAnswers: {
+          ...state.clarifyAnswers,
+          [action.questionId]: { kind: "option", value: action.value },
+        },
+        clarifyOtherSelected: remainingOther,
+      };
+    }
+
+    case "clarifyOtherSelect": {
+      // User clicked the "Other" radio — flag the selection so the input
+      // reveals, and clear any committed answer for this question so submit
+      // gating waits on the user typing something.
+      const { [action.questionId]: _droppedAns, ...remainingAnswers } =
+        state.clarifyAnswers;
+      return {
+        ...state,
+        clarifyAnswers: remainingAnswers,
+        clarifyOtherSelected: {
+          ...state.clarifyOtherSelected,
+          [action.questionId]: true,
+        },
+      };
+    }
+
+    case "clarifyCustomDraft": {
+      // Typing keeps "Other" selected and clears any committed answer so the
+      // UI follows the input. Final commit happens on blur / submit.
+      const { [action.questionId]: _dropped, ...remainingAnswers } =
+        state.clarifyAnswers;
+      return {
+        ...state,
+        clarifyCustomDrafts: {
+          ...state.clarifyCustomDrafts,
+          [action.questionId]: action.value,
+        },
+        clarifyAnswers: remainingAnswers,
+        clarifyOtherSelected: {
+          ...state.clarifyOtherSelected,
+          [action.questionId]: true,
+        },
+      };
+    }
+
+    case "clarifyCustomCommit": {
+      const draft = state.clarifyCustomDrafts[action.questionId]?.trim();
+      if (!draft) return state;
+      // Once committed, the pending "Other" selection is now a real answer.
+      const { [action.questionId]: _drop, ...remainingOther } =
+        state.clarifyOtherSelected;
+      return {
+        ...state,
+        clarifyAnswers: {
+          ...state.clarifyAnswers,
+          [action.questionId]: { kind: "custom", value: draft },
+        },
+        clarifyOtherSelected: remainingOther,
+      };
+    }
+
+    case "clarifySkip": {
+      const { [action.questionId]: _drop, ...remainingOther } =
+        state.clarifyOtherSelected;
+      return {
+        ...state,
+        clarifyAnswers: {
+          ...state.clarifyAnswers,
+          [action.questionId]: { kind: "skip", value: null },
+        },
+        clarifyOtherSelected: remainingOther,
+      };
+    }
+
+    case "clarifyTab":
+      return { ...state, clarifyActiveTab: action.questionId };
+
+    case "clarifySubmit":
+      return { ...state, clarifySubmitted: true };
   }
 }

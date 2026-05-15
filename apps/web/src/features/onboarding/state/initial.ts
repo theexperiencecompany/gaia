@@ -24,4 +24,11 @@ export const initialState: OnboardingState = {
   todoExecutionTodo: null,
 
   isRestarting: false,
+
+  clarifyQuestions: null,
+  clarifyAnswers: {},
+  clarifyActiveTab: null,
+  clarifyCustomDrafts: {},
+  clarifyOtherSelected: {},
+  clarifySubmitted: false,
 };

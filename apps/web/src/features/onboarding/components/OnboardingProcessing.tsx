@@ -279,7 +279,7 @@ function OnboardingProcessingImpl({
                     transition={{ duration: 0.2 }}
                     className="shrink-0"
                   >
-                    <Loading03Icon className="size-4 text-zinc-500 animate-spin" />
+                    <Loading03Icon className="size-4 text-primary animate-spin" />
                   </m.div>
                 )}
               </AnimatePresence>

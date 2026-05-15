@@ -238,13 +238,13 @@ export default function ChatRenderer({
               />
             );
 
-          // Inject the welcome UI (integrations / platform demo / workflows)
-          // directly after the personalised LLM greeting so it reads like a
-          // single agent turn: hello text → supplementary cards → user reply.
+          // In the post-onboarding welcome conversation, the first bot bubble
+          // is the onboarding wrap-up message which the user already saw inside
+          // the holo card reveal. Suppress it here so only the persona-tailored
+          // WelcomeChat (custom post-onboarding copy) is shown.
           if (isWelcomeConversation && index === 0) {
             return (
               <Fragment key={`${message.message_id || index}-welcome-wrap`}>
-                {bubble}
                 <WelcomeChat />
               </Fragment>
             );

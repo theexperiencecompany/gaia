@@ -146,7 +146,7 @@ function OnboardingTodoCardsImpl({
 
                 <div className="min-w-0 flex-1">
                   <p
-                    className={`text-sm font-medium ${
+                    className={`truncate text-sm font-medium ${
                       completed ? "text-zinc-500 line-through" : "text-zinc-200"
                     }`}
                   >

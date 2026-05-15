@@ -42,7 +42,7 @@ export function Workflows({ state }: WorkflowsProps) {
           <OnboardingWorkflowCards workflows={workflows} />
         </div>
         {!workflowsConfirmed && (
-          <p className="mt-2 ml-10.75 text-xs text-zinc-500">
+          <p className="mt-2 ml-10.75 text-xs text-zinc-600">
             Here's what I set up to get you started:
           </p>
         )}

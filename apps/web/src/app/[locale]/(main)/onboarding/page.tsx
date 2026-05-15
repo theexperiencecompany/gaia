@@ -19,6 +19,7 @@ import { OnboardingShell } from "@/features/onboarding/components/OnboardingShel
 import {
   Chat,
   ChatComposer,
+  ClarifyComposer,
   FocusComposer,
   Platforms,
   PlatformsComposer,
@@ -117,6 +118,7 @@ export default function Onboarding() {
     switch (stage) {
       case "questions":
       case "focus":
+      case "clarify":
       case "processing":
         return null;
       case "revealWriting":
@@ -140,6 +142,8 @@ export default function Onboarding() {
         return <QuestionsComposer state={state} dispatch={dispatch} />;
       case "focus":
         return <FocusComposer state={state} dispatch={dispatch} />;
+      case "clarify":
+        return <ClarifyComposer state={state} dispatch={dispatch} />;
       case "processing":
         return null;
       case "revealWriting":

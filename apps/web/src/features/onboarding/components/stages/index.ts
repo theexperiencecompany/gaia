@@ -1,4 +1,5 @@
 export { Chat, ChatComposer, OnboardingChatStream, useChatStage } from "./Chat";
+export { ClarifyComposer } from "./Clarify";
 export { FocusComposer } from "./Focus";
 export { Platforms, PlatformsComposer } from "./Platforms";
 export { QuestionsComposer } from "./Questions";

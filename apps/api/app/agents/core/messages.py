@@ -97,24 +97,27 @@ async def construct_langchain_messages(
     time_msg = build_current_time_message(user_timezone=user_timezone)
     chain_msgs: list[AnyMessage] = [system_msg, dynamic_msg, time_msg]
 
-    # Inject onboarding system prompt for first-conversation experience.
-    # Tagged as memory_message so manage_system_prompts_node preserves it
-    # alongside the main comms agent prompt (which is the sole non-memory prompt).
-    if user_id and conversation_id:
-        onboarding_prompt = await get_onboarding_system_prompt_if_applicable(
-            user_id, conversation_id
-        )
-        if onboarding_prompt:
-            chain_msgs.append(
-                SystemMessage(content=onboarding_prompt, memory_message=True)
-            )
-
     # Extract user's latest message content
     user_content = (
         messages[-1].get("content", "").strip()
         if messages and messages[-1].get("role") == "user"
         else ""
     )
+
+    # Inject onboarding system prompt for first-conversation experience.
+    # Tagged as memory_message so manage_system_prompts_node preserves it
+    # alongside the main comms agent prompt (which is the sole non-memory prompt).
+    # We pass the latest user message so the helper can also catch the
+    # onboarding run-now demo (which creates a fresh untagged conversation
+    # and is identified by its "Execute this todo for me:" message prefix).
+    if user_id and conversation_id:
+        onboarding_prompt = await get_onboarding_system_prompt_if_applicable(
+            user_id, conversation_id, latest_user_message=user_content
+        )
+        if onboarding_prompt:
+            chain_msgs.append(
+                SystemMessage(content=onboarding_prompt, memory_message=True)
+            )
 
     # Priority: workflow > calendar event > tool selection > user message
     content = (

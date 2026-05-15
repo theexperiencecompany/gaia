@@ -37,21 +37,20 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
   const cardWrapRef = useRef<HTMLDivElement>(null);
 
   // Choreography on reveal:
-  //   t=0    card mounts, springs in from scale 0.6
-  //   t=40   smooth scroll kicks off so the card is in view as it grows
-  //   t=520  scroll has settled — fire confetti from the card's actual
-  //          on-screen centre so the burst lands ON the card, not on the
-  //          original (pre-scroll) viewport position
-  // Times are deliberately offset; firing confetti before the scroll settles
-  // makes the particles spawn at a stale origin and look detached.
+  //   t=0    card mounts, springs in from scale 0.7 (overlapping the
+  //          giftbox burst so there is no visual gap)
+  //   t=0    scroll kicks off immediately so the card grows into view —
+  //          starting the scroll here means it settles before the spring
+  //          finishes, removing the "jump" the user felt
+  //   t=420  fire confetti from the card's actual on-screen centre
+  // Confetti waits until the scroll has settled so the particles spawn
+  // at the card's final position, not its stale pre-scroll origin.
   useEffect(() => {
     if (revealState !== "revealed") return;
-    const scrollTimer = window.setTimeout(() => {
-      cardWrapRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }, 40);
+    cardWrapRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
     const confettiTimer = window.setTimeout(() => {
       const node = cardWrapRef.current;
       const origin = node
@@ -69,9 +68,8 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
         startVelocity: 45,
         origin,
       });
-    }, 520);
+    }, 420);
     return () => {
-      window.clearTimeout(scrollTimer);
       window.clearTimeout(confettiTimer);
     };
   }, [revealState]);
@@ -123,10 +121,13 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
         className="relative flex items-center justify-center"
         style={{
           width: HOLO_CARD_WIDTH,
-          minHeight: revealState === "revealed" ? HOLO_CARD_HEIGHT : "auto",
+          minHeight:
+            revealState === "revealed" || revealState === "bursting"
+              ? HOLO_CARD_HEIGHT
+              : "auto",
         }}
       >
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           {revealState !== "revealed" && (
             <m.button
               key="giftbox"
@@ -134,8 +135,13 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
               aria-label="Tap to reveal your personalized GAIA card"
               onClick={handleGiftboxClick}
               disabled={revealState !== "idle"}
-              className="group relative flex cursor-pointer items-center justify-center bg-transparent outline-none"
+              className={
+                revealState === "bursting"
+                  ? "pointer-events-none absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent outline-none"
+                  : "group relative flex cursor-pointer items-center justify-center bg-transparent outline-none"
+              }
               style={{ perspective: 1000 }}
+              exit={{ opacity: 0, transition: { duration: 0.15 } }}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={
                 revealState === "vibrating"
@@ -206,20 +212,24 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
             </m.button>
           )}
 
-          {revealState === "revealed" && (
+          {(revealState === "bursting" || revealState === "revealed") && (
             <m.div
               key="card"
               ref={cardWrapRef}
-              className="flex flex-col items-center gap-4"
+              className={
+                revealState === "bursting"
+                  ? "absolute inset-0 flex flex-col items-center gap-4"
+                  : "flex flex-col items-center gap-4"
+              }
               role="img"
               aria-label="Your personalized GAIA member card"
-              initial={{ opacity: 0, scale: 0.6 }}
+              initial={{ opacity: 0, scale: 0.7 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{
                 type: "spring",
-                stiffness: 220,
-                damping: 18,
-                delay: 0.05,
+                stiffness: 180,
+                damping: 22,
+                mass: 0.9,
               }}
             >
               <HoloCardEditor
@@ -227,7 +237,9 @@ export function HoloCardReveal({ personalizationData }: HoloCardRevealProps) {
                 height={HOLO_CARD_HEIGHT}
                 width={HOLO_CARD_WIDTH}
               />
-              <p className="text-sm text-zinc-400">Click to flip card</p>
+              <p className="text-sm text-zinc-400">
+                Click to flip your personalised profile card
+              </p>
             </m.div>
           )}
         </AnimatePresence>

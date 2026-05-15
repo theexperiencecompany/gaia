@@ -3,7 +3,7 @@
 import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { useState } from "react";
+import { useReducer, useState } from "react";
 import { HoloCard } from "@/components/ui/holo-card/HoloCard";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
@@ -14,15 +14,20 @@ import { OnboardingTodoCards } from "@/features/onboarding/components/Onboarding
 import { OnboardingWorkflowCards } from "@/features/onboarding/components/OnboardingWorkflowCards";
 import { HoloCardReveal } from "@/features/onboarding/components/reveal/HoloCardReveal";
 import { WritingStyleRevealCard } from "@/features/onboarding/components/reveal/WritingStyleRevealCard";
+import { ClarifyComposer } from "@/features/onboarding/components/stages/Clarify";
 import { professionOptions } from "@/features/onboarding/constants";
 import { BOT_BUBBLE_DEFAULTS } from "@/features/onboarding/constants/bubbleDefaults";
+import { CLARIFY_MOCK_QUESTIONS } from "@/features/onboarding/constants/clarify";
 import {
   PLATFORM_ICONS,
   PLATFORM_LABELS,
   PLATFORM_PREVIEW_ORDER,
   type PlatformPreviewPlatform,
 } from "@/features/onboarding/constants/platformPreviewMessages";
+import { initialState } from "@/features/onboarding/state/initial";
+import { reducer } from "@/features/onboarding/state/reducer";
 import type { OnboardingStage } from "@/features/onboarding/types/websocket";
+import { countAnsweredClarify } from "@/features/onboarding/utils/clarifyHelpers";
 import { useUserStore } from "@/stores/userStore";
 
 if (process.env.NODE_ENV === "production") {
@@ -381,6 +386,51 @@ function MessageBreakStaggerDemo() {
   );
 }
 
+// ── Clarify composer ──────────────────────────────────────────────────────────
+
+function ClarifyDemo() {
+  // Local reducer so the demo runs against the real state machine. In
+  // production the questions arrive from the /onboarding/clarify-questions
+  // endpoint; the demo seeds the mock set on mount so the composer renders
+  // immediately without a network call.
+  const [state, dispatch] = useReducer(reducer, initialState, (s) => ({
+    ...s,
+    clarifyQuestions: CLARIFY_MOCK_QUESTIONS,
+    clarifyActiveTab: CLARIFY_MOCK_QUESTIONS[0]?.id ?? null,
+  }));
+
+  const handleReset = () => {
+    dispatch({ type: "reset" });
+    dispatch({ type: "clarifyLoaded", questions: CLARIFY_MOCK_QUESTIONS });
+  };
+
+  return (
+    <DemoSection label="ClarifyComposer (no-Gmail follow-up)">
+      <div className="flex flex-col gap-3">
+        {/* Demo wrapper mirrors the real composer slot width (max-w-xl) so the
+            layout matches what the user sees in the live flow. */}
+        <div className="mx-auto w-full max-w-xl">
+          <ClarifyComposer state={state} dispatch={dispatch} />
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="cursor-pointer rounded-lg bg-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-700"
+          >
+            Reset
+          </button>
+          <span className="text-xs text-zinc-500">
+            {state.clarifySubmitted
+              ? "Submitted — answers locked"
+              : `${countAnsweredClarify(state)}/${state.clarifyQuestions?.length ?? 0} answered`}
+          </span>
+        </div>
+      </div>
+    </DemoSection>
+  );
+}
+
 // ── Layout helpers ────────────────────────────────────────────────────────────
 
 function DemoSection({
@@ -424,6 +474,9 @@ export default function OnboardingDemoPage() {
 
         {/* Processing widget */}
         <ProcessingDemo />
+
+        {/* Clarify composer (3 follow-up questions, no-Gmail path) */}
+        <ClarifyDemo />
 
         {/* Writing style */}
         <DemoSection label="WritingStyleRevealCard">

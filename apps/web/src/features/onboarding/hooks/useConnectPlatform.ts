@@ -10,6 +10,7 @@
 
 import { type Dispatch, useCallback, useEffect, useRef } from "react";
 import { apiService } from "@/lib/api/service";
+import { toast } from "@/lib/toast";
 import type { Action } from "../state/types";
 
 interface UseConnectPlatformReturn {
@@ -86,6 +87,11 @@ export function useConnectPlatform(
           popupCleanupRef.current = cleanup;
         } else if (response.action_link) {
           window.open(response.action_link, "_blank");
+          finish();
+        } else if (response.instructions) {
+          toast.info(response.instructions);
+          finish();
+        } else {
           finish();
         }
       } catch {

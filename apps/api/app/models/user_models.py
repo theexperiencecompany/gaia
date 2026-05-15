@@ -139,6 +139,23 @@ class OnboardingData(BaseModel):
     )
 
 
+class ClarifyAnswer(BaseModel):
+    """
+    One answered no-Gmail clarify question. Sent up with the onboarding
+    submission payload and persisted on `onboarding.clarify_answers` so the
+    todo generator can inject it as additional signal.
+    """
+
+    id: str = Field(..., description="Question id — one of scope, blocker, constraint")
+    kind: str = Field(..., description="scope / blocker / constraint")
+    question: str = Field(..., description="Original question text")
+    value: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="User's answer; None means the question was skipped",
+    )
+
+
 class OnboardingRequest(BaseModel):
     name: str = Field(
         ..., min_length=1, max_length=100, description="User's preferred name"
@@ -151,6 +168,10 @@ class OnboardingRequest(BaseModel):
     )
     focus: Optional[str] = Field(
         None, max_length=500, description="User's current primary focus or goal"
+    )
+    clarify_answers: Optional[list[ClarifyAnswer]] = Field(
+        None,
+        description="No-Gmail follow-up answers (scope/blocker/constraint)",
     )
 
     @field_validator("name")

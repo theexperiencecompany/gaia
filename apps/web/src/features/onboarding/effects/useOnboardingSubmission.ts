@@ -38,11 +38,27 @@ export function useOnboardingSubmission(
 
     inFlightRef.current = true;
     const responses = state.responses;
+    // Clarify follow-up answers only exist on the no-Gmail path. Skipped
+    // answers are dropped server-side so we don't pre-filter here — the
+    // backend keeps things explicit by storing only non-null values.
+    const clarifyAnswers = state.clarifyQuestions
+      ? state.clarifyQuestions.map((q) => {
+          const a = state.clarifyAnswers[q.id];
+          return {
+            id: q.id,
+            kind: q.kind,
+            question: q.question,
+            value:
+              a?.kind === "option" || a?.kind === "custom" ? a.value : null,
+          };
+        })
+      : undefined;
     const body = {
       name: responses[FIELD_NAMES.NAME]?.trim() ?? "",
       profession: responses[FIELD_NAMES.PROFESSION] ?? "",
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       focus: responses[FIELD_NAMES.FOCUS] ?? "",
+      ...(clarifyAnswers ? { clarify_answers: clarifyAnswers } : {}),
     };
 
     completeOnboarding(body)

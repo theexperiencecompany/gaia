@@ -5,6 +5,7 @@
  * remembers and how it can change.
  */
 
+import type { ClarifyAnswer, ClarifyQuestion } from "../types";
 import type {
   OnboardingStage,
   PersonalizationData,
@@ -20,6 +21,7 @@ import type {
 export type Stage =
   | "questions"
   | "focus"
+  | "clarify"
   | "processing"
   | "revealWriting"
   | "revealTodos"
@@ -88,6 +90,29 @@ export interface OnboardingState {
 
   /** Restart in progress — UI is locked while the server `/reset` runs. */
   isRestarting: boolean;
+
+  /**
+   * No-Gmail clarify stage. The 3 LLM-generated follow-up questions asked
+   * after the focus answer so the todo generator has scope/blocker/constraint
+   * signal. `null` means we haven't fetched them yet; an empty array would
+   * mean the backend declined to ask any.
+   */
+  clarifyQuestions: ClarifyQuestion[] | null;
+  /** Per-question answer, keyed by question id. Missing key = not yet answered. */
+  clarifyAnswers: Record<string, ClarifyAnswer>;
+  /** Active tab in the clarify composer; defaults to the first question id. */
+  clarifyActiveTab: string | null;
+  /** In-flight custom text inputs per question id (reveals when "Other" is chosen). */
+  clarifyCustomDrafts: Record<string, string>;
+  /**
+   * Per-question flag: did the user pick the "Other" radio? Tracked separately
+   * from `clarifyCustomDrafts` so selection (radio highlight + input visible)
+   * stays decoupled from in-flight text content. Cleared when the user picks
+   * an option, skips, or commits the typed value to a real answer.
+   */
+  clarifyOtherSelected: Record<string, boolean>;
+  /** True once the user clicks "Submit & continue" on the clarify composer. */
+  clarifySubmitted: boolean;
 }
 
 export type Action =
@@ -143,9 +168,25 @@ export type Action =
   | { type: "restartStart" }
   /** Server `/reset` settled (success or fail); unlocks UI. */
   | { type: "restartDone" }
-  /** Hydrate from sessionStorage (or backend resume) on mount. */
+  /** Hydrate from localStorage (or backend resume) on mount. */
   | { type: "hydrate"; partial: Partial<OnboardingState> }
   /** Hard reset to `initialState` (test/debug). */
-  | { type: "reset" };
+  | { type: "reset" }
+  /** Clarify-stage: questions returned from the backend (or mocked). */
+  | { type: "clarifyLoaded"; questions: ClarifyQuestion[] }
+  /** Clarify-stage: user picked a preset option for a question. */
+  | { type: "clarifySelectOption"; questionId: string; value: string }
+  /** Clarify-stage: user clicked the "Other" radio (no text typed yet). */
+  | { type: "clarifyOtherSelect"; questionId: string }
+  /** Clarify-stage: user is typing in the "Other" field. */
+  | { type: "clarifyCustomDraft"; questionId: string; value: string }
+  /** Clarify-stage: user committed the "Other" text as their answer. */
+  | { type: "clarifyCustomCommit"; questionId: string }
+  /** Clarify-stage: user marked the question skipped. */
+  | { type: "clarifySkip"; questionId: string }
+  /** Clarify-stage: switch active tab. */
+  | { type: "clarifyTab"; questionId: string }
+  /** Clarify-stage: user clicked Submit; advances cursor past clarify. */
+  | { type: "clarifySubmit" };
 
 export type StagePayload<K extends OnboardingStage> = StagePayloads[K];

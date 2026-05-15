@@ -16,7 +16,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Mail01Icon } from "@icons";
+import { CheckListIcon, Mail01Icon } from "@icons";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useCallback } from "react";
@@ -57,13 +57,16 @@ function SelectedTodoIndicator({
   sourceEmail,
 }: SelectedTodoIndicatorProps) {
   return (
-    <div className="rounded-2xl bg-zinc-900 p-3">
-      <div className="text-xs font-medium tracking-wide text-zinc-500 uppercase">
-        Selected todo
+    <div className="rounded-2xl bg-zinc-900 px-3 pt-2 pb-3">
+      <div className="flex items-center gap-2">
+        <CheckListIcon className="size-4 shrink-0 text-zinc-500" />
+        <span className="text-xs font-medium tracking-wide text-zinc-500 uppercase">
+          Selected todo
+        </span>
       </div>
-      <div className="mt-1 text-sm text-zinc-100">{title}</div>
+      <div className="mt-1 ml-6 text-sm text-zinc-100">{title}</div>
       {sourceEmail && (
-        <div className="mt-3 flex items-start gap-2 rounded-xl bg-zinc-800 p-3">
+        <div className="mt-3 ml-6 flex items-start gap-2 rounded-xl bg-zinc-800 p-3">
           <Mail01Icon className="mt-0.5 size-3.5 shrink-0 text-zinc-500" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-xs text-zinc-400">
@@ -126,7 +129,7 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
     const selected = state.todoExecutionTodo;
     return (
       <m.div
-        className="mt-10 w-full space-y-4 rounded-2xl bg-zinc-800/40 p-4 backdrop-blur-xl"
+        className="mt-10 ml-10.75 space-y-4 rounded-2xl bg-zinc-800/40 py-4 pr-4 backdrop-blur-xl"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3 }}
@@ -137,7 +140,17 @@ export function RevealTodos({ state, dispatch, chat }: RevealTodosProps) {
             sourceEmail={selected.sourceEmail}
           />
         )}
-        <OnboardingChatStream chat={chat} hideRunNowUserMessage />
+        <div>
+          <div className="flex items-center gap-2 px-3">
+            <CheckListIcon className="size-4 shrink-0 text-zinc-500" />
+            <span className="text-xs font-medium tracking-wide text-zinc-500 uppercase">
+              Demo
+            </span>
+          </div>
+          <div className="mt-2">
+            <OnboardingChatStream chat={chat} hideRunNowUserMessage />
+          </div>
+        </div>
       </m.div>
     );
   }

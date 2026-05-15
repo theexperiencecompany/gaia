@@ -23,8 +23,9 @@ import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
 
-const MESSAGE_BREAK_STAGGER_SECONDS = 0.35;
-const MESSAGE_BREAK_EASE_OUT_QUART: [number, number, number, number] = [
+export const MESSAGE_BREAK_STAGGER_SECONDS = 0.08;
+export const MESSAGE_BREAK_DURATION_SECONDS = 0.25;
+export const MESSAGE_BREAK_EASE_OUT_QUART: [number, number, number, number] = [
   0.25, 1, 0.5, 1,
 ];
 
@@ -671,7 +672,7 @@ export default function TextBubble({
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{
-                        duration: 0.3,
+                        duration: MESSAGE_BREAK_DURATION_SECONDS,
                         ease: MESSAGE_BREAK_EASE_OUT_QUART,
                         delay: index * MESSAGE_BREAK_STAGGER_SECONDS,
                       }}
@@ -723,7 +724,7 @@ export default function TextBubble({
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{
-                      duration: 0.3,
+                      duration: MESSAGE_BREAK_DURATION_SECONDS,
                       ease: MESSAGE_BREAK_EASE_OUT_QUART,
                       delay: index * MESSAGE_BREAK_STAGGER_SECONDS,
                     }}

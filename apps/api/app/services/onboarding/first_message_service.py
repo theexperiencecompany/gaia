@@ -23,6 +23,7 @@ async def generate_first_message(
     created_workflows: list[dict],
     writing_style: Optional[WritingStyleProfile],
     focus: str = "",
+    executed_todos: Optional[list[dict]] = None,
 ) -> str:
     """
     Generate GAIA's first message to a new user.
@@ -48,13 +49,18 @@ async def generate_first_message(
                     f"- {e.sender} | {e.subject} | {e.why_important}\n"
                 )
 
+        executed_ids = {t["id"] for t in (executed_todos or []) if t.get("id")}
+        queued_todos = [t for t in created_todos if t.get("id") not in executed_ids]
         todos_text = (
-            ", ".join(t["title"] for t in created_todos) if created_todos else "none"
+            ", ".join(t["title"] for t in queued_todos) if queued_todos else "none"
         )
         workflows_text = (
             ", ".join(w["title"] for w in created_workflows)
             if created_workflows
             else "none"
+        )
+        todos_executed_text = (
+            ", ".join(t["title"] for t in executed_todos) if executed_todos else "none"
         )
 
         prompt = FIRST_MESSAGE_GENERATION_PROMPT.format(
@@ -68,6 +74,7 @@ async def generate_first_message(
             important_emails=important_emails_text or "no emails analyzed",
             todos_created=todos_text,
             workflows_created=workflows_text,
+            todos_executed=todos_executed_text,
         )
 
         llm = await providers.aget("gemini_llm")
@@ -113,6 +120,7 @@ async def generate_first_message(
         )
         # Fallback message
         return (
-            f"Hey {name}. I've set up your GAIA and created a couple of automations "
-            f"based on your profile. What are you most focused on right now?"
+            f"Hey {name}, ok, you're all set up.<NEW_MESSAGE_BREAK>"
+            "Lined up a few action items and set up some automations from what I found."
+            "<NEW_MESSAGE_BREAK>Oh, and I made you something."
         )

@@ -88,6 +88,24 @@ async def complete_onboarding(
         if onboarding_data.focus and onboarding_data.focus.strip():
             update_fields["onboarding.focus"] = onboarding_data.focus.strip()
 
+        # No-Gmail clarify answers (scope/blocker/constraint). Stored as a
+        # plain list so the todo generator can read them back as dicts; we
+        # don't keep skipped questions (value=None) because they carry no
+        # signal and would just bloat the prompt context.
+        if onboarding_data.clarify_answers:
+            kept = [
+                {
+                    "id": a.id,
+                    "kind": a.kind,
+                    "question": a.question,
+                    "value": (a.value or "").strip() or None,
+                }
+                for a in onboarding_data.clarify_answers
+                if a.value and a.value.strip()
+            ]
+            if kept:
+                update_fields["onboarding.clarify_answers"] = kept
+
         # Atomic gate: matches only when no `onboarding` subdoc exists yet.
         # Two states satisfy this:
         #   - Fresh user (oauth_service.store_user_info never writes onboarding.*)

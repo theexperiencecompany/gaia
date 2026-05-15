@@ -34,9 +34,23 @@ export function needsFocus(s: OnboardingState): boolean {
   );
 }
 
-/** All required answers (incl. focus when Gmail is skipped) are captured. */
+/**
+ * No-Gmail clarify follow-up. After the focus answer we ask the user 3
+ * scope/blocker/constraint questions so the todo generator has enough
+ * signal to produce concrete actions. Gmail users skip this — their inbox
+ * is the signal source.
+ */
+export function needsClarify(s: OnboardingState): boolean {
+  if (s.responses[FIELD_NAMES.GMAIL] !== "skipped") return false;
+  if (s.responses[FIELD_NAMES.FOCUS] == null) return false;
+  return !s.clarifySubmitted;
+}
+
+/** All required answers (incl. focus + clarify on the no-Gmail path) are captured. */
 export function isResponsesComplete(s: OnboardingState): boolean {
-  return s.questionIndex >= questions.length && !needsFocus(s);
+  return (
+    s.questionIndex >= questions.length && !needsFocus(s) && !needsClarify(s)
+  );
 }
 
 const GMAIL_QUEUE: readonly Stage[] = [
@@ -142,6 +156,7 @@ function isStageDone(s: OnboardingState, stage: Stage): boolean {
 export function getStage(s: OnboardingState): Stage {
   if (s.questionIndex < questions.length) return "questions";
   if (needsFocus(s)) return "focus";
+  if (needsClarify(s)) return "clarify";
 
   const queue = hasGmail(s) ? GMAIL_QUEUE : NO_GMAIL_QUEUE;
 
@@ -177,15 +192,16 @@ export function getCurrentProgress(s: OnboardingState): string | null {
 const STAGE_PROGRESS: Record<Stage, number> = {
   questions: 0,
   focus: 3,
-  processing: 3,
-  revealWriting: 4,
-  revealTodos: 5,
-  workflows: 6,
-  platforms: 7,
-  chat: 8,
+  clarify: 4,
+  processing: 4,
+  revealWriting: 5,
+  revealTodos: 6,
+  workflows: 7,
+  platforms: 8,
+  chat: 9,
 };
 
-export const PROGRESS_TOTAL_STEPS = 8;
+export const PROGRESS_TOTAL_STEPS = 9;
 
 /** Step index (0-based) for the top progress bar. Snaps to 0 during restart. */
 export function getProgress(s: OnboardingState, stage: Stage): number {

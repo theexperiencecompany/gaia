@@ -6,6 +6,11 @@
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
 import {
+  CLARIFY_INTRO,
+  CLARIFY_PROCESSING_MSG,
+  CLARIFY_SKIP_LABEL,
+} from "../constants/clarify";
+import {
   FOCUS_QUESTION,
   PROCESSING_MSG_FOCUS,
   PROCESSING_MSG_GMAIL,
@@ -13,6 +18,42 @@ import {
 } from "../constants/messages";
 import type { Message } from "../types";
 import type { OnboardingState } from "./types";
+
+/**
+ * No-Gmail clarify Q&A projection into the transcript. Renders once the user
+ * has submitted clarify so the chat history reflects the conversation that
+ * drove the todo generation. Before submit, only the intro bubble appears —
+ * the live Q&A lives in the composer until then.
+ */
+function appendClarifyTranscript(
+  messages: Message[],
+  state: OnboardingState,
+): void {
+  if (!state.clarifyQuestions) return;
+  messages.push({
+    id: "clarify-intro",
+    type: "bot",
+    content: CLARIFY_INTRO,
+  });
+  if (!state.clarifySubmitted) return;
+  for (const q of state.clarifyQuestions) {
+    messages.push({
+      id: `clarify-q-${q.id}`,
+      type: "bot",
+      content: q.question,
+    });
+    const answer = state.clarifyAnswers[q.id];
+    const userContent =
+      answer?.kind === "skip"
+        ? CLARIFY_SKIP_LABEL
+        : (answer?.value ?? CLARIFY_SKIP_LABEL);
+    messages.push({
+      id: `clarify-a-${q.id}`,
+      type: "user",
+      content: userContent,
+    });
+  }
+}
 
 /**
  * Derive the chat-style transcript shown above the input from `responses`
@@ -64,17 +105,41 @@ export function getMessages(state: OnboardingState): Message[] {
         content: FOCUS_QUESTION,
       });
     } else if (focus != null) {
+      // No-Gmail path: render the synthetic focus prompt before the user's
+      // answer so the transcript reads bot ask → user reply → processing,
+      // matching every other Q&A pair above.
+      const isNoGmail = gmail === "skipped";
+      if (isNoGmail) {
+        messages.push({
+          id: "focus-q",
+          type: "bot",
+          content: FOCUS_QUESTION,
+        });
+      }
       messages.push({
         id: `user-focus`,
         type: "user",
         content: focus,
         questionFieldName: FIELD_NAMES.FOCUS,
       });
-      messages.push({
-        id: "processing",
-        type: "bot",
-        content: PROCESSING_MSG_FOCUS,
-      });
+
+      if (isNoGmail) {
+        appendClarifyTranscript(messages, state);
+      }
+
+      // Processing bubble only after clarify is done (or on the Gmail path).
+      const showProcessing =
+        !isNoGmail || !state.clarifyQuestions || state.clarifySubmitted;
+      if (showProcessing) {
+        messages.push({
+          id: "processing",
+          type: "bot",
+          content:
+            isNoGmail && state.clarifySubmitted
+              ? CLARIFY_PROCESSING_MSG
+              : PROCESSING_MSG_FOCUS,
+        });
+      }
     } else {
       messages.push({
         id: "processing",

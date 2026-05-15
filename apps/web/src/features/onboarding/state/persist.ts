@@ -1,10 +1,4 @@
-/**
- * sessionStorage persistence for the parts of `OnboardingState` that survive
- * a reload. Server-derived data (snapshot, completedStages, progressByStage)
- * is intentionally excluded — it's refetched from the backend on rehydrate
- * so we never serve a stale or contradictory snapshot.
- */
-
+import type { ClarifyAnswer, ClarifyQuestion } from "../types";
 import type { OnboardingState } from "./types";
 
 const STORAGE_KEY = "gaia-onboarding-state-v2";
@@ -19,6 +13,12 @@ interface PersistedShape {
   workflowsConfirmed: boolean;
   platformsConfirmed: boolean;
   connectedPlatform: string | null;
+  clarifyQuestions: ClarifyQuestion[] | null;
+  clarifyAnswers: Record<string, ClarifyAnswer>;
+  clarifyActiveTab: string | null;
+  clarifyCustomDrafts: Record<string, string>;
+  clarifyOtherSelected: Record<string, boolean>;
+  clarifySubmitted: boolean;
 }
 
 function pick(state: OnboardingState): PersistedShape {
@@ -32,14 +32,19 @@ function pick(state: OnboardingState): PersistedShape {
     workflowsConfirmed: state.workflowsConfirmed,
     platformsConfirmed: state.platformsConfirmed,
     connectedPlatform: state.connectedPlatform,
+    clarifyQuestions: state.clarifyQuestions,
+    clarifyAnswers: state.clarifyAnswers,
+    clarifyActiveTab: state.clarifyActiveTab,
+    clarifyCustomDrafts: state.clarifyCustomDrafts,
+    clarifyOtherSelected: state.clarifyOtherSelected,
+    clarifySubmitted: state.clarifySubmitted,
   };
 }
 
-/** Read the persisted slice from sessionStorage. Returns null on miss/parse-fail. */
 export function loadPersisted(): Partial<OnboardingState> | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedShape>;
     return {
@@ -50,35 +55,31 @@ export function loadPersisted(): Partial<OnboardingState> | null {
       ackedWritingStyle: parsed.ackedWritingStyle ?? false,
       ackedTodos: parsed.ackedTodos ?? false,
       workflowsConfirmed: parsed.workflowsConfirmed ?? false,
-      // Pre-split persisted shape only had `connectedPlatform`. If it's set,
-      // the user already completed the platform step — backfill the new
-      // `platformsConfirmed` flag so the cursor doesn't leave them stuck on
-      // the "Connected" confirmation row.
       platformsConfirmed:
         parsed.platformsConfirmed ?? !!parsed.connectedPlatform,
       connectedPlatform: parsed.connectedPlatform ?? null,
+      clarifyQuestions: parsed.clarifyQuestions ?? null,
+      clarifyAnswers: parsed.clarifyAnswers ?? {},
+      clarifyActiveTab: parsed.clarifyActiveTab ?? null,
+      clarifyCustomDrafts: parsed.clarifyCustomDrafts ?? {},
+      clarifyOtherSelected: parsed.clarifyOtherSelected ?? {},
+      clarifySubmitted: parsed.clarifySubmitted ?? false,
     };
   } catch {
     return null;
   }
 }
 
-/** Write the whitelisted slice to sessionStorage. Quota errors are swallowed. */
 export function savePersisted(state: OnboardingState): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(pick(state)));
-  } catch {
-    // sessionStorage full or disabled — non-fatal
-  }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pick(state)));
+  } catch {}
 }
 
-/** Drop the persisted slice — called on restart so the user gets a clean slate. */
 export function clearPersisted(): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {}
 }

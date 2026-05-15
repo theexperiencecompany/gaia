@@ -51,6 +51,7 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.workflow.generation_service import WorkflowGenerationService
 from app.utils.redis_utils import RedisPoolManager
 from app.services.onboarding import inbox_scan_cache
+from app.services.onboarding.clarify_service import format_clarify_context
 from app.services.onboarding.first_message_service import generate_first_message
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.post_onboarding_service import (
@@ -264,6 +265,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     user_email: Optional[str] = user_doc.get("email")
     profession: str = onboarding.get("preferences", {}).get("profession", "") or ""
     focus: str = onboarding.get("focus", "") or ""
+    clarify_answers: list[dict] = onboarding.get("clarify_answers") or []
 
     # Gmail availability
     t_gmail_check = time.monotonic()
@@ -330,7 +332,15 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         _run_triage(user_id, inbox_ctx, profession, focus)
     )
     todos_future = asyncio.create_task(
-        _run_todos(user_id, name, profession, focus, has_gmail, triage_future)
+        _run_todos(
+            user_id,
+            name,
+            profession,
+            focus,
+            has_gmail,
+            triage_future,
+            clarify_answers,
+        )
     )
     user_timezone: str = (user_doc.get("timezone") or "UTC").strip() or "UTC"
     workflows_future = asyncio.create_task(
@@ -806,6 +816,7 @@ async def _run_todos(
     focus: str,
     has_gmail: bool,
     triage_future: asyncio.Task[Optional[InboxTriage]],
+    clarify_answers: list[dict] | None = None,
 ) -> list[dict]:
     t0 = time.monotonic()
     todos: list[dict] = []
@@ -825,7 +836,9 @@ async def _run_todos(
                 )
             elif focus:
                 source = "focus"
-                todos = await _create_focus_todos(user_id, name, profession, focus)
+                todos = await _create_focus_todos(
+                    user_id, name, profession, focus, clarify_answers
+                )
         elif focus:
             source = "focus"
             await _emit_stage(
@@ -1157,13 +1170,22 @@ async def _create_focus_todos(
     name: str,
     profession: str,
     focus: str,
+    clarify_answers: list[dict] | None = None,
 ) -> list[dict]:
-    """Create 3 GAIA-actionable todos based on user's stated focus via LLM."""
+    """
+    Create 3 GAIA-actionable todos based on the user's stated focus via LLM.
+
+    On the no-Gmail path the user has also answered 3 scope/blocker/constraint
+    follow-up questions — when present, those answers are injected into the
+    prompt as extra signal so the todos can target the specific area the user
+    cares about, work around the named blocker, and respect their time budget.
+    """
     t0 = time.monotonic()
     prompt = FOCUS_TODOS_PROMPT.format(
         name=name,
         profession=profession,
         focus=focus,
+        clarify_context=format_clarify_context(clarify_answers),
         format_instructions=f"Return a JSON object with a 'todos' key containing a list of {ONBOARDING_TODO_LIMIT} todo title strings.",
     )
 

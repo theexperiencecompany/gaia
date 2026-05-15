@@ -89,6 +89,12 @@ export const authApi = {
     profession: string;
     timezone?: string;
     focus?: string;
+    clarify_answers?: {
+      id: string;
+      kind: string;
+      question: string;
+      value: string | null;
+    }[];
   }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
     return apiService.post("/onboarding", onboardingData, {
       silent: true,
