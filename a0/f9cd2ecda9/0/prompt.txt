@@ -1,0 +1,13 @@
+will this build be optimised tho since we dont need those pages in production
+
+---
+
+is this the best approach is there really nothing better we can do
+
+---
+
+will this handle the bundling stuff
+
+---
+
+alright sure let's do it let's rpoceed.
