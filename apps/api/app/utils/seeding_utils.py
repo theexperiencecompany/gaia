@@ -3,7 +3,6 @@ from typing import Optional
 from uuid import uuid4
 
 from shared.py.wide_events import log
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.mongodb.collections import conversations_collection, goals_collection
 from app.models.chat_models import (
     ConversationModel,
@@ -152,50 +151,6 @@ async def seed_initial_goal(user_id: str) -> None:
 
     except Exception as e:
         log.error(f"Failed to seed initial goal for user {user_id}: {e}")
-
-
-async def seed_initial_conversation(user_id: str) -> None:
-    """
-    Seed an initial conversation with Gaia to welcome the user.
-    """
-    log.set(operation="seed_initial_conversation", user_id=user_id)
-    try:
-        # Create a new conversation
-        conversation_id = str(uuid4())
-        conversation = ConversationModel(
-            conversation_id=conversation_id,
-            description="Hey, Welcome!",
-            is_system_generated=False,
-            is_unread=True,
-        )
-
-        # We need to pass a dict with user_id to create_conversation_service
-        user_dict = {"user_id": user_id}
-        await create_conversation_service(conversation, user_dict)
-
-        # Create the welcome message with breaks for bubbles
-        welcome_message = (
-            f"Hey! I'm Gaia, your personal AI assistant—I'm here to help you actually get things done. 👋{NEW_MESSAGE_BREAKER}"
-            f"Here's what I can help with: \n - 📧 Manage your Gmail inbox\n - 📅 Schedule calendar events\n - ✅ Create and track todos with smart workflows\n - 🎯 Set goals with visual roadmaps\n - 🔍 Search the web and generate images\n - 🧠 Remember important things about you and a lot more!{NEW_MESSAGE_BREAKER}"
-            f"Try asking me to: Check your unread emails, create a task for something you need to do, set up a goal with a roadmap, search for information, or just tell me about your day so I can get to know you better! {NEW_MESSAGE_BREAKER}"
-            "What would you like to explore first?"
-        )
-
-        message = MessageModel(
-            type="ai",
-            response=welcome_message,
-            date=datetime.now(timezone.utc).isoformat(),
-        )
-
-        update_request = UpdateMessagesRequest(
-            conversation_id=conversation_id, messages=[message]
-        )
-
-        await update_messages(update_request, user_dict)
-        log.info(f"Seeded initial conversation for user {user_id}")
-
-    except Exception as e:
-        log.error(f"Failed to seed initial conversation for user {user_id}: {e}")
 
 
 async def seed_onboarding_todo(user_id: str) -> None:

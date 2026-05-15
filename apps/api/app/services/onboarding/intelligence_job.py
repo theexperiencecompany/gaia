@@ -47,6 +47,30 @@ async def _set_active_job_id(user_id: str, job_id: str) -> None:
     )
 
 
+async def is_intelligence_job_live(user_id: str) -> bool:
+    """Return True iff the user has an ARQ job that is currently queued,
+    deferred, or in_progress. Used by the cleanup reconciler to avoid
+    aborting healthy long-running pipelines: a job that's actively
+    progressing should be left alone regardless of how long it has run.
+    """
+    job_id = await _get_active_job_id(user_id)
+    if not job_id:
+        return False
+    pool = await RedisPoolManager.get_pool()
+    job = Job(job_id, redis=pool)
+    try:
+        status = await job.status()
+    except Exception as e:
+        log.warning(
+            "[intelligence_job] status check failed, treating as dead",
+            user_id=user_id,
+            job_id=job_id,
+            error=str(e)[:200],
+        )
+        return False
+    return status in (JobStatus.queued, JobStatus.deferred, JobStatus.in_progress)
+
+
 async def abort_active_intelligence_job(user_id: str) -> bool:
     """Abort the user's in-flight intelligence job, if one exists.
 

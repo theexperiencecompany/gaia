@@ -1,16 +1,12 @@
 """Post-onboarding personalization service."""
 
-import asyncio
 from datetime import datetime, timezone
 from typing import Any, List
 
 from shared.py.wide_events import log
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import BioStatus, OnboardingPhase
-from app.utils.seeding_utils import (
-    seed_initial_conversation,
-    seed_onboarding_todo,
-)
+from app.utils.seeding_utils import seed_onboarding_todo
 from bson import ObjectId
 
 
@@ -68,19 +64,14 @@ async def save_personalization_data(
 
 async def seed_initial_user_data(user_id: str) -> None:
     """
-    Seed initial data for a new user (onboarding todo and conversation).
-    Runs tasks in parallel to minimize background processing time.
+    Seed initial data for a new user. The personalized welcome conversation
+    is seeded by the intelligence pipeline (`_seed_conversation`) — do not
+    seed a static one here.
     """
     try:
-        log.info(f"Starting parallel data seeding for user {user_id}")
-
-        # Run seeding tasks in parallel
-        await asyncio.gather(
-            seed_onboarding_todo(user_id),
-            seed_initial_conversation(user_id),
-        )
-
-        log.info(f"Completed parallel data seeding for user {user_id}")
+        log.info(f"Starting data seeding for user {user_id}")
+        await seed_onboarding_todo(user_id)
+        log.info(f"Completed data seeding for user {user_id}")
 
     except Exception as e:
         log.error(f"Error in seed_initial_user_data for user {user_id}: {e}")

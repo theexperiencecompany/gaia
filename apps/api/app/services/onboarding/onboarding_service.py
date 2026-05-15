@@ -18,12 +18,23 @@ from app.services.integrations.integration_connection_service import (
     disconnect_integration,
 )
 from app.services.memory_service import memory_service
-from app.services.onboarding.intelligence_job import abort_active_intelligence_job
+from app.services.onboarding.intelligence_job import (
+    abort_active_intelligence_job,
+    enqueue_intelligence_job,
+)
 from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 from app.services.workflow.service import WorkflowService
 from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
 from pymongo import ReturnDocument
+
+
+def _serialize_user(user_doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Mongo ObjectId is not JSON-serializable. Materialize both `_id` and
+    `user_id` as strings so callers can return the doc straight to FastAPI."""
+    user_doc["_id"] = str(user_doc["_id"])
+    user_doc["user_id"] = user_doc["_id"]
+    return user_doc
 
 
 async def complete_onboarding(
@@ -32,37 +43,36 @@ async def complete_onboarding(
     background_tasks: BackgroundTasks,
 ) -> Dict[str, Any]:
     """
-    Complete user onboarding by storing preferences and updating user profile.
-    Uses atomic operations to prevent race conditions.
+    Complete a user's onboarding submission.
 
-    Args:
-        user_id: The user's MongoDB ID
-        onboarding_data: The onboarding data from the frontend
+    Idempotent under concurrent retries. The write is gated by an atomic
+    `onboarding: {$exists: false}` filter — only the request that creates
+    the subdoc enqueues the intelligence pipeline + schedules seeding.
+    Replays (OAuth bounce remount, back-nav from /c/{id}, manual refresh,
+    React StrictMode double-fire) lose the race, fetch the existing doc,
+    and return it as a 2xx with no side effects. The only legitimate path
+    to a fresh run is `POST /onboarding/reset`, which `$unset`s the entire
+    `onboarding` subdoc and reopens the gate.
 
-    Returns:
-        Updated user data with onboarding status
+    If enqueue fails after the gate is claimed, the subdoc is rolled back
+    via `$unset` so the user can retry rather than being stuck with a
+    `completed=true` flag and no worker job. Returns 503 in that case.
 
-    Raises:
-        HTTPException: If user not found, already onboarded, or update fails
+    Returns the updated (or existing, on replay) user document with stringy
+    `_id` / `user_id`.
     """
     log.set(auth={"user_id": user_id})
 
     try:
-        # Convert string ID to ObjectId
         user_object_id = ObjectId(user_id)
 
-        # Prepare onboarding preferences with default values for settings page
         preferences = OnboardingPreferences(
             profession=onboarding_data.profession,
             response_style="casual",  # Default response style
             custom_instructions=None,
-            # Timezone removed from preferences - now only stored at root level
         )
 
-        # Prepare update fields
-        # Use dot notation to update specific fields without overwriting the entire onboarding object
-        # This preserves personalization data (house, bio, etc.) if it was already generated
-        update_fields = {
+        update_fields: Dict[str, Any] = {
             "name": onboarding_data.name.strip(),
             "onboarding.completed": True,
             "onboarding.completed_at": datetime.now(timezone.utc),
@@ -72,37 +82,79 @@ async def complete_onboarding(
             "updated_at": datetime.now(timezone.utc),
         }
 
-        # Always set timezone at root level from onboarding data
         if onboarding_data.timezone:
             update_fields["timezone"] = onboarding_data.timezone.strip()
 
-        # Persist focus if provided
         if onboarding_data.focus and onboarding_data.focus.strip():
             update_fields["onboarding.focus"] = onboarding_data.focus.strip()
 
-        # Overwriting update — re-running onboarding is allowed (used by the
-        # restart flow). The reset endpoint clears prior onboarding data, but
-        # we accept overwrites here as a safety net so a partial reset can
-        # still recover by re-completing.
+        # Atomic gate: matches only when no `onboarding` subdoc exists yet.
+        # Two states satisfy this:
+        #   - Fresh user (oauth_service.store_user_info never writes onboarding.*)
+        #   - Reset user (/onboarding/reset does $unset on the whole subdoc)
+        # Anything else — pipeline running, reveals in progress, fully done —
+        # has the subdoc and falls through to the replay branch. This is
+        # narrower than gating on `onboarding.completed` and keeps the gate
+        # decoupled from the meaning of `completed` (which other consumers
+        # like oauth_service and cleanup_tasks rely on).
+        #
+        # MongoDB guarantees single-document update atomicity, so under
+        # concurrent POSTs exactly one caller's filter matches and creates
+        # the subdoc; the rest get None.
         updated_user = await users_collection.find_one_and_update(
-            {"_id": user_object_id},
+            {"_id": user_object_id, "onboarding": {"$exists": False}},
             {"$set": update_fields},
             return_document=ReturnDocument.AFTER,
         )
 
-        if not updated_user:
-            raise HTTPException(status_code=404, detail="User not found")
+        if updated_user is None:
+            # Either the user doesn't exist, or the onboarding subdoc is
+            # already present (someone else won the race, or this is a
+            # remount-induced replay). Distinguish with one read.
+            existing = await users_collection.find_one({"_id": user_object_id})
+            if not existing:
+                raise HTTPException(status_code=404, detail="User not found")
+            log.info(
+                "[complete_onboarding] replay — onboarding already submitted",
+                user_id=user_id,
+                phase=(existing.get("onboarding") or {}).get("phase"),
+            )
+            return _serialize_user(existing)
 
-        # Convert ObjectId to string for JSON serialization
-        updated_user["_id"] = str(updated_user["_id"])
-        updated_user["user_id"] = updated_user["_id"]
+        # We won the gate. Try to enqueue the pipeline before scheduling any
+        # other side effects. If enqueue fails (Redis down, etc.) we roll
+        # back the subdoc so the user can retry — without rollback they'd
+        # be stuck forever with `completed=true` but no worker job to drive
+        # the reveals.
+        try:
+            await enqueue_intelligence_job(user_id)
+        except Exception as e:
+            log.error(
+                f"Enqueue failed, rolling back onboarding state for user {user_id}: {e}",
+                exc_info=True,
+            )
+            try:
+                await users_collection.update_one(
+                    {"_id": user_object_id},
+                    {"$unset": {"onboarding": ""}},
+                )
+            except Exception as rollback_error:
+                log.error(
+                    f"Rollback also failed for user {user_id}: {rollback_error}",
+                    exc_info=True,
+                )
+            raise HTTPException(
+                status_code=503,
+                detail="Could not start onboarding. Please retry.",
+            )
 
-        # Schedule background tasks
+        # Enqueue succeeded — schedule the seeding background task. Done
+        # after enqueue so a seeding failure can't poison the gate; seeding
+        # failures are logged but non-fatal.
         background_tasks.add_task(seed_initial_user_data, user_id)
 
         log.info(f"Onboarding completed successfully for user {user_id}")
-
-        return updated_user
+        return _serialize_user(updated_user)
 
     except HTTPException:
         raise

@@ -40,7 +40,11 @@ const WORKFLOWS_BUBBLE = `${WORKFLOWS_INTRO_PRIMARY}<NEW_MESSAGE_BREAK>${WORKFLO
 const WORKFLOWS_TIP =
   "Tap any card to peek inside the workflow. Edits live on the Workflows page.";
 
-export function WelcomeChat() {
+interface WelcomeChatProps {
+  surface?: "chat" | "onboarding";
+}
+
+export function WelcomeChat({ surface = "chat" }: WelcomeChatProps = {}) {
   const router = useRouter();
   const popupCleanupRef = useRef<(() => void) | null>(null);
   const [hoveredPlatform, setHoveredPlatform] =
@@ -129,9 +133,15 @@ export function WelcomeChat() {
     setConnectedPlatform("__skipped__");
   }, []);
 
+  const contentMaxWidth = surface === "chat" ? "max-w-3xl" : "";
+
   return (
     <m.div
-      className="mx-auto flex w-full max-w-3xl flex-col gap-4 pt-6 pb-32"
+      className={
+        surface === "onboarding"
+          ? "mx-auto flex w-full max-w-3xl flex-col gap-4 pt-6 pb-32"
+          : "flex w-full flex-col gap-4 pt-6 pb-32"
+      }
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
@@ -159,7 +169,7 @@ export function WelcomeChat() {
 
       <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={PLATFORMS_BUBBLE}>
         {!connectedPlatform && (
-          <div className="mt-3">
+          <div className={`mt-3 ${contentMaxWidth}`}>
             <OnboardingPlatformPreview
               profession={profession}
               hoveredPlatform={hoveredPlatform}
@@ -168,7 +178,7 @@ export function WelcomeChat() {
             />
           </div>
         )}
-        <div className="mt-3">
+        <div className={`mt-3 ${contentMaxWidth}`}>
           <OnboardingPlatformConnect
             onConnect={connectPlatform}
             onSkip={handleSkipPlatforms}
@@ -182,7 +192,7 @@ export function WelcomeChat() {
       </ChatBubbleBot>
 
       <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={WORKFLOWS_BUBBLE}>
-        <div className="mt-3">
+        <div className={`mt-3 ${contentMaxWidth}`}>
           {workflowsLoading && workflows.length === 0 ? (
             <div className="ml-10.75 flex items-center gap-2 text-sm text-zinc-500">
               <Spinner size="sm" />

@@ -11,7 +11,7 @@
 
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CompletedStagesTimeline } from "@/features/onboarding/components/CompletedStagesTimeline";
 import { MessagesRegion } from "@/features/onboarding/components/MessagesRegion";
 import { OnboardingIntro } from "@/features/onboarding/components/OnboardingIntro";
@@ -83,9 +83,18 @@ export default function Onboarding() {
     skipAutoRedirect: true,
   });
   const userId = useUserStore((s) => s.userId);
-  const [introDone, setIntroDone] = useState<boolean>(() =>
-    hasSeenIntro(userId),
+  // Zustand `persist` hydrates from localStorage asynchronously, so on first
+  // render `userId` is "" and the seen-marker (keyed by userId) cannot be
+  // resolved. Start with `null` (unknown) and resolve once the userId lands
+  // — otherwise the intro replays on every reload and after OAuth redirects.
+  const [introDone, setIntroDone] = useState<boolean | null>(() =>
+    userId ? hasSeenIntro(userId) : null,
   );
+
+  useEffect(() => {
+    if (!userId) return;
+    setIntroDone((prev) => (prev === null ? hasSeenIntro(userId) : prev));
+  }, [userId]);
 
   const handleRestart = () => {
     clearIntroSeen(userId);
@@ -144,6 +153,11 @@ export default function Onboarding() {
     <m.div {...INTRO_FADE_IN}>{composer}</m.div>
   ) : null;
 
+  // While `introDone` is null we don't yet know whether to play the intro
+  // (userId hasn't hydrated). Render nothing rather than briefly mounting
+  // the intro and then unmounting it once we discover it's already seen.
+  const introResolved = introDone !== null;
+
   return (
     <>
       <OnboardingShell
@@ -165,7 +179,9 @@ export default function Onboarding() {
         ) : null}
       </OnboardingShell>
       <AnimatePresence>
-        {!introDone && <OnboardingIntro onComplete={handleIntroComplete} />}
+        {introResolved && !introDone && (
+          <OnboardingIntro onComplete={handleIntroComplete} />
+        )}
       </AnimatePresence>
     </>
   );

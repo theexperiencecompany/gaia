@@ -4,28 +4,44 @@ from datetime import datetime, timedelta, timezone
 
 from app.db.mongodb.collections import users_collection
 from shared.py.wide_events import log, wide_task
-from app.models.user_models import BioStatus
-from app.services.onboarding.intelligence_job import enqueue_intelligence_job
+from app.models.user_models import OnboardingPhase
+from app.services.onboarding.intelligence_job import (
+    enqueue_intelligence_job,
+    is_intelligence_job_live,
+)
 
 
 async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
     """
-    Find users stuck in PROCESSING/PENDING bio_status and re-queue personalization.
+    Find users stuck in the onboarding intelligence pipeline and re-queue them.
 
-    This task runs periodically to clean up stuck states caused by:
-    - Network failures during email processing
-    - LLM timeouts
-    - Mem0 API failures
-    - Process crashes
+    A user is "stuck" iff:
+      - `onboarding.phase == personalization_pending`
+        (the worker normally advances this to `personalization_complete` on
+        success AND on any caught exception inside the task wrapper, so a
+        phase that stays at `personalization_pending` past the cutoff means
+        the worker process itself died — OOM, signal kill, ARQ job_timeout
+        hit. `bio_status` is unreliable here because the pipeline can crash
+        after `bio_status` is set to `completed` (inside the holo card stage)
+        but before the pipeline emits its final COMPLETE event.)
+      - `updated_at` is older than `max_age_minutes` (or missing).
 
-    Instead of directly processing, this queues ARQ jobs to avoid blocking.
+    Before re-enqueueing, we check whether the user's existing ARQ job is
+    still live (queued / deferred / in_progress). A healthy long-running
+    pipeline can outlive the cutoff for big inboxes or slow LLM calls — we
+    must not abort it just because the wall clock crossed the threshold.
+    Only jobs that are missing, failed, or in a non-running terminal state
+    get re-queued.
 
     Args:
-        ctx: ARQ context
-        max_age_minutes: How long to wait before considering a status "stuck"
+        ctx: ARQ context.
+        max_age_minutes: How long a user can sit at `personalization_pending`
+            with no updates before we consider them stuck. Should be >=
+            ARQ's `job_timeout` so we don't preempt the worker's own
+            timeout handling.
 
     Returns:
-        Summary of cleanup actions
+        Human-readable summary of cleanup actions.
     """
     async with wide_task(
         "cleanup_stuck_personalization", max_age_minutes=max_age_minutes
@@ -35,62 +51,74 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                 minutes=max_age_minutes
             )
 
-            # Find users stuck in PROCESSING or PENDING for too long
-            stuck_users = await users_collection.find(
+            stuck_candidates = await users_collection.find(
                 {
-                    "onboarding.completed": True,
-                    "onboarding.bio_status": {
-                        "$in": [
-                            BioStatus.PROCESSING,
-                            "processing",
-                            BioStatus.PENDING,
-                            "pending",
-                        ]
-                    },
+                    "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING.value,
                     "$or": [
-                        # Updated more than max_age_minutes ago
                         {"updated_at": {"$lt": cutoff_time}},
-                        # No updated_at field (old documents)
                         {"updated_at": {"$exists": False}},
                     ],
                 }
-            ).to_list(length=50)  # Limit to 50 at a time to avoid overwhelming ARQ
+            ).to_list(length=50)
 
-            if not stuck_users:
-                return f"No stuck users found (checked users older than {max_age_minutes}m)"
+            if not stuck_candidates:
+                return (
+                    f"No stuck users found "
+                    f"(checked users older than {max_age_minutes}m at "
+                    f"phase=personalization_pending)"
+                )
 
-            log.set(stuck_users_detected=len(stuck_users))
+            log.set(stuck_candidates_detected=len(stuck_candidates))
 
             queued_count = 0
+            skipped_live_count = 0
             error_count = 0
 
-            for user in stuck_users:
+            for user in stuck_candidates:
                 user_id = str(user["_id"])
-                bio_status = user.get("onboarding", {}).get("bio_status")
                 updated_at = user.get("updated_at", "unknown")
 
                 try:
+                    if await is_intelligence_job_live(user_id):
+                        log.info(
+                            "[cleanup] skipping live pipeline",
+                            user_id=user_id,
+                            last_update=str(updated_at),
+                        )
+                        skipped_live_count += 1
+                        continue
+
                     job_id = await enqueue_intelligence_job(user_id)
                     if job_id:
                         log.info(
-                            f"Re-queued intelligence for stuck user {user_id} "
-                            f"(status={bio_status}, last_update={updated_at}, job_id={job_id})"
+                            "[cleanup] re-queued stuck user",
+                            user_id=user_id,
+                            last_update=str(updated_at),
+                            job_id=job_id,
                         )
                         queued_count += 1
                     else:
-                        log.warning(f"Failed to queue job for user {user_id}")
+                        log.warning(
+                            "[cleanup] enqueue returned no job",
+                            user_id=user_id,
+                        )
                         error_count += 1
 
                 except Exception as e:
                     log.exception(
-                        f"Error queuing personalization for user {user_id}: {e}",
+                        f"[cleanup] error re-queueing user {user_id}: {e}",
                     )
                     error_count += 1
 
-            log.set(jobs_queued=queued_count)
+            log.set(
+                jobs_queued=queued_count,
+                jobs_skipped_live=skipped_live_count,
+            )
             return (
-                f"Cleanup completed: {queued_count} users re-queued, "
-                f"{error_count} errors (found {len(stuck_users)} stuck users)"
+                f"Cleanup completed: {queued_count} re-queued, "
+                f"{skipped_live_count} skipped (live), "
+                f"{error_count} errors "
+                f"(found {len(stuck_candidates)} candidates)"
             )
 
         except Exception as e:

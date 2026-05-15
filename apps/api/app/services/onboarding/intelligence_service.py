@@ -380,6 +380,17 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         duration_s=round(time.monotonic() - t_msg, 2),
     )
 
+    # Persist first_message BEFORE the holo gather. _run_holo_card emits
+    # `holo_ready` from inside the gather, and the frontend reacts by fetching
+    # `/onboarding/personalization`. If the write happened only after the
+    # gather (when conversation_id is known), the holo card section would
+    # render with first_message=null. Conversation id is patched in once
+    # _seed_conversation returns.
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"onboarding.first_message": first_message}},
+    )
+
     # Run holo card prep (social profiles → phrase/bio) in parallel with the
     # conversation seed + profile persist. holo_ready MUST fire before
     # COMPLETE so the frontend's giftbox is ready by the time the chat stage
@@ -421,7 +432,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
             {
                 "$set": {
                     "onboarding.first_message_conversation_id": conversation_id,
-                    "onboarding.first_message": first_message,
                 }
             },
         )
