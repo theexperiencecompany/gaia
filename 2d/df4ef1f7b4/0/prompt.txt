@@ -1,0 +1,16 @@
+## Page Feedback: /c/3465c6c8-613f-4199-9340-5340f3548f53
+**Viewport:** 1492×889
+
+### 1. <MainChat> <ChatWithMessages> <ChatSection> <ChatRenderer> <WelcomeChat> <motion.div> auto flex
+**Location:** .flex > .min-h-0 > .conversation > .mx-auto
+**Source:** _next/static/chunks/node_modules_agentation_dist_index_mjs_a4d7dd5f._.js:14068:23
+**React:** <MainChat> <ChatWithMessages> <ChatSection> <ChatRenderer> <WelcomeChat> <motion.div>
+**Feedback:** ensure that this layout width constrant differently is only in onboarding not in the chat page. where is discrepancy??
+
+---
+
+i like the surface prop!
+
+---
+
+i guess the workflow cards still need to be constrained if its in chat page i guess add max width there
