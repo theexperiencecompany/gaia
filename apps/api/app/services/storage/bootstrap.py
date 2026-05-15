@@ -29,7 +29,6 @@ returns — the storage helpers treat the missing mount as a soft-fail.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import os
 import shutil
 import subprocess  # nosec B404 - JuiceFS CLI invocation
@@ -44,7 +43,6 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 
 _ENCRYPTION_KEY_FILE = Path("/etc/gaia/jfs-master.pem")
 _CACHE_DIR = Path("/var/cache/juicefs")
-_MOUNT_LOG = _CACHE_DIR / "mount.log"
 _CACHE_SIZE_MB = 4096
 _BUFFER_SIZE_MB = 600
 _MAX_UPLOADS = 20
@@ -82,11 +80,9 @@ def _classify(text: str) -> str:
     )
 
 
-# Module state — guards against double-spawn and keeps the long-lived
-# foreground `juicefs mount` process from being garbage collected.
+# Module state — guards against the bootstrap thread being spawned twice.
 _bootstrap_lock = threading.Lock()
 _bootstrap_thread: threading.Thread | None = None
-_mount_proc: subprocess.Popen[bytes] | None = None
 
 
 def _missing_settings() -> list[str]:
@@ -226,19 +222,28 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     return "transient"
 
 
-def _spawn_mount(meta_url: str, mount_path: Path) -> subprocess.Popen[bytes]:
-    """Start `juicefs mount` in the foreground as a detached child.
+def _mount(meta_url: str, mount_path: Path) -> str:
+    """Daemonize `juicefs mount` and supervise readiness by polling.
 
-    Foreground (no `--background`) so juicefs's 10s self-readiness check
-    can't kill an otherwise-fine mount under slow managed-PG meta latency —
-    we supervise readiness ourselves. `start_new_session` detaches it so it
-    keeps serving for the container's lifetime.
+    `juicefs mount --background` forks a detached child + watchdog. Its
+    supervisor self-exits non-zero after an internal ~10s mountpoint-ready
+    check, but the *detached child keeps initializing* and the mount appears
+    seconds later — so we ignore the invocation's exit code and poll the
+    mountpoint ourselves for a generous, env-tunable window. (Foreground
+    mode is worse: the same 10s check kills the child outright.)
+
+    Returns "ok" | "transient" | "fatal".
     """
+    if _is_mounted(mount_path):
+        log.info(f"[juicefs] already mounted at {mount_path}")
+        return "ok"
+
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     mount_path.mkdir(parents=True, exist_ok=True)
     cmd = [
         "juicefs",
         "mount",
+        "--background",
         "--backup-meta=0",  # R2 ListObjects unsorted → auto-backup won't work
         f"--cache-dir={_CACHE_DIR}",
         f"--cache-size={_CACHE_SIZE_MB}",
@@ -247,30 +252,9 @@ def _spawn_mount(meta_url: str, mount_path: Path) -> subprocess.Popen[bytes]:
         meta_url,
         str(mount_path),
     ]
-    logf = _MOUNT_LOG.open("wb")  # truncate: classify only this attempt
-    return subprocess.Popen(  # nosec B603 - argv list, no shell
-        cmd,
-        stdout=logf,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
-
-
-def _mount(meta_url: str, mount_path: Path) -> str:
-    """Mount JuiceFS, supervising readiness ourselves.
-
-    Returns "ok" | "transient" | "fatal".
-    """
-    global _mount_proc
-
-    if _is_mounted(mount_path):
-        log.info(f"[juicefs] already mounted at {mount_path}")
-        return "ok"
+    res = _run(cmd, timeout=40)
 
     timeout = max(15, settings.JUICEFS_MOUNT_READY_TIMEOUT)
-    proc = _spawn_mount(meta_url, mount_path)
-    _mount_proc = proc
-
     started = time.monotonic()
     while time.monotonic() - started < timeout:
         if _is_mounted(mount_path):
@@ -279,32 +263,17 @@ def _mount(meta_url: str, mount_path: Path) -> str:
                 mount=str(mount_path),
                 elapsed_s=round(time.monotonic() - started, 1),
             )
-            return "ok"  # leave the process running — it IS the FUSE server
-        if proc.poll() is not None:
-            tail = ""
-            try:
-                # Wide enough to catch a permanent marker printed before a
-                # trailing Go register-dump crash.
-                tail = _MOUNT_LOG.read_text(errors="replace")[-4000:]
-            except OSError:
-                pass
-            kind = _classify(tail)  # crash w/o permanent marker -> transient
-            log.warning(
-                f"[juicefs] mount process exited (code {proc.returncode}; {kind})",
-                meta=_mask_meta(meta_url),
-            )
-            return kind
+            return "ok"
         time.sleep(1)
 
-    # Timed out waiting for readiness — stop the orphan and let the caller
-    # decide whether to retry.
-    with contextlib.suppress(Exception):
-        proc.terminate()
+    detail = (res.stderr or "")[-4000:]
+    kind = _classify(detail)  # transient unless an explicit permanent error
     log.warning(
-        f"[juicefs] mount not ready within {timeout}s; will retry",
-        mount=str(mount_path),
+        f"[juicefs] mount not ready within {timeout}s ({kind})",
+        meta=_mask_meta(meta_url),
+        detail=detail.strip()[:300],
     )
-    return "transient"
+    return kind
 
 
 def _bootstrap_once() -> str:
