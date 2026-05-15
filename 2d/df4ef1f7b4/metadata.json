@@ -3,13 +3,19 @@
   "checkpoint_id": "2ddf4ef1f7b4",
   "strategy": "manual-commit",
   "branch": "onboarding-revamp",
-  "checkpoints_count": 2,
+  "checkpoints_count": 15,
   "files_touched": [
+    "apps/api/app/api/v1/endpoints/onboarding.py",
+    "apps/api/app/services/onboarding/intelligence_job.py",
     "apps/api/app/services/onboarding/intelligence_service.py",
+    "apps/api/app/services/onboarding/onboarding_service.py",
     "apps/api/app/services/onboarding/post_onboarding_service.py",
     "apps/api/app/utils/seeding_utils.py",
+    "apps/api/app/workers/tasks/cleanup_tasks.py",
     "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
-    "apps/web/src/features/chat/components/welcome/WelcomeChat.tsx"
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/chat/components/welcome/WelcomeChat.tsx",
+    "apps/web/src/features/onboarding/effects/useOnboardingSubmission.ts"
   ],
   "sessions": [
     {
@@ -17,13 +23,19 @@
       "transcript": "/2d/df4ef1f7b4/0/full.jsonl",
       "content_hash": "/2d/df4ef1f7b4/0/content_hash.txt",
       "prompt": "/2d/df4ef1f7b4/0/prompt.txt"
+    },
+    {
+      "metadata": "/2d/df4ef1f7b4/1/metadata.json",
+      "transcript": "/2d/df4ef1f7b4/1/full.jsonl",
+      "content_hash": "/2d/df4ef1f7b4/1/content_hash.txt",
+      "prompt": "/2d/df4ef1f7b4/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 37,
-    "cache_creation_tokens": 83925,
-    "cache_read_tokens": 1546918,
-    "output_tokens": 6651,
-    "api_call_count": 22
+    "input_tokens": 263,
+    "cache_creation_tokens": 1018786,
+    "cache_read_tokens": 23425197,
+    "output_tokens": 88559,
+    "api_call_count": 153
   }
 }
