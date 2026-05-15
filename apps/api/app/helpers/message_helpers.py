@@ -13,6 +13,7 @@ from app.agents.templates.agent_template import (
     EXECUTOR_PROMPT_TEMPLATE,
     get_comms_static_prompt,
 )
+from app.agents.workspace.paths import safe_upload_filename
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -433,29 +434,54 @@ def format_reply_context(
 
 
 def format_files_list(
-    files_data: Optional[List[FileData]], file_ids: Optional[List[str]] = None
+    files_data: Optional[List[FileData]],
+    file_ids: Optional[List[str]] = None,
+    conversation_id: Optional[str] = None,
 ) -> str:
-    """Format file information for agent context with usage instructions."""
-    if not files_data or (file_ids is not None and not file_ids):
-        return "No files uploaded."
+    """Surface uploaded files to the agent as concrete FS paths.
 
-    # Filter to specific files if IDs provided, otherwise use all
+    The agent reads/writes files via bash/read/write/edit; the upload
+    pipeline mirrors every attachment into the session's read-only
+    `user-uploaded/` dir. Tell the agent the on-disk path explicitly and
+    point at the session GUIDE for the action conventions — no
+    `query_files` tool indirection, no path guessing.
+    """
+    if not files_data or (file_ids is not None and not file_ids):
+        return ""
+
     files = (
         files_data
         if file_ids is None
         else [f for f in files_data if f.fileId in file_ids]
     )
     if not files:
-        return "No files uploaded."
+        return ""
 
-    file_list = "\n".join(
-        f"- Name: {file.filename} Id: {file.fileId}" for file in files
-    )
+    lines: List[str] = []
+    for file in files:
+        try:
+            on_disk = safe_upload_filename(file.filename)
+        except ValueError:
+            continue
+        if conversation_id:
+            path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
+        else:
+            path = f"./user-uploaded/{on_disk}"
+        lines.append(f"- {file.filename}  →  `{path}`")
 
+    if not lines:
+        return ""
+
+    file_block = "\n".join(lines)
     return f"""
-Uploaded Files:
-{file_list}
+[Attached files for this turn]
+{file_block}
 
-You can use these files in your conversation. If you need to refer to them, use the file IDs provided.
-You must use query_files to retrieve file content or metadata.
+These files are on the conversation filesystem in `./user-uploaded/`
+(read-only). To process them: copy into `./scratch/`, do your work,
+and write any user-visible output into `./artifacts/` — files written
+there render as cards in the chat immediately.
+
+See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
+full layout and conventions, and `/workspace/INDEX.md` for the top level.
 """

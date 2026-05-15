@@ -5,7 +5,6 @@ Service module for file upload functionality with vector search capabilities.
 import asyncio
 import contextlib
 import io
-import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -13,7 +12,7 @@ from typing import Any, Dict, List, Optional
 import cloudinary
 import cloudinary.uploader
 from shared.py.wide_events import log
-from app.agents.workspace.paths import USER_UPLOADED_DIRNAME
+from app.agents.workspace.paths import USER_UPLOADED_DIRNAME, safe_upload_filename
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.db.utils import serialize_document
@@ -109,7 +108,7 @@ async def upload_file_service(
         sandbox_path: str | None = None
         if conversation_id:
             try:
-                safe_filename = _safe_upload_filename(filename)
+                safe_filename = safe_upload_filename(filename)
             except ValueError as e:
                 log.warning(f"[upload] skipping sandbox copy: {e}")
             else:
@@ -166,21 +165,6 @@ async def upload_file_service(
     except Exception as e:
         log.error(f"Failed to upload file: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
-
-
-def _safe_upload_filename(filename: str) -> str:
-    """Slugify an uploaded filename for safe use as a session FS path.
-
-    Strips directory separators, control chars and leading dots; collapses
-    whitespace. Raises ValueError if nothing usable remains.
-    """
-    base = filename.replace("\\", "/").rsplit("/", 1)[-1]
-    cleaned = "".join(ch for ch in base if ch.isprintable() and ch not in "/\0").strip()
-    cleaned = re.sub(r"\s+", "_", cleaned).lstrip(".")
-    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", cleaned)
-    if not cleaned or cleaned in {".", ".."}:
-        raise ValueError("filename is empty after sanitization")
-    return cleaned[:255]
 
 
 async def _persist_upload_to_sandbox(

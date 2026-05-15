@@ -20,11 +20,12 @@ from pathlib import Path
 from typing import Literal
 
 from app.agents.workspace.paths import (
+    ARTIFACTS_DIRNAME,
     SCRATCH_DIRNAME,
     USER_UPLOADED_DIRNAME,
-    ARTIFACTS_DIRNAME,
     detect_content_type,
 )
+from app.agents.workspace.system_docs import INDEX_MD, SESSIONS_GUIDE_MD
 from app.services.storage.juicefs import (
     _contained,
     _is_mounted,
@@ -109,6 +110,15 @@ async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
                 ),
                 encoding="utf-8",
             )
+        # Materialize the workspace harness — INDEX.md at the user root and
+        # sessions/GUIDE.md so the agent can read its way to the FS conventions
+        # without any user-side hint. Overwritten every time so prose updates
+        # roll out on the next session bootstrap (cheap, < 4 KB each).
+        user_root = base.parent.parent  # /mnt/jfs/users/<uid>
+        (user_root / "INDEX.md").write_text(INDEX_MD, encoding="utf-8")
+        (user_root / "sessions" / "GUIDE.md").write_text(
+            SESSIONS_GUIDE_MD, encoding="utf-8"
+        )
         return base
 
     return await asyncio.to_thread(_mk)

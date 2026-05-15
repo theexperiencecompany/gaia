@@ -86,6 +86,7 @@ async def _core_agent_logic(
             reply_to_message=request.replyToMessage,
             trigger_context=trigger_context,
             source=source,
+            conversation_id=conversation_id,
         ),
         GraphManager.get_graph("comms_agent"),
     )

@@ -7,6 +7,7 @@ or `sessions/` anywhere else.
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 
 _EXT_CONTENT_TYPES = {
@@ -145,3 +146,21 @@ def detect_content_type(path: str) -> str | None:
     """Best-effort MIME type from extension. Returns None if unknown."""
     _, _, ext = path.rpartition(".")
     return _EXT_CONTENT_TYPES.get(ext.lower())
+
+
+def safe_upload_filename(filename: str) -> str:
+    """Slugify an uploaded filename for safe use as a session FS path.
+
+    Strips directory separators, control chars and leading dots; collapses
+    whitespace; restricts to [A-Za-z0-9._-]. Raises ValueError if nothing
+    usable remains. Single source of truth for the on-disk name an upload
+    lands at — both the upload pipeline and the file-context formatter call
+    this so the agent always sees the exact path it can read.
+    """
+    base = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    cleaned = "".join(ch for ch in base if ch.isprintable() and ch not in "/\0").strip()
+    cleaned = re.sub(r"\s+", "_", cleaned).lstrip(".")
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", cleaned)
+    if not cleaned or cleaned in {".", ".."}:
+        raise ValueError("filename is empty after sanitization")
+    return cleaned[:255]

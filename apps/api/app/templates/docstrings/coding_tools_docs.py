@@ -22,6 +22,8 @@ Path conventions inside your session:
 - Anything you place in `./artifacts/` is shown to the user in the chat
   UI: HTML, Markdown, and images render inline; other types appear as
   download cards.
+- `./GUIDE.md` (and `/workspace/INDEX.md`) document the conventions in full;
+  `cat` them when you need a refresher.
 
 USE FOR:
 - Running scripts: `python solve.py`, `node index.js`
