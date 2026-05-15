@@ -21,6 +21,20 @@ import {
 
 export const runtime = "edge";
 
+interface OgIntegration {
+  name?: string;
+  description?: string;
+  category?: string;
+  creator?: {
+    name?: string;
+    picture?: string;
+  };
+  cloneCount?: number;
+  toolCount?: number;
+  integrationId?: string;
+  iconUrl?: string;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -36,7 +50,7 @@ export async function GET(request: Request) {
     const siteBaseUrl = getBaseUrl(request.url);
     const wallpaperUrl = `${siteBaseUrl}${wallpapers.integration.png}`;
 
-    let integration = null;
+    let integration: OgIntegration | null = null;
     try {
       const response = await fetch(
         `${apiBaseUrl}/integrations/public/${identifier}`,
@@ -51,8 +65,9 @@ export async function GET(request: Request) {
       console.error("[OG Image] Fetch failed:", e);
     }
 
-    const name = integration?.name || id;
-    const description = integration?.description || "MCP Integration for GAIA";
+    const name: string = integration?.name || id || "Integration";
+    const description: string =
+      integration?.description || "MCP Integration for GAIA";
     const category = integration?.category || "integration";
     const creatorName = integration?.creator?.name || "Community";
     const rawCreatorAvatar = integration?.creator?.picture; // Note: integration API uses 'picture' not 'avatar'
@@ -65,7 +80,8 @@ export async function GET(request: Request) {
     const toolCount = integration?.toolCount || 0;
 
     // Integration ID is used to look up known icons
-    const integrationId = integration?.integrationId || id;
+    const integrationId: string =
+      integration?.integrationId || id || identifier;
 
     // First, try to get a known icon from the config (same as PublicIntegrationCard)
     const knownIconPath = getOgIconPath(integrationId);

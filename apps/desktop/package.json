@@ -30,14 +30,14 @@
     "wait-on": "^8.0.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.7",
+    "@biomejs/biome": "^2.3.7",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
-    "@types/node": "^22.10.2",
+    "@types/node": "^24.3.0",
     "electron": "^39.8.5",
     "electron-builder": "^25.1.8",
     "electron-vite": "^3.0.0",
-    "typescript": "^5.7.2",
-    "vite": "^6.4.2"
+    "typescript": "^5.9.3",
+    "vite": "^7.3.2"
   }
 }

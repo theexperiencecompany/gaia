@@ -20,9 +20,8 @@ import {
   useVisibleMonth,
   useVisibleYear,
 } from "@/stores/calendarStore";
-
-import { SidebarHeaderButton } from "./HeaderManager";
 import { HeaderTitle } from "./HeaderTitle";
+import { SidebarHeaderButton } from "./SidebarHeaderButton";
 
 const dayOptions = [
   { value: "1", label: "1 Day", kbd: "1" },

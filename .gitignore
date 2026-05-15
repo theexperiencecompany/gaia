@@ -147,3 +147,6 @@ chrome/
 .claude/sessions/
 
 skills-lock.json
+
+# JSCPD copy-paste reports
+.jscpd-report/

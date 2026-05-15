@@ -16,7 +16,7 @@ export default function useChatAndTranscription() {
   const room = useRoomContext();
 
   const mergedTranscriptions = useMemo(() => {
-    const merged: Array<ReceivedChatMessage> = [
+    const merged: ReceivedChatMessage[] = [
       ...transcriptions.map((transcription) =>
         transcriptionToChatMessage(transcription, room),
       ),

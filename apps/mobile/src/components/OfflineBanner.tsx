@@ -22,7 +22,9 @@ export function OfflineBanner() {
         damping: 20,
         stiffness: 200,
       }).start();
-    } else if (wasOffline) {
+      return;
+    }
+    if (wasOffline) {
       const timer = setTimeout(() => {
         Animated.timing(translateY, {
           toValue: -80,
@@ -34,6 +36,7 @@ export function OfflineBanner() {
       }, 2000);
       return () => clearTimeout(timer);
     }
+    return;
   }, [isOnline, wasOffline, translateY]);
 
   const handleDismiss = useCallback(() => {

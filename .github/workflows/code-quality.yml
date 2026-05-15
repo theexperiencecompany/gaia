@@ -1,0 +1,150 @@
+name: Code Quality
+
+# Tech-debt prevention gates that run on every PR to develop or master.
+# Each lane is independent so failures are isolated and parallelised.
+#
+# Companion to .github/workflows/main.yml — that workflow handles
+# correctness (build, type-check, tests, dead-code). This workflow
+# enforces code-hygiene rules that prevent low-quality / LLM-generated
+# code from accumulating in the repo.
+on:
+  pull_request:
+    branches:
+      - develop
+      - master
+  push:
+    branches:
+      - develop
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: code-quality-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- Biome lint + format (errors block; warnings allowed) ----------------
+  biome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Biome check
+        run: pnpm run quality:lint
+
+  # --- Workspace dependency hygiene -----------------------------------------
+  # syncpack: every package agrees on dep versions, semver ranges, sort order.
+  # manypkg:  workspace topology is valid; no missing fields / dupes.
+  # pkg-json: shape + no banned deps (eslint/prettier/lint-staged).
+  deps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: syncpack lint
+        run: pnpm exec syncpack lint
+      - name: manypkg check
+        run: pnpm exec manypkg check
+      - name: package.json lint
+        run: pnpm run quality:pkg-json
+
+  # --- Circular dependency check --------------------------------------------
+  circular:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Madge circular deps
+        run: pnpm run quality:circular
+
+  # --- File size limit (per-extension + allowlist) -------------------------
+  file-size:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: File size check
+        run: pnpm run quality:size
+
+  # --- Types must live in dedicated type files -----------------------------
+  types-location:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Type / interface / enum location
+        run: pnpm run quality:types-location
+
+  # --- Components-per-file (one component per file) ------------------------
+  components-per-file:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: At most 2 components per file
+        run: pnpm run quality:components
+
+  # --- Copy-paste detection (informational only) ----------------------------
+  duplicates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: jscpd duplicate code report
+        run: pnpm run quality:dupe || true
+
+  # --- Type coverage (informational only) ----------------------------------
+  type-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Explicit-type coverage (>=85% in apps/web)
+        run: pnpm run quality:type-coverage || true
+
+  # --- Quality gate (single required status check) -------------------------
+  quality-gate:
+    if: always()
+    needs:
+      - biome
+      - deps
+      - circular
+      - file-size
+      - types-location
+      - components-per-file
+      # duplicates and type-coverage are informational (continue-on-error).
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Evaluate
+        run: |
+          echo "biome:               ${{ needs.biome.result }}"
+          echo "deps:                ${{ needs.deps.result }}"
+          echo "circular:            ${{ needs.circular.result }}"
+          echo "file-size:           ${{ needs.file-size.result }}"
+          echo "types-location:      ${{ needs.types-location.result }}"
+          echo "components-per-file: ${{ needs.components-per-file.result }}"
+
+          for r in \
+            "${{ needs.biome.result }}" \
+            "${{ needs.deps.result }}" \
+            "${{ needs.circular.result }}" \
+            "${{ needs.file-size.result }}" \
+            "${{ needs.types-location.result }}" \
+            "${{ needs.components-per-file.result }}"; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "::error::Required quality job result: $r"
+              exit 1
+            fi
+          done
+          echo "All quality gates passed."
