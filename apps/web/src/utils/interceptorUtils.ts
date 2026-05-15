@@ -7,18 +7,17 @@ import {
   showTokenLimitToast,
 } from "@/components/shared/RateLimitToast";
 import { toast } from "@/lib/toast";
+import { useLoginModalStore } from "@/stores/loginModalStore";
 
 interface ErrorHandlerDependencies {
   router: AppRouterInstance;
 }
 
 /**
- * Surfaces API error UI (toasts) for app-shell requests.
- *
- * Only mounted inside the (main) provider tree — landing pages never
- * surface background-fetch errors because anonymous visitors should not
- * be interrupted by toasts they did not trigger. 401-driven login modal
- * lives in useUnauthorizedChallenge for the same reason.
+ * Surfaces API error UI for app-shell requests: toasts on 5xx/429/403,
+ * login modal on 401. Only mounted inside the (main) provider tree —
+ * landing pages never surface background-fetch errors because anonymous
+ * visitors should not be interrupted by UI they did not trigger.
  */
 export const processAxiosError = (
   error: AxiosError,
@@ -35,7 +34,7 @@ export const processAxiosError = (
 
   switch (status) {
     case 401:
-      // Modal open is handled by useUnauthorizedChallenge.
+      useLoginModalStore.getState().openModal();
       break;
 
     case 403:

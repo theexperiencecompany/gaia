@@ -6,17 +6,14 @@ import { type ReactNode, Suspense } from "react";
 import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
-import LoginModal from "@/features/auth/components/LoginModal";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
 import { useTodoWorkflowGlobalListener } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
 
 import useAxiosInterceptor from "@/hooks/api/useAxiosInterceptor";
-import useUnauthorizedChallenge from "@/hooks/api/useUnauthorizedChallenge";
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
-import { HeroUIProvider } from "@/layouts/HeroUIProvider";
 import QueryProvider from "@/layouts/QueryProvider";
 import { useWebSocketConnection } from "@/lib/websocket/useWebSocketConnection";
 
@@ -41,35 +38,27 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();
 
-  // App-shell-only API error handling. Landing pages never surface
-  // background-fetch error toasts to anonymous visitors, and never
-  // auto-open the login modal — anonymous is the expected state there.
+  // App-shell-only API error handling. Surfaces toasts for 5xx/429/403
+  // and auto-opens the login modal on 401. Landing pages mount neither.
   useAxiosInterceptor();
-  useUnauthorizedChallenge();
 
   return (
-    <HeroUIProvider>
-      {/* LoginModal lives outside LazyMotionProvider because HeroUI's Modal
-          imports the full `motion` API, which throws under LazyMotion strict. */}
-      <LoginModal />
-      <LazyMotionProvider>
-        <QueryProvider>
-          {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
-          <Suspense fallback={<></>}>
-            <GlobalAuth />
-          </Suspense>
-          <GlobalInterceptor />
-          {/* <HydrationManager /> */}
-          <Toaster position="top-right" />
-          <GlobalIntegrationModal />
-          <ElectronRouteGuard>
-            <KeyboardShortcutsProvider>
-              {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
-              <Suspense fallback={<></>}>{children}</Suspense>
-            </KeyboardShortcutsProvider>
-          </ElectronRouteGuard>
-        </QueryProvider>
-      </LazyMotionProvider>
-    </HeroUIProvider>
+    <LazyMotionProvider>
+      <QueryProvider>
+        {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+        <Suspense fallback={<></>}>
+          <GlobalAuth />
+        </Suspense>
+        <GlobalInterceptor />
+        <Toaster position="top-right" />
+        <GlobalIntegrationModal />
+        <ElectronRouteGuard>
+          <KeyboardShortcutsProvider>
+            {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+            <Suspense fallback={<></>}>{children}</Suspense>
+          </KeyboardShortcutsProvider>
+        </ElectronRouteGuard>
+      </QueryProvider>
+    </LazyMotionProvider>
   );
 }
