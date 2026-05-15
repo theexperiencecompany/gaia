@@ -405,8 +405,8 @@ void main() {
     float blurStep = 0.022;
     float hL = waveHeight(uv.x - blurStep, 0.0);
     float hR = waveHeight(uv.x + blurStep, 0.0);
-    float envYL = 0.85 - hL * 0.30;
-    float envYR = 0.85 - hR * 0.30;
+    float envYL = 0.87 - hL * 0.34;
+    float envYR = 0.87 - hR * 0.34;
     float distL = abs(uv.y - envYL);
     float distR = abs(uv.y - envYR);
     float bloom = exp(-pow(distL / 0.10, 2.0)) + exp(-pow(distR / 0.10, 2.0));
@@ -541,6 +541,16 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
       fboTex,
       0,
     );
+    /* If the FBO is incomplete (driver quirk, unsupported format combo, etc.)
+       we fall back to rendering the wave shader directly to the canvas. The
+       bloom skirt is then baked into the same pass — no half-res blit. */
+    const fboReady =
+      gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    if (!fboReady) {
+      console.warn(
+        "[VoiceGradient] FBO incomplete, falling back to direct render",
+      );
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     /* Scale factor for the offscreen render relative to the canvas. 0.7
@@ -584,31 +594,48 @@ export function VoiceGradient({ mode, spectrum }: VoiceGradientProps) {
       const target = modeRef.current === "gaia" ? 1 : 0;
       fadeRef.current += (target - fadeRef.current) * 0.06;
 
-      /* Pass 1 — render wave into the half-res FBO. */
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-      gl.viewport(0, 0, fboW, fboH);
-      // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
-      gl.useProgram(waveProgram);
-      bindAttribFor(waveProgram);
-      gl.uniform1fv(uSpectrum, spectrum);
-      gl.uniform1f(uTime, t);
-      gl.uniform2f(uResolution, fboW, fboH);
-      gl.uniform1f(uMode, fadeRef.current);
-      gl.clearColor(0, 0, 0, 1);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      if (fboReady) {
+        /* Pass 1 — render wave into the half-res FBO. */
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.viewport(0, 0, fboW, fboH);
+        // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
+        gl.useProgram(waveProgram);
+        bindAttribFor(waveProgram);
+        gl.uniform1fv(uSpectrum, spectrum);
+        gl.uniform1f(uTime, t);
+        gl.uniform2f(uResolution, fboW, fboH);
+        gl.uniform1f(uMode, fadeRef.current);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-      /* Pass 2 — blit FBO texture to canvas at full resolution with
-         bilinear upsampling (the GPU handles the interpolation for free). */
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
-      gl.useProgram(blitProgram);
-      bindAttribFor(blitProgram);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, fboTex);
-      gl.uniform1i(uBlitTex, 0);
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
+        /* Pass 2 — blit FBO texture to canvas at full resolution with
+           bilinear upsampling (the GPU handles the interpolation for free). */
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
+        gl.useProgram(blitProgram);
+        bindAttribFor(blitProgram);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, fboTex);
+        gl.uniform1i(uBlitTex, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      } else {
+        /* Fallback path — render the wave shader directly to the canvas at
+           full resolution. Costs more fragment work but avoids the FBO. */
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        // biome-ignore lint/correctness/useHookAtTopLevel: gl.useProgram is a WebGL call, not a React hook
+        gl.useProgram(waveProgram);
+        bindAttribFor(waveProgram);
+        gl.uniform1fv(uSpectrum, spectrum);
+        gl.uniform1f(uTime, t);
+        gl.uniform2f(uResolution, canvas.width, canvas.height);
+        gl.uniform1f(uMode, fadeRef.current);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
 
       raf = requestAnimationFrame(draw);
     };

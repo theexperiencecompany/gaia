@@ -7,9 +7,8 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import { CallEnd02Icon, Mic02Icon, MicOff02Icon } from "@icons";
+import { ArrowUp01Icon, CallEnd02Icon, Mic02Icon, MicOff02Icon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
-import { ChevronUp } from "@/components/shared/icons";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import type {
@@ -144,7 +143,7 @@ export default function VoiceGradientDemoPage() {
                   className="bg-zinc-800/80 text-white backdrop-blur"
                   aria-label="Select microphone"
                 >
-                  <ChevronUp className="h-4 w-4" />
+                  <ArrowUp01Icon className="h-4 w-4" />
                 </Button>
               </DropdownTrigger>
               <DropdownMenu

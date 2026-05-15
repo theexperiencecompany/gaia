@@ -227,6 +227,7 @@ export function useVoiceSpectrum({ source }: UseVoiceSpectrumOptions) {
       });
       streamRef.current = stream;
       const track = stream.getAudioTracks()[0];
+      if (track) track.enabled = !mutedRef.current;
       const settings = track?.getSettings();
       if (settings?.deviceId) setDeviceId(settings.deviceId);
 
