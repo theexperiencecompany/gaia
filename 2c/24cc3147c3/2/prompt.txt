@@ -1,0 +1,61 @@
+1. in onboarding page when we do "run now" of todos, can we show that in a background color and parent container instead of just rawly in the onboarding page? 2. also after todo is executed, we show continue button inline, instead i think it should be at the bottom of the onboarding page like the other onboarding CTA's. 3. also in emaillistcard, when theres only 1 email, the py is too much, ensure this py is conditional on if its greater than or only 1 email. 4. also when executed a todo it said this: bet, i’ve drafted that response to jay for u. it’s sitting in your gmail drafts now. like i think we've over explained to not ask follow ups from the user. i think we need to emphasise that u can tool call and show frontend components but dont do shit that needs the user to give follow ups with text by typung. please create tasks for all of these.
+
+---
+
+no mate remove these linear isues what the fuck. create tasks for it for you, then explore, and fix it lmao what the fuck
+
+---
+
+so what are we doing wrong with the post onboarding chat? seems like some race condition sometimes the todo is part of the post onboarding chat, like when i run todo during onboarding? how is the convo stored in backedn? can't we just ignore in the backend instead?
+
+---
+
+sure use separate conversation, but in the frontend, the prompt user message that we ingest on backend shouldn't really be shown in the chat bubble. instead we can show a selcected todo indicator.
+
+---
+
+i'm not sure i want it email related btw. i think we can nudge the user to connect some integrations or explore the marketplace what do u think?
+
+---
+
+you explore and tell me the best thing to do and how
+
+---
+
+so what will be the flow. is this proper
+
+---
+
+i think it can just be text with 2 buttons to connect integrations, and 2nd button to explore use case marketplace
+
+---
+
+something punchier is good i guess. you figure out the follow up text. and ensure its user persona specific i guess with examples like for each persona
+
+---
+
+i dont't like these i think it ca be like i can do this for you not i'll do this because what if the user doesnt want to do that?? also why do we need to fuzzy match shit? we alredy have a pre defined dict.
+
+---
+
+review these copy's. is there anything better i can do? like maybe we can mention like since you're a developer x
+
+---
+
+also i dont want to play word gymanstics. it should be very clear and easy to understand
+
+---
+
+i don't like the You're a " it sounds cringe. i think we can go straight to verbs  but mentioning integrations because of the 2 buttons remember?
+
+---
+
+no i don't like the structural sameness. i think we should start with what it can do and the integration is secondary
+
+---
+
+Write in a playful manner with NEW MESSAGE BREAK too. Like Hey welcome i'm your GAIA (general-purpose ai assistant) and that I can .... and 1 exclamation mark somewhere
+
+---
+
+add 2nd exclamation after the  "i'll get to it" also do it and tell me now what will be in the post onboarding chat i only want 1 single post onborading chat and with only this text with 2 buttons 1 blue 1 normal heroui with radius normal and variant normal too
