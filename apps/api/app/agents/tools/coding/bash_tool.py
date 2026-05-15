@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import time
 import uuid
 from typing import Annotated
 
@@ -16,11 +17,15 @@ from app.agents.tools.coding._context import (
 )
 from app.agents.workspace.paths import (
     WORKSPACE_ROOT,
+    detect_content_type,
     runs_log_dir,
     session_dir,
+    session_user_visible,
 )
 from app.decorators import with_doc, with_rate_limiting
+from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
+from app.services.storage import ArtifactInfo
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from langchain_core.runnables.config import RunnableConfig
@@ -85,7 +90,18 @@ async def bash(
                     await sbx.commands.run(f"mkdir -p {sh_quote(cwd)}", timeout=10)
             if background:
                 return await _run_background(sbx, run_id, command, cwd, session_id)
-            return await _run_foreground(sbx, run_id, command, cwd, timeout, session_id)
+            result = await _run_foreground(
+                sbx, run_id, command, cwd, timeout, session_id
+            )
+            # A bash command can create artifacts any number of ways (cat,
+            # python, mv, curl -o, …), not just the write tool. Enumerate the
+            # session's .user-visible/ from the sandbox itself (it sees its
+            # own writes instantly — no host-mount/cross-mount race) and push
+            # them in real time; the chat forwarder relays them as SSE during
+            # this turn. De-duped downstream by (session_id, path).
+            if session_id:
+                await _publish_visible_artifacts(sbx, user_id, session_id)
+            return result
     except SandboxAcquisitionError as e:
         safe_emit(
             {
@@ -115,6 +131,43 @@ async def bash(
             session_id=session_id,
         )
         return f"Error executing command: {e}"
+
+
+async def _publish_visible_artifacts(
+    sbx: object, user_id: str, session_id: str
+) -> None:
+    """Enumerate the session's `.user-visible/` in the sandbox and push each
+    file as a real-time artifact event (covers cat/python/mv/curl, etc.)."""
+    visible = session_user_visible(session_id)
+    try:
+        res = await sbx.commands.run(  # type: ignore[attr-defined]
+            f"find {sh_quote(visible)} -type f -printf '%P\\t%s\\n' 2>/dev/null",
+            timeout=10,
+        )
+    except Exception:
+        return
+    for line in (getattr(res, "stdout", "") or "").splitlines():
+        rel, _, size = line.partition("\t")
+        rel = rel.strip()
+        if not rel:
+            continue
+        try:
+            size_bytes = int(size.strip() or 0)
+        except ValueError:
+            size_bytes = 0
+        with contextlib.suppress(Exception):
+            await publish_artifact_event(
+                user_id,
+                upsert_event(
+                    session_id,
+                    ArtifactInfo(
+                        path=rel,
+                        size_bytes=size_bytes,
+                        mtime=time.time(),
+                        content_type=detect_content_type(rel),
+                    ),
+                ),
+            )
 
 
 async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -> None:
