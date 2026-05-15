@@ -42,8 +42,9 @@ export const processAxiosError = (
       break;
 
     case 429:
-      toast.error("Too many Requests!");
-      handleRateLimitError(data);
+      if (!handleRateLimitError(data)) {
+        toast.error("Too many Requests!");
+      }
       break;
 
     default:
@@ -100,7 +101,7 @@ const handleForbiddenError = (
   }
 };
 
-const handleRateLimitError = (errorData: unknown): void => {
+const handleRateLimitError = (errorData: unknown): boolean => {
   const rateLimitData =
     errorData && typeof errorData === "object" && "detail" in errorData
       ? (errorData as { detail: unknown }).detail
@@ -112,7 +113,7 @@ const handleRateLimitError = (errorData: unknown): void => {
     !("error" in rateLimitData) ||
     rateLimitData.error !== "rate_limit_exceeded"
   ) {
-    return;
+    return false;
   }
 
   const rateLimit = rateLimitData as {
@@ -141,4 +142,6 @@ const handleRateLimitError = (errorData: unknown): void => {
       showUpgradeButton: true,
     });
   }
+
+  return true;
 };

@@ -8,7 +8,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { ArrowUp01Icon, CallEnd02Icon, Mic02Icon, MicOff02Icon } from "@icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import type {
@@ -51,11 +51,12 @@ export default function VoiceGradientDemoPage() {
   const source = "hybrid" as const;
   const voice = useVoiceSpectrum({ source });
 
+  const autoStartedRef = useRef(false);
   useEffect(() => {
-    if (!voice.isActive && !voice.error) {
-      voice.start();
-    }
-  }, [voice.isActive, voice.error, voice.start]);
+    if (autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    voice.start();
+  }, [voice.start]);
 
   // No-op image setters — the dev demo doesn't open the generated-image sheet.
   const [, setImageData] = useState<SetImageDataType>({
