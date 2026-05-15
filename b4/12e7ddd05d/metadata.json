@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "b412e7ddd05d",
+  "strategy": "manual-commit",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/api/app/services/onboarding/first_message_service.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b4/12e7ddd05d/0/metadata.json",
+      "transcript": "/b4/12e7ddd05d/0/full.jsonl",
+      "content_hash": "/b4/12e7ddd05d/0/content_hash.txt",
+      "prompt": "/b4/12e7ddd05d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 42,
+    "cache_creation_tokens": 79086,
+    "cache_read_tokens": 1872951,
+    "output_tokens": 8879,
+    "api_call_count": 27
+  }
+}

@@ -1,0 +1,12 @@
+the text bubble popping up of each text part, isnt as clean or seamless stagger. why? whats going wrong? explore
+
+---
+
+yes and does it exist in demo page i wanna test it
+
+---
+
+also in the final message in onboarding Aryan, getting your startup off the ground is a massive undertaking and I am ready to help you move fast. You clearly prefer action over admin, so I have already drafted your value proposition, mapped out your first 100-user growth plan, and automated your competitor tracking. You can sync these updates to Slack or Telegram in settings if you want to keep the momentum going outside the app.
+
+
+ i want it to also write something like i have a gift for you (which is the holo card) how to do this in same text bubble but with NEW MESSAGE BREAK
