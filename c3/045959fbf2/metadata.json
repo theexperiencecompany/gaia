@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "c3045959fbf2",
+  "strategy": "manual-commit",
+  "branch": "feat/voice-gradient-demo",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/hooks/api/useAxiosInterceptor.ts",
+    "apps/web/src/hooks/providers/GlobalInterceptor.tsx",
+    "apps/web/src/layouts/LandingProvidersLayout.tsx",
+    "apps/web/src/layouts/ProvidersLayout.tsx",
+    "apps/web/src/utils/interceptorUtils.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c3/045959fbf2/0/metadata.json",
+      "transcript": "/c3/045959fbf2/0/full.jsonl",
+      "content_hash": "/c3/045959fbf2/0/content_hash.txt",
+      "prompt": "/c3/045959fbf2/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 23,
+    "cache_creation_tokens": 14374,
+    "cache_read_tokens": 1344867,
+    "output_tokens": 9954,
+    "api_call_count": 13
+  }
+}

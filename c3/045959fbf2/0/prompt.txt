@@ -1,0 +1,5 @@
+is there anything wrong with this? can you review? is there anything to cleamnup? should we cleanup the manual array?
+
+---
+
+mate finish the job lmao . its fine we don't want to show any errors on landing pages. i guess we can just show the toasts on non landing pages, this is the proper behaviour right?
