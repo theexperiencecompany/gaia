@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
 
-import LoginModal from "@/features/auth/components/LoginModal";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import PublishWorkflowCTA from "@/features/use-cases/components/PublishWorkflowCTA";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
@@ -22,7 +21,6 @@ export default function UseCasesPageClient({
 
   return (
     <>
-      <LoginModal />
       <div className="relative z-1 container mx-auto pb-8">
         <div className="mb-8 text-center">
           <h1 className="mb-1 font-serif text-8xl font-normal">

@@ -19,7 +19,6 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { wallpapers } from "@/config/wallpapers";
-import LoginModal from "@/features/auth/components/LoginModal";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
@@ -185,7 +184,6 @@ export function IntegrationDetailClient({
 
   return (
     <div className="relative">
-      <LoginModal />
       <Image
         src={wallpapers.integration.webp}
         alt="GAIA Marketplace Wallpaper"

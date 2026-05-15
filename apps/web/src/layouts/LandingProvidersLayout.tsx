@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { type ReactNode, Suspense } from "react";
 
 import { Toaster } from "@/components/ui/Toaster";
@@ -7,6 +8,11 @@ import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
 import { HeroUIProvider } from "@/layouts/HeroUIProvider";
 import QueryProvider from "@/layouts/QueryProvider";
+
+const LoginModal = dynamic(
+  () => import("@/features/auth/components/LoginModal"),
+  { ssr: false },
+);
 
 /**
  * Lightweight provider tree for landing/marketing pages.
@@ -16,12 +22,13 @@ import QueryProvider from "@/layouts/QueryProvider";
  * - QueryProvider: required by marketplace and use-cases detail pages
  * - GlobalAuth: populates the user store so isAuthenticated works on landing pages
  * - GlobalInterceptor: sets up axios auth interceptors for API calls
+ * - LoginModal: opened by useAuth() from any landing page (marketplace,
+ *   use-cases, etc.); lazy-loaded so it stays out of the initial bundle
  * - Toaster: required for toast notifications on interactive landing pages
  *
- * LoginModal is mounted per-page on the landing routes that actually trigger it
- * (marketplace/[slug], use-cases/[slug], use-cases listing) instead of globally
- * — keeps the marketing initial bundle leaner and avoids a duplicate mount with
- * the (main) provider tree.
+ * Landing pages and (main) pages never share a layout (route groups are
+ * mutually exclusive), so mounting LoginModal here does not duplicate the
+ * mount in ProvidersLayout.
  *
  * Intentionally excludes (app-only concerns):
  * - useNotifications / useNotificationWebSocket / useWebSocketConnection
@@ -43,6 +50,7 @@ export default function LandingProvidersLayout({
         </Suspense>
         <GlobalInterceptor />
         <Toaster position="bottom-right" />
+        <LoginModal />
         {children}
       </QueryProvider>
     </HeroUIProvider>
