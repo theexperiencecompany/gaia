@@ -1,10 +1,10 @@
 name: gaia-dev
 
 services:
-  # FastAPI Application (use profile to run in docker, otherwise run locally with mise)
+  # FastAPI Application — runs in docker by default (has the juicefs CLI +
+  # /mnt/jfs sidecar mount, which a native `nx dev api` on macOS cannot do).
   gaia-backend:
     container_name: gaia-backend
-    profiles: ["backend", "all"]
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
@@ -49,14 +49,26 @@ services:
       # hostnames. Infisical respects pre-set env vars, so these take precedence.
       # (The "localhost" URLs in Infisical are for `nx dev api` where Python
       # runs on the host and connects to dockered infra at host-mapped ports.)
-      POSTGRES_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/langgraph
+      # libpq form (not postgresql+asyncpg://): the langgraph checkpointer
+      # feeds POSTGRES_URL straight to psycopg, and db/postgresql.py adapts
+      # this same URL for the asyncpg SQLAlchemy engine. The +asyncpg dialect
+      # form makes psycopg fail with: missing "=" after "postgresql+asyncpg://".
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/langgraph
       REDIS_URL: redis://redis:6379/0
       MONGO_DB: mongodb://mongo:27017/
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       CHROMADB_HOST: chromadb
       CHROMADB_PORT: "8000"
-      # JuiceFS metadata DB lives on the same postgres container.
-      JUICEFS_META_URL_TEMPLATE: postgres://postgres:postgres@postgres:5432/gaia_juicefs_{shard}?sslmode=disable
+      # E2B's watch_dir (inotify) cannot watch the FUSE-mounted JuiceFS
+      # ("cannot watch path on network filesystem"). Use the JuiceFS-native
+      # .accesslog tail instead — the Phase 0 verdict for this stack.
+      ARTIFACT_DETECTION_MODE: accesslog
+      # JUICEFS_META_URL_TEMPLATE is intentionally NOT overridden: the API host
+      # and the E2B sandboxes must share one JuiceFS namespace (the artifact
+      # watcher reads host-side what the sandbox wrote). Let Infisical supply
+      # the same cloud meta the sandboxes use. A local postgres meta would be a
+      # separate namespace over the same R2 volume — JuiceFS refuses to
+      # double-format it ("Storage ... is not empty; pick another volume name").
     env_file:
       - ../../apps/api/.env
     volumes:

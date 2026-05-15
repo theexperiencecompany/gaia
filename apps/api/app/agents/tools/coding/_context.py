@@ -38,14 +38,22 @@ def get_user_id(config: RunnableConfig) -> str:
 
 
 def get_session_id(config: RunnableConfig) -> str | None:
-    """Read conversation_id from RunnableConfig. May be None for non-chat
-    invocations (workflows, background tasks)."""
+    """Resolve the workspace session id from RunnableConfig.
+
+    Prefer `vfs_session_id`: subagent_runner pins it to the *parent*
+    conversation thread so artifacts written by one executor call are visible
+    to the next (`thread_id` is the ephemeral `executor_<conv>_<hex>` wrapper
+    and differs from the conversation_id that `ensure_session_dirs` and the
+    chat artifact forwarder key on — using it would split the session dir and
+    drop every artifact event). May be None for non-chat invocations
+    (workflows, background tasks)."""
     configurable = config.get("configurable", {}) if config else {}
     metadata = config.get("metadata", {}) if config else {}
     return (
-        configurable.get("thread_id")
+        configurable.get("vfs_session_id")
         or configurable.get("conversation_id")
         or metadata.get("conversation_id")
+        or configurable.get("thread_id")
     )
 
 

@@ -52,7 +52,13 @@ from app.services.storage import (
 )
 
 SESSIONS_WATCH_ROOT = f"{WORKSPACE_ROOT}/{SESSIONS_DIRNAME}"
-ACCESSLOG_PATH = f"{WORKSPACE_ROOT}/.accesslog"
+# `.accesslog` is a JuiceFS *mount-root* virtual file. mount_juicefs.sh mounts
+# JuiceFS at /mnt/jfs and bind-mounts users/<uid> -> /workspace, so the
+# accesslog lives at /mnt/jfs/.accesslog (NOT /workspace/.accesslog, which is
+# just a nonexistent path under the bound user prefix). It is root-owned
+# (mounted via sudo), so reads need sudo too.
+SANDBOX_JFS_MOUNT = "/mnt/jfs"
+ACCESSLOG_PATH = f"{SANDBOX_JFS_MOUNT}/.accesslog"
 _TMP_SUFFIX = ".gaia-tmp"
 
 # accesslog ops that can change what's visible. JuiceFS .accesslog lines look
@@ -137,7 +143,8 @@ class ArtifactWatcher:
                     await kill()
             with contextlib.suppress(Exception):
                 await self.sandbox.commands.run(
-                    f"pkill -f 'tail -n0 -F {ACCESSLOG_PATH}'", timeout=5
+                    f"sudo -n pkill -f 'tail -n0 -F {ACCESSLOG_PATH}'",
+                    timeout=5,
                 )
         else:
             stop = getattr(handle, "stop", None)
@@ -199,8 +206,11 @@ class ArtifactWatcher:
     # -- accesslog mode ---------------------------------------------------
 
     async def _start_accesslog(self) -> None:
+        # sudo -n: the JuiceFS mount (and its root-only .accesslog) is created
+        # by mount_juicefs.sh via passwordless sudo, so the sandbox's default
+        # user can't read it directly.
         self._handle = await self.sandbox.commands.run(
-            f"tail -n0 -F {ACCESSLOG_PATH}",
+            f"sudo -n tail -n0 -F {ACCESSLOG_PATH}",
             background=True,
             on_stdout=self._on_accesslog_line,
             timeout=0,
