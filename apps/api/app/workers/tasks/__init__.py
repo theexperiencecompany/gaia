@@ -5,6 +5,7 @@ Task modules for ARQ worker.
 from .cleanup_tasks import cleanup_stuck_personalization
 from .memory_email_tasks import process_gmail_emails_to_memory
 from .sandbox_tasks import sweep_idle_sandboxes
+from .session_tasks import prune_inactive_sessions
 from .memory_tasks import store_memories_batch
 from .onboarding_tasks import process_personalization_task
 from .reminder_tasks import cleanup_expired_reminders, process_reminder
@@ -31,4 +32,5 @@ __all__ = [
     "execute_workflow_as_chat",
     "cleanup_stuck_personalization",
     "sweep_idle_sandboxes",
+    "prune_inactive_sessions",
 ]

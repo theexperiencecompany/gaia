@@ -250,6 +250,11 @@ class ProductionSettings(CommonSettings):
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
     E2B_SANDBOX_EVICT_DAYS: int = 14
     E2B_WARM_POOL_TARGET_RATIO: float = 2.0  # Phase 2
+    # Artifact detection mechanism — decided empirically by
+    # scripts/probe_artifact_detection.py (Phase 0). "watch_dir" uses E2B
+    # envd's native recursive watch; "accesslog" tails JuiceFS .accesslog.
+    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
+    ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096  # accesslog mode only
 
     # ----------------------------------------------
     # Persistent Workspace Storage (R2 + JuiceFS)
@@ -268,6 +273,8 @@ class ProductionSettings(CommonSettings):
     # to skip client-side encryption (R2 at-rest encryption still applies).
     JFS_ENCRYPTION_KEY: Optional[str] = None
     JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"  # API container's sidecar mount
+    SESSION_RETENTION_DAYS: int = 30  # prune sessions after this inactivity
+    SESSION_PRUNE_BATCH_LIMIT: int = 1000  # safety cap per prune task run
 
     # ----------------------------------------------
     # Payment Processing
@@ -431,6 +438,8 @@ class DevelopmentSettings(CommonSettings):
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
     E2B_SANDBOX_EVICT_DAYS: int = 14
     E2B_WARM_POOL_TARGET_RATIO: float = 2.0
+    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
+    ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096
 
     # ----------------------------------------------
     # Persistent Workspace Storage (R2 + JuiceFS)
@@ -443,6 +452,8 @@ class DevelopmentSettings(CommonSettings):
     JUICEFS_NUM_SHARDS: int = 1
     JFS_ENCRYPTION_KEY: Optional[str] = None
     JUICEFS_HOST_MOUNT_PATH: str = "/mnt/jfs"
+    SESSION_RETENTION_DAYS: int = 30
+    SESSION_PRUNE_BATCH_LIMIT: int = 1000
 
     # ----------------------------------------------
     # Payment Processing

@@ -3,7 +3,9 @@ Service module for file upload functionality with vector search capabilities.
 """
 
 import asyncio
+import contextlib
 import io
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -11,12 +13,20 @@ from typing import Any, Dict, List, Optional
 import cloudinary
 import cloudinary.uploader
 from shared.py.wide_events import log
+from app.agents.workspace.paths import USER_UPLOADED_DIRNAME
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.db.utils import serialize_document
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.files_models import DocumentSummaryModel
 from app.models.message_models import FileData
+from app.services.artifact_events import publish_artifact_event, upload_event
+from app.services.storage import (
+    JuiceFSUnavailable,
+    chmod_path,
+    session_root,
+    write_session_file,
+)
 from app.utils.embedding_utils import search_documents_by_similarity
 from app.utils.file_utils import generate_file_summary
 from app.utils.upload_validation import validate_upload
@@ -96,6 +106,21 @@ async def upload_file_service(
 
         summary, formatted_file_content = _process_file_summary(summary_result)
 
+        sandbox_path: str | None = None
+        if conversation_id:
+            try:
+                safe_filename = _safe_upload_filename(filename)
+            except ValueError as e:
+                log.warning(f"[upload] skipping sandbox copy: {e}")
+            else:
+                sandbox_path = await _persist_upload_to_sandbox(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    safe_filename=safe_filename,
+                    content=content,
+                    content_type=normalized_content_type,
+                )
+
         current_time = datetime.now(timezone.utc)
         file_metadata = {
             "file_id": file_id,
@@ -107,6 +132,7 @@ async def upload_file_service(
             "user_id": user_id,
             "description": summary,
             "page_wise_summary": formatted_file_content,
+            "sandbox_path": sandbox_path,
             "created_at": current_time,
             "updated_at": current_time,
         }
@@ -132,6 +158,7 @@ async def upload_file_service(
             "filename": filename,
             "description": summary,
             "type": normalized_content_type,
+            "sandbox_path": sandbox_path,
         }
 
     except HTTPException:
@@ -139,6 +166,73 @@ async def upload_file_service(
     except Exception as e:
         log.error(f"Failed to upload file: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+
+
+def _safe_upload_filename(filename: str) -> str:
+    """Slugify an uploaded filename for safe use as a session FS path.
+
+    Strips directory separators, control chars and leading dots; collapses
+    whitespace. Raises ValueError if nothing usable remains.
+    """
+    base = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    cleaned = "".join(ch for ch in base if ch.isprintable() and ch not in "/\0").strip()
+    cleaned = re.sub(r"\s+", "_", cleaned).lstrip(".")
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", cleaned)
+    if not cleaned or cleaned in {".", ".."}:
+        raise ValueError("filename is empty after sanitization")
+    return cleaned[:255]
+
+
+async def _persist_upload_to_sandbox(
+    user_id: str,
+    conversation_id: str,
+    safe_filename: str,
+    content: bytes,
+    content_type: str,
+) -> str | None:
+    """Mirror an upload into the session's read-only `user-uploaded/` dir.
+
+    Returns the `/workspace/...` path the agent can operate on, or None if
+    JuiceFS is unavailable (dev). Cloudinary remains the durable copy; a
+    failure here must never fail the upload.
+    """
+    try:
+        # Clear a prior read-only copy so re-uploads (last-writer-wins) work.
+        prior = (
+            session_root(user_id, conversation_id)
+            / USER_UPLOADED_DIRNAME
+            / safe_filename
+        )
+        with contextlib.suppress(Exception):
+            if prior.exists():
+                await chmod_path(prior, 0o644)
+
+        host_path, sbx_path = await write_session_file(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            relative_path=f"{USER_UPLOADED_DIRNAME}/{safe_filename}",
+            content=content,
+        )
+        await chmod_path(host_path, 0o444)
+    except JuiceFSUnavailable as e:
+        log.warning("[upload] juicefs unavailable; sandbox_path not set", error=str(e))
+        return None
+    except Exception as e:
+        log.error("[upload] juicefs write failed", error=str(e), exc_info=True)
+        return None
+
+    # Cross-mount host writes may not reach the sandbox watcher; publish the
+    # artifact event directly so the chat UI sees the upload immediately.
+    await publish_artifact_event(
+        user_id,
+        upload_event(
+            conversation_id,
+            safe_filename,
+            size_bytes=len(content),
+            content_type=content_type,
+        ),
+    )
+    return sbx_path
 
 
 def _process_file_summary(
@@ -348,6 +442,7 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
                             "filename": file_data["filename"],
                             "description": file_data.get("description", ""),
                             "content_type": file_data.get("type", ""),
+                            "sandbox_path": file_data.get("sandbox_path"),
                             "_id": file_data[
                                 "fileId"
                             ],  # Use fileId as _id for consistency
@@ -379,6 +474,7 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
                             "filename": file_data["filename"],
                             "description": file_data.get("description", ""),
                             "content_type": file_data.get("content_type", ""),
+                            "sandbox_path": file_data.get("sandbox_path"),
                             "_id": file_data[
                                 "file_id"
                             ],  # Use file_id as _id for consistency
@@ -444,12 +540,27 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
             # Include explicitly requested files first
             if explicit_files:
                 formatted_files += "### Uploaded Files\n\n"
+                if any(f.get("sandbox_path") for f in explicit_files):
+                    formatted_files += (
+                        "Files attached to this conversation are also on disk "
+                        "at `./user-uploaded/`. Use bash/read/write/edit to "
+                        "operate on them directly. They are read-only — copy "
+                        "to `./scratch/` before modifying.\n\n"
+                    )
                 for file in explicit_files:
                     filename = file.get("filename", "Unnamed file")
                     file_type = file.get("content_type", "Unknown type")
                     description = file.get("description", "No description available")
+                    sandbox_path = file.get("sandbox_path")
 
-                    formatted_files += f"**{filename}** ({file_type})\n"
+                    if sandbox_path:
+                        on_disk = sandbox_path.rsplit("/", 1)[-1]
+                        formatted_files += (
+                            f"**{filename}** ({file_type}) — at "
+                            f"`./user-uploaded/{on_disk}`\n"
+                        )
+                    else:
+                        formatted_files += f"**{filename}** ({file_type})\n"
                     formatted_files += f"{description}\n\n"
 
             if semantic_files:

@@ -7,10 +7,13 @@ from typing import Annotated
 
 from shared.py.wide_events import log
 from app.agents.tools.coding._context import (
-    canonical_workspace_path,
+    canonical_path,
+    get_session_id,
     get_user_id,
     safe_emit,
+    sh_quote,
 )
+from app.agents.workspace.paths import MountRole
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.templates.docstrings.coding_tools_docs import EDIT_TOOL
@@ -26,7 +29,7 @@ MAX_PATCH_BYTES = 2 * 1024 * 1024
 @with_doc(EDIT_TOOL)
 async def edit(
     config: RunnableConfig,
-    path: Annotated[str, "Path to an existing file inside /workspace"],
+    path: Annotated[str, "Path to an existing file inside the workspace"],
     old_string: Annotated[str, "Exact text to replace; must appear verbatim"],
     new_string: Annotated[str, "Replacement text; may be empty"],
     replace_all: Annotated[bool, "Replace every occurrence"] = False,
@@ -40,17 +43,28 @@ async def edit(
     if (len(old_string.encode("utf-8")) > MAX_PATCH_BYTES) or (
         len(new_string.encode("utf-8")) > MAX_PATCH_BYTES
     ):
-        return f"Error: old_string and new_string must each be <= {MAX_PATCH_BYTES} bytes"
+        return (
+            f"Error: old_string and new_string must each be <= {MAX_PATCH_BYTES} bytes"
+        )
 
     try:
         user_id = get_user_id(config)
-        abs_path = canonical_workspace_path(path)
+        session_id = get_session_id(config)
+        abs_path, role, _ = canonical_path(path, session_id=session_id)
     except ValueError as e:
         return f"Error: {e}"
 
+    if role == MountRole.USER_UPLOADED:
+        return (
+            "Error: user-uploaded/ is read-only. Copy the file to scratch "
+            "first: cp user-uploaded/<name> scratch/"
+        )
+
     try:
         async with acquire_sandbox(user_id) as sbx:
-            return await _do_edit(sbx, abs_path, old_string, new_string, replace_all)
+            return await _do_edit(
+                sbx, abs_path, old_string, new_string, replace_all, session_id
+            )
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
@@ -64,11 +78,12 @@ async def _do_edit(
     old_string: str,
     new_string: str,
     replace_all: bool,
+    session_id: str | None,
 ) -> str:
     # Read full file via base64 to keep binary-safe and to avoid quoting issues.
     read_cmd = (
-        f"if [ ! -f {_q(abs_path)} ]; then echo __NOT_FOUND__; "
-        f"else base64 -w0 {_q(abs_path)}; fi"
+        f"if [ ! -f {sh_quote(abs_path)} ]; then echo __NOT_FOUND__; "
+        f"else base64 -w0 {sh_quote(abs_path)}; fi"
     )
     read_result = await sbx.commands.run(read_cmd, timeout=15)  # type: ignore[attr-defined]
     raw = (getattr(read_result, "stdout", "") or "").strip()
@@ -106,8 +121,8 @@ async def _do_edit(
     payload = base64.b64encode(new_bytes).decode("ascii")
     tmp_path = f"{abs_path}.gaia-tmp"
     write_cmd = (
-        f"printf %s {_q(payload)} | base64 -d > {_q(tmp_path)} && "
-        f"mv {_q(tmp_path)} {_q(abs_path)}"
+        f"printf %s {sh_quote(payload)} | base64 -d > {sh_quote(tmp_path)} && "
+        f"mv {sh_quote(tmp_path)} {sh_quote(abs_path)}"
     )
     write_result = await sbx.commands.run(write_cmd, timeout=30)  # type: ignore[attr-defined]
     if getattr(write_result, "exit_code", 1) != 0:
@@ -124,14 +139,11 @@ async def _do_edit(
                 "size_bytes": len(new_bytes),
                 "occurrences_replaced": occurrences if replace_all else 1,
             }
-        }
+        },
+        session_id=session_id,
     )
 
     return (
         f"Edited {abs_path} ({occurrences if replace_all else 1} "
         f"occurrence{'s' if (replace_all and occurrences > 1) else ''} replaced)"
     )
-
-
-def _q(s: str) -> str:
-    return "'" + s.replace("'", "'\"'\"'") + "'"

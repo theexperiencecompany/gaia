@@ -10,6 +10,7 @@ ensuring conversations are always saved even if client disconnects.
 """
 
 import asyncio
+import contextlib
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -20,6 +21,8 @@ from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from shared.py.wide_events import ChatContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
+from app.db.redis import redis_cache
+from app.services.artifact_events import artifact_channel
 from app.models.chat_models import (
     MessageModel,
     ToolDataEntry,
@@ -30,6 +33,11 @@ from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
 from app.services.payments.payment_service import payment_service
+from app.services.storage import (
+    JuiceFSUnavailable,
+    ensure_session_dirs,
+    touch_session_last_active,
+)
 from app.utils.chat_utils import create_conversation, generate_and_update_description
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
@@ -321,6 +329,58 @@ async def _wait_for_http_subscriber(
         log.warning(f"Stream {stream_id} HTTP subscriber timeout, proceeding anyway")
 
 
+async def _forward_artifact_events(
+    user_id: str, conversation_id: str, stream_id: str
+) -> None:
+    """Forward this conversation's artifact events to the chat SSE stream.
+
+    Subscribes to `artifacts:{user_id}` (published by the per-sandbox
+    ArtifactWatcher and by the upload pipeline) and re-emits events whose
+    `session_id` matches this conversation as `artifact_data` tool chunks.
+    Decoupling via Redis is what lets background-process writes surface in
+    the UI *after* the tool turn that spawned them has already returned.
+    """
+    if redis_cache.redis is None:
+        return
+    channel = artifact_channel(user_id)
+    pubsub = redis_cache.redis.pubsub()
+    try:
+        await pubsub.subscribe(channel)
+        async for message in pubsub.listen():
+            if message.get("type") != "message":
+                continue
+            try:
+                payload = json.loads(message["data"])
+            except (ValueError, TypeError):
+                continue
+            if payload.get("session_id") != conversation_id:
+                continue
+            chunk = (
+                "data: "
+                + json.dumps(
+                    {
+                        "tool_data": {
+                            "tool_name": "artifact_data",
+                            "data": payload,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "tool_category": "artifact",
+                        }
+                    }
+                )
+                + "\n\n"
+            )
+            await stream_manager.publish_chunk(stream_id, chunk)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        log.warning(f"[chat] artifact forwarder error: {e}")
+    finally:
+        with contextlib.suppress(Exception):
+            await pubsub.unsubscribe(channel)
+        with contextlib.suppress(Exception):
+            await pubsub.aclose()
+
+
 async def _run_chat_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
@@ -340,6 +400,7 @@ async def _run_chat_stream(
     usage_metadata: Dict[str, Any] = {}
     follow_up_actions: List[str] = []
     is_cancelled = False
+    artifact_task: Optional[asyncio.Task[None]] = None
 
     try:
         description_task = _start_description_task(
@@ -354,6 +415,18 @@ async def _run_chat_stream(
             stream_id,
             is_new_conversation,
         )
+
+        if user_id:
+            try:
+                await ensure_session_dirs(user_id, conversation_id)
+                await touch_session_last_active(user_id, conversation_id)
+            except JuiceFSUnavailable:
+                pass  # dev mode — proceed; tool errors will surface clearly
+            except Exception as e:
+                log.warning(f"[chat] session dir setup failed: {e}")
+            artifact_task = asyncio.create_task(
+                _forward_artifact_events(user_id, conversation_id, stream_id)
+            )
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
 
@@ -479,6 +552,11 @@ async def _run_chat_stream(
         )
         await stream_manager.set_error(stream_id, str(e))
     finally:
+        if artifact_task is not None:
+            artifact_task.cancel()
+            with contextlib.suppress(BaseException):
+                await artifact_task
+
         # On cancellation, complete_message may be empty because nostream: marker
         # never arrives. Recover from Redis progress which tracks accumulated text.
         complete_message, tool_data = await _recover_stream_state(

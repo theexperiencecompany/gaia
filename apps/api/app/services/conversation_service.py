@@ -1,7 +1,9 @@
 import asyncio
 from datetime import datetime, timezone
 
+from shared.py.wide_events import log
 from app.db.mongodb.collections import conversations_collection
+from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
@@ -208,6 +210,16 @@ async def delete_conversation(conversation_id: str, user: dict) -> dict:
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
+
+    # Best-effort cleanup of the on-disk session dir. Mongo delete already
+    # succeeded; the ARQ prune task is the backstop if this fails.
+    if user_id:
+        try:
+            await delete_session_dir(user_id, conversation_id)
+        except JuiceFSUnavailable as e:
+            log.warning("[conversation] juicefs cleanup skipped", error=str(e))
+        except Exception as e:
+            log.warning("[conversation] session dir cleanup failed", error=str(e))
 
     return {
         "message": "Conversation deleted successfully",

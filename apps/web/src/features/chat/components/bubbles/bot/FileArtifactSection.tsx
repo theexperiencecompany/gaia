@@ -1,11 +1,14 @@
 import { Button } from "@heroui/button";
-import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
-import { CodeIcon, Download01Icon, File01Icon } from "@icons";
+import { Spinner } from "@heroui/spinner";
+import { Download01Icon, File01Icon, LinkSquare02Icon } from "@icons";
+import { formatFileSize } from "@shared/utils";
 import type React from "react";
-import { useCallback } from "react";
-import { vfsApi } from "@/features/chat/api/vfsApi";
+import { useCallback, useMemo } from "react";
+import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
+import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
@@ -14,174 +17,226 @@ interface FileArtifactSectionProps {
   artifact_data: ArtifactData | ArtifactData[];
 }
 
-const FILE_TYPE_CONFIG: Record<
-  string,
-  {
-    label: string;
-    color:
-      | "primary"
-      | "secondary"
-      | "success"
-      | "warning"
-      | "danger"
-      | "default";
-    icon: "code" | "file";
-  }
-> = {
-  md: { label: "Markdown", color: "secondary", icon: "file" },
-  html: { label: "HTML", color: "warning", icon: "code" },
-  htm: { label: "HTML", color: "warning", icon: "code" },
-  txt: { label: "Text", color: "default", icon: "file" },
-  json: { label: "JSON", color: "success", icon: "code" },
-  py: { label: "Python", color: "primary", icon: "code" },
-  js: { label: "JavaScript", color: "warning", icon: "code" },
-  ts: { label: "TypeScript", color: "primary", icon: "code" },
-  tsx: { label: "TSX", color: "primary", icon: "code" },
-  jsx: { label: "JSX", color: "warning", icon: "code" },
-  css: { label: "CSS", color: "secondary", icon: "code" },
-  csv: { label: "CSV", color: "success", icon: "file" },
-  tex: { label: "LaTeX", color: "danger", icon: "file" },
-  sql: { label: "SQL", color: "primary", icon: "code" },
-  yaml: { label: "YAML", color: "success", icon: "code" },
-  yml: { label: "YAML", color: "success", icon: "code" },
-  xml: { label: "XML", color: "warning", icon: "code" },
-  sh: { label: "Shell", color: "default", icon: "code" },
+const EXT_CONTENT_TYPE: Record<string, string> = {
+  html: "text/html",
+  htm: "text/html",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  pdf: "application/pdf",
 };
 
-function getFileConfig(filename: string) {
-  const ext = filename.split(".").pop()?.toLowerCase() || "";
-  return (
-    FILE_TYPE_CONFIG[ext] || {
-      label: ext.toUpperCase() || "File",
-      color: "default" as const,
-      icon: "file" as const,
-    }
-  );
+type ArtifactKind = "html" | "markdown" | "image" | "pdf" | "other";
+
+function basename(path: string): string {
+  return path.split("/").pop() || path;
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function resolveContentType(artifact: ArtifactData): string {
+  if (artifact.content_type) return artifact.content_type;
+  const ext = basename(artifact.path).split(".").pop()?.toLowerCase() || "";
+  return EXT_CONTENT_TYPE[ext] || "application/octet-stream";
+}
+
+function kindOf(contentType: string): ArtifactKind {
+  if (contentType === "text/html") return "html";
+  if (contentType === "text/markdown") return "markdown";
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType === "application/pdf") return "pdf";
+  return "other";
+}
+
+/** De-dupe by path (last wins) and drop removed artifacts. */
+function normalize(input: ArtifactData | ArtifactData[]): ArtifactData[] {
+  const list = Array.isArray(input) ? input : [input];
+  const byPath = new Map<string, ArtifactData>();
+  for (const a of list) {
+    if (!a || !a.session_id || !a.path) continue;
+    if (a.event === "remove") {
+      byPath.delete(a.path);
+      continue;
+    }
+    byPath.set(a.path, a);
+  }
+  return Array.from(byPath.values());
+}
+
+function TextArtifact({
+  conversationId,
+  path,
+  filename,
+  kind,
+}: {
+  conversationId: string;
+  path: string;
+  filename: string;
+  kind: "html" | "markdown";
+}) {
+  const { text, loading, error } = useArtifactText(conversationId, path);
+
+  if (error) {
+    return <p className="p-4 text-xs text-red-400">Failed to load preview.</p>;
+  }
+  if (loading || text === null) {
+    return (
+      <div className="flex h-40 items-center justify-center">
+        <Spinner size="sm" />
+      </div>
+    );
+  }
+  if (kind === "html") {
+    return (
+      <iframe
+        title={filename}
+        srcDoc={text}
+        sandbox=""
+        className="block h-[480px] w-full rounded-2xl border-0 bg-white"
+      />
+    );
+  }
+  return (
+    <div className="max-h-[480px] overflow-y-auto p-3">
+      <MarkdownRenderer content={text} />
+    </div>
+  );
 }
 
 function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
   const { setContent, open } = useRightSidebar();
   const isMobile = useIsMobile();
-  const config = getFileConfig(artifact.filename);
+
+  const conversationId = artifact.session_id;
+  const filename = basename(artifact.path);
+  const contentType = resolveContentType(artifact);
+  const kind = kindOf(contentType);
+  const fileUrl = sessionFilesApi.visibleUrl(conversationId, artifact.path);
 
   const handleOpen = useCallback(() => {
-    const shouldUseSheet =
+    const useSheet =
       isMobile || (typeof window !== "undefined" && window.innerWidth < 768);
-
     setContent(
       <FileViewerPanel
+        conversationId={conversationId}
         path={artifact.path}
-        filename={artifact.filename}
-        contentType={artifact.content_type}
+        filename={filename}
+        contentType={contentType}
+        sizeBytes={artifact.size_bytes}
       />,
     );
-    open(shouldUseSheet ? "sheet" : "artifact");
-  }, [artifact, isMobile, open, setContent]);
+    open(useSheet ? "sheet" : "artifact");
+  }, [
+    artifact.path,
+    artifact.size_bytes,
+    contentType,
+    conversationId,
+    filename,
+    isMobile,
+    open,
+    setContent,
+  ]);
 
-  const handleDownload = useCallback(async () => {
-    try {
-      const response = await vfsApi.readFile(artifact.path);
-      const blob = new Blob([response.content], {
-        type: artifact.content_type,
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = artifact.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch {
-      // Silent fail - download unavailable
-    }
-  }, [artifact]);
+  const handleDownload = useCallback(() => {
+    const link = document.createElement("a");
+    link.href = fileUrl;
+    link.download = filename;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [fileUrl, filename]);
 
   return (
-    <Card
-      className="group cursor-pointer border border-zinc-700/80 bg-zinc-900/70 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
-      isPressable
-      onPress={handleOpen}
-    >
-      <CardBody className="p-3.5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <div className="flex-shrink-0">
-              {config.icon === "code" ? (
-                <CodeIcon className="h-5 w-5 text-primary" />
-              ) : (
-                <File01Icon className="h-5 w-5 text-primary" />
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="mb-1 flex items-center gap-2.5">
-                <Chip
-                  size="sm"
-                  variant="flat"
-                  color={config.color}
-                  className="text-xs"
-                >
-                  {config.label}
-                </Chip>
-                <p className="truncate text-sm font-medium text-white">
-                  {artifact.filename}
-                </p>
-              </div>
-
-              <p className="text-xs text-zinc-400/90">
-                {formatSize(artifact.size_bytes)} · Click to open
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="flat"
-              className="font-medium text-zinc-200"
-              onPress={handleOpen}
-            >
-              Open
-            </Button>
-            <Button
-              isIconOnly
-              size="sm"
-              variant="light"
-              className="text-zinc-300 group-hover:text-white"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void handleDownload();
-              }}
-              aria-label="Download artifact"
-            >
-              <Download01Icon size={16} />
-            </Button>
+    <div className="rounded-2xl bg-zinc-800 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <File01Icon className="h-5 w-5 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-zinc-100">
+              {filename}
+            </p>
+            <p className="text-xs text-zinc-400">
+              {formatFileSize(artifact.size_bytes)}
+            </p>
           </div>
         </div>
-      </CardBody>
-    </Card>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Chip size="sm" variant="flat" className="text-xs">
+            {(filename.split(".").pop() || "file").toUpperCase()}
+          </Chip>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            onPress={handleOpen}
+            aria-label="Open in viewer"
+          >
+            <LinkSquare02Icon size={16} />
+          </Button>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            onPress={handleDownload}
+            aria-label="Download file"
+          >
+            <Download01Icon size={16} />
+          </Button>
+        </div>
+      </div>
+
+      {kind === "html" || kind === "markdown" ? (
+        <div className="overflow-hidden rounded-2xl bg-zinc-900">
+          <TextArtifact
+            conversationId={conversationId}
+            path={artifact.path}
+            filename={filename}
+            kind={kind}
+          />
+        </div>
+      ) : null}
+
+      {kind === "image" ? (
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="block w-full overflow-hidden rounded-2xl bg-zinc-900"
+        >
+          {/** biome-ignore lint/performance/noImgElement: agent artifact, not a static asset */}
+          <img
+            src={fileUrl}
+            alt={filename}
+            className="max-h-[480px] w-full object-contain"
+          />
+        </button>
+      ) : null}
+
+      {kind === "pdf" ? (
+        <iframe
+          title={filename}
+          src={fileUrl}
+          className="block h-[480px] w-full rounded-2xl border-0 bg-white"
+        />
+      ) : null}
+    </div>
   );
 }
 
 const FileArtifactSection: React.FC<FileArtifactSectionProps> = ({
   artifact_data,
 }) => {
-  const artifacts = Array.isArray(artifact_data)
-    ? artifact_data
-    : [artifact_data];
+  const artifacts = useMemo(() => normalize(artifact_data), [artifact_data]);
+
+  if (artifacts.length === 0) return null;
 
   return (
     <div className="mt-3 flex flex-col gap-2">
-      {artifacts.map((artifact, index) => (
-        <ArtifactCard key={`${artifact.path}-${index}`} artifact={artifact} />
+      {artifacts.map((artifact) => (
+        <ArtifactCard key={artifact.path} artifact={artifact} />
       ))}
     </div>
   );

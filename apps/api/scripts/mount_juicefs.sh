@@ -93,4 +93,7 @@ sudo mkdir -p "$WORKSPACE/skills"
 sudo mount --bind "$JFS_MOUNT/skills/$USER_ID" "$WORKSPACE/skills" -o ro || true
 mkdir -p "$WORKSPACE/.gaia/runs" 2>/dev/null || sudo mkdir -p "$WORKSPACE/.gaia/runs"
 sudo chmod -R 0777 "$WORKSPACE/.gaia" 2>/dev/null || true
+# User-scoped, cross-session dirs (sessions/ are created on demand by the API).
+sudo mkdir -p "$WORKSPACE/pinned" "$WORKSPACE/settings"
+sudo chmod 0777 "$WORKSPACE/pinned" "$WORKSPACE/settings" 2>/dev/null || true
 echo "OK: JuiceFS mounted; /workspace is durable" >&2

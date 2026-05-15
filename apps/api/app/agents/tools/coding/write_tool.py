@@ -7,12 +7,13 @@ from typing import Annotated
 
 from shared.py.wide_events import log
 from app.agents.tools.coding._context import (
-    canonical_workspace_path,
-    detect_content_type,
+    canonical_path,
+    get_session_id,
     get_user_id,
-    is_user_visible,
     safe_emit,
+    sh_quote,
 )
+from app.agents.workspace.paths import MountRole
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.templates.docstrings.coding_tools_docs import WRITE_TOOL
@@ -27,7 +28,7 @@ MAX_CONTENT_BYTES = 5 * 1024 * 1024  # 5 MB
 @with_doc(WRITE_TOOL)
 async def write(
     config: RunnableConfig,
-    path: Annotated[str, "Path inside /workspace"],
+    path: Annotated[str, "Path inside the workspace (relative = session scratch)"],
     content: Annotated[str, "Full file contents"],
 ) -> str:
     """Write content to a file in the persistent workspace, creating parents."""
@@ -36,9 +37,16 @@ async def write(
 
     try:
         user_id = get_user_id(config)
-        abs_path = canonical_workspace_path(path)
+        session_id = get_session_id(config)
+        abs_path, role, _ = canonical_path(path, session_id=session_id)
     except ValueError as e:
         return f"Error: {e}"
+
+    if role == MountRole.USER_UPLOADED:
+        return (
+            "Error: user-uploaded/ is read-only. Copy the file to scratch "
+            "first: cp user-uploaded/<name> scratch/"
+        )
 
     encoded = content.encode("utf-8")
     if len(encoded) > MAX_CONTENT_BYTES:
@@ -53,6 +61,9 @@ async def write(
         log.error(f"write tool failed: {e}", exc_info=True)
         return f"Error writing file: {e}"
 
+    # No inline artifact_data emit: the per-sandbox ArtifactWatcher is the
+    # single source of truth for `.user-visible/` events (so bash/background
+    # writes and tool writes are surfaced identically, with no double cards).
     safe_emit(
         {
             "file_data": {
@@ -60,20 +71,9 @@ async def write(
                 "path": abs_path,
                 "size_bytes": len(encoded),
             }
-        }
+        },
+        session_id=session_id,
     )
-    if is_user_visible(abs_path):
-        filename = abs_path.rsplit("/", 1)[-1]
-        safe_emit(
-            {
-                "artifact_data": {
-                    "path": abs_path,
-                    "filename": filename,
-                    "content_type": detect_content_type(filename),
-                    "size_bytes": len(encoded),
-                }
-            }
-        )
 
     return f"Wrote {len(encoded)} bytes to {abs_path}"
 
@@ -84,9 +84,9 @@ async def _atomic_write(sbx: object, abs_path: str, content: bytes) -> None:
     tmp_path = f"{abs_path}.gaia-tmp"
     payload = base64.b64encode(content).decode("ascii")
     cmd = (
-        f"mkdir -p {_q(parent)} && "
-        f"printf %s {_q(payload)} | base64 -d > {_q(tmp_path)} && "
-        f"mv {_q(tmp_path)} {_q(abs_path)}"
+        f"mkdir -p {sh_quote(parent)} && "
+        f"printf %s {sh_quote(payload)} | base64 -d > {sh_quote(tmp_path)} && "
+        f"mv {sh_quote(tmp_path)} {sh_quote(abs_path)}"
     )
     result = await sbx.commands.run(cmd, timeout=30)  # type: ignore[attr-defined]
     if getattr(result, "exit_code", 1) != 0:
@@ -94,7 +94,3 @@ async def _atomic_write(sbx: object, abs_path: str, content: bytes) -> None:
             f"write failed (exit {getattr(result, 'exit_code', None)}): "
             f"{getattr(result, 'stderr', '')}"
         )
-
-
-def _q(s: str) -> str:
-    return "'" + s.replace("'", "'\"'\"'") + "'"

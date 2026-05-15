@@ -6,9 +6,11 @@ from typing import Annotated
 
 from shared.py.wide_events import log
 from app.agents.tools.coding._context import (
-    canonical_workspace_path,
+    canonical_path,
+    get_session_id,
     get_user_id,
     safe_emit,
+    sh_quote,
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
@@ -25,7 +27,7 @@ MAX_LIMIT = 10_000
 @with_doc(READ_TOOL)
 async def read(
     config: RunnableConfig,
-    path: Annotated[str, "Path inside /workspace"],
+    path: Annotated[str, "Path inside the workspace (relative = session scratch)"],
     offset: Annotated[int, "Starting line (1-indexed); 0 = start of file"] = 0,
     limit: Annotated[int, "Max lines to return"] = DEFAULT_LIMIT,
 ) -> str:
@@ -35,7 +37,8 @@ async def read(
 
     try:
         user_id = get_user_id(config)
-        abs_path = canonical_workspace_path(path)
+        session_id = get_session_id(config)
+        abs_path, _, _ = canonical_path(path, session_id=session_id)
     except ValueError as e:
         return f"Error: {e}"
 
@@ -45,7 +48,7 @@ async def read(
 
     try:
         async with acquire_sandbox(user_id) as sbx:
-            return await _read_file(sbx, abs_path, offset, limit)
+            return await _read_file(sbx, abs_path, offset, limit, session_id)
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
@@ -53,13 +56,19 @@ async def read(
         return f"Error reading file: {e}"
 
 
-async def _read_file(sbx: object, abs_path: str, offset: int, limit: int) -> str:
-    # Use `sed` to slice the requested range without loading the entire file.
+async def _read_file(
+    sbx: object,
+    abs_path: str,
+    offset: int,
+    limit: int,
+    session_id: str | None,
+) -> str:
+    # Use `awk` to slice the requested range without loading the entire file.
     start = max(1, offset) if offset > 0 else 1
     end = start + limit - 1
     cmd = (
-        f"if [ ! -f {_q(abs_path)} ]; then echo __NOT_FOUND__; "
-        f"else awk 'NR>={start} && NR<={end}' {_q(abs_path)}; fi"
+        f"if [ ! -f {sh_quote(abs_path)} ]; then echo __NOT_FOUND__; "
+        f"else awk 'NR>={start} && NR<={end}' {sh_quote(abs_path)}; fi"
     )
     result = await sbx.commands.run(cmd, timeout=15)  # type: ignore[attr-defined]
     stdout = getattr(result, "stdout", "") or ""
@@ -67,12 +76,10 @@ async def _read_file(sbx: object, abs_path: str, offset: int, limit: int) -> str
         return f"Error: file not found at {abs_path}"
 
     lines = stdout.splitlines()
-    numbered = "\n".join(
-        f"{start + i:>6}\t{line}" for i, line in enumerate(lines)
-    )
+    numbered = "\n".join(f"{start + i:>6}\t{line}" for i, line in enumerate(lines))
 
     # Footer for paging info
-    total_cmd = f"wc -l < {_q(abs_path)}"
+    total_cmd = f"wc -l < {sh_quote(abs_path)}"
     total_result = await sbx.commands.run(total_cmd, timeout=5)  # type: ignore[attr-defined]
     total_lines_str = (getattr(total_result, "stdout", "") or "").strip()
     try:
@@ -94,11 +101,8 @@ async def _read_file(sbx: object, abs_path: str, offset: int, limit: int) -> str
                 "path": abs_path,
                 "lines_returned": len(lines),
             }
-        }
+        },
+        session_id=session_id,
     )
 
     return numbered + footer
-
-
-def _q(s: str) -> str:
-    return "'" + s.replace("'", "'\"'\"'") + "'"

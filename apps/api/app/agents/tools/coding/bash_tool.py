@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import base64
+import contextlib
 import uuid
 from typing import Annotated
 
 from shared.py.wide_events import log
-from app.agents.tools.coding._context import get_user_id, safe_emit
+from app.agents.tools.coding._context import (
+    get_session_id,
+    get_user_id,
+    safe_emit,
+    sh_quote,
+)
+from app.agents.workspace.paths import (
+    WORKSPACE_ROOT,
+    runs_log_dir,
+    session_dir,
+)
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
@@ -25,7 +37,7 @@ MAX_COMMAND_LENGTH = 16_000
 async def bash(
     config: RunnableConfig,
     command: Annotated[str, "Shell command to run inside /workspace"],
-    cwd: Annotated[str, "Working directory; defaults to /workspace"] = "/workspace",
+    cwd: Annotated[str, "Working directory; defaults to the session scratch dir"] = "",
     timeout: Annotated[int, "Seconds before kill (max 600)"] = DEFAULT_TIMEOUT_SECONDS,
     background: Annotated[bool, "Run detached; returns pid + log path"] = False,
 ) -> str:
@@ -46,22 +58,34 @@ async def bash(
     except ValueError as e:
         return f"Error: {e}"
 
+    session_id = get_session_id(config)
+    use_session_cwd = bool(session_id) and (not cwd or cwd == WORKSPACE_ROOT)
+    if use_session_cwd and session_id:
+        cwd = session_dir(session_id)
+
     safe_emit(
         {
             "bash_data": {
                 "id": run_id,
                 "command": command,
-                "cwd": cwd,
+                "cwd": cwd or WORKSPACE_ROOT,
                 "status": "starting",
             }
-        }
+        },
+        session_id=session_id,
     )
 
     try:
         async with acquire_sandbox(user_id) as sbx:
+            if use_session_cwd:
+                # Session scratch is created host-side at chat start, but
+                # silent/background runs may reach here first — make it cheap
+                # and idempotent rather than failing on a missing cwd.
+                with contextlib.suppress(Exception):
+                    await sbx.commands.run(f"mkdir -p {sh_quote(cwd)}", timeout=10)
             if background:
-                return await _run_background(sbx, run_id, command, cwd)
-            return await _run_foreground(sbx, run_id, command, cwd, timeout)
+                return await _run_background(sbx, run_id, command, cwd, session_id)
+            return await _run_foreground(sbx, run_id, command, cwd, timeout, session_id)
     except SandboxAcquisitionError as e:
         safe_emit(
             {
@@ -72,7 +96,8 @@ async def bash(
                     "stream": "stderr",
                     "chunk": str(e),
                 }
-            }
+            },
+            session_id=session_id,
         )
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
@@ -86,13 +111,36 @@ async def bash(
                     "stream": "stderr",
                     "chunk": str(e),
                 }
-            }
+            },
+            session_id=session_id,
         )
         return f"Error executing command: {e}"
 
 
+async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -> None:
+    """Write the full foreground output to /workspace/.gaia/runs/{run_id}.log.
+
+    The bash docstring promises this; it lets the agent re-read output that
+    was truncated in the tool return value.
+    """
+    log_path = f"{runs_log_dir()}/{run_id}.log"
+    body = stdout + "\n---STDERR---\n" + stderr
+    payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
+    with contextlib.suppress(Exception):
+        await sbx.commands.run(  # type: ignore[attr-defined]
+            f"mkdir -p {sh_quote(runs_log_dir())} && "
+            f"printf %s {sh_quote(payload)} | base64 -d > {sh_quote(log_path)}",
+            timeout=10,
+        )
+
+
 async def _run_foreground(
-    sbx: object, run_id: str, command: str, cwd: str, timeout: int
+    sbx: object,
+    run_id: str,
+    command: str,
+    cwd: str,
+    timeout: int,
+    session_id: str | None,
 ) -> str:
     """Run a command synchronously and stream stdout/stderr chunks."""
 
@@ -105,7 +153,8 @@ async def _run_foreground(
                     "stream": "stdout",
                     "chunk": chunk,
                 }
-            }
+            },
+            session_id=session_id,
         )
 
     def _on_stderr(chunk: str) -> None:
@@ -117,12 +166,13 @@ async def _run_foreground(
                     "stream": "stderr",
                     "chunk": chunk,
                 }
-            }
+            },
+            session_id=session_id,
         )
 
     result = await sbx.commands.run(  # type: ignore[attr-defined]
         command,
-        cwd=cwd,
+        cwd=cwd or WORKSPACE_ROOT,
         timeout=timeout,
         on_stdout=_on_stdout,
         on_stderr=_on_stderr,
@@ -132,6 +182,8 @@ async def _run_foreground(
     stderr = getattr(result, "stderr", "") or ""
     exit_code = getattr(result, "exit_code", None)
 
+    await _persist_run_log(sbx, run_id, stdout, stderr)
+
     safe_emit(
         {
             "bash_data": {
@@ -139,7 +191,8 @@ async def _run_foreground(
                 "status": "exited",
                 "exit_code": exit_code,
             }
-        }
+        },
+        session_id=session_id,
     )
 
     parts: list[str] = [f"exit_code: {exit_code}"]
@@ -150,17 +203,29 @@ async def _run_foreground(
     return "\n\n".join(parts)
 
 
-async def _run_background(sbx: object, run_id: str, command: str, cwd: str) -> str:
+async def _run_background(
+    sbx: object,
+    run_id: str,
+    command: str,
+    cwd: str,
+    session_id: str | None,
+) -> str:
     """Detach a long-running command and return its pid + log path."""
-    log_path = f"/workspace/.gaia/runs/{run_id}.log"
+    log_path = f"{runs_log_dir()}/{run_id}.log"
     wrapped = (
-        f"mkdir -p /workspace/.gaia/runs && "
-        f"nohup bash -c {_sh_quote(command)} > {log_path} 2>&1 & echo $!"
+        f"mkdir -p {sh_quote(runs_log_dir())} && "
+        f"nohup bash -c {sh_quote(command)} > {sh_quote(log_path)} 2>&1 "
+        "& echo $!"
     )
-    result = await sbx.commands.run(wrapped, cwd=cwd, timeout=10)  # type: ignore[attr-defined]
+    result = await sbx.commands.run(  # type: ignore[attr-defined]
+        wrapped, cwd=cwd or WORKSPACE_ROOT, timeout=10
+    )
     pid = (getattr(result, "stdout", "") or "").strip()
     if not pid:
-        return f"Error: failed to start background command (stderr: {getattr(result, 'stderr', '')})"
+        return (
+            "Error: failed to start background command "
+            f"(stderr: {getattr(result, 'stderr', '')})"
+        )
     safe_emit(
         {
             "bash_data": {
@@ -169,11 +234,10 @@ async def _run_background(sbx: object, run_id: str, command: str, cwd: str) -> s
                 "pid": pid,
                 "log_path": log_path,
             }
-        }
+        },
+        session_id=session_id,
     )
-    return f"Started in background. pid={pid}, log_path={log_path}\nTail the log via bash(\"tail -f {log_path}\")"
-
-
-def _sh_quote(s: str) -> str:
-    """Single-quote a string for safe inclusion in a shell command."""
-    return "'" + s.replace("'", "'\"'\"'") + "'"
+    return (
+        f"Started in background. pid={pid}, log_path={log_path}\n"
+        f'Tail the log via bash("tail -f {log_path}")'
+    )

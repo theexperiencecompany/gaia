@@ -1,21 +1,30 @@
 """Shared helpers for the persistent coding tools.
 
 Centralizes:
-  - user_id extraction from RunnableConfig
-  - path canonicalization + workspace-containment checks
+  - user_id / session_id extraction from RunnableConfig
+  - path canonicalization + workspace-containment checks (session-aware)
+  - shell quoting
   - shorthand for emitting custom stream events to the frontend
 """
 
 from __future__ import annotations
 
 import posixpath
-from typing import Any, Dict, Optional
+from typing import Any
 
 from shared.py.wide_events import log
+from app.agents.workspace.paths import (
+    WORKSPACE_ROOT,
+    MountRole,
+    classify,
+    detect_content_type,
+    is_under_workspace,
+    session_dir,
+)
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 
-WORKSPACE_ROOT = "/workspace"
+_SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
 
 
 def get_user_id(config: RunnableConfig) -> str:
@@ -28,30 +37,63 @@ def get_user_id(config: RunnableConfig) -> str:
     return user_id
 
 
-def canonical_workspace_path(path: str) -> str:
-    """Resolve `path` to an absolute path under `/workspace`.
+def get_session_id(config: RunnableConfig) -> str | None:
+    """Read conversation_id from RunnableConfig. May be None for non-chat
+    invocations (workflows, background tasks)."""
+    configurable = config.get("configurable", {}) if config else {}
+    metadata = config.get("metadata", {}) if config else {}
+    return (
+        configurable.get("thread_id")
+        or configurable.get("conversation_id")
+        or metadata.get("conversation_id")
+    )
 
-    - Relative paths are joined to `/workspace`.
-    - Absolute paths are normalized.
-    - Paths that escape `/workspace` raise ValueError.
+
+def canonical_path(
+    path: str, *, session_id: str | None
+) -> tuple[str, MountRole, str | None]:
+    """Resolve a tool-supplied path to an absolute `/workspace` path.
+
+    - Relative paths join to the session root (when `session_id` is known)
+      else to `/workspace`. The session root is the base so that
+      `.user-visible/`, `user-uploaded/`, and `scratch/` are all reachable
+      as plain `./X` and classify to the correct role (the artifact watcher
+      keys off the real on-disk path, so they must not be scratch-nested).
+    - Absolute paths must stay under `/workspace`.
+
+    Returns (abs_path, role, role_conv_id).
     """
     if not path:
         raise ValueError("path is required")
     if not path.startswith("/"):
-        path = posixpath.join(WORKSPACE_ROOT, path)
+        base = session_dir(session_id) if session_id else WORKSPACE_ROOT
+        path = posixpath.join(base, path)
     canonical = posixpath.normpath(path)
-    if canonical != WORKSPACE_ROOT and not canonical.startswith(WORKSPACE_ROOT + "/"):
+    if not is_under_workspace(canonical):
         raise ValueError(f"Path escapes /workspace: {path}")
-    return canonical
+    role, conv = classify(canonical)
+    return canonical, role, conv
 
 
-def safe_emit(event: Dict[str, Any]) -> None:
+def sh_quote(s: str) -> str:
+    """Single-quote a string for safe inclusion in a shell command."""
+    return "'" + s.replace("'", "'\"'\"'") + "'"
+
+
+def safe_emit(event: dict[str, Any], *, session_id: str | None = None) -> None:
     """Emit a custom stream event, swallowing 'no writer' errors silently.
 
     Tools are invoked both during live chat (writer present) and during
     silent/background runs (no writer). Don't fail the tool just because
-    nobody is listening.
+    nobody is listening. When `session_id` is given it is stamped into the
+    artifact/bash/file payloads so the frontend can route the event to the
+    right conversation.
     """
+    if session_id is not None:
+        for key in _SESSION_EVENT_KEYS:
+            payload = event.get(key)
+            if isinstance(payload, dict):
+                payload.setdefault("session_id", session_id)
     try:
         writer = get_stream_writer()
     except Exception:
@@ -62,28 +104,13 @@ def safe_emit(event: Dict[str, Any]) -> None:
         log.debug(f"Stream writer failed silently: {e}")
 
 
-def is_user_visible(path: str) -> bool:
-    """True if the path lives under `/workspace/.user-visible/`."""
-    return path.startswith(f"{WORKSPACE_ROOT}/.user-visible/") or path == (
-        f"{WORKSPACE_ROOT}/.user-visible"
-    )
-
-
-def detect_content_type(path: str) -> Optional[str]:
-    """Best-effort MIME type from extension. Returns None if unknown."""
-    ext_map = {
-        "png": "image/png",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "gif": "image/gif",
-        "webp": "image/webp",
-        "svg": "image/svg+xml",
-        "pdf": "application/pdf",
-        "json": "application/json",
-        "md": "text/markdown",
-        "txt": "text/plain",
-        "csv": "text/csv",
-        "html": "text/html",
-    }
-    _, _, ext = path.rpartition(".")
-    return ext_map.get(ext.lower())
+# Re-exported from the pure workspace.paths module so non-agent callers
+# (storage, HTTP endpoints) can reuse it without importing langchain.
+__all__ = [
+    "canonical_path",
+    "detect_content_type",
+    "get_session_id",
+    "get_user_id",
+    "safe_emit",
+    "sh_quote",
+]

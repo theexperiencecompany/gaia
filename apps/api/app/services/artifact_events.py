@@ -1,0 +1,76 @@
+"""Artifact event wire contract.
+
+Single source of truth for the Redis channel + payload shape shared by the
+three sites that touch it: the per-sandbox ArtifactWatcher (publisher), the
+upload pipeline (publisher), and the chat stream (subscriber/forwarder).
+
+Keeping this here — depending only on storage + redis, never on the sandbox
+package — keeps `chat_service`/`file_service` from reaching into watcher
+internals just to learn the channel name.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import time
+from typing import Any
+
+from app.db.redis import redis_cache
+from app.services.storage import ArtifactInfo
+
+ARTIFACT_CHANNEL_PREFIX = "artifacts:"
+
+
+def artifact_channel(user_id: str) -> str:
+    return f"{ARTIFACT_CHANNEL_PREFIX}{user_id}"
+
+
+def upsert_event(session_id: str, info: ArtifactInfo) -> dict[str, Any]:
+    """A `.user-visible/` file was created or changed."""
+    return {
+        "event": "upsert",
+        "session_id": session_id,
+        "path": info.path,
+        "size_bytes": info.size_bytes,
+        "mtime": info.mtime,
+        "content_type": info.content_type,
+    }
+
+
+def remove_event(session_id: str, path: str) -> dict[str, Any]:
+    """A `.user-visible/` file was removed or renamed away."""
+    return {"event": "remove", "session_id": session_id, "path": path}
+
+
+def upload_event(
+    session_id: str,
+    path: str,
+    *,
+    size_bytes: int,
+    content_type: str | None,
+    mtime: float | None = None,
+) -> dict[str, Any]:
+    """A user upload landed in `user-uploaded/` (host-side, cross-mount)."""
+    return {
+        "event": "upload",
+        "session_id": session_id,
+        "path": path,
+        "size_bytes": size_bytes,
+        "mtime": mtime if mtime is not None else time.time(),
+        "content_type": content_type,
+    }
+
+
+async def publish_artifact_event(user_id: str, payload: dict[str, Any]) -> None:
+    """Stamp user_id + ts and publish to `artifacts:{user_id}`.
+
+    No-ops if Redis is unavailable and never raises — artifact delivery is a
+    latency optimization; the `GET /sessions/{conv}/visible` endpoint is the
+    authoritative recovery path.
+    """
+    if redis_cache.redis is None:
+        return
+    enriched = {**payload, "user_id": user_id, "ts": time.time()}
+    with contextlib.suppress(Exception):
+        await redis_cache.redis.publish(artifact_channel(user_id), json.dumps(enriched))

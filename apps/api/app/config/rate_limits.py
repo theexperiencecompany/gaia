@@ -69,6 +69,15 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
             title="File Analysis", description="Analyze and process uploaded files"
         ),
     ),
+    "session_files": TieredRateLimits(
+        # Static-ish artifact fetches + tab-focus reconcile polling — generous.
+        free=RateLimitConfig(day=5000, month=100000),
+        pro=RateLimitConfig(day=50000, month=1000000),
+        info=FeatureInfo(
+            title="Session Files",
+            description="Fetch workspace artifacts and uploaded files",
+        ),
+    ),
     # SKILLS
     "skill_operations": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),

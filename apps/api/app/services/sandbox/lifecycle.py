@@ -26,6 +26,7 @@ from typing import Any, AsyncIterator, Optional
 from shared.py.wide_events import log
 from app.config.settings import settings
 from app.db.mongodb.collections import e2b_sandboxes_collection
+from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 
@@ -92,7 +93,9 @@ async def _run_mount_script(sbx: Any) -> None:
     """
     # sudo strips env by default; preserve the ones the script reads so it
     # can actually find JFS_META_URL / USER_ID / R2 creds.
-    preserve = "USER_ID,JFS_META_URL,JFS_R2_KEY,JFS_R2_SECRET,JFS_R2_BUCKET,JFS_R2_ACCOUNT"
+    preserve = (
+        "USER_ID,JFS_META_URL,JFS_R2_KEY,JFS_R2_SECRET,JFS_R2_BUCKET,JFS_R2_ACCOUNT"
+    )
     result = await sbx.commands.run(
         f"sudo --preserve-env={preserve} {MOUNT_SCRIPT_PATH}",
         timeout=60,
@@ -204,6 +207,28 @@ async def _health_probe(sbx: Any) -> bool:
         return False
 
 
+async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
+    """Start the artifact watcher if it isn't already running.
+
+    Best-effort: the watcher is a latency optimization for surfacing
+    `.user-visible/` artifacts; the host-side JuiceFS list is authoritative,
+    so a watcher failure must never block sandbox acquisition.
+    """
+    if entry.watcher is not None and entry.watcher.is_alive():
+        return
+    with contextlib.suppress(Exception):
+        entry.watcher = await start_watcher_for(user_id, entry.sandbox)
+
+
+async def _stop_watcher(entry: PooledSandbox) -> None:
+    """Stop + drop the watcher. HTTP/2 streams to envd don't survive
+    pause/kill, so we reopen on the next acquire."""
+    if entry.watcher is not None:
+        with contextlib.suppress(Exception):
+            await entry.watcher.stop()
+        entry.watcher = None
+
+
 async def _acquire_or_create(user_id: str) -> PooledSandbox:
     """Return a PooledSandbox for the user, creating/resuming as needed."""
     pool = get_sandbox_pool()
@@ -226,6 +251,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
                 await _hard_evict(user_id, entry)
                 entry = None  # type: ignore[assignment]
             else:
+                await _ensure_watcher(user_id, entry)
                 return entry
 
     shard_id = shard_for(user_id)
@@ -273,6 +299,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
 
     entry = PooledSandbox(sandbox=sbx, last_canary_ts=canary_ts)
     pool.put(user_id, entry)
+    await _ensure_watcher(user_id, entry)
     return entry
 
 
@@ -287,6 +314,7 @@ async def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
             pause = getattr(entry.sandbox, "pause", None)
             if pause is None:
                 return
+            await _stop_watcher(entry)
             try:
                 await pause()
                 await e2b_sandboxes_collection.update_one(
@@ -307,6 +335,7 @@ async def _hard_evict(user_id: str, entry: PooledSandbox) -> None:
     pool.evict(user_id)
     if entry.pause_task is not None and not entry.pause_task.done():
         entry.pause_task.cancel()
+    await _stop_watcher(entry)
     kill = getattr(entry.sandbox, "kill", None)
     if kill is not None:
         with contextlib.suppress(Exception):

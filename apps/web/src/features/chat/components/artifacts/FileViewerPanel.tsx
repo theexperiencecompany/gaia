@@ -9,15 +9,18 @@ import {
   Download01Icon,
   File01Icon,
 } from "@icons";
+import { formatFileSize } from "@shared/utils";
 import { useCallback, useEffect, useState, type WheelEvent } from "react";
-import { type VFSReadResponse, vfsApi } from "@/features/chat/api/vfsApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { useArtifactText } from "@/features/chat/hooks/useArtifactText";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 interface FileViewerPanelProps {
+  conversationId: string;
   path: string;
   filename: string;
   contentType: string;
+  sizeBytes?: number;
 }
 
 type ViewMode = "preview" | "source";
@@ -66,12 +69,6 @@ function getLanguage(filename: string): string {
     txt: "text",
   };
   return langMap[ext] || "text";
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function buildHtmlPreviewDocument(content: string): string {
@@ -170,19 +167,21 @@ function FileContentRenderer({
 }
 
 export default function FileViewerPanel({
+  conversationId,
   path,
   filename,
   contentType,
+  sizeBytes,
 }: FileViewerPanelProps) {
-  const [fileData, setFileData] = useState<VFSReadResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    text: content,
+    loading,
+    error,
+  } = useArtifactText(conversationId, path);
   const [copied, setCopied] = useState(false);
   const closeSidebar = useRightSidebar((state) => state.close);
 
-  const effectiveContentType = fileData?.content_type || contentType;
-
-  const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(effectiveContentType);
+  const isPreviewable = PREVIEWABLE_CONTENT_TYPES.has(contentType);
 
   const [viewMode, setViewMode] = useState<ViewMode>(
     isPreviewable ? "preview" : "source",
@@ -190,55 +189,24 @@ export default function FileViewerPanel({
 
   useEffect(() => {
     setViewMode(isPreviewable ? "preview" : "source");
-  }, [isPreviewable, path]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    setLoading(true);
-    setError(null);
-
-    vfsApi
-      .readFile(path)
-      .then((data) => {
-        if (!cancelled) {
-          setFileData(data);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          const message =
-            err instanceof Error ? err.message : "Failed to load file";
-          setError(message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
+  }, [isPreviewable]);
 
   const handleCopy = useCallback(async () => {
-    if (!fileData) return;
+    if (content === null) return;
 
     try {
-      await navigator.clipboard.writeText(fileData.content);
+      await navigator.clipboard.writeText(content);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
       // no-op
     }
-  }, [fileData]);
+  }, [content]);
 
   const handleDownload = useCallback(() => {
-    if (!fileData) return;
+    if (content === null) return;
 
-    const blob = new Blob([fileData.content], { type: effectiveContentType });
+    const blob = new Blob([content], { type: contentType });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -247,12 +215,12 @@ export default function FileViewerPanel({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [effectiveContentType, fileData, filename]);
+  }, [content, contentType, filename]);
 
   const ext = getExtension(filename).toUpperCase();
-  const sizeLabel = fileData ? ` · ${formatSize(fileData.size_bytes)}` : "";
-  const isHtmlPreview =
-    effectiveContentType === "text/html" && viewMode === "preview";
+  const sizeLabel =
+    sizeBytes !== undefined ? ` · ${formatFileSize(sizeBytes)}` : "";
+  const isHtmlPreview = contentType === "text/html" && viewMode === "preview";
 
   const handleContentWheel = useCallback(
     (event: WheelEvent<HTMLDivElement>) => {
@@ -317,7 +285,7 @@ export default function FileViewerPanel({
             variant="light"
             onClick={handleCopy}
             aria-label="Copy file"
-            isDisabled={!fileData}
+            isDisabled={content === null}
           >
             <Copy01Icon size={16} />
           </Button>
@@ -327,7 +295,7 @@ export default function FileViewerPanel({
             variant="light"
             onClick={handleDownload}
             aria-label="Download file"
-            isDisabled={!fileData}
+            isDisabled={content === null}
           >
             <Download01Icon size={16} />
           </Button>
@@ -345,7 +313,6 @@ export default function FileViewerPanel({
 
       <div
         className={`min-h-0 flex-1 ${isHtmlPreview ? "overflow-hidden" : "overflow-y-auto overscroll-contain"}`}
-        style={{ touchAction: "pan-x pan-y" }}
         onWheel={handleContentWheel}
       >
         {loading ? (
@@ -356,14 +323,14 @@ export default function FileViewerPanel({
 
         {error ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-400">Failed to load file</p>
           </div>
         ) : null}
 
-        {!loading && !error && fileData ? (
+        {!loading && !error && content !== null ? (
           <FileContentRenderer
-            content={fileData.content}
-            contentType={effectiveContentType}
+            content={content}
+            contentType={contentType}
             filename={filename}
             viewMode={viewMode}
           />

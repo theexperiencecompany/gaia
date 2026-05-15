@@ -1,4 +1,4 @@
-"""Host-side JuiceFS helper.
+"""Host-side JuiceFS mount primitives + user/skill helpers.
 
 The API container runs a JuiceFS sidecar mount at `settings.JUICEFS_HOST_MOUNT_PATH`
 (default `/mnt/jfs`). This module reads and writes user workspace + skill files
@@ -10,8 +10,9 @@ Layout under the mount:
     /mnt/jfs/users/{user_id}/        # bind-mounted to /workspace inside sandbox
     /mnt/jfs/skills/{user_id}/{name}/ # bind-mounted read-only to /workspace/skills
 
-In dev mode the mount typically isn't present. All helpers raise
-`JuiceFSUnavailable` which callers can treat as a soft-fail.
+Session-scoped helpers live in `sessions.py`; this module owns only the mount
+and the user/skill trees. In dev mode the mount typically isn't present — all
+helpers raise `JuiceFSUnavailable`, which callers treat as a soft-fail.
 """
 
 from __future__ import annotations
@@ -49,6 +50,21 @@ def _require_mount() -> Path:
             "Set JUICEFS_HOST_MOUNT_PATH and mount the sidecar."
         )
     return root
+
+
+def _contained(base: Path, relative_path: str, *, root_label: str = "root") -> Path:
+    """Resolve `relative_path` under `base`, refusing to escape it.
+
+    Single source of the path-containment check used by every host-side
+    writer/reader. `root_label` only shapes the error message.
+    """
+    target = (base / relative_path).resolve()
+    base_resolved = base.resolve()
+    try:
+        target.relative_to(base_resolved)
+    except ValueError as e:
+        raise ValueError(f"path {relative_path} escapes the {root_label}") from e
+    return target
 
 
 def user_workspace_path(user_id: str) -> Path:
@@ -115,15 +131,7 @@ async def write_skill_file(
 
     def _write() -> Path:
         skills_root = _require_mount() / "skills" / user_id / skill_name
-        # Path containment check
-        target = (skills_root / relative_path).resolve()
-        skills_root_resolved = skills_root.resolve()
-        try:
-            target.relative_to(skills_root_resolved)
-        except ValueError as e:
-            raise ValueError(
-                f"Skill file path {relative_path} escapes the skill root"
-            ) from e
+        target = _contained(skills_root, relative_path, root_label="skill root")
         target.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(content, str):
             target.write_text(content, encoding="utf-8")
@@ -148,16 +156,8 @@ async def write_session_file(
     """
 
     def _write() -> tuple[Path, str]:
-        root = _require_mount()
-        base = root / "users" / user_id / "sessions" / conversation_id
-        target = (base / relative_path).resolve()
-        base_resolved = base.resolve()
-        try:
-            target.relative_to(base_resolved)
-        except ValueError as e:
-            raise ValueError(
-                f"Session file path {relative_path} escapes the session root"
-            ) from e
+        base = _require_mount() / "users" / user_id / "sessions" / conversation_id
+        target = _contained(base, relative_path, root_label="session root")
         target.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(content, str):
             target.write_text(content, encoding="utf-8")

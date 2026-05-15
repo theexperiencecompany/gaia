@@ -13,6 +13,7 @@ from app.workers.tasks import (
     process_personalization_task,
     process_reminder,
     process_workflow_generation_task,
+    prune_inactive_sessions,
     store_memories_batch,
     sweep_idle_sandboxes,
     regenerate_workflow_steps,
@@ -33,6 +34,7 @@ _process_personalization_task = instrument_task(process_personalization_task)
 _store_memories_batch = instrument_task(store_memories_batch)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
 _sweep_idle_sandboxes = instrument_task(sweep_idle_sandboxes)
+_prune_inactive_sessions = instrument_task(prune_inactive_sessions)
 
 WorkerSettings.functions = [
     _process_reminder,
@@ -47,6 +49,7 @@ WorkerSettings.functions = [
     _store_memories_batch,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
+    _prune_inactive_sessions,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -70,6 +73,12 @@ WorkerSettings.cron_jobs = [
     cron(
         _sweep_idle_sandboxes,
         minute=0,  # Hourly
+        second=0,
+    ),
+    cron(
+        _prune_inactive_sessions,
+        hour=3,  # Daily at 03:00 UTC
+        minute=0,
         second=0,
     ),
 ]

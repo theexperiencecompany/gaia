@@ -31,6 +31,8 @@ class PooledSandbox:
     refcount: int = 0
     pause_task: Optional[asyncio.Task[None]] = None
     last_canary_ts: Optional[str] = None
+    # ArtifactWatcher | None — Any to avoid importing it at module load.
+    watcher: Any = None
 
 
 class SandboxPool:
