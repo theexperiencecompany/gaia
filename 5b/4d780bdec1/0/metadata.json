@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "5b4d780bdec1",
+  "session_id": "16a6a62f-dc52-49a9-bb02-89a81ec6aed4",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-15T10:17:19.127646Z",
+  "branch": "feat/voice-gradient-demo",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/layouts/RootProviders.tsx",
+    "apps/web/src/app/[locale]/layout.tsx",
+    "apps/web/src/layouts/LandingProvidersLayout.tsx",
+    "apps/web/src/layouts/ProvidersLayout.tsx",
+    "apps/web/src/app/[locale]/dev/layout.tsx",
+    "apps/web/src/utils/interceptorUtils.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "ad53a7245972",
+  "checkpoint_transcript_start": 315,
+  "transcript_lines_at_start": 315,
+  "token_usage": {
+    "input_tokens": 32,
+    "cache_creation_tokens": 23559,
+    "cache_read_tokens": 2827770,
+    "output_tokens": 13309,
+    "api_call_count": 22
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-15T10:17:19.113965Z",
+    "agent_lines": 83,
+    "agent_removed": 69,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 83,
+    "total_lines_changed": 185,
+    "agent_percentage": 82.16216216216216,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
