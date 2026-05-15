@@ -1,0 +1,17 @@
+why does retry message in the chat page not work properly? please trace the entire flow help me figure out whats wrong? it works after i reload the page but doesnt work normally. whats getting fiucked up
+
+---
+
+are you sure
+
+---
+
+yes please proceed
+
+---
+
+whats left
+
+---
+
+in email list when its 1 email then we do py 1 and then we should reduce radius a bit accordingly

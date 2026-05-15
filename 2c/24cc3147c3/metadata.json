@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "2c24cc3147c3",
+  "strategy": "manual-commit",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "apps/api/app/agents/prompts/onboarding_prompts.py",
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/app/[locale]/(main)/onboarding/page.tsx",
+    "apps/web/src/features/chat/components/bubbles/bot/TextBubble.tsx",
+    "apps/web/src/features/chat/hooks/useRetryMessage.ts",
+    "apps/web/src/features/mail/components/EmailListCard.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStageAccordion.tsx",
+    "apps/web/src/features/onboarding/components/CompletedStagesTimeline.tsx",
+    "apps/web/src/features/onboarding/components/stages/Chat.tsx",
+    "apps/web/src/features/onboarding/components/stages/RevealTodos.tsx",
+    "apps/web/src/features/onboarding/components/stages/index.ts",
+    "apps/web/src/features/onboarding/state/initial.ts",
+    "apps/web/src/features/onboarding/state/reducer.ts",
+    "apps/web/src/features/onboarding/state/types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2c/24cc3147c3/0/metadata.json",
+      "transcript": "/2c/24cc3147c3/0/full.jsonl",
+      "content_hash": "/2c/24cc3147c3/0/content_hash.txt",
+      "prompt": "/2c/24cc3147c3/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 41,
+    "cache_creation_tokens": 126715,
+    "cache_read_tokens": 608049,
+    "output_tokens": 4763,
+    "api_call_count": 11
+  }
+}
