@@ -1,28 +1,27 @@
 {
   "name": "gaia",
   "scripts": {
-    "tokens:export": "design.md export --format dtcg DESIGN.md > design.tokens.json",
-    "tokens:build": "style-dictionary build",
-    "tokens": "pnpm run tokens:export && pnpm run tokens:build",
-    "tokens:check": "design.md export --format dtcg DESIGN.md | diff - design.tokens.json",
-    "quality:lint": "biome check",
-    "quality:lint:fix": "biome check --write",
-    "quality:format": "biome format --write",
-    "quality:type": "nx run-many -t type-check",
-    "quality:deps": "syncpack lint && manypkg check",
-    "quality:deps:fix": "syncpack fix && manypkg fix",
+    "quality:all": "pnpm run quality:lint && pnpm run quality:type && pnpm run quality:deps && pnpm run quality:circular && pnpm run quality:size && pnpm run quality:components && pnpm run quality:types-location && pnpm run quality:pkg-json && pnpm run quality:dead",
+    "quality:circular": "madge --circular --extensions ts,tsx apps/web/src apps/mobile/src apps/desktop/src apps/bots libs/shared/ts/src packages/cli/src",
+    "quality:components": "node scripts/ci/check-components-per-file.mjs",
     "quality:dead": "bash scripts/dead-code-check.sh",
     "quality:dead:strict": "bash scripts/dead-code-check.sh --strict",
-    "quality:circular": "madge --circular --extensions ts,tsx apps/web/src apps/mobile/src apps/desktop/src apps/bots libs/shared/ts/src packages/cli/src",
+    "quality:deps": "syncpack lint && manypkg check",
+    "quality:deps:fix": "syncpack fix && manypkg fix",
     "quality:dupe": "jscpd --silent",
-    "quality:size": "node scripts/ci/check-file-sizes.mjs",
-    "quality:components": "node scripts/ci/check-components-per-file.mjs",
-    "quality:types-location": "node scripts/ci/check-types-location.mjs",
+    "quality:format": "biome format --write",
+    "quality:lint": "biome check",
+    "quality:lint:fix": "biome check --write",
     "quality:pkg-json": "npmPkgJsonLint . --quiet",
+    "quality:size": "node scripts/ci/check-file-sizes.mjs",
+    "quality:type": "nx run-many -t type-check",
     "quality:type-coverage": "type-coverage --project apps/web/tsconfig.json --at-least 85 --ignore-catch --ignore-unread",
-    "quality:all": "pnpm run quality:lint && pnpm run quality:type && pnpm run quality:deps && pnpm run quality:circular && pnpm run quality:size && pnpm run quality:components && pnpm run quality:types-location && pnpm run quality:pkg-json && pnpm run quality:dead"
+    "quality:types-location": "node scripts/ci/check-types-location.mjs",
+    "tokens": "pnpm run tokens:export && pnpm run tokens:build",
+    "tokens:build": "style-dictionary build",
+    "tokens:check": "design.md export --format dtcg DESIGN.md | diff - design.tokens.json",
+    "tokens:export": "design.md export --format dtcg DESIGN.md > design.tokens.json"
   },
-  "packageManager": "pnpm@10.17.1",
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
     "@google/design.md": "^0.1.1",
@@ -48,6 +47,7 @@
     "tsx": "^4.21.0",
     "type-coverage": "^2.29.7"
   },
+  "packageManager": "pnpm@10.17.1",
   "pnpm": {
     "ignoredBuiltDependencies": [
       "@heroui/shared-utils"

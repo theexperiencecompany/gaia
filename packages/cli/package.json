@@ -1,45 +1,24 @@
 {
   "name": "@heygaia/cli",
-  "version": "0.3.0",
   "description": "CLI tool for setting up and managing GAIA",
+  "version": "0.3.0",
   "type": "module",
-  "bin": {
-    "gaia": "./dist/index.js"
-  },
   "files": [
     "dist",
     "README.md"
   ],
   "scripts": {
-    "dev": "tsx watch src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=esm --packages=external --outfile=dist/index.js --minify && chmod +x dist/index.js",
-    "start": "NODE_ENV=production node dist/index.js",
-    "type-check": "tsc --noEmit",
     "check": "biome check src",
+    "dev": "tsx watch src/index.ts",
     "fix": "biome check --write src",
+    "format": "biome format --write src",
     "lint": "pnpm run check",
     "lint:fix": "pnpm run fix",
-    "format": "biome format --write src",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run build",
+    "start": "NODE_ENV=production node dist/index.js",
+    "type-check": "tsc --noEmit"
   },
-  "engines": {
-    "node": ">=20"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/heygaia/gaia.git",
-    "directory": "packages/cli"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "keywords": [
-    "gaia",
-    "cli",
-    "ai-assistant",
-    "setup"
-  ],
-  "license": "MIT",
   "dependencies": {
     "@inkjs/ui": "^2.0.0",
     "commander": "^14.0.3",
@@ -62,5 +41,26 @@
     "typescript": "^5.9.3",
     "vite": "^7.3.2",
     "vitest": "^4.0.15"
+  },
+  "bin": {
+    "gaia": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ai-assistant",
+    "cli",
+    "gaia",
+    "setup"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygaia/gaia.git",
+    "directory": "packages/cli"
   }
 }

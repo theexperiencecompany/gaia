@@ -1,18 +1,19 @@
 {
   "name": "gaia-mobile",
-  "main": "expo-router/entry",
   "version": "0.5.0",
+  "private": true,
+  "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
+    "analyze": "expo export --platform ios --source-maps && npx source-map-explorer dist/_expo/static/js/ios/*.js",
+    "android": "expo run:android",
     "dev:local": "dotenv -e .env.local expo start",
     "dev:staging": "dotenv -e .env.staging expo start",
-    "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "analyze": "expo export --platform ios --source-maps && npx source-map-explorer dist/_expo/static/js/ios/*.js"
+    "reset-project": "node ./scripts/reset-project.js",
+    "start": "expo start",
+    "web": "expo start --web"
   },
   "dependencies": {
     "@expo-google-fonts/anonymous-pro": "^0.4.1",
@@ -81,6 +82,5 @@
     "reactotron-react-native": "^5.1.18",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3"
-  },
-  "private": true
+  }
 }

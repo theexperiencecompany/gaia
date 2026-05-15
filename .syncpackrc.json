@@ -37,6 +37,11 @@
       "range": ""
     },
     {
+      "label": "Pin HeroUI to exact versions (TS2590 bites on minor bumps)",
+      "dependencies": ["@heroui/**"],
+      "range": ""
+    },
+    {
       "label": "Caret for everything else",
       "dependencies": ["**"],
       "range": "^"

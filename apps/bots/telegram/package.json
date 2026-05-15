@@ -6,8 +6,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "set-commands": "tsx src/set-commands.ts"
+    "set-commands": "tsx src/set-commands.ts",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",

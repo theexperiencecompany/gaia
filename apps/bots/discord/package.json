@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "tsup",
+    "deploy-commands": "tsx src/deploy-commands.ts",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "deploy-commands": "tsx src/deploy-commands.ts"
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
