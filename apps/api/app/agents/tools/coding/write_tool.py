@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import contextlib
+import time
 from typing import Annotated
 
 from shared.py.wide_events import log
@@ -13,9 +15,15 @@ from app.agents.tools.coding._context import (
     safe_emit,
     sh_quote,
 )
-from app.agents.workspace.paths import MountRole
+from app.agents.workspace.paths import (
+    MountRole,
+    detect_content_type,
+    session_user_visible,
+)
 from app.decorators import with_doc, with_rate_limiting
+from app.services.artifact_events import publish_artifact_event, upsert_event
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
+from app.services.storage import ArtifactInfo
 from app.templates.docstrings.coding_tools_docs import WRITE_TOOL
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -38,7 +46,7 @@ async def write(
     try:
         user_id = get_user_id(config)
         session_id = get_session_id(config)
-        abs_path, role, _ = canonical_path(path, session_id=session_id)
+        abs_path, role, role_conv = canonical_path(path, session_id=session_id)
     except ValueError as e:
         return f"Error: {e}"
 
@@ -61,9 +69,6 @@ async def write(
         log.error(f"write tool failed: {e}", exc_info=True)
         return f"Error writing file: {e}"
 
-    # No inline artifact_data emit: the per-sandbox ArtifactWatcher is the
-    # single source of truth for `.user-visible/` events (so bash/background
-    # writes and tool writes are surfaced identically, with no double cards).
     safe_emit(
         {
             "file_data": {
@@ -74,6 +79,33 @@ async def write(
         },
         session_id=session_id,
     )
+
+    # Real-time artifact push: the instant a `.user-visible/` file is written
+    # we publish to the artifacts channel. The chat stream's forwarder relays
+    # it as an SSE `artifact_data` chunk *during the active turn*, so the card
+    # renders immediately — no polling, no dependence on the sandbox-side
+    # watcher (which only catches bash/background writes as a best-effort
+    # latency path). De-duped downstream by (session_id, path).
+    if role == MountRole.USER_VISIBLE and role_conv:
+        visible_root = session_user_visible(role_conv) + "/"
+        rel = (
+            abs_path[len(visible_root) :]
+            if abs_path.startswith(visible_root)
+            else abs_path.rsplit("/", 1)[-1]
+        )
+        with contextlib.suppress(Exception):
+            await publish_artifact_event(
+                user_id,
+                upsert_event(
+                    role_conv,
+                    ArtifactInfo(
+                        path=rel,
+                        size_bytes=len(encoded),
+                        mtime=time.time(),
+                        content_type=detect_content_type(rel),
+                    ),
+                ),
+            )
 
     return f"Wrote {len(encoded)} bytes to {abs_path}"
 

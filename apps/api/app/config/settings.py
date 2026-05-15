@@ -255,11 +255,6 @@ class ProductionSettings(CommonSettings):
     # envd's native recursive watch; "accesslog" tails JuiceFS .accesslog.
     ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
     ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096  # accesslog mode only
-    # Host-side reconcile interval (secs). The authoritative detector: the
-    # API host's JuiceFS mount sees every sandbox write (zero-R2 readdir),
-    # so this converges artifacts even when the sandbox-side watcher dies
-    # across pause/resume. The sandbox detector is only a latency boost.
-    ARTIFACT_RECONCILE_INTERVAL: int = 5
 
     # ----------------------------------------------
     # Persistent Workspace Storage (R2 + JuiceFS)
@@ -449,7 +444,6 @@ class DevelopmentSettings(CommonSettings):
     E2B_WARM_POOL_TARGET_RATIO: float = 2.0
     ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
     ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096
-    ARTIFACT_RECONCILE_INTERVAL: int = 5
 
     # ----------------------------------------------
     # Persistent Workspace Storage (R2 + JuiceFS)
