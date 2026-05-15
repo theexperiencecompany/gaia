@@ -20,7 +20,7 @@ from app.agents.workspace.paths import (
     detect_content_type,
     runs_log_dir,
     session_dir,
-    session_user_visible,
+    session_artifacts,
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.services.artifact_events import publish_artifact_event, upsert_event
@@ -95,12 +95,12 @@ async def bash(
             )
             # A bash command can create artifacts any number of ways (cat,
             # python, mv, curl -o, …), not just the write tool. Enumerate the
-            # session's .user-visible/ from the sandbox itself (it sees its
+            # session's artifacts/ from the sandbox itself (it sees its
             # own writes instantly — no host-mount/cross-mount race) and push
             # them in real time; the chat forwarder relays them as SSE during
             # this turn. De-duped downstream by (session_id, path).
             if session_id:
-                await _publish_visible_artifacts(sbx, user_id, session_id)
+                await _publish_artifacts(sbx, user_id, session_id)
             return result
     except SandboxAcquisitionError as e:
         safe_emit(
@@ -133,15 +133,13 @@ async def bash(
         return f"Error executing command: {e}"
 
 
-async def _publish_visible_artifacts(
-    sbx: object, user_id: str, session_id: str
-) -> None:
-    """Enumerate the session's `.user-visible/` in the sandbox and push each
+async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:
+    """Enumerate the session's `artifacts/` in the sandbox and push each
     file as a real-time artifact event (covers cat/python/mv/curl, etc.)."""
-    visible = session_user_visible(session_id)
+    artifacts_root = session_artifacts(session_id)
     try:
         res = await sbx.commands.run(  # type: ignore[attr-defined]
-            f"find {sh_quote(visible)} -type f -printf '%P\\t%s\\n' 2>/dev/null",
+            f"find {sh_quote(artifacts_root)} -type f -printf '%P\\t%s\\n' 2>/dev/null",
             timeout=10,
         )
     except Exception:

@@ -210,7 +210,7 @@ export interface ArtifactData {
   session_id: string;
   /** "upsert"/"upload" add or refresh a card; "remove" drops it. */
   event?: "upsert" | "remove" | "upload";
-  /** Path relative to the session's .user-visible/ (or the upload name). */
+  /** Path relative to the session's artifacts/ (or the upload name). */
   path: string;
   size_bytes: number;
   mtime?: number;

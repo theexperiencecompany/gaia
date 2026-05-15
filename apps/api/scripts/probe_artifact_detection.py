@@ -42,7 +42,7 @@ from app.services.storage import JuiceFSUnavailable, write_session_file
 
 SESSIONS_WATCH_ROOT = "/workspace/sessions"
 PROBE_CONV = "probe"
-PROBE_VISIBLE = f"{SESSIONS_WATCH_ROOT}/{PROBE_CONV}/.user-visible"
+PROBE_VISIBLE = f"{SESSIONS_WATCH_ROOT}/{PROBE_CONV}/artifacts"
 
 # Event types we accept as "the file appeared / changed".
 WRITE_EVENT_TYPES = {"CREATE", "WRITE", "RENAME", "CHMOD"}
@@ -124,7 +124,7 @@ async def _run_matrix(user_a: str, user_b: str | None) -> dict[str, Any]:
                 await write_session_file(
                     user_id=user_a,
                     conversation_id=PROBE_CONV,
-                    relative_path=".user-visible/d.md",
+                    relative_path="artifacts/d.md",
                     content="hi",
                 )
                 evidence["case4_cross_mount"] = await _wait_for(queue, "d.md", 5.0)

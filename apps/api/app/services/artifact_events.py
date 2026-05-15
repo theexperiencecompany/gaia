@@ -27,7 +27,7 @@ def artifact_channel(user_id: str) -> str:
 
 
 def upsert_event(session_id: str, info: ArtifactInfo) -> dict[str, Any]:
-    """A `.user-visible/` file was created or changed."""
+    """A `artifacts/` file was created or changed."""
     return {
         "event": "upsert",
         "session_id": session_id,
@@ -39,7 +39,7 @@ def upsert_event(session_id: str, info: ArtifactInfo) -> dict[str, Any]:
 
 
 def remove_event(session_id: str, path: str) -> dict[str, Any]:
-    """A `.user-visible/` file was removed or renamed away."""
+    """A `artifacts/` file was removed or renamed away."""
     return {"event": "remove", "session_id": session_id, "path": path}
 
 
@@ -66,7 +66,7 @@ async def publish_artifact_event(user_id: str, payload: dict[str, Any]) -> None:
     """Stamp user_id + ts and publish to `artifacts:{user_id}`.
 
     No-ops if Redis is unavailable and never raises — artifact delivery is a
-    latency optimization; the `GET /sessions/{conv}/visible` endpoint is the
+    latency optimization; the `GET /sessions/{conv}/artifacts` endpoint is the
     authoritative recovery path.
     """
     if redis_cache.redis is None:

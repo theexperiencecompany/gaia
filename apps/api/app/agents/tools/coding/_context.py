@@ -64,7 +64,7 @@ def canonical_path(
 
     - Relative paths join to the session root (when `session_id` is known)
       else to `/workspace`. The session root is the base so that
-      `.user-visible/`, `user-uploaded/`, and `scratch/` are all reachable
+      `artifacts/`, `user-uploaded/`, and `scratch/` are all reachable
       as plain `./X` and classify to the correct role (the artifact watcher
       keys off the real on-disk path, so they must not be scratch-nested).
     - Absolute paths must stay under `/workspace`.

@@ -8,7 +8,7 @@ interface ArtifactText {
 }
 
 /**
- * Fetch the text body of a `.user-visible/` artifact for inline rendering
+ * Fetch the text body of an `artifacts/` artifact for inline rendering
  * (HTML/Markdown previews, the file viewer). Cancels in-flight requests when
  * the target changes or the component unmounts.
  */
@@ -27,7 +27,7 @@ export function useArtifactText(
     setError(false);
 
     sessionFilesApi
-      .fetchVisible(conversationId, path)
+      .fetchArtifact(conversationId, path)
       .then((data) => {
         if (!cancelled) setText(data);
       })

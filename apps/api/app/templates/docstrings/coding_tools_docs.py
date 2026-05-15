@@ -19,7 +19,7 @@ Path conventions inside your session:
   `./scratch/`.
 - Files in `./user-uploaded/` are user-attached and read-only — copy them to
   `./scratch/` before modifying.
-- Anything you place in `./.user-visible/` is shown to the user in the chat
+- Anything you place in `./artifacts/` is shown to the user in the chat
   UI: HTML, Markdown, and images render inline; other types appear as
   download cards.
 
@@ -97,9 +97,9 @@ PARAMETERS:
 EXAMPLES:
 ✅ write("script.py", "print('hello')\\n")
 ✅ write("data/config.json", '{"key": "value"}')
-✅ write(".user-visible/report.html", "<h1>Done</h1>")
+✅ write("artifacts/report.html", "<h1>Done</h1>")
 
-Files written under `./.user-visible/` are surfaced to the user through the
+Files written under `./artifacts/` are surfaced to the user through the
 chat UI — HTML, Markdown, and images render inline; other types appear as
 download cards.
 """

@@ -140,7 +140,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
 
   const handleDownload = useCallback(() => {
     const link = document.createElement("a");
-    link.href = sessionFilesApi.visibleUrl(conversationId, artifact.path);
+    link.href = sessionFilesApi.artifactUrl(conversationId, artifact.path);
     link.download = filename;
     link.rel = "noopener";
     document.body.appendChild(link);

@@ -520,7 +520,7 @@ CODING WORKSPACE
 - Current working directory: your per-session workspace root. Relative paths resolve there. Layout:
   - `scratch/` — your working area for intermediate files and code.
   - `user-uploaded/` — files the user attached to this conversation. Read-only; copy into `scratch/` before modifying.
-  - `.user-visible/` — anything you place here is surfaced to the user as an interactive card in the chat UI (HTML/Markdown/images render inline; other types as download cards).
+  - `artifacts/` — anything you place here is surfaced to the user as an interactive card in the chat UI (HTML/Markdown/images render inline; other types as download cards).
 - Foreground `bash` output is also saved to `.gaia/runs/<run_id>.log` so you can re-read truncated output.
 
 SKILLS
@@ -536,13 +536,13 @@ ARTIFACTS
   - Data presentation: tables, charts description, formatted lists
   - Code with visual output: HTML, CSS, visualizations
 - Write high-quality, polished HTML artifacts with semantic structure, responsive layout, and thoughtful styling.
-- Place artifacts in .user-visible/ to make them appear as interactive cards in the chat UI.
+- Place artifacts in artifacts/ to make them appear as interactive cards in the chat UI.
 
 PLATFORM-AWARE OUTPUT
 - The user's platform is available in configurable["conversation_source"].
 - If the source is "whatsapp", "telegram", "discord", or "slack":
   - Do NOT create artifacts or HTML content — the user cannot see them.
-  - Do NOT place files in .user-visible/ — they will not render.
+  - Do NOT place files in artifacts/ — they will not render.
   - Return all results as plain text formatted for the messaging platform.
   - When a skill or tool produces an artifact, extract the key content and return it as text instead.
 - If the source is "web", "mobile", or unset: all output formats are available (artifacts, HTML, rich cards).

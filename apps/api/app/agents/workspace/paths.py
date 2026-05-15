@@ -1,7 +1,7 @@
 """Canonical `/workspace` layout + path classification.
 
 Pure functions, no I/O. Everything that needs to reason about where a file
-lives inside the sandbox imports from here — never hardcode `.user-visible`
+lives inside the sandbox imports from here — never hardcode `artifacts`
 or `sessions/` anywhere else.
 """
 
@@ -25,7 +25,7 @@ _EXT_CONTENT_TYPES = {
 }
 
 WORKSPACE_ROOT = "/workspace"
-USER_VISIBLE_DIRNAME = ".user-visible"
+ARTIFACTS_DIRNAME = "artifacts"
 USER_UPLOADED_DIRNAME = "user-uploaded"
 SCRATCH_DIRNAME = "scratch"
 GAIA_RUNTIME_DIRNAME = ".gaia"
@@ -39,7 +39,7 @@ PINNED_DIRNAME = "pinned"
 class MountRole(StrEnum):
     SCRATCH = "scratch"
     USER_UPLOADED = "user-uploaded"
-    USER_VISIBLE = ".user-visible"
+    ARTIFACTS = "artifacts"
     GAIA_RUNTIME = ".gaia"
     SKILLS = "skills"
     SETTINGS = "settings"
@@ -59,8 +59,8 @@ def session_user_uploaded(conv_id: str) -> str:
     return f"{session_dir(conv_id)}/{USER_UPLOADED_DIRNAME}"
 
 
-def session_user_visible(conv_id: str) -> str:
-    return f"{session_dir(conv_id)}/{USER_VISIBLE_DIRNAME}"
+def session_artifacts(conv_id: str) -> str:
+    return f"{session_dir(conv_id)}/{ARTIFACTS_DIRNAME}"
 
 
 def runs_log_dir() -> str:
@@ -76,7 +76,7 @@ def classify(abs_path: str) -> tuple[MountRole, str | None]:
 
     Examples:
         "/workspace/sessions/abc/scratch/foo.py"        -> (SCRATCH, "abc")
-        "/workspace/sessions/abc/.user-visible/x.html"  -> (USER_VISIBLE, "abc")
+        "/workspace/sessions/abc/artifacts/x.html"  -> (ARTIFACTS, "abc")
         "/workspace/sessions/abc/user-uploaded/d.csv"   -> (USER_UPLOADED, "abc")
         "/workspace/skills/my-skill/main.py"            -> (SKILLS, None)
         "/workspace/.gaia/runs/abc.log"                 -> (GAIA_RUNTIME, None)
@@ -106,8 +106,8 @@ def classify(abs_path: str) -> tuple[MountRole, str | None]:
             return MountRole.SCRATCH, conv
         if sub == USER_UPLOADED_DIRNAME:
             return MountRole.USER_UPLOADED, conv
-        if sub == USER_VISIBLE_DIRNAME:
-            return MountRole.USER_VISIBLE, conv
+        if sub == ARTIFACTS_DIRNAME:
+            return MountRole.ARTIFACTS, conv
         return MountRole.SCRATCH, conv  # tolerate session subroots
     return MountRole.UNKNOWN, None
 

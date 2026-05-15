@@ -1,6 +1,6 @@
 """Session file endpoints — serve a conversation's workspace artifacts.
 
-`GET .../visible` is also the defense-in-depth recovery path: the frontend
+`GET .../artifacts` is also the defense-in-depth recovery path: the frontend
 polls it on tab-focus / message-complete to reconcile anything the live
 artifact stream missed. All listing is host-side JuiceFS (zero R2 ops).
 """
@@ -18,8 +18,8 @@ from app.db.mongodb.collections import conversations_collection
 from app.decorators import tiered_rate_limit
 from app.services.storage import (
     JuiceFSUnavailable,
+    list_artifacts,
     list_user_uploaded,
-    list_user_visible,
     pin_session_artifact,
     resolve_session_path,
 )
@@ -33,7 +33,7 @@ _DOWNLOAD_OCTET = "application/octet-stream"
 
 
 class PinRequest(BaseModel):
-    path: str = Field(..., description="Path relative to the session's .user-visible/")
+    path: str = Field(..., description="Path relative to the session's artifacts/")
     target_name: str | None = Field(
         default=None, description="Optional filename for the pinned copy"
     )
@@ -52,7 +52,7 @@ async def _assert_owns(user_id: str, conv_id: str) -> None:
         )
 
 
-def _serve(host_path: Path, *, is_visible: bool, filename: str) -> FileResponse:
+def _serve(host_path: Path, *, is_artifact: bool, filename: str) -> FileResponse:
     """FileResponse with content-type, sandboxing + cache headers.
 
     FileResponse natively handles Range / 206 / Accept-Ranges.
@@ -61,7 +61,7 @@ def _serve(host_path: Path, *, is_visible: bool, filename: str) -> FileResponse:
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": (
-            "private, max-age=60" if is_visible else "private, max-age=3600"
+            "private, max-age=60" if is_artifact else "private, max-age=3600"
         ),
     }
     if content_type == "text/html":
@@ -77,7 +77,7 @@ def _serve(host_path: Path, *, is_visible: bool, filename: str) -> FileResponse:
 async def _resolve_file(
     user_id: str,
     conv_id: str,
-    role: Literal["visible", "uploaded"],
+    role: Literal["artifacts", "uploaded"],
     path: str,
 ) -> Path:
     try:
@@ -91,31 +91,31 @@ async def _resolve_file(
     return host_path
 
 
-@router.get("/{conv_id}/visible")
+@router.get("/{conv_id}/artifacts")
 @tiered_rate_limit("session_files")
-async def list_visible(
+async def list_session_artifacts(
     conv_id: str, user: dict = Depends(get_current_user)
 ) -> JSONResponse:
     user_id = user["user_id"]
-    log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_visible"})
+    log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_artifacts"})
     await _assert_owns(user_id, conv_id)
     try:
-        items = await list_user_visible(user_id, conv_id)
+        items = await list_artifacts(user_id, conv_id)
     except JuiceFSUnavailable:
         items = []
     return JSONResponse(content=[asdict(i) for i in items])
 
 
-@router.get("/{conv_id}/visible/{path:path}")
+@router.get("/{conv_id}/artifacts/{path:path}")
 @tiered_rate_limit("session_files")
-async def get_visible_file(
+async def get_artifact_file(
     conv_id: str, path: str, user: dict = Depends(get_current_user)
 ) -> FileResponse:
     user_id = user["user_id"]
-    log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_visible"})
+    log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_artifact"})
     await _assert_owns(user_id, conv_id)
-    host_path = await _resolve_file(user_id, conv_id, "visible", path)
-    return _serve(host_path, is_visible=True, filename=path.rsplit("/", 1)[-1])
+    host_path = await _resolve_file(user_id, conv_id, "artifacts", path)
+    return _serve(host_path, is_artifact=True, filename=path.rsplit("/", 1)[-1])
 
 
 @router.get("/{conv_id}/uploads")
@@ -142,7 +142,7 @@ async def get_upload_file(
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_upload"})
     await _assert_owns(user_id, conv_id)
     host_path = await _resolve_file(user_id, conv_id, "uploaded", path)
-    return _serve(host_path, is_visible=False, filename=path.rsplit("/", 1)[-1])
+    return _serve(host_path, is_artifact=False, filename=path.rsplit("/", 1)[-1])
 
 
 @router.post("/{conv_id}/pin", status_code=status.HTTP_201_CREATED)

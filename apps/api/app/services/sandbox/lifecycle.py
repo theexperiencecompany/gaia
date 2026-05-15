@@ -211,7 +211,7 @@ async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
     """Start the artifact watcher if it isn't already running.
 
     Best-effort: the watcher is a latency optimization for surfacing
-    `.user-visible/` artifacts; the host-side JuiceFS list is authoritative,
+    `artifacts/` artifacts; the host-side JuiceFS list is authoritative,
     so a watcher failure must never block sandbox acquisition.
     """
     if entry.watcher is not None and entry.watcher.is_alive():

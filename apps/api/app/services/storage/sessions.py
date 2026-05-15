@@ -22,7 +22,7 @@ from typing import Literal
 from app.agents.workspace.paths import (
     SCRATCH_DIRNAME,
     USER_UPLOADED_DIRNAME,
-    USER_VISIBLE_DIRNAME,
+    ARTIFACTS_DIRNAME,
     detect_content_type,
 )
 from app.services.storage.juicefs import (
@@ -35,16 +35,16 @@ from app.services.storage.juicefs import (
 SESSION_META_FILENAME = ".meta.json"
 SESSION_META_SCHEMA_VERSION = 1
 
-SessionRole = Literal["visible", "uploaded"]
+SessionRole = Literal["artifacts", "uploaded"]
 _ROLE_DIRNAMES: dict[SessionRole, str] = {
-    "visible": USER_VISIBLE_DIRNAME,
+    "artifacts": ARTIFACTS_DIRNAME,
     "uploaded": USER_UPLOADED_DIRNAME,
 }
 
 
 @dataclass
 class ArtifactInfo:
-    """A single file under a session's `.user-visible/` or `user-uploaded/`."""
+    """A single file under a session's `artifacts/` or `user-uploaded/`."""
 
     path: str  # path relative to the listed root (POSIX, forward slashes)
     size_bytes: int
@@ -82,7 +82,7 @@ def _now_iso() -> str:
 
 
 async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
-    """Create scratch/, user-uploaded/, .user-visible/ + .meta.json.
+    """Create scratch/, user-uploaded/, artifacts/ + .meta.json.
 
     Idempotent. Raises JuiceFSUnavailable if the host mount is missing.
     """
@@ -92,7 +92,7 @@ async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
         for sub in (
             SCRATCH_DIRNAME,
             USER_UPLOADED_DIRNAME,
-            USER_VISIBLE_DIRNAME,
+            ARTIFACTS_DIRNAME,
         ):
             (base / sub).mkdir(parents=True, exist_ok=True)
         meta = base / SESSION_META_FILENAME
@@ -158,18 +158,18 @@ async def chmod_path(host_path: Path, mode: int) -> None:
     await asyncio.to_thread(os.chmod, host_path, mode)
 
 
-async def list_user_visible(user_id: str, conv_id: str) -> list[ArtifactInfo]:
-    """Host-side recursive scan of a session's `.user-visible/`. Zero R2 ops
+async def list_artifacts(user_id: str, conv_id: str) -> list[ArtifactInfo]:
+    """Host-side recursive scan of a session's `artifacts/`. Zero R2 ops
     (PG metadata only). Backs the GET endpoint + defense-in-depth recovery."""
 
     def _go() -> list[ArtifactInfo]:
-        return _list_files(_session_base(user_id, conv_id) / USER_VISIBLE_DIRNAME)
+        return _list_files(_session_base(user_id, conv_id) / ARTIFACTS_DIRNAME)
 
     return await asyncio.to_thread(_go)
 
 
 async def list_user_uploaded(user_id: str, conv_id: str) -> list[ArtifactInfo]:
-    """Same shape as list_user_visible, for the `user-uploaded/` dir."""
+    """Same shape as list_artifacts, for the `user-uploaded/` dir."""
 
     def _go() -> list[ArtifactInfo]:
         return _list_files(_session_base(user_id, conv_id) / USER_UPLOADED_DIRNAME)
@@ -180,11 +180,11 @@ async def list_user_uploaded(user_id: str, conv_id: str) -> list[ArtifactInfo]:
 async def stat_artifact(
     user_id: str, conv_id: str, rel_path: str
 ) -> ArtifactInfo | None:
-    """Single-file stat under `.user-visible/`. Used by the watcher to enrich
+    """Single-file stat under `artifacts/`. Used by the watcher to enrich
     an event. Returns None if the path is not a file."""
 
     def _stat() -> ArtifactInfo | None:
-        base = _session_base(user_id, conv_id) / USER_VISIBLE_DIRNAME
+        base = _session_base(user_id, conv_id) / ARTIFACTS_DIRNAME
         target = _contained(base, rel_path)
         if not target.is_file():
             return None
@@ -219,13 +219,13 @@ async def resolve_session_path(
 async def pin_session_artifact(
     user_id: str, conv_id: str, rel_path: str, target_name: str | None = None
 ) -> str:
-    """Copy a `.user-visible/` artifact into the user's cross-session
+    """Copy a `artifacts/` artifact into the user's cross-session
     `pinned/` dir. Returns the `/workspace/...` path of the pinned copy."""
 
     def _pin() -> str:
         root = _require_mount()
         src = _contained(
-            root / "users" / user_id / "sessions" / conv_id / USER_VISIBLE_DIRNAME,
+            root / "users" / user_id / "sessions" / conv_id / ARTIFACTS_DIRNAME,
             rel_path,
         )
         if not src.is_file():

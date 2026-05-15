@@ -1,10 +1,10 @@
 """Per-sandbox artifact watcher.
 
-Watches a user's `/workspace/sessions/*/.user-visible/` trees inside their E2B
+Watches a user's `/workspace/sessions/*/artifacts/` trees inside their E2B
 sandbox and publishes change events to the Redis channel `artifacts:{user_id}`.
 The chat stream subscribes to that channel and forwards matching events to the
 browser as `artifact_data` tool chunks, so anything the agent drops into
-`.user-visible/` shows up in the chat UI within ~1-2s — including writes from
+`artifacts/` shows up in the chat UI within ~1-2s — including writes from
 bash, background processes, and non-shell writers, not just the `write` tool.
 
 Two interchangeable detection mechanisms behind one interface (the active one
@@ -14,12 +14,12 @@ is decided empirically in Phase 0 and pinned via `ARTIFACT_DETECTION_MODE`):
   path-accurate. Primary.
 * ``accesslog`` — tail JuiceFS's FUSE-native ``/workspace/.accesslog``. Every
   FS op streams through it (so FUSE-on-inotify limitations don't apply); on
-  any mutating op we debounce-rescan the host-side `.user-visible/` dirs and
+  any mutating op we debounce-rescan the host-side `artifacts/` dirs and
   diff against the last snapshot. Robust fallback.
 
 The host-side JuiceFS mount is authoritative for file contents/metadata
 (zero-R2 PG reads); the sandbox-side stream is only a latency optimization.
-The Phase 6 `GET /sessions/{conv}/visible` endpoint is the defense-in-depth
+The Phase 6 `GET /sessions/{conv}/artifacts` endpoint is the defense-in-depth
 recovery path for any missed event. The wire contract lives in
 `app.services.artifact_events`.
 """
@@ -36,7 +36,7 @@ from app.agents.workspace.paths import (
     WORKSPACE_ROOT,
     MountRole,
     classify,
-    session_user_visible,
+    session_artifacts,
 )
 from app.config.settings import settings
 from app.services.artifact_events import (
@@ -47,7 +47,7 @@ from app.services.artifact_events import (
 from app.services.storage import (
     JuiceFSUnavailable,
     list_session_ids,
-    list_user_visible,
+    list_artifacts,
     stat_artifact,
 )
 
@@ -81,9 +81,9 @@ _ACCESSLOG_DEBOUNCE_SECONDS = 0.7
 DetectionMode = Literal["watch_dir", "accesslog"]
 
 
-def _strip_visible_prefix(abs_path: str, conv_id: str) -> str:
-    """`/workspace/sessions/{c}/.user-visible/a/b.md` -> `a/b.md`."""
-    root = session_user_visible(conv_id) + "/"
+def _strip_artifacts_prefix(abs_path: str, conv_id: str) -> str:
+    """`/workspace/sessions/{c}/artifacts/a/b.md` -> `a/b.md`."""
+    root = session_artifacts(conv_id) + "/"
     if abs_path.startswith(root):
         return abs_path[len(root) :]
     return abs_path.rsplit("/", 1)[-1]
@@ -185,10 +185,10 @@ class ArtifactWatcher:
             if abs_path.endswith(_TMP_SUFFIX):
                 return
             role, conv = classify(abs_path)
-            if role != MountRole.USER_VISIBLE or conv is None:
+            if role != MountRole.ARTIFACTS or conv is None:
                 return
             etype = getattr(getattr(ev, "type", None), "name", "")
-            rel = _strip_visible_prefix(abs_path, conv)
+            rel = _strip_artifacts_prefix(abs_path, conv)
             if not rel or rel.endswith("/"):
                 return
             if etype in ("REMOVE", "RENAME"):
@@ -245,7 +245,7 @@ class ArtifactWatcher:
             return
         for conv in conv_ids:
             try:
-                infos = await list_user_visible(self.user_id, conv)
+                infos = await list_artifacts(self.user_id, conv)
             except JuiceFSUnavailable:
                 return
             except Exception:

@@ -2,7 +2,7 @@
 
 `/workspace` inside every E2B sandbox is a bind-mount of the user's JuiceFS
 prefix. This package owns the single source of truth for the directory
-convention (sessions, scratch, uploads, user-visible artifacts, runtime logs)
+convention (sessions, scratch, uploads, artifacts artifacts, runtime logs)
 so tools, the upload pipeline, the artifact watcher, and HTTP endpoints all
 agree on where things live.
 """
@@ -16,7 +16,7 @@ from app.agents.workspace.paths import (
     SETTINGS_DIRNAME,
     SKILLS_DIRNAME,
     USER_UPLOADED_DIRNAME,
-    USER_VISIBLE_DIRNAME,
+    ARTIFACTS_DIRNAME,
     WORKSPACE_ROOT,
     MountRole,
     classify,
@@ -26,7 +26,7 @@ from app.agents.workspace.paths import (
     session_dir,
     session_scratch,
     session_user_uploaded,
-    session_user_visible,
+    session_artifacts,
 )
 
 __all__ = [
@@ -38,7 +38,7 @@ __all__ = [
     "SETTINGS_DIRNAME",
     "SKILLS_DIRNAME",
     "USER_UPLOADED_DIRNAME",
-    "USER_VISIBLE_DIRNAME",
+    "ARTIFACTS_DIRNAME",
     "WORKSPACE_ROOT",
     "MountRole",
     "classify",
@@ -48,5 +48,5 @@ __all__ = [
     "session_dir",
     "session_scratch",
     "session_user_uploaded",
-    "session_user_visible",
+    "session_artifacts",
 ]

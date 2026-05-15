@@ -18,13 +18,13 @@ function encodePath(path: string): string {
 }
 
 /**
- * Session workspace files. `.user-visible/` artifacts (agent output) and
- * `user-uploaded/` attachments are served by the backend `/sessions` router.
- * `listVisible` is also the tab-focus reconcile path for missed live events.
+ * Session workspace files. `artifacts/` (agent output) and `user-uploaded/`
+ * attachments are served by the backend `/sessions` router. `listArtifacts`
+ * is also the tab-focus reconcile path for missed live events.
  */
 export const sessionFilesApi = {
-  listVisible: (conversationId: string) =>
-    apiService.get<ArtifactInfo[]>(`/sessions/${conversationId}/visible`, {
+  listArtifacts: (conversationId: string) =>
+    apiService.get<ArtifactInfo[]>(`/sessions/${conversationId}/artifacts`, {
       silent: true,
     }),
 
@@ -33,18 +33,18 @@ export const sessionFilesApi = {
       silent: true,
     }),
 
-  visibleUrl: (conversationId: string, path: string) =>
-    `${API_BASE}/sessions/${conversationId}/visible/${encodePath(path)}`,
+  artifactUrl: (conversationId: string, path: string) =>
+    `${API_BASE}/sessions/${conversationId}/artifacts/${encodePath(path)}`,
 
   uploadUrl: (conversationId: string, path: string) =>
     `${API_BASE}/sessions/${conversationId}/uploads/${encodePath(path)}`,
 
-  fetchVisible: async (
+  fetchArtifact: async (
     conversationId: string,
     path: string,
   ): Promise<string> => {
     const res = await apiauth.get<string>(
-      `/sessions/${conversationId}/visible/${encodePath(path)}`,
+      `/sessions/${conversationId}/artifacts/${encodePath(path)}`,
       { responseType: "text" },
     );
     return res.data;

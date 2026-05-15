@@ -18,7 +18,7 @@ from app.agents.tools.coding._context import (
 from app.agents.workspace.paths import (
     MountRole,
     detect_content_type,
-    session_user_visible,
+    session_artifacts,
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.services.artifact_events import publish_artifact_event, upsert_event
@@ -80,14 +80,14 @@ async def write(
         session_id=session_id,
     )
 
-    # Real-time artifact push: the instant a `.user-visible/` file is written
+    # Real-time artifact push: the instant a `artifacts/` file is written
     # we publish to the artifacts channel. The chat stream's forwarder relays
     # it as an SSE `artifact_data` chunk *during the active turn*, so the card
     # renders immediately — no polling, no dependence on the sandbox-side
     # watcher (which only catches bash/background writes as a best-effort
     # latency path). De-duped downstream by (session_id, path).
-    if role == MountRole.USER_VISIBLE and role_conv:
-        visible_root = session_user_visible(role_conv) + "/"
+    if role == MountRole.ARTIFACTS and role_conv:
+        visible_root = session_artifacts(role_conv) + "/"
         rel = (
             abs_path[len(visible_root) :]
             if abs_path.startswith(visible_root)
