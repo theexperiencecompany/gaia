@@ -24,6 +24,35 @@ _EXT_CONTENT_TYPES = {
     "html": "text/html",
 }
 
+# Small textual artifacts ride the SSE event (and the Mongo conversation)
+# inline so the side-panel preview is instant and survives reload without
+# an extra round-trip. 64 KB covers virtually every agent-written
+# HTML/MD/code file while keeping per-message documents bounded.
+INLINE_ARTIFACT_MAX_BYTES = 64 * 1024
+
+_INLINEABLE_APPLICATION_TYPES = frozenset(
+    {
+        "application/json",
+        "application/xml",
+        "application/yaml",
+        "application/x-yaml",
+        "application/javascript",
+        "application/x-sh",
+        "image/svg+xml",
+    }
+)
+
+
+def is_inlineable_content_type(content_type: str | None) -> bool:
+    """Whether the content type is safe to ship as a UTF-8 string inline."""
+    if not content_type:
+        return False
+    return (
+        content_type.startswith("text/")
+        or content_type in _INLINEABLE_APPLICATION_TYPES
+    )
+
+
 WORKSPACE_ROOT = "/workspace"
 ARTIFACTS_DIRNAME = "artifacts"
 USER_UPLOADED_DIRNAME = "user-uploaded"

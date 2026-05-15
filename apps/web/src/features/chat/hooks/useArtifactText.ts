@@ -9,18 +9,31 @@ interface ArtifactText {
 
 /**
  * Fetch the text body of an `artifacts/` artifact for inline rendering
- * (HTML/Markdown previews, the file viewer). Cancels in-flight requests when
- * the target changes or the component unmounts.
+ * (HTML/Markdown previews, the file viewer). When `inlineBody` is provided
+ * by the artifact event (small + textual files), it's used directly and no
+ * network request is made — keeps reload-restored previews instant.
+ * Cancels in-flight requests when the target changes or unmounts.
  */
 export function useArtifactText(
   conversationId: string,
   path: string,
+  inlineBody?: string,
 ): ArtifactText {
-  const [text, setText] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const hasInline = typeof inlineBody === "string";
+  const [text, setText] = useState<string | null>(
+    hasInline ? inlineBody : null,
+  );
+  const [loading, setLoading] = useState(!hasInline);
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    if (hasInline) {
+      setText(inlineBody);
+      setLoading(false);
+      setError(false);
+      return;
+    }
+
     let cancelled = false;
     setText(null);
     setLoading(true);
@@ -41,7 +54,7 @@ export function useArtifactText(
     return () => {
       cancelled = true;
     };
-  }, [conversationId, path]);
+  }, [conversationId, path, hasInline, inlineBody]);
 
   return { text, loading, error };
 }

@@ -21,6 +21,7 @@ interface FileViewerPanelProps {
   filename: string;
   contentType: string;
   sizeBytes?: number;
+  inlineBody?: string;
 }
 
 type ViewMode = "preview" | "source";
@@ -172,12 +173,13 @@ export default function FileViewerPanel({
   filename,
   contentType,
   sizeBytes,
+  inlineBody,
 }: FileViewerPanelProps) {
   const {
     text: content,
     loading,
     error,
-  } = useArtifactText(conversationId, path);
+  } = useArtifactText(conversationId, path, inlineBody);
   const [copied, setCopied] = useState(false);
   const closeSidebar = useRightSidebar((state) => state.close);
 

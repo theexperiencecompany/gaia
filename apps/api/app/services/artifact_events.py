@@ -26,9 +26,18 @@ def artifact_channel(user_id: str) -> str:
     return f"{ARTIFACT_CHANNEL_PREFIX}{user_id}"
 
 
-def upsert_event(session_id: str, info: ArtifactInfo) -> dict[str, Any]:
-    """A `artifacts/` file was created or changed."""
-    return {
+def upsert_event(
+    session_id: str, info: ArtifactInfo, *, body: str | None = None
+) -> dict[str, Any]:
+    """An `artifacts/` file was created or changed.
+
+    `body` is the UTF-8 file contents inlined for small textual artifacts —
+    callers must enforce the size/type rule (see paths.is_inlineable_content_type
+    and INLINE_ARTIFACT_MAX_BYTES). When present, the side panel renders
+    instantly without a follow-up fetch and the value survives a reload via
+    the persisted conversation. Omitted for large or binary files.
+    """
+    payload: dict[str, Any] = {
         "event": "upsert",
         "session_id": session_id,
         "path": info.path,
@@ -36,6 +45,9 @@ def upsert_event(session_id: str, info: ArtifactInfo) -> dict[str, Any]:
         "mtime": info.mtime,
         "content_type": info.content_type,
     }
+    if body is not None:
+        payload["body"] = body
+    return payload
 
 
 def remove_event(session_id: str, path: str) -> dict[str, Any]:

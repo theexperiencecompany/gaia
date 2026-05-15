@@ -16,11 +16,13 @@ from app.agents.tools.coding._context import (
     sh_quote,
 )
 from app.agents.workspace.paths import (
+    INLINE_ARTIFACT_MAX_BYTES,
     WORKSPACE_ROOT,
     detect_content_type,
+    is_inlineable_content_type,
     runs_log_dir,
-    session_dir,
     session_artifacts,
+    session_dir,
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.services.artifact_events import publish_artifact_event, upsert_event
@@ -153,6 +155,10 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
             size_bytes = int(size.strip() or 0)
         except ValueError:
             size_bytes = 0
+        content_type = detect_content_type(rel)
+        inline_body = await _read_inline_body(
+            sbx, f"{artifacts_root}/{rel}", size_bytes, content_type
+        )
         with contextlib.suppress(Exception):
             await publish_artifact_event(
                 user_id,
@@ -162,10 +168,41 @@ async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None
                         path=rel,
                         size_bytes=size_bytes,
                         mtime=time.time(),
-                        content_type=detect_content_type(rel),
+                        content_type=content_type,
                     ),
+                    body=inline_body,
                 ),
             )
+
+
+async def _read_inline_body(
+    sbx: object, abs_path: str, size_bytes: int, content_type: str | None
+) -> str | None:
+    """Return the file's UTF-8 contents iff small enough and textual.
+
+    Sandbox files written via bash (cat/python/mv/curl) aren't in our memory,
+    so we cat them back to inline the body in the artifact event — keeps the
+    side-panel preview instant and lets the persisted conversation render on
+    reload without a fetch. Falls back to None on any failure.
+    """
+    if size_bytes <= 0 or size_bytes > INLINE_ARTIFACT_MAX_BYTES:
+        return None
+    if not is_inlineable_content_type(content_type):
+        return None
+    try:
+        res = await sbx.commands.run(  # type: ignore[attr-defined]
+            f"base64 -w0 -- {sh_quote(abs_path)} 2>/dev/null",
+            timeout=10,
+        )
+    except Exception:
+        return None
+    encoded = (getattr(res, "stdout", "") or "").strip()
+    if not encoded:
+        return None
+    try:
+        return base64.b64decode(encoded).decode("utf-8", errors="replace")
+    except Exception:
+        return None
 
 
 async def _persist_run_log(sbx: object, run_id: str, stdout: str, stderr: str) -> None:

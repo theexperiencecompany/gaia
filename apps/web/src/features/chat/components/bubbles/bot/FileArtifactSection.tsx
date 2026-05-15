@@ -124,10 +124,12 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
         filename={filename}
         contentType={contentType}
         sizeBytes={artifact.size_bytes}
+        inlineBody={artifact.body}
       />,
     );
     open(shouldUseSheet ? "sheet" : "artifact");
   }, [
+    artifact.body,
     artifact.path,
     artifact.size_bytes,
     contentType,

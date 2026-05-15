@@ -16,8 +16,10 @@ from app.agents.tools.coding._context import (
     sh_quote,
 )
 from app.agents.workspace.paths import (
+    INLINE_ARTIFACT_MAX_BYTES,
     MountRole,
     detect_content_type,
+    is_inlineable_content_type,
     session_artifacts,
 )
 from app.decorators import with_doc, with_rate_limiting
@@ -87,11 +89,18 @@ async def write(
     # watcher (which only catches bash/background writes as a best-effort
     # latency path). De-duped downstream by (session_id, path).
     if role == MountRole.ARTIFACTS and role_conv:
-        visible_root = session_artifacts(role_conv) + "/"
+        artifacts_root = session_artifacts(role_conv) + "/"
         rel = (
-            abs_path[len(visible_root) :]
-            if abs_path.startswith(visible_root)
+            abs_path[len(artifacts_root) :]
+            if abs_path.startswith(artifacts_root)
             else abs_path.rsplit("/", 1)[-1]
+        )
+        content_type = detect_content_type(rel)
+        inline_body = (
+            content
+            if len(encoded) <= INLINE_ARTIFACT_MAX_BYTES
+            and is_inlineable_content_type(content_type)
+            else None
         )
         with contextlib.suppress(Exception):
             await publish_artifact_event(
@@ -102,8 +111,9 @@ async def write(
                         path=rel,
                         size_bytes=len(encoded),
                         mtime=time.time(),
-                        content_type=detect_content_type(rel),
+                        content_type=content_type,
                     ),
+                    body=inline_body,
                 ),
             )
 

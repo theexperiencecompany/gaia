@@ -215,4 +215,10 @@ export interface ArtifactData {
   size_bytes: number;
   mtime?: number;
   content_type?: string | null;
+  /**
+   * UTF-8 file contents inlined when small + textual. When present, the
+   * preview renders instantly without a follow-up fetch and survives reload
+   * via the persisted conversation. Absent for large or binary files.
+   */
+  body?: string;
 }
