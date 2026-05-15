@@ -49,25 +49,35 @@ _CACHE_SIZE_MB = 4096
 _BUFFER_SIZE_MB = 600
 _MAX_UPLOADS = 20
 
-# Substrings that mark a *transient* meta/network failure worth retrying
-# (vs. a permanent misconfiguration). Kept broad on purpose: a spurious retry
-# is cheap; giving up on a Neon cold-start is not.
-_TRANSIENT_MARKERS = (
-    "network is unreachable",
-    "no route to host",
-    "connection refused",
-    "connection reset",
-    "i/o timeout",
-    "io timeout",
-    "deadline exceeded",
-    "dial tcp",
-    "ping database",
-    "is not available",
-    "temporary failure in name resolution",
-    "tls handshake timeout",
-    "the mount point is not ready",
-    "eof",
+# Failure classification is allowlist-by-permanent: only an explicit,
+# clearly-permanent misconfiguration should make bootstrap give up. Anything
+# else — transient network blips, serverless-Postgres (Neon) cold-starts,
+# *and opaque juicefs process crashes* (Go runtime aborts during meta
+# NewSession show up as a register dump, not a tidy error string) — is
+# retried with backoff. A spurious retry is cheap; giving up on a flaky
+# managed-DB dependency that demonstrably works on a later attempt is not.
+_PERMANENT_MARKERS = (
+    "authentication failed",
+    "password authentication failed",
+    "permission denied",
+    "access denied",
+    "invalid access key",
+    "signaturedoesnotmatch",
+    "no such bucket",
+    "specified bucket does not exist",
+    "no such host",
+    "unknown authority",
+    "certificate is not valid",
 )
+
+
+def _classify(text: str) -> str:
+    """Return "fatal" only for an explicit permanent error, else "transient"."""
+    low = (text or "").lower()
+    return (
+        "fatal" if any(marker in low for marker in _PERMANENT_MARKERS) else "transient"
+    )
+
 
 # Module state — guards against double-spawn and keeps the long-lived
 # foreground `juicefs mount` process from being garbage collected.
@@ -127,11 +137,6 @@ def _is_mounted(path: Path) -> bool:
             return False
 
 
-def _is_transient(text: str) -> bool:
-    low = (text or "").lower()
-    return any(marker in low for marker in _TRANSIENT_MARKERS)
-
-
 def _materialize_encryption_key() -> Path | None:
     """Write the PEM env var to a file if present, return its path."""
     pem = (settings.JFS_ENCRYPTION_KEY or "").strip()
@@ -172,13 +177,15 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     if status.returncode == 0:
         log.info("[juicefs] filesystem already formatted")
         return "ok"
-    if _is_transient(status.stderr):
+    if _classify(status.stderr) == "fatal":
         log.warning(
-            "[juicefs] meta unreachable during status; will retry",
+            "[juicefs] permanent error during status",
             meta=_mask_meta(meta_url),
+            detail=status.stderr.strip()[:300],
         )
-        return "transient"
-
+        return "fatal"
+    # Non-zero status with no permanent marker == "not formatted yet" (or a
+    # transient blip); attempt format — it will surface its own outcome.
     log.info(f"[juicefs] formatting filesystem against {_bucket_url()}")
     cmd: list[str] = [
         "juicefs",
@@ -198,19 +205,22 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     fmt = _run(cmd, timeout=120)
     if fmt.returncode == 0:
         return "ok"
-    if _is_transient(fmt.stderr):
+    err = fmt.stderr.strip()
+    low = err.lower()
+    # Shared volume already initialized (the normal case: E2B/prod formatted
+    # it) or a concurrent-format race — the volume is usable.
+    if any(m in low for m in ("is not empty", "already exists", "already formatted")):
+        log.info("[juicefs] volume already initialized; proceeding to mount")
+        return "ok"
+    if _classify(err) == "fatal":
         log.warning(
-            "[juicefs] meta unreachable during format; will retry",
+            "[juicefs] permanent error during format",
             meta=_mask_meta(meta_url),
+            detail=err[:300],
         )
-        return "transient"
-    # A second replica racing to format gets "already exists" / "not empty";
-    # the volume is usable, so treat as success rather than retry forever.
-    log.warning(
-        f"[juicefs] format returned {fmt.returncode} (treating as ready): "
-        f"{fmt.stderr.strip()[:400]}"
-    )
-    return "ok"
+        return "fatal"
+    log.warning(f"[juicefs] format failed (transient; will retry): {err[:300]}")
+    return "transient"
 
 
 def _spawn_mount(meta_url: str, mount_path: Path) -> subprocess.Popen[bytes]:
@@ -234,7 +244,7 @@ def _spawn_mount(meta_url: str, mount_path: Path) -> subprocess.Popen[bytes]:
         meta_url,
         str(mount_path),
     ]
-    logf = _MOUNT_LOG.open("ab")
+    logf = _MOUNT_LOG.open("wb")  # truncate: classify only this attempt
     return subprocess.Popen(  # nosec B603 - argv list, no shell
         cmd,
         stdout=logf,
@@ -270,10 +280,12 @@ def _mount(meta_url: str, mount_path: Path) -> str:
         if proc.poll() is not None:
             tail = ""
             try:
-                tail = _MOUNT_LOG.read_text(errors="replace")[-600:]
+                # Wide enough to catch a permanent marker printed before a
+                # trailing Go register-dump crash.
+                tail = _MOUNT_LOG.read_text(errors="replace")[-4000:]
             except OSError:
                 pass
-            kind = "transient" if _is_transient(tail) else "fatal"
+            kind = _classify(tail)  # crash w/o permanent marker -> transient
             log.warning(
                 f"[juicefs] mount process exited (code {proc.returncode}; {kind})",
                 meta=_mask_meta(meta_url),
@@ -324,7 +336,7 @@ def _bootstrap_loop() -> None:
                 )
             return
         if attempt < attempts:
-            delay = min(base_backoff * (2 ** (attempt - 1)), 60)
+            delay = min(base_backoff * (2 ** (attempt - 1)), 30)
             log.info(
                 "[juicefs] transient mount failure; backing off",
                 attempt=attempt,
