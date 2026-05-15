@@ -60,8 +60,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # JuiceFS client — needed by the host-side sidecar mount that the API writes
 # skills + migration data through. Sandboxes have their own copy baked into
 # the E2B template.
+# Arch-aware: TARGETARCH is auto-populated by BuildKit (amd64/arm64). Using a
+# native binary matters — the amd64 build crashes (Go runtime abort in the PG
+# meta client) under Rosetta/QEMU emulation on arm64 hosts (Apple Silicon
+# dev, Graviton prod).
 ARG JUICEFS_VERSION=1.3.0
-RUN curl -fsSL "https://github.com/juicedata/juicefs/releases/download/v${JUICEFS_VERSION}/juicefs-${JUICEFS_VERSION}-linux-amd64.tar.gz" \
+ARG TARGETARCH
+RUN curl -fsSL "https://github.com/juicedata/juicefs/releases/download/v${JUICEFS_VERSION}/juicefs-${JUICEFS_VERSION}-linux-${TARGETARCH:-amd64}.tar.gz" \
     | tar -xz -C /tmp \
     && install -m 0755 /tmp/juicefs /usr/local/bin/juicefs \
     && rm -rf /tmp/juicefs /tmp/LICENSE /tmp/README.md
