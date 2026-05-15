@@ -1,0 +1,9 @@
+in the onboarding, the executed todo, it should NOT be in the post onboarding chat. the post onboarding chat should include the information about the user's workflows and todos and other things. what have we fucked up? please explore deeply
+
+---
+
+the demo run now can be throw away just dont store it for the user inside a conversation i guess? also what can we do better for post onboarding? is there anything better we can do for the user? for that magical wow effect?
+
+---
+
+the todo run now convo handling should be done with backend not frontend btw please explore acordingly. also all this u mentioned for post onboarding is already done  with onboarding. i want something that we dont do in onboarding but basically leads to high conversion rate and the user enjoying gaia
