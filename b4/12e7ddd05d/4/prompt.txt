@@ -1,0 +1,13 @@
+so in onboarding the flow of when user does continnue without gmail, and writes something to focus on, first of all there are continues 2 bubbles of "continue with gmail" and then the next user message that answers the question of what you want to focus on. there needs to be a bot message in between that since the user didnt connect gmail and we ask already but we dont show the corresponding bot bubble. then i think before creating todos to run based on what the user wants to do this week. i think there should be an intermediate step that asks the user 3 questions related to that question, you can run llm call on backend to surface these 3 questions and basically show those 3 questions like claude does, like 3 questions, 3 options for each quetsion, and the option to submit your own answer or skip the question using proper components of heroui and proper input fields with clean ui and all. this component should be in the onboarding footer. please explore this and help me do this.
+
+---
+
+alright sure let's rpoceed
+
+---
+
+anything lleft to cleanup consolidate refactor or fix? and please proceed with all tasks dont stop until completed and at the end add cleanup aask
+
+---
+
+proceed.
