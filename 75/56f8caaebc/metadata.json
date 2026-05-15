@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "7556f8caaebc",
+  "strategy": "manual-commit",
+  "branch": "feat/voice-gradient-demo",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(landing)/marketplace/[slug]/client.tsx",
+    "apps/web/src/app/[locale]/(landing)/use-cases/[slug]/client.tsx",
+    "apps/web/src/app/[locale]/(landing)/use-cases/client.tsx",
+    "apps/web/src/layouts/LandingProvidersLayout.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/75/56f8caaebc/0/metadata.json",
+      "transcript": "/75/56f8caaebc/0/full.jsonl",
+      "content_hash": "/75/56f8caaebc/0/content_hash.txt",
+      "prompt": "/75/56f8caaebc/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 23,
+    "cache_creation_tokens": 23934,
+    "cache_read_tokens": 1278832,
+    "output_tokens": 5217,
+    "api_call_count": 18
+  }
+}
