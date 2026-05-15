@@ -1,0 +1,1 @@
+use a subagent to fix the relevant coderabbit issues in the PR. and also tell me, is rendering login modal in each page like we have done in this branch, the most appropriate fix?
