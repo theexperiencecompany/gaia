@@ -262,13 +262,13 @@ importers:
         version: 25.1.8(electron-builder-squirrel-windows@25.1.8)
       electron-vite:
         specifier: ^3.0.0
-        version: 3.1.0(@swc/core@1.15.24(@swc/helpers@0.5.21))(vite@7.3.3(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3))
+        version: 3.1.0(@swc/core@1.15.24(@swc/helpers@0.5.21))(vite@6.4.2(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3))
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
-        specifier: ^7.3.2
-        version: 7.3.3(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3)
+        specifier: ^6.4.2
+        version: 6.4.2(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3)
 
   apps/mobile:
     dependencies:
@@ -18714,6 +18714,46 @@ packages:
   victory-vendor@36.9.2:
     resolution: {integrity: sha512-PnpQQMuxlwYdocC8fIJqVXvkeViHYzotI+NJrCuav0ZYFoq912ZHBk3mCeuj+5/VpodOjPe1z0Fk2ihgzlXqjQ==}
 
+  vite@6.4.2:
+    resolution: {integrity: sha512-2N/55r4JDJ4gdrCvGgINMy+HH3iRpNIz8K6SFwVsA+JbQScLiC+clmAxBgwiSPgcG9U15QmvqCGWzMbqda5zGQ==}
+    engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
+    hasBin: true
+    peerDependencies:
+      '@types/node': ^18.0.0 || ^20.0.0 || >=22.0.0
+      jiti: '>=1.21.0'
+      less: '*'
+      lightningcss: ^1.21.0
+      sass: '*'
+      sass-embedded: '*'
+      stylus: '*'
+      sugarss: '*'
+      terser: ^5.16.0
+      tsx: ^4.8.1
+      yaml: ^2.4.2
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+      jiti:
+        optional: true
+      less:
+        optional: true
+      lightningcss:
+        optional: true
+      sass:
+        optional: true
+      sass-embedded:
+        optional: true
+      stylus:
+        optional: true
+      sugarss:
+        optional: true
+      terser:
+        optional: true
+      tsx:
+        optional: true
+      yaml:
+        optional: true
+
   vite@7.3.3:
     resolution: {integrity: sha512-/4XH147Ui7OGTjg3HbdWe5arnZQSbfuRzdr9Ec7TQi5I7R+ir0Rlc9GIvD4v0XZurELqA035KVXJXpR61xhiTA==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -33098,7 +33138,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-vite@3.1.0(@swc/core@1.15.24(@swc/helpers@0.5.21))(vite@7.3.3(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3)):
+  electron-vite@3.1.0(@swc/core@1.15.24(@swc/helpers@0.5.21))(vite@6.4.2(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3)):
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-transform-arrow-functions': 7.27.1(@babel/core@7.29.0)
@@ -33106,7 +33146,7 @@ snapshots:
       esbuild: 0.25.4
       magic-string: 0.30.21
       picocolors: 1.1.1
-      vite: 7.3.3(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3)
+      vite: 6.4.2(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3)
     optionalDependencies:
       '@swc/core': 1.15.24(@swc/helpers@0.5.21)
     transitivePeerDependencies:
@@ -41613,6 +41653,26 @@ snapshots:
       d3-shape: 3.2.0
       d3-time: 3.1.0
       d3-timer: 3.0.1
+
+  vite@6.4.2(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3):
+    dependencies:
+      esbuild: 0.25.4
+      fdir: 6.5.0(picomatch@4.0.4)
+      picomatch: 4.0.4
+      postcss: 8.5.8
+      rollup: 4.60.1
+      tinyglobby: 0.2.15
+    optionalDependencies:
+      '@types/node': 24.12.2
+      fsevents: 2.3.3
+      jiti: 2.6.1
+      less: 4.6.4
+      lightningcss: 1.32.0
+      sass: 1.99.0
+      sass-embedded: 1.99.0
+      terser: 5.46.1
+      tsx: 4.22.0
+      yaml: 2.8.3
 
   vite@7.3.3(@types/node@24.12.2)(jiti@2.6.1)(less@4.6.4)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(terser@5.46.1)(tsx@4.22.0)(yaml@2.8.3):
     dependencies:

@@ -55,6 +55,11 @@
       "pinVersion": "workspace:*"
     },
     {
+      "label": "Vite + electron-vite: desktop is pinned to v6 (electron-vite 3.x), others to v7",
+      "dependencies": ["vite", "electron-vite", "vitest"],
+      "isIgnored": true
+    },
+    {
       "label": "All deps must agree across packages",
       "dependencies": ["**"]
     }
