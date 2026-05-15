@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "2eac1c958aeb",
+  "strategy": "manual-commit",
+  "branch": "feat/voice-gradient-demo",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "apps/web/src/app/[locale]/dev/openui-gallery/page.tsx",
+    "apps/web/src/app/[locale]/dev/openui-samples/page.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2e/ac1c958aeb/0/metadata.json",
+      "transcript": "/2e/ac1c958aeb/0/full.jsonl",
+      "content_hash": "/2e/ac1c958aeb/0/content_hash.txt",
+      "prompt": "/2e/ac1c958aeb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 42,
+    "cache_creation_tokens": 30262,
+    "cache_read_tokens": 4148142,
+    "output_tokens": 20545,
+    "api_call_count": 27
+  }
+}

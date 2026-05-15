@@ -1,0 +1,13 @@
+is there anything we've fucked up now? is this proper pattern now?
+
+---
+
+also now tell me, which other debug or demo pages can we move to "dev" instead?
+
+---
+
+also now tell me, which other debug or demo pages can we move to "dev" instead? like openui demo page or any other stuff
+
+---
+
+move all those pages under the dev layout. and cant we use the node env ternary inside the layout instead of page specific?
