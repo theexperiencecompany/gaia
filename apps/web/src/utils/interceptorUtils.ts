@@ -6,14 +6,15 @@ import {
   showTokenLimitToast,
 } from "@/components/shared/RateLimitToast";
 import { toast } from "@/lib/toast";
-import { useLoginModalStore } from "@/stores/loginModalStore";
 
 // Types
 interface ErrorHandlerDependencies {
   router: AppRouterInstance;
 }
 
-// Constants - Routes where we skip auto-opening login modal on 401
+// Constants - Routes where we skip surfacing API error UI (toasts, etc.)
+// because the visitor is expected to be anonymous and the request was
+// likely a background fetch they did not initiate.
 const LANDING_ROUTES = [
   "/",
   "/terms",
@@ -68,7 +69,10 @@ export const processAxiosError = (
 
     switch (status) {
       case 401:
-        useLoginModalStore.getState().openModal();
+        // Auto-opening the login modal on 401 lives in
+        // useUnauthorizedChallenge, mounted only inside the (main) app
+        // shell. Landing pages never auto-open the modal — anonymous is
+        // the expected state there.
         break;
 
       case 403:

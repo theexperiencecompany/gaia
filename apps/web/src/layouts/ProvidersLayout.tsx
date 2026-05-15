@@ -12,6 +12,7 @@ import { useNotifications } from "@/features/notification/hooks/useNotifications
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
 import { useTodoWorkflowGlobalListener } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
 
+import useUnauthorizedChallenge from "@/hooks/api/useUnauthorizedChallenge";
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
 import { HeroUIProvider } from "@/layouts/HeroUIProvider";
@@ -38,6 +39,10 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();
+
+  // Auto-open the login modal on 401 — app-shell only. Landing pages
+  // never auto-open; anonymous is the expected state there.
+  useUnauthorizedChallenge();
 
   return (
     <HeroUIProvider>
