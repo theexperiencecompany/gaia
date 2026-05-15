@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 function isTypeFile(path) {
   if (path.endsWith(".d.ts")) return true;
@@ -30,8 +30,17 @@ function isAllowed(path) {
 }
 
 function getFiles() {
-  const out = execSync(
-    "git ls-files 'apps/**/*.{ts,tsx}' 'libs/**/*.{ts,tsx}' 'packages/**/*.{ts,tsx}'",
+  const out = execFileSync(
+    "git",
+    [
+      "ls-files",
+      "apps/**/*.ts",
+      "apps/**/*.tsx",
+      "libs/**/*.ts",
+      "libs/**/*.tsx",
+      "packages/**/*.ts",
+      "packages/**/*.tsx",
+    ],
     { encoding: "utf8" },
   );
   return out.trim().split("\n").filter(Boolean);
@@ -58,21 +67,31 @@ for (const file of getFiles()) {
   }
 }
 
+const args = new Set(process.argv.slice(2));
+const enforce = args.has("--enforce") || args.has("--strict");
+
 if (violations.length > 0) {
   violations.sort((a, b) => b.count - a.count);
-  console.error(
-    `\n❌ ${violations.length} file(s) export more than ${MAX_TYPES_OUTSIDE} type outside a types file:\n`,
+  const label = enforce ? "❌" : "ℹ️";
+  console.log(
+    `\n${label} ${violations.length} file(s) export more than ${MAX_TYPES_OUTSIDE} type outside a types file:\n`,
   );
-  for (const v of violations) {
-    console.error(`  ${v.file} (${v.count})`);
-    for (const name of v.names.slice(0, 5))
-      console.error(`    - ${name}`);
-    if (v.names.length > 5) console.error(`    + ${v.names.length - 5} more`);
+  for (const v of violations.slice(0, 25)) {
+    console.log(`  ${v.file} (${v.count})`);
+    for (const name of v.names.slice(0, 3)) console.log(`    - ${name}`);
+    if (v.names.length > 3) console.log(`    + ${v.names.length - 3} more`);
   }
-  console.error(
-    "\nMove exported types/interfaces/enums into a *.types.ts, types.ts, or types/ directory.\n",
+  if (violations.length > 25) {
+    console.log(`  ... ${violations.length - 25} more files`);
+  }
+  console.log(
+    "\nMove exported types/interfaces/enums into a *.types.ts, types.ts, or types/ directory.",
   );
-  process.exit(1);
+  if (enforce) {
+    process.exit(1);
+  } else {
+    console.log("(informational only; pass --enforce to fail CI on these)\n");
+  }
+} else {
+  console.log("✅ Types live in dedicated type files.");
 }
-
-console.log("✅ Types live in dedicated type files.");

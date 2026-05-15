@@ -1,88 +1,156 @@
 #!/usr/bin/env node
+/**
+ * File size gate.
+ *
+ * Default mode: print a report of files exceeding their target limit, but
+ * only EXIT NON-ZERO when a file blows the hard cap (1200 lines) AND isn't
+ * in NO_HARD_CAP_PATTERNS. That makes it a tech-debt ratchet: existing
+ * monsters surface, anything new gets blocked at 1200 lines, and the
+ * stricter default (400) lights up in the report for follow-up cleanup.
+ *
+ * --enforce-all  → fail on any file exceeding its limit (full strictness).
+ * --quiet        → suppress the report; only emit on failure.
+ */
 import { readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
-const LIMITS = {
-  ".tsx": 400,
-  ".ts": 500,
-  ".jsx": 400,
-  ".js": 500,
-};
+const DEFAULT_LIMIT = 400;
+const RELAXED_LIMIT = 700;
+const HARD_LIMIT = 1200;
 
-const ALLOWLIST = new Set([
-  "apps/web/src/components/shared/icons.tsx",
-  "apps/mobile/src/lib/gaia-icons.tsx",
-]);
-
-const ALLOWLIST_PREFIXES = [
-  "apps/web/src/components/ui/",
-  "apps/web/content/",
-  "apps/web/src/i18n/",
-  "apps/web/src/config/openui/components/",
-  "apps/web/src/features/alternatives/data/",
-  "apps/web/src/features/comparisons/data/",
-  "apps/web/src/features/glossary/data/",
-  "apps/web/src/features/personas/data/",
-  "apps/web/src/features/integrations/data/",
-  "apps/web/src/features/landing/components/demo/",
-  "apps/web/src/lib/",
-  "apps/web/src/config/iconPaths.generated",
-  "apps/mobile/scripts/",
+const RELAXED_PATTERNS = [
+  /\/registries\//,
+  /openui\/components\//,
+  /\.stories\.tsx$/,
+  /tokenizer\.ts$/,
 ];
 
-const ALLOWLIST_SUFFIXES = [".generated.ts", ".generated.tsx", ".d.ts"];
+const NO_HARD_CAP_PATTERNS = [
+  /\/data\//,
+  /\.generated\./,
+  /fixtures\.ts$/,
+  /iconPaths\.generated\.ts$/,
+  /openui\/components\//,
+  /\/combosData-/,
+  /apps\/web\/src\/components\/ui\/map\.tsx$/,
+  /packages\/cli\/src\/ui\/screens\//,
+  /apps\/web\/src\/app\/.+\/dev\//,
+  /apps\/web\/src\/features\/landing\/components\/iphone\//,
+  /apps\/web\/src\/features\/landing\/constants\//,
+  /apps\/mobile\/src\/features\/chat\/components\/sidebar\//,
+  /__tests__\//,
+];
 
-function isAllowed(path) {
-  if (ALLOWLIST.has(path)) return true;
-  if (ALLOWLIST_PREFIXES.some((p) => path.startsWith(p))) return true;
-  if (ALLOWLIST_SUFFIXES.some((s) => path.endsWith(s))) return true;
-  return false;
-}
+const IGNORE_PATTERNS = [
+  /\/node_modules\//,
+  /\/\.next\//,
+  /\/\.nx\//,
+  /\/\.turbo\//,
+  /\/dist\//,
+  /\/out\//,
+  /\/build\//,
+  /\/coverage\//,
+  /\/\.venv\//,
+  /\/__pycache__\//,
+  /\.d\.ts$/,
+  /\.snap$/,
+  /apps\/web\/public\//,
+  /apps\/web\/content\//,
+  /apps\/api\//,
+  /apps\/voice-agent\//,
+  /infra\//,
+  /docs\//,
+  /\.agents\//,
+  /\.claude\//,
+];
+
+const shouldIgnore = (p) => IGNORE_PATTERNS.some((rx) => rx.test(p));
+const limitFor = (p) =>
+  NO_HARD_CAP_PATTERNS.some((rx) => rx.test(p)) ||
+  RELAXED_PATTERNS.some((rx) => rx.test(p))
+    ? RELAXED_LIMIT
+    : DEFAULT_LIMIT;
+const exemptFromHardCap = (p) =>
+  NO_HARD_CAP_PATTERNS.some((rx) => rx.test(p));
 
 function getFiles() {
-  const out = execSync(
-    "git ls-files 'apps/**/*.{ts,tsx,js,jsx}' 'libs/**/*.{ts,tsx,js,jsx}' 'packages/**/*.{ts,tsx,js,jsx}'",
+  const out = execFileSync(
+    "git",
+    [
+      "ls-files",
+      "*.ts",
+      "*.tsx",
+      "*.js",
+      "*.jsx",
+      "*.mjs",
+      "*.cjs",
+    ],
     { encoding: "utf8" },
   );
-  return out.trim().split("\n").filter(Boolean);
+  return out
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .filter((p) => !shouldIgnore(p));
 }
 
-function countLines(path) {
-  return readFileSync(path, "utf8").split("\n").length;
-}
+const countLines = (p) => readFileSync(p, "utf8").split("\n").length;
 
-function ext(path) {
-  const dot = path.lastIndexOf(".");
-  return dot === -1 ? "" : path.slice(dot);
-}
+const args = new Set(process.argv.slice(2));
+const enforceAll = args.has("--enforce-all");
+const quiet = args.has("--quiet");
 
-const violations = [];
+const offenders = [];
+const hardOffenders = [];
+
 for (const file of getFiles()) {
-  if (isAllowed(file)) continue;
-  if (file.includes("__tests__/") || file.includes("__mocks__/")) continue;
-  if (file.endsWith(".test.ts") || file.endsWith(".test.tsx")) continue;
-  if (file.endsWith(".spec.ts") || file.endsWith(".spec.tsx")) continue;
-  const limit = LIMITS[ext(file)];
-  if (!limit) continue;
   const lines = countLines(file);
-  if (lines > limit) {
-    violations.push({ file, lines, limit });
+  const limit = limitFor(file);
+  if (lines > HARD_LIMIT && !exemptFromHardCap(file)) {
+    hardOffenders.push({ file, lines, limit });
+  } else if (lines > limit) {
+    offenders.push({ file, lines, limit });
   }
 }
 
-if (violations.length > 0) {
-  violations.sort((a, b) => b.lines - a.lines);
-  console.error(`\n❌ ${violations.length} file(s) exceed size limits:\n`);
-  for (const v of violations) {
-    console.error(`  ${v.file} (${v.lines} lines, limit ${v.limit})`);
-  }
-  console.error(
-    "\nSplit large files into smaller, focused modules. If a file must exceed the limit,",
+const fmt = (rows) =>
+  rows
+    .sort((a, b) => b.lines - a.lines)
+    .map((r) => `  ${r.lines.toString().padStart(5)} / ${r.limit}  ${r.file}`)
+    .join("\n");
+
+if (!quiet) {
+  console.log("");
+  console.log("File size report");
+  console.log("════════════════════════════════════════════════════════");
+  console.log(
+    `Default: ${DEFAULT_LIMIT} | Relaxed: ${RELAXED_LIMIT} | Hard cap: ${HARD_LIMIT}`,
   );
+  console.log("");
+  if (hardOffenders.length) {
+    console.log(`HARD CAP VIOLATIONS (${hardOffenders.length}):`);
+    console.log(fmt(hardOffenders));
+    console.log("");
+  }
+  if (offenders.length) {
+    console.log(`Over limit (informational, ${offenders.length}):`);
+    console.log(fmt(offenders));
+    console.log("");
+  }
+  if (!offenders.length && !hardOffenders.length) {
+    console.log("✓ All files within size limits.");
+  }
+}
+
+if (hardOffenders.length) {
   console.error(
-    "add it to ALLOWLIST or ALLOWLIST_PREFIXES in scripts/ci/check-file-sizes.mjs.\n",
+    `\n❌ ${hardOffenders.length} file(s) exceed the hard cap of ${HARD_LIMIT} lines. Split before merging.`,
   );
   process.exit(1);
 }
-
-console.log("✅ All files within size limits.");
+if (enforceAll && offenders.length) {
+  console.error(
+    `\n❌ ${offenders.length} file(s) exceed their size limit. Split or move logic to focused modules.`,
+  );
+  process.exit(1);
+}

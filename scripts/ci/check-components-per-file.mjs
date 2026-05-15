@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const ALLOWLIST_PREFIXES = [
   "apps/web/src/components/ui/",
@@ -37,8 +37,16 @@ function isAllowed(path) {
 }
 
 function getFiles() {
-  const out = execSync(
-    "git ls-files 'apps/web/src/**/*.tsx' 'apps/desktop/src/**/*.tsx' 'apps/mobile/src/**/*.tsx' 'libs/shared/ts/src/**/*.tsx' 'packages/cli/src/**/*.tsx'",
+  const out = execFileSync(
+    "git",
+    [
+      "ls-files",
+      "apps/web/src/**/*.tsx",
+      "apps/desktop/src/**/*.tsx",
+      "apps/mobile/src/**/*.tsx",
+      "libs/shared/ts/src/**/*.tsx",
+      "packages/cli/src/**/*.tsx",
+    ],
     { encoding: "utf8" },
   );
   return out.trim().split("\n").filter(Boolean);
