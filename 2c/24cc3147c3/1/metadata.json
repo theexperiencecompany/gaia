@@ -1,0 +1,75 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "2c24cc3147c3",
+  "session_id": "40b59e87-2b15-4bef-8e2c-c6717f1e4df3",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-15T15:44:13.114026Z",
+  "branch": "onboarding-revamp",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "apps/web/src/app/[locale]/(main)/onboarding/demo/page.tsx",
+    "apps/web/src/features/chat/components/bubbles/bot/TextBubble.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "55ab5cc18340",
+  "token_usage": {
+    "input_tokens": 128,
+    "cache_creation_tokens": 277253,
+    "cache_read_tokens": 6078681,
+    "output_tokens": 21534,
+    "api_call_count": 68
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-15T15:44:13.104388Z",
+    "agent_lines": 86,
+    "agent_removed": 5,
+    "human_added": 320,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 406,
+    "total_lines_changed": 775,
+    "agent_percentage": 11.741935483870968,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 90,
+      "agent_lines_removed": 5
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 90,
+      "agent_lines_removed": 5
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 90,
+      "agent_lines_removed": 5
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 90,
+      "agent_lines_removed": 5
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+after each bubble that appears in onboarding, how can we simulate latency like  when gaia saysw Hey! I’m GAIA. What should I call you?
+
+ and i say aryan Nice to meet you, Aryan!
+
+ this nexgt ubble appears immediately. how can we delay the animation ever so slightly?
+
+---
+
+nah mate i want the new message break to be used its not an option to not join with new message break. i like the per seegment stagger. how would we do this? if it looks good i think we can use it in normal chat too not just onboarding
+
+---
+
+show me it in the onboarding demo page
+
+---
+
+give url
+
+---
+
+lmao it doesnt work
+
+---
+
+like its not started i think
+
+---
+
+<task-notification>
+<task-id>b8mfe1gcp</task-id>
+<summary>Monitor event: "Wait for dev server ready"</summary>
+<event>[Monitor timed out — re-arm if needed.]</event>
+</task-notification>
+
+---
+
+also this animation should be for every bubble then not just the first few ones in onboarding
+
+---
+
+also this animation should be for every bubble then not just the first few ones in onboarding
