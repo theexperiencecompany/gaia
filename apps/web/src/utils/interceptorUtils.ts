@@ -1,5 +1,6 @@
 import type { AxiosError } from "axios";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
+
 import {
   showFeatureRestrictedToast,
   showRateLimitToast,
@@ -7,104 +8,62 @@ import {
 } from "@/components/shared/RateLimitToast";
 import { toast } from "@/lib/toast";
 
-// Types
 interface ErrorHandlerDependencies {
   router: AppRouterInstance;
 }
 
-// Constants - Routes where we skip surfacing API error UI (toasts, etc.)
-// because the visitor is expected to be anonymous and the request was
-// likely a background fetch they did not initiate.
-const LANDING_ROUTES = [
-  "/",
-  "/terms",
-  "/privacy",
-  "/login",
-  "/signup",
-  "/contact",
-  "/manifesto",
-  "/blog",
-  "/pricing",
-  "/use-cases",
-  "/marketplace",
-  "/profile",
-  "/desktop-login",
-];
-
-// Utility functions
-export const isOnLandingRoute = (pathname: string): boolean => {
-  // Exact matches
-  if (LANDING_ROUTES.includes(pathname)) return true;
-  // Prefix matches for nested routes
-  return (
-    pathname.startsWith("/blog/") ||
-    pathname.startsWith("/use-cases/") ||
-    pathname.startsWith("/marketplace/") ||
-    pathname.startsWith("/profile/")
-  );
-};
-
-// Main error processor
+/**
+ * Surfaces API error UI (toasts) for app-shell requests.
+ *
+ * Only mounted inside the (main) provider tree — landing pages never
+ * surface background-fetch errors because anonymous visitors should not
+ * be interrupted by toasts they did not trigger. 401-driven login modal
+ * lives in useUnauthorizedChallenge for the same reason.
+ */
 export const processAxiosError = (
   error: AxiosError,
-  pathname: string,
   { router }: ErrorHandlerDependencies,
 ): void => {
-  console.error("Axios Error:", error, "Pathname:", pathname);
-
-  // Skip error handling on landing pages
-  if (isOnLandingRoute(pathname)) {
-    return;
-  }
-
-  // Handle network errors
   if (error.code === "ERR_CONNECTION_REFUSED" || error.code === "ERR_NETWORK") {
     toast.error("Server unreachable. Try again later");
     return;
   }
 
-  // Handle HTTP errors
-  if (error.response) {
-    const { status, data } = error.response;
+  if (!error.response) return;
 
-    switch (status) {
-      case 401:
-        // Auto-opening the login modal on 401 lives in
-        // useUnauthorizedChallenge, mounted only inside the (main) app
-        // shell. Landing pages never auto-open the modal — anonymous is
-        // the expected state there.
-        break;
+  const { status, data } = error.response;
 
-      case 403:
-        handleForbiddenError(data, router);
-        break;
+  switch (status) {
+    case 401:
+      // Modal open is handled by useUnauthorizedChallenge.
+      break;
 
-      case 429:
-        toast.error("Too many Requests!");
-        handleRateLimitError(data);
-        break;
+    case 403:
+      handleForbiddenError(data, router);
+      break;
 
-      default:
-        if (status >= 500) {
-          toast.error("Server error. Please try again later.");
-        }
-        break;
-    }
+    case 429:
+      toast.error("Too many Requests!");
+      handleRateLimitError(data);
+      break;
+
+    default:
+      if (status >= 500) {
+        toast.error("Server error. Please try again later.");
+      }
+      break;
   }
 };
 
-// Handle 403 Forbidden errors
 const handleForbiddenError = (
   errorData: unknown,
   router: AppRouterInstance,
 ): void => {
-  // Safely extract detail from unknown error data structure
   const detail =
     errorData && typeof errorData === "object" && "detail" in errorData
       ? (errorData as { detail: unknown }).detail
       : undefined;
 
-  // Skip if this is an UPGRADE_REQUIRED error (handled by model selection)
   if (
     typeof detail === "object" &&
     detail !== null &&
@@ -114,7 +73,6 @@ const handleForbiddenError = (
     return;
   }
 
-  // Handle integration errors with redirect action
   if (
     typeof detail === "object" &&
     detail !== null &&
@@ -135,7 +93,6 @@ const handleForbiddenError = (
       },
     });
   } else {
-    // Handle generic forbidden errors
     const message =
       typeof detail === "string"
         ? detail
@@ -144,15 +101,12 @@ const handleForbiddenError = (
   }
 };
 
-// Handle 429 Rate Limit errors
 const handleRateLimitError = (errorData: unknown): void => {
-  // Safely extract rate limit data from unknown error data structure
   const rateLimitData =
     errorData && typeof errorData === "object" && "detail" in errorData
       ? (errorData as { detail: unknown }).detail
       : undefined;
 
-  // Validate rate limit error structure
   if (
     typeof rateLimitData !== "object" ||
     rateLimitData === null ||
@@ -162,7 +116,6 @@ const handleRateLimitError = (errorData: unknown): void => {
     return;
   }
 
-  // Type-safe extraction of rate limit properties
   const rateLimit = rateLimitData as {
     error: string;
     feature?: string;

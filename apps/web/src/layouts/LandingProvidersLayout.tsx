@@ -21,7 +21,7 @@ const LoginModal = dynamic(
  * - HeroUIProvider: required for HeroUI components used across landing pages
  * - QueryProvider: required by marketplace and use-cases detail pages
  * - GlobalAuth: populates the user store so isAuthenticated works on landing pages
- * - GlobalInterceptor: sets up axios auth interceptors for API calls
+ * - GlobalInterceptor: route-agnostic post-redirect listeners (OAuth toast)
  * - LoginModal: opened by useAuth() from any landing page (marketplace,
  *   use-cases, etc.); lazy-loaded so it stays out of the initial bundle
  * - Toaster: required for toast notifications on interactive landing pages

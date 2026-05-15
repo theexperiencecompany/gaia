@@ -12,6 +12,7 @@ import { useNotifications } from "@/features/notification/hooks/useNotifications
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
 import { useTodoWorkflowGlobalListener } from "@/features/todo/hooks/useTodoWorkflowGlobalListener";
 
+import useAxiosInterceptor from "@/hooks/api/useAxiosInterceptor";
 import useUnauthorizedChallenge from "@/hooks/api/useUnauthorizedChallenge";
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
 import GlobalInterceptor from "@/hooks/providers/GlobalInterceptor";
@@ -40,8 +41,10 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();
 
-  // Auto-open the login modal on 401 — app-shell only. Landing pages
-  // never auto-open; anonymous is the expected state there.
+  // App-shell-only API error handling. Landing pages never surface
+  // background-fetch error toasts to anonymous visitors, and never
+  // auto-open the login modal — anonymous is the expected state there.
+  useAxiosInterceptor();
   useUnauthorizedChallenge();
 
   return (
