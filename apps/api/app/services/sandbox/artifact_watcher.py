@@ -98,31 +98,40 @@ class ArtifactWatcher:
         self._mode: DetectionMode = settings.ARTIFACT_DETECTION_MODE
         self._handle: Any = None
         self._stopped = True
-        # accesslog mode: per-conv snapshot {rel_path: (size, mtime)} + debounce
+        # per-conv snapshot {rel_path: (size, mtime)} for diffing
         self._snapshots: dict[str, dict[str, tuple[int, float]]] = {}
         self._rescan_task: asyncio.Task[None] | None = None
+        # Host-side periodic reconcile — the authoritative, sandbox-independent
+        # detector (the sandbox tail/watch_dir dies on idle-pause and is a
+        # latency optimization only).
+        self._reconcile_task: asyncio.Task[None] | None = None
 
     # -- public surface ---------------------------------------------------
 
     async def start(self) -> None:
         if not self._stopped:
             return
+        self._stopped = False
+        # The host-side reconcile loop is the reliable detector and always
+        # runs — it reads the API host's JuiceFS mount, independent of the
+        # sandbox (whose tail/watch_dir dies on idle-pause).
+        self._reconcile_task = asyncio.create_task(self._reconcile_loop())
+        log.info(
+            "[artifact-watcher] started",
+            user_id=self.user_id,
+            mode=self._mode,
+            reconcile_s=settings.ARTIFACT_RECONCILE_INTERVAL,
+        )
+        # The sandbox-side detector is an optional low-latency boost; its
+        # failure must never block sandbox acquire or detection.
         try:
             if self._mode == "accesslog":
                 await self._start_accesslog()
             else:
                 await self._start_watch_dir()
-            self._stopped = False
-            log.info(
-                "[artifact-watcher] started",
-                user_id=self.user_id,
-                mode=self._mode,
-            )
         except Exception as e:
-            # Watcher is a latency optimization; never block sandbox acquire.
-            self._stopped = True
             log.warning(
-                "[artifact-watcher] start failed",
+                "[artifact-watcher] sandbox detector unavailable; host reconcile only",
                 user_id=self.user_id,
                 mode=self._mode,
                 error=str(e),
@@ -130,8 +139,10 @@ class ArtifactWatcher:
 
     async def stop(self) -> None:
         self._stopped = True
-        if self._rescan_task is not None and not self._rescan_task.done():
-            self._rescan_task.cancel()
+        for task in (self._reconcile_task, self._rescan_task):
+            if task is not None and not task.done():
+                task.cancel()
+        self._reconcile_task = None
         self._rescan_task = None
         handle, self._handle = self._handle, None
         if handle is None:
@@ -153,7 +164,27 @@ class ArtifactWatcher:
                     await handle.stop()
 
     def is_alive(self) -> bool:
-        return not self._stopped and self._handle is not None
+        # Liveness == the host reconcile loop running. The sandbox detector
+        # is best-effort and intentionally not part of liveness.
+        return (
+            not self._stopped
+            and self._reconcile_task is not None
+            and not self._reconcile_task.done()
+        )
+
+    async def _reconcile_loop(self) -> None:
+        interval = max(1, settings.ARTIFACT_RECONCILE_INTERVAL)
+        while not self._stopped:
+            try:
+                await self._rescan_all()
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                log.debug(f"[artifact-watcher] reconcile error: {e}")
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                return
 
     # -- watch_dir mode ---------------------------------------------------
 
