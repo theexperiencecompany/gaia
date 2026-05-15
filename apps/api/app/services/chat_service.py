@@ -330,20 +330,29 @@ async def _wait_for_http_subscriber(
 
 
 async def _forward_artifact_events(
-    user_id: str, conversation_id: str, stream_id: str
+    user_id: str,
+    conversation_id: str,
+    stream_id: str,
+    tool_data: Dict[str, Any],
 ) -> None:
-    """Forward this conversation's artifact events to the chat SSE stream.
+    """Forward this conversation's artifact events to the chat SSE stream
+    *and* record them into the conversation's tool_data so they persist.
 
-    Subscribes to `artifacts:{user_id}` (published by the per-sandbox
-    ArtifactWatcher and by the upload pipeline) and re-emits events whose
-    `session_id` matches this conversation as `artifact_data` tool chunks.
-    Decoupling via Redis is what lets background-process writes surface in
-    the UI *after* the tool turn that spawned them has already returned.
+    Subscribes to `artifacts:{user_id}` (published by the coding tools and
+    the upload pipeline) and re-emits events whose `session_id` matches this
+    conversation as `artifact_data` tool chunks. Each forwarded artifact is
+    also appended to the shared `tool_data` accumulator that
+    `_save_conversation_async` writes to Mongo — without this the card only
+    lives in the live stream / client cache and is gone on a server reload.
+
+    De-duped by `path` (artifacts are pushed repeatedly in real time): an
+    unchanged file is neither re-sent nor re-persisted; the last write wins.
     """
     if redis_cache.redis is None:
         return
     channel = artifact_channel(user_id)
     pubsub = redis_cache.redis.pubsub()
+    seen: Dict[str, tuple] = {}
     try:
         await pubsub.subscribe(channel)
         async for message in pubsub.listen():
@@ -355,20 +364,31 @@ async def _forward_artifact_events(
                 continue
             if payload.get("session_id") != conversation_id:
                 continue
-            chunk = (
-                "data: "
-                + json.dumps(
-                    {
-                        "tool_data": {
-                            "tool_name": "artifact_data",
-                            "data": payload,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "tool_category": "artifact",
-                        }
-                    }
-                )
-                + "\n\n"
+            path = payload.get("path")
+            event = payload.get("event")
+            sig = (
+                event,
+                path,
+                payload.get("size_bytes"),
+                payload.get("mtime"),
             )
+            if path and seen.get(path) == sig:
+                continue  # unchanged — skip duplicate push/persist
+            if path:
+                if event == "remove":
+                    seen.pop(path, None)
+                else:
+                    seen[path] = sig
+            entry = {
+                "tool_name": "artifact_data",
+                "data": payload,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "tool_category": "artifact",
+            }
+            # Persist with the conversation (re-renders on server reload)…
+            tool_data.setdefault("tool_data", []).append(entry)
+            # …and push live so the card appears during this turn.
+            chunk = "data: " + json.dumps({"tool_data": entry}) + "\n\n"
             await stream_manager.publish_chunk(stream_id, chunk)
     except asyncio.CancelledError:
         raise
@@ -425,7 +445,7 @@ async def _run_chat_stream(
             except Exception as e:
                 log.warning(f"[chat] session dir setup failed: {e}")
             artifact_task = asyncio.create_task(
-                _forward_artifact_events(user_id, conversation_id, stream_id)
+                _forward_artifact_events(user_id, conversation_id, stream_id, tool_data)
             )
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
