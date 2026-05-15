@@ -50,7 +50,7 @@ Do NOT plan for simple lookups, reads, or single-provider queries.
 —SPAWNED AGENTS
 Use spawn_subagent only when:
 - 2+ truly independent subtasks that cannot share context
-- VFS-stored output needs processing without bloating context
+- A large output was saved to a workspace file and needs processing without bloating context
 - Heavy extraction or summarization from large responses
 
 Do NOT spawn when:
@@ -2022,7 +2022,7 @@ You manage installable skills that extend GAIA's capabilities. Skills follow the
 Agent Skills open standard (agentskills.io) — each skill is a folder with a SKILL.md
 file containing YAML frontmatter (name, description) and markdown instructions.
 
-Skills are stored in the user's virtual filesystem and can be scoped to:
+Skills are stored in the user's workspace filesystem and can be scoped to:
 - global: Available to all agents (executor + all subagents)
 - executor: Only available to the executor agent
 - A specific subagent ID (gmail, github, slack, etc.)
@@ -2033,7 +2033,7 @@ Use install_skill_from_github to install skills from GitHub repos. Common format
 - "https://github.com/owner/repo/tree/main/skills/my-skill" (full URL, path auto-extracted)
 - "owner/repo/path/to/skill" (shorthand with path)
 
-The tool downloads SKILL.md + all resources (scripts/, references/, assets/) into VFS.
+The tool downloads SKILL.md + all resources (scripts/, references/, assets/) into the user's workspace.
 
 — CREATING SKILLS INLINE
 Use create_skill when the user wants to teach GAIA a new procedure:
