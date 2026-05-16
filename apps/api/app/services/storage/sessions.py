@@ -25,9 +25,9 @@ from app.agents.workspace.paths import (
     USER_UPLOADED_DIRNAME,
     detect_content_type,
 )
+from app.agents.workspace.skill_loader import skills_by_subagent
 from app.agents.workspace.system_docs import (
     INDEX_MD,
-    INTEGRATION_AGENTS,
     INTEGRATIONS_GUIDE_MD,
     SESSIONS_GUIDE_MD,
 )
@@ -130,44 +130,59 @@ async def ensure_session_dirs(user_id: str, conv_id: str) -> Path:
 
 
 async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -> None:
-    """Lay down the integrations FS tree for a user's connected integrations.
+    """Lay down the FS tree for a user's connected integrations + generic skills.
 
-    Writes one parent ``integrations/GUIDE.md`` describing the layout, then
-    for each integration we know about (see ``INTEGRATION_AGENTS``):
+    Reads the canonical SKILL.md library under
+    ``apps/api/app/agents/skills/builtin/`` via ``skill_loader`` and writes
+    byte-identical bodies into the user's workspace:
 
-        integrations/<id>/agent/prompt.md
-        integrations/<id>/agent/skills/<slug>/skill.md
+        integrations/
+            GUIDE.md                      — how the dir works
+            <integration>/agent/skills/<slug>/skill.md
+        skills/<slug>/skill.md            — executor-targeted general skills
 
-    The files are runtime-managed scaffolding — the executor and per-
-    integration subagents treat them as read-only by contract, not by OS
-    perms (we re-materialize on every session bootstrap to roll out content
-    updates, so chmod 0444 would just make the next overwrite fail).
-    Idempotent. Soft-fails if the mount is missing (dev mode).
+    The frontmatter ``target`` field decides where each skill lands:
+    ``<provider>_agent`` goes under that integration; ``executor`` goes
+    under the top-level ``skills/`` tree. Only integrations the user has
+    actually connected get their skills materialized (others are dead
+    weight in context). Executor-level skills are always laid down — they
+    don't depend on any single integration connection.
+
+    Idempotent: overwrites bodies on every bootstrap so SKILL.md edits in
+    the repo roll out the moment a user starts a new session. Soft-fails
+    if the JuiceFS mount is missing (dev mode).
     """
 
     def _go() -> None:
         if not _is_mounted():
             return
-        root = _mount_root() / "users" / user_id / "integrations"
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "GUIDE.md").write_text(INTEGRATIONS_GUIDE_MD, encoding="utf-8")
+        user_root = _mount_root() / "users" / user_id
+        integrations_root = user_root / "integrations"
+        integrations_root.mkdir(parents=True, exist_ok=True)
+        (integrations_root / "GUIDE.md").write_text(
+            INTEGRATIONS_GUIDE_MD, encoding="utf-8"
+        )
+
+        grouped = skills_by_subagent()
+        # Per-integration skills — only for the ones the user has connected.
         for iid in connected_ids:
-            cfg = INTEGRATION_AGENTS.get(iid)
-            if not cfg:
-                continue
-            agent_dir = root / iid / "agent"
+            skills = grouped.get(iid) or []
+            agent_dir = integrations_root / iid / "agent"
             skills_dir = agent_dir / "skills"
             skills_dir.mkdir(parents=True, exist_ok=True)
-            prompt_text = str(cfg.get("prompt", ""))
-            (agent_dir / "prompt.md").write_text(prompt_text, encoding="utf-8")
-            skills = cfg.get("skills") or {}
-            if not isinstance(skills, dict):
-                continue
-            for slug, value in skills.items():
-                body = value[1] if isinstance(value, tuple) else str(value)
-                slug_dir = skills_dir / slug
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            for skill in skills:
+                slug_dir = skills_dir / skill.slug
                 slug_dir.mkdir(parents=True, exist_ok=True)
-                (slug_dir / "skill.md").write_text(body, encoding="utf-8")
+                (slug_dir / "skill.md").write_text(skill.body, encoding="utf-8")
+
+        # General-purpose skills (target: executor) live at the workspace
+        # root so the executor can `cat /workspace/skills/<slug>/skill.md`
+        # regardless of which integrations are connected.
+        for skill in grouped.get("executor", []):
+            slug_dir = user_root / "skills" / skill.slug
+            slug_dir.mkdir(parents=True, exist_ok=True)
+            (slug_dir / "skill.md").write_text(skill.body, encoding="utf-8")
 
     await asyncio.to_thread(_go)
 

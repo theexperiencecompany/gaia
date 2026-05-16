@@ -137,17 +137,12 @@ Each external service the user has connected (gmail, googlecalendar, slack,
    `integrations/googlecalendar/agent/`. They never cross-read.
 """
 
-# Per-integration subagent assets. Keyed by the subagent id used by the
-# tool registry. Each entry is materialized into
-# `/workspace/users/<uid>/integrations/<id>/agent/{prompt.md, skills/<slug>/skill.md}`
-# when the user has that integration connected. Adding a new entry here +
-# making sure the subagent id matches the registry is enough — the rest is
-# rolled out on the next `ensure_session_dirs` call.
-#
-# Skill body is short on purpose: titles drive discovery (they ride into the
-# subagent's system prompt as a list); bodies are read on demand only when
-# the subagent actually invokes that skill.
-INTEGRATION_AGENTS: dict[str, dict[str, object]] = {
+# DEPRECATED: kept for back-compat with one or two callers that still
+# reference the old shape. The real source of truth is now
+# ``app.agents.workspace.skill_loader.load_builtin_skills()`` which reads the
+# canonical SKILL.md files from disk so the FS layout contains the *complete*
+# skill body, not a hand-written stub. New code should use the loader.
+_DEPRECATED_INTEGRATION_AGENTS_STUB: dict[str, dict[str, object]] = {
     "googlecalendar": {
         "prompt": """# Google Calendar subagent
 
@@ -319,33 +314,34 @@ def integration_skills_block(subagent_id: str) -> str:
     """Markdown listing of an integration subagent's available skills.
 
     Injected into the subagent's dynamic-context system message so the LLM
-    sees skill titles + on-disk paths every turn and can `cat` the right
-    `skill.md` before acting. Returns "" if we don't know this integration
-    (custom MCP, etc.) — the FS isn't materialized for unknown ids and the
-    block would be empty anyway.
+    sees skill names + descriptions + on-disk paths every turn and can `cat`
+    the right `skill.md` before acting. Source: the canonical SKILL.md
+    library under ``apps/api/app/agents/skills/builtin/``, loaded by
+    ``skill_loader.skills_by_subagent``. Returns "" if there are no skills
+    targeting this subagent (custom MCP, brand-new integration, etc.).
     """
-    cfg = INTEGRATION_AGENTS.get(subagent_id)
-    if not cfg:
-        return ""
-    raw_skills = cfg.get("skills")
-    if not isinstance(raw_skills, dict) or not raw_skills:
+    from app.agents.workspace.skill_loader import skills_by_subagent
+
+    skills = skills_by_subagent().get(subagent_id) or []
+    if not skills:
         return ""
     base = f"/workspace/integrations/{subagent_id}/agent/skills"
     lines = [f"## Available skills for {subagent_id}"]
     lines.append(
         f"Read `{base}/<slug>/skill.md` before invoking the underlying tool. "
-        "The body is the recipe; titles below show when each one applies."
+        "The body is the full recipe; the description below is a one-line "
+        "trigger so you know which file to cat."
     )
-    for slug, value in raw_skills.items():
-        title = value[0] if isinstance(value, tuple) else str(value)
-        lines.append(f"- **{title}** — `{base}/{slug}/skill.md`")
+    for skill in skills:
+        desc = (skill.description or "").strip()
+        suffix = f" — {desc}" if desc else ""
+        lines.append(f"- **{skill.name}** (`{base}/{skill.slug}/skill.md`){suffix}")
     return "\n".join(lines)
 
 
 __all__ = [
     "INDEX_MD",
     "INTEGRATIONS_GUIDE_MD",
-    "INTEGRATION_AGENTS",
     "SESSIONS_GUIDE_MD",
     "integration_skills_block",
 ]
