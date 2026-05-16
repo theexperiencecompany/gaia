@@ -42,10 +42,10 @@ function isAllowed(path) {
 }
 
 function getFiles() {
-  // NOSONAR javascript:S4036 — `git` is intentionally resolved via PATH on
-  // CI runners and local dev shells where the binary is part of the runtime.
-  const out = execFileSync(
-    "git",
+  // `git` is intentionally resolved via PATH on CI runners and local dev
+  // shells where the binary is part of the runtime.
+  const out = execFileSync( // NOSONAR javascript:S4036
+    "git", // NOSONAR javascript:S4036
     [
       "ls-files",
       "apps/**/*.ts",

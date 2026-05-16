@@ -74,9 +74,9 @@ const exemptFromHardCap = (p) =>
   NO_HARD_CAP_PATTERNS.some((rx) => rx.test(p));
 
 function getFiles() {
-  // NOSONAR javascript:S4036 — `git` is intentionally resolved via PATH.
-  const out = execFileSync(
-    "git",
+  // `git` is intentionally resolved via PATH; CI runners always have it.
+  const out = execFileSync( // NOSONAR javascript:S4036
+    "git", // NOSONAR javascript:S4036
     [
       "ls-files",
       "*.ts",

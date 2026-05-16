@@ -37,9 +37,9 @@ function isAllowed(path) {
 }
 
 function getFiles() {
-  // NOSONAR javascript:S4036 — `git` is intentionally resolved via PATH.
-  const out = execFileSync(
-    "git",
+  // `git` is intentionally resolved via PATH; CI runners always have it.
+  const out = execFileSync( // NOSONAR javascript:S4036
+    "git", // NOSONAR javascript:S4036
     [
       "ls-files",
       "apps/web/src/**/*.tsx",
