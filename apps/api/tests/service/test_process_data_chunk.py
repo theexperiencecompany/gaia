@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.stream_manager import StreamManager
-from app.services.chat_service import _process_data_chunk
+from app.services.chat.chunks import process_data_chunk as _process_data_chunk
 
 
 @pytest.mark.service
@@ -42,7 +42,7 @@ class TestProcessDataChunkReal:
         )
         chunk = f"data: {chunk_payload}\n\n"
 
-        with patch("app.services.chat_service.stream_manager") as mock_sm:
+        with patch("app.services.chat.chunks.stream_manager") as mock_sm:
             mock_sm.publish_chunk = AsyncMock()
             mock_sm.update_progress = AsyncMock()
 
@@ -74,7 +74,7 @@ class TestProcessDataChunkReal:
         )
         chunk = f"data: {chunk_payload}\n\n"
 
-        with patch("app.services.chat_service.stream_manager") as mock_sm:
+        with patch("app.services.chat.chunks.stream_manager") as mock_sm:
             mock_sm.publish_chunk = AsyncMock()
             mock_sm.update_progress = AsyncMock()
 
@@ -104,7 +104,7 @@ class TestProcessDataChunkReal:
         )
         chunk = f"data: {chunk_payload}\n\n"
 
-        with patch("app.services.chat_service.stream_manager") as mock_sm:
+        with patch("app.services.chat.chunks.stream_manager") as mock_sm:
             mock_sm.publish_chunk = AsyncMock()
             mock_sm.update_progress = AsyncMock()
 

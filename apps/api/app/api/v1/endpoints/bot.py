@@ -21,7 +21,7 @@ from app.models.bot_models import (
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.services.bot_service import BotService
 from app.services.bot_token_service import create_bot_session_token
-from app.services.chat_service import run_chat_stream_background
+from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_connected_integrations
 from app.services.platform_link_service import Platform, PlatformLinkService

@@ -17,6 +17,7 @@ from app.models.chat_models import (
 )
 from app.db.mongodb.collections import integrations_collection
 from app.decorators.caching import Cacheable
+from app.services.chat.chunks import extract_tool_data
 from app.services.conversation_service import update_messages
 
 # UUID v4 pattern for identifying user ID suffixes
@@ -225,9 +226,6 @@ def process_custom_event_for_tools(payload) -> dict:
         extraction fails or no data is available
     """
     try:
-        # Import inside function to avoid circular imports
-        from app.services.chat_service import extract_tool_data
-
         serialized = json.dumps(payload) if payload else "{}"
         new_data = extract_tool_data(serialized)
         return new_data if new_data else {}
