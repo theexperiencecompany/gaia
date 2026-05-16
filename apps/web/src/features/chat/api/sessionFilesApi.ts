@@ -23,15 +23,29 @@ function encodePath(path: string): string {
  * Returns the original src for anything that doesn't match (absolute URLs,
  * data: URIs, etc.). Used by MarkdownRenderer and OpenUI components that
  * render images the bot wrote into the session's artifacts/ dir.
+ *
+ * `conversationId` is normally piped in from `useParams<{id}>()`; when
+ * absent we fall back to parsing the current pathname so this works in
+ * trees that mount outside the page's param scope (OpenUI components are
+ * rendered via a dynamic CSR boundary that doesn't always see the route
+ * params synchronously).
  */
 export function resolveArtifactSrc(
   src: string | undefined,
   conversationId: string | undefined,
 ): string | undefined {
-  if (!src || !conversationId) return src;
+  if (!src) return src;
   const m = src.match(/^(?:\.?\/)?artifacts\/(.+)$/);
   if (!m) return src;
-  return sessionFilesApi.artifactUrl(conversationId, m[1]);
+  let convId = conversationId;
+  if (!convId && typeof window !== "undefined") {
+    const pathMatch = window.location.pathname.match(
+      /\/(?:[a-z]{2}(?:-[A-Z]{2})?\/)?c\/([^/?#]+)/,
+    );
+    if (pathMatch) convId = pathMatch[1];
+  }
+  if (!convId) return src;
+  return sessionFilesApi.artifactUrl(convId, m[1]);
 }
 
 /**
