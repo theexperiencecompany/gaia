@@ -1,0 +1,38 @@
+yes i do
+
+---
+
+now the outline looks black
+
+---
+
+[Image #1] the questions at the bottom of the composer, it overlaps with the other chat bubbles and the entire screen of onboarding. i think this needs to be fixed properly. how can we do this?
+
+---
+
+yes
+
+---
+
+Got it. Lining up the right todos based on that.
+
+so when user does the continue without gmail it needs enough bottom padding like for Creating action items
+Setting up automations
+Building your profile
+ it misaligns with the blur too much
+
+---
+
+so the top padding is fine for the questions after they arrive, but dont show properly for when its loading with the skeleton
+
+---
+
+how can we consistently auto scroll like in the questions when i respond and that chat bubbles come up for the user they animate but they're behind the qna component at the bottom
+
+---
+
+remove comments
+
+---
+
+for the question and answers skeleton, ensure the skeletons are exactly like the component
