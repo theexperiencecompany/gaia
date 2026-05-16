@@ -37,6 +37,7 @@ function isAllowed(path) {
 }
 
 function getFiles() {
+  // NOSONAR javascript:S4036 — `git` is intentionally resolved via PATH.
   const out = execFileSync(
     "git",
     [

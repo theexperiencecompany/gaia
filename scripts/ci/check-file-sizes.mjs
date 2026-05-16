@@ -74,6 +74,7 @@ const exemptFromHardCap = (p) =>
   NO_HARD_CAP_PATTERNS.some((rx) => rx.test(p));
 
 function getFiles() {
+  // NOSONAR javascript:S4036 — `git` is intentionally resolved via PATH.
   const out = execFileSync(
     "git",
     [

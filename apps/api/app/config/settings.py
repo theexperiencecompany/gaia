@@ -381,7 +381,9 @@ class DevelopmentSettings(CommonSettings):
     DEEPGRAM_API_KEY: str | None = None
     ELEVENLABS_API_KEY: str | None = None
     ELEVENLABS_TTS_MODEL: str | None = None
-    GAIA_BACKEND_URL: str | None = "http://host.docker.internal:8000"
+    GAIA_BACKEND_URL: str | None = (
+        "http://host.docker.internal:8000"  # NOSONAR python:S5332 — docker-internal host, not external
+    )
     ELEVENLABS_VOICE_ID: str | None = None
 
     # ----------------------------------------------

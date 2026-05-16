@@ -80,7 +80,7 @@ def profile_function(
                 # Apply sampling - skip profiling if random check fails
                 # Non-cryptographic sampling: random.random() is safe here (Bandit B311 # nosec)
                 if (
-                    effective_sample_rate < 1.0 and random.random() >= effective_sample_rate  # nosec: B311
+                    effective_sample_rate < 1.0 and random.random() >= effective_sample_rate  # nosec: B311  # NOSONAR python:S2245 — sampling, not security-sensitive
                 ):
                     return await f(*args, **kwargs)
 

@@ -139,7 +139,9 @@ async def get_location_data(
         cache_key = f"weather:ip:{ip_address}"
 
         # Use IP-based geolocation
-        geo_response = await http_async_client.get(f"http://ip-api.com/json/{ip_address}")
+        geo_response = await http_async_client.get(
+            f"http://ip-api.com/json/{ip_address}"
+        )  # NOSONAR python:S5332 — ip-api.com free tier only supports HTTP
         geo_response.raise_for_status()
         geolocation = geo_response.json()
 

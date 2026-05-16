@@ -42,6 +42,8 @@ function isAllowed(path) {
 }
 
 function getFiles() {
+  // NOSONAR javascript:S4036 — `git` is intentionally resolved via PATH on
+  // CI runners and local dev shells where the binary is part of the runtime.
   const out = execFileSync(
     "git",
     [
