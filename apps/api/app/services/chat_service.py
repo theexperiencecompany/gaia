@@ -12,6 +12,7 @@ ensuring conversations are always saved even if client disconnects.
 import asyncio
 import contextlib
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -671,6 +672,41 @@ def _extract_response_text(chunk: str) -> str:
     return ""
 
 
+# Matches bot-emitted artifact references in three shapes — `./artifacts/x`,
+# `/artifacts/x`, and plain `artifacts/x` — so we can rewrite each to an
+# absolute backend URL before saving. Allows quotes, parens or whitespace
+# right before (markdown image links, OpenUI string args, plain prose) but
+# requires no leading "word" character so we don't mangle `myartifacts/`.
+_ARTIFACT_REF_RE = re.compile(
+    r"""(?P<lead>(?<![A-Za-z0-9_/])|(?<=['"`(\s]))(?P<prefix>\.\/|\/)?artifacts\/(?P<path>[A-Za-z0-9._\-/]+)""",
+    re.VERBOSE,
+)
+
+
+def _absolutize_artifact_urls(message: str, conversation_id: str) -> str:
+    """Rewrite relative artifact paths in a bot response to absolute backend URLs.
+
+    The agent's prompt teaches it to reference files at `./artifacts/<name>`,
+    which is correct INSIDE the sandbox but breaks when the frontend tries
+    to fetch the same path from the browser origin. Substituting the full
+    `<HOST>/api/v1/sessions/<conv>/artifacts/<name>` URL once at save time
+    means the saved message renders the right image regardless of whether
+    the user's browser still holds a stale frontend bundle.
+    """
+    if not message or not conversation_id:
+        return message
+    from app.config.settings import settings
+
+    base = f"{settings.HOST}/api/v1/sessions/{conversation_id}/artifacts"
+
+    def _sub(m: "re.Match[str]") -> str:
+        # Preserve leading whitespace/quote so we don't break adjacent syntax.
+        lead = m.group("lead") or ""
+        return f"{lead}{base}/{m.group('path')}"
+
+    return _ARTIFACT_REF_RE.sub(_sub, message)
+
+
 async def _save_conversation_async(
     body: MessageRequestWithHistory,
     user: dict,
@@ -715,10 +751,18 @@ async def _save_conversation_async(
     )
     user_message.message_id = user_message_id
 
+    # Bake absolute artifact URLs into the saved bot message so the chat
+    # renders correctly even when the user's browser is holding a stale
+    # frontend chunk that lacks the runtime URL-rewriter. The bot writes
+    # `./artifacts/foo.png` (or `/artifacts/foo.png`) into OpenUI blocks and
+    # markdown; we substitute the full backend URL once, here, so the
+    # rendered `<img>` works regardless of frontend cache state.
+    rendered_message = _absolutize_artifact_urls(complete_message, conversation_id)
+
     # Create bot message
     bot_message = MessageModel(
         type="bot",
-        response=complete_message,
+        response=rendered_message,
         date=bot_timestamp.isoformat(),
         fileIds=body.fileIds,
         metadata=metadata,
